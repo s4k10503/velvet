@@ -17,12 +17,15 @@ everything below, because the verdict that carries the evidence -- a case the ba
 is indistinguishable, from the results file alone, from a base that built nothing, ran nothing, or
 was never asked. So each of those is closed separately:
 
-*The tree is read by fixtures the branch did not carry.* `canary_fixtures` picks fixtures of the
-base's own, and where it found any, at least one has to pass. A tree where nothing built reports
-every case as uncompilable, which is not a failure here, so without that reading such a run comes
-back green having measured nothing at all. Separately and before it, a run that left no results file
-withdraws every platform outright: that is the ordinary shape of a licence failure, an editor crash
-or a timeout, and it is the case the canary exists for rather than a case to disarm it in.
+*The tree is read by cases the branch did not carry.* `canary_fixtures` picks fixtures of the base's
+own for a platform and `python_canaries` picks cases of the base's own for that lane, and where either
+found any, at least one has to pass. A tree where nothing built reports every case as uncompilable,
+which is not a failure here, so without that reading such a run comes back green having measured
+nothing at all. The Python lane needs the same reading in its own spelling: a case that stopped before
+it disagreed is not a failure here either, so a lane in which none of them answered exits green
+without one. Separately and before both, a run that left no results file withdraws every platform
+outright: that is the ordinary shape of a licence failure, an editor crash or a timeout, and it is the
+case the canary exists for rather than a case to disarm it in.
 
 *A case is measured under the name the runner reports it by.* A name nothing answers to yields no
 reading, and no reading falls through to the same passing verdict. So the type a case is written in
@@ -39,6 +42,14 @@ is still measured rather than lost behind it. Which file is picked off the edito
 carried file rather than only the ones holding cases, since a shared helper takes its whole assembly
 down with it. A runner that hands back a results file and nothing else can still take every verdict
 -- one round of it, without the withdrawing.
+
+*A case that stopped before it disagreed answered nothing.* Red on the base means the base ran the
+case and the case said no. A Python case that dies at an import or an attribute the branch adds said
+nothing at all, and a C# case that went Inconclusive or Skipped there did not run to a verdict
+either. Counting any of those as red hands back the evidence the gate exists to demand, in the exact
+shape it was written to refuse: the branch adds a helper, every case in the module that reaches for it
+dies there, and the run reports them all as pinning something. So they take a verdict of their own, which
+says the base could not answer and leaves the red count to the cases that were answered.
 
 *A case that belongs on the base says so*, above itself, with a reason:
 
@@ -73,12 +84,22 @@ UNITY_RUNNING = "^/Applications/.*/MacOS/Unity -runTests"
 PASSED_ON_BASE = "passed on the base"
 RED_ON_BASE = "red on the base"
 COULD_NOT_COMPILE = "could not compile there"
+COULD_NOT_ANSWER = "could not answer there"
 DECLARED_KEPT = "declared, and green as declared"
 DECLARED_STALE = "declared, and not as declared"
 NOT_REPORTED = "no result was written"
 BASE_UNSOUND = "the base tree cannot answer"
 
 FAILING_VERDICTS = (PASSED_ON_BASE, DECLARED_STALE, NOT_REPORTED, BASE_UNSOUND)
+
+# What a runner reports for a case that stopped before it disagreed with anything, and what to print
+# for each. "Error" is this lane's own word, since unittest counts an exception apart from a failed
+# assertion; the other two are the results file's.
+NOT_AN_ANSWER = {
+    "Error": "it raised there rather than failing an assertion",
+    "Inconclusive": "an assumption of its own was false there",
+    "Skipped": "it was skipped there",
+}
 
 CATEGORIES = ("characterization", "refactor")
 
@@ -87,6 +108,13 @@ CATEGORIES = ("characterization", "refactor")
 MINIMUM_REASON_WORDS = 4
 
 DECLARATION = re.compile(r"GREEN_ON_BASE\(([A-Za-z]*)\)\s*:\s*(.*)")
+
+# The Python lane has no -testPlatform to be named by, and the soundness plumbing keys on one.
+PYTHON_LANE = "python"
+
+# unittest's closing line, which is where it separates an assertion that disagreed from an exception
+# that stopped the case.
+UNITTEST_SUMMARY = re.compile(r"^(OK|FAILED)(?:\s*\((.*)\))?\s*$", re.MULTILINE)
 
 
 def _sibling(name):
@@ -190,6 +218,15 @@ def kind_of(relative):
     if relative.endswith(".py") and Path(relative).name.startswith("test_"):
         return "python"
     return None
+
+
+def measured_by(relative):
+    """Which run a case's verdict comes back from -- its C# test platform, or the Python lane.
+
+    The soundness reading is per run and not per language: each of them can come back having answered
+    nothing, and the canary that says so is chosen and read the same way for both.
+    """
+    return PYTHON_LANE if kind_of(relative) == "python" else platform_of(relative)
 
 
 def is_test_side(relative):
@@ -625,17 +662,56 @@ def unity_results(results):
             for case in root.iter("test-case")}
 
 
+def python_outcome(output):
+    """One unittest invocation's verdict, in the words the results file uses for the other lane.
+
+    Read off the trailer rather than the exit status, which is one bit over three readings: an
+    exception and a failed assertion both exit non-zero and only one of them is the base disagreeing,
+    and a skip exits zero and is not the base agreeing.
+
+    No trailer at all is the same reading as an exception rather than one of its own: what produces
+    it is a module whose own top level raises something the loader does not wrap, which is the shape of
+    a case reaching for what the branch added. Which deaths print one and which do not is held by
+    `UnittestTrailerTests`. A lane where nothing printed a trailer is the canary's question, not this
+    one's.
+    """
+    summary = None
+    for match in UNITTEST_SUMMARY.finditer(output):
+        summary = match
+    if summary is None:
+        return "Error"
+    counts = summary.group(2) or ""
+    if summary.group(1) == "OK":
+        return "Skipped" if "skipped=" in counts else "Passed"
+    if "failures=" in counts:
+        return "Failed"
+    if "errors=" in counts:
+        return "Error"
+    # A count neither of those names -- an unexpected success is the one unittest can print -- is a
+    # trailer this cannot read. Falling back to either neighbour picks a side of the very line this
+    # exists to draw, and the two sides are not symmetric: one of them exits zero.
+    return "Unreadable"
+
+
 def run_python(tree, cases, transcript):
     """Runs one case at a time, so a module-level failure cannot report as some other case's verdict."""
     outcome = {}
     for case in cases:
         module = Path(case.path)
         identifier = "{}.{}".format(module.stem, case.name)
-        result = subprocess.run([sys.executable, "-m", "unittest", "-v", identifier],
-                                cwd=str(tree / module.parent), capture_output=True, text=True)
-        transcript.append("$ python3 -m unittest {} (in {})\n{}{}".format(
-            identifier, module.parent, result.stdout, result.stderr))
-        outcome[case.key] = "Passed" if result.returncode == 0 else "Failed"
+        try:
+            result = subprocess.run([sys.executable, "-m", "unittest", "-v", identifier],
+                                    cwd=str(tree / module.parent), capture_output=True, text=True)
+            printed = result.stdout + result.stderr
+            verdict = python_outcome(printed)
+        except OSError as error:
+            # A tree without the directory to run in has not got the module either, which is the
+            # reading an import that failed carries rather than a reason to stop the lane.
+            printed = "{}: {}".format(type(error).__name__, error)
+            verdict = "Error"
+        transcript.append("$ python3 -m unittest {} (in {})\n{}".format(
+            identifier, module.parent, printed))
+        outcome[case.key] = verdict
     return outcome
 
 
@@ -683,6 +759,27 @@ def canary_fixtures(base_tree, platform, carry, wanted=3):
     return found
 
 
+def python_canaries(base_tree, carry, wanted=3):
+    """Cases of the base tree's own Python modules that the branch did not carry, git's order.
+
+    The C# lane's `canary_fixtures` owns why a lane needs these at all. One case per module rather than
+    every case of one, so that one unimportable module is not the whole reading.
+    """
+    found = []
+    for relative in git(base_tree, "ls-files").stdout.splitlines():
+        if kind_of(relative) != "python" or relative in carry:
+            continue
+        path = base_tree / relative
+        if not path.exists():
+            continue
+        cases = python_cases(path.read_text(encoding="utf-8", errors="replace"), relative)
+        if cases:
+            found.append(cases[0])
+        if len(found) == wanted:
+            break
+    return found
+
+
 def fixtures_that_ran(reported):
     """The fixtures the base run named at least one case of."""
     return {name.split("(")[0].rsplit(".", 1)[0] for name in reported}
@@ -703,7 +800,7 @@ def unsound_platforms(canaries, reported):
                if name.split("(")[0].rsplit(".", 1)[0] in fixtures]
         if not any(result == "Passed" for result in ran):
             broken[platform] = "none of {} passed there".format(
-                ", ".join(fixture.rsplit(".", 1)[-1] for fixture in fixtures))
+                ", ".join(re.split(r"[.:]", fixture)[-1] for fixture in fixtures))
     return broken
 
 
@@ -719,6 +816,16 @@ def unsound_fixtures(control, reported):
         if result not in (None, "Passed") and case.fixture not in broken:
             broken[case.fixture] = "{} is {} there".format(case.name.rsplit(".", 1)[-1], result.lower())
     return broken
+
+
+def answered(result):
+    """Whether the base ran the case to a verdict about behaviour -- it agreed, or it disagreed.
+
+    A case that raised, one that hit an Assume of its own, one that was skipped, one whose summary
+    could not be read and one nothing reported at all each stopped before that, and the verdicts
+    below say which.
+    """
+    return result is not None and result not in NOT_AN_ANSWER
 
 
 def decide(case, result, fixture_ran):
@@ -741,10 +848,19 @@ def decide(case, result, fixture_ran):
             return DECLARED_STALE, complaint
         if result == "Passed":
             return DECLARED_KEPT, "{}: {}".format(declaration.category, declaration.reason)
-        return DECLARED_STALE, "it is {} on the base; remove the declaration".format(
-            (result or "absent").lower())
+        # Only a run that reached a verdict can call a declaration stale. "Remove the declaration"
+        # is advice about a case the base measured, and a case it never measured falls through to
+        # the reading that says so -- otherwise a declaration is refused for the environment
+        # skipping the case, and the fix it asks for is to delete something correct.
+        if answered(result):
+            return DECLARED_STALE, "it is {} on the base; remove the declaration".format(
+                result.lower())
     if result == "Passed":
         return PASSED_ON_BASE, "nothing this branch changed decides it"
+    if result in NOT_AN_ANSWER:
+        return COULD_NOT_ANSWER, NOT_AN_ANSWER[result]
+    if result == "Unreadable":
+        return NOT_REPORTED, "its run printed a summary this could not read"
     if result is None and not fixture_ran:
         return COULD_NOT_COMPILE, "the base built none of this fixture"
     if result is None:
@@ -830,14 +946,21 @@ def report(cases, control, reported, canaries=None, wrote=True):
     for case in cases:
         if case.fixture in unsound:
             case.verdict, case.detail = BASE_UNSOUND, unsound[case.fixture]
-        elif platform_of(case.path) in withdrawn:
-            case.verdict, case.detail = BASE_UNSOUND, withdrawn[platform_of(case.path)]
+        elif measured_by(case.path) in withdrawn:
+            case.verdict, case.detail = BASE_UNSOUND, withdrawn[measured_by(case.path)]
         else:
             case.verdict, case.detail = decide(case, outcome_for(case.key, reported),
                                                case.fixture in ran)
     print("\n--- what the base said ---")
     for case in cases:
         print("{:<32} {}  ({})".format(case.verdict, case.name, case.detail))
+    # COULD_NOT_COMPILE is not one of these. A case the base could not build names a symbol the
+    # branch adds, which is the strongest pin this takes; counting it here would tell the author of
+    # a correct test that the run measured nothing.
+    silent = [case for case in cases if case.verdict == COULD_NOT_ANSWER]
+    if silent:
+        print("\nthe base could not answer for {} of {} case(s), so they carry no reading either "
+              "way".format(len(silent), len(cases)))
     offenders = [case for case in cases if case.verdict in FAILING_VERDICTS]
     if offenders:
         print("\n{} case(s) the base already answers, or cannot be answered for. Green on both sides "
@@ -991,7 +1114,9 @@ def main():
 
         python_lane = [case for case in cases + control if kind_of(case.path) == "python"]
         if python_lane:
-            reported.update(run_python(base_tree, python_lane, transcript))
+            guards = python_canaries(base_tree, carry)
+            canaries[PYTHON_LANE] = [case.fixture for case in guards]
+            reported.update(run_python(base_tree, python_lane + guards, transcript))
 
         platforms = sorted({platform_of(case.path) for case in cases
                             if kind_of(case.path) == "csharp"})
@@ -999,7 +1124,7 @@ def main():
             platforms = [name for name in platforms if name in args.platform]
         if platforms and not wait_for_quiet(args.busy_timeout):
             raise SystemExit("another Unity test run is still in flight")
-        canaries = canaries_for(base_tree, cases, carry, platforms)
+        canaries.update(canaries_for(base_tree, cases, carry, platforms))
         for platform in platforms:
             wanted = [case for case in cases + control
                       if kind_of(case.path) == "csharp" and platform_of(case.path) == platform]

@@ -162,13 +162,20 @@ python3 scripts/test_quality/base_red_check.py --base origin/main --warm-library
 of what goes wrong with a run like this ends in a reading nobody took, and a reading nobody took is never
 a pass. So a case that passes on the base fails the check, and a case that could not compile there does
 not — it names something the branch adds, which is a pin doing its job — but that second reading is only
-believed on a tree the run proved can build and answer at all. Two things prove it. Fixtures of the
-base's own that the branch did not carry run alongside, and at least one has to pass; a run that wrote no
-results file at all fails outright rather than reading as a base that built none of the branch's tests.
+believed on a tree the run proved can build and answer at all. Two things prove it. Cases of the
+base's own that the branch did not carry run alongside — C# fixtures for a platform, Python cases for
+that lane — and at least one has to pass; a run that wrote no results file at all fails outright rather
+than reading as a base that built none of the branch's tests.
 Alongside that, the cases the branch left alone in a file it changed nothing shared in are the base's own
 text, so one of those going red means the tree is answering about itself and that fixture's verdicts are
 withdrawn. Change a `[SetUp]`, a field, a private helper or anything under `TestUtilities/`, and those
 cases stop being the base's text and stop being read as the instrument — the run says which and why.
+
+Red on the base means the base ran the case and the case said no, and only that. A Python case that dies
+at an import or an attribute the branch adds, and a C# case that went Inconclusive or Skipped there, are
+reported as cases **the base could not answer** — no evidence either way, and not part of the red count.
+The distinction is what stops a branch that adds a helper from being credited for every case in the
+module that reaches for it.
 
 Two kinds of case belong on the base, and say so above themselves with a reason a reviewer can weigh:
 
@@ -213,6 +220,35 @@ Each Unity job in CI runs it after the suite, and CLAUDE.md's headless recipe ru
 `assert_no_inconclusive.py`. `scripts/test_quality/test_assert_results_from_this_tree.py` holds it,
 its type reader against every fixture this repository's case reader finds, and its log reading
 against every diagnostic identifier the analyzer sources declare, in `Test ▸ test-quality`.
+
+### Checking that a case can report its own failure
+
+An `Assume` that turns out false reports Inconclusive, which the runner does not count as a failure.
+Where it gates what the case exists to pin, the day the behaviour breaks is the day the case stops
+saying so. `assert_no_inconclusive.py` reddens on one that has fired, which is that day and no
+earlier; `scripts/test_quality/assume_gate_check.py` looks for the shape instead:
+
+```bash
+python3 scripts/test_quality/assume_gate_check.py
+python3 scripts/test_quality/assume_gate_check.py --write-baseline scripts/test_quality/assume_gate_baseline.txt
+```
+
+Whether an `Assume` is somebody else's business or a gate on the behaviour turns on whether a
+regression can falsify it, which the text does not say. Two sub-shapes fall out of the
+`// Arrange` / `// Act` / `// Assert` sections, because those are a
+statement about which lines are the behaviour: a gate over a value the Act introduced, and a gate
+sitting in the Assert section. A case whose sections cannot be located is recorded as unreadable rather
+than passed. `scripts/test_quality/assume_gate_baseline.txt` carries what is here now, for the reason
+`neuter_holes.txt` does — a total nets a fix off against a new one — and both a new entry and one the
+scan no longer finds fail the check. It runs in `Test ▸ test-quality` and needs no licence. What to do
+about an entry is the fold the fixture conventions above prescribe, and the check prints it.
+
+**What it does not reach** is a gate above the Act over state the Act does not introduce — the shape
+the rule itself was written from. Separating that from a legitimate precondition needs to know
+whether a regression can falsify the assumption, which the text does not say, and the filters tried
+instead select so much of the suite that the record would stop being a list anybody reads. Nothing
+finds that shape today, and a case carrying it is recorded here only if it also carries one of the
+two above.
 
 ### Repository scripts
 

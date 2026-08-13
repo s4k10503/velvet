@@ -9,7 +9,9 @@ failures are silent -- the run comes back green having measured the wrong thing.
 Run: python3 scripts/test_quality/test_base_red_check.py
 """
 
+import contextlib
 import importlib.util
+import io
 import json
 import re
 import shutil
@@ -543,6 +545,58 @@ class VerdictTests(unittest.TestCase):
         # Assert
         self.assertEqual(verdict, base_red_check.RED_ON_BASE)
 
+    def test_Given_ACaseThatRaisedOnTheBase_When_ItIsDecided_Then_ItIsNotReadAsRed(self):
+        # Act
+        verdict, _ = base_red_check.decide(self.probe(), "Error", fixture_ran=True)
+
+        # Assert -- it stopped before it disagreed with anything, so it pins nothing either way.
+        self.assertEqual(verdict, base_red_check.COULD_NOT_ANSWER)
+
+    def test_Given_ACaseInconclusiveOnTheBase_When_ItIsDecided_Then_ItIsNotReadAsRed(self):
+        # Arrange -- an Assume of its own was false there, which is the C# spelling of the same thing.
+        # Act
+        verdict, _ = base_red_check.decide(self.probe(), "Inconclusive", fixture_ran=True)
+
+        # Assert
+        self.assertEqual(verdict, base_red_check.COULD_NOT_ANSWER)
+
+    def test_Given_ACaseSkippedOnTheBase_When_ItIsDecided_Then_ItIsNotReadAsRed(self):
+        # Act
+        verdict, _ = base_red_check.decide(self.probe(), "Skipped", fixture_ran=True)
+
+        # Assert
+        self.assertEqual(verdict, base_red_check.COULD_NOT_ANSWER)
+
+    def test_Given_ACaseWhoseRunSaidSomethingUnreadable_When_ItIsDecided_Then_ItFailsTheRun(self):
+        # Arrange -- unlike the three above, nothing here says what the base did with the case, so
+        # the two directions it could be filed under are both a guess and one of them exits zero.
+        # Act
+        verdict, _ = base_red_check.decide(self.probe(), "Unreadable", fixture_ran=True)
+
+        # Assert
+        self.assertIn(verdict, base_red_check.FAILING_VERDICTS)
+
+    def test_Given_ADeclaredCaseTheBaseCouldNotAnswerFor_When_ItIsDecided_Then_TheDeclarationStands(self):
+        # Arrange -- an environment that skipped the case says nothing about whether it belongs on
+        # the base, and the branch cannot act on being told to delete a declaration that is right.
+        # Act
+        verdict, _ = base_red_check.decide(
+            self.probe(base_red_check.Declaration("refactor", "the names this rename preserves")),
+            "Skipped", fixture_ran=True)
+
+        # Assert
+        self.assertEqual(verdict, base_red_check.COULD_NOT_ANSWER)
+
+    def test_Given_ADeclaredCaseWhoseFixtureTheBaseNeverBuilt_When_ItIsDecided_Then_ItIsStillEvidence(self):
+        # Arrange -- the same reading in the C# lane's spelling, and the older of the two.
+        # Act
+        verdict, _ = base_red_check.decide(
+            self.probe(base_red_check.Declaration("refactor", "the names this rename preserves")),
+            None, fixture_ran=False)
+
+        # Assert
+        self.assertEqual(verdict, base_red_check.COULD_NOT_COMPILE)
+
     def test_Given_ACaseAbsentFromAFixtureThatRan_When_ItIsDecided_Then_ItFailsTheRun(self):
         # Act
         verdict, _ = base_red_check.decide(self.probe(), None, fixture_ran=True)
@@ -623,6 +677,269 @@ class CanaryTests(unittest.TestCase):
 
         # Act / Assert
         self.assertEqual(base_red_check.canary_fixtures(root, "EditMode", carry=[carried]), [])
+
+
+class PythonOutcomeTests(unittest.TestCase):
+    """What one unittest invocation is read to have said, over the four things it can say."""
+
+    TRAILER = "Ran 1 test in 0.001s\n\n{}\n"
+
+    def test_Given_ACaseThatDisagreed_When_ItsRunIsRead_Then_ItIsTheBaseAnswering(self):
+        # Act
+        outcome = base_red_check.python_outcome(self.TRAILER.format("FAILED (failures=1)"))
+
+        # Assert
+        self.assertEqual(outcome, "Failed")
+
+    def test_Given_ACaseThatRaised_When_ItsRunIsRead_Then_ItIsNotTheBaseAnswering(self):
+        # Arrange -- a name the base has not got dies here, and exits with the same status as a case
+        # that ran and disagreed.
+        # Act
+        outcome = base_red_check.python_outcome(self.TRAILER.format("FAILED (errors=1)"))
+
+        # Assert
+        self.assertEqual(outcome, "Error")
+
+    def test_Given_ACaseThatPassed_When_ItsRunIsRead_Then_ItIsAPass(self):
+        # Act
+        outcome = base_red_check.python_outcome(self.TRAILER.format("OK"))
+
+        # Assert
+        self.assertEqual(outcome, "Passed")
+
+    def test_Given_ACaseThatSkipped_When_ItsRunIsRead_Then_ItIsNotAPass(self):
+        # Arrange -- unittest exits zero for a skip, so the status alone reads it as agreement.
+        # Act
+        outcome = base_red_check.python_outcome(self.TRAILER.format("OK (skipped=1)"))
+
+        # Assert
+        self.assertEqual(outcome, "Skipped")
+
+    def test_Given_ATrailerNamingNeitherCount_When_ItIsRead_Then_NothingIsReadOffIt(self):
+        # Arrange -- unittest prints this for a case marked expectedFailure that passed. Reading it
+        # as an exception exits zero, and picking that side of the line is the fail-open this
+        # separation exists to close.
+        # Act
+        outcome = base_red_check.python_outcome(
+            self.TRAILER.format("FAILED (unexpected successes=1)"))
+
+        # Assert
+        self.assertEqual(outcome, "Unreadable")
+
+    def test_Given_ARunThatPrintedNoTrailer_When_ItIsRead_Then_ItIsNotTheBaseAnswering(self):
+        # Arrange -- a module whose top level reaches for a name the branch adds raises out of the
+        # loader, and the process prints a traceback where the trailer would be.
+        # Act
+        outcome = base_red_check.python_outcome("Traceback (most recent call last):\n")
+
+        # Assert
+        self.assertEqual(outcome, "Error")
+
+
+class SilenceTests(unittest.TestCase):
+    """Which of the two ways a case can be missing the run reports as having measured nothing."""
+
+    def summary_over(self, reported):
+        case = base_red_check.Case("N.C.Given_A_When_B_Then_C", "a/Tests/Editor/CTests.cs", 1, 2)
+        printed = io.StringIO()
+        with contextlib.redirect_stdout(printed):
+            base_red_check.report([case], [], reported)
+        return printed.getvalue()
+
+    def test_Given_TheTwoWaysACaseGoesMissing_When_TheRunIsSummarised_Then_OnlyTheRaisedOneCounts(self):
+        # Arrange -- one comparison over both, because either alone holds on a run that summarises
+        # nothing at all. A case the base could not build is the strongest pin this takes: it names
+        # a symbol the branch adds, and counting it among the readings nobody took tells the author
+        # of a correct test that the run measured nothing.
+        raised = self.summary_over({"N.C.Given_A_When_B_Then_C": "Error"})
+
+        # Act
+        uncompilable = self.summary_over({})
+
+        # Assert
+        self.assertEqual(("could not answer for" in raised, "could not answer for" in uncompilable),
+                         (True, False))
+
+
+class UnittestTrailerTests(unittest.TestCase):
+    """Which deaths at a module's own top level print a trailer, since `python_outcome` reads one.
+
+    The engine's behaviour rather than this repository's, so it is measured here rather than stated
+    beside the reader. The reader's no-trailer branch exists for the half that prints nothing, and
+    without this nothing says which half that is -- both halves reach the same verdict through it,
+    so its own end-to-end case cannot tell them apart.
+    """
+
+    MODULE = ("import unittest\n\n{top}\n\n\nclass T(unittest.TestCase):\n"
+              "    def test_Given_A_When_B_Then_C(self):\n        pass\n")
+
+    def printed(self, top):
+        holder = tempfile.mkdtemp(prefix="unittest-trailer-")
+        self.addCleanup(shutil.rmtree, holder, ignore_errors=True)
+        (Path(holder) / "test_probe.py").write_text(self.MODULE.format(top=top))
+        result = subprocess.run(
+            [sys.executable, "-m", "unittest", "-v", "test_probe.T.test_Given_A_When_B_Then_C"],
+            cwd=holder, capture_output=True, text=True)
+        return result.stdout + result.stderr
+
+    def test_Given_ATopLevelImportError_When_ACaseOfThatModuleIsRun_Then_ATrailerIsPrinted(self):
+        # Arrange -- the loader turns this one into a case that fails, so the run closes normally.
+        # Act
+        printed = self.printed("import no_module_of_this_name_at_all")
+
+        # Assert
+        self.assertIsNotNone(base_red_check.UNITTEST_SUMMARY.search(printed))
+
+    def test_Given_ATopLevelRaiseOfAnythingElse_When_ACaseOfThatModuleIsRun_Then_NoTrailerIsPrinted(self):
+        # Arrange -- an attribute the branch added and the base has not got raises exactly here.
+        # Act
+        printed = self.printed("raise AttributeError('the base has not got this')")
+
+        # Assert
+        self.assertIsNone(base_red_check.UNITTEST_SUMMARY.search(printed))
+
+
+class PythonCanaryTests(unittest.TestCase):
+    """The cases a base tree's Python lane is read by, chosen the way the C# lane chooses fixtures."""
+
+    MODULE = ("import unittest\n\n\nclass T(unittest.TestCase):\n"
+              "    def test_Given_A_When_B_Then_C(self):\n        pass\n")
+
+    def tree(self, *tracked):
+        holder = tempfile.mkdtemp(prefix="base-red-pycanary-")
+        self.addCleanup(shutil.rmtree, holder, ignore_errors=True)
+        root = Path(holder)
+        subprocess.run(["git", "-C", holder, "init", "-q"], check=True)
+        for relative in tracked:
+            path = root / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(self.MODULE)
+        subprocess.run(["git", "-C", holder, "add", *tracked], check=True)
+        return root
+
+    def test_Given_AModuleTheBranchDidNotCarry_When_TheCanariesAreChosen_Then_ACaseOfItIsTaken(self):
+        # Arrange
+        root = self.tree("scripts/x/test_theirs.py")
+
+        # Act
+        chosen = base_red_check.python_canaries(root, carry=[])
+
+        # Assert
+        self.assertEqual([case.key for case in chosen], ["scripts/x/test_theirs.py::T.test_Given_A_When_B_Then_C"])
+
+    def test_Given_TheOnlyModuleIsOneTheBranchCarries_When_TheCanariesAreChosen_Then_NoneIs(self):
+        # Arrange -- a module the branch replaced says nothing about the tree it was copied onto.
+        carried = "scripts/x/test_mine.py"
+        root = self.tree(carried)
+
+        # Act / Assert
+        self.assertEqual(base_red_check.python_canaries(root, carry=[carried]), [])
+
+
+class PythonLaneRunTests(unittest.TestCase):
+    """The Python lane end to end, over trees arranged to answer in the ways it must separate.
+
+    A reading taken from `decide` alone cannot say whether the lane reaches it, and the lane reaching
+    it is half of what the fail-open was: the run exited zero having asked a tree that answered
+    nothing.
+    """
+
+    HELPER = "def kept():\n    return 1\n"
+
+    CASE = ("import unittest\n\nimport helper\n\n\nclass T(unittest.TestCase):\n"
+            "    def test_Given_A_When_B_Then_{name}(self):\n        {body}\n")
+
+    def run_lane(self, base, branch):
+        """(exit status, what it printed) for a lane over a tree holding `base`, changed to `branch`."""
+        holder = tempfile.mkdtemp(prefix="base-red-pylane-")
+        self.addCleanup(shutil.rmtree, holder, ignore_errors=True)
+        root = Path(holder)
+        subprocess.run(["git", "-C", holder, "init", "-q"], check=True)
+        for name, files in (("base", base), ("branch", branch)):
+            for relative, text in files.items():
+                path = root / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(text)
+            subprocess.run(["git", "-C", holder, "add", "-A"], check=True)
+            subprocess.run(["git", "-C", holder, "-c", "user.email=t@t", "-c", "user.name=t",
+                            "commit", "-q", "-m", name], check=True)
+        since = subprocess.run(["git", "-C", holder, "rev-parse", "HEAD^"],
+                               capture_output=True, text=True, check=True).stdout.strip()
+        result = subprocess.run(
+            [sys.executable, str(REPO_ROOT / "scripts/test_quality/base_red_check.py"),
+             "--project", holder, "--base", since, "--lane", "python",
+             "--output", str(root / "logs")],
+            capture_output=True, text=True)
+        self.addCleanup(subprocess.run, ["git", "-C", holder, "worktree", "prune"],
+                        capture_output=True)
+        return result.returncode, result.stdout + result.stderr
+
+    def test_Given_ACaseReachingForASymbolTheBranchAdds_When_TheLaneRuns_Then_ItIsNotCountedRed(self):
+        # Arrange -- the shape a branch produces for free: a helper it added, and a case that dies
+        # reaching for it on a base which has not got it.
+        base = {"scripts/helper.py": self.HELPER,
+                "scripts/test_mine.py": self.CASE.format(name="C", body="pass"),
+                "scripts/test_theirs.py": self.CASE.format(name="D", body="pass")}
+        branch = {"scripts/helper.py": self.HELPER + "\n\ndef added():\n    return 2\n",
+                  "scripts/test_mine.py": self.CASE.format(
+                      name="C", body="self.assertEqual(helper.added(), 2)")}
+
+        # Act
+        status, printed = self.run_lane(base, branch)
+
+        # Assert -- the verdict rides with the status because the two failures differ: crediting it
+        # as red exits zero too, and only the verdict says which reading was taken.
+        self.assertEqual((status, base_red_check.COULD_NOT_ANSWER in printed), (0, True))
+
+    # GREEN_ON_BASE(characterization): the half of the separation the new verdict must leave alone.
+    def test_Given_ACaseTheBaseRanAndDisagreedWith_When_TheLaneRuns_Then_ItIsCountedRed(self):
+        # Arrange -- the same branch, asking for a value the base's own helper answers differently.
+        base = {"scripts/helper.py": self.HELPER,
+                "scripts/test_mine.py": self.CASE.format(name="C", body="pass"),
+                "scripts/test_theirs.py": self.CASE.format(name="D", body="pass")}
+        branch = {"scripts/helper.py": "def kept():\n    return 2\n",
+                  "scripts/test_mine.py": self.CASE.format(
+                      name="C", body="self.assertEqual(helper.kept(), 2)")}
+
+        # Act
+        status, printed = self.run_lane(base, branch)
+
+        # Assert
+        self.assertEqual((status, base_red_check.RED_ON_BASE in printed), (0, True))
+
+    def test_Given_AModuleWhoseTopLevelReachesForTheAddedSymbol_When_TheLaneRuns_Then_ItIsNotCountedRed(self):
+        # Arrange -- the case the trailer alone does not cover. A module raising anything but
+        # ImportError at its own top level takes the loader down with it, so the process prints a
+        # traceback where the summary would be and the exit status is the same one a disagreement has.
+        base = {"scripts/helper.py": self.HELPER,
+                "scripts/test_mine.py": self.CASE.format(name="C", body="pass"),
+                "scripts/test_theirs.py": self.CASE.format(name="D", body="pass")}
+        branch = {"scripts/helper.py": self.HELPER + "\n\nadded = 2\n",
+                  "scripts/test_mine.py": self.CASE.format(
+                      name="C", body="self.assertEqual(WANTED, 2)") + "\n\nWANTED = helper.added\n"}
+
+        # Act
+        status, printed = self.run_lane(base, branch)
+
+        # Assert
+        self.assertEqual((status, base_red_check.COULD_NOT_ANSWER in printed), (0, True))
+
+    def test_Given_ABaseTreeWhoseOwnCasesAllDie_When_TheLaneRuns_Then_ItRefusesToPass(self):
+        # Arrange -- nothing in the lane answers there, which is the reading a canary exists to take.
+        # Without one each case reads as one the base could not answer, and nothing says they all did.
+        broken = "import no_such_module_at_all\n\n\n" + self.CASE.format(name="D", body="pass")
+        base = {"scripts/helper.py": self.HELPER,
+                "scripts/test_mine.py": self.CASE.format(name="C", body="pass"),
+                "scripts/test_theirs.py": broken}
+        branch = {"scripts/test_mine.py": self.CASE.format(
+            name="C", body="self.assertEqual(helper.added(), 2)")}
+
+        # Act
+        status, printed = self.run_lane(base, branch)
+
+        # Assert -- the verdict rides with the status because the script exits 1 for an uncaught
+        # exception too, so the status alone does not say the canary is what refused the run.
+        self.assertEqual((status, base_red_check.BASE_UNSOUND in printed), (1, True))
 
 
 class InheritedCaseTests(unittest.TestCase):
