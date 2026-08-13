@@ -379,8 +379,14 @@ namespace Velvet.Tests
         // then have lost something true.
         private const string ForkClause = "skipped when the workflow runs in a fork";
 
+        private static readonly Regex RepositoryReferencePattern =
+            new(@"github\.repository(?:_owner)?", RegexOptions.Compiled);
+
+        // Refused for the reason EventEqualityPattern gives, one context over. `_owner` is read because
+        // the suffix defeated the equality alone, and a reference this cannot read counts as no gate: the
+        // row then reds saying the job pins no repository while it does, which sends a reader to the cell.
         private static readonly Regex RepositoryGatePattern =
-            new(@"github\.repository\s*==", RegexOptions.Compiled);
+            new(@"github\.repository(?:_owner)?\s*==", RegexOptions.Compiled);
 
         private static readonly Regex EventNameReferencePattern =
             new(@"github\.event_name", RegexOptions.Compiled);
@@ -517,9 +523,17 @@ namespace Velvet.Tests
                     continue;
                 }
 
-                if (RepositoryGatePattern.IsMatch(gate) != row.Trigger.Contains(ForkClause, StringComparison.Ordinal))
+                var pins = RepositoryGatePattern.Matches(gate).Count;
+                if (pins != RepositoryReferencePattern.Matches(gate).Count)
                 {
-                    wrong.Add(label + (RepositoryGatePattern.IsMatch(gate)
+                    wrong.Add(label + " (its job-level if: reaches for github.repository in a shape this "
+                        + "does not read: " + gate.Trim() + ")");
+                    continue;
+                }
+
+                if (pins > 0 != row.Trigger.Contains(ForkClause, StringComparison.Ordinal))
+                {
+                    wrong.Add(label + (pins > 0
                         ? " (its if: pins the repository and its trigger does not say it is skipped in a fork)"
                         : " (its trigger says it is skipped in a fork and its if: pins no repository)"));
                 }
