@@ -258,9 +258,9 @@ def check_carried_mutation(root, paths):
     can match against, while a mutation is whatever the campaign generated. The campaign records what
     it holds instead, and mutation_check.py owns reading that record.
 
-    Asked on every commit rather than gated on the record existing here. Where the record lives is
-    mutation_check.py's to know, and a copy of that here would go on answering "no campaign" after a
-    rename moved it.
+    Asked wherever a commit records content rather than gated on the record existing here. Where the
+    record lives is mutation_check.py's to know, and a copy of that here would go on answering "no
+    campaign" after a rename moved it.
     """
     script = os.path.join(root, "scripts", "test_quality", "mutation_check.py")
     if not os.path.exists(script):

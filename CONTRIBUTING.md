@@ -142,7 +142,8 @@ noticed gets written, or the line says why nothing could have, above itself:
 ```
 
 `equivalent` says the mutated program cannot behave differently; `unreachable` says the state where it
-would is not reachable from any entry point. A declaration answers for the change written under it and
+would is not reachable from any entry point. A mutant whose run came back inconclusive counts as
+surviving and needs the same answer: an `Assume` that stopped holding measured nothing either. A declaration answers for the change written under it and
 is read the three ways the base-red one below is: one over a statement whose mutants all died is stale
 and fails, one whose category or reason the script refuses fails, and one the branch did not itself
 write answers for the base's change rather than for this one — restate it. It answers for the statement
@@ -153,13 +154,13 @@ suite, just a different one — so it reads declarations and writes a receipt, a
 of the receipt's key so that an EditMode question is never answered by a PlayMode run.
 
 The run also fails on the ways it can measure less than it looks like it measured: a `--max` cap that
-left mutants unrun, an editor killed at `--timeout`, an assembly the editor never rebuilt, a second
-editor sharing the machine, and a source whose comment-and-string mask swallows code, which generates
-no mutant there and reports nothing.
+left mutants unrun, an editor killed at `--timeout`, a build the compiler or an analyzer stopped, an
+assembly the editor never rebuilt, a second editor sharing the machine, and a source whose
+comment-and-string mask swallows code, which generates no mutant there and reports nothing.
 
 **What asks whether the campaign was run is a receipt, not attentiveness.** A finished run leaves one
-under the campaign's own log directory, naming the merge base, the platform, and the content of every
-file it mutated, and `gh pr create` is refused where no receipt covers the checkout it is run in. A
+under the campaign's own log directory, keyed on the merge base, the platform and the content of
+every file it mutated, and `gh pr create` is refused where no receipt covers the checkout it is run in. A
 branch that changes no mutable package source is owed nothing and is not asked; a change no operator
 reaches records that verdict and is accepted, since such a branch cannot earn a passing run at all. The
 receipt is keyed on what the campaign measured rather than on the head commit, because the campaign

@@ -308,6 +308,12 @@ WORD_OPERATORS = [("true", "false", "literal"), ("false", "true", "literal")]
 # exactly one behaviour and leaves the rest of the method intact.
 VOID_CALL = re.compile(r"^[A-Za-z_][A-Za-z0-9_.]*(\.[A-Za-z_][A-Za-z0-9_]*)*\s*\([^;]*\)\s*;$")
 
+# Where a statement may begin. A line matching VOID_CALL is only a whole statement when the code
+# before it finished one: `=> Fragment(...)` and `= new(...)` both match the pattern and are the tail
+# of a declaration, so deleting them leaves a member with no body. Measured with the C# parser over
+# every mutant this package generates, that was 77 of them.
+STATEMENT_BOUNDARY = (";", "{", "}", ":")
+
 # Every operator above keeps the clause it lands in participating in the condition, so a clause no test
 # reaches survives all of them: swapping its comparison or its join still leaves some test's own clause
 # deciding the outcome. Removing the clause is the only mutation that asks whether anything depends on
@@ -317,15 +323,22 @@ LOGIC_JOINS = (" && ", " || ")
 GUARD_STATEMENT = re.compile(r"^if \(.+\)\s*(?:return[^;]*|continue|break);$")
 
 
+# Braces and brackets count towards depth as well as parentheses. A property pattern puts a colon
+# inside braces at the enclosing parenthesis depth -- `is { Count: > 0 }` -- so a model that reads
+# parentheses alone sees that colon as the clause's own and cuts the brace away from its partner.
+OPENING = "([{"
+CLOSING = ")]}"
+
+
 def encloses_its_own_groups(line, start, mask, limit):
-    """Whether every parenthesis the line opens it also closes, and it closes none it did not open."""
+    """Whether every group the line opens it also closes, and it closes none it did not open."""
     depth = 0
     for index in range(limit):
         if not mask[start + index]:
             continue
-        if line[index] == "(":
+        if line[index] in OPENING:
             depth += 1
-        elif line[index] == ")":
+        elif line[index] in CLOSING:
             depth -= 1
             if depth < 0:
                 return False
@@ -356,9 +369,9 @@ def clause_cuts(line, start, mask, limit):
             index += 1
             continue
         character = line[index]
-        if character == "(":
+        if character in OPENING:
             depth += 1
-        elif character == ")":
+        elif character in CLOSING:
             depth -= 1
         else:
             join = next((candidate for candidate in LOGIC_JOINS
@@ -376,9 +389,9 @@ def clause_cuts(line, start, mask, limit):
         while probe < limit:
             if mask[start + probe]:
                 character = line[probe]
-                if character == "(":
+                if character in OPENING:
                     level += 1
-                elif character == ")":
+                elif character in CLOSING:
                     if level == depth:
                         break
                     level -= 1
@@ -413,6 +426,40 @@ def clause_cuts(line, start, mask, limit):
     return cuts
 
 
+def code_above(text, mask, spans, number):
+    """The nearest code the mask leaves above line `number`, or "" at the top of the file."""
+    for above in range(number - 2, -1, -1):
+        start, end = spans[above]
+        seen = "".join(text[offset] for offset in range(start, end) if mask[offset]).strip()
+        if seen:
+            return seen
+    return ""
+
+
+def code_below(text, mask, spans, number):
+    """The nearest code the mask leaves below line `number`, or "" at the end of the file."""
+    for below in range(number, len(spans)):
+        start, end = spans[below]
+        seen = "".join(text[offset] for offset in range(start, end) if mask[offset]).strip()
+        if seen:
+            return seen
+    return ""
+
+
+def deletable_statement(text, mask, spans, number):
+    """Whether line `number` is a whole statement whose removal leaves what surrounds it standing.
+
+    Two ways it is not, both measured with the C# parser over every mutant this package generates.
+    The code above has to have ended a statement -- `=> Fragment(...)` and `= new(...)` both match
+    the call pattern and are the tail of a declaration, so deleting them leaves a member with no
+    body, which was 77 mutants. And an `if (...) Call();` whose next line is an `else` takes the
+    `if` with it and strands the `else`, which was six more.
+    """
+    if not code_above(text, mask, spans, number).endswith(STATEMENT_BOUNDARY):
+        return False
+    return not code_below(text, mask, spans, number).startswith("else")
+
+
 def line_spans(text):
     spans = []
     offset = 0
@@ -442,7 +489,8 @@ def mutations_for(path, text, target_lines):
                 if all(mask[start + match.start():start + match.end()]):
                     found.append(Mutant(path, number, match.start(), before, after, operator))
         stripped = line.strip()
-        if VOID_CALL.match(stripped) and not stripped.startswith(("return", "throw", "yield")):
+        if (VOID_CALL.match(stripped) and not stripped.startswith(("return", "throw", "yield"))
+                and deletable_statement(text, mask, spans, number)):
             found.append(Mutant(path, number, 0, stripped, ";", "void call removed"))
         limit = len(line.rstrip())
         # `cut`, not `text`: binding the file's source here left every line processed after the
@@ -892,7 +940,7 @@ def main():
                         help="run only the first this many mutants, in file order (default: 40)")
     parser.add_argument("--list", action="store_true", help="print the mutants and exit")
     parser.add_argument("--timeout", type=int, default=900,
-                        help="seconds before a mutant run is killed and counted as killed (default: 900)")
+                        help="seconds before a mutant run is killed; a killed run is not measured and fails (default: 900)")
     parser.add_argument("--busy-timeout", type=int, default=1800,
                         help="seconds to wait for another Unity run to finish (default: 1800)")
     parser.add_argument("--output", default="", help="directory for the per-mutant logs and XML")
@@ -902,6 +950,10 @@ def main():
     parser.add_argument("--carried", nargs="*",
                         help="paths something is about to record; refuses when one of them is the "
                              "source a campaign is holding a mutation in")
+    parser.add_argument("--emit-lines",
+                        help="write every mutant this package generates as {path, line, text} and "
+                             "stop, for a reader that parses them with something other than this "
+                             "script's own model of C#")
     parser.add_argument("--receipt", action="store_true",
                         help="ask whether a finished campaign covers this tree's mutable change, and "
                              "stop. Refuses when one is owed and none was run")
@@ -978,6 +1030,28 @@ def main():
             "  {} -- {}\n"
             "Wait for it if one is running; otherwise put it back with\n"
             "  python3 scripts/test_quality/mutation_check.py --restore".format(*names))
+
+    if args.emit_lines:
+        # The applied line only, not the applied file: 11301 whole files is gigabytes, and the reader
+        # holds the originals anyway. What it gets from here is this script's edit, not its opinion
+        # of whether the edit parses -- that is the half it exists to answer independently.
+        emitted = []
+        for source in sorted(project.glob("Packages/com.velvet.core/**/*.cs")):
+            if not mutable(source, project):
+                continue
+            text = source.read_text()
+            numbers = set(range(1, len(text.splitlines()) + 1))
+            for mutant in mutations_for(source, text, numbers):
+                applied = apply_mutation(text, mutant).splitlines()
+                emitted.append({
+                    "path": relative_to(source, project).as_posix(),
+                    "line": mutant.line,
+                    "operator": mutant.operator,
+                    "text": applied[mutant.line - 1] if mutant.line <= len(applied) else "",
+                })
+        Path(args.emit_lines).write_text(json.dumps(emitted, indent=1))
+        print("{} mutant(s) written to {}".format(len(emitted), args.emit_lines))
+        return 0
 
     output = Path(args.output).resolve() if args.output else project / "Logs" / "mutation_check"
     output.mkdir(parents=True, exist_ok=True)

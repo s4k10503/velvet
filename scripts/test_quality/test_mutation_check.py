@@ -14,7 +14,9 @@ to ask what the tree holds at a moment the campaign is inside.
 Run: python3 scripts/test_quality/test_mutation_check.py
 """
 
+import contextlib
 import importlib.util
+import io
 import json
 import os
 import re
@@ -248,6 +250,45 @@ class StatementChainCutTests(unittest.TestCase):
     own rather than a kill.
     """
 
+    def test_Given_AnExpressionBodyAfterAnArrow_When_MutantsAreGenerated_Then_ItIsNotDeleted(self):
+        # Arrange — the line matches the discarded-call shape and is the tail of a declaration, so
+        # deleting it leaves a member with no body. Measured at 77 mutants across this package.
+        text = "internal VNode Wrap(IEnumerable<T> items) =>\n    Fragment(List(items), key);\n"
+
+        # Act
+        deletions = mutants_of(text, "void call removed")
+
+        # Assert
+        self.assertEqual(deletions, [])
+
+    # GREEN_ON_BASE(characterization): the deletion the two refusals beside it must not swallow.
+    def test_Given_ADiscardedCallAfterAStatement_When_MutantsAreGenerated_Then_ItIsDeletable(self):
+        # Arrange — the counterpart, so the case above is not passing for an operator that stopped
+        # generating anything at all.
+        text = "var live = Track();\nowners.Remove(child);\n"
+
+        # Act
+        deletions = [mutant.line for mutant in mutants_of(text, "void call removed")]
+
+        # Assert
+        self.assertEqual(deletions, [2])
+
+    def test_Given_ACallGuardedByAnIfWithAnElse_When_MutantsAreGenerated_Then_ItIsNotDeleted(self):
+        # Arrange — deleting it takes the `if` and strands the `else`. Six more across this package.
+        # The `else` line is not this shape itself, so what is under test is line 1 alone; the case
+        # above is what says the operator still generates when nothing follows.
+        text = ("Setup();\n"
+                "Track();\n"
+                "if (commit != null) CommitLeaf(node);\n"
+                "else result.Add(node);\n")
+
+        # Act
+        deletions = [mutant.line for mutant in mutants_of(text, "void call removed")]
+
+        # Assert — line 2 stays deletable, so the `else` on line 4 is what decides line 3. A file's
+        # first line has no statement above it and is never deletable, which is why line 1 is absent.
+        self.assertEqual(deletions, [2])
+
     def test_Given_AChainThatIsAWholeStatement_When_ACutIsApplied_Then_ItKeepsTheTerminator(self):
         # Arrange
         text = 'var isRgb = !isRgba && s.StartsWith("rgb(", StringComparison.Ordinal);\n'
@@ -279,6 +320,30 @@ class StatementChainCutTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(cuts, ["var next = index >= 0 ? count - 1 - index : index;"])
+
+    # GREEN_ON_BASE(characterization): the base cut this correctly, and the colon stop must not
+    # take it away again.
+    def test_Given_APropertyPatternInAChain_When_ACutIsApplied_Then_TheBraceGoesWithIt(self):
+        # Arrange — the pattern's colon sits at the enclosing parenthesis depth, so a probe counting
+        # parentheses alone reads it as the clause's own and cuts the brace away from its partner.
+        text = "if (_over != null && _classes is { Length: > 0 })\n"
+
+        # Act
+        cuts = [applied(text, mutant) for mutant in mutants_of(text, "clause removed")]
+
+        # Assert
+        self.assertEqual(cuts, ["if (_over != null)"])
+
+    def test_Given_AChainInsideATernaryBranch_When_ACutIsApplied_Then_TheColonStays(self):
+        # Arrange — the other side of the same character: here the colon really does belong to the
+        # expression around the chain, and stopping at it is what keeps both branches.
+        text = "var n = ok ? first && second : fallback;\n"
+
+        # Act
+        cuts = [applied(text, mutant) for mutant in mutants_of(text, "clause removed")]
+
+        # Assert
+        self.assertEqual(cuts, ["var n = ok ? first : fallback;"])
 
     def test_Given_ANullConditionalInAChain_When_ACutIsApplied_Then_ItIsNotReadAsATernary(self):
         # Arrange — `?.` and a nullable type carry a question mark that ends nothing, and stopping on
@@ -768,14 +833,19 @@ class StubbedCampaign:
         digest = mutation_check.scope_digest(since, {self.source: None}, self.project, "EditMode")
         return mutation_check.write_receipt(self.project / "out", digest, "HEAD", verdict, "stub")
 
+    printed = ""
     kills = False
     times_out = False
+    no_results = False
     build_error = False
     not_rebuilt = False
 
     def run_suite(self, _unity, _project, _platform, _scope, results, log, _timeout, _holder=None):
         # The baseline has to be green whatever the mutants do, or the run stops before the loop.
         mutant = Path(results).name != "baseline.xml"
+        if mutant and self.no_results:
+            Path(log).write_text("")
+            return 0.0, False
         if self.not_rebuilt:
             (self.project / "Library" / "ScriptAssemblies" / "None.dll").write_bytes(b"same")
         if mutant and self.times_out:
@@ -799,16 +869,20 @@ class StubbedCampaign:
         return self.drive("--base", "HEAD", *arguments)
 
     def drive(self, *arguments):
+        """Runs `main` and keeps what it printed, which is where a verdict can be read by name."""
         saved = (sys.argv, mutation_check.run_suite, mutation_check.unity_busy)
         sys.argv = ["mutation_check.py", "--project", str(self.project),
                     "--output", str(self.project / "out"), *arguments]
         mutation_check.run_suite = self.run_suite
         mutation_check.unity_busy = self.unity_busy
+        spoken = io.StringIO()
         try:
-            return mutation_check.main()
+            with contextlib.redirect_stdout(spoken):
+                return mutation_check.main()
         except SystemExit as stop:
             return stop.code
         finally:
+            self.printed = spoken.getvalue()
             sys.argv, mutation_check.run_suite, mutation_check.unity_busy = saved
 
 
@@ -1047,9 +1121,9 @@ class OutstandingMutationTests(unittest.TestCase):
 class ReachTests(unittest.TestCase):
     """What the operators do not touch, which is most of a diff and was folded into a clean verdict.
 
-    Measured over the twenty commits before this one: 497 changed code lines, 133 of them reached by
-    a mutant. A method written as a run of assignments generates nothing, and the run said only that
-    nothing survived.
+    A method written as a run of assignments generates nothing, and the run said only that nothing
+    survived. `Generators~/README.md` owns how much of a diff that is, with the window it was
+    measured over; a second copy here went stale twice while the guides moved.
     """
 
     ASSIGNMENTS = textwrap.dedent("""\
@@ -1384,18 +1458,19 @@ class CampaignVerdictTests(unittest.TestCase):
         # Assert
         self.assertEqual(code, 1)
 
-    # GREEN_ON_BASE(characterization): failing on this is what the receipt now rests on as well.
-    def test_Given_AMutantTheEditorNeverRebuilt_When_TheRunFinishes_Then_ItFails(self):
+    def test_Given_AMutantTheEditorNeverRebuilt_When_TheRunFinishes_Then_NothingSignsItOff(self):
         # Arrange — the assembly comes out byte-identical, so the suite ran the unmutated binary and
         # answered about nothing. Pre-existing behaviour, and it now decides a receipt as well.
         campaign = StubbedCampaign()
         campaign.not_rebuilt = True
 
         # Act
-        code = campaign.run_over_diff("--max", "40")
+        run = campaign.run_over_diff("--max", "40")
+        receipt = campaign.run_over_diff("--receipt")
 
-        # Assert
-        self.assertEqual(code, 1)
+        # Assert — both, because an ordinary unanswered survivor also exits 1: with `kills` off this
+        # same mutant reclassifies and the status alone cannot tell the two apart.
+        self.assertEqual((run, receipt), (1, mutation_check.RECEIPT_REFUSAL))
 
     def test_Given_ACampaignNoOperatorReaches_When_ItRefuses_Then_ItStillLeavesAReceipt(self):
         # Arrange — such a branch cannot earn a passing run, so without the receipt it could never
@@ -1535,6 +1610,94 @@ class DeclarationOwnershipTests(unittest.TestCase):
         # declaration the base already carried and does not answer for this change.
         # Act / Assert
         self.assertEqual(self.read({6}), [False])
+
+
+class VerdictNamingTests(unittest.TestCase):
+    """Each classification branch, read by the verdict the run names rather than by its exit status.
+
+    Four of the six exit 1, so a case asserting the status alone passes with the branch it is named
+    for deleted -- all four were green under exactly that perturbation. The tally is read rather than
+    the per-mutant progress line, because only the tally spells a verdict followed by a colon.
+    """
+
+    def tally_of(self, **how):
+        campaign = StubbedCampaign()
+        for field, value in how.items():
+            setattr(campaign, field, value)
+        code = campaign.run_over_diff("--max", "40")
+        named = [verdict for verdict in (mutation_check.TIMED_OUT, mutation_check.UNCOMPILABLE,
+                                         mutation_check.NOT_BUILT, mutation_check.SURVIVED,
+                                         mutation_check.KILLED)
+                 if verdict + ":" in campaign.printed]
+        return code, named
+
+    def test_Given_AnEditorKilledAtTheTimeout_When_TheRunIsTallied_Then_ItNamesTheTimeout(self):
+        # Act / Assert
+        self.assertEqual(self.tally_of(times_out=True), (1, [mutation_check.TIMED_OUT]))
+
+    def test_Given_ABuildTheAnalyzersStopped_When_TheRunIsTallied_Then_ItNamesTheUncompilable(self):
+        # Act / Assert
+        self.assertEqual(self.tally_of(build_error=True), (1, [mutation_check.UNCOMPILABLE]))
+
+    def test_Given_AnAssemblyNeverRebuilt_When_TheRunIsTallied_Then_ItNamesTheNotBuilt(self):
+        # Act / Assert
+        self.assertEqual(self.tally_of(not_rebuilt=True), (1, [mutation_check.NOT_BUILT]))
+
+    def test_Given_ARunnerThatWroteNoResult_When_TheRunIsTallied_Then_ItNamesTheUncompilable(self):
+        # Arrange — a results file that never appeared is the shape a licence failure or a crash
+        # takes, and it is classified apart from the build-error reading above it.
+        # Act / Assert
+        self.assertEqual(self.tally_of(no_results=True), (1, [mutation_check.UNCOMPILABLE]))
+
+    def test_Given_AnOrdinarySurvivor_When_TheRunIsTallied_Then_ItNamesNoneOfThem(self):
+        # Arrange — the counterpart, so the four above are not passing for a tally naming everything.
+        # Act / Assert
+        self.assertEqual(self.tally_of(), (1, [mutation_check.SURVIVED]))
+
+
+class StaleDeclarationTests(unittest.TestCase):
+    """A declaration outliving what it describes, driven through `main` rather than through `answered`.
+
+    "A declaration cannot outlive what it describes" is one of this branch's two headline guarantees,
+    and every other case for it calls the decision function directly -- so dropping `stale` from the
+    run's failure expression left the whole suite green.
+    """
+
+    DECLARED_AND_KILLED = textwrap.dedent("""\
+        namespace Velvet
+        {
+            internal static class Probe
+            {
+                // MUTANT_SURVIVES(equivalent): every caller clamps the operand already.
+                internal static bool Ready(int a, int b) => a <= b;
+            }
+        }
+        """)
+
+    def test_Given_ADeclarationOverALineWhoseMutantDied_When_TheCampaignRuns_Then_NothingSignsItOff(self):
+        # Arrange — the declaration answers for a survivor, and the mutant on that line is killed, so
+        # it describes a state the tree is no longer in.
+        campaign = StubbedCampaign(self.DECLARED_AND_KILLED)
+        campaign.kills = True
+
+        # Act
+        run = campaign.run_over_diff("--max", "40")
+        receipt = campaign.run_over_diff("--receipt")
+
+        # Assert
+        self.assertEqual((run, receipt), (1, mutation_check.RECEIPT_REFUSAL))
+
+    def test_Given_ADeclarationOverASurvivingLine_When_TheCampaignRuns_Then_ItSignsItOff(self):
+        # Arrange — the counterpart, so the case above is not passing for a run that refuses any tree
+        # carrying a declaration at all.
+        campaign = StubbedCampaign(self.DECLARED_AND_KILLED)
+
+        # Act
+        run = campaign.run_over_diff("--max", "40")
+        receipt = campaign.run_over_diff("--receipt")
+
+        # Assert
+        self.assertEqual((run, receipt), (0, 0))
 
 
 class SignalledCampaignTests(unittest.TestCase):

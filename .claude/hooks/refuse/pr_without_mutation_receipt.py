@@ -93,6 +93,11 @@ def elsewhere(operands):
     is one token that equals nothing in the set.
     """
     for token in operands:
+        if not token.startswith("-"):
+            continue
+        # Shape, not position: a value spelled `-Rsomething` after `--title` is refused too. Telling
+        # them apart needs the list of flags that take values, which is a copy of gh's own surface
+        # and goes stale silently; refusing a title nobody writes is the cheaper side to be wrong on.
         head = token.split("=", 1)[0]
         if head in ELSEWHERE or any(token.startswith(short) and len(token) > len(short)
                                     for short in SHORT_ELSEWHERE):
