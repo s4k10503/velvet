@@ -313,6 +313,12 @@ jobs:
   # noise rather than as a survivor, so a real hole hides behind it. That half runs here, and
   # base_red_check.py's reader is here for the same reason: a case its parser misses is a case the
   # base is never asked about, and the run comes back green having measured one fewer thing.
+  #
+  # neuter_check.py splits the same way and could not run here at all otherwise — a sweep is one
+  # editor run per cut. --audit is the half needing none of them: the anchors, the record of which
+  # mechanisms no cut reaches, and the hole baseline a sweep's output is read as a diff against. The
+  # baseline was held by nothing in any workflow, and the other two by the Unity suite alone, which
+  # required-checks below counts as passing when no licence configures it.
   # ---------------------------------------------------------------------------
   test-quality:
     name: Test quality
@@ -323,6 +329,8 @@ jobs:
       - run: python3 scripts/test_quality/test_mutation_check.py
 
       - run: python3 scripts/test_quality/test_neuter_check.py
+
+      - run: python3 scripts/test_quality/neuter_check.py --audit
 
       - run: python3 scripts/test_quality/test_base_red_check.py
 
