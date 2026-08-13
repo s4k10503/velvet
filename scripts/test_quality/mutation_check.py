@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail this branch on a mutation of its changed lines that no test failed on and nobody answered for.
+"""Refuse a mutation of this branch's changed lines that no test failed on and nobody answered for.
 
 A test that asserts nothing passes whether or not the code under test works, and the suite is
 green either way, so nothing in CI can see it. Mutating the code the branch touched and rerunning
@@ -79,6 +79,14 @@ DECLARATION = re.compile(r"MUTANT_SURVIVES\(([A-Za-z]*)\)\s*:\s*(.*)")
 # either way; what this bounds is a whole-file `--files` run printing several hundred of them.
 LINES_LISTED = 25
 
+# A record exists and cannot be read. Every reader treats it as a campaign holding something whose
+# name is unavailable, which is the only reading that does not let a mutation through.
+UNREADABLE = object()
+
+# What `--carried` exits with when it refuses, so a caller can tell a refusal from a script that
+# could not run at all. Both stop a commit; only one of them is about a campaign.
+CARRIED_REFUSAL = 3
+
 
 class Mutant:
     def __init__(self, path, line, column, before, after, operator):
@@ -120,13 +128,24 @@ class Declaration:
 
 
 def declarations_in(text):
-    """(the line it answers for, the declaration) for every one in a file.
+    """(a line it answers for, the declaration) for every one in a file, once per line it covers.
 
-    A declaration answers for the line under it, reached past any further comment lines of the same
-    block. A blank line ends the block: prose further up belongs to whatever sits under it, and
+    A declaration answers for the statement under it, reached past any further comment lines of the
+    same block. A blank line ends the block: prose further up belongs to whatever sits under it, and
     reaching past the gap would let one line's answer cover a neighbour nobody wrote it for.
+
+    The statement rather than the line, because a condition spread over two lines carries mutants on
+    both -- `if (a == null ||` and `b <= 0)` -- and one declaration over it would answer for the first
+    only, leaving the same survivor UNANSWERED on one line and the declaration STALE on the other.
     """
     lines = text.splitlines()
+    mask = code_mask(text)
+    spans = line_spans(text)
+
+    def seen(number):
+        start, end = spans[number]
+        return "".join(text[offset] for offset in range(start, end) if mask[offset])
+
     found = []
     for index, line in enumerate(lines):
         match = DECLARATION.search(line)
@@ -135,9 +154,20 @@ def declarations_in(text):
         subject = index + 1
         while subject < len(lines) and lines[subject].strip().startswith("//"):
             subject += 1
-        if subject < len(lines) and lines[subject].strip():
-            found.append((subject + 1,
-                          Declaration(match.group(1), match.group(2).strip(), line=index + 1)))
+        if subject >= len(lines) or not lines[subject].strip():
+            continue
+        declaration = Declaration(match.group(1), match.group(2).strip(), line=index + 1)
+        # Extends while the statement's own parentheses are still open, which is what a condition
+        # broken across lines leaves and what a finished statement does not.
+        depth = 0
+        last = subject
+        while last < len(lines):
+            depth += seen(last).count("(") - seen(last).count(")")
+            if depth <= 0:
+                break
+            last += 1
+        for number in range(subject, min(last, len(lines) - 1) + 1):
+            found.append((number + 1, declaration))
     return found
 
 
@@ -153,7 +183,7 @@ STRING = "string literal"
 VERBATIM = "verbatim string literal"
 CHARACTER = "character literal"
 
-# The four the scanner above reads as ending on the line they open on. A span of one of them that
+# The four `mask_spans` below reads as ending on the line they open on. A span of one of them that
 # reaches the next line is therefore the scanner having read something as a construct it is not, and
 # every offset it covers is blanked out of the mask -- which generates no mutant there and reports
 # nothing. A raw string literal is the shape that would land here legitimately; the scanner does not
@@ -449,17 +479,22 @@ def assembly_of(path):
     return None
 
 
-def changed_files_and_lines(project, base):
-    merge_base = subprocess.run(
+def merge_base_of(project, base):
+    found = subprocess.run(
         ["git", "-C", str(project), "merge-base", base, "HEAD"],
         capture_output=True, text=True,
     )
-    if merge_base.returncode != 0:
-        raise SystemExit("cannot resolve a merge base with {}: {}".format(base, merge_base.stderr.strip()))
+    if found.returncode != 0:
+        raise SystemExit("cannot resolve a merge base with {}: {}".format(base, found.stderr.strip()))
+    return found.stdout.strip()
+
+
+def changed_files_and_lines(project, base):
+    since = merge_base_of(project, base)
     # Diffing the merge base against the working tree rather than against HEAD, so a branch whose
     # change is not committed yet is still measured.
     diff = subprocess.run(
-        ["git", "-C", str(project), "diff", "--unified=0", merge_base.stdout.strip()],
+        ["git", "-C", str(project), "diff", "--unified=0", since],
         capture_output=True, text=True, check=True,
     ).stdout
     # A file the branch has created and not yet staged is in no diff, and a new file is where a
@@ -529,10 +564,17 @@ class Holder:
         self.sentinel = Path(sentinel)
         self.child = None
 
-    def hold(self, source, original, description):
+    def hold(self, source, original, mutated, description):
+        # Refusing rather than overwriting: two campaigns started close enough together both reach
+        # here, and the second overwriting the first ends with one restoring the other's file.
+        if self.sentinel.exists():
+            raise SystemExit("{} already records a held mutation; two campaigns are running over one "
+                             "tree".format(self.sentinel))
         self.sentinel.write_text(json.dumps({
             "source": str(source),
             "original": original,
+            "original_sha": hashlib.sha256(original.encode()).hexdigest(),
+            "mutated_sha": hashlib.sha256(mutated.encode()).hexdigest(),
             "mutation": description,
             "pid": os.getpid(),
             "since": time.strftime("%Y-%m-%dT%H:%M:%S"),
@@ -554,12 +596,17 @@ class Holder:
         return held
 
     def outstanding(self):
+        """None when no campaign holds anything, UNREADABLE when one does and this cannot say what.
+
+        The three are kept apart because every reader has to fail closed on the middle one, and a
+        placeholder dict standing in for it fails open in whichever reader compares its fields.
+        """
         if not self.sentinel.exists():
             return None
         try:
             return json.loads(self.sentinel.read_text())
         except (OSError, ValueError):
-            return {"source": "<unreadable>", "mutation": "<unreadable>"}
+            return UNREADABLE
 
     def guard(self):
         """Restores on the signals that end a campaign, then dies of the signal rather than of this."""
@@ -663,6 +710,72 @@ def read_counts(results):
 # Deciding
 # --------------------------------------------------------------------------------------------------
 
+def relative_to(path, project):
+    try:
+        return path.relative_to(project)
+    except ValueError:
+        return path
+
+
+def refusal(code, message):
+    """Prints a refusal and hands back the status to exit with.
+
+    A distinct status rather than 1, because a caller has to tell a campaign holding something from
+    this script failing to run at all -- both stop a commit, and only one of them is about a campaign.
+    """
+    print(message)
+    return code
+
+
+def scope_digest(base, targets, project):
+    """What a campaign measured, in a form a later check can compare a tree against.
+
+    Not the head tree: the campaign diffs the merge base against the **working tree**, so an
+    uncommitted edit to a mutated file changes what it measured and moves no tree sha at all --
+    measured, and it is a receipt that would validate a run taken before the edit. Nor the head tree
+    for a second reason: 16 of 44 commits over five recent branches changed no mutable production
+    file, and each would have voided a receipt over a change no operator can see.
+
+    What it does not cover is a test-side change. Removing a test can make a killed mutant survive,
+    and this stays valid across it; including tests would void the receipt on the ordinary act of
+    adding one after the run, which is most of a branch's commits.
+    """
+    parts = [base]
+    for path in sorted(targets, key=str):
+        # Repository-relative, so a receipt does not depend on where the checkout sits: a resolved
+        # path and an unresolved one reach the same file and digest differently.
+        parts.append("{}:{}".format(relative_to(path, project).as_posix(),
+                                    hashlib.sha256(path.read_bytes()).hexdigest()))
+    return hashlib.sha256("\n".join(parts).encode()).hexdigest()
+
+
+def receipt_path(output, digest):
+    return output / "receipts" / "{}.json".format(digest)
+
+
+PASSING_RECEIPTS = ("pass", "unreachable")
+
+
+def write_receipt(output, digest, base, verdict, detail):
+    path = receipt_path(output, digest)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({
+        "digest": digest, "base": base, "verdict": verdict, "detail": detail,
+        "at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+    }, indent=2))
+    return path
+
+
+def read_receipt(output, digest):
+    path = receipt_path(output, digest)
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text())
+    except (OSError, ValueError):
+        return None
+
+
 def reach(mutants, unreached, project):
     """What the campaign was able to ask about, printed beside whatever it then answers.
 
@@ -673,10 +786,7 @@ def reach(mutants, unreached, project):
     report = ["{} mutant(s) over {} changed code line(s); {} line(s) no operator reaches".format(
         len(mutants), len(reached) + left, left)]
     for path, lines in sorted(unreached.items(), key=lambda item: str(item[0])):
-        try:
-            where = path.relative_to(project)
-        except ValueError:
-            where = path
+        where = relative_to(path, project)
         shown = ",".join(str(number) for number in lines[:LINES_LISTED])
         rest = "" if len(lines) <= LINES_LISTED else " and {} more".format(len(lines) - LINES_LISTED)
         report.append("  unreached  {}:{}{}".format(where, shown, rest))
@@ -720,11 +830,18 @@ def answered(mutants, deferred, declared):
             unanswered.append((mutant, declaration.complaint))
         else:
             mutant.detail = "{}: {}".format(declaration.category, declaration.reason)
+    # Grouped by the declaration rather than by the line, because one covering a condition broken
+    # over two lines has a survivor on either of them and is stale only when neither carries one.
     settled = surviving | deferred
-    stale = [(path, subject, declaration)
-             for (path, subject), declaration in sorted(declared.items(),
-                                                        key=lambda item: (str(item[0][0]), item[0][1]))
-             if declaration.written_here and (path, subject) not in settled]
+    covers = {}
+    for (path, subject), declaration in declared.items():
+        covers.setdefault((path, declaration.line), [declaration, []])[1].append(subject)
+    stale = [(path, min(subjects), declaration)
+             for (path, _), (declaration, subjects) in sorted(covers.items(),
+                                                              key=lambda item: (str(item[0][0]),
+                                                                                item[0][1]))
+             if declaration.written_here
+             and not any((path, subject) in settled for subject in subjects)]
     return unanswered, stale
 
 
@@ -753,6 +870,9 @@ def main():
     parser.add_argument("--carried", nargs="*",
                         help="paths something is about to record; refuses when one of them is the "
                              "source a campaign is holding a mutation in")
+    parser.add_argument("--receipt", action="store_true",
+                        help="ask whether a finished campaign covers this tree's mutable change, and "
+                             "stop. Refuses when one is owed and none was run")
     args = parser.parse_args()
 
     project = Path(args.project).resolve()
@@ -765,6 +885,15 @@ def main():
         outstanding = holder.outstanding()
         if outstanding is None:
             return 0
+        if outstanding is UNREADABLE:
+            # Which file it names is exactly what cannot be read, so every path is a candidate. A
+            # record is damaged by things the campaign never does -- somebody clearing what
+            # `git status` reported, a permission change, a directory left in its place.
+            sys.exit(refusal(CARRIED_REFUSAL,
+                             "a mutation campaign is holding something, and {} cannot be read to "
+                             "say what.\nNo file here can be recorded until that is resolved:\n"
+                             "  python3 scripts/test_quality/mutation_check.py --restore".format(
+                                 holder.sentinel)))
         # Resolved on both sides: a macOS temporary directory reaches the same file through /var and
         # through /private/var, and comparing the spellings finds no match where there is one.
         held = Path(outstanding.get("source", "")).resolve()
@@ -772,18 +901,32 @@ def main():
             candidate = Path(name)
             candidate = candidate if candidate.is_absolute() else project / name
             if candidate.resolve() == held:
-                raise SystemExit(
-                    "a mutation campaign is holding {} -- {}\n"
-                    "Recording it now captures the campaign's edit, not yours. Wait for the "
-                    "campaign,\nor put the file back with\n"
-                    "  python3 scripts/test_quality/mutation_check.py --restore".format(
-                        name, outstanding.get("mutation", "<unnamed>")))
+                sys.exit(refusal(CARRIED_REFUSAL,
+                                 "a mutation campaign is holding {} -- {}\n"
+                                 "Recording it now captures the campaign's edit, not yours. Wait for "
+                                 "the campaign,\nor put the file back with\n"
+                                 "  python3 scripts/test_quality/mutation_check.py --restore".format(
+                                     name, outstanding.get("mutation", "<unnamed>"))))
         return 0
 
     if args.restore:
-        if holder.outstanding() is None:
+        outstanding = holder.outstanding()
+        if outstanding is None:
             print("no mutation is outstanding")
             return 0
+        if outstanding is not UNREADABLE:
+            # A record survives a SIGKILL, so an author can see the modified file, keep working on it
+            # for an hour and then run this. Writing the recorded original back would take that hour
+            # with it, and the word this prints afterwards is "restored".
+            source = Path(outstanding.get("source", ""))
+            on_disk = hashlib.sha256(source.read_bytes()).hexdigest() if source.exists() else ""
+            known = (outstanding.get("mutated_sha"), outstanding.get("original_sha"))
+            if on_disk and on_disk not in known:
+                raise SystemExit(
+                    "{} holds neither the mutation {} recorded nor the original it replaced, so "
+                    "something\nelse has written it since. Nothing here can tell your work from the "
+                    "campaign's:\nkeep what is there, or take the original out of the record by "
+                    "hand.".format(source, holder.sentinel))
         held = holder.release()
         if held is None:
             raise SystemExit("{} names a mutation this could not put back; read it and restore by "
@@ -796,12 +939,13 @@ def main():
     # at the end would write it back as though it were the author's own code.
     outstanding = holder.outstanding()
     if outstanding is not None:
+        names = ("<unreadable>", "<unreadable>") if outstanding is UNREADABLE else (
+            outstanding.get("source", "<unnamed>"), outstanding.get("mutation", "<unnamed>"))
         raise SystemExit(
             "a campaign is holding a mutation in this tree, so nothing here can be measured:\n"
             "  {} -- {}\n"
             "Wait for it if one is running; otherwise put it back with\n"
-            "  python3 scripts/test_quality/mutation_check.py --restore".format(
-                outstanding.get("source", "<unnamed>"), outstanding.get("mutation", "<unnamed>")))
+            "  python3 scripts/test_quality/mutation_check.py --restore".format(*names))
 
     output = Path(args.output).resolve() if args.output else project / "Logs" / "mutation_check"
     output.mkdir(parents=True, exist_ok=True)
@@ -811,9 +955,12 @@ def main():
     if args.filter:
         scope += ["-testFilter", args.filter]
 
-    # A declaration answers for a change, so only a run scoped to one reads any. `--files` and
-    # `--filter` ask a different question -- whether this file, or this fixture, notices -- and a
-    # survivor there is the answer rather than something to sign off.
+    # A declaration answers for a change measured against the whole suite. Every narrowing asks a
+    # different question -- whether this file, this fixture or this assembly notices -- and under one
+    # nearly everything survives, so a declaration earned there would be well-formed, branch-written
+    # and indistinguishable in the tree from one earned against the suite. `--filter` and
+    # `--assemblies` still take the diff's scope; what they lose is the right to sign anything off.
+    whole = not (args.files or args.filter or args.assemblies)
     changed = {} if args.files else changed_files_and_lines(project, args.base)
     if args.files:
         targets = {}
@@ -837,6 +984,41 @@ def main():
             + ["  {} lines {}-{} read as a {}".format(path, first, last, kind)
                for path, defects in blinded for first, last, kind in defects]))
 
+    if args.receipt:
+        # What is owed is decided the way the campaign decides it, by generating the mutants -- which
+        # needs no editor. A production file changed only in its documentation comments has a target
+        # and nothing to ask of it, and keying on the target alone left such a branch owing a receipt
+        # no campaign could ever write.
+        owed, nothing_reached = {}, {}
+        for path, lines in sorted(targets.items()):
+            text = path.read_text()
+            found = mutations_for(path, text, lines)
+            covered = {mutant.line for mutant in found}
+            left = [number for number in code_line_numbers(text, lines) if number not in covered]
+            if found:
+                owed[path] = found
+            if left:
+                nothing_reached[path] = left
+        if not targets or not (owed or nothing_reached):
+            print("no mutable change; no campaign is owed")
+            return 0
+        since = merge_base_of(project, args.base)
+        digest = scope_digest(since, targets, project)
+        held = read_receipt(output, digest)
+        if held is None:
+            return refusal(1,
+                           "no campaign has measured this tree's mutable change:\n"
+                           + "\n".join("  {}".format(relative_to(path, project))
+                                       for path in sorted(targets, key=str))
+                           + "\nRun it, and this passes on the reading it leaves:\n"
+                             "  python3 scripts/test_quality/mutation_check.py --base {}".format(
+                                 args.base))
+        if held.get("verdict") not in PASSING_RECEIPTS:
+            return refusal(1, "the campaign over this tree ended {}: {}".format(
+                held.get("verdict"), held.get("detail")))
+        print("campaign {} over {}: {}".format(held.get("verdict"), digest[:12], held.get("detail")))
+        return 0
+
     mutants = []
     unreached = {}
     for path, lines in sorted(targets.items()):
@@ -850,16 +1032,23 @@ def main():
     coverage = reach(mutants, unreached, project)
 
     if not mutants:
-        # A branch that changed only documentation comments, a rename or a signature is the ordinary
-        # way to get here and there is nothing to ask of it. A branch that changed code and still
-        # generates nothing is the state this refuses: the verdict would be about no line at all.
+        # Which of the two happens is decided by the lines, not by the kind of change: a change that
+        # touched no code line at all has nothing to ask and passes, and one that touched code lines
+        # no operator reaches refuses, because the verdict would be about no line. A rename lands on
+        # either side depending on what its lines carry -- measured, twice, on both.
         if unreached:
             print(coverage)
+            left = sum(len(lines) for lines in unreached.values())
+            # Recorded, because the branch cannot earn a passing run and this is the reading it got.
+            # A campaign nothing can ask anything of is a finished campaign, not an absent one.
+            if whole:
+                write_receipt(output, scope_digest(merge_base_of(project, args.base), targets, project),
+                              args.base, "unreachable",
+                              "no operator reaches any of {} changed code line(s)".format(left))
             raise SystemExit(
                 "no operator reaches any of the {} changed code line(s) above, so a verdict here "
                 "would\nbe about nothing. Read them, and widen the operators or say in the pull "
-                "request why\nthe change is not something a mutation can ask about.".format(
-                    sum(len(lines) for lines in unreached.values())))
+                "request why\nthe change is not something a mutation can ask about.".format(left))
         print("no mutable change found")
         return 0
     if args.list:
@@ -920,8 +1109,9 @@ def main():
             if not wait_for_quiet(args.busy_timeout):
                 raise SystemExit("another Unity test run is still in flight after {}s, so this "
                                  "mutant's failures would not all be its own".format(args.busy_timeout))
-            holder.hold(mutant.path, originals[mutant.path], mutant.describe(project))
-            mutant.path.write_text(apply_mutation(originals[mutant.path], mutant))
+            mutated = apply_mutation(originals[mutant.path], mutant)
+            holder.hold(mutant.path, originals[mutant.path], mutated, mutant.describe(project))
+            mutant.path.write_text(mutated)
             wall, timed_out = run_suite(args.unity, project, args.platform, scope, results, log,
                                         args.timeout, holder)
             holder.release()
@@ -961,7 +1151,7 @@ def main():
         for path, text in originals.items():
             path.write_text(text)
 
-    declared = {} if args.files else declarations_for(targets, changed)
+    declared = declarations_for(targets, changed) if whole else {}
     unanswered, stale = answered(mutants, deferred, declared)
 
     print("\n--- mutants no test killed ---")
@@ -993,11 +1183,12 @@ def main():
         print("\nUNANSWERED  {}\n            {}".format(mutant.describe(project), complaint))
     for path, subject, declaration in stale:
         print("\nSTALE       {}:{} declares a survivor, and line {} has none"
-              .format(path, declaration.line, subject))
-    if unanswered and args.files:
+              .format(relative_to(path, project), declaration.line, subject))
+    if unanswered and not whole:
         print("\nA survivor is a test that stopped asking, or a mutation nothing can depend on. This "
-              "run is\nscoped by --files rather than by a change, so it reads no declaration: it "
-              "asks what this\nfile is covered by, and the survivors above are the answer.")
+              "run is\nnarrowed by --files, --filter or --assemblies, so it reads no declaration and "
+              "signs\nnothing off: it asks what this scope covers, and the survivors above are the "
+              "answer.")
     elif unanswered:
         print("\nA survivor is a test that stopped asking, or a mutation nothing can depend on. Write "
               "the\ntest, or say which it is above the line:")
@@ -1005,7 +1196,17 @@ def main():
     if truncated > 0:
         print("\n{} further mutant(s) were never run: --max is {}. Raise it, or the lines they sit on "
               "went\nunmeasured with the run still reporting.".format(truncated, args.max))
-    return 1 if unanswered or stale or unmeasured or truncated > 0 else 0
+
+    failed = unanswered or stale or unmeasured or truncated > 0
+    # Only a whole-suite run over the diff leaves a reading anything else can stand on. A narrowed
+    # one asked a different question, and its answer must not be able to sign a branch off.
+    if whole:
+        detail = "{} mutant(s), {} survivor(s) unanswered, {} line(s) unreached".format(
+            len(mutants), len(unanswered), sum(len(lines) for lines in unreached.values()))
+        written = write_receipt(output, scope_digest(merge_base_of(project, args.base), targets, project),
+                                args.base, "fail" if failed else "pass", detail)
+        print("\nreceipt: {}".format(written))
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":

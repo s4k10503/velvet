@@ -15,7 +15,9 @@ Run: python3 scripts/test_quality/test_mutation_check.py
 """
 
 import importlib.util
+import json
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -43,6 +45,8 @@ def load_module():
 mutation_check = load_module()
 
 GREEN_RESULTS = '<test-run total="1" passed="1" failed="0" inconclusive="0" />'
+FAILING_RESULTS = ('<test-run total="1" passed="0" failed="1" inconclusive="0">'
+                  '<test-case fullname="N.C.Kills" result="Failed" /></test-run>')
 
 
 def mutants_of(text, operator=None):
@@ -346,6 +350,32 @@ class DeclarationReadingTests(unittest.TestCase):
         # Assert
         self.assertEqual(found, [])
 
+    def test_Given_AConditionBrokenOverTwoLines_When_ItIsRead_Then_TheDeclarationCoversBoth(self):
+        # Arrange — mutants land on both lines, so a declaration answering for the first alone leaves
+        # one survivor UNANSWERED on the second and the declaration STALE against it.
+        text = ("// MUTANT_SURVIVES(equivalent): the two bounds accept the same set.\n"
+                "if (a == null ||\n"
+                "    b <= 0)\n"
+                "{\n")
+
+        # Act
+        covered = [subject for subject, _ in mutation_check.declarations_in(text)]
+
+        # Assert
+        self.assertEqual(covered, [2, 3])
+
+    def test_Given_ASingleLineStatement_When_ItIsRead_Then_TheDeclarationCoversOnlyIt(self):
+        # Arrange — the counterpart, so the case above is not passing for a reach that never stops.
+        text = ("// MUTANT_SURVIVES(equivalent): the two bounds accept the same set.\n"
+                "if (a <= b) return;\n"
+                "Next();\n")
+
+        # Act
+        covered = [subject for subject, _ in mutation_check.declarations_in(text)]
+
+        # Assert
+        self.assertEqual(covered, [2])
+
     def test_Given_ADeclarationHeadingACommentBlock_When_ItIsRead_Then_ItReachesPastTheRestOfIt(self):
         # Arrange
         text = ("// MUTANT_SURVIVES(equivalent): both spellings agree here.\n"
@@ -443,6 +473,30 @@ class VerdictTests(unittest.TestCase):
         # Assert
         self.assertEqual(stale, [])
 
+    def test_Given_ADeclarationOverTwoLinesWithOneSurvivor_When_ItIsDecided_Then_ItIsNotStale(self):
+        # Arrange — a condition broken over two lines carries mutants on both, and the declaration
+        # answers for whichever of them survives.
+        held = declaration(11)
+        declared = {(Path("probe.cs"), 12): held, (Path("probe.cs"), 13): held}
+
+        # Act
+        _, stale = self.decide([survivor(Path("probe.cs"), 13)], declared)
+
+        # Assert
+        self.assertEqual(stale, [])
+
+    def test_Given_ADeclarationOverTwoLinesWithNoSurvivor_When_ItIsDecided_Then_ItIsStaleOnce(self):
+        # Arrange — the counterpart: with neither line surviving it is stale, and reported once
+        # rather than once per line it covers.
+        held = declaration(11)
+        declared = {(Path("probe.cs"), 12): held, (Path("probe.cs"), 13): held}
+
+        # Act
+        _, stale = self.decide([survivor(Path("probe.cs"), 13, verdict=mutation_check.KILLED)], declared)
+
+        # Assert
+        self.assertEqual(stale, [11])
+
     def test_Given_ADeclarationTheBranchDidNotWriteOverAKilledLine_When_ItIsDecided_Then_ItIsNotStale(self):
         # Arrange — it answers for the base's change, and this branch is not being asked to keep it
         # current.
@@ -532,9 +586,25 @@ class StubbedCampaign:
         (self.project / "Library" / "ScriptAssemblies").mkdir(parents=True, exist_ok=True)
         self.seen = []
         self.busy = []
+        # A repository with one commit that does not hold the source, so the source is untracked and
+        # the diff against HEAD takes it whole -- which is what a run not scoped by --files reads.
+        for command in (["init", "-q", "-b", "main"], ["add", ".gitignore"],
+                        ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "base"]):
+            (self.project / ".gitignore").write_text("Library/\nout/\n")
+            subprocess.run(["git", "-C", str(self.project), *command], capture_output=True)
+
+    def write_receipt(self, verdict):
+        """A receipt for exactly this tree, written through the module so the digest cannot drift."""
+        since = mutation_check.merge_base_of(self.project, "HEAD")
+        digest = mutation_check.scope_digest(since, {self.source: None}, self.project)
+        return mutation_check.write_receipt(self.project / "out", digest, "HEAD", verdict, "stub")
+
+    kills = False
 
     def run_suite(self, _unity, _project, _platform, _scope, results, log, _timeout, _holder=None):
-        Path(results).write_text(GREEN_RESULTS)
+        # The baseline has to be green whatever the mutants do, or the run stops before the loop.
+        killing = self.kills and Path(results).name != "baseline.xml"
+        Path(results).write_text(FAILING_RESULTS if killing else GREEN_RESULTS)
         Path(log).write_text("")
         return 0.0, False
 
@@ -543,11 +613,17 @@ class StubbedCampaign:
         return self.busy.pop(0) if self.busy else 0
 
     def run(self, *arguments):
-        """Drives `main` over this project, returning what it exited with."""
+        """Drives `main` over this project, scoped by --files, returning what it exited with."""
+        return self.drive("--files", str(self.source), *arguments)
+
+    def run_over_diff(self, *arguments):
+        """The same, scoped by the diff -- which is the only shape that reads a declaration."""
+        return self.drive("--base", "HEAD", *arguments)
+
+    def drive(self, *arguments):
         saved = (sys.argv, mutation_check.run_suite, mutation_check.unity_busy)
         sys.argv = ["mutation_check.py", "--project", str(self.project),
-                    "--files", str(self.source), "--output", str(self.project / "out"),
-                    *arguments]
+                    "--output", str(self.project / "out"), *arguments]
         mutation_check.run_suite = self.run_suite
         mutation_check.unity_busy = self.unity_busy
         try:
@@ -590,7 +666,8 @@ class OutstandingMutationTests(unittest.TestCase):
         # end would write it back as though it were the author's own code.
         campaign = StubbedCampaign()
         mutation_check.Holder(campaign.project / mutation_check.SENTINEL).hold(
-            campaign.source, "the original text", "Probe.cs:5 <= -> < (boundary)")
+            campaign.source, "the original text", "mutated text",
+            "Probe.cs:5 <= -> < (boundary)")
 
         # Act
         code = campaign.run("--max", "1")
@@ -603,7 +680,8 @@ class OutstandingMutationTests(unittest.TestCase):
         campaign = StubbedCampaign()
         original = campaign.source.read_text()
         holder = mutation_check.Holder(campaign.project / mutation_check.SENTINEL)
-        holder.hold(campaign.source, original, "Probe.cs:5 <= -> < (boundary)")
+        holder.hold(campaign.source, original, original.replace("a <= b", "a < b"),
+                    "Probe.cs:5 <= -> < (boundary)")
         campaign.source.write_text(original.replace("a <= b", "a < b"))
 
         # Act
@@ -616,7 +694,8 @@ class OutstandingMutationTests(unittest.TestCase):
         # Arrange
         campaign = StubbedCampaign()
         sentinel = campaign.project / mutation_check.SENTINEL
-        mutation_check.Holder(sentinel).hold(campaign.source, campaign.source.read_text(), "x")
+        mutation_check.Holder(sentinel).hold(campaign.source, campaign.source.read_text(),
+                                             "mutated", "x")
 
         # Act
         campaign.run("--restore")
@@ -641,19 +720,22 @@ class OutstandingMutationTests(unittest.TestCase):
         # it from an unfinished edit. One reached a commit this way with the record sitting beside it.
         campaign = StubbedCampaign()
         mutation_check.Holder(campaign.project / mutation_check.SENTINEL).hold(
-            campaign.source, campaign.source.read_text(), "Probe.cs:5 <= -> < (boundary)")
+            campaign.source, campaign.source.read_text(), "mutated",
+            "Probe.cs:5 <= -> < (boundary)")
 
         # Act
         code = campaign.run("--carried", StubbedCampaign.SOURCE, "CONTRIBUTING.md")
 
-        # Assert
-        self.assertIn("campaign is holding", str(code))
+        # Assert — the status the hook reads, not 1: a script that failed to run also exits non-zero,
+        # and a refusal naming a campaign has to be told from one that could not ask about anything.
+        self.assertEqual(code, mutation_check.CARRIED_REFUSAL)
 
     def test_Given_AHeldMutation_When_ACommitRecordsOtherFiles_Then_ItIsAllowed(self):
         # Arrange — the counterpart: a campaign in flight must not stop every commit in the tree.
         campaign = StubbedCampaign()
         mutation_check.Holder(campaign.project / mutation_check.SENTINEL).hold(
-            campaign.source, campaign.source.read_text(), "Probe.cs:5 <= -> < (boundary)")
+            campaign.source, campaign.source.read_text(), "mutated",
+            "Probe.cs:5 <= -> < (boundary)")
 
         # Act
         code = campaign.run("--carried", "CONTRIBUTING.md")
@@ -672,6 +754,85 @@ class OutstandingMutationTests(unittest.TestCase):
         # Assert
         self.assertEqual(code, 0)
 
+    def test_Given_TheRepository_When_TheRecordsNameIsCheckedAgainstGitignore_Then_ItIsNotIgnored(self):
+        # Arrange — the record's whole reach outside this script is that `git status` names it beside
+        # the file it explains, and one .gitignore line would end that with nothing failing.
+        probe = REPO_ROOT / mutation_check.SENTINEL
+
+        # Act
+        ignored = subprocess.run(["git", "-C", str(REPO_ROOT), "check-ignore", "-q", str(probe)],
+                                 capture_output=True)
+
+        # Assert — 1 is git's status for a path no rule matches.
+        self.assertEqual(ignored.returncode, 1)
+
+    def test_Given_ARecordNothingCanRead_When_ACommitIsChecked_Then_ItIsRefused(self):
+        # Arrange — which file it names is exactly what cannot be read, so no path can be cleared.
+        # A record is damaged by things the campaign never does: somebody clearing what `git status`
+        # reported, a permission change, a directory left in its place.
+        campaign = StubbedCampaign()
+        (campaign.project / mutation_check.SENTINEL).write_text("{ truncated")
+
+        # Act
+        code = campaign.run("--carried", "CONTRIBUTING.md")
+
+        # Assert
+        self.assertEqual(code, mutation_check.CARRIED_REFUSAL)
+
+    def test_Given_ARecordThatIsADirectory_When_ACommitIsChecked_Then_ItIsRefused(self):
+        # Arrange — `exists()` is true for it and reading it raises, which is the other way a reader
+        # that answered with a placeholder let a path through.
+        campaign = StubbedCampaign()
+        (campaign.project / mutation_check.SENTINEL).mkdir()
+
+        # Act
+        code = campaign.run("--carried", "CONTRIBUTING.md")
+
+        # Assert
+        self.assertEqual(code, mutation_check.CARRIED_REFUSAL)
+
+    def test_Given_WorkDoneSinceTheKill_When_RestoreRuns_Then_ItRefusesRatherThanOverwriting(self):
+        # Arrange — a record survives a SIGKILL, so an author sees a modified file and keeps working
+        # before running this. The recorded original would take that work with it.
+        campaign = StubbedCampaign()
+        original = campaign.source.read_text()
+        mutated = original.replace("a <= b", "a < b")
+        mutation_check.Holder(campaign.project / mutation_check.SENTINEL).hold(
+            campaign.source, original, mutated, "Probe.cs:5 <= -> < (boundary)")
+        campaign.source.write_text(mutated + "// an hour of work since\n")
+
+        # Act
+        campaign.run("--restore")
+
+        # Assert
+        self.assertIn("an hour of work since", campaign.source.read_text())
+
+    def test_Given_AnUntouchedMutation_When_RestoreRuns_Then_ItStillPutsItBack(self):
+        # Arrange — the counterpart, so the case above is not passing for a restore that never writes.
+        campaign = StubbedCampaign()
+        original = campaign.source.read_text()
+        mutated = original.replace("a <= b", "a < b")
+        mutation_check.Holder(campaign.project / mutation_check.SENTINEL).hold(
+            campaign.source, original, mutated, "Probe.cs:5 <= -> < (boundary)")
+        campaign.source.write_text(mutated)
+
+        # Act
+        campaign.run("--restore")
+
+        # Assert
+        self.assertEqual(campaign.source.read_text(), original)
+
+    def test_Given_ARecordAlreadyHeld_When_ASecondCampaignHolds_Then_ItRefuses(self):
+        # Arrange — two campaigns starting inside one baseline window both reach `hold`, and the
+        # second overwriting the first ends with one restoring the other's file.
+        campaign = StubbedCampaign()
+        holder = mutation_check.Holder(campaign.project / mutation_check.SENTINEL)
+        holder.hold(campaign.source, "first", "first mutated", "the first campaign")
+
+        # Act / Assert
+        with self.assertRaisesRegex(SystemExit, "already records a held mutation"):
+            holder.hold(campaign.source, "second", "second mutated", "the second campaign")
+
     def test_Given_AHeldMutation_When_TheProcessIsSignalled_Then_TheSourceIsPutBack(self):
         # Arrange — SIGTERM runs no `finally` under the default handler, and it is what `TaskStop`, a
         # timeout and a killed session all send.
@@ -686,7 +847,7 @@ class OutstandingMutationTests(unittest.TestCase):
             holder = module.Holder(sys.argv[2])
             holder.guard()
             source, original = sys.argv[3], sys.argv[4]
-            holder.hold(source, original, "held")
+            holder.hold(source, original, "mutated\\n", "held")
             open(source, "w").write("mutated\\n")
             print("held", flush=True)
             time.sleep(120)
@@ -799,6 +960,182 @@ class UnreachableChangeTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(code, 0)
+
+
+class NarrowedRunTests(unittest.TestCase):
+    """A narrowed run must sign nothing off.
+
+    Under `--filter` almost everything survives, so a declaration earned there is well-formed,
+    written by the branch, and indistinguishable in the tree from one earned against the suite.
+    """
+
+    DECLARED = textwrap.dedent("""\
+        namespace Velvet
+        {
+            internal static class Probe
+            {
+                // MUTANT_SURVIVES(equivalent): every caller clamps the operand already.
+                internal static bool Ready(int a, int b) => a <= b;
+            }
+        }
+        """)
+
+    def test_Given_ADeclaredSurvivor_When_TheScopeIsNarrowed_Then_OnlyTheWholeSuiteSignsItOff(self):
+        # Arrange — a declaration written into the tree. Under a narrowing nearly everything
+        # survives, so signing one off there earns it against a question nobody asked.
+        narrowed = StubbedCampaign(self.DECLARED)
+        whole = StubbedCampaign(self.DECLARED)
+
+        # Act
+        codes = (narrowed.run_over_diff("--max", "40", "--filter", "Velvet.Tests.Probe"),
+                 whole.run_over_diff("--max", "40"))
+
+        # Assert — the two together, because the narrowed run refusing is also what a run that reads
+        # no declaration under any scope does, and that is what this has to separate it from.
+        self.assertEqual(codes, (1, 0))
+
+    # GREEN_ON_BASE(characterization): the scope narrowing must keep, which the first cut of it lost.
+    def test_Given_AFilter_When_TheRunIsScoped_Then_ItStillTakesTheDiffsFiles(self):
+        # Arrange — narrowing loses the right to sign off, not the scope: gating the diff on it made
+        # `--filter` measure nothing at all.
+        campaign = StubbedCampaign()
+
+        # Act
+        code = campaign.run_over_diff("--max", "1", "--filter", "Velvet.Tests.Probe")
+
+        # Assert — a survivor is still reported, so the run had something to mutate.
+        self.assertEqual(code, 1)
+
+
+class ReceiptTests(unittest.TestCase):
+    """What asks whether the campaign was run at all.
+
+    The head tree cannot: the campaign diffs the merge base against the **working tree**, so an
+    uncommitted edit to a mutated file changes what it measured and moves no tree sha.
+    """
+
+    def test_Given_ATreeWithNoMutableChange_When_AReceiptIsAsked_Then_NoneIsOwed(self):
+        # Arrange — a documentation or tooling branch has no campaign to run.
+        campaign = StubbedCampaign("/// <summary>Nothing here.</summary>\n")
+
+        # Act
+        code = campaign.run_over_diff("--receipt")
+
+        # Assert
+        self.assertEqual(code, 0)
+
+    def test_Given_ACampaignThatNeverRan_When_AReceiptIsAsked_Then_ItIsRefused(self):
+        # Arrange
+        campaign = StubbedCampaign()
+
+        # Act
+        code = campaign.run_over_diff("--receipt")
+
+        # Assert
+        self.assertEqual(code, 1)
+
+    def test_Given_APassingCampaign_When_AReceiptIsAsked_Then_ItIsAccepted(self):
+        # Arrange
+        campaign = StubbedCampaign()
+        campaign.write_receipt("pass")
+
+        # Act
+        code = campaign.run_over_diff("--receipt")
+
+        # Assert
+        self.assertEqual(code, 0)
+
+    def test_Given_AFailingCampaign_When_AReceiptIsAsked_Then_ItIsRefused(self):
+        # Arrange — a campaign that ran and ended with an unanswered survivor is not a campaign that
+        # satisfies this; the receipt records the verdict rather than the fact of a run.
+        campaign = StubbedCampaign()
+        campaign.write_receipt("fail")
+
+        # Act
+        code = campaign.run_over_diff("--receipt")
+
+        # Assert
+        self.assertEqual(code, 1)
+
+    def test_Given_ACampaignNothingCouldAsk_When_AReceiptIsAsked_Then_ItIsAccepted(self):
+        # Arrange — a change no operator reaches cannot earn a passing run, and refusing its pull
+        # request outright would leave a one-line behaviour fix with no way through.
+        campaign = StubbedCampaign()
+        campaign.write_receipt("unreachable")
+
+        # Act
+        code = campaign.run_over_diff("--receipt")
+
+        # Assert
+        self.assertEqual(code, 0)
+
+    def test_Given_AFinishedCampaign_When_AReceiptIsAskedAfterIt_Then_ItsOwnReadingIsAccepted(self):
+        # Arrange — the two halves have to agree on the digest, and each computes it separately.
+        campaign = StubbedCampaign()
+        campaign.kills = True
+        campaign.run_over_diff("--max", "40")
+
+        # Act
+        code = campaign.run_over_diff("--receipt")
+
+        # Assert
+        self.assertEqual(code, 0)
+
+    def test_Given_ACampaignWithAnUnansweredSurvivor_When_AReceiptIsAskedAfterIt_Then_ItIsRefused(self):
+        # Arrange — the counterpart: a run that happened is not a run that passed, and the receipt
+        # records the verdict rather than the fact of a run.
+        campaign = StubbedCampaign()
+        campaign.run_over_diff("--max", "40")
+
+        # Act
+        code = campaign.run_over_diff("--receipt")
+
+        # Assert
+        self.assertEqual(code, 1)
+
+    def test_Given_APassingCampaign_When_AMutatedFileIsEditedWithoutCommitting_Then_ItIsRefusedAgain(self):
+        # Arrange — the reading the head tree sha cannot take: this edit moves no tree sha at all.
+        campaign = StubbedCampaign()
+        campaign.write_receipt("pass")
+        campaign.source.write_text(campaign.source.read_text() + "// an edit after the run\n")
+
+        # Act
+        code = campaign.run_over_diff("--receipt")
+
+        # Assert
+        self.assertEqual(code, 1)
+
+
+class MutationRefusalStatusTests(unittest.TestCase):
+    """The two statuses the commit hook reads, held against the script that produces them.
+
+    The hook tells a campaign holding a file from a script that could not answer, and it does that by
+    the exit status. A copy of that number drifting is the hook reporting the wrong one of the two.
+    """
+
+    HOOK = REPO_ROOT / ".claude/hooks/refuse/commit_failing_fast_checks.py"
+
+    def test_Given_TheCommitHook_When_ItsRefusalStatusIsRead_Then_ItIsTheOneTheScriptExits(self):
+        # Arrange
+        declared = re.search(r"^CARRIED_REFUSAL = (\d+)", self.HOOK.read_text(), re.MULTILINE)
+
+        # Act
+        mirrored = int(declared.group(1)) if declared else None
+
+        # Assert
+        self.assertEqual(mirrored, mutation_check.CARRIED_REFUSAL)
+
+    def test_Given_TheCommitHook_When_ItsSubprocessTimeoutIsRead_Then_ItIsUnderTheRegisteredOne(self):
+        # Arrange — the harness kills a hook at its registered timeout, and a subprocess outliving
+        # that takes the refusal with it, which is the reading that lets the commit through.
+        settings = json.loads((REPO_ROOT / ".claude/settings.json").read_text())
+        registered = [held["timeout"] / 1000 for entry in settings["hooks"]["PreToolUse"]
+                      for held in entry["hooks"] if self.HOOK.name in held["command"]]
+        declared = re.search(r"^CARRIED_TIMEOUT = (\d+)", self.HOOK.read_text(), re.MULTILINE)
+
+        # Assert — the registered count rides along because an empty list satisfies `all`.
+        self.assertEqual((len(registered), all(int(declared.group(1)) < each for each in registered)),
+                         (1, True))
 
 
 class MaskRefusalTests(unittest.TestCase):

@@ -242,26 +242,52 @@ def check_content(display, data):
             pass
 
 
+# What mutation_check.py exits with when it refuses, as against any other non-zero status, which
+# means it could not answer at all. MutationRefusalStatusTests pins the two against each other.
+CARRIED_REFUSAL = 3
+
+# Under the timeout this hook is registered with, so the harness does not kill the hook mid-check and
+# take the refusal with it — which is the reading that lets the commit through.
+CARRIED_TIMEOUT = 10
+
+
 def check_carried_mutation(root, paths):
     """Refuses a commit that would record a file a mutation campaign is holding.
 
-    Same hazard as `carried_neuters` below, and not the same shape: a cut is declared in a file this
+    Same hazard as `carried_neuters` above, and not the same shape: a cut is declared in a file this
     can match against, while a mutation is whatever the campaign generated. The campaign records what
     it holds instead, and mutation_check.py owns reading that record.
+
+    Asked on every commit rather than gated on the record existing here. Where the record lives is
+    mutation_check.py's to know, and a copy of that here would go on answering "no campaign" after a
+    rename moved it.
     """
     script = os.path.join(root, "scripts", "test_quality", "mutation_check.py")
     if not os.path.exists(script):
         return 0
-    # Asked on every commit rather than gated on the record existing here. Where the record lives is
-    # mutation_check.py's to know, and a copy of that here would go on answering "no campaign" after
-    # a rename moved it.
-    proc = subprocess.run(["python3", "-B", script, "--project", root, "--carried", *paths],
-                          capture_output=True, text=True, timeout=30, cwd=root)
+    try:
+        proc = subprocess.run(["python3", "-B", script, "--project", root, "--carried", *paths],
+                              capture_output=True, text=True, timeout=CARRIED_TIMEOUT, cwd=root)
+    except (OSError, subprocess.SubprocessError) as failure:
+        # Raising here exits 1, which this file's header records as letting the tool through — and
+        # it would take every check below out with it.
+        return refuse_mutation("this check could not be run at all.",
+                               "{}: {}".format(script, failure))
     if proc.returncode == 0:
         return 0
-    sys.stderr.write(
-        "Refusing `git commit`: a mutation campaign is holding one of these files.\n\n"
-        + (proc.stdout or proc.stderr).rstrip() + "\n")
+    if proc.returncode == CARRIED_REFUSAL:
+        return refuse_mutation("a mutation campaign is holding one of these files.",
+                               proc.stdout.rstrip() or proc.stderr.rstrip())
+    return refuse_mutation(
+        "this check could not read whether a campaign holds one of these files.",
+        "{} exited {}:\n{}".format(script, proc.returncode, (proc.stderr or proc.stdout).rstrip()))
+
+
+def refuse_mutation(headline, detail):
+    """Which of the two it is, because a reading that did not happen is not one that found nothing —
+    and telling a reader the campaign holds their file when nothing established that is a false
+    statement about their tree."""
+    sys.stderr.write("Refusing `git commit`: " + headline + "\n\n" + detail + "\n")
     return 2
 
 
@@ -318,10 +344,6 @@ def audit(cwd, commits_all, pathspecs):
     if not content:
         return 0
 
-    code = check_carried_mutation(root, sorted(content))
-    if code:
-        return code
-
     targets, edits = cut_targets(root)
     neutered = carried_neuters(content, edits)
     if neutered:
@@ -339,6 +361,12 @@ def audit(cwd, commits_all, pathspecs):
         code = check_content(path, content[path])
         if code:
             return code
+
+    # After the content checks rather than before them: this one runs the working tree's copy of a
+    # script, so a mid-edit one refusing here would hide the py_compile failure that explains it.
+    code = check_carried_mutation(root, sorted(content))
+    if code:
+        return code
 
     if NEUTER_CUTS in content or any(path in targets for path in content):
         return check_neuter(root)

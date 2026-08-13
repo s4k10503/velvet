@@ -122,6 +122,11 @@ python3 scripts/test_quality/mutation_check.py --base main --list   # the mutant
 python3 scripts/test_quality/mutation_check.py --base main
 ```
 
+`--list` takes the readings that come before an editor is launched — the outstanding-mutation record,
+the comment-and-string mask, and which changed code lines an operator reaches — so it refuses where
+those would, which is the point of running it first rather than a reason to distrust it. The readings
+that need a run, the declarations and the cap among them, it does not take.
+
 [Generators~/README.md ▸ Mutation testing](Packages/com.velvet.core/Generators~/README.md#mutation-testing)
 covers this and the generator solution's own run, and owns what the verdicts mean, how to read a
 survivor, and which line shapes the operators reach — which is 27% of the changed code lines measured
@@ -144,6 +149,18 @@ answers for the base's change rather than for this one — restate it. The run a
 can measure less than it looks like it measured: a `--max` cap that left mutants unrun, an assembly the
 editor never rebuilt, a second editor sharing the machine, and a source whose comment-and-string mask
 swallows code, which generates no mutant there and reports nothing.
+
+**What asks whether the campaign was run is a receipt, not attentiveness.** A finished run leaves one
+under the campaign's own log directory, naming the merge base and the content of every file it mutated,
+and `gh pr create` and `gh pr merge` are refused where no receipt covers the change in front of them. A
+branch that changes no mutable package source is owed nothing and is not asked; a change no operator
+reaches records that verdict and is accepted, since such a branch cannot earn a passing run at all. The
+receipt is keyed on what the campaign measured rather than on the head commit, because the campaign
+diffs the merge base against the **working tree** — an uncommitted edit to a mutated file changes what
+it measured and moves no tree sha — and because 16 of 44 commits over five recent branches changed no
+mutable source, each of which would have voided a receipt over a change no operator can see. What it
+does not cover is a test-side change: removing a test can make a killed mutant survive, and including
+tests would void the receipt on the ordinary act of adding one after the run.
 
 **Nothing in CI runs the campaign, and at the measured cost nothing can.** A mutant is one editor launch.
 Over the twenty commits before this one, ten generated no mutant at all — a rename, a move, a signature,
