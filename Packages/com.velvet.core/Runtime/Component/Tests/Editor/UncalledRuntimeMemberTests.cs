@@ -109,10 +109,9 @@ namespace Velvet.Tests
             // and from nothing else outside the package.
             method.IsAssembly
             && !method.IsConstructor
-            // A setter counts. Its property can be read from a call site with no way of ever having written
-            // it, so the value read back is whatever the declaration left there — a seam nobody wired up,
-            // and the reads are not evidence against that. Getters are a scope line rather than a judgement
-            // that an unread one is fine: widening to them fails on members that predate this.
+            // An assembly-visible setter nothing calls is a seam nobody wired up: the property reads back
+            // whatever the declaration left there, so the call sites reading it are not evidence that
+            // anything ever writes it.
             && !method.IsGetter && !method.IsAddOn && !method.IsRemoveOn
             // An override or an implementation is reached through the declaration it satisfies, and the
             // call site names that one.

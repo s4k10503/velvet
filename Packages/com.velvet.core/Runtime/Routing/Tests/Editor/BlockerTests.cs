@@ -19,8 +19,9 @@ namespace Velvet.Tests
     /// regardless of the others.</item>
     /// <item>Registration returns a disposable that unregisters the blocker on dispose.</item>
     /// <item><c>ResetAllBlocked</c> returns every Blocked state to Idle.</item>
-    /// <item>A Blocker left <see cref="RouteBlockerStatus.Proceeding"/> by <c>Proceed</c> is skipped by
-    /// <c>CheckAsync</c> and keeps that status, until <c>ClearProceeding</c> puts it back in the way.</item>
+    /// <item>A Blocker left <see cref="RouteBlockerStatus.Proceeding"/> by <c>Proceed</c> is passed over by
+    /// <c>CheckAsync</c> and keeps that status; <c>SettleProceeding</c> puts it back in the way, and defers
+    /// doing so while another Blocker is Blocked.</item>
     /// <item><c>CheckAsync</c> evaluates sync and async entries alike.</item>
     /// <item>A blocking blocker on a router navigation yields <see cref="NavigationResult.Blocked"/> and keeps
     /// the current location — and, on a Back/Forward step, the history index describing it; an allowing
@@ -197,7 +198,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ABlockerThatProceeded_When_ClearProceeding_Then_ItBlocksAgain()
+        public void Given_ABlockerThatProceeded_When_SettleProceeding_Then_ItBlocksAgain()
         {
             // Arrange
             var manager = new RouteBlockerManager();
@@ -207,11 +208,36 @@ namespace Velvet.Tests
             state.Proceed();
 
             // Act
-            manager.ClearProceeding();
+            manager.SettleProceeding();
             var blocked = manager.CheckAsync(Attempt(), NoResume).GetAwaiter().GetResult();
 
             // Assert
             Assert.That((blocked, state.Status), Is.EqualTo((true, RouteBlockerStatus.Blocked)));
+        }
+
+        [Test]
+        public void Given_ABlockedBlockerBesideAProceedingOne_When_SettleProceeding_Then_TheProceedingOneIsLeftAlone()
+        {
+            // Arrange — the second Blocker blocks only its second pass, so it is the one holding the attempt
+            // the first released.
+            var manager = new RouteBlockerManager();
+            var proceeded = new RouteBlockerState();
+            var holding = new RouteBlockerState();
+            var checks = 0;
+            manager.Register(_ => true, proceeded);
+            manager.Register(_ => ++checks == 2, holding);
+            manager.CheckAsync(Attempt(), NoResume).GetAwaiter().GetResult();
+            proceeded.Proceed();
+            manager.CheckAsync(Attempt(), NoResume).GetAwaiter().GetResult();
+
+            // Act
+            manager.SettleProceeding();
+
+            // Assert — the blocked one rides along because a pass that left it Idle would make the settle
+            // trivially correct rather than deferred.
+            Assert.That(
+                (proceeded.Status, holding.Status),
+                Is.EqualTo((RouteBlockerStatus.Proceeding, RouteBlockerStatus.Blocked)));
         }
 
         #endregion

@@ -10,9 +10,9 @@ namespace Velvet
         /// <summary>Currently blocking a navigation. <see cref="RouteBlockerState.Attempt"/> holds the attempt details.</summary>
         Blocked,
         /// <summary>
-        /// <see cref="RouteBlockerState.Proceed"/> has released the block and the navigation it held is
-        /// running. <see cref="RouteBlockerState.Attempt"/> still holds that attempt, and this Blocker is
-        /// consulted about no navigation until one commits.
+        /// <see cref="RouteBlockerState.Proceed"/> has released the block and the navigation it held is on
+        /// its way. <see cref="RouteBlockerState.Attempt"/> still reports that navigation, and this Blocker
+        /// is consulted about no navigation at all until that one lands or is abandoned.
         /// </summary>
         Proceeding,
     }
@@ -32,11 +32,12 @@ namespace Velvet
         public NavigationAttempt? Attempt { get; internal set; }
 
         private Action? _resume;
+        private Action? _abandon;
 
         /// <summary>
-        /// Releases the block and re-issues the blocked navigation, which runs without consulting this
-        /// Blocker again. Does nothing unless <see cref="Status"/> is <see cref="RouteBlockerStatus.Blocked"/>.
-        /// A Back or Forward attempt resumes as the same history step, not as a navigation to its path.
+        /// Releases the block and re-issues the navigation this Blocker held, which runs without consulting
+        /// it again. A Back or Forward attempt resumes as the same history step rather than as a navigation
+        /// to its path. Does nothing unless <see cref="Status"/> is <see cref="RouteBlockerStatus.Blocked"/>.
         /// </summary>
         public void Proceed()
         {
@@ -54,8 +55,9 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Releases the block and abandons the blocked navigation. Does nothing unless <see cref="Status"/>
-        /// is <see cref="RouteBlockerStatus.Blocked"/>.
+        /// Releases the block and abandons the navigation this Blocker held, leaving the router where it is;
+        /// a Blocker that had proceeded into that navigation is armed again once none is holding it. Does
+        /// nothing unless <see cref="Status"/> is <see cref="RouteBlockerStatus.Blocked"/>.
         /// </summary>
         public void Reset()
         {
@@ -64,25 +66,29 @@ namespace Velvet
                 return;
             }
 
+            var abandon = _abandon;
             InternalReset();
+            abandon?.Invoke();
         }
 
         /// <summary>
-        /// Resets the state without re-issuing anything (internal use before a navigation starts, and when
-        /// the navigation a <see cref="RouteBlockerStatus.Proceeding"/> Blocker released has committed).
+        /// Resets the state without re-issuing or abandoning anything (internal use before a navigation
+        /// starts, and once the navigation this Blocker released has settled).
         /// </summary>
         internal void InternalReset()
         {
             Status = RouteBlockerStatus.Idle;
             Attempt = null;
             _resume = null;
+            _abandon = null;
         }
 
-        internal void Block(NavigationAttempt attempt, Action resume)
+        internal void Block(NavigationAttempt attempt, Action resume, Action abandon)
         {
             Status = RouteBlockerStatus.Blocked;
             Attempt = attempt;
             _resume = resume;
+            _abandon = abandon;
         }
     }
 }

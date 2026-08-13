@@ -439,9 +439,9 @@ namespace Velvet
             // CurrentLocation and _historyIndex, and both describe this round's location from here on.
             _committedRound = round;
             Status = RouterStatus.Ready;
-            // Cleared before the notification, so a handler reading a Blocker off it sees one that has
+            // Settled before the notification, so a handler reading a Blocker off it sees one that has
             // finished proceeding rather than one still holding the attempt this commit completed.
-            _blockerManager.ClearProceeding();
+            _blockerManager.SettleProceeding();
             OnLocationChanged?.Invoke(location);
 
             return NavigationResult.Success;
@@ -597,19 +597,30 @@ namespace Velvet
         }
 
         // Invoked by RouteBlockerState.Proceed(), which is where the attempt resumed here was parked.
-        private void Resume(NavigationAttempt attempt)
+        private void Resume(NavigationAttempt attempt) => ResumeAsync(attempt).Forget();
+
+        private async UniTask ResumeAsync(NavigationAttempt attempt)
         {
-            switch (attempt.NavigationMode)
+#pragma warning disable CS8524 // no discard arm: a mode added without a way to resume it must not compile
+            var reissued = attempt.NavigationMode switch
             {
-                case NavigationMode.Back:
-                    GoBack().Forget();
-                    break;
-                case NavigationMode.Forward:
-                    GoForward().Forget();
-                    break;
-                default:
-                    NavigateAsync(attempt.NextPath, attempt.NavigationMode).Forget();
-                    break;
+                NavigationMode.Back => GoBack(),
+                NavigationMode.Forward => GoForward(),
+                NavigationMode.Push or NavigationMode.Replace =>
+                    NavigateAsync(attempt.NextPath, attempt.NavigationMode),
+            };
+#pragma warning restore CS8524
+
+            try
+            {
+                await reissued;
+            }
+            finally
+            {
+                // The commit is one way a proceeding Blocker comes back to Idle and this is the other: an
+                // attempt that reaches no commit leaves the Blockers that released it holding a navigation
+                // that is over.
+                _blockerManager.SettleProceeding();
             }
         }
 
