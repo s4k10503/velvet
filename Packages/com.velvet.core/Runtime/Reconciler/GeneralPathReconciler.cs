@@ -421,6 +421,12 @@ namespace Velvet
             public int SlotStart;
             public List<ComponentFiber> OldFibers = null!;
             public HashSet<ComponentFiber> NewFibers = null!;
+            // Filled by a Suspense expansion that suspended and read by every enclosing one in this walk,
+            // which leaves those fibers' marks alone: NewFibers is one set for the whole walk, so an
+            // enclosing delta contains a nested Suspense's primary subtree, and an enclosing Suspense
+            // resolving is not the inner one resolving. Held on the walk rather than rented per expansion,
+            // since the enclosing loop reads it after the inner one has returned its own buffers.
+            public readonly HashSet<ComponentFiber> OffscreenPrimaries = new();
             public ProviderPairTable? Providers;
             public ProviderPairTable? OldProvidersForPairing;
             public GeneralCommitState? Commit;
@@ -444,6 +450,7 @@ namespace Velvet
                 OldProvidersForPairing = null;
                 Commit = null;
                 NewProviderOrdinal = 0;
+                OffscreenPrimaries.Clear();
             }
         }
 
@@ -750,6 +757,10 @@ namespace Velvet
             if (_ctx.IsAborted) return;
             var identity = component.ResolvedIdentity;
             var slotKey = component.Key ?? FiberKeying.ResolveInlinePositionKey(positionCounters, identity, _ctx.ComponentRegistry.InlinePositionKeyBoxes);
+            // The scope member of this component's own registry key. Read at this level and never carried
+            // into its output: ExpandFiberPreviousTree pushes the fiber below, which is where the reading
+            // stops answering — ReconcilerContext.PortalChildKeyScope owns why that has to be so.
+            var portalScope = _ctx.PortalChildKeyScopeHere;
             var commit = walk.Commit;
             var result = walk.Result;
             if (walk.IsNewSide)
@@ -772,7 +783,7 @@ namespace Velvet
                 // position (with hook state shared across both copies). Mirror the
                 // leaf-level duplicate guard: warn and skip the repeat before
                 // GetOrCreate can clobber the first occurrence's slot.
-                var priorFiber = _ctx.ComponentRegistry.TryGetFiberForInlineKey(parentFiber, slotKey, identity);
+                var priorFiber = _ctx.ComponentRegistry.TryGetFiberForInlineKey(parentFiber, slotKey, identity, portalScope);
                 if (priorFiber != null && walk.NewFibers.Contains(priorFiber))
                 {
                     FiberLogger.LogWarning("GeneralPathReconciler",
@@ -781,7 +792,7 @@ namespace Velvet
                     return;
                 }
                 var fiber = _ctx.ComponentRegistry.GetOrCreateInline(
-                    component, parentFiber, slotKey, walk.Parent, currentSlotStart);
+                    component, parentFiber, slotKey, walk.Parent, currentSlotStart, portalScope);
                 walk.NewFibers.Add(fiber);
                 var preCount = emittedCount;
                 ExpandFiberPreviousTree(walk, fiber, component, position, nodeIndex);
@@ -790,12 +801,11 @@ namespace Velvet
             else
             {
                 // Old-side (structural) walk: look up the previously rendered fiber by the
-                // same tree-position key the new side registered under — (parent fiber,
-                // position key, identity). FiberStack.Push mirrors the new side so nested
-                // old-side components resolve against the same parent fiber they were
+                // same registry key the new side registered under. FiberStack.Push mirrors the new
+                // side so nested old-side components resolve against the same parent fiber they were
                 // registered with; without the symmetric push the lookup parent would
                 // diverge and the diff would treat reused fibers as orphans.
-                var fiber = _ctx.ComponentRegistry.TryGetFiberForInlineKey(_ctx.FiberStack.Current, slotKey, identity);
+                var fiber = _ctx.ComponentRegistry.TryGetFiberForInlineKey(_ctx.FiberStack.Current, slotKey, identity, portalScope);
                 if (fiber != null)
                 {
                     ExpandFiberPreviousTree(walk, fiber, component, position, nodeIndex);
@@ -973,6 +983,7 @@ namespace Velvet
         {
             var result = walk.Result;
             var newFibers = walk.NewFibers;
+            var offscreenPrimaries = walk.OffscreenPrimaries;
             var commit = walk.Commit;
             var boundaryFiber = _ctx.FiberStack.Current;
             var suspenseKey = FiberKeying.SuspenseKey(position.Scope, suspense.Key, nodeIndex);
@@ -1014,12 +1025,18 @@ namespace Velvet
                     }
                     // Mark THIS Suspense's primary children (the fibers added during the children
                     // expansion) as offscreen iff suspended. The offscreen guard in FlushState defers
-                    // their lane flush while suspended (their slot is occupied by the fallback), but the
-                    // fallback subtree — expanded below and never marked — remains flushable (the
-                    // fallback renders normally; only the primary subtree is offscreen).
+                    // their lane flush while suspended (their slot is occupied by the fallback). The
+                    // fallback subtree is expanded below, so this loop never reaches it and this Suspense
+                    // leaves it flushable; what marks a nested Suspense's fallback subtree is the
+                    // enclosing expansion, whose own fallback occupies that slot too.
+                    //
+                    // A nested Suspense that suspended has already answered for the fibers it created, and
+                    // this delta contains them, so its answer stands.
                     foreach (var f in newFibers)
                     {
-                        if (!fibersBefore.Contains(f)) f.IsOffscreen = suspended;
+                        if (fibersBefore.Contains(f)) continue;
+                        if (!offscreenPrimaries.Contains(f)) f.IsOffscreen = suspended;
+                        if (suspended) offscreenPrimaries.Add(f);
                     }
                     // Rollback and fallback expansion must run while fibersBefore is still live
                     // (rented from the pool, contents intact). Performing them after the finally

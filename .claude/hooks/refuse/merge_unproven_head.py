@@ -18,8 +18,9 @@ running" is how a pull request sat unnoticed for 7h45m.
 The other four merge preconditions have their own hooks: `stale_merge.py` for a branch behind its
 base, `merge_without_branch_deletion.py` for the flag, `merge_branch_held_by_worktree.py` for a
 branch git will refuse to delete, `merge_onto_unpublished_release.py` for a base holding a release
-nobody dispatched. `scripts/pr/settle.py` reports all five together, which is the
-convenience; these are what hold when nobody runs it.
+nobody dispatched. `scripts/pr/settle.py` reports these five together with two more it
+holds alone — a draft head and one on another repository, which its own docstring says why of — and
+that reporting is the convenience; these are what hold when nobody runs it.
 """
 
 import json
