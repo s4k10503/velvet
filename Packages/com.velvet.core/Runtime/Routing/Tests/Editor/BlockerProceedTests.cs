@@ -12,7 +12,7 @@ namespace Velvet.Tests
     /// <item>While the re-issued navigation runs, the Blocker still holds the attempt it released — the
     /// status it reports over that span is pinned by <see cref="BlockerTests"/>.</item>
     /// <item>The commit returns it to Idle, so the next navigation is blocked again.</item>
-    /// <item><see cref="RouteBlockerState.Reset"/> re-issues nothing.</item>
+    /// <item><see cref="RouteBlockerState.Reset"/> releases the Blocker and re-issues nothing.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -108,7 +108,7 @@ namespace Velvet.Tests
         public void Given_ABlockerThatProceeded_When_AnotherIsConsultedByTheResumedNavigation_Then_ItStillHoldsItsAttempt()
         {
             // Arrange — the second Blocker allows everything and reads the first one from inside the resumed
-            // navigation's check, the only point at which that navigation is observable from a test.
+            // navigation's own check, which is before the commit that clears it.
             var router = BuildRouter("/home", Route("home"), Route("other"));
             var proceeding = new RouteBlockerState();
             router.RouteBlockerManager.Register(_ => true, proceeding);
@@ -171,10 +171,10 @@ namespace Velvet.Tests
                 Is.EqualTo((NavigationResult.Blocked, NavigationResult.Blocked, "/other")));
         }
 
-        // GREEN_ON_BASE(characterization): Reset() abandons the blocked attempt on the base too. Wiring
-        // Proceed() to re-issue it puts a delegate on the state that Reset() must not reach.
+        // GREEN_ON_BASE(characterization): Reset() releases the Blocker and abandons the blocked attempt on
+        // the base too. Wiring Proceed() puts a re-issue on the state that Reset() must not reach.
         [Test]
-        public void Given_ABlockedPush_When_Reset_Then_NothingIsResumed()
+        public void Given_ABlockedPush_When_Reset_Then_TheBlockerIsReleasedAndNothingIsResumed()
         {
             // Arrange
             var router = BuildRouter("/home", Route("home"), Route("other"));
@@ -185,10 +185,11 @@ namespace Velvet.Tests
             // Act
             state.Reset();
 
-            // Assert
+            // Assert — the status separates a Reset that did nothing from one that released the Blocker,
+            // which the location cannot: both leave the router where it was.
             Assert.That(
-                (blockedResult, router.CurrentLocation.Path),
-                Is.EqualTo((NavigationResult.Blocked, "/home")));
+                (blockedResult, state.Status, router.CurrentLocation.Path),
+                Is.EqualTo((NavigationResult.Blocked, RouteBlockerStatus.Idle, "/home")));
         }
     }
 }
