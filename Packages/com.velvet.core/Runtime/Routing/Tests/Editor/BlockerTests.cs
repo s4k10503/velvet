@@ -21,7 +21,7 @@ namespace Velvet.Tests
     /// <item><c>ResetAllBlocked</c> returns every Blocked state to Idle.</item>
     /// <item>A Blocker left <see cref="RouteBlockerStatus.Proceeding"/> by <c>Proceed</c> is skipped by
     /// <c>CheckAsync</c> and keeps that status, until <c>ClearProceeding</c> puts it back in the way.</item>
-    /// <item><c>CheckAsync</c> evaluates every registered blocker (sync and async entries alike).</item>
+    /// <item><c>CheckAsync</c> evaluates sync and async entries alike.</item>
     /// <item>A blocking blocker on a router navigation yields <see cref="NavigationResult.Blocked"/> and keeps
     /// the current location — and, on a Back/Forward step, the history index describing it; an allowing
     /// blocker yields <see cref="NavigationResult.Success"/>.</item>
