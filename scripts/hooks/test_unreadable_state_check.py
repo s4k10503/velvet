@@ -585,7 +585,7 @@ esac
 class ZeroCheckTests(unittest.TestCase):
     """A head no workflow has run for yet, which `gh pr checks` reports by failing.
 
-    Read as a failed reading it blocks every pull request in its first minutes and takes the whole
+    Read as a failed reading it blocks a pull request whose head has no check yet and takes the whole
     zero-check branch out of reach; read as an answer without asking anything else, an exhausted
     quota walks back in as "no checks".
     """
