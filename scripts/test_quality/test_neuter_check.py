@@ -31,6 +31,16 @@ def load_module():
 neuter_check = load_module()
 
 
+def scaffold(project):
+    """A project the audit's readers can run over: the globbed directories and both records, all empty."""
+    (project / "scripts/test_quality").mkdir(parents=True)
+    for folder, _ in neuter_check.MECHANISM_GLOBS:
+        (project / neuter_check.PACKAGE_ROOT / folder).mkdir(parents=True)
+    (project / neuter_check.UNCOVERED_FILE).write_text("")
+    (project / neuter_check.HOLES_FILE).write_text("")
+    return project
+
+
 class BaselineProblem(unittest.TestCase):
     def test_Given_AFilterThatRanNoCases_When_TheBaselineIsRead_Then_ItIsRefused(self):
         # Act
@@ -126,12 +136,7 @@ class AuditReadsNothing(unittest.TestCase):
 
     def audit_empty_tree(self):
         with tempfile.TemporaryDirectory() as tree:
-            project = Path(tree)
-            (project / "scripts/test_quality").mkdir(parents=True)
-            for folder, _ in neuter_check.MECHANISM_GLOBS:
-                (project / neuter_check.PACKAGE_ROOT / folder).mkdir(parents=True)
-            (project / neuter_check.UNCOVERED_FILE).write_text("")
-            (project / neuter_check.HOLES_FILE).write_text("")
+            project = scaffold(Path(tree))
             return neuter_check.audit(project, {"cuts": {}, "fixtures": {}})
 
     def test_Given_ATreeWithNoMechanismInIt_When_TheAuditReadsIt_Then_TheGlobFloorRefuses(self):
@@ -179,6 +184,51 @@ class CoverageDrift(unittest.TestCase):
 
         # Assert
         self.assertEqual(drift, [])
+
+    def test_Given_ARecordedEntryARenameRemoved_When_TheCoverageIsRead_Then_ItIsReported(self):
+        # Arrange — an entry describing nothing leaves the record's count looking the same.
+        with tempfile.TemporaryDirectory() as tree:
+            project = scaffold(Path(tree))
+            (project / neuter_check.UNCOVERED_FILE).write_text("Runtime/Styling/StyleGone.cs\n")
+
+            # Act
+            problems = neuter_check.coverage_problems(project, {"cuts": {}, "fixtures": {}})
+
+        # Assert
+        self.assertIn("names no file", "\n".join(problems))
+
+
+class RenamedCases(unittest.TestCase):
+    """A renamed case is declared by no method, and the given name is the one the results carry.
+
+    Read from method declarations alone, eighteen of StyleFontTests' recorded holes name a case this
+    repository does not appear to declare — which the hole baseline would report as rot in the record
+    rather than as a reader that stops at one of the three spellings.
+    """
+
+    def cases_of(self, body):
+        with tempfile.TemporaryDirectory() as tree:
+            project = Path(tree)
+            source = project / "Packages/com.velvet.core/Runtime/Area/Tests/Editor/FooTests.cs"
+            source.parent.mkdir(parents=True)
+            source.write_text("internal sealed class FooTests\n{\n" + body + "\n}\n")
+            return neuter_check.declared_cases(project, "Velvet.Tests.FooTests")
+
+    def test_Given_ACaseRenamedByATestNameArgument_When_ItsSourceIsRead_Then_ThatNameIsDeclared(self):
+        # Act
+        cases = self.cases_of('    [TestCase(true, TestName = "Given_A_When_B_Then_C")]\n'
+                              '    public void Other(bool flag) { }')
+
+        # Assert
+        self.assertEqual(cases, {"Given_A_When_B_Then_C"})
+
+    def test_Given_ACaseRenamedBySetName_When_ItsSourceIsRead_Then_ThatNameIsDeclared(self):
+        # Act
+        cases = self.cases_of('        yield return new TestCaseData(1)\n'
+                              '            .SetName("Given_A_When_B_Then_C");')
+
+        # Assert
+        self.assertEqual(cases, {"Given_A_When_B_Then_C"})
 
 
 class HoleBaseline(unittest.TestCase):

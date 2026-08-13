@@ -289,11 +289,22 @@ def declaring_sources(project, short_name):
             if pattern.search(path.read_text())]
 
 
+# A renamed case carries the given name into the results and not its method's, so a reader of
+# declarations alone hands back eighteen of StyleFontTests' recorded holes as declared by nothing. Both
+# spellings of the rename are read; they are the only two this repository's test sources use, and a
+# third would arrive as a case declared by nothing rather than as silence.
+CASE_DECLARATION = re.compile(
+    r"public\s+(?:void|IEnumerator)\s+(Given_\w+)"
+    r"|TestName\s*=\s*\"(Given_\w+)\""
+    r"|SetName\(\"(Given_\w+)\"\)")
+
+
 def declared_cases(project, fixture):
     """The case names a fixture's source declares."""
     found = set()
     for path in declaring_sources(project, fixture.rsplit(".", 1)[-1]):
-        found |= set(re.findall(r"public\s+(?:void|IEnumerator)\s+(Given_\w+)", path.read_text()))
+        found |= {name for match in CASE_DECLARATION.findall(path.read_text())
+                  for name in match if name}
     return found
 
 
