@@ -1,0 +1,2 @@
+Runtime/Reconciler/FiberPropApplier.cs
+Runtime/Styling/StyleVariantClass.cs

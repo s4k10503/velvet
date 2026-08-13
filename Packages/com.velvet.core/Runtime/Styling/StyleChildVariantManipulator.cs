@@ -144,7 +144,7 @@ namespace Velvet
                     continue;
                 }
                 ApplyPayloads(child, true);
-                _ctx.ChildVariantOwners[child] = this;
+                StyleChildOwnership.Claim(_ctx.ChildVariantOwners, child, this);
                 _applied.Add(child);
             }
 
@@ -167,12 +167,10 @@ namespace Velvet
         // turn-off goes through here so no path can skip the question.
         private void ReleasePayloads(VisualElement child)
         {
-            if (!_ctx.ChildVariantOwners.TryGetValue(child, out var owner) || !ReferenceEquals(owner, this))
+            if (StyleChildOwnership.TryRelease(_ctx.ChildVariantOwners, child, this))
             {
-                return;
+                ApplyPayloads(child, false);
             }
-            _ctx.ChildVariantOwners.Remove(child);
-            ApplyPayloads(child, false);
         }
 
         // Offers every tracked child that has left the container for release, then prunes it. A child the
