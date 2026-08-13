@@ -626,7 +626,7 @@ The following domains are out of scope for this migration guide and are intended
 
 - Layout features such as virtual scroll (`V.VirtualList`, not yet documented separately) and Portal (equivalent to React Window / Portal — see [portals.md](portals.md))
 - Animation features (equivalent to Framer Motion — see [motion.md](motion.md))
-- Routing features (equivalent to React Router, not yet documented separately)
+- Routing features (equivalent to React Router, not yet documented separately, except navigation blocking — see [routing-blockers.md](routing-blockers.md))
 
 Since concrete API names stay in sync more easily with the implementation, refer to the XmlDoc / IntelliSense inside the Velvet package.
 

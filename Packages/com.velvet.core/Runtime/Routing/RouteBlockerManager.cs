@@ -47,10 +47,9 @@ namespace Velvet
         /// Evaluates the registered Blockers asynchronously.
         /// </summary>
         /// <remarks>
-        /// When multiple Blockers are registered, each one that is not
-        /// <see cref="RouteBlockerStatus.Proceeding"/> is evaluated (no short-circuit).
-        /// Every Blocker that blocks transitions its State to Blocked and takes <paramref name="resume"/> as
-        /// what its <see cref="RouteBlockerState.Proceed"/> re-issues.
+        /// Blocking does not end the pass. A Blocker left <see cref="RouteBlockerStatus.Proceeding"/> by
+        /// <see cref="RouteBlockerState.Proceed"/> is passed over rather than consulted, having already
+        /// answered for the navigation being re-issued.
         /// </remarks>
         /// <param name="attempt">The navigation attempt each Blocker decides on.</param>
         /// <param name="resume">Re-issues <paramref name="attempt"/>; invoked by <see cref="RouteBlockerState.Proceed"/>.</param>
@@ -62,9 +61,6 @@ namespace Velvet
             // ToArray() snapshots the list so a blocker that unregisters during an await does not mutate it.
             foreach (var entry in _blockers.ToArray())
             {
-                // A Blocker that has proceeded is not consulted: it released a navigation and returns to Idle
-                // when one commits, so this skip covers the navigation it released and anything that
-                // supersedes that before it lands.
                 if (entry.State.Status == RouteBlockerStatus.Proceeding)
                 {
                     continue;
@@ -99,7 +95,7 @@ namespace Velvet
                 // down): nothing live is waiting on their state.
                 if (blocked && _blockers.Contains(entry))
                 {
-                    entry.State.Block(attempt, resume);
+                    entry.State.Block(attempt, resume, SettleProceeding);
                     anyBlocked = true;
                 }
             }
@@ -108,7 +104,7 @@ namespace Velvet
 
         #endregion
 
-        #region ResetAllBlocked
+        #region Release
 
         /// <summary>
         /// Resets every Blocker that is currently blocked, without re-issuing its attempt.
@@ -117,7 +113,7 @@ namespace Velvet
         /// <remarks>
         /// A <see cref="RouteBlockerStatus.Proceeding"/> Blocker is left alone: the attempt starting here may
         /// be the one it released, and returning it to Idle would let <see cref="CheckAsync"/> block that
-        /// attempt a second time. <see cref="ClearProceeding"/> is what ends that state.
+        /// attempt a second time. <see cref="SettleProceeding"/> is what ends that state.
         /// </remarks>
         public void ResetAllBlocked()
         {
@@ -131,12 +127,26 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Returns every <see cref="RouteBlockerStatus.Proceeding"/> Blocker to Idle. Called from
-        /// <see cref="Router"/> once a navigation has committed, which is what re-arms a Blocker that
-        /// released one.
+        /// Returns each <see cref="RouteBlockerStatus.Proceeding"/> Blocker to Idle, which is what arms it
+        /// for the next navigation. Reached when a navigation commits, when a re-issued one ends without
+        /// committing, and from <see cref="RouteBlockerState.Reset"/>.
         /// </summary>
-        internal void ClearProceeding()
+        /// <remarks>
+        /// A Blocker still Blocked is a confirm nobody has answered yet, over an attempt that has therefore
+        /// not finished. Arming the Blockers that already consented to it would put them back in the way of
+        /// what they consented to, and the two would go on releasing each other in turn without it ever
+        /// landing.
+        /// </remarks>
+        internal void SettleProceeding()
         {
+            foreach (var entry in _blockers)
+            {
+                if (entry.State.Status == RouteBlockerStatus.Blocked)
+                {
+                    return;
+                }
+            }
+
             foreach (var entry in _blockers)
             {
                 if (entry.State.Status == RouteBlockerStatus.Proceeding)
