@@ -20,7 +20,7 @@ It regenerates all three committed artifacts:
 
 Commit all three. The distribution model assumes Unity users do not need to install `dotnet`.
 
-A run that follows no source change leaves the working tree clean, so `git status` after one answers whether the committed artifacts correspond to the sources — run it to check something and there is nothing to restore afterwards. The builds behind that were measured on macOS and on Linux, which is also where CI runs; Windows carries no reading either way.
+A run that follows no source change leaves the working tree clean, so `git status` after one answers whether the committed artifacts correspond to the sources — run it to check something and there is nothing to restore afterwards. The builds behind that were measured on macOS and on Linux; CI runs the Linux one. Windows carries no reading either way.
 
 ## Test
 
