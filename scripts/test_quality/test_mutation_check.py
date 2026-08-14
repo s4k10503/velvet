@@ -1260,7 +1260,7 @@ class NarrowedRunTests(unittest.TestCase):
 
 
 class EmitLinesTests(unittest.TestCase):
-    """The flag that writes no source, which is what makes it a read-only reviewer's to run."""
+    """A mode a read-only reviewer is told to run, on the strength of its mutating no source."""
 
     def test_Given_AnEmptyEmitLinesOperand_When_TheFlagIsRead_Then_NoCampaignStarts(self):
         # Arrange — an empty operand, which read as absence and fell through to the campaign, so a
