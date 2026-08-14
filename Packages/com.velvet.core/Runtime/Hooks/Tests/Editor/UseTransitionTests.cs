@@ -42,7 +42,8 @@ namespace Velvet.Tests
     /// until each of those other fibers has discharged that work — committed it, unmounted, or had the
     /// scheduler drop it — and the declaring component re-renders on the commit that finishes them,
     /// including where nothing else would have re-rendered it, as for a write to a store another component
-    /// reads. Two such fibers wait on each other: the first to commit settles nothing. For an async
+    /// reads, and whether or not it had the indicator up — that settle carries no counterpart of the
+    /// exit's last-rendered term. Two such fibers wait on each other: the first to commit settles nothing. For an async
     /// callback that commit is not the end of the transition, and the render falls to whichever of the two
     /// lands last.</item>
     /// <item>A slot the unmount of its own component released mid-callback records no further work.</item>
@@ -59,6 +60,8 @@ namespace Velvet.Tests
     /// <item>Calling the hook outside a render throws an <see cref="InvalidOperationException"/>.</item>
     /// <item>A remounted fiber's slots are owned by nobody, even when the unmounted owner's task has not
     /// settled.</item>
+    /// <item>A starter whose own component has been disposed still marks the updates its callback schedules
+    /// on live components, in both overloads, without taking the slot's pending flag.</item>
     /// </list>
     /// </summary>
     /// <remarks>
@@ -69,11 +72,13 @@ namespace Velvet.Tests
     internal sealed class UseTransitionTests
     {
         private VisualElement _root;
+        private VisualElement _liveRoot;
 
         [SetUp]
         public void SetUp()
         {
             _root = new VisualElement();
+            _liveRoot = new VisualElement();
             ResetTransition();
         }
 
@@ -1004,8 +1009,34 @@ namespace Velvet.Tests
             protected override void ResetCore() => SetState(_ => new TransitionCountState(0));
         }
 
+        [Test]
+        public void Given_ATransitionWhoseDeclaringComponentNeverShowedPending_When_ItsDeferredWorkCommits_Then_ItStillCostsThatComponentARender()
+        {
+            // Arrange — the writer renders once, at mount, with the flag down, so nothing it has on screen
+            // says pending and its exit's own gate would decline the render this act measures
+            using var store = new TransitionCountStore();
+            s_storeStore = store;
+            using var mounted = V.Mount(_root, V.Component(StoreTransitionParentRender, key: "store-transition"));
+            s_storeWriterStart.Invoke(() => store.Set(1));
+            var writerRendersBefore = s_storeWriterRenderCount;
+
+            // Act — the reader's commit settles the slot, and the render that settle asks for drains after it
+            FiberWorkLoop.FlushState(s_storeReaderFiber);
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert — the reader's output is folded in, since a write that never landed settles nothing and
+            // the render count would then read zero for the reason the case is arranged to rule out
+            Assert.That(
+                (_root.Q<Label>("store-reader-out").text,
+                 s_storeWriterRenderCount - writerRendersBefore),
+                Is.EqualTo(("1", 1)),
+                "The settle asks the declaring component for a render it never showed the indicator on");
+        }
+
         private static TransitionCountStore s_storeStore;
         private static ComponentFiber s_storeWriterFiber;
+        private static ComponentFiber s_storeReaderFiber;
+        private static int s_storeWriterRenderCount;
         private static TransitionStarter s_storeWriterStart;
         private static StateUpdater<int> s_storeWriterSetTick;
 
@@ -1020,6 +1051,7 @@ namespace Velvet.Tests
         [Component]
         private static VNode StoreTransitionWriterRender()
         {
+            s_storeWriterRenderCount++;
             s_storeWriterFiber = FiberAmbientStack.Current;
             var (_, setTick) = Hooks.UseState(0);
             var (isPending, start) = Hooks.UseTransition();
@@ -1031,6 +1063,7 @@ namespace Velvet.Tests
         [Component]
         private static VNode StoreTransitionReaderRender()
         {
+            s_storeReaderFiber = FiberAmbientStack.Current;
             var value = Hooks.UseStore(s_storeStore, s => s.Value);
             return V.Label(name: "store-reader-out", text: value.ToString());
         }
@@ -1400,6 +1433,80 @@ namespace Velvet.Tests
                 "A remounted slot is owned by nobody, so the next startTransition opens its own pending scope");
         }
 
+        [Test]
+        public void Given_ASynchronousStarterWhoseComponentIsDisposed_When_ItsCallbackWritesLiveState_Then_ThatWriteTakesTheTransitionLane()
+        {
+            // Arrange — two roots, so disposing the one that declared the transition leaves the one holding
+            // the state it writes mounted
+            var declaring = FiberRenderer.CreateRoot(OutlivedStarterRender);
+            FiberRenderer.Mount(declaring, _root);
+            using var live = V.Mount(_liveRoot, V.Component(OutlivedTargetRender, key: "outlived-target"));
+            var starter = s_outlivedStarter;
+            FiberRenderer.Dispose(declaring);
+
+            // Act
+            starter.Invoke(() => s_outlivedSetValue.Invoke(1));
+
+            // Assert — the disposal is folded in, since a declaring fiber still alive would put the write on
+            // the Transition lane whatever the disposed path does, and the Normal term separates the lane
+            // this case is about from a write that never landed
+            Assert.That(
+                (declaring.IsDisposed,
+                 s_outlivedTargetFiber.LaneQueue.Contains(FiberUpdatePriority.Transition),
+                 s_outlivedTargetFiber.LaneQueue.Contains(FiberUpdatePriority.Normal)),
+                Is.EqualTo((true, true, false)),
+                "A starter outliving the component that declared it still marks what its callback writes");
+        }
+
+        [Test]
+        public void Given_AnAsyncStarterWhoseComponentIsDisposed_When_ItsActionWritesLiveStateBeforeSuspending_Then_ThatWriteTakesTheTransitionLane()
+        {
+            // Arrange — the shape the guide asks callers to write: an action that outlives its own component
+            // wraps its post-await write in the starter again, and reaches this overload disposed
+            var declaring = FiberRenderer.CreateRoot(OutlivedStarterRender);
+            FiberRenderer.Mount(declaring, _root);
+            using var live = V.Mount(_liveRoot, V.Component(OutlivedTargetRender, key: "outlived-target"));
+            var starter = s_outlivedStarter;
+            var gate = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
+            FiberRenderer.Dispose(declaring);
+
+            // Act
+            starter.Invoke(async () =>
+            {
+                s_outlivedSetValue.Invoke(1);
+                await gate.Task;
+            });
+
+            // Assert — same three terms as the synchronous case, for the same two reasons
+            Assert.That(
+                (declaring.IsDisposed,
+                 s_outlivedTargetFiber.LaneQueue.Contains(FiberUpdatePriority.Transition),
+                 s_outlivedTargetFiber.LaneQueue.Contains(FiberUpdatePriority.Normal)),
+                Is.EqualTo((true, true, false)),
+                "The async overload marks the action's pre-suspension writes on a disposed fiber too");
+        }
+
+        private static TransitionStarter s_outlivedStarter;
+        private static ComponentFiber s_outlivedTargetFiber;
+        private static StateUpdater<int> s_outlivedSetValue;
+
+        [Component]
+        private static VNode OutlivedStarterRender()
+        {
+            var (_, start) = Hooks.UseTransition();
+            s_outlivedStarter = start;
+            return V.Label();
+        }
+
+        [Component]
+        private static VNode OutlivedTargetRender()
+        {
+            s_outlivedTargetFiber = FiberAmbientStack.Current;
+            var (value, setValue) = Hooks.UseState(0);
+            s_outlivedSetValue = setValue;
+            return V.Label(name: "outlived-target-out", text: value.ToString());
+        }
+
         #endregion
 
         #region Clickable transition component (UseTransition + a discrete click)
@@ -1478,6 +1585,8 @@ namespace Velvet.Tests
             s_propSetterChildRenderCount = 0;
             s_storeStore = null;
             s_storeWriterFiber = null;
+            s_storeReaderFiber = null;
+            s_storeWriterRenderCount = 0;
             s_storeWriterStart = default;
             s_storeWriterSetTick = default;
             s_twoReaderStore = null;
@@ -1487,6 +1596,9 @@ namespace Velvet.Tests
             s_twoReaderWriterStart = default;
             s_flushingStarter = default;
             s_flushingSetValue = default;
+            s_outlivedStarter = default;
+            s_outlivedTargetFiber = null;
+            s_outlivedSetValue = default;
         }
 
         [Component]

@@ -509,12 +509,12 @@ namespace Velvet
         {
             if (updates == null) throw new ArgumentNullException(nameof(updates));
 
-            // Leave the slot's pending lifecycle alone on a disposed fiber: disposal forced IsDirty
-            // false, so the finally below would treat the transition as settled and clobber flags a
-            // still-in-flight async owner on this same slot relies on.
+            // The scope opens here too — classification is ambient, so a starter that outlived its component
+            // still marks what its callback writes on live ones. Only the pending bookkeeping below is
+            // skipped: the flag is read during a render, and a disposed component has none left.
             if (fiber.IsDisposed)
             {
-                updates();
+                RunInTransitionScope(slot, updates);
                 return;
             }
 
@@ -624,10 +624,10 @@ namespace Velvet
         {
             if (asyncUpdates == null) throw new ArgumentNullException(nameof(asyncUpdates));
 
-            // Same disposed guard as the sync overload: run the action, leave the slot's lifecycle alone.
+            // Same disposed guard as the sync overload: the scope, without the flag.
             if (fiber.IsDisposed)
             {
-                await asyncUpdates();
+                await RunInTransitionScope(slot, asyncUpdates);
                 return;
             }
 

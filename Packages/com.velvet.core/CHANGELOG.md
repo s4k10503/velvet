@@ -140,22 +140,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   already-completed task costs what the synchronous form costs — see the entry below for what that is.
 - A synchronous `startTransition` whose callback renders the declaring component now keeps its pending
   indicator up for as long as the transition runs, and takes it down when it ends. A callback that
-  commits work of its own — focusing a field, clicking a control, anything reaching a synchronous flush
-  of updates queued before the call — has that flush render the component while the transition is open.
+  commits work of its own — driving a handler the component bound, a click or a value change or a
+  focus, whose exit flushes the updates queued before the call — has that flush render the component
+  while the transition is open.
   The settle that flush ran used to clear `isPending` first, and only the entry to `startTransition`
   ever sets it, so a callback that then deferred a write ran its whole transition with the indicator
   never lit. A settle now leaves a slot alone while a call still owns it. The other half of the same
   route follows from that: where such a callback defers nothing, the flag it raised is cleared at its
   own exit, and nothing renders because a flag moved — so the exit asks the declaring component for the
-  render that takes the indicator down. It asks only where that component's last render read the flag
-  as true, so a `startTransition` on a component that is not showing the transition costs no render at
-  all.
+  render that takes the indicator down. That exit asks only where the declaring component's last render
+  read the flag as true, so it costs nothing where that component was not showing the transition. Where
+  the callback did defer work the exit settles nothing at all — what ends the transition is the commit
+  of that work, and the settle there asks for its render without that term, so a transition that
+  deferred work costs the declaring component a render whether or not it was showing anything.
 - Two `UseTransition` slots whose transitions are open at once, but not nested one inside the other, no
   longer credit each other's writes. One slot's update was attributed to every slot on that component
   that still had a transition open, so a slot whose own callback had queued nothing kept `isPending`
   lit until the other's work committed — including an `async` action parked on an await, which had
   queued nothing yet by construction. An enrolment is now credited to the calls whose callback is
   running when it is made, and recorded against the component it enrolled.
+- A `startTransition` whose own component has unmounted still marks what its callback writes on the
+  components that have not. Both overloads short-circuited on a disposed declaring component and ran
+  the callback with no transition open at all, so those updates took the Normal lane — or the Urgent
+  lane inside a click — and the deferral the call asked for was gone. An `async` action that outlives
+  the component that started it is where this is met, since wrapping its post-`await` write in the
+  starter again is what the migration guide asks callers to write, and by then the component may have
+  gone. The pending flag is still left alone on that path: it is read during a render, and a disposed
+  component has none left.
 - A component the reconciler carries to a different container now re-renders itself into the container
   it is in. Its slot index and the stamp a portal teardown disposes by both followed the move and its
   container did not, so its own `setState` reconciled its new output into the container it had left,
