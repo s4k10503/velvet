@@ -73,9 +73,10 @@ namespace Velvet.Tests
             "Unreleased", "Highlights", "Added", "Changed", "Breaking", "YYYY", "MM", "DD"
         };
 
-        // A path the tree is right not to hold: the capture harness creates it at run time, inside a
-        // git-ignored directory.
-        private static readonly HashSet<string> PathAllowlist = new() { "Logs/story-captures/" };
+        // Paths the tree is right not to hold: each is written at run time inside a git-ignored
+        // directory — a capture harness's output, and a mutation campaign's receipt store.
+        private static readonly HashSet<string> PathAllowlist =
+            new() { "Logs/story-captures/", "Logs/mutation_check/" };
 
         private static readonly string[] SourceExtensions = { ".cs", ".uss", ".yml", ".json", ".asmdef", ".py" };
 
@@ -489,12 +490,44 @@ namespace Velvet.Tests
                 + string.Join("\n", unresolved));
         }
 
+        // GREEN_ON_BASE(characterization): what this asks about is a helper in this file, and the base
+        // tree carries the file, so the case reads the branch's own arm there whatever the base holds.
+        // The evidence that stands in for the base run is the import arm removed and the case run.
+        //
+        // An import binds into the module, so the check above has to resolve an imported name rather than
+        // report it. Which name a statement binds differs by spelling, and a statement can write a name it
+        // does not bind — `import a.b` writes b and binds a — so both directions are asked here.
+        [Test]
+        public void Given_TheImportSpellings_When_EachNameIsSoughtInTheModule_Then_OnlyABoundOneResolves()
+        {
+            // Arrange
+            const string module = "import time\n"
+                                  + "import importlib.util\n"
+                                  + "import xml.etree.ElementTree as ET\n"
+                                  + "from deferrals import DEFERRALS, deferred\n"
+                                  + "from published_check import (\n    unpublished_reason,\n)\n";
+            var source = StripProse("module.py", module);
+            var bound = new[] { "time", "importlib", "ET", "DEFERRALS", "deferred", "unpublished_reason" };
+            var mentioned = new[] { "util", "xml", "etree", "ElementTree", "deferrals", "published_check" };
+
+            // Act
+            var wrong = bound.Where(name => !DefinesSymbol(source, name))
+                .Select(name => $"{name} is bound here and resolves to nothing")
+                .Concat(mentioned.Where(name => DefinesSymbol(source, name))
+                    .Select(name => $"{name} is named here but bound by nothing"))
+                .ToList();
+
+            // Assert
+            Assert.That(wrong, Is.Empty, string.Join("\n", wrong));
+        }
+
         // What the module itself exposes, which is what `module.symbol` claims: a def or a class at column
         // zero rather than at any indentation, since a method's name is the class's rather than the
         // module's. A binding counts alongside them, because a document naming a harness constant makes
         // the same claim as one naming a function, and the target may be a tuple — one hook here binds
         // three of its policy names in a single one, and an arm reading only `NAME =` reports a document
-        // that names them correctly.
+        // that names them correctly. An import counts too: it binds into the module the same as the other
+        // two, so `module.imported` reaches a value.
         private static bool DefinesSymbol(string source, string symbol) =>
             Regex.IsMatch(source,
                 $@"^(?:async[^\S\n]+)?(?:def|class)[^\S\n]+{Regex.Escape(symbol)}\b",
@@ -502,7 +535,36 @@ namespace Velvet.Tests
             || Regex.IsMatch(source,
                 $@"^(?:[A-Za-z_]\w*[^\S\n]*,[^\S\n]*)*{Regex.Escape(symbol)}"
                 + @"(?:[^\S\n]*,[^\S\n]*[A-Za-z_]\w*)*[^\S\n]*(?::[^=\n]+)?=",
-                RegexOptions.Multiline);
+                RegexOptions.Multiline)
+            || ImportsSymbol(source, symbol);
+
+        // Which name an import binds is a property of its spelling rather than of the text after
+        // `import`, so the clause is split and each part read on its own: an alias binds only itself, a
+        // dotted module binds its first segment, and everything else binds what is written. Reading the
+        // clause whole would answer `util` for `import importlib.util` and `xml` for
+        // `import xml.etree.ElementTree as ET`, and the walk's own scripts write both. Column zero for
+        // the same reason the arms above use it — an import indented into a function binds nothing on
+        // the module.
+        private static readonly Regex ImportStatementPattern = new(
+            @"^import[^\S\n]+(?<names>[^\n]+)"
+            + @"|^from[^\S\n]+[.\w]+[^\S\n]+import[^\S\n]+(?<names>\([^)]*\)|[^\n]+)",
+            RegexOptions.Compiled | RegexOptions.Multiline);
+
+        private static readonly Regex ImportAliasPattern =
+            new(@"[^\S\n]+as[^\S\n]+([A-Za-z_]\w*)$", RegexOptions.Compiled);
+
+        private static bool ImportsSymbol(string source, string symbol) =>
+            ImportStatementPattern.Matches(source).Any(statement =>
+                statement.Groups["names"].Value.Trim('(', ')').Split(',')
+                    .Select(part => part.Trim())
+                    .Where(part => part.Length > 0)
+                    .Any(part =>
+                    {
+                        var alias = ImportAliasPattern.Match(part);
+                        return alias.Success
+                            ? alias.Groups[1].Value == symbol
+                            : part.Split('.')[0] == symbol;
+                    }));
 
         // Every Python source in the walk, keyed on its stem, with prose taken out the way StripProse takes
         // it: a def or a binding inside a string literal is not a definition, and several harness tests

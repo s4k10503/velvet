@@ -1031,7 +1031,10 @@ def main():
             "Wait for it if one is running; otherwise put it back with\n"
             "  python3 scripts/test_quality/mutation_check.py --restore".format(*names))
 
-    if args.emit_lines:
+    # Presence, not truth, the same as --carried above: the flag selects a mode, and an empty operand
+    # read as absence falls through to the campaign -- which mutates a source, under a flag whose whole
+    # contract is that it writes none.
+    if args.emit_lines is not None:
         # The applied line only, not the applied file: 11301 whole files is gigabytes, and the reader
         # holds the originals anyway. What it gets from here is this script's edit, not its opinion
         # of whether the edit parses -- that is the half it exists to answer independently.
