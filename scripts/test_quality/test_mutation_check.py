@@ -422,6 +422,137 @@ class GuardRemovalTests(unittest.TestCase):
         self.assertEqual(guards, [])
 
 
+class DeclarationRemovalTests(unittest.TestCase):
+    """What a deletion may not carry off: a name the code below it still reads.
+
+    Five of these were mutants the three deleting operators offered and the compiler refused; the two
+    declared green on the base are the boundary the refusals must not cross, and both go red under a
+    detector widened to the bare `var` and `is` tokens. `MutantDeclarationRemovalTests` in
+    `Generators~` reads the same removals with the compiler's own parser; these hold the spellings
+    the generator recognises without one. Each case leaves a second removal standing, so a refusal
+    that swallowed its whole operator would not pass here either.
+
+    The last three are the `out` arm's exemptions, one per operator, since the text handed to the
+    pattern differs at each: the whole line, the cut alone, the guard statement.
+    """
+
+    def test_Given_ADeconstructingDeclaration_When_MutantsAreGenerated_Then_ItIsNotDeleted(self):
+        # Arrange — `var` satisfies the discarded-call pattern's leading identifier, and the argument
+        # list that pattern looks for runs to the initializer's last `)`, so the whole declaration
+        # read as a call whose value was thrown away.
+        text = "Track();\nvar (state, setState) = UseState(0);\nsetState.Invoke(1);\n"
+
+        # Act
+        deletions = [mutant.line for mutant in mutants_of(text, "void call removed")]
+
+        # Assert — line 1 is absent for the reason `StatementChainCutTests` gives, and line 3 is what
+        # says the operator still deletes.
+        self.assertEqual(deletions, [3])
+
+    def test_Given_AnOutVariableDeclaration_When_MutantsAreGenerated_Then_TheCallIsNotDeleted(self):
+        # Arrange — the same removal by a different spelling: the declaration is an argument.
+        text = "Track();\nStyle.TryExtract(names, out var spec);\nApply(spec);\n"
+
+        # Act
+        deletions = [mutant.line for mutant in mutants_of(text, "void call removed")]
+
+        # Assert
+        self.assertEqual(deletions, [3])
+
+    def test_Given_AGuardDeclaringAPatternVariable_When_MutantsAreGenerated_Then_ItIsNotRemoved(self):
+        # Arrange
+        text = ("if (node is not ComponentFiber fiber) return;\n"
+                "if (fiber.IsDisposed) return;\n"
+                "fiber.Dispose();\n")
+
+        # Act
+        removals = [mutant.line for mutant in mutants_of(text, "guard removed")]
+
+        # Assert
+        self.assertEqual(removals, [2])
+
+    def test_Given_AClauseDeclaringAnOutVariable_When_MutantsAreGenerated_Then_ItIsNotCut(self):
+        # Arrange
+        text = "var ok = ready && Map.TryGetValue(key, out var hit) && hit != null;\n"
+
+        # Act
+        cuts = [applied(text, mutant) for mutant in mutants_of(text, "clause removed")]
+
+        # Assert
+        self.assertEqual(cuts, ["var ok = ready && Map.TryGetValue(key, out var hit);"])
+
+    def test_Given_AClauseDeclaringUnderAPropertyPattern_When_MutantsAreGenerated_Then_ItIsNotCut(self):
+        # Arrange — a designation the type-pattern spelling does not reach, because what precedes it
+        # is a brace rather than a type. This package writes it, and the parser guard is what found it.
+        text = "var ok = ready && layer is { } resolved && resolved.Depth > 0;\n"
+
+        # Act
+        cuts = [applied(text, mutant) for mutant in mutants_of(text, "clause removed")]
+
+        # Assert
+        self.assertEqual(cuts, ["var ok = ready && layer is { } resolved;"])
+
+    # GREEN_ON_BASE(characterization): the null test the refusals beside it must not swallow.
+    def test_Given_AClauseTestingForNull_When_MutantsAreGenerated_Then_ItIsStillCut(self):
+        # Arrange — `is null` declares nothing, and this package writes its null checks that way.
+        text = "var ok = ready && next is null;\n"
+
+        # Act
+        cuts = [applied(text, mutant) for mutant in mutants_of(text, "clause removed")]
+
+        # Assert
+        self.assertEqual(cuts, ["var ok = ready;"])
+
+    # GREEN_ON_BASE(characterization): a loop variable the line that declared it carries away with it.
+    def test_Given_ASingleLineForeach_When_MutantsAreGenerated_Then_ItIsStillDeleted(self):
+        # Arrange — the detector shapes `var` to a deconstruction rather than taking the bare token,
+        # and this is the line that decides it.
+        text = "Track();\nforeach (var f in drop) owners.Remove(f);\n"
+
+        # Act
+        deletions = [mutant.line for mutant in mutants_of(text, "void call removed")]
+
+        # Assert
+        self.assertEqual(deletions, [2])
+
+    def test_Given_AnOutArgumentAssigningAMember_When_MutantsAreGenerated_Then_TheCallIsDeleted(self):
+        # Arrange — an assignment target declares nothing, and line 3 is the shape that decides the
+        # exemption cannot be a token count instead: a type carrying a comma has no bound to count to.
+        text = ("Track();\n"
+                "Inset.Compute(names, out binding.Left, out binding.Top);\n"
+                "Map.TryGetValue(key, out Dictionary<int, string> found);\n"
+                "Apply(binding, found);\n")
+
+        # Act
+        deletions = [mutant.line for mutant in mutants_of(text, "void call removed")]
+
+        # Assert
+        self.assertEqual(deletions, [2, 4])
+
+    def test_Given_AClauseDiscardingItsOutArgument_When_MutantsAreGenerated_Then_ItIsCut(self):
+        # Arrange
+        text = "var ok = ready && Map.TryGetValue(key, out _) && Map.TryGetValue(other, out var hit);\n"
+
+        # Act
+        cuts = [applied(text, mutant) for mutant in mutants_of(text, "clause removed")]
+
+        # Assert
+        self.assertEqual(cuts, ["var ok = ready && Map.TryGetValue(other, out var hit);"])
+
+    def test_Given_AGuardDiscardingItsOutArgument_When_MutantsAreGenerated_Then_ItIsRemoved(self):
+        # Arrange — the dedupe guard this package writes, whose deletion is the question worth asking
+        # of it: whether anything notices the second call no longer being turned away.
+        text = ("if (_bindings.TryGetValue(root, out _)) return;\n"
+                "if (_bindings.TryGetValue(root, out var held)) return;\n"
+                "_bindings.Add(root, new Binding(root));\n")
+
+        # Act
+        removals = [mutant.line for mutant in mutants_of(text, "guard removed")]
+
+        # Assert
+        self.assertEqual(removals, [1])
+
+
 class RepositoryReachTests(unittest.TestCase):
     """The operators exist because two real defects survived every other one. Pin that they reach them."""
 
