@@ -32,15 +32,20 @@ namespace Velvet.Tests
     /// placeholder out.</item>
     /// <item>Two Portals rendering into one container reach one entry, and the one that closes first
     /// leaves the other's committed child alone.</item>
-    /// <item>A presence beside a container holding another retires only its own entry, so the scope one
-    /// container opens over the list is its own span of it and not the enclosing container's too.</item>
+    /// <item>A presence beside a container holding another retires only its own entry — the one the same
+    /// pass rendered again survives it.</item>
     /// <item>Both suspended states are read, since a presence with committed children puts their keys on
     /// the container's old side and one with none does not — the two park in different strategies.</item>
     /// <item>An abort stops the removal pass of the container it reaches and holds for the rest of the
     /// pass, so whether an entry may retire is read per container: one whose own removals ran retires
     /// even though a later container's did not. The reading covers the fast path too, where the removals
-    /// are the time-sliced diff's rather than the general walk's finalize, and where an abort raised
-    /// mid-diff and an exhausted frame budget each leave them owed.</item>
+    /// are the time-sliced diff's rather than the general walk's finalize.</item>
+    /// <item>An abort and an exhausted frame budget both leave those removals unrun, and part there. The
+    /// next pass expands both sides again, so an abort's reading is retaken; a park is resumed from the
+    /// old side this pass already expanded, so nothing retakes it and the reading is carried to the slice
+    /// that finishes the removals. The entry retires then, rather than outliving the leaf it named.</item>
+    /// <item>A park a fresh pass discards carries nothing into a later park's resume, since the diff that
+    /// owed those removals is the one nobody finishes.</item>
     /// <item>A pass that walks neither side of a presence retires nothing of it — the last case holds
     /// that to what it already did, since retiring a live entry strands its leaf where the next old side
     /// can no longer name it.</item>
@@ -564,6 +569,97 @@ namespace Velvet.Tests
                 Is.EqualTo((true, 1)));
         }
 
+        [Test]
+        public void Given_APresenceOnAParkedFastPathContainer_When_TheResumeFinishesTheDiff_Then_ItsBoundaryStateIsRetired()
+        {
+            // Arrange — the same park as the case above, left where that case stops reading.
+            using var reconciler = new Reconciler();
+            var root = new VisualElement();
+            var committed = RowsWith(Presence("a"));
+            reconciler.Reconcile(root, Array.Empty<VNode>(), committed, frameBudgetMs: 0);
+            var ctx = reconciler.Context;
+            reconciler.Reconcile(root, committed, Rows("moved-"), frameBudgetMs: 0.001);
+            var parked = reconciler.HasPendingWork;
+
+            // Act — the continuation runs the removals the park left owed.
+            reconciler.ContinueReconcile();
+
+            // Assert — that the diff really did park is folded in: a first slice that ran to completion
+            // would retire the entry through the container's own reading and measure nothing of the resume.
+            Assert.That((parked, root.Q<VisualElement>("item-a") != null, ctx.PresenceStates.Count),
+                Is.EqualTo((true, false, 0)));
+        }
+
+        [Test]
+        public void Given_APresenceOnAParkedFastPathContainer_When_ItIsRenderedAgainAfterTheResume_Then_TheDepartedChildIsNotResurrected()
+        {
+            // Arrange — the park, then the resume that empties the presence's slot for real.
+            using var reconciler = new Reconciler();
+            var root = new VisualElement();
+            var committed = RowsWith(Presence("a"));
+            reconciler.Reconcile(root, Array.Empty<VNode>(), committed, frameBudgetMs: 0);
+            var moved = Rows("moved-");
+            reconciler.Reconcile(root, committed, moved, frameBudgetMs: 0.001);
+            var parked = reconciler.HasPendingWork;
+            reconciler.ContinueReconcile();
+
+            // Act — the presence returns at the same position carrying a different keyed child.
+            reconciler.Reconcile(root, moved, RowsWith(Presence("b")), frameBudgetMs: 0);
+
+            // Assert — a surviving committed set would splice "a" back in as an exiting ghost ahead of it.
+            // That the diff parked is folded in for the same reason as the case above.
+            Assert.That((parked, TailNamesOf(root, 2)), Is.EqualTo((true, "row-99,item-b")));
+        }
+
+        [Test]
+        public void Given_APresenceOnAParkedFastPathContainer_When_TheResumeParksAgain_Then_ItsBoundaryStateRetiresAtTheSliceThatFinishes()
+        {
+            // Arrange — the park, then a resume slice on a budget small enough to park a second time.
+            using var reconciler = new Reconciler();
+            var root = new VisualElement();
+            var committed = RowsWith(Presence("a"));
+            reconciler.Reconcile(root, Array.Empty<VNode>(), committed, frameBudgetMs: 0);
+            var ctx = reconciler.Context;
+            reconciler.Reconcile(root, committed, Rows("moved-"), frameBudgetMs: 0.001);
+            reconciler.ContinueReconcile(frameBudgetMs: 0.001);
+            var parkedAgain = reconciler.HasPendingWork;
+
+            // Act — the slice that finishes the diff.
+            reconciler.ContinueReconcile();
+
+            // Assert — that the middle slice parked rather than finishing is folded in: without it this
+            // is a second reading of the single-slice resume beside it.
+            Assert.That((parkedAgain, ctx.PresenceStates.Count), Is.EqualTo((true, 0)));
+        }
+
+        [Test]
+        public void Given_AParkDiscardedByAFreshPass_When_ALaterParkResumes_Then_OnlyTheLaterParksEntryRetires()
+        {
+            // Arrange — one reconciler, two roots. The first root's diff parks and is then discarded by a
+            // fresh pass on the second, whose own diff parks in turn.
+            using var reconciler = new Reconciler();
+            var ctx = reconciler.Context;
+            var first = new VisualElement();
+            var firstCommitted = RowsWith(Presence("a"));
+            reconciler.Reconcile(first, Array.Empty<VNode>(), firstCommitted, frameBudgetMs: 0);
+            reconciler.Reconcile(first, firstCommitted, Rows("moved-"), frameBudgetMs: 0.001);
+            var firstParked = reconciler.HasPendingWork;
+            var second = new VisualElement();
+            var secondCommitted = RowsWith(Presence("b"));
+            reconciler.Reconcile(second, Array.Empty<VNode>(), secondCommitted, frameBudgetMs: 0);
+            reconciler.Reconcile(second, secondCommitted, Rows("gone-"), frameBudgetMs: 0.001);
+            var secondParked = reconciler.HasPendingWork;
+
+            // Act — the continuation finishes the second root's diff, and only that one.
+            reconciler.ContinueReconcile();
+
+            // Assert — the discarded park's leaf is still in the first root, so its entry has to be the one
+            // left. Both parks are folded in: without either, nothing is owed across a discard.
+            Assert.That(
+                (firstParked, secondParked, first.Q<VisualElement>("item-a") != null, ctx.PresenceStates.Count),
+                Is.EqualTo((true, true, true, 1)));
+        }
+
         // GREEN_ON_BASE(characterization): a pass that walks neither side of a presence says nothing of it.
         // This is the live state a retirement route must not reach, held to what the base already did.
         [Test]
@@ -606,6 +702,18 @@ namespace Velvet.Tests
         {
             var names = new List<string>();
             for (var i = 0; i < parent.childCount; i++) names.Add(parent.ElementAt(i).name);
+            return string.Join(",", names);
+        }
+
+        // The last few names, for the arrangements whose hundred leading rows are scaffolding rather than
+        // what is read.
+        private static string TailNamesOf(VisualElement parent, int count)
+        {
+            var names = new List<string>();
+            for (var i = Math.Max(0, parent.childCount - count); i < parent.childCount; i++)
+            {
+                names.Add(parent.ElementAt(i).name);
+            }
             return string.Join(",", names);
         }
 

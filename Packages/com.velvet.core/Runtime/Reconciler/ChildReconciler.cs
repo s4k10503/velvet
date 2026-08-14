@@ -52,6 +52,11 @@ namespace Velvet
         // Pool while suspended).
         internal KeyedReconcileState? PendingKeyedState { get; private set; }
 
+        // The presence reproductions the state above still owes a removal pass, carried until the slice
+        // that resumes it runs them. Instance state rather than context state like the lists it feeds,
+        // because the park it answers for is this instance's own while the context is shared.
+        private readonly List<(ComponentFiber? boundary, VisualElement? parent, string presenceKey)> _presenceOwedByThisPark = new();
+
         public ChildReconciler(ReconcilerContext ctx, FiberNodePatcher patcher, FiberNodeFactory factory, FiberElementCleaner cleaner)
         {
             _ctx = ctx;
@@ -168,6 +173,14 @@ namespace Velvet
             // directly and bypasses this path, so discarding here does not break a Continue run.
             // Nested calls entered via PatchNode during ContinueXxx also pass through here, but at
             // that point ContinueXxx has already taken ownership of pending (= null), so this is a no-op.
+            // The presence reproductions that state owed go with it, since no slice will run its removals
+            // now — gated on the state so that stays a no-op too: the owed span is still in flight during
+            // a ContinueXxx, and dropping it there would strand the entry.
+            if (PendingIndexedState != null || PendingKeyedState != null)
+            {
+                _ctx.SettlePresenceReproductionsOwedByAPark(
+                    ReconcilerContext.PresenceRemovalOutcome.Skipped, _presenceOwedByThisPark);
+            }
             PendingIndexedState = null;
             DiscardPendingKeyedState();
 
@@ -200,11 +213,9 @@ namespace Velvet
             // The presence reproductions this container's own walk takes, retirable only once the removal
             // pass below has run — see ReconcilerContext.EndPresenceReproductionScope.
             var presenceScope = _ctx.BeginPresenceReproductionScope();
-            // MUTANT_SURVIVES(equivalent): only an exception unwinding out of the try below reads this value.
-            // Both branches assign before the finally does. Measured on the two unwinds that reach here — a
-            // component throwing with no boundary, and a suspend signal escaping the container's walk — and
-            // in both the container's element was replaced and its presence entry went with the element.
-            var removalsRan = false;
+            // Only an exception unwinding out of the try below reads this, since both branches assign
+            // first. Skipped is the reading that costs nothing there: it leaves a live entry alone.
+            var removals = ReconcilerContext.PresenceRemovalOutcome.Skipped;
             try
             {
                 // Old side is always expanded structurally into the flat leaf array used for matching.
@@ -217,7 +228,9 @@ namespace Velvet
                     // (CreateElement / PatchNode) while its ancestor Providers are still pushed, so
                     // element descendants render in-scope without a pre-captured snapshot. Orphan
                     // effect-cleanup + sweep and the LIS reorder are performed inside.
-                    removalsRan = _general.ReconcileGeneral(parent, oldNodes, newChildren, slotStart, in pairing);
+                    removals = _general.ReconcileGeneral(parent, oldNodes, newChildren, slotStart, in pairing)
+                        ? ReconcilerContext.PresenceRemovalOutcome.Ran
+                        : ReconcilerContext.PresenceRemovalOutcome.Skipped;
                 }
                 else
                 {
@@ -236,18 +249,12 @@ namespace Velvet
                         ReconcileIndexed(parent, oldNodes, newNodes, frameBudgetMs, slotStart, slotLimit);
                     }
                     _general.SweepOrphans(oldFibers, newFibers);
-                    // Neither strategy finishes its removals in one gated call the way the general path
-                    // does, so returning from it is not proof they ran: an abort raised while a descendant
-                    // of a patched leaf rendered stops the state machine between phases, and an exhausted
-                    // frame budget parks it — and the resume slice re-enters through ContinueIndexed /
-                    // ContinueKeyed, which open no scope of their own to report the removals they run.
-                    // False is the reading that costs nothing: it leaves a live entry alone.
-                    removalsRan = !_ctx.IsAborted && PendingIndexedState == null && PendingKeyedState == null;
+                    removals = FastPathRemovalOutcome();
                 }
             }
             finally
             {
-                _ctx.EndPresenceReproductionScope(presenceScope, removalsRan);
+                _ctx.EndPresenceReproductionScope(presenceScope, removals, _presenceOwedByThisPark);
                 _ctx.BufferPool.ReturnProviderTable(oldProviders);
                 _ctx.BufferPool.ReturnFiberList(oldFibers);
                 _ctx.BufferPool.ReturnFiberSet(newFibers);
@@ -506,6 +513,18 @@ namespace Velvet
             return (samePanelTarget, children);
         }
 
+        // Neither time-sliced strategy finishes its removals in one gated call the way the general path
+        // does, so returning from it is not proof they ran: an abort raised while a descendant of a patched
+        // leaf rendered stops the state machine between phases, and an exhausted frame budget parks it. The
+        // two differ in who pays the debt — the abort's next pass expands both sides again, while a park is
+        // resumed from the old side this one already expanded — which is why the outcome is three-valued.
+        private ReconcilerContext.PresenceRemovalOutcome FastPathRemovalOutcome()
+            => PendingIndexedState != null || PendingKeyedState != null
+                ? ReconcilerContext.PresenceRemovalOutcome.OwedByAContinuation
+                : _ctx.IsAborted
+                    ? ReconcilerContext.PresenceRemovalOutcome.Skipped
+                    : ReconcilerContext.PresenceRemovalOutcome.Ran;
+
         // Resumes a suspended IndexedReconcile.
         // Does nothing when PendingIndexedState is null.
         internal void ContinueIndexed(double frameBudgetMs)
@@ -516,6 +535,7 @@ namespace Velvet
             PendingIndexedState = null;
             ReconcileIndexedFrom(state.Parent, state.OldNodes, state.NewNodes,
                 state.ResumePhase, state.ResumeIndex, frameBudgetMs, state.SlotStart, state.SlotLimit);
+            _ctx.SettlePresenceReproductionsOwedByAPark(FastPathRemovalOutcome(), _presenceOwedByThisPark);
         }
 
         // Resumes a suspended KeyedReconcile.
@@ -527,6 +547,7 @@ namespace Velvet
             var state = PendingKeyedState;
             PendingKeyedState = null;
             ReconcileKeyedFrom(state, frameBudgetMs);
+            _ctx.SettlePresenceReproductionsOwedByAPark(FastPathRemovalOutcome(), _presenceOwedByThisPark);
         }
 
         // Shifts the captured SlotStart of whichever time-sliced state is currently parked by

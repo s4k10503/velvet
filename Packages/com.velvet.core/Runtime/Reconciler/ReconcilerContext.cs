@@ -1236,12 +1236,15 @@ namespace Velvet
             List<(ComponentFiber? boundary, VisualElement? parent, string presenceKey)>? stale = null;
             foreach (var entry in PresenceStates)
             {
+#pragma warning disable CS8524 // no discard arm, so a fourth owner fails the build rather than falling in here
                 var owned = owner switch
                 {
                     PresenceStateOwner.Boundary => ReferenceEquals(entry.Key.boundary, subject),
                     PresenceStateOwner.ParentElement => ReferenceEquals(entry.Key.parent, subject),
-                    _ => ReferenceEquals(entry.Value.OwningPortalPlaceholder, subject),
+                    PresenceStateOwner.PortalPlaceholder =>
+                        ReferenceEquals(entry.Value.OwningPortalPlaceholder, subject),
                 };
+#pragma warning restore CS8524
                 if (owned) (stale ??= new()).Add(entry.Key);
             }
             if (stale != null)
@@ -1287,26 +1290,75 @@ namespace Velvet
         // first, so the tail this returns is exactly the enclosing container's own.
         internal int BeginPresenceReproductionScope() => _presenceReproduced.Count;
 
-        // removalsRan is false where GeneralPathReconciler skipped FinalizeGeneralCommit, which is where
-        // the slots an absent presence held are emptied. Its reproduced leaves are then still in the DOM
-        // and the entry is what the next old side names them from, so it must not retire. The reading is
-        // per container rather than per pass: an abort holds for the rest of the pass, while every
-        // container that finalized before it emptied its slots for real.
-        internal void EndPresenceReproductionScope(int scope, bool removalsRan)
+        // What a container's removal pass — GeneralPathReconciler's FinalizeGeneralCommit, or the
+        // time-sliced diff's own removal phase — did about the slots an absent presence held. Until it has
+        // run, the reproduced leaves are still in the DOM and the entry is what the next old side names
+        // them from, so the entry must not retire. The reading is per container rather than per pass: an
+        // abort holds for the rest of the pass, while every container that finalized before it emptied its
+        // slots for real.
+        internal enum PresenceRemovalOutcome
         {
-            if (removalsRan)
+            // Emptied, so the span may retire.
+            Ran,
+
+            // Skipped, with nothing left to run it. The next pass to reconcile this container expands both
+            // sides again and takes its own reading, so the span can be dropped.
+            Skipped,
+
+            // Parked mid-diff. ContinueIndexed / ContinueKeyed resume from the old side this pass already
+            // expanded, so no walk names these presences a second time — dropping the span would leave the
+            // entry to outlive the leaves it names rather than defer its retirement.
+            OwedByAContinuation,
+        }
+
+        // Where a span an outcome describes belongs: the pass's own retirable list, the parked
+        // container's carry list, or nowhere.
+        private List<(ComponentFiber? boundary, VisualElement? parent, string presenceKey)>? DestinationFor(
+            PresenceRemovalOutcome outcome,
+            List<(ComponentFiber? boundary, VisualElement? parent, string presenceKey)> owedByThisPark)
+        {
+#pragma warning disable CS8524 // no discard arm, so a fourth outcome fails the build rather than being dropped
+            return outcome switch
+            {
+                PresenceRemovalOutcome.Ran => _presenceRetirable,
+                PresenceRemovalOutcome.OwedByAContinuation => owedByThisPark,
+                PresenceRemovalOutcome.Skipped => null,
+            };
+#pragma warning restore CS8524
+        }
+
+        internal void EndPresenceReproductionScope(
+            int scope,
+            PresenceRemovalOutcome outcome,
+            List<(ComponentFiber? boundary, VisualElement? parent, string presenceKey)> owedByThisPark)
+        {
+            var destination = DestinationFor(outcome, owedByThisPark);
+            if (destination != null)
             {
                 for (var i = scope; i < _presenceReproduced.Count; i++)
                 {
-                    _presenceRetirable.Add(_presenceReproduced[i]);
+                    destination.Add(_presenceReproduced[i]);
                 }
             }
-            // MUTANT_SURVIVES(equivalent): no enclosing scope reports removals run over a span an inner one
-            // did not. An abort holds for the rest of the pass, a nested container is entered at budget 0 so
-            // only the top-level one can park, and a throw unwinds the enclosing container too — so the tail
-            // this drops would already be retirable by the enclosing scope's own reading. What it buys is a
-            // bounded list and no duplicate entries; measured, the full EditMode suite is green with it cut.
+            // MUTANT_SURVIVES(equivalent): the tail this drops is already answered for by the enclosing scope.
+            // No enclosing scope reports removals run over a span an inner one did not: an abort holds for the
+            // rest of the pass, a nested container is entered at budget 0 so only the top-level one can park,
+            // and a throw unwinds the enclosing container too. What it buys is a bounded list and no duplicate
+            // entries; measured, the full EditMode suite is green with it cut.
             _presenceReproduced.RemoveRange(scope, _presenceReproduced.Count - scope);
+        }
+
+        // Closes what a park left owed, once the slice that resumed it has run. Its outcome is read the
+        // same way the container's own was, so a slice that parked again leaves the span where it is.
+        // Dropping it is a discarded park's reading: nobody finishes that diff, so the entry stays live
+        // for the next pass to walk both sides of.
+        internal void SettlePresenceReproductionsOwedByAPark(
+            PresenceRemovalOutcome outcome,
+            List<(ComponentFiber? boundary, VisualElement? parent, string presenceKey)> owed)
+        {
+            if (outcome == PresenceRemovalOutcome.OwedByAContinuation) return;
+            DestinationFor(outcome, owed)?.AddRange(owed);
+            owed.Clear();
         }
 
         // Retires every retirable entry the pass did not render again, then drops the pass's marks.
