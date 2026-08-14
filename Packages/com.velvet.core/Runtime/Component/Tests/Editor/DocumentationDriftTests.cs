@@ -468,26 +468,59 @@ namespace Velvet.Tests
         [Test]
         public void Given_MarkdownNamingAScriptSymbol_When_TheSymbolIsSoughtInThatScript_Then_ItIsDefinedThere()
         {
-            // Arrange / Act — a file name is the path check's, which resolves it against the filesystem;
-            // without that, `mutation_check.py` reads as a module and an extension.
-            var unresolved = ScanBacktickSpans((path, reference) =>
-            {
-                var dotted = DottedSymbolPattern.Match(reference);
-                if (PathReferencePattern.IsMatch(reference) || !dotted.Success
-                    || !ScriptSources.Value.TryGetValue(dotted.Groups[1].Value, out var source))
-                {
-                    return Array.Empty<string>();
-                }
-                var symbol = dotted.Groups[2].Value;
-                return DefinesSymbol(source, symbol)
-                    ? Array.Empty<string>()
-                    : new[] { $"{path}: {reference} — {dotted.Groups[1].Value}.py defines no {symbol}" };
-            });
+            // Arrange / Act
+            var unresolved = ScriptSymbolSpans()
+                .Where(span => !span.Defined)
+                .Select(span => $"{span.Path}: {span.Reference} — {span.Module}.py defines no {span.Symbol}")
+                .ToList();
 
             // Assert
             Assert.That(unresolved, Is.Empty,
                 "Documentation names symbols the script it names does not define:\n"
                 + string.Join("\n", unresolved));
+        }
+
+        // What the check above runs on, and the reason it needs a floor: the population is prose. Every
+        // span in it is a sentence somebody may reword, and an empty population satisfies "nothing
+        // unresolved" exactly as a healthy one does — so the check would pass having asked nothing, with
+        // the drift it exists for unguarded. Two rather than one, so that a population thinned to a
+        // single sentence is read while there is still something left to read. A red here is the spans
+        // going or the walk stopping short of them, and either wants reading before the number moves.
+        private const int ScriptSymbolSpanFloor = 2;
+
+        [Test]
+        public void Given_TheScriptSymbolCheck_When_ItsLiveSpansAreCounted_Then_SomeMarkdownStillReachesIt()
+        {
+            // Arrange / Act
+            var spans = ScriptSymbolSpans();
+
+            // Assert
+            Assert.That(spans.Count, Is.GreaterThanOrEqualTo(ScriptSymbolSpanFloor),
+                "Too few documented module.symbol spans reach the check for it to answer for anything. "
+                + "What still reaches it:\n"
+                + string.Join("\n", spans.Select(span => $"{span.Path}: {span.Reference}")));
+        }
+
+        // Every span that reaches the resolution, with the answer beside it, so the check and its floor
+        // read one derivation: a floor over a population derived separately stops answering for the check
+        // the day either moves. A file name is the path check's, which resolves it against the filesystem;
+        // without that, `mutation_check.py` reads here as a module and an extension.
+        private static List<(string Path, string Reference, string Module, string Symbol, bool Defined)>
+            ScriptSymbolSpans()
+        {
+            var spans = new List<(string Path, string Reference, string Module, string Symbol, bool Defined)>();
+            foreach (var (path, reference) in BacktickSpans())
+            {
+                var dotted = DottedSymbolPattern.Match(reference);
+                if (PathReferencePattern.IsMatch(reference) || !dotted.Success
+                    || !ScriptSources.Value.TryGetValue(dotted.Groups[1].Value, out var source))
+                {
+                    continue;
+                }
+                var symbol = dotted.Groups[2].Value;
+                spans.Add((path, reference, dotted.Groups[1].Value, symbol, DefinesSymbol(source, symbol)));
+            }
+            return spans.Distinct().ToList();
         }
 
         // GREEN_ON_BASE(characterization): what this asks about is a helper in this file, and the base
@@ -592,12 +625,14 @@ namespace Velvet.Tests
                                       StringComparer.Ordinal);
         });
 
-        // Runs `extract` over every backticked span of every target file. A path on the reader's own machine
-        // is skipped outright: it names nothing in the repo, so no check that reads this has anything to
-        // say about it.
-        private static List<string> ScanBacktickSpans(Func<string, string, IEnumerable<string>> extract)
+        private static List<string> ScanBacktickSpans(Func<string, string, IEnumerable<string>> extract) =>
+            BacktickSpans().SelectMany(span => extract(span.Path, span.Reference)).Distinct().ToList();
+
+        // The walk itself, separate from reporting over it, so a caller that wants the spans rather than a
+        // report reads the same one. A path on the reader's own machine is skipped outright: it names
+        // nothing in the repo, so no check that reads this has anything to say about it.
+        private static IEnumerable<(string Path, string Reference)> BacktickSpans()
         {
-            var unresolved = new List<string>();
             foreach (var path in DocumentationCorpus.Files())
             {
                 var prose = FencedBlockPattern.Replace(File.ReadAllText(path), "\n");
@@ -609,10 +644,9 @@ namespace Velvet.Tests
                     {
                         continue;
                     }
-                    unresolved.AddRange(extract(path, reference));
+                    yield return (path, reference);
                 }
             }
-            return unresolved.Distinct().ToList();
         }
 
         // Every identifier-shaped word in the repo's own CODE. A name surviving nowhere in it was renamed or
