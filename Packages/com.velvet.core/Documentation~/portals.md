@@ -42,8 +42,8 @@ Moving the portal is an unmount and a remount, so child state, refs and effects 
 **Moving a child across the boundary is one too**, in either direction: writing a component into a
 portal's children that a render had outside them, or out of them to a position in the declaring
 component's own tree, mounts a fresh instance on the far side and runs the departing one's cleanups.
-A portal's children and the tree around them are different positions, so nothing is carried between
-them, `key:` included.
+[react-migration.md, what a position is](react-migration.md#what-a-position-is) states what a position
+is; a portal's boundary is one, and it holds even where the two sides share a container.
 
 **Keep the container's own children out of Velvet's hands for as long as the portal is mounted**, in
 either form. A portal's range is recorded after whatever the container already held, and a child added
