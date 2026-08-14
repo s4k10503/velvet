@@ -4,10 +4,11 @@
 Every case runs the guard as a process against a real pair of repositories, because what it decides
 is a question put to git and a stubbed answer would be this file deciding it instead.
 
-`PredicateAgreementTests` is the odd one out: it holds git rather than the guard. Either of two
-commands answers "does a remote-tracking ref reach HEAD", the guard picks one, and the reason that
-choice is free is that they agree — which is a fact about git, so it lives here where it fails when
-it stops being true rather than in a sentence beside the call.
+`PredicateAgreementTests` and `GitOptionGrammarTests` are the odd ones out: they hold git rather
+than the guard. Either of two commands answers "does a remote-tracking ref reach HEAD", the guard
+picks one, and the reason that choice is free is that they agree; and `lib/shell_commands.py` keeps
+a table of the `git commit` options that swallow the token after them. Both are facts about git, so
+they live here where they fail when they stop being true rather than in a sentence beside the call.
 
 Run: python3 scripts/hooks/test_amend_of_published_commit.py
 """
@@ -32,15 +33,24 @@ ALLOW = 0
 PUBLISHED = "Refusing `git commit --amend`: this commit is already published."
 UNREAD = "Refusing `git commit --amend`: git could not say whether this commit is published."
 
-GIT_IDENTITY = {
+MAIN = "main"
+
+# The machine's own default branch is forced to a name nothing here uses, so a `git init` whose
+# branch matters has to say so and cannot pass on a working machine by accident. Left to the
+# default, this fixture built a remote whose HEAD named a branch the seed never pushed and the
+# clone came out unborn: nine cases failed on a CI runner and none here, since git ships `master`
+# and this repository's machines are configured for `main`.
+GIT_ENVIRONMENT = {
     "GIT_AUTHOR_NAME": "hooks", "GIT_AUTHOR_EMAIL": "hooks@velvet.test",
     "GIT_COMMITTER_NAME": "hooks", "GIT_COMMITTER_EMAIL": "hooks@velvet.test",
+    "GIT_CONFIG_COUNT": "1",
+    "GIT_CONFIG_KEY_0": "init.defaultBranch", "GIT_CONFIG_VALUE_0": "velvet-unnamed-default",
 }
 
 
 def git(cwd, *args):
     environment = dict(os.environ)
-    environment.update(GIT_IDENTITY)
+    environment.update(GIT_ENVIRONMENT)
     finished = subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True,
                               env=environment, timeout=60)
     if finished.returncode != 0:
@@ -63,11 +73,11 @@ class GuardCase(unittest.TestCase):
         remote = self.root / "remote.git"
         seed = self.root / "seed"
         seed.mkdir()
-        git(self.root, "init", "-q", "--bare", "remote.git")
-        git(seed, "init", "-q", ".")
+        git(self.root, "init", "-q", "--bare", "-b", MAIN, "remote.git")
+        git(seed, "init", "-q", "-b", MAIN, ".")
         commit(seed, "one")
         git(seed, "remote", "add", "origin", str(remote))
-        git(seed, "push", "-q", "origin", "HEAD:refs/heads/main")
+        git(seed, "push", "-q", "origin", f"HEAD:refs/heads/{MAIN}")
         self.clone = self.root / "clone"
         git(self.root, "clone", "-q", str(remote), "clone")
 
@@ -114,6 +124,33 @@ class PublishedHeadTests(GuardCase):
         # Assert
         self.assertEqual(answer, (REFUSE, PUBLISHED))
 
+    def test_Given_AnAmendBehindAShortSigningFlag_When_ItIsPosed_Then_ItIsRefused(self):
+        # Arrange — `-S` takes a key id only attached, so it swallows nothing and `--amend` behind
+        # it is the amend. Read as value-taking, this is the spelling anyone with `commit.gpgsign`
+        # habits types, and it rewrote published history with no refusal.
+        # Act
+        answer = self.refused("git commit -S --amend")
+
+        # Assert
+        self.assertEqual(answer, (REFUSE, PUBLISHED))
+
+    def test_Given_AnAmendBehindALongSigningFlag_When_ItIsPosed_Then_ItIsRefused(self):
+        # Arrange — the long spelling walks a different branch of the reader from the short one.
+        # Act
+        answer = self.refused("git commit --gpg-sign --amend")
+
+        # Assert
+        self.assertEqual(answer, (REFUSE, PUBLISHED))
+
+    def test_Given_AnAmendBehindASigningFlagEndingAShortGroup_When_ItIsPosed_Then_ItIsRefused(self):
+        # Arrange — last in a short group is the position a value-taking flag reaches the next
+        # token from, so it is the one a wrong table swallows `--amend` at.
+        # Act
+        answer = self.refused("git commit -aS --amend")
+
+        # Assert
+        self.assertEqual(answer, (REFUSE, PUBLISHED))
+
     def test_Given_AnAmendInASecondSegment_When_ItIsPosed_Then_ItIsRefused(self):
         # Arrange — a guard reading only the first command of the line sees a directory change here.
         # Act
@@ -134,6 +171,53 @@ class PublishedHeadTests(GuardCase):
 
         # Assert
         self.assertEqual(("origin/main" in text, "could not say" in text), (True, False))
+
+    def test_Given_AnAmendNamingTheTreeWithGitDir_When_ItIsPosed_Then_ThatTreeIsWhatIsRead(self):
+        # Arrange — the same intent as `-C`, spelled the way a command reaching past its own cwd
+        # spells it. Both halves ride in the comparison for the reason the `-C` case gives.
+        outside = self.root / "outside"
+        outside.mkdir()
+
+        # Act
+        text = self.refusal(f"git --git-dir={self.clone}/.git commit --amend", cwd=outside)
+
+        # Assert
+        self.assertEqual(("origin/main" in text, "could not say" in text), (True, False))
+
+    def test_Given_AnAmendNamingTheTreeWithAGitDirAssignment_When_ItIsPosed_Then_ThatTreeIsRead(self):
+        # Arrange — an environment assignment ahead of the command, which the reader walks past to
+        # find the program.
+        outside = self.root / "outside"
+        outside.mkdir()
+
+        # Act
+        text = self.refusal(f"GIT_DIR={self.clone}/.git git commit --amend", cwd=outside)
+
+        # Assert
+        self.assertEqual(("origin/main" in text, "could not say" in text), (True, False))
+
+    def test_Given_AnAmendCarryingBothDashCAndGitDir_When_ItIsPosed_Then_DashCIsWhatDecides(self):
+        # Arrange — git resolves paths against `-C`, so a command carrying both is about that tree.
+        # The unpublished worktree is named by the one that must lose, so a reading that preferred
+        # the git directory would allow this.
+        worktree = self.root / "worktree"
+        git(self.clone, "worktree", "add", "-q", "-b", "side", str(worktree))
+        commit(worktree, "two")
+
+        # Act
+        code = self.verdict(f"git -C {worktree} --git-dir={self.clone}/.git commit --amend")
+
+        # Assert
+        self.assertEqual(code, ALLOW)
+
+    def test_Given_AnAmendBehindAnAttachedSigningFlag_When_ItIsPosed_Then_ItIsRefused(self):
+        # Arrange — `--gpg-sign=<key>` is the spelling that does take a value, and it takes it
+        # attached, so `--amend` behind it is still the amend.
+        # Act
+        answer = self.refused("git commit --gpg-sign=DEADBEEF --amend")
+
+        # Assert
+        self.assertEqual(answer, (REFUSE, PUBLISHED))
 
     def test_Given_AHeadAtTheRemoteTip_When_AnAmendIsRefused_Then_ItNamesTheRefThatReachesIt(self):
         # Arrange / Act
@@ -215,7 +299,7 @@ class UnpublishedHeadTests(GuardCase):
         # the refs the fetch brought in are what a reading over "is the branch behind" would take.
         seed = self.root / "seed"
         commit(seed, "upstream")
-        git(seed, "push", "-q", "origin", "HEAD:refs/heads/main")
+        git(seed, "push", "-q", "origin", f"HEAD:refs/heads/{MAIN}")
         commit(self.clone, "two")
         git(self.clone, "fetch", "-q", "origin")
 
@@ -394,6 +478,101 @@ class PredicateAgreementTests(GuardCase):
 
         # Assert
         self.assertEqual((porcelain, plumbing[0] != 0), (plumbing, True))
+
+
+class GitOptionGrammarTests(unittest.TestCase):
+    """`COMMIT_VALUE_FLAGS` held to what git does with the token after each flag.
+
+    Not about the guard: it reads the table. The table says which options swallow their neighbour,
+    which is git's to decide, and a sentence beside it asserting so goes stale the day git changes
+    its mind. This is where that fails instead.
+
+    An option is posed by putting `--amend` behind it and asking whether the commit was replaced or
+    a new one made. `-S` read as value-taking is what let `git commit -S --amend` through.
+    """
+
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp(prefix="velvet-grammar-"))
+        self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
+        git(self.root, "init", "-q", "-b", MAIN, ".")
+        commit(self.root, "one")
+        commit(self.root, "two")
+
+    def amends_behind(self, *flag):
+        """Whether git read `--amend` as the amend when it sits behind `flag`.
+
+        Something is always staged first, so a commit that did not happen is the flag's doing and
+        not an empty index.
+        """
+        before = git(self.root, "rev-list", "--count", "HEAD").strip()
+        self.edits = getattr(self, "edits", 0) + 1
+        (self.root / "two").write_text(f"edit {self.edits}", encoding="utf-8")
+        git(self.root, "add", "two")
+        finished = subprocess.run(
+            ["git", "commit", *flag, "--amend", "--no-edit", "--no-gpg-sign"],
+            cwd=self.root, capture_output=True, text=True, timeout=60,
+            env={**os.environ, **GIT_ENVIRONMENT})
+        after = git(self.root, "rev-list", "--count", "HEAD").strip()
+        return finished.returncode == 0 and after == before
+
+    # GREEN_ON_BASE(characterization): git reads `-S --amend` as an amend on either tree.
+    # The branch changes a table that reads git, never git, so this answers the same on the base —
+    # which is the point of it: what the branch got wrong was the reading, not the behaviour.
+    def test_Given_TheShortSigningFlag_When_AnAmendFollowsIt_Then_GitReadsTheAmend(self):
+        # Arrange / Act — swallowed as a key id, `--amend` would leave a third commit behind.
+        amended = self.amends_behind("-S")
+
+        # Assert
+        self.assertTrue(amended)
+
+    # GREEN_ON_BASE(characterization): the long spelling reads the same way on either tree.
+    # Same standing as the short one above.
+    def test_Given_TheLongSigningFlag_When_AnAmendFollowsIt_Then_GitReadsTheAmend(self):
+        # Arrange / Act
+        amended = self.amends_behind("--gpg-sign")
+
+        # Assert
+        self.assertTrue(amended)
+
+    # GREEN_ON_BASE(characterization): git takes `--amend` behind `-m` as the message on either tree.
+    # Same standing as the two above.
+    def test_Given_TheMessageFlag_When_AnAmendFollowsIt_Then_GitTakesItAsTheMessage(self):
+        # Arrange / Act — the converse, without which the case above would pass on a git that read
+        # no option at all as value-taking.
+        amended = self.amends_behind("-m")
+
+        # Assert
+        self.assertFalse(amended)
+
+    # GREEN_ON_BASE(characterization): every flag the table holds behaves this way on either tree.
+    # Same standing as the three above.
+    def test_Given_EveryFlagTheTableHolds_When_AnAmendFollowsIt_Then_GitDoesNotAmend(self):
+        # Arrange — spelled here rather than read from the table, so a member the table loses is
+        # still asked about. What each has to establish is only that `--amend` behind it is not the
+        # amend; whether git swallowed it or rejected the line is the same answer for the reader.
+        held = ["-m", "--message", "-F", "--file", "-c", "--reedit-message",
+                "-C", "--reuse-message", "--fixup", "--squash", "--author", "--date",
+                "-t", "--template", "--cleanup", "--trailer", "--pathspec-from-file"]
+
+        # Act
+        amended = sorted(flag for flag in held if self.amends_behind(flag))
+
+        # Assert — the count rides along, since an empty list of flags amends nothing either.
+        self.assertEqual((len(held), amended), (17, []))
+
+    # GREEN_ON_BASE(characterization): the attached-only flags amend on either tree.
+    # Same standing as the four above.
+    def test_Given_EveryFlagValuedOnlyWhenAttached_When_AnAmendFollowsIt_Then_GitAmends(self):
+        # Arrange — the flags that belong out of the table. `-u` was already out and is asked
+        # alongside `-S`, since it is the member that showed the distinction was one the table
+        # could express.
+        attached_only = ["-S", "--gpg-sign", "-u", "--untracked-files"]
+
+        # Act
+        swallowed = sorted(flag for flag in attached_only if not self.amends_behind(flag))
+
+        # Assert
+        self.assertEqual((len(attached_only), swallowed), (4, []))
 
 
 if __name__ == "__main__":

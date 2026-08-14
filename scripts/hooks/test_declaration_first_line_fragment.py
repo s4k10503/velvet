@@ -86,8 +86,9 @@ class FragmentTests(GuardCase):
         # Assert
         self.assertEqual(code, REFUSE)
 
-    def test_Given_AFirstLineEndingOnARelativiser_When_TheEditIsPosed_Then_ItIsRefused(self):
-        # Arrange / Act
+    def test_Given_AFirstLineEndingOnACommaAndARelativiser_When_TheEditIsPosed_Then_ItIsRefused(self):
+        # Arrange / Act — the comma is what makes this one: a relative clause is announced and then
+        # not written. Verbatim from the tree.
         code = self.writes("the divider a departing child already loses on the base, which")
 
         # Assert
@@ -96,13 +97,6 @@ class FragmentTests(GuardCase):
     def test_Given_AFirstLineEndingOnAComma_When_TheEditIsPosed_Then_ItIsRefused(self):
         # Arrange / Act
         code = self.writes("the base anchors a drained portal child on the reconcile root,")
-
-        # Assert
-        self.assertEqual(code, REFUSE)
-
-    def test_Given_AFirstLineEndingOnAnEmDash_When_TheEditIsPosed_Then_ItIsRefused(self):
-        # Arrange / Act
-        code = self.writes("the base reaches this outcome by never deferring at all —")
 
         # Assert
         self.assertEqual(code, REFUSE)
@@ -166,6 +160,29 @@ class StandingClaimTests(GuardCase):
         # Assert
         self.assertEqual(code, ALLOW)
 
+    def test_Given_AFirstLineEndingOnAnEmDash_When_TheEditIsPosed_Then_ItIsAllowed(self):
+        # Arrange / Act — verbatim from SuspenseBoundaryTests, and a whole claim: the dash follows
+        # a complete clause the way a semicolon does, and refusing it refused a good declaration.
+        code = self.writes("the base reaches this outcome by never deferring at all —")
+
+        # Assert
+        self.assertEqual(code, ALLOW)
+
+    def test_Given_AFirstLineEndingOnABareRelativiser_When_TheEditIsPosed_Then_ItIsAllowed(self):
+        # Arrange / Act — with no comma announcing a relative clause, a clause ends here.
+        code = self.writes("both orderings reach the same bound and it does not matter which")
+
+        # Assert
+        self.assertEqual(code, ALLOW)
+
+    def test_Given_AFirstLineEndingOnASubordinator_When_TheEditIsPosed_Then_ItIsAllowed(self):
+        # Arrange / Act — `because`, `if`, `while`, `since`, `when` and `than` are one class with
+        # `although` and `unless`, and taking half of it made the table unpredictable.
+        code = self.writes("the base already separates these two, and it reads the same because")
+
+        # Assert
+        self.assertEqual(code, ALLOW)
+
     def test_Given_AFirstLineEndingOnADemonstrative_When_TheEditIsPosed_Then_ItIsAllowed(self):
         # Arrange / Act
         code = self.writes("the keyed-reorder order this refactor must not change that")
@@ -196,6 +213,80 @@ class StandingClaimTests(GuardCase):
         self.assertEqual(code, ALLOW)
 
 
+class TableTests(GuardCase):
+    """Every member of the decision table posed a case, and the near misses posed one too.
+
+    Deleting a member is what a refuse hook cannot afford to take in silence, and until these ran,
+    seventeen of the twenty-one rules could be removed with the suite still green. The probes are
+    spelled here rather than read from the guard: a list taken from the table itself passes whatever
+    the table holds, so it can never notice a member leaving it.
+    """
+
+    # A frame that ends on whatever it is given and trips nothing else on the way.
+    FRAME = "the base already separates these two on the reading given {}"
+
+    def test_Given_EveryWordTheTableRefuses_When_AFirstLineEndsOnOne_Then_EachIsRefused(self):
+        # Arrange
+        dangling = ("a", "an", "the", "and", "or", "nor",
+                    "its", "their", "our", "your", "my", "every")
+
+        # Act
+        allowed = sorted(word for word in dangling
+                         if self.writes(self.FRAME.format(word)) != REFUSE)
+
+        # Assert — the count rides along, since an empty set of words leaves nothing allowed either.
+        self.assertEqual((len(dangling), allowed), (12, []))
+
+    def test_Given_EveryWordTheTableLeavesOut_When_AFirstLineEndsOnOne_Then_EachIsAllowed(self):
+        # Arrange — one class away from the members above, and every one of them ends a clause in
+        # this repository's prose. Half a class in the table is what made it unpredictable, so the
+        # half that is out is pinned as well as the half that is in.
+        standing = ("for", "with", "that", "this", "so", "is",
+                    "because", "if", "while", "since", "when", "than", "which", "whose")
+
+        # Act
+        refused = sorted(word for word in standing
+                         if self.writes(self.FRAME.format(word)) != ALLOW)
+
+        # Assert
+        self.assertEqual((len(standing), refused), (14, []))
+
+    def test_Given_EveryRelativiserBehindAComma_When_AFirstLineEndsOnOne_Then_EachIsRefused(self):
+        # Arrange
+        relativisers = ("which", "who", "whom", "whose", "where", "when")
+
+        # Act
+        allowed = sorted(word for word in relativisers
+                         if self.writes(f"the base already separates these two, {word}") != REFUSE)
+
+        # Assert
+        self.assertEqual((len(relativisers), allowed), (6, []))
+
+    def test_Given_EveryDelimiterTheTableBalances_When_OneIsLeftOpen_Then_EachIsRefused(self):
+        # Arrange — the bracket and the quotation mark had no case of their own, so the rules for
+        # them could be dropped with nothing going red.
+        openers = ("(", "[", "`", '"')
+
+        # Act
+        allowed = sorted(opener for opener in openers
+                         if self.writes(self.FRAME.format(f"{opener}portal scope")) != REFUSE)
+
+        # Assert
+        self.assertEqual((len(openers), allowed), (4, []))
+
+    def test_Given_EveryMarkThatFollowsAWholeClause_When_AFirstLineEndsOnOne_Then_EachIsAllowed(self):
+        # Arrange — the three that were refused on the reading that only a comma leaves a sentence
+        # open, plus the two nothing ever questioned.
+        marks = (".", ";", ":", "—", "–")
+
+        # Act
+        refused = sorted(mark for mark in marks
+                         if self.writes(f"the base already separates these two{mark}") != ALLOW)
+
+        # Assert
+        self.assertEqual((len(marks), refused), (5, []))
+
+
 class ScopeTests(GuardCase):
     def test_Given_ADeclarationTheFileAlreadyCarries_When_AnUnrelatedEditIsPosed_Then_ItIsAllowed(self):
         # Arrange — the tree holds declarations that break off, and a guard reading the whole file
@@ -222,6 +313,55 @@ class ScopeTests(GuardCase):
         # Act
         code, _ = self.pose({"file_path": str(self.root / "New.cs"), "content": content},
                             tool="Write")
+
+        # Assert
+        self.assertEqual(code, REFUSE)
+
+    def test_Given_AMarkerInsideACSharpVerbatimString_When_AWriteIsPosed_Then_ItIsAllowed(self):
+        # Arrange — the C# half of the shape below: a snippet in a verbatim string, where the marker
+        # sits behind the comment opener it carries and a reading over the line's prefix takes it
+        # for a declaration. Refused, this made a file with nothing wrong in it unwritable, and
+        # there is no in-band route for a new one.
+        content = ("namespace Velvet.Tests\n{\n"
+                   "    internal sealed class T\n    {\n"
+                   "        private const string Source = @\"\n"
+                   f"            // {GREEN}: the base already separates these two and\n"
+                   "            // the branch does not change that.\n"
+                   "\";\n    }\n}\n")
+
+        # Act
+        code, _ = self.pose({"file_path": str(self.root / "Probe.cs"), "content": content},
+                            tool="Write")
+
+        # Assert
+        self.assertEqual(code, ALLOW)
+
+    def test_Given_ABrokenDeclarationInACSharpComment_When_AWriteIsPosed_Then_ItIsRefused(self):
+        # Arrange — the same file kind at the position a declaration is read from, so the case
+        # above cannot pass by the C# lane having stopped reading anything at all.
+        content = ("namespace Velvet.Tests\n{\n"
+                   f"    // {GREEN}: the base already separates these two and\n"
+                   + CONTINUATION + "}\n")
+
+        # Act
+        code, _ = self.pose({"file_path": str(self.root / "Probe.cs"), "content": content},
+                            tool="Write")
+
+        # Assert
+        self.assertEqual(code, REFUSE)
+
+    def test_Given_ABrokenDeclarationTheFileAlreadyCarries_When_ASecondCopyIsAdded_Then_ItIsRefused(self):
+        # Arrange — copying a sibling's declaration is how this repository writes them, and the
+        # tree holds verbatim-duplicate pairs already. Read as a set of reasons, the copy is text
+        # the file carries and passes; reworded by one word it would not.
+        carried = f"    // {GREEN}: the base already separates these two and\n" + CONTINUATION
+        self.file.write_text("namespace Velvet.Tests\n{\n" + carried
+                             + "    [Test] void X() { }\n}\n", encoding="utf-8")
+
+        # Act
+        code, _ = self.pose({"file_path": str(self.file),
+                             "old_string": "    [Test] void X() { }\n",
+                             "new_string": carried + "    [Test] void Y() { }\n"})
 
         # Assert
         self.assertEqual(code, REFUSE)

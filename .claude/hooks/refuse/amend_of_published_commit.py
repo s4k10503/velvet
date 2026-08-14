@@ -34,10 +34,10 @@ HOOK_SCOPE = "session"
 
 AMEND = "--amend"
 
-# `-C` names the tree the amend acts on, and it is the one operand of this command the shell
-# rewrites. What refuses it is the unreadable answer below rather than a check of its own, which is
-# a spelling `test_amend_of_published_commit.py` poses rather than a claim about what git does with
-# a literal.
+# `-C`, `--git-dir` and a `GIT_DIR=` assignment each name the tree the amend acts on, and they are
+# the operands of it this guard reads. What refuses one the shell has yet to rewrite is the
+# unreadable answer below rather than a check of its own, which is a spelling
+# `test_amend_of_published_commit.py` poses rather than a claim about what git does with a literal.
 UNEXPANDED_POLICY = "refuse"
 UNEXPANDED_PROBE = 'git -C $WORKTREE commit --amend'
 
@@ -52,15 +52,18 @@ UNREADABLE = object()
 
 
 def amends(command):
-    """The `-C` directory of each `git commit --amend` in the command, in the order they run.
+    """The directory of each `git commit --amend` in the command, in the order they run.
 
     `--amend` is read as a flag rather than found in the text, so a message that spells it
-    (`git commit -m --amend`) is the message and not an amend. Which options take a value is git's
-    grammar and lives in `lib/shell_commands.py`; which of them this guard cares about is the
-    single flag above.
+    (`git commit -m --amend`) is the message and not an amend. Which options swallow the token
+    after them lives in `lib/shell_commands.py`; which of them this guard cares about is the single
+    flag above.
+
+    A git directory is taken alongside `-C` because everything done with the answer here is to hand
+    it back to git.
     """
     found = []
-    for directory, _, operands in git_invocations(command, {"commit"}):
+    for directory, _, operands in git_invocations(command, {"commit"}, git_directory=True):
         index = 0
         amending = False
         while index < len(operands):
@@ -179,8 +182,9 @@ def main():
         "A review round's findings cite the SHA they were taken on. Amending replaces it, so the "
         "round and the layer that answered it stop being separable, and the branch needs a "
         "force-push to land.\n\n"
-        "Commit the change as its own layer on top. Amending an unpushed commit is not refused, so "
-        "if this one is genuinely unpublished, say what git is reporting and stop.\n")
+        "Where this is a review round being answered, the answer is a commit of its own on top. "
+        "Amending an unpushed commit is not refused, so if this one is genuinely unpublished, say "
+        "what git is reporting and stop.\n")
     return 2
 
 

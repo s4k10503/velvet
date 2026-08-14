@@ -22,17 +22,28 @@ LEADING_WORDS = {"then", "do", "else", "elif", "!", "time", "command", "builtin"
 ENV_ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 REDIRECTION = re.compile(r"^\d*(?:>>|>&|<&|>|<)")
 
-# git's own options, before the subcommand. Only -C is returned: it names the repository the
-# command acts on, and evaluating the cwd instead answers about a different tree.
+# git's own options, before the subcommand. -C is returned unconditionally: it names the repository
+# the command acts on, and evaluating the cwd instead answers about a different tree.
 GLOBAL_VALUE_FLAGS = {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--config-env"}
 
-# `git commit` options that take a value. Which flags a guard cares about stays its own, per the
-# note above; which options swallow the token after them is git's grammar, and two guards reading
-# it two ways would disagree about whether `git commit -m --amend` names a message or an amend.
+# `--git-dir` and a `GIT_DIR=` assignment name that tree too, but as a git directory rather than a
+# working tree, so a caller that resolves paths under what it is handed cannot take one. Returning
+# it is therefore the caller's to ask for, and only a caller that does nothing with the answer but
+# hand it back to git may.
+GIT_DIRECTORY_FLAG = "--git-dir"
+GIT_DIRECTORY_VARIABLE = "GIT_DIR"
+
+# `git commit` options that swallow the token after them. Which flags a guard cares about stays its
+# own, per the note above; this is the one reading they share, and two guards taking it two ways
+# would disagree about whether `git commit -m --amend` names a message or an amend.
+#
+# Membership is not "takes a value". `-S`/`--gpg-sign` and `-u`/`--untracked-files` take one only
+# when it is attached, so they consume nothing and belong out — `GitOptionGrammarTests` in
+# `scripts/hooks/test_amend_of_published_commit.py` is what fails if git stops reading them so.
 COMMIT_VALUE_FLAGS = {
     "-m", "--message", "-F", "--file", "-c", "--reedit-message", "-C", "--reuse-message",
     "--fixup", "--squash", "--author", "--date", "-t", "--template", "--cleanup",
-    "-S", "--gpg-sign", "--trailer", "--pathspec-from-file",
+    "--trailer", "--pathspec-from-file",
 }
 
 
@@ -154,12 +165,21 @@ def without_redirections(tokens):
     return kept
 
 
-def git_invocation(tokens):
-    """(-C directory, subcommand, operands) when the segment runs git, else None."""
+def git_invocation(tokens, git_directory=False):
+    """(directory, subcommand, operands) when the segment runs git, else None.
+
+    The directory is the `-C` operand. `git_directory` adds the two spellings that name a git
+    directory instead, on the terms above; where a command carries both, `-C` wins, since that is
+    the one git resolves paths against.
+    """
     index = 0
+    named = None
     while index < len(tokens) and (
         ENV_ASSIGNMENT.match(tokens[index]) or tokens[index] in LEADING_WORDS
     ):
+        variable, _, value = tokens[index].partition("=")
+        if git_directory and variable == GIT_DIRECTORY_VARIABLE:
+            named = value
         index += 1
     if index >= len(tokens) or os.path.basename(tokens[index]) != "git":
         return None
@@ -177,19 +197,21 @@ def git_invocation(tokens):
                 index += 2
             if flag == "-C":
                 directory = value
+            elif git_directory and flag == GIT_DIRECTORY_FLAG:
+                named = value
             continue
         index += 1
 
     if index >= len(tokens):
         return None
-    return directory, tokens[index], tokens[index + 1:]
+    return directory or named, tokens[index], tokens[index + 1:]
 
 
-def git_invocations(command, subcommands):
-    """Every (-C directory, subcommand, operands) in the command naming one of `subcommands`."""
+def git_invocations(command, subcommands, git_directory=False):
+    """Every (directory, subcommand, operands) in the command naming one of `subcommands`."""
     found = []
     for segment in command_segments(command):
-        invocation = git_invocation(without_redirections(tokens_of(segment)))
+        invocation = git_invocation(without_redirections(tokens_of(segment)), git_directory)
         if invocation and invocation[1] in subcommands:
             found.append(invocation)
     return found

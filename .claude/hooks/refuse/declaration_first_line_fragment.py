@@ -1,17 +1,23 @@
 #!/usr/bin/env python3
 """Refuse a GREEN_ON_BASE or MUTANT_SURVIVES declaration whose first line breaks off mid-clause.
 
-Only the first line of a declaration is a claim on its own, and it is the line the readers' four-word
-floor is measured on — which holds whether or not they fold the lines under it into the reason. So
-where the sentence runs on past it, the wrap position is part of what the declaration says: a
-fifteen-word reason wrapping early is reported as under four words, and the remedy that reading
-prescribes is to write more.
+Only the first line of a declaration is a claim on its own, and it is the line the readers measure
+their four-word floor on — which holds whether or not they fold the lines under it into the reason.
+So where the sentence runs on past it, the wrap position is part of what the declaration says.
 
-Only what can be shown is refused: a first line that says nothing at all, one ending on a word no
-English clause ends on, one ending on punctuation that cannot close a clause, and one leaving a
-delimiter open. A first line that reads as a whole claim is allowed however the rest of the reason
-continues, because judging that would mean judging prose, and a guard that refuses good declarations
-is turned off and takes the rest of the class with it.
+The floor is not what this adds. A first line under four words is refused by the readers already,
+by name, and saying so twice would buy nothing. What gets through them is a line long enough to
+clear the floor and still not a claim, and that is the whole of what is refused here.
+
+Only what can be shown is refused: a first line ending on a word that must be followed by more of
+its own clause, one ending on a comma or on a comma and a relativiser, and one leaving a delimiter
+open. A first line that reads as a whole claim is allowed however the rest of the reason continues,
+because judging that would mean judging prose, and a guard that refuses good declarations is turned
+off and takes the rest of the class with it.
+
+The table below is small on purpose and every member of it is posed a case: a rule nothing exercises
+is a way to refuse good work that nobody has measured, and deleting one has to turn the suite red or
+the guard can be hollowed out in silence.
 
 Only a declaration the edit introduces is judged, so the ones already in the tree do not make their
 files unwritable — the same in-band route `changelog_into_closed_version.py` keeps open.
@@ -19,12 +25,17 @@ files unwritable — the same in-band route `changelog_into_closed_version.py` k
 Run: python3 scripts/hooks/test_declaration_first_line_fragment.py
 """
 
+import bisect
 import io
 import json
 import re
 import sys
 import tokenize
+from collections import Counter
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts" / "test_quality"))
+import mutation_check
 
 HOOK_TOOLS = {"Edit", "Write"}
 
@@ -39,22 +50,30 @@ READ_IN = {".cs", ".py"}
 
 COMMENT = re.compile(r"^\s*(//|#)")
 
-# Words that cannot close an English clause under any reading, and so cannot end a claim. A
-# preposition is not one of them: it strands at a clause end all the time, and this repository
-# writes "the case the canary exists for". Nor is a demonstrative ("must not change that"), a
-# copula ("what it is") or "so" ("it did so") -- each of those ends a clause somewhere, and a
-# refusal has to be about a line that cannot be one.
+# Words that have to be followed by more of their own clause: an article, a coordinator, and a
+# determiner with no pronoun spelling of its own. A preposition is not one of them -- it strands at
+# a clause end all the time, and this repository writes "the case the canary exists for". Nor is a
+# demonstrative ("must not change that"), a copula ("what it is") or "so" ("it did so").
+#
+# Subordinators are all out rather than some in: `because`, `if`, `while`, `since`, `when` and
+# `than` read no differently from `although` and `unless`, and a table taking half a class is a
+# table nobody can predict.
 DANGLING = {
     "a", "an", "the",
     "and", "or", "nor",
-    "which", "whose",
     "its", "their", "our", "your", "my",
-    "every", "although", "unless",
+    "every",
 }
 
-# `;` is absent deliberately: it closes a clause and joins it to the next, so a first line ending on
-# one is a claim that stands. The rest leave the sentence open.
-UNCLOSED = (",", ":", "—", "–", "-")
+# A relativiser is refused only behind a comma, which is the spelling that cannot close a sentence:
+# bare, these end clauses readily enough ("it does not matter which"), and the tree's own break is
+# `... on the base, which`.
+RELATIVISERS = {"which", "who", "whom", "whose", "where", "when"}
+
+# A comma is the mark that says the clause is unfinished. `:`, `—` and `–` were here too, on the
+# reading that only `;` closes a clause; that refused `... by never deferring at all —`, which is a
+# whole claim, and no declaration in this tree ends on a colon at all.
+UNCLOSED = (",",)
 
 PAIRS = (("(", ")"), ("[", "]"))
 # `'` is not paired here, since this repository's prose spells possessives with it.
@@ -62,9 +81,11 @@ BALANCED = (("`", "backtick"), ('"', "quotation mark"))
 
 
 def fragment(reason):
-    """Why this first line cannot be read as a claim on its own, or None when it can be."""
-    if not reason.strip():
-        return "is empty"
+    """Why this first line cannot be read as a claim on its own, or None when it can be.
+
+    An empty reason answers None: the readers' four-word floor already refuses it, by name, and a
+    second refusal of the same thing is one more rule to keep true for nothing.
+    """
     for opener, closer in PAIRS:
         if reason.count(opener) != reason.count(closer):
             return f"leaves {opener!r} unmatched"
@@ -75,19 +96,27 @@ def fragment(reason):
     for mark in UNCLOSED:
         if stripped.endswith(mark):
             return f"ends on {mark!r}, so the sentence is unfinished"
-    last = stripped.split()[-1].lower()
+    words = stripped.split()
+    if not words:
+        return None
+    last = words[-1].lower()
     if last in DANGLING:
         return f"ends on {last!r}, which no clause ends on"
+    if last in RELATIVISERS and len(words) > 1 and words[-2].endswith(","):
+        return f"ends on ', {last}', which opens a clause that is not there"
     return None
 
 
 def comment_lines(text, suffix):
     """The line numbers a marker on them would be a declaration rather than fixture text.
 
-    Python is tokenized, because `scripts/test_quality/test_*.py` holds C# snippets carrying these
-    markers inside string literals and a prefix test reads those as declarations. A file that does
-    not tokenize is left to the prefix test rather than dropped: standing down there would make a
-    syntax error a way through.
+    Neither lane reads the raw line, because both hold snippets of the other's language inside
+    string literals and a reading over the line's prefix takes those for declarations. Python is
+    tokenized; C# goes through the mask `mutation_check.py` owns, which is where the question of
+    what the compiler sees as code is answered for this repository.
+
+    A Python file that does not tokenize is left to the prefix test rather than dropped: standing
+    down there would make a syntax error a way through.
     """
     if suffix == ".py":
         try:
@@ -95,8 +124,12 @@ def comment_lines(text, suffix):
                     tokenize.generate_tokens(io.StringIO(text).readline)
                     if token.type == tokenize.COMMENT}
         except (tokenize.TokenError, IndentationError, SyntaxError, ValueError):
-            pass
-    return {number for number, line in enumerate(text.splitlines(), 1) if COMMENT.match(line)}
+            return {number for number, line in enumerate(text.splitlines(), 1)
+                    if COMMENT.match(line)}
+    starts = [start for start, _ in mutation_check.line_spans(text)]
+    return {bisect.bisect_right(starts, start)
+            for start, _, kind in mutation_check.mask_spans(text)
+            if kind == mutation_check.LINE_COMMENT}
 
 
 def declarations(text, suffix):
@@ -113,13 +146,19 @@ def declarations(text, suffix):
 def introduced(before, after, suffix):
     """Every declaration `after` carries that `before` does not, with what is wrong with it.
 
-    Compared by the text of the reason rather than by line, so moving a declaration down a file is
-    not a new one and rewording it is.
+    Counted rather than compared as a set, and by the text of the reason rather than by line. Moving
+    a declaration down a file is then not a new one and rewording it is -- and so is copying a
+    sibling's verbatim, which is how a broken one spreads: this tree already holds duplicate pairs,
+    so a reading that asked only whether the text occurs before would let every later copy through.
     """
-    written = {reason for _, _, reason in declarations(before, suffix)}
-    return [(number, marker, reason, broken)
-            for number, marker, reason in declarations(after, suffix)
-            if reason not in written and (broken := fragment(reason))]
+    written = Counter(reason for _, _, reason in declarations(before, suffix))
+    seen = Counter()
+    found = []
+    for number, marker, reason in declarations(after, suffix):
+        seen[reason] += 1
+        if seen[reason] > written[reason] and (broken := fragment(reason)):
+            found.append((number, marker, reason, broken))
+    return found
 
 
 # The verdict reads a tool input, never a shell word, so no operand of this guard can arrive
@@ -177,9 +216,8 @@ def main():
     sys.stderr.write(
         "Refusing this edit: a declaration's first line breaks off before it says anything.\n\n"
         f"{lines}\n\n"
-        "The four-word floor is measured on the first line, so a long reason that wraps early is "
-        "reported as under four words and the remedy that prescribes — write more — is the wrong "
-        "one.\n\n"
+        "The readers take the first line as the whole claim, so a reason that wraps mid-clause is "
+        "read as saying what stands before the wrap.\n\n"
         "Put a claim that stands on the marker line and continue underneath it. Nothing is lost by "
         "moving the wrap.\n")
     return 2

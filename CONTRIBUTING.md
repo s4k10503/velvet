@@ -289,11 +289,12 @@ it. A declaration answers for the change written under it, and it is read three 
 what it describes: one over a case that turns out red on the base fails the check, one whose category or
 reason the script refuses fails it, and one the branch did not itself write is a declaration for a change
 the base already carries and does not cover this one — restate it. Only the first line of the reason
-is a claim on its own, and it is the line the four-word floor is measured on, so a long reason that
-wraps early is reported as under four words and the remedy that reading prescribes is the wrong one:
-`.claude/hooks/refuse/declaration_first_line_fragment.py` refuses one whose first line breaks off on
-a word no clause ends on, on punctuation leaving the sentence open, or with a delimiter still open.
-The base tree is a checkout the
+is a claim on its own, and it is the line these readings are taken on, so a reason long enough to
+clear the four-word floor and still wrapped mid-clause is read as saying whatever stands before the
+wrap: `.claude/hooks/refuse/declaration_first_line_fragment.py` refuses one whose first line breaks
+off on a word that has to be followed by more of its own clause, on a comma, or with a delimiter
+still open. A first line that reads as a whole claim is left alone however the reason continues
+under it. The base tree is a checkout the
 machine has never imported, and that import is most of what a base run costs; `--warm-library` copies an
 existing `Library` into it, sharing blocks where the filesystem will.
 
