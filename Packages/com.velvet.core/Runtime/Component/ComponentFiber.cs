@@ -406,17 +406,32 @@ namespace Velvet
                 }
                 // The component that reads isPending renders from its own lanes, and this drain renders this
                 // fiber's tree — the same fiber only where the callback wrote its own component's state.
-                // Anywhere else nothing is left to take the indicator off the screen, so the clear asks for
-                // that render itself. Where this drain does reach the declaring fiber, its render subsumes
-                // it and the lane asked for here retires unrendered — see FiberRenderer.SettleSubsumedFiber.
-                var declaring = slot.DeclaringFiber;
-                if (ReferenceEquals(declaring, this) || declaring is not { IsMounted: true, IsDisposed: false })
+                if (ReferenceEquals(slot.DeclaringFiber, this))
                 {
                     continue;
                 }
-                FiberWorkLoop.ScheduleRerender(declaring, FiberUpdatePriority.Normal);
+                // Anywhere else nothing is left to take the indicator off the screen. Where this drain does
+                // reach the declaring fiber, its render subsumes the lane requested here and it retires
+                // unrendered — see FiberRenderer.SettleSubsumedFiber.
+                RequestRenderForClearedPending(slot);
             }
             EnrolledTransitionSlots.Clear();
+        }
+
+        /// <summary>
+        /// Asks the component that declared <paramref name="slot"/> for the render that observes its now-false
+        /// <c>isPending</c>. Nothing renders a component because its flag moved, so a clear reached from a path
+        /// that renders nobody — a drain of some other component's tree, an async action's completion — leaves
+        /// the indicator on screen without this.
+        /// </summary>
+        internal static void RequestRenderForClearedPending(HookTransitionSlot slot)
+        {
+            var declaring = slot.DeclaringFiber;
+            if (declaring is not { IsMounted: true, IsDisposed: false })
+            {
+                return;
+            }
+            FiberWorkLoop.ScheduleRerender(declaring, FiberUpdatePriority.Normal);
         }
 
         /// <summary>

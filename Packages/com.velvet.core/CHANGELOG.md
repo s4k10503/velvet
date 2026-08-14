@@ -100,20 +100,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   removal, not an edge case. A removed element is either discarded with its subtree or scrubbed on its
   way into the element pool, so what this changes is the inline state of an element an application has
   kept a reference to and re-parented itself.
-- `startTransition` defers the updates its callback schedules on other components' state, not only the
-  calling component's own. A child deferring an expensive list update through a setter it received as
-  a prop — one of the canonical React uses — had that update classified against the component that
-  owns the state, which was in no transition: it took the Normal lane, or the Urgent lane inside a
-  click, and so drained on the immediate tier and ran to completion, instead of on the delayed,
-  preemptible lane the call asked for. The same held for a `Store` write made inside the callback. The
-  flag is now ambient for the callback's synchronous run, as React's is.
-  `isPending` follows those updates wherever they landed: it stays lit until every component the
-  callback wrote to has committed its share, and the declaring component re-renders on the commit that
+- `startTransition` defers the updates its callback schedules on other components' state, not only
+  the calling component's own. A child deferring an expensive list update through a setter it
+  received as a prop — one of the canonical React uses — had that update classified against the
+  component that owns the state, which was in no transition: it took the Normal lane, or the Urgent
+  lane inside a click, and so drained on the immediate tier and ran to completion, instead of on the
+  delayed, preemptible lane the call asked for. The same held for a `Store` write made inside the
+  callback. The flag is now ambient for the callback's synchronous run, as React's is. `isPending`
+  follows those updates wherever they landed: it stays lit until every component the callback
+  scheduled an update on has committed it, and the declaring component re-renders on the commit that
   finishes them, so an indicator it renders comes down there. What the flag does not do is force a
   render of its own when the transition *starts* — nothing renders purely because `isPending` went
   true, in this case or in the local-state one, so a component that shows a pending branch needs a
-  render from the same interaction (the urgent update a click also makes, or an ancestor's) to observe
-  it.
+  render from the same interaction (the urgent update a click also makes, or an ancestor's) to
+  observe it.
+- An `async` `startTransition` action takes its own pending indicator down when it finishes. Its
+  `isPending` correctly outlasts the commit of whatever the callback queued before the first `await`
+  — the action is still running — but the clear at the far end scheduled nothing, so the flag went
+  false while the component carried on rendering its pending branch until some unrelated interaction
+  re-rendered it. An action that writes before its `await` and then outlasts the transition tier's
+  100 ms delay is where a user meets it, since that commit is the render that puts the indicator up.
+  The completion now asks the declaring component for the render that observes the cleared flag: one
+  render, or none of its own where that component was already being re-rendered.
 - Two `UseTransition` slots with transitions open at once no longer credit each other's writes. One
   slot's update was attributed to every slot on that component that still had a transition open, so a
   slot whose own callback had queued nothing kept `isPending` lit until the other's work committed —

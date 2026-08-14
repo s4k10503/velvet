@@ -40,9 +40,7 @@ namespace Velvet
         // missed.
         // Nothing re-opens the scope for an async action's continuation: inferring one from the fiber's
         // in-flight transitions instead gave the Transition lane to unrelated writes in that window.
-        // Unsynchronised, so it holds only while one caller pushes and pops at a time: a pop taking an entry
-        // some other caller pushed would leave that scope open for good, and every later update reaching the
-        // classification below would take the Transition lane, process-wide.
+        // Unsynchronised, so it holds only while one caller pushes and pops at a time.
         private static readonly List<HookTransitionSlot> OpenTransitionScopes = new();
 
         // UseDeferredValue has to tell the deferred commit from an ordinary render it must keep withholding
@@ -647,7 +645,15 @@ namespace Velvet
                     // Same slot-scoped exit as the sync overload.
                     if (fiber.IsDisposed || !slot.HasQueuedWork)
                     {
+                        var wasPending = slot.IsPending;
                         slot.IsPending = false;
+                        // The sync overload needs no render here: its flag rises and falls inside one
+                        // synchronous call, so no render ever observed it true. This one was true across
+                        // every await, and a task continuation renders nothing on its own.
+                        if (wasPending)
+                        {
+                            ComponentFiber.RequestRenderForClearedPending(slot);
+                        }
                     }
                 }
             }

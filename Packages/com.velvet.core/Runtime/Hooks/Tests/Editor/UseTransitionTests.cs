@@ -16,17 +16,20 @@ namespace Velvet.Tests
     /// <item>Setting a state to an equal value inside a transition schedules no re-render.</item>
     /// <item>A Normal-priority update may interrupt a pending transition, but <c>isPending</c> stays true while the
     /// transition lane remains queued and returns to false only after a subsequent flush drains that lane.</item>
-    /// <item>An async <c>startTransition</c> keeps <c>isPending</c> true across awaits until the task completes.
-    /// Its post-await updates fall outside the scope its callback opened: they take the Normal lane, or the
-    /// priority of whatever scope they do land in — a discrete handler's, or a further <c>startTransition</c>
-    /// call's. An update from elsewhere that lands while the action awaits keeps its own priority.</item>
+    /// <item>An async <c>startTransition</c> keeps <c>isPending</c> true across awaits until the task completes,
+    /// and its completion asks the declaring component for the render that observes the cleared flag — the
+    /// work it queued having already committed is not what finishes it. Its post-await updates fall outside
+    /// the scope its callback opened: they take the Normal lane, or the priority of whatever scope they do
+    /// land in — a discrete handler's, or a further <c>startTransition</c> call's. An update from elsewhere
+    /// that lands while the action awaits keeps its own priority.</item>
     /// <item>A nested <c>startTransition</c> joins the outer transition: it applies its updates without starting a
     /// new transition and without throwing; a callback leaving by an exception still closes its scope.</item>
     /// <item>A transition's callback covers the updates it schedules on other fibers too, so a setter a component
     /// received as a prop is deferred by the transition that wraps the call. <c>isPending</c> then stays lit
     /// until those other fibers commit, and the declaring component re-renders on the commit that finishes
     /// them — including where nothing else would have re-rendered it, as for a write to a store another
-    /// component reads.</item>
+    /// component reads. For an async callback that commit is not the end of the transition, and the render
+    /// falls to whichever of the two lands last.</item>
     /// <item>A slot the unmount of its own component released mid-callback records no further work.</item>
     /// <item>Each <c>UseTransition</c> slot tracks its own pending flag independently of other slots in the same
     /// component, including a slot started while another slot's async transition is still awaiting.</item>
@@ -360,6 +363,33 @@ namespace Velvet.Tests
                 "An update outside the transition's callback keeps its own priority while that transition awaits");
         }
 
+        [Test]
+        public void Given_AnAsyncTransitionWhoseWorkAlreadyCommitted_When_ItsTaskCompletes_Then_ADrainRendersTheComponentNotPending()
+        {
+            // Arrange — the write lands before the await and the delayed tier commits it there, which is the
+            // ordinary shape for any load outlasting that tier's delay. That commit renders the component with
+            // the flag still lit, so the completion is the only thing left that can take it down.
+            using var mounted = V.Mount(_root, V.Component(TransitionRender, key: "transition"));
+            var gate = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
+            Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () =>
+            {
+                s_transitionSetValue.Invoke(1);
+                await gate.Task;
+            };
+            s_transitionStarter.Invoke(asyncUpdates);
+            mounted.GetSchedulerForTest().DrainDelayedForTest();
+            var pendingAtTheCommit = s_transitionLastIsPending;
+
+            // Act — the completing task is the whole interaction; nothing else touches the component
+            gate.TrySetResult();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert — the commit render is folded in, since a component that never rendered pending reports
+            // false for a reason the case is not about, and a precondition would report that as inconclusive
+            Assert.That((pendingAtTheCommit, s_transitionLastIsPending), Is.EqualTo((true, false)),
+                "An async action's completion asks for the render that observes its cleared flag");
+        }
+
         // GREEN_ON_BASE(characterization): an async action's isPending clears on completion either way; what
         // this branch changed is how many lanes it leaves behind, so the case gained a second flush.
         [Test]
@@ -619,6 +649,93 @@ namespace Velvet.Tests
             // Assert — the difference, since the mount and the pending render both land before the act
             Assert.That(s_propSetterChildRenderCount - rendersBeforeTheCommit, Is.EqualTo(1),
                 "The render the settle owes is the one the commit already makes, not a pass of its own");
+        }
+
+        [Test]
+        public void Given_AnAsyncTransitionOnTheParentsStateThatAlreadyCommitted_When_ItsTaskCompletes_Then_TheChildsIndicatorComesDown()
+        {
+            // Arrange — the child's action writes the parent's state before its await, so the delayed tier
+            // commits that write while the action is still in flight and the child stays lit through it
+            using var mounted = V.Mount(_root, V.Component(PropSetterParentRender, key: "prop-setter-parent"));
+            var gate = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
+            Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () =>
+            {
+                s_propSetterChildSetCount.Invoke(1);
+                await gate.Task;
+            };
+            s_propSetterChildStart.Invoke(asyncUpdates);
+            mounted.GetSchedulerForTest().DrainDelayedForTest();
+            var indicatorAfterThatCommit = _root.Q<Label>("prop-setter-pending").text;
+
+            // Act
+            gate.TrySetResult();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert — the still-lit indicator is folded in, since one that had already come down at the
+            // parent's commit reads "idle" here whatever the completion does
+            Assert.That(
+                (indicatorAfterThatCommit, _root.Q<Label>("prop-setter-pending").text),
+                Is.EqualTo(("pending", "idle")),
+                "The completion takes the indicator down on the component that declared the transition");
+        }
+
+        [Test]
+        public void Given_AnAsyncTransitionOnTheParentsStateThatAlreadyCommitted_When_ItsTaskCompletes_Then_TheChildRendersOnceForIt()
+        {
+            // Arrange — as above: the only render this completion is owed is the one that observes the
+            // cleared flag, and no drain is left to subsume it into
+            using var mounted = V.Mount(_root, V.Component(PropSetterParentRender, key: "prop-setter-parent"));
+            var gate = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
+            Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () =>
+            {
+                s_propSetterChildSetCount.Invoke(1);
+                await gate.Task;
+            };
+            s_propSetterChildStart.Invoke(asyncUpdates);
+            mounted.GetSchedulerForTest().DrainDelayedForTest();
+            var rendersBeforeTheCompletion = s_propSetterChildRenderCount;
+
+            // Act
+            gate.TrySetResult();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert — the difference, since the mount and the parent's commit both land before the act
+            Assert.That(s_propSetterChildRenderCount - rendersBeforeTheCompletion, Is.EqualTo(1),
+                "The completion costs one render, not a pass per component the action enrolled");
+        }
+
+        // GREEN_ON_BASE(characterization): the post-await write re-renders the parent either way, and the
+        // parent's render is what reaches the child. What this pins is that the completion's own request
+        // coalesces into that render rather than costing a second one.
+        [Test]
+        public void Given_AnAsyncTransitionWhoseContinuationWritesTheParentToo_When_ItCompletes_Then_TheChildStillRendersOnce()
+        {
+            // Arrange — the continuation writes after the await, so a render of the parent is already owed
+            // when the completion asks for the child's
+            using var mounted = V.Mount(_root, V.Component(PropSetterParentRender, key: "prop-setter-parent"));
+            var gate = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
+            Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () =>
+            {
+                s_propSetterChildSetCount.Invoke(1);
+                await gate.Task;
+                s_propSetterChildSetCount.Invoke(2);
+            };
+            s_propSetterChildStart.Invoke(asyncUpdates);
+            mounted.GetSchedulerForTest().DrainDelayedForTest();
+            var rendersBeforeTheCompletion = s_propSetterChildRenderCount;
+
+            // Act
+            gate.TrySetResult();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert — the parent's output is folded in, since a continuation whose write never landed owes
+            // no render and the count would then hold for the reason the case is arranged to rule out. The
+            // second term is the difference, the mount and the first commit having landed before the act
+            Assert.That(
+                (_root.Q<Label>("prop-setter-out").text,
+                 s_propSetterChildRenderCount - rendersBeforeTheCompletion),
+                Is.EqualTo(("2", 1)),
+                "A render already owed absorbs the one the completion asks for");
         }
 
         [Test]
