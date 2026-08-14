@@ -14,6 +14,8 @@
     <Description>Roslyn Code Fix Providers for the Velvet Unity package.</Description>
     <Deterministic>true</Deterministic>
     <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
+    <!-- Same reason as the sibling generator project, which states it. -->
+    <DebugType Condition="'$(Configuration)' == 'Release'">none</DebugType>
   </PropertyGroup>
 
   <ItemGroup>

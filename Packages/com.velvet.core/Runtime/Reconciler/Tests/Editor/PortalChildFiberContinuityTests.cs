@@ -23,8 +23,9 @@ namespace Velvet.Tests
     /// <item>Sharing that parent does not merge the child with a same-position component the declaring
     /// tree renders outside the portal — in either order of arrival, and whether the portal's occurrence
     /// arrives with the portal's own mount or by a later patch of its children: each keeps its own
-    /// instance and its own state, and the registry keys of the two differ in the portal scope alone.
-    /// </item>
+    /// instance and its own state, and the two keys agree on parent, position and identity while only
+    /// one names the portal. That member is what holds them apart where the container cannot: a portal
+    /// whose target is the container its declaring component's own output lands in.</item>
     /// <item>The stamp the deferred mount writes onto the children it created reaches those and no other
     /// child of the declaring fiber, so a sibling's isolated re-render still sees its own Providers.</item>
     /// <item>A consumer a component level below the portal's own children, where the scope has been
@@ -40,11 +41,9 @@ namespace Velvet.Tests
     /// side it left held is disposed with its cleanups. <see cref="PortalRegistryRetargetTests"/> owns
     /// what a portal close reaches.
     /// <para>
-    /// A component the reconcile carries between two containers is a separate position on this fixture:
-    /// two same-identity unkeyed occurrences in different containers of one declaring component still
-    /// resolve to one instance, which is an open defect, and what is pinned here is only that the one
-    /// instance's own re-render lands in the container it last occupied, and that a container leaving
-    /// the tree in the render that carried the component out of it does not take the component with it.
+    /// Two containers are two positions whether or not a portal is involved, so what the container member
+    /// of that key separates is <see cref="ComponentContainerIdentityTests"/>'s subject rather than this
+    /// fixture's.
     /// </para>
     /// </summary>
     internal sealed class PortalChildFiberContinuityTests
@@ -372,77 +371,6 @@ namespace Velvet.Tests
             Assert.That((Names(target), s_markCleanups), Is.EqualTo(("a", 1)));
         }
 
-        // Phase 1 writes the component into the container the reconcile reaches FIRST and drops the one it
-        // was in, so the carry into `left` completes and only then does `right` leave the tree. A teardown
-        // reaches a fiber by the container it renders into, which is what makes the order decide whether
-        // the departing subtree takes the carried fiber with it.
-        [Component]
-        private static VNode CarryThenTeardownHost()
-        {
-            var (phase, setPhase) = Hooks.UseState(0);
-            s_setPhase = setPhase;
-            return V.Div(name: "outside", children: new VNode?[]
-            {
-                V.Div(name: "left", children: phase == 1
-                    ? new VNode?[] { V.Component(MarkedChild) }
-                    : Array.Empty<VNode?>()),
-                phase == 0
-                    ? V.Div(name: "right", children: new VNode?[] { V.Component(MarkedChild) })
-                    : null,
-            });
-        }
-
-        [Test]
-        public void Given_AComponentCarriedIntoAnotherContainer_When_TheOneItLeftIsTornDownInTheSameRender_Then_ItIsNotDisposedWithIt()
-        {
-            // Arrange — the mark is set before the move, so the element the carry writes into `left` names
-            // the instance that held it.
-            var container = new VisualElement();
-            _mounted = V.Mount(container, V.Component(CarryThenTeardownHost, key: "host"));
-            _mounted.FlushEffectsForTest();
-            s_setMark.Invoke("b");
-            _mounted.FlushStateForTest();
-
-            // Act
-            s_setPhase.Invoke(1);
-            _mounted.FlushStateForTest();
-            _mounted.FlushEffectsForTest();
-
-            // Assert — the arriving container is folded in because a cleanup count of zero is also what a
-            // render that never carried anything reports.
-            Assert.That(
-                (s_markCleanups, Names(container.Q<VisualElement>("left"))),
-                Is.EqualTo((0, "b")));
-        }
-
-        [Component]
-        private static VNode TwoContainerHost()
-            => V.Div(name: "outside", children: new VNode?[]
-            {
-                V.Div(name: "left", children: new VNode?[] { V.Component(MarkedChild) }),
-                V.Div(name: "right", children: new VNode?[] { V.Component(MarkedChild) }),
-            });
-
-        [Test]
-        public void Given_OneFiberSharedByTwoContainers_When_ItReRendersItself_Then_ItWritesIntoTheContainerItLastOccupied()
-        {
-            // Arrange
-            var container = new VisualElement();
-            _mounted = V.Mount(container, V.Component(TwoContainerHost, key: "host"));
-            _mounted.FlushEffectsForTest();
-
-            // Act — the shared instance re-renders on its own, which reconciles into its own MountPoint.
-            s_setMark.Invoke("b");
-            _mounted.FlushStateForTest();
-
-            // Assert — the left container is folded in because the two occurrences sharing one instance is
-            // what puts a container on each side of the reading: an instance that had reached only one of
-            // them would leave the other empty rather than holding the value it rendered before.
-            Assert.That(
-                (Names(container.Q<VisualElement>("left")), Names(container.Q<VisualElement>("right"))),
-                Is.EqualTo(("a", "b")));
-        }
-
         // The in-tree occurrence appears one render AFTER the portal's, which is the order in which the
         // portal's child is the one already holding the shared spelling of the key.
         [Component]
@@ -516,9 +444,43 @@ namespace Velvet.Tests
             return V.Div(name: "twin-" + mark);
         }
 
+        // The portal targets the very container this component's own output lands in, so the two
+        // occurrences agree on the container as well as on the rest of the tree-position key — and the
+        // portal scope is the one member of that key left to hold them apart.
+        [Component]
+        private static VNode SharedTargetTwinHost()
+            => V.Fragment(new VNode?[]
+            {
+                V.Component(Twin),
+                V.Portal("shared-container", children: new VNode?[] { V.Component(Twin) }),
+            });
+
+        // GREEN_ON_BASE(characterization): the portal scope is what separates these two on the base as
+        // well. What it pins is that a container member cannot take that job over, so removing the scope
+        // as redundant would merge them.
+        [Test]
+        public void Given_APortalTargetingTheContainerItsDeclaringComponentRendersInto_When_TheSameComponentIsWrittenBothSides_Then_EachRunsItsOwnMountEffect()
+        {
+            // Arrange — the mount container is the portal target, so both occurrences land in it.
+            var container = new VisualElement();
+            FiberPortalRegistry.Register("shared-container", container);
+
+            // Act
+            _mounted = V.Mount(container, V.Component(SharedTargetTwinHost, key: "host"));
+            _mounted.FlushEffectsForTest();
+
+            // Assert — the count of elements the component emitted is folded in so the second run is
+            // attributed to a second instance rather than to one instance whose effect ran twice. It
+            // counts rather than spelling the container's children out, because what a portal puts
+            // beside them is FiberNodeFactory's business rather than this case's.
+            Assert.That(
+                (s_twinSetups, container.Children().Count(c => c.name == "twin-a")),
+                Is.EqualTo((2, 2)));
+        }
+
         // Both occurrences are unkeyed, first of their identity in their own reconcile scope, and rendered
-        // by this one fiber — so they agree on the whole of the tree-position key, and only the portal
-        // scope separates them.
+        // by this one fiber — so they agree on the whole of the tree-position key apart from the container,
+        // and the portal scope separates them where that would not.
         [Component]
         private static VNode TwinHost()
             => V.Div(name: "twin-host", children: new VNode?[]
@@ -582,8 +544,10 @@ namespace Velvet.Tests
                 }),
             });
 
-        // The four members of the key one inline fiber is registered under, read off the registry's own
-        // reverse index rather than recomputed, and located by the container the fiber renders into.
+        // Four of the five members of the key one inline fiber is registered under, read off the
+        // registry's own reverse index rather than recomputed. The fifth is the container, which locates
+        // the row here rather than being read from it — ComponentContainerIdentityTests owns what it
+        // separates.
         private static (object? Parent, object? Scope, object? PositionKey, object? Identity) InlineKeyForOutputIn(
             MountedTree mounted, VisualElement mountPoint)
         {
@@ -596,13 +560,13 @@ namespace Velvet.Tests
                 var key = entry.Value!;
                 var type = key.GetType();
                 return (type.GetField("Item1")!.GetValue(key), type.GetField("Item2")!.GetValue(key),
-                    type.GetField("Item3")!.GetValue(key), type.GetField("Item4")!.GetValue(key));
+                    type.GetField("Item4")!.GetValue(key), type.GetField("Item5")!.GetValue(key));
             }
             throw new InvalidOperationException("no inline fiber renders into " + mountPoint.name);
         }
 
         [Test]
-        public void Given_APortalChildComponentNestedUnderAHostElement_When_TheSameShapeIsRenderedOutsideThePortal_Then_TheirRegistryKeysDifferOnlyInTheScope()
+        public void Given_APortalChildComponentNestedUnderAHostElement_When_TheSameShapeIsRenderedOutsideThePortal_Then_TheyAgreeOnParentPositionAndIdentityAndOnlyOneNamesThePortal()
         {
             // Arrange
             var container = new VisualElement();
@@ -616,9 +580,9 @@ namespace Velvet.Tests
             var inside = InlineKeyForOutputIn(_mounted, target.Q<VisualElement>("portal-wrap"));
             var outside = InlineKeyForOutputIn(_mounted, container.Q<VisualElement>("inline-wrap"));
 
-            // Assert — the three other members being equal is what says the two shapes collide this deep
-            // at all; a scope naming the placeholder on one side and nothing on the other is the whole of
-            // what holds them apart.
+            // Assert — the three agreeing members are what say the two shapes collide this deep at all,
+            // and a scope naming the placeholder on one side and nothing on the other is what the portal
+            // contributes to holding them apart.
             Assert.That(
                 (ReferenceEquals(inside.Parent, outside.Parent), Equals(inside.PositionKey, outside.PositionKey),
                     ReferenceEquals(inside.Identity, outside.Identity), inside.Scope, outside.Scope),
@@ -642,7 +606,7 @@ namespace Velvet.Tests
             });
 
         [Test]
-        public void Given_APortalChildComponentNestedUnderAProvider_When_TheSameShapeIsRenderedOutsideThePortal_Then_TheirRegistryKeysDifferOnlyInTheScope()
+        public void Given_APortalChildComponentNestedUnderAProvider_When_TheSameShapeIsRenderedOutsideThePortal_Then_TheyAgreeOnParentPositionAndIdentityAndOnlyOneNamesThePortal()
         {
             // Arrange
             var container = new VisualElement();
@@ -657,9 +621,9 @@ namespace Velvet.Tests
             var inside = InlineKeyForOutputIn(_mounted, target);
             var outside = InlineKeyForOutputIn(_mounted, container.Q<VisualElement>("inline-wrap"));
 
-            // Assert — the three other members being equal is what says the two shapes collide this deep
-            // at all; a scope naming the placeholder on one side and nothing on the other is the whole of
-            // what holds them apart.
+            // Assert — the three agreeing members are what say the two shapes collide this deep at all,
+            // and a scope naming the placeholder on one side and nothing on the other is what the portal
+            // contributes to holding them apart.
             Assert.That(
                 (ReferenceEquals(inside.Parent, outside.Parent), Equals(inside.PositionKey, outside.PositionKey),
                     ReferenceEquals(inside.Identity, outside.Identity), inside.Scope, outside.Scope),
