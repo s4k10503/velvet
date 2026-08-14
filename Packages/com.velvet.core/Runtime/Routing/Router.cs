@@ -460,9 +460,9 @@ namespace Velvet
             // The history slot this attempt commits into. Unused by a Push, which appends.
             internal readonly int CommitIndex;
             // What the caller asked for, which a redirect inherits rather than restates: a Guard rewrites
-            // both the path and the mode on its way in, so the attempt a Blocker is handed no longer says
-            // which slot it belongs in. Blocker.Proceed() re-issues these, and the redirect is taken again
-            // from a navigation that resolves the same CommitIndex this one did.
+            // the path, and rewrites a Back or Forward into a Replace, so the attempt a Blocker is handed
+            // no longer says which slot it belongs in. Blocker.Proceed() re-issues these two, and the
+            // redirect is taken again from a navigation resolving the slot this one did.
             internal readonly string OriginPath;
             internal readonly NavigationMode OriginMode;
 
@@ -578,8 +578,8 @@ namespace Velvet
         {
             var currentPath = CurrentLocation?.Path ?? "";
             var attempt = new NavigationAttempt { CurrentPath = currentPath, NextPath = path, NavigationMode = mode };
-            // By design, a different navigation lifts the previous block even if Proceed() was not
-            // called (intentional).
+            // Unconditional by design: an attempt reaching here lifts a standing block whether or not
+            // anything answered its dialog.
             _blockerManager.ResetAllBlocked();
 
             var blocked = await _blockerManager.CheckAsync(attempt, () => Resume(pending), cancellationToken);
@@ -604,7 +604,6 @@ namespace Velvet
             return null;
         }
 
-        // Invoked by RouteBlockerState.Proceed(), which is where the attempt resumed here was parked.
         private void Resume(PendingNavigation pending) => ResumeAsync(pending).Forget();
 
         private async UniTask ResumeAsync(PendingNavigation pending)
@@ -616,7 +615,7 @@ namespace Velvet
             finally
             {
                 // An attempt that reaches no commit leaves the Blockers that released it holding a
-                // navigation that is over, and the commit is the only other thing that ends that.
+                // navigation that is over.
                 _blockerManager.SettleProceeding();
             }
         }

@@ -50,9 +50,9 @@ namespace Velvet
         /// Blocking does not end the pass. A Blocker is passed over rather than consulted for as long as it
         /// is <see cref="RouteBlockerStatus.Proceeding"/>, whichever navigation reaches here over that span.
         /// </remarks>
-        /// <param name="attempt">The navigation attempt each Blocker decides on.</param>
+        /// <param name="attempt">The navigation attempt being decided.</param>
         /// <param name="resume">Re-issues <paramref name="attempt"/>; invoked by <see cref="RouteBlockerState.Proceed"/>.</param>
-        /// <param name="cancellationToken">Token forwarded to each asynchronous Blocker.</param>
+        /// <param name="cancellationToken">Token forwarded to an asynchronous Blocker's predicate.</param>
         internal async UniTask<bool> CheckAsync(NavigationAttempt attempt, Action resume,
             CancellationToken cancellationToken = default)
         {
@@ -125,9 +125,10 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Ends the attempt every Blocker is holding: the Blocked ones are released and the ones that had
-        /// proceeded into it are armed again. Reached from <see cref="RouteBlockerState.Reset"/>, which is
-        /// one Blocker answering for a navigation the router has already turned back.
+        /// Ends the attempt for every Blocker at once. Reached from <see cref="RouteBlockerState.Reset"/>,
+        /// which is one Blocker answering for a navigation the router has already turned back: leaving the
+        /// others holding it would let a later <c>Proceed</c> send the router at the destination that
+        /// answer declined.
         /// </summary>
         internal void AbandonAttempt()
         {

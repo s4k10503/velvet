@@ -7,13 +7,17 @@ namespace Velvet.Tests
     /// <summary>
     /// Specifies what <see cref="RouteBlockerState.Proceed"/> does with the navigation its Blocker held.
     /// <list type="bullet">
-    /// <item>Proceed re-issues the blocked attempt without consulting that Blocker again — a Push or a
-    /// Replace by its path and in its mode, a Back or Forward as the same history step.</item>
+    /// <item>Proceed re-issues the request the caller made, without consulting that Blocker again — a Push
+    /// or a Replace by its path and in its mode, a Back or Forward as the same history step. The pipeline
+    /// runs again from matching, so a Guard rewrites the destination again and its target is what lands.</item>
     /// <item>While the re-issued navigation runs, the Blocker still holds the attempt it released — the
-    /// status it reports over that span is pinned by <see cref="BlockerTests"/>.</item>
+    /// status it reports over that span is pinned by <see cref="BlockerTests"/> — and is passed over by an
+    /// unrelated navigation reaching the check in that span, not only by the one it consented to.</item>
+    /// <item>Which attempt is held is decided by the last navigation to reach the Blocker phase: one that
+    /// matches no route returns before it, leaving the earlier attempt in place to be re-issued.</item>
     /// <item>The Blocker comes back to Idle once that navigation lands or ends without landing and no
-    /// Blocker is still holding it, so the next navigation is blocked again either way. On the landing it
-    /// is already Idle by the time <see cref="Router.OnLocationChanged"/> runs.</item>
+    /// Blocker is left blocking, so the next navigation is blocked again either way. On the landing it is
+    /// already Idle by the time <see cref="Router.OnLocationChanged"/> runs.</item>
     /// <item>A second Blocker that blocks the re-issued navigation is what holds it then: the first stays
     /// out of the way until that one proceeds too, and comes back into it when that one resets.</item>
     /// <item><see cref="RouteBlockerState.Reset"/> releases the Blocker and re-issues nothing. It ends the
@@ -116,8 +120,8 @@ namespace Velvet.Tests
         public void Given_ABackStepAGuardRedirected_When_Proceed_Then_TheRedirectLandsOnTheBackTargetsSlot()
         {
             // Arrange — the Guard on "/b" lets the first arrival through and redirects the Back step, which
-            // reaches the Blocker as a Replace to "/login". Only the step the user asked for says which slot
-            // that Replace belongs in.
+            // reaches the Blocker as a Replace to "/login". The step the user asked for is what says which
+            // slot that Replace belongs in.
             var guardChecks = 0;
             var router = BuildRouter("/a", Route("a"),
                 Route("b", guard: _ => ++guardChecks == 1 ? null : "/login"),
@@ -154,6 +158,76 @@ namespace Velvet.Tests
 
             // Assert — the block is what separates the resume from the step, as on the Back case.
             Assert.That((blockedResult, router.HistoryIndex), Is.EqualTo((NavigationResult.Blocked, 1)));
+        }
+
+        [Test]
+        public void Given_ABlockedPush_When_ANavigationMatchesNoRoute_Then_ProceedReIssuesTheAttemptStillHeld()
+        {
+            // Arrange — "/nowhere" returns at the match, which is before the pass that clears a standing
+            // block, so the Blocker is still holding the first attempt when the dialog is answered.
+            var router = BuildRouter("/home", Route("home"), Route("other"));
+            var state = new RouteBlockerState();
+            router.RouteBlockerManager.Register(_ => true, state);
+            var blockedResult = router.NavigateSync("/other");
+            var unmatchedResult = router.NavigateSync("/nowhere");
+
+            // Act
+            state.Proceed();
+
+            // Assert — the unmatched navigation's own outcome rides along, since a router that matched it
+            // would have cleared the block and left Proceed() re-issuing that navigation instead.
+            Assert.That(
+                (blockedResult, unmatchedResult, router.CurrentLocation.Path),
+                Is.EqualTo((NavigationResult.Blocked, NavigationResult.NotFound, "/other")));
+        }
+
+        [Test]
+        public void Given_ASecondNavigationBlockedOverTheFirst_When_Proceed_Then_TheSecondIsWhatLands()
+        {
+            // Arrange — the second navigation reaches the Blocker phase, so the predicate is put its
+            // attempt and the Blocker holds that one instead of the first.
+            var router = BuildRouter("/home", Route("home"), Route("other"), Route("third"));
+            var state = new RouteBlockerState();
+            router.RouteBlockerManager.Register(_ => true, state);
+            var firstResult = router.NavigateSync("/other");
+            var secondResult = router.NavigateSync("/third");
+
+            // Act
+            state.Proceed();
+
+            // Assert — the first block rides along, because a Blocker that had only ever seen the second
+            // attempt would land "/third" too.
+            Assert.That(
+                (firstResult, secondResult, router.CurrentLocation.Path),
+                Is.EqualTo((NavigationResult.Blocked, NavigationResult.Blocked, "/third")));
+        }
+
+        [Test]
+        public void Given_AProceedingBlocker_When_AnUnrelatedNavigationIsChecked_Then_ItIsPassedOverForThatOneToo()
+        {
+            // Arrange — the second Blocker vetoes the re-issue, which is what keeps the first Proceeding
+            // past its own navigation and into one it never held.
+            var router = BuildRouter("/home", Route("home"), Route("other"), Route("third"));
+            var proceededChecks = 0;
+            var proceeded = new RouteBlockerState();
+            router.RouteBlockerManager.Register(_ =>
+            {
+                proceededChecks++;
+                return true;
+            }, proceeded);
+            var holdingChecks = 0;
+            router.RouteBlockerManager.Register(_ => ++holdingChecks == 2, new RouteBlockerState());
+            var blockedResult = router.NavigateSync("/other");
+            proceeded.Proceed();
+
+            // Act
+            var unrelatedResult = router.NavigateSync("/third");
+
+            // Assert — the check count is what says the first Blocker was passed over rather than asked,
+            // and the landing is what says being passed over let a navigation through that it vetoes.
+            Assert.That(
+                (blockedResult, proceededChecks, unrelatedResult, router.CurrentLocation.Path),
+                Is.EqualTo((NavigationResult.Blocked, 1, NavigationResult.Success, "/third")));
         }
 
         [Test]
