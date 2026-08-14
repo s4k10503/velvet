@@ -127,6 +127,22 @@ class PublishedHeadTests(GuardCase):
         self.assertEqual(("origin/main" in text, text.splitlines()[0]),
                          (True, "Refusing `git commit --amend`: this commit is already published."))
 
+    def test_Given_SeveralRemoteBranchesReachingHead_When_AnAmendIsRefused_Then_ItNamesTheUpstream(self):
+        # Arrange — the clone tracks origin/main, and a second branch reaches the same commit while
+        # sorting ahead of it. Named by position rather than by upstream, the refusal points the
+        # reader at a branch they are not on.
+        git(self.root / "seed", "push", "-q", "origin", "HEAD:refs/heads/aaa-elsewhere")
+        git(self.clone, "fetch", "-q", "origin")
+
+        # Act — the abbreviated SHA is dropped, since which commit it is is another case's subject.
+        named = self.refusal("git commit --amend").splitlines()[2].partition(" is reachable from ")[2]
+
+        # Assert — the other branch rides in the comparison, since a reading that found only
+        # origin/main would name it too and pin nothing about the choice.
+        self.assertEqual(
+            ("aaa-elsewhere" in git(self.clone, "branch", "-r", "--contains", "HEAD"), named),
+            (True, "origin/main and 1 other remote branch"))
+
     def test_Given_AHeadReachedOnlyByADeletedRemoteBranch_When_AnAmendIsPosed_Then_ItIsRefused(self):
         # Arrange — the branch is gone from the remote and this clone never pruned, so the ref that
         # reaches HEAD is stale. It was still published, which is what the refusal is about.

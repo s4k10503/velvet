@@ -107,10 +107,25 @@ def publishing_refs(directory, cwd):
     return [line.strip() for line in answer.splitlines() if line.strip()]
 
 
-def named(refs):
-    """A ref to name in the refusal, preferring a branch over the symbolic default it points at."""
+def named(refs, directory, cwd):
+    """How to describe the refs reaching HEAD: one of them, and how many others there are.
+
+    The branch's own upstream is preferred where it is one of them. Every ref here answers the
+    question the guard asked, but a reader sent to a branch they are not on reads the refusal as
+    being about somebody else's work — and on a commit merged long ago there are a dozen to pick
+    from, so which one is named is not a detail.
+    """
+    upstream = repository.git(
+        ["-C", directory or cwd, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"],
+        cwd=None, timeout=15)
+    tracked = "refs/remotes/" + upstream.strip() if upstream and upstream.strip() else None
+    # `origin/HEAD` is the default branch under another name, so naming it says less than naming
+    # what it points at, which is in this list whenever it is.
     branches = [ref for ref in refs if not ref.endswith("/HEAD")] or refs
-    return branches[0].replace("refs/remotes/", "", 1)
+    chosen = tracked if tracked in branches else branches[0]
+    others = len(branches) - 1
+    return (chosen.replace("refs/remotes/", "", 1)
+            + (f" and {others} other remote branch{'es' if others > 1 else ''}" if others else ""))
 
 
 def head_sha(directory, cwd):
@@ -134,7 +149,8 @@ def findings(command, cwd):
         if refs is UNREADABLE:
             blind.append(f"{directory or cwd}: git did not answer")
         elif refs:
-            read.append(f"{head_sha(directory, cwd)} is reachable from {named(refs)}")
+            read.append(f"{head_sha(directory, cwd)} is reachable from "
+                        f"{named(refs, directory, cwd)}")
     if not read and not blind:
         return None
     return (PUBLISHED if read else UNREAD), read + blind
