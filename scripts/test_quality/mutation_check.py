@@ -328,14 +328,17 @@ GUARD_STATEMENT = re.compile(r"^if \(.+\)\s*(?:return[^;]*|continue|break);$")
 # identifier, and the argument list the pattern looks for runs from the deconstruction's `(` to the
 # initializer's last `)`.
 # Three spellings of C# rather than a reading of it -- a deconstruction, an `out` argument, a pattern
-# variable. The `out` arm refuses an argument that declares nothing along with one that does, save
-# where the argument is a discard or a member access: those carry no type token, so exempting them
-# opens no `out Dictionary<int, string> d` hole, which telling `out var spec` from `out existingField`
-# by shape does -- the type there carries a separator the shape has no bound for.
+# variable. The `out` arm refuses the argument that declares nothing along with the one that does,
+# because what a removal carries off at `out existingField` is the assignment rather than the
+# declaration: the name survives the cut, and whether anything still writes it on the paths that read
+# it is definite assignment, which a pattern over the text cannot decide. A discard and a member
+# access are the two exemptions.
 # The pattern arm reads the name directly behind `var`, behind one type token, or behind one closed
 # brace or bracket group; a designation standing behind a type and a group both, or behind a
 # parenthesised pattern, is not read as one.
-# `MutantDeclarationRemovalTests` is the reading, so a spelling missing from here is one red line.
+# `MutantDeclarationRemovalTests` is the reading -- of the declaration and of the `out` assignment
+# both -- so a spelling missing from here is one red line there, and so is any narrowing that lets a
+# removal carry off an `out` argument the two exemptions do not cover.
 DECLARES_A_NAME = re.compile(
     r"\bvar\s*\("
     r"|\bout\b(?!\s*(?:_|[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+)\s*[,)])"

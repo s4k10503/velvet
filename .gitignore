@@ -102,3 +102,8 @@ ProjectSettings/Packages/
 # Python bytecode, written beside a hook by anything that imports it.
 __pycache__/
 *.pyc
+# pytest's cache root, written by running the scripts/ suites through pytest rather than unittest. It
+# carries a README.md, which DocumentationDriftTests' walk then adopts as an unwalked markdown root,
+# and pytest gives it a .gitignore of its own holding `*` — so git status stays clean and it is
+# invisible until that fixture names it.
+/.pytest_cache/
