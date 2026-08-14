@@ -48,11 +48,19 @@ case and the case said no. A case that dies reaching for what the branch adds sa
 in either lane and under either lane's spelling of it: a Python import or attribute, and -- since
 reflecting from the test assembly for private production state is this repository's convention -- a
 C# fixture that compiles on the base and throws where it would have compared. A case reported
-Inconclusive or Skipped there did not run to a verdict either. Counting any of those as red hands back
-the evidence the gate exists to demand, in the exact shape it was written to refuse: the branch adds a
-helper, every case in the module that reaches for it dies there, and the run reports them all as
-pinning something. So they take a verdict of their own, which says the base could not answer and
-leaves the red count to the cases that were answered.
+Inconclusive or Skipped there did not run to a verdict either, nor did one the runner refused as
+non-runnable or one whose run was cancelled. Counting any of those as red hands back the evidence the
+gate exists to demand, in the exact shape it was written to refuse: the branch adds a helper, every
+case in the module that reaches for it dies there, and the run reports them all as pinning something.
+So they take a verdict of their own, which says the base could not answer and leaves the red count to
+the cases that were answered.
+
+*An exception is not that reading by itself.* A branch that fixes a crash leaves the base throwing
+inside the production code the fix repairs, which is the base disagreeing in the plainest way there
+is -- and it arrives under the same label as the case that died in its own scaffolding. What
+separates them is the first frame of the throw that names a file of this tree: production code, or
+the test side. A throw naming no such file keeps the non-answer, so what this reads as red is bounded
+by what the results file carries.
 
 *A case that belongs on the base says so*, above itself, with a reason:
 
@@ -96,13 +104,23 @@ BASE_UNSOUND = "the base tree cannot answer"
 FAILING_VERDICTS = (PASSED_ON_BASE, DECLARED_STALE, NOT_REPORTED, BASE_UNSOUND)
 
 # What a runner reports for a case that stopped before it disagreed with anything, and what to print
-# for each. One vocabulary over both lanes: `reading_of` and `python_outcome` each name a non-answer
-# out of this dict, so an exception reads the same whichever lane took it.
+# for each. `reading_of` and `python_outcome` each name a non-answer out of this one dict, so a
+# reading is worded the same whichever lane took it.
 NOT_AN_ANSWER = {
     "Error": "it raised there rather than failing an assertion",
     "Inconclusive": "an assumption of its own was false there",
     "Skipped": "it was skipped there",
+    "Invalid": "the runner would not run it there",
+    "Cancelled": "its run was cancelled there",
 }
+
+# Which of those a results file spells as a `label` beside the result rather than as the result
+# itself. Kept apart from the readings so that there is a set to hold against NUnit's own, which the
+# dict above is not: its keys are results and labels together. A label missing from here reads as the
+# result beside it, which for all three is `Failed` -- a disagreement, and over a declaration a
+# correct declaration told to delete itself. `ResultStateVocabularyTests` fails when this stops
+# matching the labels NUnit pairs with a failing status.
+NOT_A_VERDICT_LABEL = ("Cancelled", "Error", "Invalid")
 
 CATEGORIES = ("characterization", "refactor")
 
@@ -668,20 +686,49 @@ def run_unity(unity, tree, platform, fixtures, results, log, timeout):
     return time.time() - started
 
 
+# The source a stack-trace frame names, matched under the two roots a Unity project's own code sits
+# under so that what comes back is the repository-relative path `is_test_side` reads.
+STACK_FRAME_SOURCE = re.compile(r"\bin\s+\.?/?((?:Assets|Packages)/[^\s:]+):\d+")
+
+
+def threw_in_production(case):
+    """Whether the throw that stopped this case came from production code rather than its own body.
+
+    Two shapes arrive under one label and only one of them answered nothing. A fixture reflecting
+    from the test assembly for private production state the base has not got gets null back and
+    throws where it would have compared: that reached for what the branch adds. A branch that fixes
+    a crash leaves the base throwing inside the production code the fix repairs: that is the base
+    disagreeing.
+
+    The separator is the first frame that names a file of this tree. Frames naming none are skipped
+    rather than decided on, since they place the throw on neither side. A throw naming no file of
+    this tree at all keeps the non-answer, because the verdicts that fail a run are not ones to take
+    from a reading nobody could complete.
+    """
+    trace = case.find("./failure/stack-trace")
+    text = (trace.text or "") if trace is not None else ""
+    for match in STACK_FRAME_SOURCE.finditer(text):
+        return not is_test_side(match.group(1))
+    return False
+
+
 def reading_of(case):
     """One reported case's reading: its label where that names one, and its result otherwise.
 
-    The label is preferred so that a case which stopped on an exception is not read as the base
-    disagreeing with it -- the same line `python_outcome` draws off a unittest trailer, and the
-    reason this repository's own idiom needs it is that a fixture reflecting for production state
-    the base has not got throws where it would have compared.
+    The label is preferred so that a case which never reached a verdict is not read as the base
+    disagreeing with it -- the same line `python_outcome` draws off a unittest trailer. Which throws
+    those are is `threw_in_production`'s question.
 
     Never over a passing case: nothing a label names can reach `passed on the base`, so a label read
     there could only ever turn that verdict into silence.
     """
     result = case.get("result")
     label = case.get("label")
-    return label if result != "Passed" and label in NOT_AN_ANSWER else result
+    if result == "Passed" or label not in NOT_A_VERDICT_LABEL:
+        return result
+    if label == "Error" and threw_in_production(case):
+        return result
+    return label
 
 
 def unity_results(results):

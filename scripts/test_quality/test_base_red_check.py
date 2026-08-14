@@ -1147,16 +1147,56 @@ class ResultsFileTests(unittest.TestCase):
 
 
 class ResultLabelTests(unittest.TestCase):
-    """A case that threw on the base, read the whole way from the results file to a verdict.
+    """What the base said about a case that stopped on an exception, and which of those disagreed.
 
-    Nothing here calls `decide` with a reading handed to it: the reading is what was wrong, so a
-    case that starts after it would agree with the broken script as readily as the fixed one.
+    Read from the results file wherever the reading is what was wrong: a case that starts after it
+    would agree with the broken script as readily as the fixed one. The two `outcome_for` cases are
+    the exception, because how several argument lists collapse into one reading is a question about
+    readings rather than about the file they arrived in.
     """
 
-    THREW = ('<test-run>'
-             '<test-case fullname="N.ProbeTests.Given_A_When_B_Then_C" result="Failed" label="Error">'
-             '<failure><message>System.NullReferenceException : Object reference not set to an '
-             'instance of an object</message></failure></test-case></test-run>')
+    @staticmethod
+    def labelled(label, message, *frames):
+        """A reported case carrying `label`, over the frames given innermost first.
+
+        The frame list is the arrangement: which of them names a file of this tree first is the whole
+        question, so a shape written without one answers a different question from its name.
+        """
+        return ('<test-run>'
+                '<test-case fullname="N.ProbeTests.Given_A_When_B_Then_C" result="Failed" '
+                'label="{}"><failure><message>{}</message>{}</failure>'
+                '</test-case></test-run>'.format(
+                    label, message,
+                    '<stack-trace>{}</stack-trace>'.format("\n".join(frames)) if frames else ""))
+
+    @classmethod
+    def threw(cls, *frames):
+        """A reported case that stopped on an exception, over the frames given innermost first."""
+        return cls.labelled("Error", "System.NullReferenceException : Object reference not set to "
+                                     "an instance of an object", *frames)
+
+    # A frame naming no file of this tree, so the arrangements below exercise the skipping rather
+    # than happening to put the deciding frame first.
+    ENGINE_FRAME = ("  at System.Reflection.MonoField.GetValue (System.Object obj) [0x00080] in "
+                    "&lt;c5eeda5e65d44b388e164c6c5cfe0702&gt;:0 ")
+    TEST_FRAME = ("  at N.ProbeTests.Given_A_When_B_Then_C () [0x00011] in "
+                  "./Packages/p/Runtime/A/Tests/Editor/ProbeTests.cs:41 ")
+    PRODUCTION_FRAME = ("  at P.FiberElementPoolReset.Clear (P.Fiber fiber) [0x0000c] in "
+                        "./Packages/p/Runtime/A/FiberElementPoolReset.cs:120 ")
+
+    @property
+    def THREW(self):
+        """The scaffolding shape: a fixture reflecting for state the base has not got, and throwing."""
+        return self.threw(self.ENGINE_FRAME, self.TEST_FRAME)
+
+    @property
+    def THREW_IN_PRODUCTION(self):
+        """The crash-regression shape: the base throwing where the branch's fix stops it."""
+        return self.threw(self.ENGINE_FRAME, self.PRODUCTION_FRAME, self.TEST_FRAME)
+
+    def refused(self, label, *frames):
+        """A reported case the runner stopped from outside its body, over `frames` if any."""
+        return self.labelled(label, "the runner gave a reason of its own", *frames)
 
     def read(self, body):
         holder = tempfile.mkdtemp(prefix="base-red-label-")
@@ -1174,21 +1214,21 @@ class ResultLabelTests(unittest.TestCase):
         case = self.probe(declaration)
         return base_red_check.decide(case, base_red_check.outcome_for(case.key, reported), True)[0]
 
-    def test_Given_ACaseThatThrewOnTheBase_When_TheResultsAreRead_Then_ItIsNotReadAsADisagreement(self):
+    def test_Given_ACaseThatThrewFromItsOwnBody_When_TheResultsAreRead_Then_ItIsNotADisagreement(self):
         # Act
         reported = self.read(self.THREW)
 
         # Assert
         self.assertEqual(reported["N.ProbeTests.Given_A_When_B_Then_C"], "Error")
 
-    def test_Given_AnUndeclaredCaseThatThrewOnTheBase_When_ItIsDecided_Then_ItIsNotCountedRed(self):
+    def test_Given_AnUndeclaredCaseThatThrewFromItsOwnBody_When_ItIsDecided_Then_ItIsNotCountedRed(self):
         # Act
         verdict = self.verdict_for(self.THREW)
 
         # Assert -- it stopped before it could disagree, so it is evidence of nothing either way.
         self.assertEqual(verdict, base_red_check.COULD_NOT_ANSWER)
 
-    def test_Given_ADeclaredCaseThatThrewOnTheBase_When_ItIsDecided_Then_ItIsNotCalledStale(self):
+    def test_Given_ADeclaredCaseThatThrewFromItsOwnBody_When_ItIsDecided_Then_ItIsNotCalledStale(self):
         # Arrange -- the harm this whole reading exists to prevent: a correct declaration told to
         # delete itself because the base tree could not answer for the case under it.
         declared = base_red_check.Declaration(
@@ -1199,6 +1239,88 @@ class ResultLabelTests(unittest.TestCase):
 
         # Assert
         self.assertNotIn(verdict, base_red_check.FAILING_VERDICTS)
+
+    # GREEN_ON_BASE(characterization): a crash the branch fixes, counted red before the label was
+    # read at all and having to stay red now that it is.
+    def test_Given_ACaseThatThrewInsideProductionCode_When_TheResultsAreRead_Then_ItIsADisagreement(self):
+        # Arrange -- the shape a regression test for a crash leaves on the base, which arrives under
+        # the same label as the scaffolding throw above and is the opposite reading.
+        # Act
+        reported = self.read(self.THREW_IN_PRODUCTION)
+
+        # Assert
+        self.assertEqual(reported["N.ProbeTests.Given_A_When_B_Then_C"], "Failed")
+
+    # GREEN_ON_BASE(characterization): the verdict a crash regression carried before the label was
+    # read, which reading it must not take away.
+    def test_Given_AnUndeclaredCaseThatThrewInsideProductionCode_When_ItIsDecided_Then_ItIsCountedRed(self):
+        # Act
+        verdict = self.verdict_for(self.THREW_IN_PRODUCTION)
+
+        # Assert
+        self.assertEqual(verdict, base_red_check.RED_ON_BASE)
+
+    # GREEN_ON_BASE(characterization): the stale-declaration gate over a crash regression, which the
+    # base already applied and which reading every throw as a non-answer would have dropped.
+    def test_Given_ADeclaredCaseThatThrewInsideProductionCode_When_ItIsDecided_Then_ItIsCalledStale(self):
+        # Arrange -- the other direction of the same harm: a declaration is only correct while the
+        # base cannot answer, and here the base answered by crashing.
+        declared = base_red_check.Declaration(
+            "characterization", "the keyed-reorder order this refactor must not change")
+
+        # Act
+        verdict = self.verdict_for(self.THREW_IN_PRODUCTION, declared)
+
+        # Assert
+        self.assertEqual(verdict, base_red_check.DECLARED_STALE)
+
+    def test_Given_AThrowNamingNoFileOfThisTree_When_ItIsDecided_Then_ItKeepsTheNonAnswer(self):
+        # Arrange -- a throw whose trace places it on neither side. The reading falls to the side
+        # that fails no run, since a verdict that does is not one to take from silence.
+        # Act
+        verdict = self.verdict_for(self.threw(self.ENGINE_FRAME))
+
+        # Assert
+        self.assertEqual(verdict, base_red_check.COULD_NOT_ANSWER)
+
+    def test_Given_ACaseTheRunnerWouldNotRun_When_ItIsDecided_Then_ItIsNotCountedRed(self):
+        # Arrange -- a non-runnable case never reached its body, so nothing in it disagreed.
+        # Act
+        verdict = self.verdict_for(self.refused("Invalid"))
+
+        # Assert
+        self.assertEqual(verdict, base_red_check.COULD_NOT_ANSWER)
+
+    def test_Given_ADeclaredCaseTheRunnerWouldNotRun_When_ItIsDecided_Then_ItIsNotCalledStale(self):
+        # Arrange
+        declared = base_red_check.Declaration(
+            "characterization", "the keyed-reorder order this refactor must not change")
+
+        # Act
+        verdict = self.verdict_for(self.refused("Invalid"), declared)
+
+        # Assert
+        self.assertNotIn(verdict, base_red_check.FAILING_VERDICTS)
+
+    def test_Given_ACaseWhoseRunWasCancelled_When_ItIsDecided_Then_ItIsNotCountedRed(self):
+        # Arrange -- a cancelled run stopped the case from outside it, which says nothing about the
+        # behaviour under it either.
+        # Act
+        verdict = self.verdict_for(self.refused("Cancelled"))
+
+        # Assert
+        self.assertEqual(verdict, base_red_check.COULD_NOT_ANSWER)
+
+    def test_Given_ANonRunnableCaseWhoseTraceNamesProduction_When_ItIsDecided_Then_ItIsNotCountedRed(self):
+        # Arrange -- only a throw is read by where it came from. A case the runner refused never
+        # entered its body, so a production frame in whatever trace it carries is not the base
+        # disagreeing, and the frames must not be consulted for it at all.
+        # Act
+        verdict = self.verdict_for(
+            self.refused("Invalid", self.ENGINE_FRAME, self.PRODUCTION_FRAME, self.TEST_FRAME))
+
+        # Assert
+        self.assertEqual(verdict, base_red_check.COULD_NOT_ANSWER)
 
     # GREEN_ON_BASE(characterization): the reading a disagreement already had, which the label must
     # not widen over.

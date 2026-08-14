@@ -272,9 +272,16 @@ cases stop being the base's text and stop being read as the instrument — the r
 Red on the base means the base ran the case and the case said no, and only that. A case that died
 reaching for what the branch adds — a Python import or attribute, a C# fixture reflecting for private
 production state the base has not got, which compiles there and throws where it would have compared —
-and a case reported Inconclusive or Skipped there, are reported as cases **the base could not answer**:
-no evidence either way, and not part of the red count. The distinction is what stops a branch that adds
-a helper, or a field, from being credited for the cases that die reaching for it.
+and a case the base reported Inconclusive, Skipped, non-runnable or cancelled, are reported as cases
+**the base could not answer**: no evidence either way, and not part of the red count. The distinction
+is what stops a branch that adds a helper, or a field, from being credited for the cases that die
+reaching for it.
+
+An exception is not that reading on its own. A branch that fixes a crash leaves the base throwing inside
+the production code the fix repairs, which is the base disagreeing and stays **red on the base**. The two
+are told apart by the first frame of the throw that names a file of this repository — production code, or
+the test side. A throw that names none keeps the non-answer, so what a crash regression is read as is
+bounded by the stack trace its results file carries.
 
 Two kinds of case belong on the base, and say so above themselves with a reason a reviewer can weigh:
 
