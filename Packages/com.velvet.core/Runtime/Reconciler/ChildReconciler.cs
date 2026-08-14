@@ -198,10 +198,12 @@ namespace Velvet
             };
             VNode?[] oldNodes;
             // The presence reproductions this container's own walk takes, retirable only once the removal
-            // pass below has run — see ReconcilerContext.EndPresenceReproductionScope. Initialised false so
-            // an exception unwinding past both branches reports no removals rather than the last value one
-            // of them happened to leave.
+            // pass below has run — see ReconcilerContext.EndPresenceReproductionScope.
             var presenceScope = _ctx.BeginPresenceReproductionScope();
+            // MUTANT_SURVIVES(equivalent): only an exception unwinding out of the try below reads this value.
+            // Both branches assign before the finally does. Measured on the two unwinds that reach here — a
+            // component throwing with no boundary, and a suspend signal escaping the container's walk — and
+            // in both the container's element was replaced and its presence entry went with the element.
             var removalsRan = false;
             try
             {

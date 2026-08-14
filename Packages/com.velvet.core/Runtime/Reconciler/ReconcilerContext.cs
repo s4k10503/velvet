@@ -1301,6 +1301,11 @@ namespace Velvet
                     _presenceRetirable.Add(_presenceReproduced[i]);
                 }
             }
+            // MUTANT_SURVIVES(equivalent): no enclosing scope reports removals run over a span an inner one
+            // did not. An abort holds for the rest of the pass, a nested container is entered at budget 0 so
+            // only the top-level one can park, and a throw unwinds the enclosing container too — so the tail
+            // this drops would already be retirable by the enclosing scope's own reading. What it buys is a
+            // bounded list and no duplicate entries; measured, the full EditMode suite is green with it cut.
             _presenceReproduced.RemoveRange(scope, _presenceReproduced.Count - scope);
         }
 
@@ -1311,6 +1316,10 @@ namespace Velvet
             {
                 if (!_presenceReRendered.Contains(key)) PresenceStates.Remove(key);
             }
+            // MUTANT_SURVIVES(equivalent): this list is already empty here, so the clear removes nothing.
+            // BeginPresenceReproductionScope and EndPresenceReproductionScope are one call site each, paired
+            // across a finally, and the End truncates its own span unconditionally — so the outermost
+            // container leaves the list at the length it entered with, which at a top-level pass is zero.
             _presenceReproduced.Clear();
             _presenceRetirable.Clear();
             _presenceReRendered.Clear();

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
@@ -31,6 +32,10 @@ namespace Velvet.Tests
     /// placeholder out.</item>
     /// <item>Two Portals rendering into one container reach one entry, and the one that closes first
     /// leaves the other's committed child alone.</item>
+    /// <item>A presence beside a container holding another retires only its own entry, so the scope one
+    /// container opens over the list is its own span of it and not the enclosing container's too.</item>
+    /// <item>Both suspended states are read, since a presence with committed children puts their keys on
+    /// the container's old side and one with none does not — the two park in different strategies.</item>
     /// <item>An abort stops the removal pass of the container it reaches and holds for the rest of the
     /// pass, so whether an entry may retire is read per container: one whose own removals ran retires
     /// even though a later container's did not. The reading covers the fast path too, where the removals
@@ -233,6 +238,20 @@ namespace Velvet.Tests
         private static VNode Thrower() => throw new InvalidOperationException("boom");
 
 
+        // A presence and a container holding another one, side by side: the outer container's own old-side
+        // reproduction is already recorded when the inner container opens its scope, which is the only
+        // arrangement where an inner scope begins anywhere but at the start of the list.
+        [Component]
+        private static VNode PresenceBesideAContainerHoldingAnother()
+        {
+            var state = Hooks.UseStore(s_store, s => s);
+            return V.Div(name: "host", children: new VNode[]
+            {
+                state.Shown ? Presence(state.ChildKey) : null,
+                V.Div(name: "inner", children: new VNode[] { Presence("kept") }),
+            });
+        }
+
         [Component]
         private static VNode PooledButtonHost()
         {
@@ -413,8 +432,28 @@ namespace Velvet.Tests
             Assert.That(NamesOf(s_overlay), Is.EqualTo("item-b"));
         }
 
-        // GREEN_ON_BASE(characterization): two Portals into one container already shared one presence
-        // entry before the retirement routes existed, and neither one closing touched it.
+        [Test]
+        public void Given_APresenceBesideAContainerHoldingAnother_When_TheOuterOneStopsBeingRendered_Then_OnlyItsOwnEntryRetires()
+        {
+            // Arrange — one entry per parent element, and the inner container's scope opens over a list the
+            // outer container's own reproduction is already in.
+            using var store = new PresenceStore();
+            s_store = store;
+            using var mounted = V.Mount(_root, V.Component(PresenceBesideAContainerHoldingAnother, key: "host"));
+            var ctx = mounted.Root.Reconciler.Context;
+            var recorded = ctx.PresenceStates.Count;
+
+            // Act
+            store.Set(false, "a");
+            ctx.BatchScheduler.DrainImmediateForTest();
+
+            // Assert — that the two were recorded separately is folded in: one shared entry would make the
+            // survivor indistinguishable from the departure.
+            Assert.That((recorded, ctx.PresenceStates.Count), Is.EqualTo((2, 1)));
+        }
+
+        // GREEN_ON_BASE(characterization): neither Portal closing touched the entry the two of them share.
+        // The sharing predates the retirement routes; what is pinned is that adding those left it alone.
         [Test]
         public void Given_TwoPortalsSharingOneContainer_When_TheSecondCloses_Then_TheFirstKeepsItsCommittedChild()
         {
@@ -457,8 +496,8 @@ namespace Velvet.Tests
             Assert.That((recorded, ctx.PresenceStates.Count), Is.EqualTo((1, 0)));
         }
 
-        // GREEN_ON_BASE(characterization): on the base an entry ended with its boundary fiber and nothing
-        // else, so a container whose removals did not run could not strand one; it must stay that way.
+        // GREEN_ON_BASE(characterization): on the base an entry ended with its boundary fiber and nothing else.
+        // A container whose removals did not run could strand none of them, and that has to stay true.
         [Test]
         public void Given_APresenceOnAFastPathContainer_When_ItsDiffAbortsBeforeTheRemovalPhase_Then_ItsBoundaryStateSurvives()
         {
@@ -480,8 +519,8 @@ namespace Velvet.Tests
                 Is.EqualTo((true, 1)));
         }
 
-        // GREEN_ON_BASE(characterization): same reading as the abort case above, for the other way the
-        // fast path returns with its removals still owed.
+        // GREEN_ON_BASE(characterization): the base had no retirement route a parked container could reach.
+        // Same reading as the abort case above, for the other way the fast path leaves its removals owed.
         [Test]
         public void Given_APresenceOnAFastPathContainer_When_ItsDiffParksBeforeItsRemovals_Then_ItsBoundaryStateSurvives()
         {
@@ -489,7 +528,7 @@ namespace Velvet.Tests
             // the diff's first phase with the presence's leaf still in the tail a later phase would take.
             using var reconciler = new Reconciler();
             var root = new VisualElement();
-            var committed = RowsWithPresence();
+            var committed = RowsWith(Presence("a"));
             reconciler.Reconcile(root, Array.Empty<VNode>(), committed, frameBudgetMs: 0);
             var ctx = reconciler.Context;
 
@@ -502,8 +541,31 @@ namespace Velvet.Tests
                 Is.EqualTo((true, 1)));
         }
 
-        // GREEN_ON_BASE(characterization): the live state a retirement route must not reach, since a pass
-        // that walks neither side of a presence says nothing about it.
+        // GREEN_ON_BASE(characterization): the base had no retirement route a parked container could reach.
+        // The case above parks in the KEYED state, because a presence reproducing children puts their keys
+        // on the container's old side; this is the same reading for the other strategy.
+        [Test]
+        public void Given_AnEmptyPresenceOnAFastPathContainer_When_ItsIndexedDiffParks_Then_ItsBoundaryStateSurvives()
+        {
+            // Arrange — a presence with nothing committed reproduces no leaf at all, so the container's
+            // old side carries no key and the diff takes the indexed strategy rather than the keyed one.
+            using var reconciler = new Reconciler();
+            var root = new VisualElement();
+            var committed = RowsWith(V.AnimatePresence(key: "presence", children: Array.Empty<VNode>()));
+            reconciler.Reconcile(root, Array.Empty<VNode>(), committed, frameBudgetMs: 0);
+            var ctx = reconciler.Context;
+
+            // Act
+            reconciler.Reconcile(root, committed, Rows("moved-"), frameBudgetMs: 0.001);
+
+            // Assert — that the park landed in the indexed state is folded in: parking in the keyed one
+            // would make this a second reading of the case above rather than a reading of the other term.
+            Assert.That((ParkedInTheIndexedState(reconciler), ctx.PresenceStates.Count),
+                Is.EqualTo((true, 1)));
+        }
+
+        // GREEN_ON_BASE(characterization): a pass that walks neither side of a presence says nothing of it.
+        // This is the live state a retirement route must not reach, held to what the base already did.
         [Test]
         public void Given_APassThatWalksNeitherSideOfAPresence_When_ItCompletes_Then_TheLiveBoundaryStateSurvivesIt()
         {
@@ -557,13 +619,25 @@ namespace Velvet.Tests
             return rows;
         }
 
-        private static VNode[] RowsWithPresence()
+        private static VNode[] RowsWith(VNode tail)
         {
             var rows = Rows("row-");
-            var withPresence = new VNode[rows.Length + 1];
-            Array.Copy(rows, withPresence, rows.Length);
-            withPresence[rows.Length] = Presence("a");
-            return withPresence;
+            var all = new VNode[rows.Length + 1];
+            Array.Copy(rows, all, rows.Length);
+            all[rows.Length] = tail;
+            return all;
+        }
+
+        // Which of the two suspended states the container parked in. Read by reflection rather than from a
+        // member on the reconciler, since production types here carry nothing test-only.
+        private static bool ParkedInTheIndexedState(Reconciler reconciler)
+        {
+            var child = typeof(Reconciler)
+                .GetField("_childReconciler", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .GetValue(reconciler)!;
+            return child.GetType()
+                .GetProperty("PendingIndexedState", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)!
+                .GetValue(child) != null;
         }
 
         #endregion
