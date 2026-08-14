@@ -233,32 +233,34 @@ namespace Velvet.Tests
         // under test arrives cannot tell the two apart. What the bound changes is the run where it
         // does not: a hang becomes a failure naming the wait.
         [UnityTest]
-        public IEnumerator Given_SupersededByAnUnmatchedPath_When_ItResumes_Then_TheStatusIsStillRestored()
+        public IEnumerator Given_AnAttemptParkedInABlocker_When_APathMatchingNoRouteIsNavigatedTo_Then_ItIsNotDispossessed()
             => VelvetTask.ToCoroutine(async () =>
         {
-            // A navigation that matches no route returns before the claim is taken, so the parked attempt is
-            // still the only holder and must put the status back — leaving it as the unmatched attempt did
-            // would report a navigation nobody is waiting on.
+            // A navigation that matches no route ends above the claim, so it takes nothing from the parked
+            // attempt — neither the claim, nor the status, nor the token the attempt is parked under. It
+            // therefore resumes and commits; it used to resume into a cancelled token and hand its caller
+            // Cancelled for a navigation the user had asked for. The unmatched result is folded in because
+            // withholding the dispossession must not cost that caller its own outcome.
             // Arrange
             var router = BuildRouter("/home",
                 Route("/", children: new[] { Route("home"), Route("about"), Route("contact") }));
             await router.NavigateAsync("/about");
             await router.NavigateAsync("/contact");
-            var (check, entered, resumeCancelled, _) = MakeDeferredBlocker();
+            var (check, entered, _, resumeUnblocked) = MakeDeferredBlocker();
             using var registration = router.RouteBlockerManager.Register(check, new RouteBlockerState());
-            var superseded = router.GoBack();
+            var parked = router.GoBack();
             await entered.Task.Bounded();
             var unmatched = await router.NavigateAsync("/no-such-route");
-            Assume.That(unmatched, Is.EqualTo(NavigationResult.NotFound),
-                "Precondition: the superseding navigation returned without reaching the claim");
 
             // Act
-            resumeCancelled();
-            await superseded;
+            resumeUnblocked();
+            var result = await parked;
 
             // Assert
-            Assert.That(router.Status, Is.EqualTo(RouterStatus.Idle),
-                "Only an attempt that took the claim may stop the parked one from restoring the status");
+            Assert.That(
+                $"unmatched={unmatched} parked={result} path={router.CurrentLocation?.Path} "
+                + $"status={router.Status}",
+                Is.EqualTo("unmatched=NotFound parked=Success path=/about status=Ready"));
         });
 
         // GREEN_ON_BASE(refactor): the wait this bounds is the same wait, and a run where the code

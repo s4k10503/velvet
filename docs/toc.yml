@@ -5,10 +5,14 @@
   items:
     - name: Overview
       href: guides/README.md
+    - name: Setup
+      href: guides/setup.md
     - name: React → Velvet migration
       href: guides/react-migration.md
     - name: Memoization
       href: guides/memoization.md
+    - name: Routing
+      href: guides/routing.md
     - name: Flexbox and gap
       href: guides/styling-flexbox-and-gap.md
     - name: Z-index stacking
@@ -33,6 +37,8 @@
       href: guides/motion.md
     - name: Preview tooling
       href: guides/preview-tooling.md
+    - name: Player builds
+      href: guides/player-builds.md
     - name: Fonts
       href: guides/fonts.md
 - name: API Reference

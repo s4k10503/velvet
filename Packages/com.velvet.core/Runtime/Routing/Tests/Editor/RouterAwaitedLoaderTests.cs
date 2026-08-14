@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Linq;
+using System.Threading;
 using NUnit.Framework;
 using UnityEngine.TestTools;
 using Velvet;
@@ -18,10 +19,15 @@ namespace Velvet.Tests
     /// <see cref="Router.PendingLocation"/> reports the destination — resolved, so it carries the
     /// destination's path parameters.</item>
     /// <item>The destination is published only while a navigation is in flight: the commit that lands it,
-    /// the Blocker refusal that abandons it, a guard redirect that matches no route, and disposing the
-    /// router each withdraw it.</item>
+    /// the Blocker refusal that abandons it, a guard redirect that matches no route, a redirect chain that
+    /// exhausts the limit, and disposing the router each withdraw it.</item>
     /// <item>A loader that fails after suspending has its own exception recorded against the route, and the
     /// navigation still commits.</item>
+    /// <item>The route on screen through that window is still the live one: a Suspend loader of its own
+    /// keeps its token and reaches the live loader data, and only the commit that leaves the route ends
+    /// it.</item>
+    /// <item>A navigation that matches no route neither cancels the attempt holding the window open nor
+    /// takes over the status describing it.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -37,6 +43,25 @@ namespace Velvet.Tests
                 Route("home"),
                 Route("users/:id", loader: (ctx, ct) => loader.Task));
             return (router, loader);
+        }
+
+        // A router sitting on /feed, whose Suspend loader has not produced anything, with a navigation to
+        // /profile parked on an Await loader — so /feed is what the user is looking at for as long as the
+        // caller leaves `awaited` unresolved.
+        private static (Router router, VelvetTaskCompletionSource<object> streaming,
+            VelvetTaskCompletionSource<object> awaited) RouterStreamingUnderAnAwaitedNavigation(
+                Func<RouteLoaderContext, CancellationToken, VelvetTask<object>> feedLoader = null)
+        {
+            var streaming = new VelvetTaskCompletionSource<object>();
+            var awaited = new VelvetTaskCompletionSource<object>();
+            var router = BuildRouter("/home",
+                Route("home"),
+                Route("feed", loaderMode: LoaderMode.Suspend,
+                    loader: feedLoader ?? ((ctx, ct) => streaming.Task)),
+                Route("profile", loader: (ctx, ct) => awaited.Task));
+            router.NavigateSync("/feed");
+            router.NavigateAsync("/profile").Forget();
+            return (router, streaming, awaited);
         }
 
         [Test]
@@ -197,6 +222,139 @@ namespace Velvet.Tests
                 $"result={redirected} afterRedirect={afterRedirect} "
                 + $"loading={router.PendingLocation?.Path ?? "none"}",
                 Is.EqualTo("result=NotFound afterRedirect=none loading=/users/7"));
+        });
+
+        [UnityTest]
+        public IEnumerator Given_ARedirectChain_When_ItExhaustsTheRedirectLimit_Then_ThePendingDestinationIsWithdrawn()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // The hop that is refused ends the attempt its initiator published a destination for, and the
+            // initiator forwards the result without touching it. A second navigation carries the publishing
+            // side, since a redirect chain resolves with no await for the first destination to be read across.
+            // Arrange
+            var loader = new VelvetTaskCompletionSource<object>();
+            var router = BuildRouter("/home",
+                Route("home"),
+                Route("a", redirectTo: "/b"),
+                Route("b", redirectTo: "/a"),
+                Route("users/:id", loader: (ctx, ct) => loader.Task));
+
+            // Act
+            var overflowed = await router.NavigateAsync("/a");
+            var afterOverflow = router.PendingLocation?.Path ?? "none";
+            router.NavigateAsync("/users/7").Forget();
+
+            // Assert
+            Assert.That(
+                $"result={overflowed} afterOverflow={afterOverflow} "
+                + $"loading={router.PendingLocation?.Path ?? "none"}",
+                Is.EqualTo("result=Error afterOverflow=none loading=/users/7"));
+        });
+
+        [UnityTest]
+        public IEnumerator Given_ASuspendLoaderOnTheRouteOnScreen_When_AnAwaitedNavigationHoldsTheCommit_Then_ItsResultReachesTheLiveData()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // The committed location is what the user is looking at, and it stays /feed for the whole window.
+            // Folding it in separates a result that landed on the route it belongs to from one that landed
+            // anywhere.
+            // Arrange
+            var (router, streaming, _) = RouterStreamingUnderAnAwaitedNavigation();
+
+            // Act
+            streaming.TrySetResult("feed-data");
+            await VelvetTask.Yield();
+
+            // Assert
+            Assert.That(
+                $"path={router.CurrentLocation?.Path} "
+                + $"data={string.Join(",", router.CurrentLoaderData.Values)}",
+                Is.EqualTo("path=/feed data=feed-data"));
+        });
+
+        [Test]
+        public void Given_ASuspendLoaderOnTheRouteOnScreen_When_AnAwaitedNavigationHoldsTheCommit_Then_ItsTokenIsNotCancelled()
+        {
+            // A loader that honours its token produces nothing once cancelled, so cancelling it here is the
+            // same defect as withholding its result: the spinner on the route on screen never clears.
+            // Arrange
+            CancellationToken captured = default;
+            var (router, _, _) = RouterStreamingUnderAnAwaitedNavigation((ctx, ct) =>
+            {
+                captured = ct;
+                return new VelvetTaskCompletionSource<object>().Task;
+            });
+
+            // Act
+            var stillLoading = router.Status;
+
+            // Assert
+            Assert.That(
+                $"status={stillLoading} cancellable={captured.CanBeCanceled} "
+                + $"cancelled={captured.IsCancellationRequested}",
+                Is.EqualTo("status=Loading cancellable=True cancelled=False"));
+        }
+
+        [UnityTest]
+        public IEnumerator Given_ASuspendLoaderOnTheRouteOnScreen_When_TheAwaitedNavigationCommits_Then_ItsTokenIsCancelled()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // The other half of the rule: the round streaming into the route on screen ends at the commit
+            // that leaves that route, not before it and not never.
+            // Arrange
+            CancellationToken captured = default;
+            var (router, _, awaited) = RouterStreamingUnderAnAwaitedNavigation((ctx, ct) =>
+            {
+                captured = ct;
+                return new VelvetTaskCompletionSource<object>().Task;
+            });
+
+            // Act
+            awaited.TrySetResult("profile-data");
+            await VelvetTask.Yield();
+
+            // Assert
+            Assert.That(
+                $"path={router.CurrentLocation?.Path} cancelled={captured.IsCancellationRequested}",
+                Is.EqualTo("path=/profile cancelled=True"));
+        });
+
+        [UnityTest]
+        public IEnumerator Given_ANavigationHoldingTheCommit_When_APathMatchingNoRouteIsNavigatedTo_Then_TheHeldNavigationStillCommits()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            var (router, loader) = RouterAwaitingItsLoader();
+            var navigation = router.NavigateAsync("/users/7");
+
+            // Act
+            var unmatched = await router.NavigateAsync("/nowhere");
+            loader.TrySetResult("user-7");
+            var held = await navigation;
+
+            // Assert
+            Assert.That(
+                $"unmatched={unmatched} held={held} path={router.CurrentLocation?.Path}",
+                Is.EqualTo("unmatched=NotFound held=Success path=/users/7"));
+        });
+
+        [UnityTest]
+        public IEnumerator Given_ANavigationHoldingTheCommit_When_APathMatchingNoRouteIsNavigatedTo_Then_TheStatusStillDescribesTheHeldNavigation()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // An attempt that never matched takes no claim, so it is not the one Status belongs to. The
+            // result it hands its own caller is folded in: withholding the status must not cost the caller
+            // the outcome.
+            // Arrange
+            var (router, _) = RouterAwaitingItsLoader();
+            router.NavigateAsync("/users/7").Forget();
+
+            // Act
+            var unmatched = await router.NavigateAsync("/nowhere");
+
+            // Assert
+            Assert.That($"unmatched={unmatched} status={router.Status}",
+                Is.EqualTo("unmatched=NotFound status=Loading"));
         });
 
         [UnityTest]

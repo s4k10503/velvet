@@ -97,6 +97,11 @@ namespace Velvet.Tests
         private static readonly Regex HookReferencePattern = new(@"\bUse[A-Z]\w*", RegexOptions.Compiled);
         private static readonly Regex DocLinkPattern = new(@"\]\(([A-Za-z0-9_.-]+\.md)\)", RegexOptions.Compiled);
 
+        // docs/build.py stages Documentation~/*.md into docs/guides/ before DocFX runs, so a guide's entry in
+        // the hand-maintained table of contents names it under that staged directory.
+        private static readonly Regex TocGuideHrefPattern =
+            new(@"href:\s*guides/([A-Za-z0-9_.-]+\.md)", RegexOptions.Compiled);
+
         // A backticked span is treated as a repo path only when it ends in one of the extensions this repo
         // actually keeps or in a directory slash. Everything the docs write with a slash for other reasons —
         // a Tailwind opacity or fraction (bg-red-500/50, w-1/2), an npm package (@dnd-kit/sortable), a Unity
@@ -420,6 +425,28 @@ namespace Velvet.Tests
             // Assert
             Assert.That(diff, Is.Empty,
                 "Documentation~/README.md's index is out of sync with the directory's actual .md files:\n" + string.Join("\n", diff));
+        }
+
+        [Test]
+        public void Given_TheDocfxTableOfContents_When_ComparedAgainstTheGuideDirectory_Then_LinksAndFilesMatchExactly()
+        {
+            // docs/build.py stages every guide into the site whether or not this file lists it, so one left
+            // out still builds and only its navigation entry is missing. Three were, when this was written.
+            // Arrange
+            var tocPath = Path.GetFullPath(Path.Combine("docs", "toc.yml"));
+            var linkedFiles = new HashSet<string>(
+                TocGuideHrefPattern.Matches(File.ReadAllText(tocPath)).Select(m => m.Groups[1].Value));
+            var actualFiles = new HashSet<string>(
+                Directory.GetFiles(DocumentationCorpus.DocumentationDirectory, "*.md").Select(Path.GetFileName));
+
+            // Act
+            var missingFromToc = actualFiles.Except(linkedFiles).Select(f => $"missing from docs/toc.yml: {f}");
+            var deadTocLinks = linkedFiles.Except(actualFiles).Select(f => $"dead toc entry (no such guide): {f}");
+            var diff = missingFromToc.Concat(deadTocLinks).ToList();
+
+            // Assert
+            Assert.That(diff, Is.Empty,
+                "docs/toc.yml is out of sync with Documentation~'s actual .md files:\n" + string.Join("\n", diff));
         }
 
         [Test]

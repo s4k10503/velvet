@@ -5,6 +5,7 @@ namespace Velvet
     public enum RouterStatus
     {
         Idle,
+        /// <summary>The path has matched, and the matched routes' guards and blockers are running.</summary>
         Matching,
         Loading,
         Ready,

@@ -20,21 +20,16 @@ namespace Velvet
         private Dictionary<string?, Exception> _loaderErrors = new();
         private const int MaxRedirects = 5;
         private const int MaxHistoryEntries = 50;
-        // Cancellation token for the currently in-flight navigation (null when idle). When a new
-        // navigation arrives during an async Blocker await, we cancel the previous CTS so the prior
-        // nav unwinds (NavigationResult.Cancelled) and the latest nav takes over, so concurrent
-        // navigations during the blocker window resolve to the most recent one.
+        // Cancellation token for the currently in-flight navigation (null when idle). A newer navigation
+        // that matches cancels it on its way past the match, so the prior attempt unwinds
+        // (NavigationResult.Cancelled) wherever it is parked and concurrent navigations resolve to the most
+        // recent one that had somewhere to go.
         private CancellationTokenSource? _activeNavigationCts;
         // Identifies whoever currently owns Status. An attempt that has lost the claim must not put Status
         // back: cancelling its token does not force it to resume at that moment, so it can reach its rollback
         // after a newer navigation has established its own Status, and by then the value it would write
         // describes a router that no longer exists.
         private int _navigationSequence;
-        // The loader round whose data the current location was committed with. A round that has not reached
-        // its commit has no location to write under: the live loader state and _historyIndex still describe
-        // where the user is, so a loader that resolves before that commit would record its result against the
-        // entry being navigated away from. The commit takes such a result from the round's results instead.
-        private RouteLoaderRunner.LoaderRound? _committedRound;
 
         /// <summary>
         /// The currently active <see cref="Router"/> instance, or null when none is mounted. Set when a
@@ -107,7 +102,6 @@ namespace Velvet
             _loaderRunner.OnSuspendLoaderFailed += (routeId, ex) =>
             {
                 UnityEngine.Debug.LogException(ex);
-                if (!ResolvedIntoTheCommittedRound()) return;
                 // Suspend-mode loader failed: record the error keyed by RouteId and re-emit so the nearest
                 // ErrorElement renders, mirroring the synchronous Await-mode error commit.
                 _loaderErrors = new Dictionary<string?, Exception>(_loaderErrors) { [routeId] = ex };
@@ -116,7 +110,6 @@ namespace Velvet
             };
             _loaderRunner.OnSuspendLoaderCompleted += (routeId, result) =>
             {
-                if (!ResolvedIntoTheCommittedRound()) return;
                 // Suspend-mode loader completed: replace _loaderData with a new instance so a re-render
                 // re-reads the resolved data. The location content is unchanged, so RepublishCurrentLocation
                 // re-emits OnLocationChanged with a fresh identity to force that re-render.
@@ -138,8 +131,8 @@ namespace Velvet
         /// <summary>
         /// Navigates to the given path. Evaluation order is Guard -&gt; Blocker -&gt; Loader.
         /// A successful Guard redirect records the final target rather than intermediate targets while
-        /// preserving the originating navigation's history effect. A chain of more than five redirects
-        /// ends the navigation with <see cref="NavigationResult.Error"/>.
+        /// preserving the originating navigation's history effect. At most four redirects are followed: a
+        /// fifth is refused and the navigation ends with <see cref="NavigationResult.Error"/>.
         /// </summary>
         /// <param name="path">Target path to navigate to.</param>
         /// <param name="mode">How the destination is recorded in the history stack. Defaults to <see cref="NavigationMode.Push"/>.</param>
@@ -316,19 +309,15 @@ namespace Velvet
             CancellationToken navToken = cancellationToken;
             if (redirectCount == 0)
             {
-                // Cancel any in-flight navigation so it unwinds (Blocker.CheckAsync await observes
-                // the cancellation). Dispose of the prior CTS is left to the prior navigation's own
-                // finally — disposing here would double-dispose and confuse ownership, and the
-                // synchronous Cancel chain may already run the prior finally before we proceed.
-                _activeNavigationCts?.Cancel();
+                // Built here so the phases run under it, but not installed here: taking over from the
+                // in-flight navigation is NavigateCore's, on the far side of the match.
                 myCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                _activeNavigationCts = myCts;
                 navToken = myCts.Token;
             }
 
             try
             {
-                return await NavigateCore(path, mode, navToken, redirectCount, initiator);
+                return await NavigateCore(path, mode, navToken, redirectCount, initiator, myCts);
             }
             catch (OperationCanceledException) when (myCts != null && myCts.IsCancellationRequested)
             {
@@ -343,8 +332,9 @@ namespace Velvet
             {
                 if (myCts != null)
                 {
-                    // Only clear the active-CTS field if we're still the active navigation; a newer
-                    // navigation that took over will have already replaced the field with its own CTS.
+                    // Only clear the active-CTS field if this navigation is the one holding it: an attempt
+                    // that matched nothing never took the field, and one a newer navigation took over from
+                    // has already had the field replaced with that navigation's own CTS.
                     if (ReferenceEquals(_activeNavigationCts, myCts)) _activeNavigationCts = null;
                     myCts.Dispose();
                 }
@@ -356,23 +346,22 @@ namespace Velvet
             NavigationMode mode,
             CancellationToken cancellationToken,
             int redirectCount,
-            PendingNavigation? initiator)
+            PendingNavigation? initiator,
+            CancellationTokenSource? takeover)
         {
             if (redirectCount >= MaxRedirects)
             {
                 WithdrawInitiatorsDestination(initiator);
-                Status = RouterStatus.Error;
+                ReportUnclaimedOutcome(RouterStatus.Error);
                 return NavigationResult.Error;
             }
 
             if (path == null)
             {
-                WithdrawInitiatorsDestination(initiator);
-                Status = RouterStatus.NotFound;
+                ReportUnclaimedOutcome(RouterStatus.NotFound);
                 return NavigationResult.NotFound;
             }
 
-            Status = RouterStatus.Matching;
             // Match against the path only; the query string (?key=value) is not part of route matching but
             // is preserved on CurrentLocation.Path so UseSearchParams can read it.
             var pathForMatch = RouteQuery.StripQuery(path);
@@ -381,7 +370,7 @@ namespace Velvet
             if (matches == null)
             {
                 WithdrawInitiatorsDestination(initiator);
-                Status = RouterStatus.NotFound;
+                ReportUnclaimedOutcome(RouterStatus.NotFound);
                 return NavigationResult.NotFound;
             }
 
@@ -394,13 +383,22 @@ namespace Velvet
             }
             else
             {
-                // The claim is taken after the match and not when the navigation started: every return above
-                // this line leaves Status describing its own outcome, so a navigation that matches no route
-                // must not dispossess an attempt parked in a blocker — that attempt is then the only one able
-                // to put Status back.
+                // Everything an attempt does to the router at large happens on this side of the match, and
+                // that is the point of taking the claim here: an attempt that matches no route must not
+                // dispossess one parked in a guard, a blocker or a loader, because that attempt is the only
+                // one able to put Status back and the only one its destination and its token belong to.
+                if (takeover != null)
+                {
+                    // Dispose of the prior CTS is left to the prior navigation's own finally — disposing
+                    // here would double-dispose and confuse ownership, and the synchronous Cancel chain may
+                    // already run the prior finally before we proceed.
+                    _activeNavigationCts?.Cancel();
+                    _activeNavigationCts = takeover;
+                }
                 pending = new PendingNavigation(++_navigationSequence, CommitIndexFor(mode), path, mode);
             }
 
+            Status = RouterStatus.Matching;
             // Built here rather than at the commit so the phases below have a destination to publish while
             // they run, and reused as the committed location so the two are one object.
             var location = BuildLocation(path, matches);
@@ -452,8 +450,10 @@ namespace Velvet
             CurrentLocation = location;
             PendingLocation = null;
             // Only now may the round's late results reach the live state: the write-back they trigger reads
-            // CurrentLocation and _historyIndex, and both describe this round's location from here on.
-            _committedRound = round;
+            // CurrentLocation and _historyIndex, and both describe this round's location from here on. This
+            // is also where the round it replaces ends — up to this line that round's loaders were streaming
+            // into the route the user was still looking at.
+            _loaderRunner.Promote(round);
             Status = RouterStatus.Ready;
             // Settled before the notification, so a handler reading a Blocker off it sees one that has
             // finished proceeding rather than one still holding the attempt this commit completed.
@@ -500,22 +500,31 @@ namespace Velvet
             _ => _historyIndex,
         };
 
-        // Sound because of the ownership rule RouteLoaderRunner.OnSuspendLoaderCompleted states.
-        private bool ResolvedIntoTheCommittedRound() =>
-            ReferenceEquals(_loaderRunner.CurrentRound, _committedRound);
-
         private bool StillCurrent(PendingNavigation pending) =>
             pending.Sequence == _navigationSequence;
 
-        // The three returns above a redirect's own claim end the attempt its initiator published a destination
-        // for, and the initiator does nothing afterwards but forward the result — so the destination is
-        // withdrawn here or not at all. Status is left to the caller, which has already put its outcome there.
+        // The two returns a redirect can reach above its own claim end the attempt its initiator published a
+        // destination for, and the initiator does nothing afterwards but forward the result — so the
+        // destination is withdrawn here or not at all. Status is left to the caller.
         private void WithdrawInitiatorsDestination(PendingNavigation? initiator)
         {
             if (initiator.HasValue && StillCurrent(initiator.Value))
             {
                 PendingLocation = null;
             }
+        }
+
+        // Status for an attempt that ended above the claim. Having none, it may only report into a router
+        // where nobody holds one: an attempt parked in a guard, a blocker or a loader is what Status
+        // describes, and it is the only one able to put Status back. A published destination is what says
+        // such an attempt exists — it is set as the claim is taken and cleared by whatever ends it.
+        private void ReportUnclaimedOutcome(RouterStatus status)
+        {
+            if (PendingLocation != null)
+            {
+                return;
+            }
+            Status = status;
         }
 
         private void ReleaseClaim(PendingNavigation pending, RouterStatus status)
@@ -659,27 +668,22 @@ namespace Velvet
 
             if (restoring)
             {
-                // The else branch cancels the previous round by reaching RunLoadersAsync; this one commits
-                // without ever reaching it. Leaving that round's CTS installed keeps it current for
-                // RouteLoaderRunner's supersession guard, so the round being navigated away from would write
-                // its late result into the entry restored here. Nothing downstream separates the two: RouteId
-                // is built from the route pattern, which both entries share whenever they match the same one.
-                _loaderRunner.CancelPending();
                 var entry = _history[pending.CommitIndex];
                 _loaderData = entry.LoaderData;
                 // Restore the cached errors too: a Back/Forward cache hit must re-present a route that errored
                 // on its first load (UseRouteError / ErrorElement), symmetrically with the loader data.
                 _loaderErrors = new Dictionary<string?, Exception>(entry.LoaderErrors);
                 Status = RouterStatus.Loading; // for status-transition consistency
-                // A restored entry ran no loaders of its own, and Back/Forward rewrites no entry, so the round
-                // handed back is only the empty one CancelPending installed.
-                return (null, _loaderRunner.CurrentRound);
+                // A restored entry ran no loaders of its own, so what the commit promotes is an empty round
+                // rather than the one it is leaving; RouteLoaderRunner.EmptyRound states what promoting that
+                // one instead would cost.
+                return (null, _loaderRunner.EmptyRound());
             }
 
             Status = RouterStatus.Loading;
             // An Await-mode loader suspends here, holding the commit — and so the route on screen — until it
-            // resolves. A newer navigation arriving inside that window cancels this token, which is what the
-            // check below is reading.
+            // resolves. A newer navigation that matches, arriving inside that window, cancels this token,
+            // which is what the check below is reading.
             var round = await _loaderRunner.RunLoadersAsync(matches, cancellationToken);
 
             if (cancellationToken.IsCancellationRequested)
@@ -782,8 +786,8 @@ namespace Velvet
                     // A round still running has nothing worth recording, and the write-back it triggers on
                     // settling is what makes the entry servable. A round already settled by here has no such
                     // write-back coming: it settled before this navigation had a location for its results to
-                    // be written under, which is where _committedRound refused them. Without this the entry
-                    // would stay unservable and re-run its loaders on every step onto it.
+                    // be written under, which is where the runner's live-round guard refused them. Without
+                    // this the entry would stay unservable and re-run its loaders on every step onto it.
                     if (round.Settled)
                     {
                         _history[_historyIndex] = NewEntry(path, matches, round);
@@ -848,8 +852,10 @@ namespace Velvet
         /// </summary>
         private void SyncCurrentHistorySnapshot()
         {
-            // Guard against a not-yet-committed router (no current location / no history entry).
-            if (_historyIndex < 0 || _historyIndex >= _history.Count || CurrentLocation == null)
+            // Guard against a not-yet-committed router (no current location / no history entry / no round
+            // whose loaders the entry could be holding open).
+            var round = _loaderRunner.LiveRound;
+            if (round == null || _historyIndex < 0 || _historyIndex >= _history.Count || CurrentLocation == null)
             {
                 return;
             }
@@ -864,7 +870,7 @@ namespace Velvet
                 return;
             }
 
-            _history[_historyIndex] = NewEntry(entry.Path, entry.Matches, _loaderRunner.CurrentRound);
+            _history[_historyIndex] = NewEntry(entry.Path, entry.Matches, round);
         }
 
         private void PushHistoryEntry(HistoryEntry entry)

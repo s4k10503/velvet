@@ -76,7 +76,7 @@ namespace Velvet.Tests
             var blocks = GCAllocationProbe.SampleBlocksDuring(NavigateOnce);
 
             // Assert
-            Assert.That(blocks, Is.EqualTo(101));
+            Assert.That(blocks, Is.EqualTo(97));
         }
 
 #if UNITY_EDITOR
@@ -98,7 +98,7 @@ namespace Velvet.Tests
             var blocks = GCAllocationProbe.SampleBlocksDuring(NavigateOnce);
 
             // Assert
-            Assert.That(blocks, Is.EqualTo(101));
+            Assert.That(blocks, Is.EqualTo(97));
         }
 #endif
     }
