@@ -718,8 +718,7 @@ namespace Velvet.Tests
         public void Given_SettledNavigation_When_UseNavigation_Then_ReRendersExactlyOnce()
         {
             // A navigation whose loaders never suspend raises its status and location events inside one
-            // synchronous stack, so the state updates they schedule are drained in a single batch and the
-            // component does not flicker through the transient Loading state it passed.
+            // synchronous stack, so the state updates they schedule are drained in a single batch.
             // Arrange
             var router = new Router(new[]
             {
