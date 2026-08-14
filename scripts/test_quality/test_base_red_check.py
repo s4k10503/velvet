@@ -589,6 +589,7 @@ class VerdictTests(unittest.TestCase):
         # Assert
         self.assertEqual(verdict, base_red_check.COULD_NOT_ANSWER)
 
+    # GREEN_ON_BASE(characterization): the unknown-category refusal the new verdicts must leave alone.
     def test_Given_AMalformedDeclarationOnACaseGreenOnTheBase_When_ItIsDecided_Then_ItFailsTheRun(self):
         # Arrange -- a category the script does not know reads to everyone else as an approved
         # exemption, and the case it sits on is one that passes there, which is the reading this

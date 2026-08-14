@@ -342,7 +342,11 @@ could not be taken — rather than passed.
 `scripts/test_quality/assume_gate_baseline.txt` carries what is here now, for the reason
 `neuter_holes.txt` does — a total nets a fix off against a new one — and both a new entry and one the
 scan no longer finds fail the check. It runs in `Test ▸ test-quality` and needs no licence. What to do
-about an entry is the fold the fixture conventions above prescribe, and the check prints it.
+about an entry is the fold the fixture conventions above prescribe, and the check prints it. Not every
+entry is a defect: the reading is a shape, so an environment precondition reached through a local the
+Act declared is in the record too — the panel root's resolved width, read through the element the Act
+mounted. Where inspection says an entry is that, record it with `--write-baseline` and say so in the
+pull request rather than folding it.
 
 **What it does not reach** is a gate above the `// Assert` marker over state the Act changes without
 declaring it — a field, or a member of something the Arrange built. That is the shape the rule itself

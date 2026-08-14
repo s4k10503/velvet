@@ -126,6 +126,21 @@ class ActValueTests(unittest.TestCase):
         # Act / Assert
         self.assertEqual(readings(body), [(assume_gate_check.GATES_ACT_VALUE, "spacer")])
 
+    def test_Given_ATypedLocalDeclaredAfterAnotherStatement_When_TheCaseIsRead_Then_ItStillGatesIt(self):
+        # Arrange -- the same declaration with a statement in front of it on the line. A reader taking
+        # one attempt per line reaches only the first, so the local goes unseen and the case comes back
+        # gating nothing at all.
+        body = ("            // Arrange\n"
+                "            var root = Mount();\n\n"
+                "            // Act\n"
+                "            root.Clear(); VisualElement spacer = Insert(root);\n"
+                "            Assume.That(spacer, Is.Not.Null);\n\n"
+                "            // Assert\n"
+                "            Assert.That(spacer.resolvedStyle.width, Is.EqualTo(4f));")
+
+        # Act / Assert
+        self.assertEqual(readings(body), [(assume_gate_check.GATES_ACT_VALUE, "spacer")])
+
     def test_Given_AnAssignmentToSomethingAlreadyDeclared_When_TheCaseIsRead_Then_ItDeclaresNothing(self):
         # Arrange -- `element.style.width = 4` is two identifiers and an `=` like a declaration is,
         # and reading it as one would put every case touching an Act-side property under a gate.

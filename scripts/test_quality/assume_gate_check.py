@@ -62,17 +62,15 @@ IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 # `out var x`, `var x =`, `out x`, and the deconstruction spelling this repository also writes.
 INTRODUCED = re.compile(r"\bvar\s*\(([^)]*)\)|\b(?:out\s+var|var|out)\s+([A-Za-z_][A-Za-z0-9_]*)")
 # The typed spelling, which a case reaches for when the local is assigned inside a lambda or a branch
-# and so cannot be `var`. Two identifiers have to sit before the `=`, so an assignment to something
-# already declared -- `element.style.width = 10` -- is not one. The start anchor holds it to one
-# attempt per line, which is what makes that rule mean a declaration; a mutation sweep found nothing
-# in this repository that tells the anchored reading from the unanchored one, so no case here fails
-# when the anchor goes.
+# and so cannot be `var`. The whitespace between the type and the name is required, and is what keeps
+# `element.style.width = 10` out: relax it and the chain splits mid-identifier into a type and a name.
+# Do not anchor this at the start of a line either -- one attempt per line loses a declaration that
+# follows another statement, which `ActValueTests` has a case for.
 TYPED = re.compile(
-    r"^[ \t]*(?:(?:readonly|const|using|await|static)\s+)*"
+    r"(?:(?:readonly|const|using|await|static)\s+)*"
     r"[A-Za-z_][A-Za-z0-9_]*(?:\s*\.\s*[A-Za-z_][A-Za-z0-9_]*)*"
     r"(?:\s*<[^<>;=]*>)?(?:\s*\[\s*\])*\s*\??\s+"
-    r"([A-Za-z_][A-Za-z0-9_]*)\s*=",
-    re.MULTILINE)
+    r"([A-Za-z_][A-Za-z0-9_]*)\s*=")
 
 
 def _sibling(name):
@@ -263,7 +261,8 @@ def main():
         print("\nAn Assume that gates the behaviour a case is named for turns that case's regression "
               "into an\nInconclusive, which the runner does not count. Fold the gated state into the "
               "assertion as one\ncomparison over a tuple of it and the state under test; delete it "
-              "only where the assertion alone\nwould still fail on the broken behaviour.",
+              "only where the assertion alone\nwould still fail on the broken behaviour. CONTRIBUTING.md "
+              "says when an entry is a precondition\nto record here instead.",
               file=sys.stderr)
     return 1 if added or removed else 0
 
