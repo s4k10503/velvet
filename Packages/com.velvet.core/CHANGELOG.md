@@ -149,10 +149,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   route follows from that: where such a callback defers nothing, the flag it raised is cleared at its
   own exit, and nothing renders because a flag moved — so the exit asks the declaring component for the
   render that takes the indicator down. That exit asks only where the declaring component's last render
-  read the flag as true, so it costs nothing where that component was not showing the transition. Where
-  the callback did defer work the exit settles nothing at all — what ends the transition is the commit
-  of that work, and the settle there asks for its render without that term, so a transition that
-  deferred work costs the declaring component a render whether or not it was showing anything.
+  read the flag as true, so it costs nothing where that component was not showing the transition — and
+  it settles only a transition with nothing outstanding. Where the callback's work is still queued
+  somewhere, what ends the transition is the commit of that work, and the settle there asks for its
+  render without that term, so a transition whose work commits on another component costs the declaring
+  one a render whether or not it was showing anything.
 - Two `UseTransition` slots whose transitions are open at once, but not nested one inside the other, no
   longer credit each other's writes. One slot's update was attributed to every slot on that component
   that still had a transition open, so a slot whose own callback had queued nothing kept `isPending`

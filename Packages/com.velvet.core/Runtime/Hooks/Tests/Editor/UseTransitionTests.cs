@@ -1012,8 +1012,8 @@ namespace Velvet.Tests
         [Test]
         public void Given_ATransitionWhoseDeclaringComponentNeverShowedPending_When_ItsDeferredWorkCommits_Then_ItStillCostsThatComponentARender()
         {
-            // Arrange — the writer renders once, at mount, with the flag down, so nothing it has on screen
-            // says pending and its exit's own gate would decline the render this act measures
+            // Arrange — the writer's only render is the mount, with the flag down, so nothing it has on
+            // screen says pending: the render this act measures is one the exit's gate would have declined
             using var store = new TransitionCountStore();
             s_storeStore = store;
             using var mounted = V.Mount(_root, V.Component(StoreTransitionParentRender, key: "store-transition"));
