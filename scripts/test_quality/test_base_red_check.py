@@ -390,6 +390,69 @@ class DeclarationTests(unittest.TestCase):
         # Assert
         self.assertIsNone(case_named(cases, "Given_D_When_E_Then_F").declaration)
 
+    def test_Given_AReasonWrappedOntoASecondCommentLine_When_ItIsRead_Then_TheWrappedHalfIsPartOfIt(self):
+        # Arrange
+        text = ("class C\n{\n    // " + MARKER + "(characterization): the reordering\n"
+                "    // this rename keeps is the base's own.\n"
+                "    [Test]\n    public void Given_A_When_B_Then_C() => Assert.Pass();\n}\n")
+
+        # Act
+        case = base_red_check.csharp_cases(text)[0]
+
+        # Assert
+        self.assertEqual(case.declaration.reason,
+                         "the reordering this rename keeps is the base's own.")
+
+    def test_Given_APythonReasonWrappedOntoASecondLine_When_ItIsRead_Then_TheWrappedHalfIsPartOfIt(self):
+        # Arrange -- the other marker a comment block is written with. A fold that reaches only `//`
+        # leaves this lane reading first lines, and nothing else here would say so.
+        text = ("import unittest\n"
+                "class C(unittest.TestCase):\n"
+                "    # " + MARKER + "(refactor): the names\n"
+                "    # this rename preserves.\n"
+                "    def test_a(self):\n        pass\n")
+
+        # Act
+        case = base_red_check.python_cases(text)[0]
+
+        # Assert
+        self.assertEqual(case.declaration.reason, "the names this rename preserves.")
+
+    def test_Given_AShortClaimAboveAnUnrelatedRemark_When_ItIsRead_Then_TheFloorStillRefusesIt(self):
+        # Arrange
+        text = ("class C\n{\n    // " + MARKER + "(refactor): rename\n"
+                "    // This fixture needs a real panel and is guarded by TestGraphics.\n"
+                "    [Test]\n    public void Given_A_When_B_Then_C() => Assert.Pass();\n}\n")
+
+        # Act
+        declaration = base_red_check.csharp_cases(text)[0].declaration
+
+        # Assert -- one comparison over both: the reason is what a reader that never folds gets
+        # wrong, and the complaint is what one that measures the floor over the fold gets wrong.
+        self.assertEqual(
+            (declaration.reason, declaration.complaint is not None),
+            ("rename This fixture needs a real panel and is guarded by TestGraphics.", True))
+
+    def test_Given_ADeclarationCarriedByThePlan_When_TheSecondInvocationDecides_Then_ItJudgesTheSame(self):
+        # Arrange -- the C# lane reads the tree in one invocation and decides in another, so whatever
+        # the plan does not carry is a reading the deciding half takes differently from the reading
+        # half. Nothing else here goes through it.
+        text = ("class C\n{\n    // " + MARKER + "(refactor): rename\n"
+                "    // This fixture needs a real panel.\n"
+                "    [Test]\n    public void Given_A_When_B_Then_C() => Assert.Pass();\n}\n")
+        case = base_red_check.csharp_cases(text)[0]
+        case.declaration.written_here = False
+
+        # Act
+        restored = base_red_check.from_plan(
+            base_red_check.as_plan("sha", [case], [], {}, {})["cases"])[0].declaration
+
+        # Assert -- the three the plan is a transport for, in one comparison: the reason, the floor
+        # verdict the claim decides, and whose declaration it is.
+        self.assertEqual(
+            (restored.reason, restored.complaint is not None, restored.written_here),
+            ("rename This fixture needs a real panel.", True, False))
+
     def test_Given_ACategoryNothingDefines_When_TheDeclarationIsChecked_Then_ItIsComplainedAbout(self):
         # Act
         complaint = base_red_check.Declaration("whatever", "a reason with enough words in it").complaint
@@ -805,6 +868,20 @@ class SilenceTests(unittest.TestCase):
         # Assert
         self.assertEqual(("could not answer for" in raised, "could not answer for" in uncompilable),
                          (True, False))
+
+    def test_Given_ACaseTheBaseBuiltNoneOfTheFixtureOf_When_TheRunIsSummarised_Then_ItIsCountedToo(self):
+        # Arrange -- the verdict is the fixture's, so a case in one that reported nothing carries it
+        # whether or not it is the case naming what the base has not got. Counting them is how a
+        # reviewer sees how much of the run that is without counting the per-case listing by hand.
+        uncompilable = self.summary_over({})
+
+        # Act
+        answered = self.summary_over({"N.C.Given_A_When_B_Then_C": "Failed"})
+
+        # Assert -- the answered run rides along because a line printed unconditionally satisfies
+        # the first half on its own.
+        self.assertEqual(("1 of 1 case(s) sit in a fixture" in uncompilable,
+                          "sit in a fixture" in answered), (True, False))
 
 
 class UnittestTrailerTests(unittest.TestCase):
@@ -1297,6 +1374,22 @@ class BranchReadingTests(unittest.TestCase):
         # declaration at all.
         declared = "        // " + MARKER + "(refactor): a pure rename of the applier.\n"
         root = self.repository(self.source(), self.source(declared))
+
+        # Act
+        _, cases, _, _, _ = base_red_check.collect(root, "HEAD~1", "csharp")
+
+        # Assert
+        self.assertTrue(case_named(cases, "Given_A_When_B_Then_C").declaration.written_here)
+
+    def test_Given_ABranchThatRewroteTheWrappedHalfOfAReason_When_ItIsRead_Then_TheDeclarationIsIts(self):
+        # Arrange -- the reason spans both comment lines, and this branch rewrote the second. Asking
+        # only whether the marker's own line moved answers "the base's own" for a declaration this
+        # branch wrote half of, and the remedy it then prints is to restate what was just restated.
+        before = ("        // " + MARKER + "(refactor): a pure rename\n"
+                  "        // of the applier the base already carries.\n")
+        after = ("        // " + MARKER + "(refactor): a pure rename\n"
+                 "        // of the applier this branch performs.\n")
+        root = self.repository(self.source(before), self.source(after))
 
         # Act
         _, cases, _, _, _ = base_red_check.collect(root, "HEAD~1", "csharp")

@@ -143,10 +143,13 @@ class ActValueTests(unittest.TestCase):
 
     def test_Given_AnAssignmentToSomethingAlreadyDeclared_When_TheCaseIsRead_Then_ItDeclaresNothing(self):
         # Arrange -- `element.style.width = 4` is two identifiers and an `=` like a declaration is,
-        # and reading it as one would put every case touching an Act-side property under a gate.
+        # and reading it as one would put every case touching an Act-side property under a gate. The
+        # Arrange gates `h`, which is what that misreading names the assignment's local: the split
+        # falls mid-identifier, so the last character of the member becomes the declared name.
         body = ("            // Arrange\n"
                 "            var element = Mount();\n"
-                "            Assume.That(width, Is.EqualTo(4f));\n\n"
+                "            var h = MeasuredHeight();\n"
+                "            Assume.That(h, Is.EqualTo(4f));\n\n"
                 "            // Act\n"
                 "            element.style.width = 4;\n\n"
                 "            // Assert\n"

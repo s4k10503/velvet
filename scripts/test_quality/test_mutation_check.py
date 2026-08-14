@@ -102,7 +102,7 @@ def survivor(path, line, verdict=None):
 
 
 def declaration(line, category="equivalent", reason="a reason of four words", written_here=True):
-    return mutation_check.Declaration(category, reason, line, written_here)
+    return mutation_check.Declaration(category, reason, line, written_here=written_here)
 
 
 class CodeMaskTests(unittest.TestCase):
@@ -622,6 +622,20 @@ class DeclarationReadingTests(unittest.TestCase):
         # Assert
         self.assertEqual(found, [3])
 
+    def test_Given_AShortClaimAboveAnUnrelatedRemark_When_ItIsRead_Then_TheFloorStillRefusesIt(self):
+        # Arrange
+        text = ("// MUTANT_SURVIVES(equivalent): rename\n"
+                "// The caller clamps this operand.\n"
+                "if (a <= b) { }\n")
+
+        # Act
+        declaration = mutation_check.declarations_in(text)[0][1]
+
+        # Assert -- one comparison over both: the reason is what a reader that never folds gets
+        # wrong, and the complaint is what one that measures the floor over the fold gets wrong.
+        self.assertEqual((declaration.reason, declaration.complaint is not None),
+                         ("rename The caller clamps this operand.", True))
+
 
 class VerdictTests(unittest.TestCase):
     """Which survivors the run signs off. Every reading here is one `base_red_check.py` takes too."""
@@ -671,7 +685,7 @@ class VerdictTests(unittest.TestCase):
         unanswered, _ = self.decide(mutants, declared)
 
         # Assert
-        self.assertEqual(unanswered, ["the reason is under 4 words"])
+        self.assertEqual(unanswered, ["the reason's first line is under 4 words"])
 
     def test_Given_ASurvivorDeclaredByTheBaseRatherThanThisBranch_When_ItIsDecided_Then_ItIsUnanswered(self):
         # Arrange — a declaration answers for the change under it. One the branch did not write
@@ -1594,8 +1608,20 @@ class DeclarationOwnershipTests(unittest.TestCase):
         }
         """)
 
-    def read(self, changed_lines):
-        campaign = StubbedCampaign(self.SOURCE)
+    WRAPPED = textwrap.dedent("""\
+        namespace Velvet
+        {
+            internal static class Probe
+            {
+                // MUTANT_SURVIVES(equivalent): every caller clamps the operand, so
+                // both bounds accept the same set.
+                internal static bool Ready(int a, int b) => a <= b;
+            }
+        }
+        """)
+
+    def read(self, changed_lines, source=None):
+        campaign = StubbedCampaign(self.SOURCE if source is None else source)
         found = mutation_check.declarations_for(
             {campaign.source: None}, {campaign.source: changed_lines})
         return sorted({held.written_here for held in found.values()})
@@ -1610,6 +1636,11 @@ class DeclarationOwnershipTests(unittest.TestCase):
         # declaration the base already carried and does not answer for this change.
         # Act / Assert
         self.assertEqual(self.read({6}), [False])
+
+    def test_Given_OnlyTheWrappedHalfOfAReasonRewritten_When_ItIsRead_Then_ItIsTheBranchsOwn(self):
+        # Arrange — the marker sits on line 5 and its reason runs onto line 6.
+        # Act / Assert
+        self.assertEqual(self.read({6}, self.WRAPPED), [True])
 
 
 class VerdictNamingTests(unittest.TestCase):

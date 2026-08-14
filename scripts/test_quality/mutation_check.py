@@ -110,20 +110,37 @@ class Mutant:
         return "{}:{} {} -> {} ({})".format(where, self.line, self.before, self.after, self.operator)
 
 
+def folded_reason(tail, wrapped):
+    """(the marker line's own claim, that claim with the comment lines under it folded onto it).
+
+    The reason spans the block so that a branch which rewrote only its wrapped half wrote the
+    declaration. The floor is measured on the claim rather than on that span, over which a comment
+    line that is not the reason at all would count toward it.
+    """
+    folded = [tail] + [line.strip().lstrip("/#") for line in wrapped]
+    return " ".join(tail.split()), " ".join(" ".join(folded).split())
+
+
 class Declaration:
-    def __init__(self, category, reason, line, written_here=True):
+    def __init__(self, category, reason, line, claim=None, through=None, written_here=True):
         self.category = category
         self.reason = reason
+        self.claim = reason if claim is None else claim
         self.line = line
+        self.through = line if through is None else through
         # Whether the branch wrote it, for the reason base_red_check.py's own field carries.
         self.written_here = written_here
+
+    def written_in(self, lines):
+        """Whether the branch wrote any line of the span `folded_reason` reads the reason over."""
+        return any(number in lines for number in range(self.line, self.through + 1))
 
     @property
     def complaint(self):
         if self.category not in CATEGORIES:
             return "category {!r} is not one of {}".format(self.category, ", ".join(CATEGORIES))
-        if len(self.reason.split()) < MINIMUM_REASON_WORDS:
-            return "the reason is under {} words".format(MINIMUM_REASON_WORDS)
+        if len(self.claim.split()) < MINIMUM_REASON_WORDS:
+            return "the reason's first line is under {} words".format(MINIMUM_REASON_WORDS)
         return None
 
     def __repr__(self):
@@ -159,7 +176,9 @@ def declarations_in(text):
             subject += 1
         if subject >= len(lines) or not lines[subject].strip():
             continue
-        declaration = Declaration(match.group(1), match.group(2).strip(), line=index + 1)
+        claim, reason = folded_reason(match.group(2), lines[index + 1:subject])
+        declaration = Declaration(match.group(1), reason, line=index + 1, claim=claim,
+                                  through=subject)
         # Extends while the statement's own parentheses are still open, which is what a condition
         # broken across lines leaves and what a finished statement does not.
         depth = 0
@@ -882,7 +901,7 @@ def declarations_for(targets, changed):
     found = {}
     for path in targets:
         for subject, declaration in declarations_in(path.read_text()):
-            declaration.written_here = declaration.line in changed.get(path, set())
+            declaration.written_here = declaration.written_in(changed.get(path, set()))
             found[(path, subject)] = declaration
     return found
 

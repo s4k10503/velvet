@@ -62,10 +62,10 @@ IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 # `out var x`, `var x =`, `out x`, and the deconstruction spelling this repository also writes.
 INTRODUCED = re.compile(r"\bvar\s*\(([^)]*)\)|\b(?:out\s+var|var|out)\s+([A-Za-z_][A-Za-z0-9_]*)")
 # The typed spelling, which a case reaches for when the local is assigned inside a lambda or a branch
-# and so cannot be `var`. The whitespace between the type and the name is required, and is what keeps
-# `element.style.width = 10` out: relax it and the chain splits mid-identifier into a type and a name.
-# Do not anchor this at the start of a line either -- one attempt per line loses a declaration that
-# follows another statement, which `ActValueTests` has a case for.
+# and so cannot be `var`. Two decisions about its shape are held by cases in `ActValueTests` rather
+# than by this comment: the whitespace between the type and the name is required, because without it
+# `element.style.width = 4` splits mid-identifier into a type and a name; and there is no
+# start-of-line anchor, which would lose a declaration that follows another statement on its line.
 TYPED = re.compile(
     r"(?:(?:readonly|const|using|await|static)\s+)*"
     r"[A-Za-z_][A-Za-z0-9_]*(?:\s*\.\s*[A-Za-z_][A-Za-z0-9_]*)*"

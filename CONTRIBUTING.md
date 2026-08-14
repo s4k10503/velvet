@@ -289,9 +289,13 @@ Two kinds of case belong on the base, and say so above themselves with a reason 
 it. A declaration answers for the change written under it, and it is read three ways so it cannot outlive
 what it describes: one over a case that turns out red on the base fails the check, one whose category or
 reason the script refuses fails it, and one the branch did not itself write is a declaration for a change
-the base already carries and does not cover this one — restate it. The base tree is a checkout the
-machine has never imported, and that import is most of what a base run costs; `--warm-library` copies an
-existing `Library` into it, sharing blocks where the filesystem will.
+the base already carries and does not cover this one — restate it. A reason may wrap onto the comment
+lines under it: the declaration is read from its marker to the end of that block, and a branch that
+rewrote any of those lines wrote it. The word floor is measured on the marker's own line rather than
+over that span, so the first line has to be a claim in its own right — measured over the span, a
+comment line that is not the reason at all counts toward it. The base tree is a checkout the
+machine has never imported, and that import is most of what a base run costs; `--warm-library` copies
+an existing `Library` into it, sharing blocks where the filesystem will.
 
 `Test ▸ base-red-python` runs the Python lane on every pull request and needs no licence.
 `Test ▸ base-red` runs the C# lane where one is configured, but only one round of it: a base that
@@ -345,8 +349,9 @@ scan no longer finds fail the check. It runs in `Test ▸ test-quality` and need
 about an entry is the fold the fixture conventions above prescribe, and the check prints it. Not every
 entry is a defect: the reading is a shape, so an environment precondition reached through a local the
 Act declared is in the record too — the panel root's resolved width, read through the element the Act
-mounted. Where inspection says an entry is that, record it with `--write-baseline` and say so in the
-pull request rather than folding it.
+mounted. Where inspection says an entry is that, fold the other new ones first — `--write-baseline`
+rewrites the whole record from the tree and cannot take one entry — then regenerate it, check the lines
+it added are the ones being answered for, and say so in the pull request.
 
 **What it does not reach** is a gate above the `// Assert` marker over state the Act changes without
 declaring it — a field, or a member of something the Arrange built. That is the shape the rule itself

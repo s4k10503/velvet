@@ -129,28 +129,37 @@ def _sibling(name):
 # Which offsets the C# compiler sees as code is one question with one answer, and mutation_check.py
 # owns it. Everything here that reads C# structure -- braces, types, namespaces, attributes -- reads
 # it through that mask, so a brace or a `class` inside a string or a comment names nothing here.
+# How a declaration's reason is read comes from there for the same reason: CONTRIBUTING.md says the
+# two markers are read one way, which a second copy of the fold here would be free to stop being.
 _mutation_check = _sibling("mutation_check")
 code_mask = _mutation_check.code_mask
 line_spans = _mutation_check.line_spans
+folded_reason = _mutation_check.folded_reason
 
 
 class Declaration:
-    def __init__(self, category, reason, written_here=True, line=None):
+    def __init__(self, category, reason, claim=None, written_here=True, line=None, through=None):
         self.category = category
         self.reason = reason
+        self.claim = reason if claim is None else claim
         # A declaration says a case belongs on the base *because of the change under it*. One the
         # branch did not write was written for a change the base already carries, and it answers for
         # that one. Without this the first branch to declare a case green silences every later branch
         # that edits it, however unlike the reason the declaration gives their change is.
         self.written_here = written_here
         self.line = line
+        self.through = line if through is None else through
+
+    def written_in(self, lines):
+        """Whether the branch wrote any line of the span `folded_reason` reads the reason over."""
+        return any(number in lines for number in range(self.line, self.through + 1))
 
     @property
     def complaint(self):
         if self.category not in CATEGORIES:
             return "category {!r} is not one of {}".format(self.category, ", ".join(CATEGORIES))
-        if len(self.reason.split()) < MINIMUM_REASON_WORDS:
-            return "the reason is under {} words".format(MINIMUM_REASON_WORDS)
+        if len(self.claim.split()) < MINIMUM_REASON_WORDS:
+            return "the reason's first line is under {} words".format(MINIMUM_REASON_WORDS)
         return None
 
 
@@ -297,7 +306,8 @@ def leading_declaration(lines, index):
     for probe in range(comment_block_start(lines, index), index):
         match = DECLARATION.search(lines[probe].strip())
         if match:
-            return Declaration(match.group(1), match.group(2).strip(), line=probe + 1)
+            claim, reason = folded_reason(match.group(2), lines[probe + 1:index])
+            return Declaration(match.group(1), reason, claim=claim, line=probe + 1, through=index)
     return None
 
 
@@ -890,9 +900,11 @@ def as_plan(since, cases, control, shared, canaries):
     def entry(case):
         return {
             "name": case.name, "path": case.path, "key": case.key, "fixture": case.fixture,
+            # Positional, in the constructor's order, and the claim rides along: the far side
+            # decides, and a declaration reaching it without one has its floor measured over the fold.
             "declaration": (None if case.declaration is None
                             else [case.declaration.category, case.declaration.reason,
-                                  case.declaration.written_here]),
+                                  case.declaration.claim, case.declaration.written_here]),
         }
 
     return {"since": since, "shared": shared, "canaries": canaries,
@@ -951,13 +963,17 @@ def report(cases, control, reported, canaries=None, wrote=True):
     print("\n--- what the base said ---")
     for case in cases:
         print("{:<32} {}  ({})".format(case.verdict, case.name, case.detail))
-    # COULD_NOT_COMPILE is not one of these. A case the base could not build names a symbol the
-    # branch adds, which is the strongest pin this takes; counting it here would tell the author of
-    # a correct test that the run measured nothing.
+    # Two counts, never one. A case the base could not build names a symbol the branch adds, which is
+    # the strongest pin this takes, and folding it into the readings nobody took would tell the author
+    # of a correct test that the run measured nothing.
     silent = [case for case in cases if case.verdict == COULD_NOT_ANSWER]
     if silent:
         print("\nthe base could not answer for {} of {} case(s), so they carry no reading either "
               "way".format(len(silent), len(cases)))
+    unbuilt = [case for case in cases if case.verdict == COULD_NOT_COMPILE]
+    if unbuilt:
+        print("\n{} of {} case(s) sit in a fixture the base built none of, so the reading is that "
+              "fixture's rather than each case's".format(len(unbuilt), len(cases)))
     offenders = [case for case in cases if case.verdict in FAILING_VERDICTS]
     if offenders:
         print("\n{} case(s) the base already answers, or cannot be answered for. Green on both sides "
@@ -996,7 +1012,7 @@ def collect(project, base, lane):
         cases = cases_in(relative, source.read_text())
         for case in cases:
             if case.declaration is not None and lines is not None:
-                case.declaration.written_here = case.declaration.line in lines
+                case.declaration.written_here = case.declaration.written_in(lines)
         wanted = {case.name for case in touched(cases, lines)}
         changed.extend(as_the_runner_names_them(
             [case for case in cases if case.name in wanted], heirs))
