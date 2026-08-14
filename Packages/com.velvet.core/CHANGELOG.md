@@ -44,15 +44,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the other. Keeping state across such a move means lifting it above both containers, to a `Store` or
   to a `UseState` in the component that declares them. The migration guide states what a position is.
 - A `UseTransition` transition now covers what its callback runs before that callback first suspends,
-  rather than every update the action makes for as long as it is in flight. An update made after an
-  `await` that suspended the action takes the lane it would have taken outside a transition, and an
-  action that wants it deferred wraps it in the starter again, which joins the transition already running
-  and keeps `isPending` lit. React's `startTransition` reference asks for the same wrapping, calling the
-  restriction a known limitation it means to fix rather than the shape it is aiming for. Velvet used to
-  infer the transition instead from the action still being in flight on that component, which had no way
-  to tell the action's own continuation from a timer tick, a `UseStore` notification or a `UseMutation`
-  callback landing in the same window, so those took the Transition lane too and waited out the delayed
-  tier's 100 ms instead of committing at the next frame boundary. `isPending` itself is unchanged: it
+  rather than being inferred from the action still being in flight on the calling component. An update
+  made after an `await` that suspended the action takes the lane it would have taken outside a
+  transition, and an action that wants it deferred wraps it in the starter again, which joins the
+  transition already running and keeps `isPending` lit. React's `startTransition` reference asks for the
+  same wrapping, calling the restriction a known limitation it means to fix rather than the shape it is
+  aiming for. That inference had no way to tell the action's own continuation from a timer tick, a
+  `UseStore` notification or a `UseMutation` callback landing in the same window, so those took the
+  Transition lane too and waited out the delayed tier's 100 ms instead of committing at the next frame
+  boundary. `isPending` itself is unchanged: it
   stays true across the awaits until the task completes. One consequence to expect where the await does
   suspend: an action writing both before and after it now leaves two lanes rather than one, so those
   writes commit in two renders instead of coalescing into a single transition render.
@@ -115,11 +115,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the calling component's own. A child deferring an expensive list update through a setter it
   received as a prop — one of the canonical React uses — had that update classified against the
   component that owns the state, which was in no transition: it took the Normal lane, or the Urgent
-  lane inside a click, and so drained on the immediate tier and ran to completion, instead of on the
-  delayed, preemptible lane the call asked for. The same held for a `Store` write made inside the
+  lane inside a click, and so drained at the next frame boundary with the interaction the user was
+  waiting on, instead of on the delayed lane the call asked for — where an update arriving in the
+  meantime would have gone ahead of it. The same held for a `Store` write made inside the
   callback. The flag is now ambient for the callback's synchronous run, as React's is. `isPending`
   follows those updates wherever they landed: it stays lit until every component the callback
-  scheduled an update on has committed it, and the declaring component re-renders on the commit that
+  scheduled an update on has committed it or gone away, and the declaring component re-renders on the
+  commit that
   finishes them, so an indicator it renders comes down there. What the flag does not do is force a
   render of its own when the transition *starts* — nothing renders purely because `isPending` went
   true, in this case or in the local-state one, so a component that shows a pending branch needs a
@@ -132,7 +134,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   re-rendered it. An action that writes before its `await` and then outlasts the transition tier's
   100 ms delay is where a user meets it, since that commit is the render that puts the indicator up.
   The completion now asks the declaring component for the render that observes the cleared flag: one
-  render, or none of its own where that component was already being re-rendered.
+  render, or none of its own where that component was already being re-rendered, or none at all where
+  the action never suspended — such an action raised and cleared the flag inside the starter call, which
+  is what the synchronous form does, and neither asks for a render. So an `async` callback that only
+  awaits an already-completed task costs what the synchronous form costs.
 - Two `UseTransition` slots with transitions open at once no longer credit each other's writes. One
   slot's update was attributed to every slot on that component that still had a transition open, so a
   slot whose own callback had queued nothing kept `isPending` lit until the other's work committed —

@@ -431,11 +431,10 @@ namespace Velvet
             {
                 return;
             }
-            // Classified from the ambient context, the way FiberWorkLoop.RequestRenderFromHook classifies an
-            // ordinary state update. A fixed Normal took a second lane where the clear was reached inside a
-            // discrete handler that had already scheduled Urgent on this fiber — measured on an async action
-            // the handler resumed by completing its awaited task — and one lane per FlushState is one render
-            // each.
+            // Urgent inside a discrete handler, on the rule an ordinary state update made there follows: the
+            // clear belongs to the interaction being serviced and commits with it. Never the Transition lane,
+            // though, even where this is reached inside an open transition scope — this render is what takes
+            // the indicator down, and the delayed tier would hold it up for its own delay.
             FiberWorkLoop.ScheduleRerender(
                 declaring,
                 FiberWorkLoop.IsInDiscreteEvent ? FiberUpdatePriority.Urgent : FiberUpdatePriority.Normal);

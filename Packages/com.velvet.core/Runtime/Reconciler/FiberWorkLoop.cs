@@ -599,7 +599,7 @@ namespace Velvet
 
         // Asynchronous StartTransition (an async callback: StartTransition(async () => ...)).
         // isPending stays true across every await inside asyncUpdates and is
-        // cleared only after the returned task completes (and no Transition-lane render remains queued). The
+        // cleared only after the returned task completes and every fiber its callback enrolled has committed. The
         // updates the action makes before it first suspends are scheduled on the Transition lane (see
         // RunInTransitionScope for where that boundary falls); reaching it past a suspension means wrapping
         // those updates in a further StartTransition call, which joins this transition. A call on another
@@ -634,9 +634,17 @@ namespace Velvet
             slot.IsAsyncInFlight = true;
             slot.HasActiveOwner = true;
             var ownerGeneration = ++slot.OwnerGeneration;
+            var suspended = false;
             try
             {
-                await RunInTransitionScope(slot, asyncUpdates);
+                // The call stays inside the try: asyncUpdates need not be an async method, and one that is not
+                // can throw before handing a task back, which must still reach the release below.
+                var action = RunInTransitionScope(slot, asyncUpdates);
+                // A task still pending where the scope has already closed is a callback that suspended, since
+                // the scope closes exactly where it hands the task back. Pinned by the completion case for an
+                // action that never suspended, which fails if that stops answering.
+                suspended = action.Status == Cysharp.Threading.Tasks.UniTaskStatus.Pending;
+                await action;
             }
             finally
             {
@@ -651,10 +659,11 @@ namespace Velvet
                     {
                         var wasPending = slot.IsPending;
                         slot.IsPending = false;
-                        // The sync overload needs no render here: its flag rises and falls inside one
-                        // synchronous call, so no render ever observed it true. This one was true across
-                        // every await, and a task continuation renders nothing on its own.
-                        if (wasPending)
+                        // A task continuation renders nothing on its own, so a flag lit across a suspension needs
+                        // this. Without a suspension the two overloads are the same case — the flag rose and
+                        // fell inside one synchronous call, under the caller's own stack — and the sync one
+                        // asks for no render either.
+                        if (wasPending && suspended)
                         {
                             ComponentFiber.RequestRenderForClearedPending(slot);
                         }

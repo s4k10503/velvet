@@ -18,7 +18,9 @@ namespace Velvet.Tests
     /// transition lane remains queued and returns to false only after a subsequent flush drains that lane.</item>
     /// <item>An async <c>startTransition</c> keeps <c>isPending</c> true across awaits until the task completes,
     /// and its completion asks the declaring component for the render that observes the cleared flag — the
-    /// work it queued having already committed is not what finishes it. The updates it makes after an
+    /// work it queued having already committed is not what finishes it. It asks only where the action
+    /// suspended, an action that did not being the synchronous overload's case, and that render is never
+    /// itself deferred by a transition scope it is reached inside. The updates it makes after an
     /// <c>await</c> that suspended it fall outside the scope its callback opened: they take the Normal lane,
     /// or the priority of whatever scope they do land in — a discrete handler's, or a further
     /// <c>startTransition</c> call's — and where the resume and the completion land in one handler, the two
@@ -212,8 +214,8 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(characterization): the unwind closed the per-fiber scope the base kept too.
         // It is pinned here because the scope this branch replaces it with is process-wide, where a leak
-        // would put every
-        // later update in the process on the transition lane rather than one component's.
+        // would put later updates anywhere in the process on the transition lane rather than one
+        // component's.
         [Test]
         public void Given_ATransitionCallbackThatThrew_When_ALaterSetterRuns_Then_ThatUpdateTakesTheNormalLane()
         {
@@ -288,7 +290,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AnAsyncTransition_When_ItsContinuationSetsStateAfterTheAwait_Then_ThatUpdateTakesTheNormalLane()
+        public void Given_AnAsyncTransition_When_ItsContinuationSetsStateAfterTheAwait_Then_ThatUpdateCommitsOnTheImmediateTier()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(TransitionRender, key: "transition"));
@@ -301,18 +303,21 @@ namespace Velvet.Tests
             s_transitionStarter.Invoke(asyncUpdates);
             var awaitingBeforeTheAct = s_transitionFiber.IsTransitionPending;
 
-            // Act — the awaited task completes, so the continuation runs after the starter call's scope closed
+            // Act — the awaited task completes, so the continuation runs after the starter call's scope closed,
+            // and only the immediate tier is drained after it
             gate.TrySetResult();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
 
-            // Assert — three terms, because the absent transition lane is what a write that never landed looks
-            // like, and because a case where no transition was awaiting reads the same as one where the scope
+            // Assert — the committed value is what separates the two answers: a Normal-lane term reads true for
+            // the render the completion asks for whether or not the write landed at all. The leading term is
+            // folded in because a case where no transition was awaiting reads the same as one where the scope
             // correctly closed
             Assert.That(
                 (awaitingBeforeTheAct,
-                 s_transitionFiber.LaneQueue.Contains(FiberUpdatePriority.Normal),
-                 s_transitionFiber.LaneQueue.Contains(FiberUpdatePriority.Transition)),
-                Is.EqualTo((true, true, false)),
-                "An update made after an await that suspended is outside the scope the callback opened");
+                 s_transitionFiber.LaneQueue.Contains(FiberUpdatePriority.Transition),
+                 s_transitionLastValue),
+                Is.EqualTo((true, false, 1)),
+                "An update made after an await that suspended is outside the scope the callback opened, so the immediate tier commits it");
         }
 
         // The scope closes at the callback's first suspension, not at its first `await`. The two cases below
@@ -321,7 +326,7 @@ namespace Velvet.Tests
         // GREEN_ON_BASE(characterization): the base put this write on the transition lane as well.
         // Twice over, in fact: a per-fiber call depth held for the callback's synchronous run, and an
         // in-flight fallback behind it. Pinned because the boundary is easy to state wrongly — four shipped
-        // sentences did — and nothing else in the fixture reaches a completed await.
+        // sentences did.
         [Test]
         public void Given_AnAsyncTransitionAction_When_ItWritesAfterAwaitingAnAlreadyCompletedTask_Then_ThatWriteTakesTheTransitionLane()
         {
@@ -366,6 +371,69 @@ namespace Velvet.Tests
             // Assert
             Assert.That(s_transitionFiber.IsTransitionPending, Is.True,
                 "An action that never suspended still leaves enrolled work, so its completion cannot settle it");
+        }
+
+        // GREEN_ON_BASE(characterization): the base's completion asked for no render in any arrangement.
+        // Pinned because this branch's completion does ask for one, and what separates the arrangement that
+        // needs it from this one is whether the action suspended, read off the task the callback handed
+        // back — so this fails if that reading stops answering.
+        [Test]
+        public void Given_AnAsyncTransitionActionThatNeverSuspendedAndWroteNothing_When_ItHasReturned_Then_ItAsksForNoRender()
+        {
+            // Arrange — nothing suspends and nothing is written, so the flag rises and falls inside the one
+            // synchronous call below, exactly as the sync overload's does
+            using var mounted = V.Mount(_root, V.Component(TransitionRender, key: "transition"));
+            var ranPastTheAwait = false;
+            Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () =>
+            {
+                await Cysharp.Threading.Tasks.UniTask.CompletedTask;
+                ranPastTheAwait = true;
+            };
+
+            // Act — the action's completion path has already run by the time this returns
+            s_transitionStarter.Invoke(asyncUpdates);
+
+            // Assert — the run is folded in, since an action whose continuation never arrived leaves the fiber
+            // just as clean
+            Assert.That(
+                (ranPastTheAwait, s_transitionFiber.IsDirty),
+                Is.EqualTo((true, false)),
+                "An action that never suspended asks for the render the synchronous overload asks for: none");
+        }
+
+        // GREEN_ON_BASE(characterization): the base's completion asked for no render in any arrangement.
+        // Pinned because the async starter runs its callback inside the try that owns the release, and only a
+        // callback that is not an async method can reach that release by throwing rather than by handing a
+        // task back.
+        [Test]
+        public void Given_AnAsyncTransitionCallbackThatThrewBeforeReturningItsTask_When_ItUnwinds_Then_ItAsksForNoRender()
+        {
+            // Arrange — the callback is a plain lambda rather than an async method, so it throws instead of
+            // returning a task, which is the one way the release runs with no task to read
+            using var mounted = V.Mount(_root, V.Component(TransitionRender, key: "transition"));
+            Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates =
+                () => throw new InvalidOperationException("transition callback");
+            var threw = false;
+
+            // Act — the task is observed rather than dropped, so nothing is left for UniTask to report as an
+            // unhandled exception
+            var action = FiberWorkLoop.StartTransition(
+                s_transitionFiber, s_transitionFiber.TransitionSlots[0], asyncUpdates);
+            try
+            {
+                action.GetAwaiter().GetResult();
+            }
+            catch (InvalidOperationException)
+            {
+                threw = true;
+            }
+
+            // Assert — the throw is folded in, since a callback that was never reached leaves the fiber just
+            // as clean
+            Assert.That(
+                (threw, s_transitionFiber.IsDirty),
+                Is.EqualTo((true, false)),
+                "A callback that threw before returning a task suspended nothing, so its clear asks for no render");
         }
 
         [Test]
@@ -617,13 +685,40 @@ namespace Velvet.Tests
             // Act — A resumes and writes, then B's own action completes having queued nothing
             gateA.TrySetResult();
             gateB.TrySetResult();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
 
             // Assert — three terms, because B clearing means nothing unless two actions really were in flight
-            // together and A's write really landed
+            // together and A's write really landed. A's committed value is what says the second of those: a
+            // lane or dirty term reads true for the render each completion asks for, write or no write
             Assert.That(
-                (bothInFlightBeforeTheAct, s_twoFiber.IsDirty, s_twoFiber.TransitionSlots[1].IsPending),
-                Is.EqualTo((true, true, false)),
+                (bothInFlightBeforeTheAct, s_twoLastValueA, s_twoFiber.TransitionSlots[1].IsPending),
+                Is.EqualTo((true, 1, false)),
                 "A slot settles on what its own callback queued, not on what another slot's action wrote");
+        }
+
+        [Test]
+        public void Given_AnAsyncTransitionsCompletion_When_ItIsReachedInsideAnotherSlotsScope_Then_ItsRenderIsNotDeferred()
+        {
+            // Arrange — slot A's action parks on a gate having written nothing, so its completion is nothing
+            // but the clear; slot B's callback is what releases that gate, so A's continuation and the
+            // completion behind it both run with B's transition scope open around them
+            using var mounted = V.Mount(_root, V.Component(TwoTransitionRender, key: "two"));
+            var gate = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
+            Func<Cysharp.Threading.Tasks.UniTask> actionA = async () => await gate.Task;
+            s_twoStarterA.Invoke(actionA);
+            var pendingBeforeTheAct = s_twoFiber.TransitionSlots[0].IsPending;
+
+            // Act
+            s_twoStartB.Invoke(() => gate.TrySetResult());
+
+            // Assert — three terms: a completion that asked for nothing leaves both lanes absent, and a flag
+            // that was never lit had nothing to take down
+            Assert.That(
+                (pendingBeforeTheAct,
+                 s_twoFiber.LaneQueue.Contains(FiberUpdatePriority.Normal),
+                 s_twoFiber.LaneQueue.Contains(FiberUpdatePriority.Transition)),
+                Is.EqualTo((true, true, false)),
+                "The render that takes an indicator down is not deferred by the transition it is reached inside");
         }
 
         #endregion
@@ -1092,6 +1187,7 @@ namespace Velvet.Tests
 
         private static Action<int> s_twoSetValue;
         private static Action<int> s_twoSetValueB;
+        private static int s_twoLastValueA;
         private static Action<Action> s_twoStartA;
         private static Action<Action> s_twoStartB;
         private static TransitionStarter s_twoStarterA;
@@ -1104,8 +1200,9 @@ namespace Velvet.Tests
         private static VNode TwoTransitionRender()
         {
             s_twoFiber = FiberAmbientStack.Current;
-            var (_, setValueA) = Hooks.UseState(0);
+            var (valueA, setValueA) = Hooks.UseState(0);
             var (_, setValueB) = Hooks.UseState(0);
+            s_twoLastValueA = valueA;
             s_twoSetValue = setValueA;
             s_twoSetValueB = setValueB;
             var (isPendingA, startA) = Hooks.UseTransition();
@@ -1187,6 +1284,7 @@ namespace Velvet.Tests
 
         private static int s_transitionRenderCount;
         private static bool s_transitionLastIsPending;
+        private static int s_transitionLastValue;
         private static Action<int> s_transitionSetValue;
         private static Action<Action> s_transitionStart;
         private static TransitionStarter s_transitionStarter;
@@ -1196,12 +1294,14 @@ namespace Velvet.Tests
         {
             s_transitionRenderCount = 0;
             s_transitionLastIsPending = false;
+            s_transitionLastValue = 0;
             s_transitionSetValue = null;
             s_transitionStart = null;
             s_transitionStarter = default;
             s_transitionFiber = null;
             s_twoSetValue = null;
             s_twoSetValueB = null;
+            s_twoLastValueA = 0;
             s_twoStartA = null;
             s_twoStartB = null;
             s_twoStarterA = default;
@@ -1237,7 +1337,8 @@ namespace Velvet.Tests
         {
             s_transitionRenderCount++;
             s_transitionFiber = FiberAmbientStack.Current;
-            var (_, setValue) = Hooks.UseState(0);
+            var (value, setValue) = Hooks.UseState(0);
+            s_transitionLastValue = value;
             s_transitionSetValue = setValue;
             var (isPending, start) = Hooks.UseTransition();
             s_transitionStart = start;
