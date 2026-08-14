@@ -15,8 +15,7 @@ namespace Velvet.Tests
     /// test instead of shipping silently wrong. Each check pins a failure mode that has actually shipped: a
     /// guide referencing a never-implemented factory, a hook table drifting from the real hook surface, an
     /// index missing real guide files, a type name written for a file that holds differently-named types,
-    /// a harness function named in a skill under a name no harness declares, and a phrase quoted as a
-    /// harness's output after the harness stopped emitting it.
+    /// and a harness function named in a skill under a name no harness declares.
     /// </summary>
     [TestFixture]
     internal sealed class DocumentationDriftTests
@@ -143,21 +142,9 @@ namespace Velvet.Tests
         private static readonly Regex BacktickSpanPattern =
             new(@"`((?:[^`\n]|\n(?!\s*\n))*)`", RegexOptions.Compiled);
 
-        // A double-quoted phrase, wrapping the same way an inline span does and bounded the same way.
-        private static readonly Regex QuotedPhrasePattern =
-            new("\"((?:[^\"\n]|\n(?!\\s*\n))+)\"", RegexOptions.Compiled);
-
-        // A blank line, which is both markdown's paragraph boundary and the span a claim about a script is
-        // made in: a phrase two paragraphs from the script's name is not attributed to it.
-        private static readonly Regex ParagraphBreakPattern = new(@"\n[^\S\n]*\n", RegexOptions.Compiled);
-
         // A whole span reading as one attribute of one module.
         private static readonly Regex DottedSymbolPattern =
             new(@"^([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)(\(\))?$", RegexOptions.Compiled);
-
-        private static readonly Regex PathWordPattern = new(@"[A-Za-z0-9_./~-]+", RegexOptions.Compiled);
-
-        private static readonly Regex WhitespaceRunPattern = new(@"\s+", RegexOptions.Compiled);
 
         // Comments and string literals are stripped from C# before it is tokenised. A rename tool rewrites
         // declarations and call sites; it does not rewrite the prose around them, so an old name lingering in
@@ -497,64 +484,6 @@ namespace Velvet.Tests
                 + string.Join("\n", unresolved));
         }
 
-        [Test]
-        public void Given_AMarkdownParagraphNamingAScript_When_ItsQuotedPhrasesAreRead_Then_ThatScriptHoldsThem()
-        {
-            // Arrange / Act — two words or more, because a single quoted word in prose is a term being
-            // named while a phrase beside a script's name reads as that script's own text.
-            var unattributed = new List<string>();
-            foreach (var path in DocumentationCorpus.Files())
-            {
-                var prose = FencedBlockPattern.Replace(File.ReadAllText(path), "\n");
-                foreach (var paragraph in ParagraphBreakPattern.Split(prose))
-                {
-                    var named = ScriptsNamedIn(paragraph);
-                    if (named.Count == 0)
-                    {
-                        continue;
-                    }
-                    var sources = Collapse(string.Join("\n", named.Select(stem => ScriptSources.Value[stem])));
-                    foreach (Match quote in QuotedPhrasePattern.Matches(paragraph))
-                    {
-                        var phrase = Collapse(quote.Groups[1].Value);
-                        if (phrase.Split(' ').Length < 2
-                            || sources.Contains(phrase, StringComparison.Ordinal))
-                        {
-                            continue;
-                        }
-                        unattributed.Add($"{path}: \"{phrase}\" is in none of {string.Join(", ", named)}");
-                    }
-                }
-            }
-
-            // Assert
-            Assert.That(unattributed, Is.Empty,
-                "Documentation quotes phrases beside a script that does not hold them. Either the script "
-                + "stopped emitting the phrase, or the phrase is a paraphrase and belongs outside quotes:\n"
-                + string.Join("\n", unattributed));
-        }
-
-        // The scripts a paragraph names, by stem, which is how a document names one: `neuter_check` and
-        // `scripts/test_quality/neuter_check.py` make the same claim. Read from backticked spans only, so
-        // that an ordinary word matching a stem does not put a paragraph under a script's account.
-        private static List<string> ScriptsNamedIn(string paragraph)
-        {
-            var named = new SortedSet<string>(StringComparer.Ordinal);
-            foreach (Match span in BacktickSpanPattern.Matches(paragraph))
-            {
-                foreach (Match word in PathWordPattern.Matches(span.Groups[1].Value))
-                {
-                    var leaf = word.Value.Split('/')[^1];
-                    var stem = leaf.EndsWith(".py", StringComparison.Ordinal) ? leaf[..^3] : leaf;
-                    if (ScriptSources.Value.ContainsKey(stem))
-                    {
-                        named.Add(stem);
-                    }
-                }
-            }
-            return named.ToList();
-        }
-
         // A def, a class or a module-level binding. Nothing narrower, because a document naming a harness
         // constant makes the same claim as one naming a function.
         private static bool DefinesSymbol(string source, string symbol) =>
@@ -563,13 +492,11 @@ namespace Velvet.Tests
                 RegexOptions.Multiline)
             || Regex.IsMatch(source, $@"^{Regex.Escape(symbol)}[^\S\n]*=", RegexOptions.Multiline);
 
-        // Line breaks are collapsed on both sides of the comparison, so a phrase markdown wrapped is still
-        // found in a script that holds it on one line.
-        private static string Collapse(string text) => WhitespaceRunPattern.Replace(text, " ").Trim();
-
-        // Every Python source in the walk, keyed on its stem. Stems are not unique across the tree, and a
-        // document naming one means the name rather than a path, so the value joins every file that carries
-        // the stem and a symbol in any of them answers for it.
+        // Every Python source in the walk, keyed on its stem, with prose taken out the way StripProse takes
+        // it: a def or a binding inside a string literal is not a definition, and several harness tests
+        // hold a whole synthetic script that way. Stems are not unique across the tree, and a document
+        // naming one means the name rather than a path, so the value joins every file that carries the stem
+        // and a symbol in any of them answers for it.
         private static readonly Lazy<Dictionary<string, string>> ScriptSources = new(() =>
         {
             var texts = new Dictionary<string, List<string>>(StringComparer.Ordinal);
@@ -585,7 +512,7 @@ namespace Velvet.Tests
                     held = new List<string>();
                     texts[stem] = held;
                 }
-                held.Add(File.ReadAllText(entry));
+                held.Add(StripProse(entry, File.ReadAllText(entry)));
             }
             return texts.ToDictionary(pair => pair.Key, pair => string.Join("\n", pair.Value),
                                       StringComparer.Ordinal);

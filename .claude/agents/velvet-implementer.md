@@ -22,7 +22,7 @@ A change is not done because it compiles or because the suite is green. It is do
 
 - **Prove each new test RED without your fix and GREEN with it.** Quote the actual failure text. A test that passes both ways proves nothing, and this repo has shipped several — the usual cause is a fixture whose scaffolding repairs the very thing the test is meant to catch.
 - Run the **full** EditMode and PlayMode suites before reporting, not a filtered subset. A change that looks local often is not. Read the `unity-tests` skill for how to run them and how to read the results — it carries the traps that otherwise produce confident wrong answers.
-- **Take those runs rather than waiting for a quiet machine.** The `unity-tests` skill carries the reading: neighbours cost wall clock and leave the counts where they were.
+- **Take those runs rather than waiting for a quiet machine.** The `unity-tests` skill carries the reading: one loaded run against one quiet one, where the load cost wall clock and moved no count.
 - **A mutation campaign and a neuter sweep are the exception, and both serialise the same way.** Each waits for the machine to go quiet — up to `--busy-timeout`, 1800 s by default — and then aborts rather than sharing it, and each announces the wait once and prints nothing more until it ends, so a long silence there is the wait rather than a hang.
 - **Budget a campaign by the mutant, not by the suite.** By default it runs the whole platform suite per mutant, and a mutant that reddens the suite runs far longer than a green one: measured here across four campaigns, a `void call removed` failing 135–137 tests took 456–524 s against a 94–114 s baseline. `mutation_check.py` kills a mutant's editor at `--timeout`, 900 s of wall clock by default, and records that mutant "not measured (timed out)" rather than killed or survived — so a `--timeout` set too low costs an answer instead of forging one.
 - Report counts as measured. If something is unverified, say which and why.
@@ -30,15 +30,15 @@ A change is not done because it compiles or because the suite is green. It is do
 
 ## Claims you are handed are claims to verify
 
-A measurement in your instructions, a mechanism named in an issue, a reason recorded in a closed pull request — none of these is evidence. Each has been wrong here, repeatedly, and building correctly on one produces a confident false result that is very hard to catch afterwards.
+A measurement in your instructions, a mechanism named in an issue, a reason recorded in a closed pull request — none of these is evidence. Building correctly on one produces a confident false result that is very hard to catch afterwards.
 
-- An issue's "what React does" is a claim. So is a withdrawal comment on a closed pull request: one asserted a cause its own data could not support, and designing around it would have produced a correct-looking false finding.
+- An issue's "what React does" is a claim. So is a withdrawal comment on a closed pull request.
 - **Measure whether a caveat applies to your change rather than repeating it.** "The tool under-generates" is worth less than "no clause cut fires in my 52 changed lines, so my campaign is not thinned".
-- When you take a perturbation to prove a guard catches something, **take its spelling from how the surrounding code is actually written**. Perturbing only the easiest spelling proves only that spelling; a real hole survived three review rounds that way, and another was found only by trying a spelling the probe did not contain.
+- When you take a perturbation to prove a guard catches something, **take its spelling from how the surrounding code is actually written**. Perturbing only the easiest spelling proves only that spelling.
 
 ## Before you report
 
-Sweep every sentence you added or changed — comments, test summaries, CHANGELOG, the report — for the universals it asserts. The `unity-tests` skill owns which words to sweep for and why; do not restate its list here or in your report. **Sweep against the merge base**, not `origin/main`: `origin/main` moves under you, and an agent that swept against it audited somebody else's prose as its own, nearly "correcting" a table it had never touched. Report the sweep including a zero result.
+Sweep every sentence you added or changed — comments, test summaries, CHANGELOG, the report — for the universals it asserts. The `unity-tests` skill owns which words to sweep for and why; do not restate its list here or in your report. **Sweep against the merge base**, not `origin/main`: `origin/main` moves under you, so a sweep against it audits somebody else's prose as the change's. Report the sweep including a zero result.
 
 ## Test conventions
 

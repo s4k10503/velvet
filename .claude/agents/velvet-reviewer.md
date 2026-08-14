@@ -15,11 +15,18 @@ You review a change in the Velvet repository and report what is wrong with it. Y
 
 **Reason from the sources before reaching for Unity.** Where the engine's own behaviour is the question, decompile it — the assemblies are under the editor install, and this repo's convention is that an infeasibility claim only stands after a decompile check, not after reading documentation.
 
-When you do need a suite run, **take it rather than waiting for a quiet machine.** The `unity-tests` skill carries the reading: neighbours cost wall clock and leave the counts where they were. Read that skill before running anything; it carries the traps that otherwise produce confident wrong answers.
+When you do need a suite run, **take it rather than waiting for a quiet machine.** The `unity-tests` skill carries the reading: one loaded run against one quiet one, where the load cost wall clock and moved no count. Read that skill before running anything; it carries the traps that otherwise produce confident wrong answers.
 
 **Run it in a worktree of your own**, taken with `git worktree add` under the session scratch directory — that moves no state other agents depend on, unlike the three commands above — with your own `-testResults` path. Seed its `Library` from another checkout first, the way `CLAUDE.md` gives.
 
-**Do not run a mutation campaign or a neuter sweep.** Both put an edit into a tracked source under `Packages/` for the length of a run, which the read-only constraint above forbids; `neuter_check.py` takes its cut back out in a `finally`, and its own source records an interrupted sweep that left a neutered parser behind. Three subcommands are exempt, none of which touches a source: `mutation_check.py --list` reports whether the diff generates any mutants, `neuter_check.py --validate` whether a change moved code out from under a cut anchor, and `neuter_check.py --audit` whether the cut map's own records still match the sources.
+**Do not run a mutation campaign or a neuter sweep.** Both put an edit into a tracked source under `Packages/` for the length of a run, which the read-only constraint above forbids; `neuter_check.py` takes its cut back out in a `finally`, and its own source records an interrupted sweep that left a neutered parser behind. It is the writing that is forbidden, so a subcommand that writes no source is yours to run:
+
+- `mutation_check.py --list` — whether the diff generates any mutants.
+- `mutation_check.py --receipt` — whether a finished campaign already covers this tree's mutable change. This is the question `pr_without_mutation_receipt.py` asks of a pull request, so run it rather than taking a receipt claim on the author's word.
+- `mutation_check.py --emit-lines` — every mutant the package generates, written out for a reader that parses them with something other than that script's own model of C#.
+- `mutation_check.py --carried` — whether a campaign is holding a mutation in a named file, which is one thing an unexplained edit in `git status` can be.
+- `neuter_check.py --validate` — whether a change moved code out from under a cut anchor.
+- `neuter_check.py --audit` — whether the cut map, the uncovered record and the recorded holes still answer for the sources.
 
 Run `git status --short` and **read any untracked file** rather than assuming it is harmless. Review agents in this repo have left scratch fixtures behind.
 

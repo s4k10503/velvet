@@ -30,7 +30,7 @@ python3 scripts/test_quality/assert_no_inconclusive.py Logs/results.xml
 ps -Ao command= | grep -c '^/Applications/.*/MacOS/Uni[t]y -runTests'
 ```
 
-Concurrent instances cost wall clock and leave the counts where they were. Measured on one tree, one EditMode suite, sampling the neighbour count every three seconds for each run's whole life and subtracting the run itself: alone — 34 samples, every one zero — 3943 passed / 0 failed / 0 inconclusive / 0 skipped over a reported 81.7 s; beside three other full suites — 48 samples, peak three and never below two — the same four counts over 122.7 s. So do not wait for a quiet machine for a suite run; that wait has starved agents for hours. Budget the time, not the verdict.
+Concurrent instances cost wall clock. Measured on one tree, one EditMode suite, **one run per arm**, sampling the neighbour count every three seconds for each run's whole life and subtracting the run itself: alone — 34 samples, every one zero — 3943 passed / 0 failed / 0 inconclusive / 0 skipped over a reported 81.7 s; beside three other full suites — 48 samples, peak three and never below two — the same four counts over 122.7 s. One run per arm settles the wall clock; it does not settle whether load can redden a timing-sensitive case. So do not wait for a quiet machine for a suite run — that wait has starved agents for hours — and take a single failure to the per-case question below.
 
 Sample **for the run's whole life and subtract the run itself**, not once at launch: the loaded arm above moved between two and three neighbours while it ran, so one reading names the arm wrong. `neuter_check.run_suite` already carries that loop.
 
@@ -81,10 +81,10 @@ A mutation that reddens a test proves the test is sensitive to *that mutation*, 
 
 ## Sweep for the shape, not the instance
 
-Consecutive review rounds on one branch kept finding one more instance of a defect already fixed, each fix right, the class never moving — because each round fixed what it was handed. Three sweeps end that, and each costs minutes:
+Consecutive review rounds on one branch kept finding one more instance of a defect already fixed, each fix right, the class never moving — because each round fixed what it was handed. Three sweeps end that. The two over prose cost minutes; the first costs a suite run for every assertion it asks about, so scope it to the cases the change touches rather than running it over a fixture whole.
 
 - **Every assertion**: remove the condition the case arranges and check that something goes red. If nothing does, the arrangement is decoration.
-- **Every sentence containing `every`, `no other`, `always`, `none`, `never`, `only`, `any`, `nothing`, `each`, `both` or `cannot`**: check it against the set it quantifies over. Universals written from memory have been false here more often than they have held, including inside the rule that forbids writing an unverified claim, and including in a comment written after that rule landed.
+- **Every sentence containing `every`, `no other`, `always`, `none`, `never`, `only`, `any`, `nothing`, `each`, `both`, `neither` or `cannot`**: check it against the set it quantifies over. Universals written from memory have been false here more often than they have held, including inside the rule that forbids writing an unverified claim, and including in a comment written after that rule landed.
 - **Every superlative**: `the slowest`, `the one place`, `the first`. A maximum is a universal over the same set with an ordering on top, and the word list above holds none of those words, so the sweep run exactly as written passes one through.
 
 Report what a sweep found, zero included. One nobody hears about is indistinguishable from one nobody ran.
