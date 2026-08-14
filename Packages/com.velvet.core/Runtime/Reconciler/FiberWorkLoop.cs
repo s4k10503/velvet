@@ -545,7 +545,15 @@ namespace Velvet
                     // each fiber it enrolled — see ComponentFiber.DischargeTransitionEnrolments.
                     if (!slot.HasQueuedWork)
                     {
+                        var showedPending = slot.IsPending && slot.LastRenderedPending;
                         slot.IsPending = false;
+                        // A callback can render the declaring component without enrolling anything on it —
+                        // driving a flush of work queued before the call, say — and that render read the
+                        // flag this clear invalidates.
+                        if (showedPending)
+                        {
+                            ComponentFiber.RequestRenderForClearedPending(slot);
+                        }
                     }
                 }
             }
@@ -598,9 +606,11 @@ namespace Velvet
         }
 
         // Asynchronous StartTransition (an async callback: StartTransition(async () => ...)).
-        // isPending stays true across every await inside asyncUpdates and is
-        // cleared only after the returned task completes and every fiber its callback enrolled has committed
-        // or unmounted. The
+        // isPending stays true across every await inside asyncUpdates and is cleared once the returned task
+        // completes and every fiber its callback enrolled has discharged that work — by committing it, by
+        // unmounting, or by the scheduler dropping the starvation-promoted lane it rode at the update-depth
+        // cap. Unmounting the declaring component clears the flag ahead of any of that, the release taking
+        // the slot off this call (ReleaseTransitionSlotOwnership). The
         // updates the action makes before it first suspends are scheduled on the Transition lane (see
         // RunInTransitionScope for where that boundary falls); reaching it past a suspension means wrapping
         // those updates in a further StartTransition call, which joins this transition. A call on another
@@ -661,9 +671,10 @@ namespace Velvet
                         var wasPending = slot.IsPending;
                         slot.IsPending = false;
                         // A task continuation renders nothing on its own, so a flag lit across a suspension
-                        // needs this. An action that never suspended is held to what the synchronous
-                        // overload's exit does, which is to ask for no render.
-                        if (wasPending && suspended)
+                        // needs this unconditionally. An action that never suspended is held to what the
+                        // synchronous overload's exit does — ask only where the component's last render
+                        // read the flag lit.
+                        if (wasPending && (suspended || slot.LastRenderedPending))
                         {
                             ComponentFiber.RequestRenderForClearedPending(slot);
                         }

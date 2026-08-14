@@ -389,7 +389,8 @@ namespace Velvet
         /// <summary>
         /// Releases every transition slot waiting on this fiber's Transition work and clears the pending flag
         /// on those left with nothing outstanding anywhere. Called where that work is established as
-        /// committed, and from unmount, where it will never commit.
+        /// committed, and from the two places it will never commit from: unmount, and the scheduler dropping
+        /// a starvation-promoted lane at its update-depth cap.
         /// </summary>
         internal void DischargeTransitionEnrolments()
         {

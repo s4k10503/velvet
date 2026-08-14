@@ -136,6 +136,11 @@ namespace Velvet
         // The component that declared this UseTransition and reads its isPending. Held because a settle
         // driven by another fiber's drain has to reach it — see ComponentFiber.DischargeTransitionEnrolments.
         public ComponentFiber DeclaringFiber = null!;
+        // The isPending the declaring component's last render read, recorded where UseTransition hands it
+        // back. An exit that clears this flag has no render behind it, so it owes that component a render
+        // exactly when its last render read the flag true; asking on every clear instead would charge a
+        // render to every startTransition whose flag no render had seen.
+        public bool LastRenderedPending;
         // Bumped whenever ownership changes hands, including the release an unmount forces on a slot whose
         // async action is still awaiting. An owner compares its own value before touching the flags above,
         // so a task settling after that release cannot clear a pending state a later owner is managing.

@@ -12,18 +12,23 @@ namespace Velvet.Tests
     /// false on the first render.</item>
     /// <item>State updates run inside <c>startTransition</c> are scheduled on the Transition lane and commit on the
     /// next flush, not synchronously during the call.</item>
-    /// <item>The render that commits a transition observes <c>isPending == false</c> — except where an
-    /// <c>async</c> action is still in flight, whose pre-<c>await</c> write commits with the flag still
-    /// lit.</item>
+    /// <item>The render that commits a transition observes <c>isPending == false</c> where that commit is the
+    /// last thing the transition was waiting on. It observes it lit while something else still is: an
+    /// <c>async</c> action in flight, whose pre-<c>await</c> write commits with the flag up, or a second
+    /// fiber the same callback enrolled that this commit does not reach.</item>
     /// <item>Setting a state to an equal value inside a transition schedules no re-render.</item>
     /// <item>A Normal-priority update may interrupt a pending transition: <c>isPending</c> stays true through the
     /// flush that drains the Normal lane and returns to false at the flush that commits the transition's own
     /// work.</item>
+    /// <item>Either overload's exit clears a flag no render is behind, so it asks the declaring component for
+    /// the render that observes the clear whenever that component's last render read the flag lit — a
+    /// synchronous callback that drove a flush of its own reaches this — and asks for nothing where that
+    /// last render read it false. That render is never itself deferred by a transition scope it is reached
+    /// inside.</item>
     /// <item>An async <c>startTransition</c> keeps <c>isPending</c> true across awaits until the task completes,
     /// and its completion asks the declaring component for the render that observes the cleared flag — the
-    /// work it queued having already committed is not what finishes it. It asks only where the action
-    /// suspended, an action that did not being the synchronous overload's case, and that render is never
-    /// itself deferred by a transition scope it is reached inside. The updates it makes after an
+    /// work it queued having already committed is not what finishes it. An action that suspended asks for it
+    /// unconditionally, since a task continuation renders nobody. The updates it makes after an
     /// <c>await</c> that suspended it fall outside the scope its callback opened: they take the Normal lane,
     /// or the priority of whatever scope they do land in — a discrete handler's, or a further
     /// <c>startTransition</c> call's — and where the resume and the completion land in one handler, the two
@@ -34,10 +39,12 @@ namespace Velvet.Tests
     /// new transition and without throwing; a callback leaving by an exception still closes its scope.</item>
     /// <item>A transition's callback covers the updates it schedules on other fibers too, so a setter a component
     /// received as a prop is deferred by the transition that wraps the call. <c>isPending</c> then stays lit
-    /// until each of those other fibers commits or unmounts, and the declaring component re-renders on the
-    /// commit that finishes them — including where nothing else would have re-rendered it, as for a write
-    /// to a store another component reads. For an async callback that commit is not the end of the
-    /// transition, and the render falls to whichever of the two lands last.</item>
+    /// until each of those other fibers has discharged that work — committed it, unmounted, or had the
+    /// scheduler drop it — and the declaring component re-renders on the commit that finishes them,
+    /// including where nothing else would have re-rendered it, as for a write to a store another component
+    /// reads. Two such fibers wait on each other: the first to commit settles nothing. For an async
+    /// callback that commit is not the end of the transition, and the render falls to whichever of the two
+    /// lands last.</item>
     /// <item>A slot the unmount of its own component released mid-callback records no further work.</item>
     /// <item>Each <c>UseTransition</c> slot tracks its own pending flag independently of other slots in the same
     /// component, including a slot started while another slot's async transition is still awaiting.</item>
@@ -535,7 +542,7 @@ namespace Velvet.Tests
                 s_transitionSetValue.Invoke(2);
             };
             s_transitionStarter.Invoke(asyncUpdates);
-            Assume.That(s_transitionFiber.IsTransitionPending, Is.True, "Precondition: the async transition is awaiting");
+            var pendingWhileAwaiting = s_transitionFiber.IsTransitionPending;
 
             // Act — complete the awaited task so the continuation runs, then drain both lanes the action left:
             // the write before the await is the transition's, the one after it is a Normal update
@@ -543,8 +550,10 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
             mounted.FlushStateForTest();
 
-            // Assert
-            Assert.IsFalse(s_transitionLastIsPending, "isPending returns to false once the async transition completes and flushes");
+            // Assert — the awaiting reading is folded in, since a flag that never went up is already false
+            // here and the second term would hold with nothing having cleared it
+            Assert.That((pendingWhileAwaiting, s_transitionLastIsPending), Is.EqualTo((true, false)),
+                "isPending returns to false once the async transition completes and flushes");
         }
 
         #endregion
@@ -1028,6 +1037,142 @@ namespace Velvet.Tests
 
         #endregion
 
+        #region A callback enrolling two fibers
+
+        [Test]
+        public void Given_ATransitionCallbackThatEnrolledTwoFibers_When_TheFirstOfThemCommits_Then_ItStaysPendingUntilTheSecondDoes()
+        {
+            // Arrange — one store write reaches two sibling readers, so the callback enrols two fibers and
+            // neither one's flush renders the other
+            using var store = new TransitionCountStore();
+            s_twoReaderStore = store;
+            using var mounted = V.Mount(_root, V.Component(TwoReaderStoreParentRender, key: "two-reader"));
+            s_twoReaderWriterStart.Invoke(() => store.Set(1));
+
+            // Act — each reader is flushed on its own, so the two commits are separable
+            FiberWorkLoop.FlushState(s_twoReaderFirstFiber);
+            var pendingAfterTheFirstReader = s_twoReaderWriterFiber.IsTransitionPending;
+            FiberWorkLoop.FlushState(s_twoReaderSecondFiber);
+
+            // Assert — both readings, since a slot settling on the first commit and one never settling at
+            // all differ from the contract in opposite directions
+            Assert.That(
+                (pendingAfterTheFirstReader, s_twoReaderWriterFiber.IsTransitionPending),
+                Is.EqualTo((true, false)),
+                "A slot waits on every fiber its callback enrolled, not on the first of them to commit");
+        }
+
+        private static TransitionCountStore s_twoReaderStore;
+        private static ComponentFiber s_twoReaderWriterFiber;
+        private static ComponentFiber s_twoReaderFirstFiber;
+        private static ComponentFiber s_twoReaderSecondFiber;
+        private static TransitionStarter s_twoReaderWriterStart;
+
+        [Component]
+        private static VNode TwoReaderStoreParentRender()
+            => V.Div(children: new VNode[]
+            {
+                V.Component(TwoReaderStoreWriterRender, key: "two-reader-writer"),
+                V.Component(TwoReaderStoreFirstReaderRender, key: "two-reader-first"),
+                V.Component(TwoReaderStoreSecondReaderRender, key: "two-reader-second"),
+            });
+
+        [Component]
+        private static VNode TwoReaderStoreWriterRender()
+        {
+            s_twoReaderWriterFiber = FiberAmbientStack.Current;
+            var (isPending, start) = Hooks.UseTransition();
+            s_twoReaderWriterStart = start;
+            return V.Label(name: "two-reader-writer-pending", text: isPending ? "pending" : "idle");
+        }
+
+        [Component]
+        private static VNode TwoReaderStoreFirstReaderRender()
+        {
+            s_twoReaderFirstFiber = FiberAmbientStack.Current;
+            var value = Hooks.UseStore(s_twoReaderStore, s => s.Value);
+            return V.Label(name: "two-reader-first-out", text: value.ToString());
+        }
+
+        [Component]
+        private static VNode TwoReaderStoreSecondReaderRender()
+        {
+            s_twoReaderSecondFiber = FiberAmbientStack.Current;
+            var value = Hooks.UseStore(s_twoReaderStore, s => s.Value);
+            return V.Label(name: "two-reader-second-out", text: value.ToString());
+        }
+
+        #endregion
+
+        #region A callback that renders the declaring component
+
+        [Test]
+        public void Given_ASynchronousTransitionCallbackThatDrivesAFlush_When_ItThenDefersAWrite_Then_ThatFlushRendersThePendingBranch()
+        {
+            // Arrange — an ordinary update queued before the call is what the flush inside the callback has
+            // to render
+            using var mounted = V.Mount(_root, V.Component(FlushingTransitionRender, key: "flushing"));
+            s_flushingSetValue.Invoke(2);
+
+            // Act — the callback renders the component by clicking a control whose handler writes nothing,
+            // and only then makes the write it is deferring
+            s_flushingStarter.Invoke(() =>
+            {
+                _root.Q<Button>("flushing-inert").SimulateClick();
+                s_flushingSetValue.Invoke(3);
+            });
+            var indicatorAfterTheCallback = _root.Q<Label>("flushing-pending").text;
+            mounted.GetSchedulerForTest().DrainDelayedForTest();
+
+            // Assert — the deferred write is folded in, since it is what holds the indicator up past the
+            // callback and a first term left over from a callback that wrote nothing reads the same
+            Assert.That(
+                (indicatorAfterTheCallback, _root.Q<Label>("flushing-out").text),
+                Is.EqualTo(("pending", "3")),
+                "A flush driven from inside a transition callback renders the pending branch that call opened");
+        }
+
+        [Test]
+        public void Given_ASynchronousTransitionCallbackThatDrivesAFlushAndEnrolsNothing_When_ItReturns_Then_TheIndicatorItRaisedComesDown()
+        {
+            // Arrange — as above, the queued update gives the flush inside the callback something to render
+            using var mounted = V.Mount(_root, V.Component(FlushingTransitionRender, key: "flushing"));
+            s_flushingSetValue.Invoke(2);
+
+            // Act — the click is the callback's whole effect, so the flag it raised is cleared at its own
+            // exit with no commit of its own left to observe that
+            s_flushingStarter.Invoke(() => _root.Q<Button>("flushing-inert").SimulateClick());
+            var indicatorAfterTheCallback = _root.Q<Label>("flushing-pending").text;
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert — the indicator the callback left up is folded in, since one that was never up comes
+            // down for free and the case would hold with the pending branch never rendered at all
+            Assert.That(
+                (indicatorAfterTheCallback, _root.Q<Label>("flushing-pending").text),
+                Is.EqualTo(("pending", "idle")),
+                "The exit that clears a flag a render put on screen asks for the render that takes it down");
+        }
+
+        private static TransitionStarter s_flushingStarter;
+        private static StateUpdater<int> s_flushingSetValue;
+
+        [Component]
+        private static VNode FlushingTransitionRender()
+        {
+            var (value, setValue) = Hooks.UseState(0);
+            var (isPending, start) = Hooks.UseTransition();
+            s_flushingStarter = start;
+            s_flushingSetValue = setValue;
+            return V.Div(children: new VNode[]
+            {
+                V.Button(name: "flushing-inert", onClick: () => { }),
+                V.Label(name: "flushing-pending", text: isPending ? "pending" : "idle"),
+                V.Label(name: "flushing-out", text: value.ToString()),
+            });
+        }
+
+        #endregion
+
         #region A deferred value holding the same lane
 
         [Test]
@@ -1335,6 +1480,13 @@ namespace Velvet.Tests
             s_storeWriterFiber = null;
             s_storeWriterStart = default;
             s_storeWriterSetTick = default;
+            s_twoReaderStore = null;
+            s_twoReaderWriterFiber = null;
+            s_twoReaderFirstFiber = null;
+            s_twoReaderSecondFiber = null;
+            s_twoReaderWriterStart = default;
+            s_flushingStarter = default;
+            s_flushingSetValue = default;
         }
 
         [Component]

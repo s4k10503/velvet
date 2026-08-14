@@ -1709,6 +1709,8 @@ namespace Velvet
             }
 
             var existing = fiber.TransitionSlots[index];
+            // See HookTransitionSlot.LastRenderedPending for why a read site writes.
+            existing.LastRenderedPending = existing.IsPending;
             return (existing.IsPending, existing.Starter);
         }
 

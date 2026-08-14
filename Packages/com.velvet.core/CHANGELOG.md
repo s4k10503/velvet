@@ -120,9 +120,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   meantime would have gone ahead of it. The same held for a `Store` write made inside the
   callback. The flag is now ambient for the callback's synchronous run, as React's is. `isPending`
   follows those updates wherever they landed: it stays lit until every component the callback
-  scheduled an update on has committed it or gone away, and the declaring component re-renders on the
-  commit that
-  finishes them, so an indicator it renders comes down there. What the flag does not do is force a
+  scheduled an update on has discharged it — committed it, gone away, or had the scheduler drop it at
+  the update-depth cap — and the declaring component re-renders on the commit that
+  finishes them, so an indicator it renders comes down there. Where the callback wrote to two
+  components, what finishes them is the last commit rather than the first. What the flag does not do is force a
   render of its own when the transition *starts* — nothing renders purely because `isPending` went
   true, in this case or in the local-state one, so a component that shows a pending branch needs a
   render from the same interaction (the urgent update a click also makes, or an ancestor's) to
@@ -134,10 +135,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   re-rendered it. An action that writes before its `await` and then outlasts the transition tier's
   100 ms delay is where a user meets it, since that commit is the render that puts the indicator up.
   The completion now asks the declaring component for the render that observes the cleared flag: one
-  render, or none of its own where that component was already being re-rendered, or none at all where
-  the action never suspended — such an action is held to what the synchronous form does, which is to ask
-  for no render. So an `async` callback that only awaits an already-completed task costs what the
-  synchronous form costs.
+  render, or none of its own where that component was already being re-rendered. An action that never
+  suspended is held to what the synchronous form does, so an `async` callback that only awaits an
+  already-completed task costs what the synchronous form costs — see the entry below for what that is.
+- A synchronous `startTransition` whose callback renders the declaring component now keeps its pending
+  indicator up for as long as the transition runs, and takes it down when it ends. A callback that
+  commits work of its own — focusing a field, clicking a control, anything reaching a synchronous flush
+  of updates queued before the call — has that flush render the component while the transition is open.
+  The settle that flush ran used to clear `isPending` first, and only the entry to `startTransition`
+  ever sets it, so a callback that then deferred a write ran its whole transition with the indicator
+  never lit. A settle now leaves a slot alone while a call still owns it. The other half of the same
+  route follows from that: where such a callback defers nothing, the flag it raised is cleared at its
+  own exit, and nothing renders because a flag moved — so the exit asks the declaring component for the
+  render that takes the indicator down. It asks only where that component's last render read the flag
+  as true, so a `startTransition` on a component that is not showing the transition costs no render at
+  all.
 - Two `UseTransition` slots whose transitions are open at once, but not nested one inside the other, no
   longer credit each other's writes. One slot's update was attributed to every slot on that component
   that still had a transition open, so a slot whose own callback had queued nothing kept `isPending`
