@@ -214,7 +214,7 @@ namespace Velvet
                         if (dropped.LaneQueue.Count == 0)
                         {
                             dropped.IsDirty = false;
-                            dropped.ClearAllTransitionPending();
+                            dropped.SettleTransitionPending();
                         }
                         // else: a delayed-tier lane survives — the fiber stays dirty and enrolled on
                         // that tier, so its pending Transition/Deferred work still commits there.

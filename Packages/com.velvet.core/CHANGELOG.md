@@ -44,17 +44,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the other. Keeping state across such a move means lifting it above both containers, to a `Store` or
   to a `UseState` in the component that declares them. The migration guide states what a position is.
 - An update a `UseTransition` action makes after an `await` no longer takes the Transition lane on its
-  own. The transition now covers what its callback schedules synchronously — React's rule, and what
-  React's `startTransition` reference asks callers to do: wrap the post-`await` updates in a further
-  `startTransition` to mark them. Velvet used to infer the transition instead from the action still
-  being in flight on that component, which had no way to tell the action's own continuation from a
-  timer tick, a `UseStore` notification or a `UseMutation` callback landing in the same window, so
-  those took the Transition lane too and missed the synchronous flush. An action that wants its
-  post-`await` update deferred wraps it in the starter again, which joins the transition already
-  running and keeps `isPending` lit. `isPending` itself is unchanged: it stays true across the awaits
-  until the task completes. One consequence to expect: an action writing both before and after its
-  await now leaves two lanes rather than one, so those writes commit in two renders instead of
-  coalescing into a single transition render.
+  own. The transition now covers what its callback schedules synchronously, and an action that wants its
+  post-`await` update deferred wraps it in the starter again, which joins the transition already running
+  and keeps `isPending` lit. React's `startTransition` reference asks for the same wrapping, calling the
+  restriction a known limitation it means to fix rather than the shape it is aiming for. Velvet used to
+  infer the transition instead from the action still being in flight on that component, which had no way
+  to tell the action's own continuation from a timer tick, a `UseStore` notification or a `UseMutation`
+  callback landing in the same window, so those took the Transition lane too and waited out the delayed
+  tier's 100 ms instead of committing at the next frame boundary. `isPending` itself is unchanged: it
+  stays true across the awaits until the task completes. One consequence to expect: an action writing
+  both before and after its await now leaves two lanes rather than one, so those writes commit in two
+  renders instead of coalescing into a single transition render.
 - Moving a component across a `V.Portal`'s boundary is an unmount and a remount in every case now, so
   its state, refs and effects do not survive the move and the departing instance's cleanups run. A
   component written into a live portal's children that a previous render had outside them — and the same
@@ -105,16 +105,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a prop — one of the canonical React uses — had that update classified against the component that
   owns the state, which was in no transition: it took the Normal lane, or the Urgent lane inside a
   click, and so drained on the immediate tier and ran to completion, instead of on the delayed,
-  preemptible lane the call asked for. The same held for a `Store` write and for a context value
-  changed inside the callback. The flag is now ambient for the callback's synchronous run, as React's
-  is.
-  `isPending` still belongs to the component that declares the hook and follows that component's own
-  lanes, so a transition whose updates all go elsewhere settles as soon as its callback returns.
-- Two `UseTransition` slots with async actions in flight at once no longer credit each other's writes.
-  One action's update was attributed to every slot on that component that still had a transition open,
-  so a slot whose own callback had queued nothing kept `isPending` lit until the other's work
-  committed. A Transition-lane enrolment is now credited to the calls whose callback is running when
-  it is made.
+  preemptible lane the call asked for. The same held for a `Store` write made inside the callback. The
+  flag is now ambient for the callback's synchronous run, as React's is.
+  `isPending` follows those updates wherever they landed: it stays lit until every component the
+  callback wrote to has committed its share, and the declaring component re-renders on the commit that
+  finishes them, so an indicator it renders comes down there. What the flag does not do is force a
+  render of its own when the transition *starts* — nothing renders purely because `isPending` went
+  true, in this case or in the local-state one, so a component that shows a pending branch needs a
+  render from the same interaction (the urgent update a click also makes, or an ancestor's) to observe
+  it.
+- Two `UseTransition` slots with transitions open at once no longer credit each other's writes. One
+  slot's update was attributed to every slot on that component that still had a transition open, so a
+  slot whose own callback had queued nothing kept `isPending` lit until the other's work committed —
+  including an `async` action parked on an await, which had queued nothing yet by construction. An
+  enrolment is now credited to the calls whose callback is running when it is made, and recorded
+  against the component it enrolled.
 - A component the reconciler carries to a different container now re-renders itself into the container
   it is in. Its slot index and the stamp a portal teardown disposes by both followed the move and its
   container did not, so its own `setState` reconciled its new output into the container it had left,

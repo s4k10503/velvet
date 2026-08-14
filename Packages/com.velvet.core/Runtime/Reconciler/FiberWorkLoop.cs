@@ -33,13 +33,16 @@ namespace Velvet
         internal static bool IsInDiscreteEvent;
 
         // The transition calls whose callback is running synchronously right now. A Transition-lane enrolment
-        // made while these are open is credited to all of them, so a nested or joined call credits the calls it
-        // sits inside as well.
+        // made while these are open is credited to each of them that still owns its slot (see
+        // MarkTransitionWorkQueued), so a nested or joined call credits the calls it sits inside as well.
         // Ambient rather than per-fiber, because the fiber owning the state a callback writes need not be the
         // one the transition was started on — a setter received as a prop is the case the per-fiber form
-        // missed. Process-global on the same grounds as IsInDiscreteEvent above.
+        // missed.
         // Nothing re-opens the scope for an async action's continuation: inferring one from the fiber's
         // in-flight transitions instead gave the Transition lane to unrelated writes in that window.
+        // Unsynchronised, so it holds only while one caller pushes and pops at a time: a pop taking an entry
+        // some other caller pushed would leave that scope open for good, and every later update reaching the
+        // classification below would take the Transition lane, process-wide.
         private static readonly List<HookTransitionSlot> OpenTransitionScopes = new();
 
         // UseDeferredValue has to tell the deferred commit from an ordinary render it must keep withholding
@@ -89,7 +92,7 @@ namespace Velvet
                 // Attributed on this branch rather than inside ScheduleRerender, which would also charge
                 // UseDeferredValue's own Transition-lane request (RequestTransitionRerender) to a
                 // transition slot that did not ask for it.
-                MarkTransitionWorkQueued();
+                MarkTransitionWorkQueued(fiber);
                 ScheduleRerender(fiber, FiberUpdatePriority.Transition);
                 return;
             }
@@ -202,7 +205,7 @@ namespace Velvet
             if (!fiber.IsMounted) return;
             if (!fiber.IsDirty)
             {
-                fiber.ClearAllTransitionPending();
+                fiber.SettleTransitionPending();
                 return;
             }
 
@@ -300,13 +303,13 @@ namespace Velvet
                 if (fiber.LaneQueue.Count == 0
                     || (!fiber.LaneQueue.Contains(FiberUpdatePriority.Transition) && !fiber.HasPromotedTransition))
                 {
-                    fiber.ClearAllTransitionPending();
+                    fiber.SettleTransitionPending();
                 }
             }
             else
             {
                 fiber.IsDirty = false;
-                fiber.ClearAllTransitionPending();
+                fiber.SettleTransitionPending();
             }
 
             // A resume (ContinueReconcile) reads both of these so it continues at the same budget the starting
@@ -538,25 +541,30 @@ namespace Velvet
                 if (slot.OwnerGeneration == ownerGeneration)
                 {
                     slot.HasActiveOwner = false;
-                    // A callback that queued nothing has settled the moment it returns, whatever else the
+                    // A callback that enrolled nothing has settled the moment it returns, whatever else the
                     // fiber is busy with — the previous fiber-wide dirty test held isPending up for the
-                    // duration of another slot's work. Once it did queue, the same lane rule the async
-                    // overload's exit uses decides.
-                    if (!slot.HasQueuedWork
-                        || (!fiber.LaneQueue.Contains(FiberUpdatePriority.Transition) && !fiber.HasPromotedTransition))
+                    // duration of another slot's work. Once it did enrol, what settles it is the drain of
+                    // each fiber it enrolled — see ComponentFiber.DischargeTransitionEnrolments.
+                    if (!slot.HasQueuedWork)
                     {
-                        slot.HasQueuedWork = false;
                         slot.IsPending = false;
                     }
                 }
             }
         }
 
-        private static void MarkTransitionWorkQueued()
+        private static void MarkTransitionWorkQueued(ComponentFiber fiber)
         {
             foreach (var slot in OpenTransitionScopes)
             {
-                slot.HasQueuedWork = true;
+                // An unmount driven from inside the callback releases the slots of the fiber it tears down
+                // (ComponentFiber.ReleaseTransitionSlotOwnership), and a released slot is one a remount hands
+                // to the next transition — which would then wait on an enrolment its own callback never made.
+                if (!slot.HasActiveOwner)
+                {
+                    continue;
+                }
+                fiber.EnrolTransitionSlot(slot);
             }
         }
 
@@ -620,7 +628,7 @@ namespace Velvet
             slot.IsPending = true;
             // While the action is awaiting (before its setState calls land) the fiber can be entirely
             // clean, and a drain callback armed earlier that fires on that clean fiber must not read the
-            // empty lane queue as this transition having settled (see ClearAllTransitionPending).
+            // empty lane queue as this transition having settled (see SettleTransitionPending).
             slot.IsAsyncInFlight = true;
             slot.HasActiveOwner = true;
             var ownerGeneration = ++slot.OwnerGeneration;
@@ -636,17 +644,9 @@ namespace Velvet
                 {
                     slot.IsAsyncInFlight = false;
                     slot.HasActiveOwner = false;
-                    // The promoted marker joins the Transition-label check for the same reason the settle
-                    // sweep consults it: promotion erases the label while the promoted work may still be
-                    // queued, and completing the async action inside that window must not clear isPending
-                    // ahead of the commit that renders the transition's content. An action that queued
-                    // nothing at all has no such commit to wait for — same slot-scoped exit as the sync
-                    // overload.
-                    if (fiber.IsDisposed
-                        || !slot.HasQueuedWork
-                        || (!fiber.LaneQueue.Contains(FiberUpdatePriority.Transition) && !fiber.HasPromotedTransition))
+                    // Same slot-scoped exit as the sync overload.
+                    if (fiber.IsDisposed || !slot.HasQueuedWork)
                     {
-                        slot.HasQueuedWork = false;
                         slot.IsPending = false;
                     }
                 }

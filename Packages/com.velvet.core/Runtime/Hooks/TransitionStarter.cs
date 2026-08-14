@@ -33,8 +33,9 @@ namespace Velvet
         public void Invoke(Action updates) => _start?.Invoke(updates);
 
         /// <summary>
-        /// Runs an async <paramref name="asyncUpdates"/> at Transition priority, keeping <c>isPending</c> true
-        /// across awaits until it completes.
+        /// Runs the synchronous prefix of <paramref name="asyncUpdates"/> at Transition priority, keeping
+        /// <c>isPending</c> true across awaits until it completes. The updates it makes after an
+        /// <c>await</c> need a further <c>startTransition</c> to be part of the transition.
         /// </summary>
         /// <param name="asyncUpdates">Async callback whose state updates run at Transition priority.</param>
         public void Invoke(Func<UniTask> asyncUpdates) => _startAsync?.Invoke(asyncUpdates);

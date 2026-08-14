@@ -23,7 +23,11 @@ namespace Velvet.Tests
     /// <item>A nested <c>startTransition</c> joins the outer transition: it applies its updates without starting a
     /// new transition and without throwing; a callback leaving by an exception still closes its scope.</item>
     /// <item>A transition's callback covers the updates it schedules on other fibers too, so a setter a component
-    /// received as a prop is deferred by the transition that wraps the call.</item>
+    /// received as a prop is deferred by the transition that wraps the call. <c>isPending</c> then stays lit
+    /// until those other fibers commit, and the declaring component re-renders on the commit that finishes
+    /// them — including where nothing else would have re-rendered it, as for a write to a store another
+    /// component reads.</item>
+    /// <item>A slot the unmount of its own component released mid-callback records no further work.</item>
     /// <item>Each <c>UseTransition</c> slot tracks its own pending flag independently of other slots in the same
     /// component, including a slot started while another slot's async transition is still awaiting.</item>
     /// <item>A transition whose callback queues nothing settles when that callback returns, even while another
@@ -481,6 +485,31 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AnAwaitingAsyncTransitionThatQueuedNothing_When_AnotherSlotsCallbackQueuesWork_Then_ItStillClearsOnItsOwnCompletion()
+        {
+            // Arrange — slot A's action parks on its gate having written nothing; slot B then runs a
+            // synchronous transition that does write, so the fiber carries B's transition lane while A awaits
+            using var mounted = V.Mount(_root, V.Component(TwoTransitionRender, key: "two"));
+            var gateA = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
+            Func<Cysharp.Threading.Tasks.UniTask> actionA = async () => await gateA.Task;
+            s_twoStarterA.Invoke(actionA);
+            s_twoStartB.Invoke(() => s_twoSetValueB.Invoke(1));
+            var inFlightBeforeTheAct = s_twoFiber.TransitionSlots[0].IsAsyncInFlight;
+
+            // Act — A's action completes, still having queued nothing of its own
+            gateA.TrySetResult();
+
+            // Assert — three terms, because A clearing means nothing unless A really was in flight while B's
+            // work was queued, and a precondition would report either miss as inconclusive
+            Assert.That(
+                (inFlightBeforeTheAct,
+                 s_twoFiber.LaneQueue.Contains(FiberUpdatePriority.Transition),
+                 s_twoFiber.TransitionSlots[0].IsPending),
+                Is.EqualTo((true, true, false)),
+                "A slot's pending flag answers for what its own callback queued, not for another slot's");
+        }
+
+        [Test]
         public void Given_TwoAsyncTransitionsInFlight_When_OneContinuationSetsState_Then_TheOtherSlotClearsOnItsOwnCompletion()
         {
             // Arrange — both slots park on their own gate, and only slot A's action ever writes
@@ -531,9 +560,126 @@ namespace Velvet.Tests
                 "A transition covers the updates its callback schedules against another fiber's state too");
         }
 
+        [Test]
+        public void Given_AChildsTransitionOnTheParentsState_When_TheChildRendersBeforeItCommits_Then_ItObservesIsPendingTrue()
+        {
+            // Arrange — the child defers an update to state it does not own, reached through the prop setter
+            using var mounted = V.Mount(_root, V.Component(PropSetterParentRender, key: "prop-setter-parent"));
+            s_propSetterChildStart.Invoke(() => s_propSetterChildSetCount.Invoke(1));
+
+            // Act — the child re-renders for a reason of its own while that update is still queued elsewhere
+            s_propSetterChildSetTick.Invoke(1);
+            FiberWorkLoop.FlushState(s_propSetterChildFiber);
+
+            // Assert — the parent's output is folded in, since a lit flag says nothing unless the update it
+            // stands for really is still uncommitted, and a precondition would report that as inconclusive
+            Assert.That(
+                (_root.Q<Label>("prop-setter-out").text, s_propSetterChildLastIsPending),
+                Is.EqualTo(("0", true)),
+                "isPending stays lit while the update the callback scheduled on another component is queued");
+        }
+
+        [Test]
+        public void Given_AChildsTransitionOnTheParentsState_When_TheParentCommitsIt_Then_TheChildObservesIsPendingFalse()
+        {
+            // Arrange — the child is rendering its pending branch while the deferred update waits
+            using var mounted = V.Mount(_root, V.Component(PropSetterParentRender, key: "prop-setter-parent"));
+            s_propSetterChildStart.Invoke(() => s_propSetterChildSetCount.Invoke(1));
+            s_propSetterChildSetTick.Invoke(1);
+            FiberWorkLoop.FlushState(s_propSetterChildFiber);
+            var indicatorBeforeTheCommit = _root.Q<Label>("prop-setter-pending").text;
+
+            // Act — the delayed tier drains the transition lane the callback left on the parent
+            mounted.GetSchedulerForTest().DrainDelayedForTest();
+
+            // Assert — three terms: an indicator that was never up comes down for free, and one that came
+            // down proves nothing unless the content it stood in for arrived
+            Assert.That(
+                (indicatorBeforeTheCommit,
+                 _root.Q<Label>("prop-setter-out").text,
+                 _root.Q<Label>("prop-setter-pending").text),
+                Is.EqualTo(("pending", "1", "idle")),
+                "The indicator comes down on the commit that renders the transition's content");
+        }
+
+        [Test]
+        public void Given_AChildsTransitionOnTheParentsState_When_TheParentCommitsIt_Then_TheChildRendersOnceForThatCommit()
+        {
+            // Arrange — the child is pending, so this commit owes it both the parent's new output and the
+            // render that takes its indicator down
+            using var mounted = V.Mount(_root, V.Component(PropSetterParentRender, key: "prop-setter-parent"));
+            s_propSetterChildStart.Invoke(() => s_propSetterChildSetCount.Invoke(1));
+            s_propSetterChildSetTick.Invoke(1);
+            FiberWorkLoop.FlushState(s_propSetterChildFiber);
+            var rendersBeforeTheCommit = s_propSetterChildRenderCount;
+
+            // Act
+            mounted.GetSchedulerForTest().DrainDelayedForTest();
+
+            // Assert — the difference, since the mount and the pending render both land before the act
+            Assert.That(s_propSetterChildRenderCount - rendersBeforeTheCommit, Is.EqualTo(1),
+                "The render the settle owes is the one the commit already makes, not a pass of its own");
+        }
+
+        [Test]
+        public void Given_ATransitionWritingOnlyAStoreOtherComponentsRead_When_ThatWorkCommits_Then_TheDeclaringComponentClearsItsIndicator()
+        {
+            // Arrange — the writer's callback touches nothing of its own, so the only fiber the transition
+            // enrols is the reader's, which the reader's own flush renders without going near the writer
+            using var store = new TransitionCountStore();
+            s_storeStore = store;
+            using var mounted = V.Mount(_root, V.Component(StoreTransitionParentRender, key: "store-transition"));
+            s_storeWriterStart.Invoke(() => store.Set(1));
+            s_storeWriterSetTick.Invoke(1);
+            FiberWorkLoop.FlushState(s_storeWriterFiber);
+            var indicatorBeforeTheCommit = _root.Q<Label>("store-writer-pending").text;
+
+            // Act — the delayed tier drains the reader's transition lane
+            mounted.GetSchedulerForTest().DrainDelayedForTest();
+
+            // Assert — three terms: an indicator that was never up comes down for free, and one that came
+            // down proves nothing unless the work the transition deferred has landed
+            Assert.That(
+                (indicatorBeforeTheCommit,
+                 _root.Q<Label>("store-reader-out").text,
+                 _root.Q<Label>("store-writer-pending").text),
+                Is.EqualTo(("pending", "1", "idle")),
+                "A component whose transition wrote only elsewhere renders again when that work commits");
+        }
+
+        // GREEN_ON_BASE(characterization): the base credited a Transition-lane enrolment to the slots of the
+        // fiber it landed on, and the released slot is on another one, so nothing could reach it there. What
+        // this pins is the ambient scope this branch replaces that with, where every open call is a candidate.
+        [Test]
+        public void Given_AnUnmountInsideATransitionCallback_When_ALaterWriteRunsInTheSameCallback_Then_TheReleasedSlotRecordsNothing()
+        {
+            // Arrange — the unmount hands the child's slots back to nobody while its callback is still running,
+            // and the slot list survives so a remount reuses this very slot
+            using var mounted = V.Mount(_root, V.Component(PropSetterParentRender, key: "prop-setter-parent"));
+            var slot = s_propSetterChildFiber.TransitionSlots[0];
+            var releasedByTheUnmount = false;
+
+            // Act — the callback tears its own component down and then writes state that lives elsewhere
+            s_propSetterChildStart.Invoke(() =>
+            {
+                FiberRenderer.Unmount(s_propSetterChildFiber);
+                releasedByTheUnmount = !slot.HasActiveOwner;
+                s_propSetterChildSetCount.Invoke(1);
+            });
+
+            // Assert — the release is folded in, since a slot that was never released has an owner to
+            // discharge the record and the second term would hold for a reason the case is not about
+            Assert.That((releasedByTheUnmount, slot.HasQueuedWork), Is.EqualTo((true, false)),
+                "A released slot records no work from the callback it was released inside");
+        }
+
         private static ComponentFiber s_propSetterParentFiber;
+        private static ComponentFiber s_propSetterChildFiber;
         private static TransitionStarter s_propSetterChildStart;
         private static StateUpdater<int> s_propSetterChildSetCount;
+        private static StateUpdater<int> s_propSetterChildSetTick;
+        private static bool s_propSetterChildLastIsPending;
+        private static int s_propSetterChildRenderCount;
 
         [Component]
         private static VNode PropSetterParentRender()
@@ -550,10 +696,55 @@ namespace Velvet.Tests
         [Component]
         private static VNode PropSetterChildRender(StateUpdater<int> setCount)
         {
-            var (_, start) = Hooks.UseTransition();
+            s_propSetterChildRenderCount++;
+            s_propSetterChildFiber = FiberAmbientStack.Current;
+            var (_, setTick) = Hooks.UseState(0);
+            var (isPending, start) = Hooks.UseTransition();
             s_propSetterChildStart = start;
             s_propSetterChildSetCount = setCount;
-            return V.Label();
+            s_propSetterChildSetTick = setTick;
+            s_propSetterChildLastIsPending = isPending;
+            return V.Label(name: "prop-setter-pending", text: isPending ? "pending" : "idle");
+        }
+
+        private readonly record struct TransitionCountState(int Value);
+
+        private sealed class TransitionCountStore : Store<TransitionCountState>
+        {
+            public TransitionCountStore() : base(new TransitionCountState(0)) { }
+            public void Set(int value) => SetState(_ => new TransitionCountState(value));
+            protected override void ResetCore() => SetState(_ => new TransitionCountState(0));
+        }
+
+        private static TransitionCountStore s_storeStore;
+        private static ComponentFiber s_storeWriterFiber;
+        private static TransitionStarter s_storeWriterStart;
+        private static StateUpdater<int> s_storeWriterSetTick;
+
+        [Component]
+        private static VNode StoreTransitionParentRender()
+            => V.Div(children: new VNode[]
+            {
+                V.Component(StoreTransitionWriterRender, key: "store-writer"),
+                V.Component(StoreTransitionReaderRender, key: "store-reader"),
+            });
+
+        [Component]
+        private static VNode StoreTransitionWriterRender()
+        {
+            s_storeWriterFiber = FiberAmbientStack.Current;
+            var (_, setTick) = Hooks.UseState(0);
+            var (isPending, start) = Hooks.UseTransition();
+            s_storeWriterStart = start;
+            s_storeWriterSetTick = setTick;
+            return V.Label(name: "store-writer-pending", text: isPending ? "pending" : "idle");
+        }
+
+        [Component]
+        private static VNode StoreTransitionReaderRender()
+        {
+            var value = Hooks.UseStore(s_storeStore, s => s.Value);
+            return V.Label(name: "store-reader-out", text: value.ToString());
         }
 
         #endregion
@@ -819,8 +1010,16 @@ namespace Velvet.Tests
             s_deferredChildStart = default;
             s_deferredChildSetCount = default;
             s_propSetterParentFiber = null;
+            s_propSetterChildFiber = null;
             s_propSetterChildStart = default;
             s_propSetterChildSetCount = default;
+            s_propSetterChildSetTick = default;
+            s_propSetterChildLastIsPending = false;
+            s_propSetterChildRenderCount = 0;
+            s_storeStore = null;
+            s_storeWriterFiber = null;
+            s_storeWriterStart = default;
+            s_storeWriterSetTick = default;
         }
 
         [Component]
