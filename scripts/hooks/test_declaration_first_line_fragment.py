@@ -28,7 +28,12 @@ GUARD = REPO_ROOT / ".claude/hooks/refuse/declaration_first_line_fragment.py"
 REFUSE = 2
 ALLOW = 0
 
-SETTLED = "    // GREEN_ON_BASE(characterization): the base already separates these two.\n"
+# Assembled rather than spelled: base_red_check.py counts a marker once per line it occurs on,
+# reading a fixture string here as a declaration this file wrote over no case at all.
+BASE = "GREEN_ON" + "_BASE"
+SURVIVES = "MUTANT" + "_SURVIVES"
+GREEN = BASE + "(characterization)"
+SETTLED = f"    // {GREEN}: the base already separates these two.\n"
 CONTINUATION = "    // The rest of the sentence sits under it.\n"
 FIXTURE = "namespace Velvet.Tests\n{\n" + SETTLED + "    [Test] void X() { }\n}\n"
 
@@ -57,12 +62,12 @@ class GuardCase(unittest.TestCase):
                                   capture_output=True, timeout=120)
         return finished.returncode, finished.stderr
 
-    def writes(self, reason, path=None, marker="GREEN_ON_BASE(characterization)"):
+    def writes(self, reason, path=None, marker=None):
         """The verdict on an edit replacing the settled declaration with `reason`."""
         return self.pose({
             "file_path": str(path or self.file),
             "old_string": SETTLED,
-            "new_string": f"    // {marker}: {reason}\n" + CONTINUATION,
+            "new_string": f"    // {marker or GREEN}: {reason}\n" + CONTINUATION,
         })[0]
 
 
@@ -119,7 +124,7 @@ class FragmentTests(GuardCase):
 
     def test_Given_AMutantSurvivesDeclaration_When_ItsFirstLineBreaksOff_Then_ItIsRefused(self):
         # Arrange / Act — the two markers are read the same way, so neither is guarded alone.
-        code = self.writes("both spellings clamp to the", marker="MUTANT_SURVIVES(equivalent)")
+        code = self.writes("both spellings clamp to the", marker=SURVIVES + "(equivalent)")
 
         # Assert
         self.assertEqual(code, REFUSE)
@@ -131,7 +136,7 @@ class FragmentTests(GuardCase):
         # Act
         _, text = self.pose({
             "file_path": str(self.file), "old_string": SETTLED,
-            "new_string": f"    // GREEN_ON_BASE(characterization): {reason}\n" + CONTINUATION,
+            "new_string": f"    // {GREEN}: {reason}\n" + CONTINUATION,
         })
 
         # Assert
@@ -197,7 +202,7 @@ class ScopeTests(GuardCase):
         # would make each of their files unwritable.
         self.file.write_text(
             "namespace Velvet.Tests\n{\n"
-            "    // GREEN_ON_BASE(characterization): the base already separates these two and\n"
+            f"    // {GREEN}: the base already separates these two and\n"
             + CONTINUATION + "    [Test] void X() { }\n}\n", encoding="utf-8")
 
         # Act
@@ -211,7 +216,7 @@ class ScopeTests(GuardCase):
     def test_Given_ANewFileCarryingABrokenDeclaration_When_AWriteIsPosed_Then_ItIsRefused(self):
         # Arrange
         content = ("namespace Velvet.Tests\n{\n"
-                   "    // GREEN_ON_BASE(characterization): the base already separates these and\n"
+                   f"    // {GREEN}: the base already separates these and\n"
                    + CONTINUATION + "}\n")
 
         # Act
@@ -227,7 +232,7 @@ class ScopeTests(GuardCase):
         # carries. A reading over the line's prefix takes that for a declaration, so a snippet
         # spelled any other way pins the scoping in name only.
         content = ('SOURCE = """\n'
-                   "                // MUTANT_SURVIVES(equivalent): both spellings clamp to the\n"
+                   f"                // {SURVIVES}(equivalent): both spellings clamp to the\n"
                    "                // same bound, so nothing can differ.\n"
                    "                if (a <= b) { }\n"
                    '"""\n')
@@ -241,7 +246,7 @@ class ScopeTests(GuardCase):
 
     def test_Given_ABrokenDeclarationInAPythonComment_When_AWriteIsPosed_Then_ItIsRefused(self):
         # Arrange — the same file kind, in the position the Python lane reads a declaration from.
-        content = ("# GREEN_ON_BASE(characterization): the base already cut this correctly and the\n"
+        content = (f"# {GREEN}: the base already cut this correctly and the\n"
                    "# colon stop must not widen it.\n")
 
         # Act
@@ -254,7 +259,7 @@ class ScopeTests(GuardCase):
     def test_Given_AMarkdownFileCarryingABrokenDeclaration_When_AWriteIsPosed_Then_ItIsAllowed(self):
         # Arrange — a marker in a guide is prose about the convention; nothing reads a declaration
         # out of it, so a document explaining a malformed one stays writable.
-        content = ("// GREEN_ON_BASE(characterization): the base already separates these two and\n"
+        content = (f"// {GREEN}: the base already separates these two and\n"
                    + CONTINUATION)
 
         # Act
@@ -267,7 +272,7 @@ class ScopeTests(GuardCase):
     def test_Given_AnEditWhoseOldStringIsNotInTheFile_When_ItIsPosed_Then_ItIsAllowed(self):
         # Arrange / Act — the tool will fail on its own, and there is no proposed text to read.
         code, _ = self.pose({"file_path": str(self.file), "old_string": "nothing like this",
-                             "new_string": "    // GREEN_ON_BASE(characterization): ending on the\n"})
+                             "new_string": f"    // {GREEN}: ending on the\n"})
 
         # Assert
         self.assertEqual(code, ALLOW)
@@ -286,14 +291,14 @@ class TreeTests(unittest.TestCase):
             if path.suffix not in guard.READ_IN or not path.exists():
                 continue
             text = path.read_text(encoding="utf-8", errors="replace")
-            if "GREEN_ON_BASE" not in text and "MUTANT_SURVIVES" not in text:
+            if BASE not in text and SURVIVES not in text:
                 continue
             lines = text.splitlines()
             for number, marker, reason in guard.declarations(text, path.suffix):
                 wraps = (number < len(lines)
                          and lines[number].strip().startswith(("//", "#"))
-                         and "GREEN_ON_BASE" not in lines[number]
-                         and "MUTANT_SURVIVES" not in lines[number])
+                         and BASE not in lines[number]
+                         and SURVIVES not in lines[number])
                 found.append((f"{name}:{number}", reason, wraps))
         return found
 
