@@ -92,24 +92,7 @@ namespace Velvet.Tests
 
         #region Helpers
 
-        private MountedTree MountWithRouter(Router router)
-        {
-            var location = router.CurrentLocation;
-            var loaderData = router.CurrentLoaderData;
-            var errors = router.CurrentLoaderErrors;
-
-            return V.Mount(_root,
-                V.Provider(RouterContext.Location, location,
-                    children: new VNode[]
-                    {
-                        V.Provider(RouterContext.LoaderData, loaderData,
-                            children: new VNode[]
-                            {
-                                V.Provider(RouterContext.Errors, errors,
-                                    children: new VNode[] { V.Outlet() }),
-                            }),
-                    }));
-        }
+        private MountedTree MountWithRouter(Router router) => V.Mount(_root, V.RouterProvider(router));
 
         private static bool HasLabel(VisualElement element, string text) => element.FindLabelByText(text) != null;
 

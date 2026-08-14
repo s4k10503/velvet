@@ -942,7 +942,7 @@ namespace Velvet.Tests
             => UniTask.ToCoroutine(async () =>
         {
             // Leaving by Back/Forward is the one exit that can serve loader data from the history cache, and
-            // therefore the one that never runs RunLoadersSync, where a previous round is superseded. Both
+            // therefore the one that never runs RunLoadersAsync, where a previous round is superseded. Both
             // entries here match the same route pattern, so they share a RouteId and nothing downstream of
             // the runner can tell the late result apart from the restored one.
             // Arrange

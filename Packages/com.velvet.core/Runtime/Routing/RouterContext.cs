@@ -5,7 +5,10 @@ namespace Velvet
 {
     /// <summary>
     /// Static contexts that propagate router information through the Velvet component tree.
-    /// <c>Router</c> writes to them as the Provider; child components read via UseContext.
+    /// <c>V.RouterProvider</c> supplies <see cref="Location"/>, <see cref="LoaderData"/> and
+    /// <see cref="Errors"/> from the <c>Router</c> it is given; the reconciler supplies
+    /// <see cref="Depth"/> and <see cref="OutletContext"/> around each Outlet it renders. Child
+    /// components read all five via UseContext.
     /// </summary>
     public static class RouterContext
     {

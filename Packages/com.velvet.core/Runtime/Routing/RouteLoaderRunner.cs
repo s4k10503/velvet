@@ -5,14 +5,15 @@ using Cysharp.Threading.Tasks;
 
 namespace Velvet
 {
-    // LoaderMode.Await loaders must complete synchronously; LoaderMode.Suspend loaders run
-    // asynchronously in the background.
+    // LoaderMode.Await loaders are awaited before the round completes, so the caller can hold the commit
+    // until their data is in; LoaderMode.Suspend loaders run in the background and report through the two
+    // events below.
     internal sealed class RouteLoaderRunner : IDisposable
     {
         private CancellationTokenSource? _cts;
 
         // Notification event fired with (routeId, result) when a Suspend loader of the CURRENT round
-        // succeeds. A loader that ignores the CancellationToken and resolves after a newer RunLoadersSync
+        // succeeds. A loader that ignores the CancellationToken and resolves after a newer RunLoadersAsync
         // (or after disposal) belongs to a superseded round; its result is recorded on that round but not
         // announced, so a navigated-away route cannot pollute the live state.
         public event Action<string?, object>? OnSuspendLoaderCompleted;
@@ -24,7 +25,7 @@ namespace Velvet
 
         private int _activeSuspendTaskCount;
 
-        // One RunLoadersSync call's results, errors, outstanding-loader count and completion flag. They live
+        // One RunLoadersAsync call's results, errors, outstanding-loader count and completion flag. They live
         // on the round rather than on the runner so that a round asked anything answers for itself: a loader
         // delegate is free to start a navigation, which begins another round from inside the one still
         // launching, and runner-wide state would be cleared and then written under it.
@@ -55,14 +56,17 @@ namespace Velvet
         // Number of live Suspend loader tasks. Incremented at the start of RunSuspendLoader and
         // decremented in the finally block at completion (success / failure / cancel alike).
         // Internal accessor used for test verification.
-        // When RunLoadersSync is invoked back-to-back in quick succession, tasks from the previous
+        // When RunLoadersAsync is invoked back-to-back in quick succession, tasks from the previous
         // round that are still cancelling can temporarily coexist with tasks from the new round.
         // This counter therefore tracks "all live tasks across rounds", not "tasks of the current round".
         internal int ActiveSuspendTaskCount => _activeSuspendTaskCount;
 
         // The round is handed back rather than read off CurrentRound afterwards, because a loader that
         // navigates has by then made a nested round current.
-        public LoaderRound RunLoadersSync(
+        // Every loader delegate is invoked before the first await, so the Await-mode ones run concurrently
+        // rather than one after the next, and a delegate that navigates still supersedes this round from
+        // inside the launch loop as it did when nothing here awaited.
+        public async UniTask<LoaderRound> RunLoadersAsync(
             IReadOnlyList<RouteMatch> matches,
             CancellationToken externalToken)
         {
@@ -124,14 +128,7 @@ namespace Velvet
             {
                 try
                 {
-                    if (!task.Status.IsCompleted())
-                    {
-                        throw new InvalidOperationException(
-                            $"Await mode loader for route '{routeId}' returned an incomplete task. " +
-                            "Use LoaderMode.Suspend for async loaders.");
-                    }
-                    var result = task.GetAwaiter().GetResult();
-                    round.Results[routeId] = result;
+                    round.Results[routeId] = await task;
                 }
                 catch (OperationCanceledException)
                 {
@@ -188,7 +185,7 @@ namespace Velvet
             }
         }
 
-        // This also runs automatically at the start of the next RunLoadersSync call.
+        // This also runs automatically at the start of the next RunLoadersAsync call.
         public void CancelPending()
         {
             // A fresh round rather than a reset of the outgoing one: whoever holds the outgoing round is

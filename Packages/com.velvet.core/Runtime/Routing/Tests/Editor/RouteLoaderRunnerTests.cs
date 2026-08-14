@@ -15,8 +15,10 @@ namespace Velvet.Tests
     /// Specifies the loader execution contract of <see cref="RouteLoaderRunner"/>.
     /// <list type="bullet">
     /// <item>Matches without loaders complete immediately with empty results.</item>
-    /// <item>An Await loader must be already-completed; its result is collected synchronously keyed by
-    /// <see cref="RouteMatch.RouteId"/>, and <c>allCompleted</c> is true.</item>
+    /// <item>An Await loader is awaited: one handed an already-completed task keeps the round completing
+    /// without suspending and reports <c>allCompleted</c>, and one still running holds the round open until
+    /// its task resolves. Its result — or, where the task failed, its own exception — is recorded under
+    /// <see cref="RouteMatch.RouteId"/> either way.</item>
     /// <item>A Suspend loader returns immediately with <c>allCompleted</c> false and runs in the background,
     /// firing <c>OnSuspendLoaderCompleted</c> on success or <c>OnSuspendLoaderFailed</c> on failure; a failure
     /// is also recorded per-path in the round's errors, symmetrically with the Await path.</item>
@@ -97,6 +99,60 @@ namespace Velvet.Tests
             // Assert
             Assert.That(results["test"], Is.EqualTo("loaded-data"));
         }
+
+        [Test]
+        public void Given_AnUnresolvedAwaitLoader_When_RunLoaders_Then_TheRoundStaysOpen()
+        {
+            // Arrange
+            var runner = new RouteLoaderRunner();
+            var unresolved = new UniTaskCompletionSource<object>();
+            var matches = MakeMatch("test", loader: (ctx, ct) => unresolved.Task);
+
+            // Act
+            var round = runner.RunLoadersAsync(matches, CancellationToken.None);
+
+            // Assert
+            Assert.That(round.Status, Is.EqualTo(UniTaskStatus.Pending),
+                "An Await loader that has not resolved is one the round is still waiting on");
+        }
+
+        [UnityTest]
+        public IEnumerator Given_AnUnresolvedAwaitLoader_When_ItsTaskResolves_Then_TheResultIsKeyedByRouteId()
+            => UniTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            var runner = new RouteLoaderRunner();
+            var unresolved = new UniTaskCompletionSource<object>();
+            var matches = MakeMatch("test", loader: (ctx, ct) => unresolved.Task);
+            var round = runner.RunLoadersAsync(matches, CancellationToken.None);
+
+            // Act
+            unresolved.TrySetResult("late-data");
+            var settled = await round;
+
+            // Assert
+            Assert.That(settled.Results.GetValueOrDefault("test"), Is.EqualTo("late-data"));
+        });
+
+        [UnityTest]
+        public IEnumerator Given_AnUnresolvedAwaitLoader_When_ItsTaskFails_Then_TheRoundRecordsTheLoadersOwnError()
+            => UniTask.ToCoroutine(async () =>
+        {
+            // The framework used to author the exception itself for a loader that had not finished, so the
+            // route's error was one no application code raised.
+            // Arrange
+            var runner = new RouteLoaderRunner();
+            var unresolved = new UniTaskCompletionSource<object>();
+            var matches = MakeMatch("fail", loader: (ctx, ct) => unresolved.Task);
+            var round = runner.RunLoadersAsync(matches, CancellationToken.None);
+
+            // Act
+            unresolved.TrySetException(new InvalidOperationException("late-failure"));
+            var settled = await round;
+
+            // Assert
+            Assert.That(settled.Errors.GetValueOrDefault("fail")?.Message, Is.EqualTo("late-failure"));
+        });
 
         #endregion
 

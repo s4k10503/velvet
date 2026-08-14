@@ -23,7 +23,7 @@ namespace Velvet.Samples.StarterApp
             VelvetStyleUtilities.AttachTo(root);
 
             _router = new Router(StarterApp.Routes());
-            _tree = V.Mount(root, V.Component(StarterApp.Root, _router));
+            _tree = V.Mount(root, V.RouterProvider(_router));
             _router.NavigateAsync(StarterApp.TasksPath).Forget();
         }
 

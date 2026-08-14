@@ -169,13 +169,18 @@ namespace Velvet.Tests
     }
 
     /// <summary>
-    /// Sync wrappers for Router's async API. Used in tests where awaiting is unergonomic
-    /// (block setup, history manipulation, navigation chains).
+    /// Sync wrappers for the routing async APIs. Used in tests where awaiting is unergonomic
+    /// (block setup, history manipulation, navigation chains). Each is only valid where the work it wraps
+    /// completes without suspending; a test whose loader hands back an unresolved task awaits the real API.
     /// </summary>
     internal static class RouterTestExtensions
     {
         public static NavigationResult NavigateSync(this Router router, string path)
             => router.NavigateAsync(path).GetAwaiter().GetResult();
+
+        public static RouteLoaderRunner.LoaderRound RunLoadersSync(
+            this RouteLoaderRunner runner, IReadOnlyList<RouteMatch> matches, CancellationToken cancellationToken)
+            => runner.RunLoadersAsync(matches, cancellationToken).GetAwaiter().GetResult();
 
         public static NavigationResult GoBackSync(this Router router)
             => router.GoBack().GetAwaiter().GetResult();
