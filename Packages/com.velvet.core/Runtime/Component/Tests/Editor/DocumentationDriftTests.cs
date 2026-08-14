@@ -14,7 +14,9 @@ namespace Velvet.Tests
     /// a path or a type that no longer exists, or an index that has drifted from the files on disk, fails a
     /// test instead of shipping silently wrong. Each check pins a failure mode that has actually shipped: a
     /// guide referencing a never-implemented factory, a hook table drifting from the real hook surface, an
-    /// index missing real guide files, and a type name written for a file that holds differently-named types.
+    /// index missing real guide files, a type name written for a file that holds differently-named types,
+    /// a harness function named in a skill under a name no harness declares, and a phrase quoted as a
+    /// harness's output after the harness stopped emitting it.
     /// </summary>
     [TestFixture]
     internal sealed class DocumentationDriftTests
@@ -140,6 +142,22 @@ namespace Velvet.Tests
         // past a paragraph break would be a mis-paired backtick rather than a reference.
         private static readonly Regex BacktickSpanPattern =
             new(@"`((?:[^`\n]|\n(?!\s*\n))*)`", RegexOptions.Compiled);
+
+        // A double-quoted phrase, wrapping the same way an inline span does and bounded the same way.
+        private static readonly Regex QuotedPhrasePattern =
+            new("\"((?:[^\"\n]|\n(?!\\s*\n))+)\"", RegexOptions.Compiled);
+
+        // A blank line, which is both markdown's paragraph boundary and the span a claim about a script is
+        // made in: a phrase two paragraphs from the script's name is not attributed to it.
+        private static readonly Regex ParagraphBreakPattern = new(@"\n[^\S\n]*\n", RegexOptions.Compiled);
+
+        // A whole span reading as one attribute of one module.
+        private static readonly Regex DottedSymbolPattern =
+            new(@"^([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)(\(\))?$", RegexOptions.Compiled);
+
+        private static readonly Regex PathWordPattern = new(@"[A-Za-z0-9_./~-]+", RegexOptions.Compiled);
+
+        private static readonly Regex WhitespaceRunPattern = new(@"\s+", RegexOptions.Compiled);
 
         // Comments and string literals are stripped from C# before it is tokenised. A rename tool rewrites
         // declarations and call sites; it does not rewrite the prose around them, so an old name lingering in
@@ -454,9 +472,128 @@ namespace Velvet.Tests
                 "Documentation names identifiers that appear in no source file:\n" + string.Join("\n", unresolved));
         }
 
+        [Test]
+        public void Given_MarkdownNamingAScriptSymbol_When_TheSymbolIsSoughtInThatScript_Then_ItIsDefinedThere()
+        {
+            // Arrange / Act — a file name is the path check's, which resolves it against the filesystem;
+            // without that, `mutation_check.py` reads as a module and an extension.
+            var unresolved = ScanBacktickSpans((path, reference) =>
+            {
+                var dotted = DottedSymbolPattern.Match(reference);
+                if (PathReferencePattern.IsMatch(reference) || !dotted.Success
+                    || !ScriptSources.Value.TryGetValue(dotted.Groups[1].Value, out var source))
+                {
+                    return Array.Empty<string>();
+                }
+                var symbol = dotted.Groups[2].Value;
+                return DefinesSymbol(source, symbol)
+                    ? Array.Empty<string>()
+                    : new[] { $"{path}: {reference} — {dotted.Groups[1].Value}.py defines no {symbol}" };
+            });
+
+            // Assert
+            Assert.That(unresolved, Is.Empty,
+                "Documentation names symbols the script it names does not define:\n"
+                + string.Join("\n", unresolved));
+        }
+
+        [Test]
+        public void Given_AMarkdownParagraphNamingAScript_When_ItsQuotedPhrasesAreRead_Then_ThatScriptHoldsThem()
+        {
+            // Arrange / Act — two words or more, because a single quoted word in prose is a term being
+            // named while a phrase beside a script's name reads as that script's own text.
+            var unattributed = new List<string>();
+            foreach (var path in DocumentationCorpus.Files())
+            {
+                var prose = FencedBlockPattern.Replace(File.ReadAllText(path), "\n");
+                foreach (var paragraph in ParagraphBreakPattern.Split(prose))
+                {
+                    var named = ScriptsNamedIn(paragraph);
+                    if (named.Count == 0)
+                    {
+                        continue;
+                    }
+                    var sources = Collapse(string.Join("\n", named.Select(stem => ScriptSources.Value[stem])));
+                    foreach (Match quote in QuotedPhrasePattern.Matches(paragraph))
+                    {
+                        var phrase = Collapse(quote.Groups[1].Value);
+                        if (phrase.Split(' ').Length < 2
+                            || sources.Contains(phrase, StringComparison.Ordinal))
+                        {
+                            continue;
+                        }
+                        unattributed.Add($"{path}: \"{phrase}\" is in none of {string.Join(", ", named)}");
+                    }
+                }
+            }
+
+            // Assert
+            Assert.That(unattributed, Is.Empty,
+                "Documentation quotes phrases beside a script that does not hold them. Either the script "
+                + "stopped emitting the phrase, or the phrase is a paraphrase and belongs outside quotes:\n"
+                + string.Join("\n", unattributed));
+        }
+
+        // The scripts a paragraph names, by stem, which is how a document names one: `neuter_check` and
+        // `scripts/test_quality/neuter_check.py` make the same claim. Read from backticked spans only, so
+        // that an ordinary word matching a stem does not put a paragraph under a script's account.
+        private static List<string> ScriptsNamedIn(string paragraph)
+        {
+            var named = new SortedSet<string>(StringComparer.Ordinal);
+            foreach (Match span in BacktickSpanPattern.Matches(paragraph))
+            {
+                foreach (Match word in PathWordPattern.Matches(span.Groups[1].Value))
+                {
+                    var leaf = word.Value.Split('/')[^1];
+                    var stem = leaf.EndsWith(".py", StringComparison.Ordinal) ? leaf[..^3] : leaf;
+                    if (ScriptSources.Value.ContainsKey(stem))
+                    {
+                        named.Add(stem);
+                    }
+                }
+            }
+            return named.ToList();
+        }
+
+        // A def, a class or a module-level binding. Nothing narrower, because a document naming a harness
+        // constant makes the same claim as one naming a function.
+        private static bool DefinesSymbol(string source, string symbol) =>
+            Regex.IsMatch(source,
+                $@"^[^\S\n]*(?:async[^\S\n]+)?(?:def|class)[^\S\n]+{Regex.Escape(symbol)}\b",
+                RegexOptions.Multiline)
+            || Regex.IsMatch(source, $@"^{Regex.Escape(symbol)}[^\S\n]*=", RegexOptions.Multiline);
+
+        // Line breaks are collapsed on both sides of the comparison, so a phrase markdown wrapped is still
+        // found in a script that holds it on one line.
+        private static string Collapse(string text) => WhitespaceRunPattern.Replace(text, " ").Trim();
+
+        // Every Python source in the walk, keyed on its stem. Stems are not unique across the tree, and a
+        // document naming one means the name rather than a path, so the value joins every file that carries
+        // the stem and a symbol in any of them answers for it.
+        private static readonly Lazy<Dictionary<string, string>> ScriptSources = new(() =>
+        {
+            var texts = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+            foreach (var entry in DocumentationCorpus.RepoEntries(includeClaude: true))
+            {
+                if (!entry.EndsWith(".py", StringComparison.Ordinal) || !File.Exists(entry))
+                {
+                    continue;
+                }
+                var stem = Path.GetFileNameWithoutExtension(entry);
+                if (!texts.TryGetValue(stem, out var held))
+                {
+                    held = new List<string>();
+                    texts[stem] = held;
+                }
+                held.Add(File.ReadAllText(entry));
+            }
+            return texts.ToDictionary(pair => pair.Key, pair => string.Join("\n", pair.Value),
+                                      StringComparer.Ordinal);
+        });
+
         // Runs `extract` over every backticked span of every target file. A path on the reader's own machine
-        // is skipped outright: it names nothing in the repo, so neither check that reads this has anything
-        // to say about it.
+        // is skipped outright: it names nothing in the repo, so no check that reads this has anything to
+        // say about it.
         private static List<string> ScanBacktickSpans(Func<string, string, IEnumerable<string>> extract)
         {
             var unresolved = new List<string>();
