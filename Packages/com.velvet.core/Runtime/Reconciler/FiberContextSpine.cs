@@ -54,9 +54,23 @@ namespace Velvet
             internal ComponentRegistry Registry { get; init; }
             internal FiberMemoCache MemoCache { get; init; }
             internal bool IsInlineSpineChild { get; init; }
-            // The Portal scope member of SpineChild's own registration key, read back from the registry
-            // rather than derived here — ComponentRegistry.TryGetInlineKey owns why.
+            // The Portal scope and container members of SpineChild's own registration key, read back
+            // from the registry rather than derived here — ComponentRegistry.TryGetInlineKey owns why.
+            // Both are therefore constants of one edge rather than readings of where the descent has
+            // got to, and Container being one is a known hole rather than a closed question: two
+            // containers holding the same position resolve the same fiber, so the match below fires at
+            // whichever the committed tree reaches first and the Providers pushed are that one's — a
+            // stranger's value where that container carries one, and none at all where it does not, so
+            // an instance can equally lose the Provider it is written inside. MotionContext.ActiveLabel
+            // is pushed through the same mechanism by PushMotionSubtree, so a descendant of the second
+            // of two sibling Motions animates to the first one's label. All three readings are pinned
+            // in ComponentContainerIdentityTests. Closing it by making this a reading of the descent needs
+            // the container it is currently inside, which means resolving each element node to the
+            // element it committed — the emitted-leaf coordinate GeneralPathReconciler.CommitLeaf owns,
+            // reproduced in a second walker that FiberKeying's header requires to stay in lockstep with
+            // the first.
             internal VisualElement? PortalScope { get; init; }
+            internal VisualElement? Container { get; init; }
         }
 
         // Pushes the Provider values that enclose target onto the live cursor and
@@ -125,7 +139,7 @@ namespace Velvet
                     }
                     if (detached.DescendantNodes is { Length: > 0 } && detached.Anchor != null)
                     {
-                        registry.TryGetInlineKey(child, out _, out _, out var detachedScope);
+                        registry.TryGetInlineKey(child, out _, out _, out var detachedScope, out var detachedContainer);
                         var detachedWalk = new SpineWalk
                         {
                             Ancestor = detached.Anchor,
@@ -136,6 +150,7 @@ namespace Velvet
                             MemoCache = memoCache,
                             IsInlineSpineChild = true,
                             PortalScope = detachedScope,
+                            Container = detachedContainer,
                         };
                         var detachedCounters = new Dictionary<object, int>();
                         PushEnclosingProviders(detached.DescendantNodes, detachedCounters,
@@ -147,7 +162,7 @@ namespace Velvet
                 var tree = ancestor.PreviousTree;
                 if (tree == null || tree.Length == 0) continue;
 
-                var isInline = registry.TryGetInlineKey(child, out _, out _, out var childScope);
+                var isInline = registry.TryGetInlineKey(child, out _, out _, out var childScope, out var childContainer);
                 if (!isInline && child.MountPoint == null) continue;
 
                 var walk = new SpineWalk
@@ -160,6 +175,7 @@ namespace Velvet
                     MemoCache = memoCache,
                     IsInlineSpineChild = isInline,
                     PortalScope = childScope,
+                    Container = childContainer,
                 };
                 var counters = new Dictionary<object, int>();
                 PushEnclosingProviders(tree, counters, fragmentKeyScope: null, in walk);
@@ -353,7 +369,7 @@ namespace Velvet
             var identity = component.ResolvedIdentity;
             var slotKey = component.Key ?? FiberKeying.ResolveInlinePositionKey(counters, identity, registry.InlinePositionKeyBoxes);
             var resolved = registry.TryGetFiberForInlineKey(
-                walk.Ancestor, slotKey, identity, walk.PortalScope);
+                walk.Ancestor, slotKey, identity, walk.PortalScope, walk.Container);
             return ReferenceEquals(resolved, walk.SpineChild);
         }
 

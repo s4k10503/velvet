@@ -786,7 +786,7 @@ namespace Velvet
                 // position (with hook state shared across both copies). Mirror the
                 // leaf-level duplicate guard: warn and skip the repeat before
                 // GetOrCreate can clobber the first occurrence's slot.
-                var priorFiber = _ctx.ComponentRegistry.TryGetFiberForInlineKey(parentFiber, slotKey, identity, portalScope);
+                var priorFiber = _ctx.ComponentRegistry.TryGetFiberForInlineKey(parentFiber, slotKey, identity, portalScope, walk.Parent);
                 if (priorFiber != null && walk.NewFibers.Contains(priorFiber))
                 {
                     FiberLogger.LogWarning("GeneralPathReconciler",
@@ -808,7 +808,7 @@ namespace Velvet
                 // side so nested old-side components resolve against the same parent fiber they were
                 // registered with; without the symmetric push the lookup parent would
                 // diverge and the diff would treat reused fibers as orphans.
-                var fiber = _ctx.ComponentRegistry.TryGetFiberForInlineKey(_ctx.FiberStack.Current, slotKey, identity, portalScope);
+                var fiber = _ctx.ComponentRegistry.TryGetFiberForInlineKey(_ctx.FiberStack.Current, slotKey, identity, portalScope, walk.Parent);
                 if (fiber != null)
                 {
                     ExpandFiberPreviousTree(walk, fiber, component, position, nodeIndex);
