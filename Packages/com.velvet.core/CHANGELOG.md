@@ -135,15 +135,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   100 ms delay is where a user meets it, since that commit is the render that puts the indicator up.
   The completion now asks the declaring component for the render that observes the cleared flag: one
   render, or none of its own where that component was already being re-rendered, or none at all where
-  the action never suspended — such an action raised and cleared the flag inside the starter call, which
-  is what the synchronous form does, and neither asks for a render. So an `async` callback that only
-  awaits an already-completed task costs what the synchronous form costs.
-- Two `UseTransition` slots with transitions open at once no longer credit each other's writes. One
-  slot's update was attributed to every slot on that component that still had a transition open, so a
-  slot whose own callback had queued nothing kept `isPending` lit until the other's work committed —
-  including an `async` action parked on an await, which had queued nothing yet by construction. An
-  enrolment is now credited to the calls whose callback is running when it is made, and recorded
-  against the component it enrolled.
+  the action never suspended — such an action is held to what the synchronous form does, which is to ask
+  for no render. So an `async` callback that only awaits an already-completed task costs what the
+  synchronous form costs.
+- Two `UseTransition` slots whose transitions are open at once, but not nested one inside the other, no
+  longer credit each other's writes. One slot's update was attributed to every slot on that component
+  that still had a transition open, so a slot whose own callback had queued nothing kept `isPending`
+  lit until the other's work committed — including an `async` action parked on an await, which had
+  queued nothing yet by construction. An enrolment is now credited to the calls whose callback is
+  running when it is made, and recorded against the component it enrolled.
 - A component the reconciler carries to a different container now re-renders itself into the container
   it is in. Its slot index and the stamp a portal teardown disposes by both followed the move and its
   container did not, so its own `setState` reconciled its new output into the container it had left,

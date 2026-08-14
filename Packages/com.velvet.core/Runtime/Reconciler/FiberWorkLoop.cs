@@ -599,7 +599,8 @@ namespace Velvet
 
         // Asynchronous StartTransition (an async callback: StartTransition(async () => ...)).
         // isPending stays true across every await inside asyncUpdates and is
-        // cleared only after the returned task completes and every fiber its callback enrolled has committed. The
+        // cleared only after the returned task completes and every fiber its callback enrolled has committed
+        // or unmounted. The
         // updates the action makes before it first suspends are scheduled on the Transition lane (see
         // RunInTransitionScope for where that boundary falls); reaching it past a suspension means wrapping
         // those updates in a further StartTransition call, which joins this transition. A call on another
@@ -659,10 +660,9 @@ namespace Velvet
                     {
                         var wasPending = slot.IsPending;
                         slot.IsPending = false;
-                        // A task continuation renders nothing on its own, so a flag lit across a suspension needs
-                        // this. Without a suspension the two overloads are the same case — the flag rose and
-                        // fell inside one synchronous call, under the caller's own stack — and the sync one
-                        // asks for no render either.
+                        // A task continuation renders nothing on its own, so a flag lit across a suspension
+                        // needs this. An action that never suspended is held to what the synchronous
+                        // overload's exit does, which is to ask for no render.
                         if (wasPending && suspended)
                         {
                             ComponentFiber.RequestRenderForClearedPending(slot);

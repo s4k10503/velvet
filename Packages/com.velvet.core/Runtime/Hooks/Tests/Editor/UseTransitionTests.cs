@@ -12,10 +12,13 @@ namespace Velvet.Tests
     /// false on the first render.</item>
     /// <item>State updates run inside <c>startTransition</c> are scheduled on the Transition lane and commit on the
     /// next flush, not synchronously during the call.</item>
-    /// <item>The completion render after a transition flush always observes <c>isPending == false</c>.</item>
+    /// <item>The render that commits a transition observes <c>isPending == false</c> — except where an
+    /// <c>async</c> action is still in flight, whose pre-<c>await</c> write commits with the flag still
+    /// lit.</item>
     /// <item>Setting a state to an equal value inside a transition schedules no re-render.</item>
-    /// <item>A Normal-priority update may interrupt a pending transition, but <c>isPending</c> stays true while the
-    /// transition lane remains queued and returns to false only after a subsequent flush drains that lane.</item>
+    /// <item>A Normal-priority update may interrupt a pending transition: <c>isPending</c> stays true through the
+    /// flush that drains the Normal lane and returns to false at the flush that commits the transition's own
+    /// work.</item>
     /// <item>An async <c>startTransition</c> keeps <c>isPending</c> true across awaits until the task completes,
     /// and its completion asks the declaring component for the render that observes the cleared flag — the
     /// work it queued having already committed is not what finishes it. It asks only where the action
@@ -31,16 +34,17 @@ namespace Velvet.Tests
     /// new transition and without throwing; a callback leaving by an exception still closes its scope.</item>
     /// <item>A transition's callback covers the updates it schedules on other fibers too, so a setter a component
     /// received as a prop is deferred by the transition that wraps the call. <c>isPending</c> then stays lit
-    /// until those other fibers commit, and the declaring component re-renders on the commit that finishes
-    /// them — including where nothing else would have re-rendered it, as for a write to a store another
-    /// component reads. For an async callback that commit is not the end of the transition, and the render
-    /// falls to whichever of the two lands last.</item>
+    /// until each of those other fibers commits or unmounts, and the declaring component re-renders on the
+    /// commit that finishes them — including where nothing else would have re-rendered it, as for a write
+    /// to a store another component reads. For an async callback that commit is not the end of the
+    /// transition, and the render falls to whichever of the two lands last.</item>
     /// <item>A slot the unmount of its own component released mid-callback records no further work.</item>
     /// <item>Each <c>UseTransition</c> slot tracks its own pending flag independently of other slots in the same
     /// component, including a slot started while another slot's async transition is still awaiting.</item>
-    /// <item>A transition whose callback queues nothing settles when that callback returns, even while another
-    /// slot's transition work is still queued on the same fiber and even while another slot's in-flight action
-    /// writes to it.</item>
+    /// <item>A transition whose callback queues nothing settles without waiting on anything else on the
+    /// component — a synchronous one when its callback returns, an async one on its own completion — even
+    /// while another slot's transition work is still queued on the same fiber and even while another slot's
+    /// in-flight action writes to it.</item>
     /// <item>A transition committed by a subsuming parent render clears its pending flag even when a
     /// <c>UseDeferredValue</c> in the same component holds the transition lane queued.</item>
     /// <item>A discrete update on the same component keeps its urgent priority while an async transition is in
@@ -290,7 +294,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AnAsyncTransition_When_ItsContinuationSetsStateAfterTheAwait_Then_ThatUpdateCommitsOnTheImmediateTier()
+        public void Given_AnAsyncTransition_When_ItsContinuationSetsStateAfterTheAwait_Then_ThatUpdateIsNotOnTheTransitionLane()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(TransitionRender, key: "transition"));
@@ -311,13 +315,14 @@ namespace Velvet.Tests
             // Assert — the committed value is what separates the two answers: a Normal-lane term reads true for
             // the render the completion asks for whether or not the write landed at all. The leading term is
             // folded in because a case where no transition was awaiting reads the same as one where the scope
-            // correctly closed
+            // correctly closed. Which immediate-tier lane the write took is not read here: the completion's own
+            // request puts Normal on this fiber either way
             Assert.That(
                 (awaitingBeforeTheAct,
                  s_transitionFiber.LaneQueue.Contains(FiberUpdatePriority.Transition),
                  s_transitionLastValue),
                 Is.EqualTo((true, false, 1)),
-                "An update made after an await that suspended is outside the scope the callback opened, so the immediate tier commits it");
+                "An update made after an await that suspended is outside the scope the callback opened, so it takes no transition lane");
         }
 
         // The scope closes at the callback's first suspension, not at its first `await`. The two cases below
