@@ -82,8 +82,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rented back for a fresh presence at the same position picked the stale entry up again. A presence
   written inside a `V.Portal`'s own children was the same defect reached a third way, since its
   bookkeeping is keyed by the container the portal renders into and that container belongs to the
-  caller: closing the portal, and pointing it at a different container and back, both resurrected the
-  children the presence had already let go.
+  caller: closing the portal resurrected the children the presence had already let go, as did
+  registering its `targetId` to a different element and back.
 - A child that moves from one `gap-*`, `divide-*` or `grid-cols-*` container to another keeps the
   spacing, divider or column sizing the container it joined wrote. Each of the three tracked the children
   it had written to by raw reference and reset the value on one no longer in the container, and the

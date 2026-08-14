@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using NUnit.Framework;
+using UnityEngine;
+using UnityEngine.TestTools;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
 
@@ -24,11 +26,16 @@ namespace Velvet.Tests
     /// child's enter as it did on the first — a surviving entry makes the second mount a later addition
     /// to a presence already on screen instead.</item>
     /// <item>A presence inside a <c>V.Portal</c>'s own children retires with the Portal's range, which is
-    /// the only route that reaches it.</item>
+    /// the only route that reaches it — both when the Portal stops being rendered and when its id is
+    /// registered to a different element, the one entrance that releases the range without tearing the
+    /// placeholder out.</item>
+    /// <item>Two Portals rendering into one container reach one entry, and the one that closes first
+    /// leaves the other's committed child alone.</item>
     /// <item>An abort stops the removal pass of the container it reaches and holds for the rest of the
     /// pass, so whether an entry may retire is read per container: one whose own removals ran retires
     /// even though a later container's did not. The reading covers the fast path too, where the removals
-    /// are the time-sliced diff's rather than the general walk's finalize.</item>
+    /// are the time-sliced diff's rather than the general walk's finalize, and where an abort raised
+    /// mid-diff and an exhausted frame budget each leave them owed.</item>
     /// <item>A pass that walks neither side of a presence retires nothing of it — the last case holds
     /// that to what it already did, since retiring a live entry strands its leaf where the next old side
     /// can no longer name it.</item>
@@ -74,6 +81,8 @@ namespace Velvet.Tests
             ["hidden"] = "opacity-0",
         };
 
+        private const string RetargetId = "presence-retarget-target";
+
         private VisualElement _root;
 
         [SetUp]
@@ -85,7 +94,11 @@ namespace Velvet.Tests
             s_enterCompletions = 0;
             s_overlay = new VisualElement { name = "overlay" };
             s_otherOverlay = new VisualElement { name = "other-overlay" };
+            RuntimeStateProbe.ClearPortalRegistry();
         }
+
+        [TearDown]
+        public void TearDown() => RuntimeStateProbe.ClearPortalRegistry();
 
         [Component]
         private static VNode SiblingHost()
@@ -157,13 +170,26 @@ namespace Velvet.Tests
         }
 
         [Component]
-        private static VNode RetargetingPortalHost()
+        private static VNode IdPortalHost()
         {
             var state = Hooks.UseStore(s_store, s => s);
-            var target = state.Shown ? s_overlay : s_otherOverlay;
             return V.Div(name: "host", children: new VNode[]
             {
-                V.Portal(target, new VNode[] { Presence(state.ChildKey) }),
+                V.Portal(RetargetId, new VNode[] { Presence(state.ChildKey) }),
+            });
+        }
+
+        // Both Portals resolve to the same container, and each one's children walk starts at the keying
+        // root, so the two presences agree on boundary fiber, parent element and position and reach ONE
+        // entry.
+        [Component]
+        private static VNode SharedTargetPortalPairHost()
+        {
+            var state = Hooks.UseStore(s_store, s => s);
+            return V.Div(name: "host", children: new VNode[]
+            {
+                V.Portal(s_overlay, new VNode[] { Presence("a") }),
+                state.Shown ? V.Portal(s_overlay, new VNode[] { Presence("a") }) : null,
             });
         }
 
@@ -180,6 +206,22 @@ namespace Velvet.Tests
             });
         }
 
+        // The presence's own container takes the fast path on the new side. The leaf replacing the
+        // presence's FIRST sibling raises the abort while being created, which stops the diff between
+        // phases — before the one that would take the presence's own leaf out of the tail. So the
+        // container's removals do not run, whatever returning from the strategy suggests.
+        [Component]
+        private static VNode FastPathHostAbortingBeforeItsRemovalPhase()
+        {
+            var state = Hooks.UseStore(s_store, s => s);
+            return V.Div(name: "host", children: state.Shown
+                ? new VNode[] { V.Label(text: "first"), Presence(state.ChildKey) }
+                : new VNode[]
+                {
+                    V.Div(name: "replacement", children: new VNode[] { V.Component(CatchingBoundary, key: "boundary") }),
+                });
+        }
+
         [Component(IsErrorBoundary = true)]
         private static VNode CatchingBoundary()
         {
@@ -189,6 +231,7 @@ namespace Velvet.Tests
 
         [Component]
         private static VNode Thrower() => throw new InvalidOperationException("boom");
+
 
         [Component]
         private static VNode PooledButtonHost()
@@ -326,8 +369,8 @@ namespace Velvet.Tests
         public void Given_AnAnimatePresenceInsideAPortal_When_ThePortalStopsBeingRendered_Then_TheDepartedChildIsNotResurrected()
         {
             // Arrange — the entry is keyed by the Portal's resolved target, a container the caller owns
-            // and nothing tears down, and no walk descends into a PortalNode. Neither of the other routes
-            // can see this one go.
+            // and nothing tears down, and the walk of the tree HOLDING the PortalNode never names what is
+            // inside it. Neither of the other routes can see this one go.
             using var store = new PresenceStore();
             s_store = store;
             using var mounted = V.Mount(_root, V.Component(PortalHost, key: "host"));
@@ -344,23 +387,54 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AnAnimatePresenceInsideAPortal_When_ThePortalIsRetargetedAndBack_Then_TheDepartedChildIsNotResurrected()
+        public void Given_AnAnimatePresenceInsideARegistryPortal_When_TheIdIsRegisteredElsewhereAndBack_Then_TheDepartedChildIsNotResurrected()
         {
-            // Arrange — a new target releases the range on the old one, which is the same teardown the
-            // unmount above takes.
+            // Arrange — an id re-registered to a different element is the one entrance that releases the
+            // range rather than tearing the placeholder out; a Portal handed a different container
+            // outright cannot patch (ReconcileKeying.CanPatch compares the held element) and takes the
+            // unmount route the case above already measures.
             using var store = new PresenceStore();
             s_store = store;
-            using var mounted = V.Mount(_root, V.Component(RetargetingPortalHost, key: "host"));
+            FiberPortalRegistry.Register(RetargetId, s_overlay);
+            using var mounted = V.Mount(_root, V.Component(IdPortalHost, key: "host"));
             var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
-            store.Set(false, "a");
+            ExpectOverwriteWarning();
+            FiberPortalRegistry.Register(RetargetId, s_otherOverlay);
             scheduler.DrainImmediateForTest();
 
-            // Act
+            // Act — the id names the first container again, and the presence returns carrying a
+            // different keyed child.
+            ExpectOverwriteWarning();
+            FiberPortalRegistry.Register(RetargetId, s_overlay);
             store.Set(true, "b");
             scheduler.DrainImmediateForTest();
 
             // Assert
             Assert.That(NamesOf(s_overlay), Is.EqualTo("item-b"));
+        }
+
+        // GREEN_ON_BASE(characterization): two Portals into one container already shared one presence
+        // entry before the retirement routes existed, and neither one closing touched it.
+        [Test]
+        public void Given_TwoPortalsSharingOneContainer_When_TheSecondCloses_Then_TheFirstKeepsItsCommittedChild()
+        {
+            // Arrange — both Portals render into s_overlay, so their presences reach one entry.
+            using var store = new PresenceStore();
+            s_store = store;
+            using var mounted = V.Mount(_root, V.Component(SharedTargetPortalPairHost, key: "host"));
+            var ctx = mounted.Root.Reconciler.Context;
+            var shared = ctx.PresenceStates.Count;
+
+            // Act — the second Portal closes, then the first is patched again on the pass after, which is
+            // the pass that reads whatever the close left of the entry.
+            store.Set(false, "a");
+            ctx.BatchScheduler.DrainImmediateForTest();
+            store.Touch();
+            ctx.BatchScheduler.DrainImmediateForTest();
+
+            // Assert — that the two Portals really did reach ONE entry is folded in: two entries would
+            // leave the second's teardown nothing of the first's to take, and nothing would be measured.
+            Assert.That((shared, NamesOf(s_overlay)), Is.EqualTo((1, "item-a")));
         }
 
         [Test]
@@ -381,6 +455,51 @@ namespace Velvet.Tests
             // Assert — same fold as the sibling case above. Nothing reproduces this presence again, so a
             // pass that skipped it is the last one this route can act on.
             Assert.That((recorded, ctx.PresenceStates.Count), Is.EqualTo((1, 0)));
+        }
+
+        // GREEN_ON_BASE(characterization): on the base an entry ended with its boundary fiber and nothing
+        // else, so a container whose removals did not run could not strand one; it must stay that way.
+        [Test]
+        public void Given_APresenceOnAFastPathContainer_When_ItsDiffAbortsBeforeTheRemovalPhase_Then_ItsBoundaryStateSurvives()
+        {
+            // Arrange — the fast path interleaves its removals with the diff, so whether they ran has to
+            // be asked of the strategy afterwards rather than taken from the call returning.
+            using var store = new PresenceStore();
+            s_store = store;
+            using var mounted = V.Mount(_root, V.Component(FastPathHostAbortingBeforeItsRemovalPhase, key: "host"));
+            var ctx = mounted.Root.Reconciler.Context;
+            var host = _root.Q<VisualElement>("host");
+
+            // Act — the presence leaves and the leaf replacing its first sibling catches, in one update.
+            store.Set(false, "a");
+            ctx.BatchScheduler.DrainImmediateForTest();
+
+            // Assert — that the abort really did leave the presence's leaf standing is folded in: had the
+            // removals emptied the slot, retiring the entry would be right and nothing would be measured.
+            Assert.That((host.Q<VisualElement>("item-a") != null, ctx.PresenceStates.Count),
+                Is.EqualTo((true, 1)));
+        }
+
+        // GREEN_ON_BASE(characterization): same reading as the abort case above, for the other way the
+        // fast path returns with its removals still owed.
+        [Test]
+        public void Given_APresenceOnAFastPathContainer_When_ItsDiffParksBeforeItsRemovals_Then_ItsBoundaryStateSurvives()
+        {
+            // Arrange — a hundred rows against a budget that yields after one node, so the park lands in
+            // the diff's first phase with the presence's leaf still in the tail a later phase would take.
+            using var reconciler = new Reconciler();
+            var root = new VisualElement();
+            var committed = RowsWithPresence();
+            reconciler.Reconcile(root, Array.Empty<VNode>(), committed, frameBudgetMs: 0);
+            var ctx = reconciler.Context;
+
+            // Act — the presence is gone from the new side, and the budget parks the diff.
+            reconciler.Reconcile(root, committed, Rows("moved-"), frameBudgetMs: 0.001);
+
+            // Assert — that the park really did leave the presence's leaf standing is folded in: a diff
+            // that ran to completion would have emptied the slot, and retiring the entry would be right.
+            Assert.That((root.Q<VisualElement>("item-a") != null, ctx.PresenceStates.Count),
+                Is.EqualTo((true, 1)));
         }
 
         // GREEN_ON_BASE(characterization): the live state a retirement route must not reach, since a pass
@@ -426,6 +545,25 @@ namespace Velvet.Tests
             var names = new List<string>();
             for (var i = 0; i < parent.childCount; i++) names.Add(parent.ElementAt(i).name);
             return string.Join(",", names);
+        }
+
+        private static void ExpectOverwriteWarning() => LogAssert.Expect(LogType.Warning,
+            $"[FiberPortalRegistry] Id \"{RetargetId}\" is already registered. Overwriting.");
+
+        private static VNode[] Rows(string prefix)
+        {
+            var rows = new VNode[100];
+            for (var i = 0; i < rows.Length; i++) rows[i] = V.Div(name: prefix + i);
+            return rows;
+        }
+
+        private static VNode[] RowsWithPresence()
+        {
+            var rows = Rows("row-");
+            var withPresence = new VNode[rows.Length + 1];
+            Array.Copy(rows, withPresence, rows.Length);
+            withPresence[rows.Length] = Presence("a");
+            return withPresence;
         }
 
         #endregion

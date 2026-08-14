@@ -198,8 +198,9 @@ namespace Velvet
             };
             VNode?[] oldNodes;
             // The presence reproductions this container's own walk takes, retirable only once the removal
-            // pass below has run — see ReconcilerContext.EndPresenceReproductionScope. False on the way out
-            // of a throw for the same reason it is false on an abort.
+            // pass below has run — see ReconcilerContext.EndPresenceReproductionScope. Initialised false so
+            // an exception unwinding past both branches reports no removals rather than the last value one
+            // of them happened to leave.
             var presenceScope = _ctx.BeginPresenceReproductionScope();
             var removalsRan = false;
             try
@@ -233,7 +234,13 @@ namespace Velvet
                         ReconcileIndexed(parent, oldNodes, newNodes, frameBudgetMs, slotStart, slotLimit);
                     }
                     _general.SweepOrphans(oldFibers, newFibers);
-                    removalsRan = true;
+                    // Neither strategy finishes its removals in one gated call the way the general path
+                    // does, so returning from it is not proof they ran: an abort raised while a descendant
+                    // of a patched leaf rendered stops the state machine between phases, and an exhausted
+                    // frame budget parks it — and the resume slice re-enters through ContinueIndexed /
+                    // ContinueKeyed, which open no scope of their own to report the removals they run.
+                    // False is the reading that costs nothing: it leaves a live entry alone.
+                    removalsRan = !_ctx.IsAborted && PendingIndexedState == null && PendingKeyedState == null;
                 }
             }
             finally

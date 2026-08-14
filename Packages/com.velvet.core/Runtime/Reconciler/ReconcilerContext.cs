@@ -1134,13 +1134,14 @@ namespace Velvet
             _suspenseFallbackKeys.Remove(boundary);
         }
 
-        // Per-AnimatePresence state for the DOM-less (wrapper-less) expansion, keyed by
-        // (boundary fiber, the AnimatePresence's scoped position key). The keyed children are expanded
+        // Per-AnimatePresence state for the DOM-less (wrapper-less) expansion, keyed as PresenceStates
+        // below is. The keyed children are expanded
         // directly into the parent's slot range (no wrapper element); this state records, per
         // AnimatePresence, the leaf
         // composition currently committed to the DOM so the old-side structural walk can reproduce it for
         // the diff, plus which keys are mid-exit (kept mounted as ghosts) and which have finished exiting
-        // (dropped on the next render). Pruned when the boundary fiber is disposed.
+        // (dropped on the next render). PresenceStateOwner enumerates what it is pruned with, and
+        // RetirePresenceStatesNotReRendered is the fourth way it ends.
         internal sealed class PresenceBoundaryState
         {
             // Keyed children currently in the DOM (in DOM order), including exiting ghosts.
@@ -1168,10 +1169,13 @@ namespace Velvet
             // (exit-complete drop / instant removal) so a pooled element is never resurrected as a target.
             public readonly Dictionary<string, VisualElement> MotionElements = new();
 
-            // The Portal placeholder whose children reconcile expanded this presence, if any. Kept rather
-            // than rewritten from a null the way ComponentFiber.OwningPortalPlaceholder is: the fiber an
-            // isolated re-render leaves unstamped is still reached through the parent index, and an entry
-            // has no second route to it.
+            // The Portal placeholder whose children reconcile last expanded this presence, if any. Kept
+            // rather than rewritten from a null the way ComponentFiber.OwningPortalPlaceholder is: the
+            // fiber an isolated re-render leaves unstamped is still reached through the parent index, and
+            // an entry has no second route to it. Several Portals rendering into one container reach one
+            // entry, so this names the last of them to expand it rather than all of them —
+            // AnimatePresenceStateRetirementTests' shared-container case is what goes red if a teardown
+            // starts reaching an entry another Portal still holds leaves for.
             public VisualElement? OwningPortalPlaceholder;
         }
 
@@ -1256,9 +1260,11 @@ namespace Velvet
             => PrunePresenceStates(PresenceStateOwner.ParentElement, parent);
 
         // Called from FiberElementCleaner.CleanupPortal, which the retarget release also runs through.
-        // The other two routes both miss a presence inside a Portal's own children: the entry is keyed by
-        // the resolved target, which the caller owns and nothing tears down, and no inline-expansion walk
-        // descends into a PortalNode — it emits as an opaque leaf, so neither side of a reconcile names it.
+        // The other three routes all miss a presence inside a Portal's own children: the entry is keyed by
+        // the resolved target, which the caller owns and nothing tears down, and no walk of the tree
+        // CONTAINING the PortalNode names it — the node emits as an opaque leaf there. The Portal's own
+        // children reconcile does name it, on both sides, which is what retires a presence that stops
+        // being rendered while the Portal stays open; what it cannot see is the Portal itself going.
         internal void PrunePresencePortalState(VisualElement placeholder)
             => PrunePresenceStates(PresenceStateOwner.PortalPlaceholder, placeholder);
 
