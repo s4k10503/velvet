@@ -2284,14 +2284,17 @@ namespace Velvet
 
         /// <summary>
         /// Root of a routed tree: subscribes to <paramref name="router"/> and publishes its location, loader
-        /// data and loader errors to every routing hook below, then renders the matched route through an
-        /// <see cref="Outlet"/> of its own. Mount it above everything that navigates.
+        /// data and loader errors to the routing hooks that read a router, then renders the matched route
+        /// through an <see cref="Outlet"/> of its own. Mount it above everything that navigates.
         /// </summary>
         /// <remarks>
         /// It takes no children, as React Router's <c>RouterProvider</c> does not: what renders beneath it is
         /// the route table's own elements. A value for <c>UseOutletContext</c> comes from an
         /// <see cref="Outlet"/> written in a layout route, which is where React Router's
         /// <c>&lt;Outlet context&gt;</c> lives too.
+        /// <para/>
+        /// The hooks that act on a router rather than read from it go to <see cref="Router.Current"/>, not to
+        /// <paramref name="router"/>; the routing guide lists which hooks fall on which side.
         /// </remarks>
         /// <param name="router">The router to publish. Navigation may start before or after this mounts.</param>
         /// <param name="key">Key used to disambiguate siblings at the same position.</param>

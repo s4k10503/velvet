@@ -41,8 +41,15 @@ public static class App
 `V.RouterProvider(router)` is `<RouterProvider router={router}/>`: it subscribes to the router and
 publishes the location, the loader data and the loader errors that `Hooks.UseLocation`,
 `Hooks.UseParams`, `Hooks.UseSearchParams`, `Hooks.UseMatch`, `Hooks.UseLoaderData` and
-`Hooks.UseRouteError` read. It renders the matched route through an `V.Outlet` of its own, so it takes
+`Hooks.UseRouteError` read. It renders the matched route through a `V.Outlet` of its own, so it takes
 no children — what appears beneath it is the route table's own elements.
+
+Those six hooks are the whole of what the provider scopes. The hooks that **act** on a router rather
+than read from it — `Hooks.UseNavigate` (and so every `V.Link` and `V.NavLink`), `Hooks.UseNavigation`,
+`Hooks.UseBlocker`, and the setter `Hooks.UseSearchParams` hands back — go to `Router.Current` instead
+of to the provider's router. With one router live those are the same object. With two, a subtree under
+`V.RouterProvider(a)` reads `a` and navigates `b`, so keep one router live at a time — constructing a
+second logs a warning telling you to dispose the first.
 
 Mount it above everything that navigates. Either order works against the first `NavigateAsync`: mounted
 first, the opening route arrives through the subscription that carries every later one; mounted after a
@@ -68,8 +75,12 @@ navigation is sequenced against it.
 | `LoaderMode.Suspend` | The navigation commits at once and the loader runs on. `Hooks.UseLoaderData` returns `default` until it resolves, then the route re-renders. | an unawaited promise in the loader data, read through `<Await>` — but `<Await>` renders inside a `<Suspense>` fallback, and a Velvet route declares no pending element to pair with |
 
 `Await` is the one that awaits real I/O, and an `Await` loader that never completes is a navigation
-that never commits. Loaders of one navigation all start before any of them is awaited, so sibling
-routes' loaders run concurrently.
+that never commits. Loaders of one navigation all start before any of them is awaited, so the matched
+chain's loaders — a parent layout's and its child's — run concurrently rather than one after the next.
+
+A `Suspend` loader keeps running while an `Await` loader holds the next commit, because the route it
+belongs to is still the one on screen: it keeps its cancellation token and its result still reaches
+`Hooks.UseLoaderData`. The commit that leaves the route is what cancels it.
 
 A loader that throws — or whose task fails — does not abort the navigation. The location commits and
 the error is recorded against that route: the nearest route at or above the failing one that carries
@@ -115,8 +126,8 @@ of the route with no React Router counterpart, where the same job there is a `re
 loader or from middleware. They run before the blocker phase, so an auth redirect is not subject to an
 unsaved-changes prompt.
 
-**No URL.** There is no browser to own the address bar, so the router holds its own history stack.
-`Router` caps it at 50 entries and refuses more than 5 redirects in one navigation.
+**No URL.** There is no browser to own the address bar, so the router holds its own history stack,
+capped at 50 entries. `Router.NavigateAsync` states how long a redirect chain may be.
 
 ## Also see
 

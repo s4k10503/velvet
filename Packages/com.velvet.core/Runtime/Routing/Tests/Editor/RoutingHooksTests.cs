@@ -26,8 +26,10 @@ namespace Velvet.Tests
     /// </summary>
     /// <remarks>
     /// The hooks need the live router-root Provider chain (Location / LoaderData / Errors) above an Outlet, so
-    /// each test navigates a real <see cref="Router"/> and mounts that chain via <c>MountWithRouter</c>. The
-    /// captured values are exposed through the <c>Capture</c> static component, reset in <c>SetUp</c>.
+    /// each test navigates a real <see cref="Router"/> and mounts that chain via <c>MountWithRouter</c> —
+    /// except <c>UseOutletContext</c>, whose value comes from an Outlet rather than from the router, and
+    /// which therefore mounts via <c>MountWithOutletContext</c>. The captured values are exposed through the
+    /// <c>Capture</c> static component, reset in <c>SetUp</c>.
     /// </remarks>
     [TestFixture]
     internal sealed class RoutingHooksTests

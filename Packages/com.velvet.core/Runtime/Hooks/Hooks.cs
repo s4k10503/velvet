@@ -680,10 +680,9 @@ namespace Velvet
                 ? NavigationLifecycle.Loading
                 : NavigationLifecycle.Idle;
 
-            // Gated on the lifecycle rather than on the destination being null: a navigation that matches no
-            // route sets its own status without taking the claim that would withdraw another attempt's
-            // destination, so an idle status can be read while one is still published. The fallback stands in
-            // where the status is already Loading but the path has not matched yet.
+            // The fallback covers the moment between an attempt taking the claim and publishing its
+            // destination: the router writes Status first, and that write's event wakes a subscriber inside
+            // the window.
             var location = lifecycle == NavigationLifecycle.Loading
                 ? router.PendingLocation ?? router.CurrentLocation
                 : router.CurrentLocation;

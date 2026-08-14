@@ -7,7 +7,7 @@ namespace Velvet
     {
         /// <summary>Idle. Waiting for a navigation request.</summary>
         Idle,
-        /// <summary>Matching the path against route definitions.</summary>
+        /// <summary>The path has matched, and the matched routes' guards and blockers are running.</summary>
         Matching,
         /// <summary>Loaders are running.</summary>
         Loading,

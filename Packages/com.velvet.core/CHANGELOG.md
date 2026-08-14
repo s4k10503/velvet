@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `V.RouterProvider(router)` is the router root, as `<RouterProvider router={router}/>` is: it
   subscribes to the router and publishes the location, the loader data and the loader errors that
   `Hooks.UseLocation`, `Hooks.UseLoaderData` and `Hooks.UseRouteError` read, then renders the matched
-  route through an `V.Outlet` of its own. It takes no children. Nothing in the package published those
+  route through a `V.Outlet` of its own. It takes no children. Nothing in the package published those
   three contexts before, so an application had to write the bridge itself — a `Hooks.UseState` over
   `Router.CurrentLocation`, a `Hooks.UseEffect` subscribing to `Router.OnLocationChanged` and a
   re-read to cover the navigation that lands before the subscription attaches, under three nested
@@ -53,7 +53,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   an already-completed task: anything else was rejected with a framework-authored
   `InvalidOperationException` recorded as that route's loader error, so the naive port of a React loader
   navigated and then rendered the route's `errorElement`, or a blank subtree where the matched chain had
-  none. Two consequences to read before upgrading. An `Await` loader that never completes is now a
+  none. A `LoaderMode.Suspend` loader of the route already on screen keeps running for the whole of that
+  window — it keeps its cancellation token, and its result still reaches `Hooks.UseLoaderData` on the
+  route the user is looking at — because the route is not left until the commit, and the commit is what
+  cancels it. Two consequences to read before upgrading. An `Await` loader that never completes is now a
   navigation that never commits, where it used to fail fast. And a navigation whose loaders suspend
   leaves `NavigateAsync` genuinely asynchronous, so a caller that took its result synchronously — the
   UniTask returned by a navigation with only already-completed loaders still completes synchronously —
@@ -97,6 +100,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A navigation to a path that matches no route no longer cancels the navigation already in flight, nor
+  takes `Router.Status` away from it. It used to cancel and to write its status before matching, so a
+  stale deep link or a renamed `redirectTo` target made a navigation the user had actually asked for
+  return `NavigationResult.Cancelled` with no error anywhere, and left `Router.Status` reading `NotFound`
+  while `Router.PendingLocation` still named the destination that attempt was loading — the state
+  `Hooks.UseNavigation` renders a pending branch from. An attempt now cancels its predecessor and writes
+  `Router.Status` only once it has matched, so `RouterStatus.Matching` spans the guards and blockers of a
+  matched navigation rather than the match itself, and an attempt that matches nothing reports through
+  its `NavigationResult` alone whenever another is in flight.
 - A child that moves from one `gap-*`, `divide-*` or `grid-cols-*` container to another keeps the
   spacing, divider or column sizing the container it joined wrote. Each of the three tracked the children
   it had written to by raw reference and reset the value on one no longer in the container, and the

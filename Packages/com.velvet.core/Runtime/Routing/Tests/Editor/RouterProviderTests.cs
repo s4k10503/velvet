@@ -99,6 +99,25 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ANavigationCommittedBetweenRenderAndEffect_When_TheEffectAttaches_Then_TheProviderCatchesUp()
+        {
+            // The subscription is attached by an effect, and a navigation committing before that raises its
+            // event with nobody listening — so nothing later brings the provider up to date. The re-read at
+            // the end of the effect is what does.
+            // Arrange
+            var router = new Router(new[] { Route("dash", element: CaptureElement()) });
+            using var mounted = V.Mount(_root, V.RouterProvider(router));
+            router.NavigateSync("/dash");
+
+            // Act
+            mounted.FlushEffectsForTest();
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Capture.Location?.Path, Is.EqualTo("/dash"));
+        }
+
+        [Test]
         public void Given_AMountedProvider_When_TheRouterNavigatesAgain_Then_TheNewLocationReachesTheRoute()
         {
             // Arrange
