@@ -453,6 +453,22 @@ class DeclarationTests(unittest.TestCase):
             (restored.reason, restored.complaint is not None, restored.written_here),
             ("rename This fixture needs a real panel.", True, False))
 
+    def test_Given_ACaseCarriedByThePlan_When_TheSecondInvocationDecides_Then_ItKeysAndMeasuresItAlike(self):
+        # Arrange -- the declaration is not the only thing the plan transports. `path` decides the
+        # lane, the key and the platform the soundness reading is taken on, and a plan carrying a
+        # wrong one turns a failing verdict into a plausible "could not compile there". That is the
+        # silent direction: a dropped field raises where a corrupt one reads.
+        case = base_red_check.Case("N.C.Given_A_When_B_Then_C",
+                                   "Packages/p/Runtime/A/Tests/Editor/CTests.cs", 1, 2)
+
+        # Act
+        restored = base_red_check.from_plan(
+            base_red_check.as_plan("sha", [case], [], {}, {})["cases"])[0]
+
+        # Assert
+        self.assertEqual((restored.key, base_red_check.measured_by(restored.path)),
+                         (case.key, base_red_check.measured_by(case.path)))
+
     def test_Given_ACategoryNothingDefines_When_TheDeclarationIsChecked_Then_ItIsComplainedAbout(self):
         # Act
         complaint = base_red_check.Declaration("whatever", "a reason with enough words in it").complaint
@@ -1130,6 +1146,104 @@ class ResultsFileTests(unittest.TestCase):
                          ({"N.C.Given_A_When_B_Then_C": "Passed"}, True))
 
 
+class ResultLabelTests(unittest.TestCase):
+    """A case that threw on the base, read the whole way from the results file to a verdict.
+
+    Nothing here calls `decide` with a reading handed to it: the reading is what was wrong, so a
+    case that starts after it would agree with the broken script as readily as the fixed one.
+    """
+
+    THREW = ('<test-run>'
+             '<test-case fullname="N.ProbeTests.Given_A_When_B_Then_C" result="Failed" label="Error">'
+             '<failure><message>System.NullReferenceException : Object reference not set to an '
+             'instance of an object</message></failure></test-case></test-run>')
+
+    def read(self, body):
+        holder = tempfile.mkdtemp(prefix="base-red-label-")
+        self.addCleanup(shutil.rmtree, holder, ignore_errors=True)
+        Path(holder, "r.xml").write_text(body)
+        return base_red_check.results_from(holder)[0]
+
+    def probe(self, declaration=None):
+        return base_red_check.Case("N.ProbeTests.Given_A_When_B_Then_C",
+                                   "Packages/p/Runtime/A/Tests/Editor/ProbeTests.cs", 1, 2,
+                                   declaration)
+
+    def verdict_for(self, body, declaration=None):
+        reported = self.read(body)
+        case = self.probe(declaration)
+        return base_red_check.decide(case, base_red_check.outcome_for(case.key, reported), True)[0]
+
+    def test_Given_ACaseThatThrewOnTheBase_When_TheResultsAreRead_Then_ItIsNotReadAsADisagreement(self):
+        # Act
+        reported = self.read(self.THREW)
+
+        # Assert
+        self.assertEqual(reported["N.ProbeTests.Given_A_When_B_Then_C"], "Error")
+
+    def test_Given_AnUndeclaredCaseThatThrewOnTheBase_When_ItIsDecided_Then_ItIsNotCountedRed(self):
+        # Act
+        verdict = self.verdict_for(self.THREW)
+
+        # Assert -- it stopped before it could disagree, so it is evidence of nothing either way.
+        self.assertEqual(verdict, base_red_check.COULD_NOT_ANSWER)
+
+    def test_Given_ADeclaredCaseThatThrewOnTheBase_When_ItIsDecided_Then_ItIsNotCalledStale(self):
+        # Arrange -- the harm this whole reading exists to prevent: a correct declaration told to
+        # delete itself because the base tree could not answer for the case under it.
+        declared = base_red_check.Declaration(
+            "characterization", "the keyed-reorder order this refactor must not change")
+
+        # Act
+        verdict = self.verdict_for(self.THREW, declared)
+
+        # Assert
+        self.assertNotIn(verdict, base_red_check.FAILING_VERDICTS)
+
+    # GREEN_ON_BASE(characterization): the reading a disagreement already had, which the label must
+    # not widen over.
+    def test_Given_ACaseWhoseAssertionDisagreed_When_ItIsDecided_Then_ItIsStillCountedRed(self):
+        # Arrange -- the other half of the line, kept beside it: reading the label must not turn
+        # every failure into a non-answer, which would leave nothing able to read as red at all.
+        # Act
+        verdict = self.verdict_for(
+            '<test-run><test-case fullname="N.ProbeTests.Given_A_When_B_Then_C" result="Failed">'
+            '<failure><message>Expected: (1, a)</message></failure></test-case></test-run>')
+
+        # Assert
+        self.assertEqual(verdict, base_red_check.RED_ON_BASE)
+
+    # GREEN_ON_BASE(characterization): a passing case's reading, which no label may take part in.
+    def test_Given_APassingCaseCarryingALabel_When_TheResultsAreRead_Then_TheLabelDoesNotDisplaceIt(self):
+        # Arrange -- `passed on the base` is the reading that fails a run, and no label names it, so
+        # a label read over a passing case could only ever lose that verdict.
+        # Act
+        reported = self.read(
+            '<test-run><test-case fullname="N.ProbeTests.Given_A_When_B_Then_C" result="Passed" '
+            'label="Error" /></test-run>')
+
+        # Assert
+        self.assertEqual(reported["N.ProbeTests.Given_A_When_B_Then_C"], "Passed")
+
+    def test_Given_OneArgumentListThatDisagreedAndOneThatThrew_When_ItIsLookedUp_Then_TheDisagreementWins(self):
+        # Arrange -- dict order decided this before, and the two sides are not symmetric: over a
+        # declared case one of them is a failing verdict and the other is not.
+        reported = {"N.C.Given_A_When_B_Then_C(1)": "Error", "N.C.Given_A_When_B_Then_C(2)": "Failed"}
+
+        # Act / Assert
+        self.assertEqual(base_red_check.outcome_for("N.C.Given_A_When_B_Then_C", reported), "Failed")
+
+    # GREEN_ON_BASE(characterization): the answer where no list reached a verdict, which the ranking
+    # beside it must leave alone.
+    def test_Given_EveryArgumentListStoppedBeforeItCould_When_ItIsLookedUp_Then_NoneIsCalledADisagreement(self):
+        # Arrange -- the fallback still has to answer when nothing among them ran to a verdict.
+        reported = {"N.C.Given_A_When_B_Then_C(1)": "Error",
+                    "N.C.Given_A_When_B_Then_C(2)": "Inconclusive"}
+
+        # Act / Assert
+        self.assertEqual(base_red_check.outcome_for("N.C.Given_A_When_B_Then_C", reported), "Error")
+
+
 class PlatformInstrumentTests(unittest.TestCase):
     def test_Given_ACanaryThatPassed_When_ThePlatformIsRead_Then_ItIsNotWithdrawn(self):
         # Arrange -- one passing case is the bar: the question is whether anything built and ran.
@@ -1227,21 +1341,24 @@ class UnmeasuredRunTests(unittest.TestCase):
         return [base_red_check.Case("N.C.Given_A_When_B_Then_C",
                                     "Packages/p/Runtime/A/Tests/Editor/CTests.cs", 1, 2)]
 
-    PLAN = {
-        "since": "0" * 40, "shared": {}, "canaries": {"EditMode": ["N.CanaryTests"]},
-        "cases": [{"name": "N.ProbeTests.Given_A_When_B_Then_C",
-                   "path": "Packages/p/Runtime/A/Tests/Editor/ProbeTests.cs",
-                   "key": "N.ProbeTests.Given_A_When_B_Then_C", "fixture": "N.ProbeTests",
-                   "declaration": None}],
-        "control": [],
-    }
+    def plan(self):
+        """What `--emit` writes, built by the script rather than transcribed beside it.
+
+        A literal here would be a second copy of the entry shape, free to go on carrying a field
+        `as_plan` had stopped writing -- which is this seam's own failure mode, and transcribing it
+        is why the round trip went uncovered. Built this way, a field the emitting half drops
+        reaches the deciding half's own tests.
+        """
+        probe = base_red_check.Case("N.ProbeTests.Given_A_When_B_Then_C",
+                                    "Packages/p/Runtime/A/Tests/Editor/ProbeTests.cs", 1, 2)
+        return base_red_check.as_plan("0" * 40, [probe], [], {}, {"EditMode": ["N.CanaryTests"]})
 
     def verdict_over(self, *results):
         """The exit status of the --verdict lane over a directory holding `results`."""
         holder = tempfile.mkdtemp(prefix="base-red-verdict-")
         self.addCleanup(shutil.rmtree, holder, ignore_errors=True)
         plan = Path(holder, "plan.json")
-        plan.write_text(json.dumps(self.PLAN))
+        plan.write_text(json.dumps(self.plan()))
         written = Path(holder, "results")
         written.mkdir()
         for index, body in enumerate(results):

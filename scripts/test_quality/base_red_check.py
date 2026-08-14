@@ -44,12 +44,15 @@ down with it. A runner that hands back a results file and nothing else can still
 -- one round of it, without the withdrawing.
 
 *A case that stopped before it disagreed answered nothing.* Red on the base means the base ran the
-case and the case said no. A Python case that dies at an import or an attribute the branch adds said
-nothing at all, and a C# case that went Inconclusive or Skipped there did not run to a verdict
-either. Counting any of those as red hands back the evidence the gate exists to demand, in the exact
-shape it was written to refuse: the branch adds a helper, every case in the module that reaches for it
-dies there, and the run reports them all as pinning something. So they take a verdict of their own, which
-says the base could not answer and leaves the red count to the cases that were answered.
+case and the case said no. A case that dies reaching for what the branch adds said nothing at all,
+in either lane and under either lane's spelling of it: a Python import or attribute, and -- since
+reflecting from the test assembly for private production state is this repository's convention -- a
+C# fixture that compiles on the base and throws where it would have compared. A case reported
+Inconclusive or Skipped there did not run to a verdict either. Counting any of those as red hands back
+the evidence the gate exists to demand, in the exact shape it was written to refuse: the branch adds a
+helper, every case in the module that reaches for it dies there, and the run reports them all as
+pinning something. So they take a verdict of their own, which says the base could not answer and
+leaves the red count to the cases that were answered.
 
 *A case that belongs on the base says so*, above itself, with a reason:
 
@@ -93,8 +96,8 @@ BASE_UNSOUND = "the base tree cannot answer"
 FAILING_VERDICTS = (PASSED_ON_BASE, DECLARED_STALE, NOT_REPORTED, BASE_UNSOUND)
 
 # What a runner reports for a case that stopped before it disagreed with anything, and what to print
-# for each. "Error" is this lane's own word, since unittest counts an exception apart from a failed
-# assertion; the other two are the results file's.
+# for each. One vocabulary over both lanes: `reading_of` and `python_outcome` each name a non-answer
+# out of this dict, so an exception reads the same whichever lane took it.
 NOT_AN_ANSWER = {
     "Error": "it raised there rather than failing an assertion",
     "Inconclusive": "an assumption of its own was false there",
@@ -665,15 +668,31 @@ def run_unity(unity, tree, platform, fixtures, results, log, timeout):
     return time.time() - started
 
 
+def reading_of(case):
+    """One reported case's reading: its label where that names one, and its result otherwise.
+
+    The label is preferred so that a case which stopped on an exception is not read as the base
+    disagreeing with it -- the same line `python_outcome` draws off a unittest trailer, and the
+    reason this repository's own idiom needs it is that a fixture reflecting for production state
+    the base has not got throws where it would have compared.
+
+    Never over a passing case: nothing a label names can reach `passed on the base`, so a label read
+    there could only ever turn that verdict into silence.
+    """
+    result = case.get("result")
+    label = case.get("label")
+    return label if result != "Passed" and label in NOT_AN_ANSWER else result
+
+
 def unity_results(results):
-    """Reported case name -> Passed / Failed / Inconclusive / Skipped."""
+    """Reported case name -> the reading, in the one vocabulary `decide` takes for either lane."""
     if not results.exists():
         return {}
     try:
         root = ET.parse(str(results)).getroot()
     except ET.ParseError:
         return {}
-    return {case.get("fullname") or case.get("name"): case.get("result")
+    return {case.get("fullname") or case.get("name"): reading_of(case)
             for case in root.iter("test-case")}
 
 
@@ -739,7 +758,12 @@ def outcome_for(name, reported):
         return None
     if all(result == "Passed" for result in results):
         return "Passed"
-    return next(result for result in results if result != "Passed")
+    # An argument list that disagreed outranks one that stopped before it could. The method is red
+    # on the base as soon as any list ran there and said no, and taking whichever came first would
+    # leave dict order to decide whether a declaration over such a method reads as stale -- a
+    # failing verdict against a non-failing one, off the order two entries happen to sit in.
+    unpassed = [result for result in results if result != "Passed"]
+    return next((result for result in unpassed if answered(result)), unpassed[0])
 
 
 def canary_fixtures(base_tree, platform, carry, wanted=3):

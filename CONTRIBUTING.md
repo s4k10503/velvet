@@ -269,11 +269,12 @@ text, so one of those going red means the tree is answering about itself and tha
 withdrawn. Change a `[SetUp]`, a field, a private helper or anything under `TestUtilities/`, and those
 cases stop being the base's text and stop being read as the instrument — the run says which and why.
 
-Red on the base means the base ran the case and the case said no, and only that. A Python case that dies
-at an import or an attribute the branch adds, and a C# case that went Inconclusive or Skipped there, are
-reported as cases **the base could not answer** — no evidence either way, and not part of the red count.
-The distinction is what stops a branch that adds a helper from being credited for every case in the
-module that reaches for it.
+Red on the base means the base ran the case and the case said no, and only that. A case that died
+reaching for what the branch adds — a Python import or attribute, a C# fixture reflecting for private
+production state the base has not got, which compiles there and throws where it would have compared —
+and a case reported Inconclusive or Skipped there, are reported as cases **the base could not answer**:
+no evidence either way, and not part of the red count. The distinction is what stops a branch that adds
+a helper, or a field, from being credited for the cases that die reaching for it.
 
 Two kinds of case belong on the base, and say so above themselves with a reason a reviewer can weigh:
 
