@@ -54,7 +54,7 @@ STOP_DIRECTORY = ".claude/hooks/stop"
 
 # Raised with the tree, the way the hook fixtures' floors are: an empty directory declares nothing
 # and would otherwise pass every check below.
-GUARD_FLOOR = 14
+GUARD_FLOOR = 16
 STOP_FLOOR = 2
 
 POLICY = "UNREADABLE_POLICY"

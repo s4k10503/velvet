@@ -177,6 +177,12 @@ merges through the REST merge endpoint besides, which no hook matcher sees. The 
 campaign at pull-request-open time, and a review round that changes production code after that is
 measured by nothing until the next `gh pr create`.
 
+**A round is answered by a layer on top, not by an amend.** A finding cites the commit it was taken
+on, so replacing that commit leaves the round and its answer inseparable, and the branch cannot land
+without a force-push. `.claude/hooks/refuse/amend_of_published_commit.py` refuses `git commit --amend`
+when a `refs/remotes/*` ref reaches HEAD; amending a commit nobody has pushed is the ordinary case and
+is not refused.
+
 **Nothing in CI runs the campaign, and at the measured cost nothing can.** A mutant is one editor launch.
 Over the twenty commits ending at `48057c8`, ten generated no mutant at all and the other ten ranged
 3 to 51 with a median of 22. A mutant's launch-compile-run measured 100–118 s here against a 94 s
@@ -282,7 +288,12 @@ Two kinds of case belong on the base, and say so above themselves with a reason 
 it. A declaration answers for the change written under it, and it is read three ways so it cannot outlive
 what it describes: one over a case that turns out red on the base fails the check, one whose category or
 reason the script refuses fails it, and one the branch did not itself write is a declaration for a change
-the base already carries and does not cover this one — restate it. The base tree is a checkout the
+the base already carries and does not cover this one — restate it. Only the first line of the reason
+is a claim on its own, and it is the line the four-word floor is measured on, so a long reason that
+wraps early is reported as under four words and the remedy that reading prescribes is the wrong one:
+`.claude/hooks/refuse/declaration_first_line_fragment.py` refuses one whose first line breaks off on
+a word no clause ends on, on punctuation leaving the sentence open, or with a delimiter still open.
+The base tree is a checkout the
 machine has never imported, and that import is most of what a base run costs; `--warm-library` copies an
 existing `Library` into it, sharing blocks where the filesystem will.
 

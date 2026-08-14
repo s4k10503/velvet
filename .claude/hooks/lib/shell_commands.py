@@ -26,6 +26,15 @@ REDIRECTION = re.compile(r"^\d*(?:>>|>&|<&|>|<)")
 # command acts on, and evaluating the cwd instead answers about a different tree.
 GLOBAL_VALUE_FLAGS = {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--config-env"}
 
+# `git commit` options that take a value. Which flags a guard cares about stays its own, per the
+# note above; which options swallow the token after them is git's grammar, and two guards reading
+# it two ways would disagree about whether `git commit -m --amend` names a message or an amend.
+COMMIT_VALUE_FLAGS = {
+    "-m", "--message", "-F", "--file", "-c", "--reedit-message", "-C", "--reuse-message",
+    "--fixup", "--squash", "--author", "--date", "-t", "--template", "--cleanup",
+    "-S", "--gpg-sign", "--trailer", "--pathspec-from-file",
+}
+
 
 def mask_shell_literals(command):
     out = list(command)
