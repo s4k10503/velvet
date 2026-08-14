@@ -429,8 +429,8 @@ class DeclarationRemovalTests(unittest.TestCase):
     declared green on the base are the boundary the refusals must not cross, and both go red under a
     detector widened to the bare `var` and `is` tokens. `MutantDeclarationRemovalTests` in
     `Generators~` reads the same removals with the compiler's own parser; these hold the spellings
-    the generator recognises without one. Each case leaves a second removal standing, so a refusal
-    that swallowed its whole operator would not pass here either.
+    the generator recognises without one. Every assertion names a removal the operator still emits, so
+    a refusal that swallowed its whole operator would not pass here either.
 
     The last three are the `out` arm's exemptions, one per operator, since the text handed to the
     pattern differs at each: the whole line, the cut alone, the guard statement.
