@@ -27,6 +27,11 @@ GUARD = REPO_ROOT / ".claude/hooks/refuse/amend_of_published_commit.py"
 REFUSE = 2
 ALLOW = 0
 
+# The two headlines the guard writes. A refusal that could not read and one that read are different
+# claims, and only one of them is entitled to say the commit is published.
+PUBLISHED = "Refusing `git commit --amend`: this commit is already published."
+UNREAD = "Refusing `git commit --amend`: git could not say whether this commit is published."
+
 GIT_IDENTITY = {
     "GIT_AUTHOR_NAME": "hooks", "GIT_AUTHOR_EMAIL": "hooks@velvet.test",
     "GIT_COMMITTER_NAME": "hooks", "GIT_COMMITTER_EMAIL": "hooks@velvet.test",
@@ -66,44 +71,56 @@ class GuardCase(unittest.TestCase):
         self.clone = self.root / "clone"
         git(self.root, "clone", "-q", str(remote), "clone")
 
-    def verdict(self, command, cwd=None):
-        """The guard's exit code for one Bash command."""
+    def answer(self, command, cwd=None):
+        """(exit code, whatever the guard wrote) for one Bash command."""
         payload = json.dumps({"tool_name": "Bash", "cwd": str(cwd or self.clone),
                               "tool_input": {"command": command}})
         finished = subprocess.run([sys.executable, "-B", str(GUARD)], input=payload, text=True,
                                   capture_output=True, timeout=120)
-        return finished.returncode
+        return finished.returncode, finished.stderr
+
+    def verdict(self, command, cwd=None):
+        """The guard's exit code. Only for the commands it lets through — see `refused`."""
+        return self.answer(command, cwd)[0]
 
     def refusal(self, command, cwd=None):
-        payload = json.dumps({"tool_name": "Bash", "cwd": str(cwd or self.clone),
-                              "tool_input": {"command": command}})
-        finished = subprocess.run([sys.executable, "-B", str(GUARD)], input=payload, text=True,
-                                  capture_output=True, timeout=120)
-        return finished.stderr
+        return self.answer(command, cwd)[1]
+
+    def refused(self, command, cwd=None):
+        """(exit code, the first line of what was written) for a command expected to be refused.
+
+        Not the exit code alone. `python3` handed a script it cannot open exits 2, which is exactly
+        what a refusal exits, so a case comparing the code by itself passes where the guard is not
+        on disk — which is its state on the merge base, and would be its state if it were deleted.
+        The headline is what a missing file cannot produce.
+        """
+        code, text = self.answer(command, cwd)
+        lines = text.splitlines()
+        return code, (lines[0] if lines else "")
 
 
 class PublishedHeadTests(GuardCase):
     def test_Given_AHeadAtTheRemoteTip_When_AnAmendIsPosed_Then_ItIsRefused(self):
         # Arrange / Act
-        code = self.verdict("git commit --amend")
+        answer = self.refused("git commit --amend")
 
         # Assert
-        self.assertEqual(code, REFUSE)
+        self.assertEqual(answer, (REFUSE, PUBLISHED))
 
     def test_Given_AHeadAtTheRemoteTip_When_AnAmendCarryingNoEditIsPosed_Then_ItIsRefused(self):
         # Arrange / Act
-        code = self.verdict("git commit --amend --no-edit")
+        answer = self.refused("git commit --amend --no-edit")
 
         # Assert
-        self.assertEqual(code, REFUSE)
+        self.assertEqual(answer, (REFUSE, PUBLISHED))
 
     def test_Given_AnAmendInASecondSegment_When_ItIsPosed_Then_ItIsRefused(self):
         # Arrange — a guard reading only the first command of the line sees a directory change here.
         # Act
-        code = self.verdict("cd /tmp && git commit --amend")
+        answer = self.refused("cd /tmp && git commit --amend")
 
         # Assert
-        self.assertEqual(code, REFUSE)
+        self.assertEqual(answer, (REFUSE, PUBLISHED))
 
     def test_Given_AnAmendNamingTheTreeWithDashC_When_ItIsPosed_Then_ThatTreeIsWhatIsRead(self):
         # Arrange — the shell sits in a directory git cannot place, so an answer at all is one
@@ -124,8 +141,7 @@ class PublishedHeadTests(GuardCase):
 
         # Assert — the headline rides along, since the two refusals differ in what they claim and
         # only one of them is entitled to say the commit is published.
-        self.assertEqual(("origin/main" in text, text.splitlines()[0]),
-                         (True, "Refusing `git commit --amend`: this commit is already published."))
+        self.assertEqual(("origin/main" in text, text.splitlines()[0]), (True, PUBLISHED))
 
     def test_Given_SeveralRemoteBranchesReachingHead_When_AnAmendIsRefused_Then_ItNamesTheUpstream(self):
         # Arrange — the clone tracks origin/main, and a second branch reaches the same commit while
@@ -153,10 +169,10 @@ class PublishedHeadTests(GuardCase):
         git(self.clone, "fetch", "-q", "origin")
 
         # Act
-        code = self.verdict("git commit --amend")
+        answer = self.refused("git commit --amend")
 
         # Assert
-        self.assertEqual(code, REFUSE)
+        self.assertEqual(answer, (REFUSE, PUBLISHED))
 
 
 class UnpublishedHeadTests(GuardCase):
@@ -274,18 +290,18 @@ class UnreadableTreeTests(GuardCase):
                                 capture_output=True, text=True, timeout=60).returncode == 0
 
         # Act
-        code = self.verdict("git commit --amend", cwd=outside)
+        code, headline = self.refused("git commit --amend", cwd=outside)
 
         # Assert
-        self.assertEqual((placed, code), (False, REFUSE))
+        self.assertEqual((placed, code, headline), (False, REFUSE, UNREAD))
 
     def test_Given_ATreeNamedByAnUnexpandedOperand_When_AnAmendIsPosed_Then_ItIsRefused(self):
         # Arrange / Act — the guard is handed the command before the shell rewrites it, so the tree
         # it would resolve is a directory named `$WORKTREE`.
-        code = self.verdict("git -C $WORKTREE commit --amend")
+        answer = self.refused("git -C $WORKTREE commit --amend")
 
         # Assert
-        self.assertEqual(code, REFUSE)
+        self.assertEqual(answer, (REFUSE, UNREAD))
 
     def test_Given_AnUnreadableTree_When_AnAmendIsRefused_Then_ItSaysTheReadingIsWhatFailed(self):
         # Arrange — a guard that blocks because it could not read, saying what a guard that read
@@ -297,7 +313,7 @@ class UnreadableTreeTests(GuardCase):
         headline = self.refusal("git commit --amend", cwd=outside).splitlines()[0]
 
         # Assert
-        self.assertIn("could not say whether this commit is published", headline)
+        self.assertEqual(headline, UNREAD)
 
 
 class PredicateAgreementTests(GuardCase):
@@ -317,6 +333,8 @@ class PredicateAgreementTests(GuardCase):
                 self.refs(cwd, ["for-each-ref", "--contains", "HEAD", "--format=%(refname)",
                                 "refs/remotes/"]))
 
+    # GREEN_ON_BASE(characterization): git answers both commands the same way on either tree.
+    # The branch adds no ref and no reading git takes, so what this pins is the agreement the choice between them rests on.
     def test_Given_APublishedHead_When_BothCommandsAreAsked_Then_TheyAnswerTheSame(self):
         # Arrange / Act
         porcelain, plumbing = self.both(self.clone)
@@ -325,6 +343,8 @@ class PredicateAgreementTests(GuardCase):
         # would not pass for agreement about a published head.
         self.assertEqual((porcelain, plumbing[1] != []), (plumbing, True))
 
+    # GREEN_ON_BASE(characterization): the agreement holds where no ref reaches HEAD.
+    # Same standing as the published case above.
     def test_Given_AnUnpublishedHead_When_BothCommandsAreAsked_Then_TheyAnswerTheSame(self):
         # Arrange
         commit(self.clone, "two")
@@ -335,6 +355,8 @@ class PredicateAgreementTests(GuardCase):
         # Assert
         self.assertEqual((porcelain, plumbing[1]), (plumbing, []))
 
+    # GREEN_ON_BASE(characterization): a detached HEAD is where the two were expected to part.
+    # They do not, and that is the reading the guard's comment names this file for.
     def test_Given_ADetachedHead_When_BothCommandsAreAsked_Then_TheyAnswerTheSame(self):
         # Arrange — the case the two were expected to differ over.
         git(self.clone, "checkout", "-q", "--detach")
@@ -345,6 +367,8 @@ class PredicateAgreementTests(GuardCase):
         # Assert
         self.assertEqual((porcelain, plumbing[1] != []), (plumbing, True))
 
+    # GREEN_ON_BASE(characterization): a worktree gets one answer from both commands.
+    # Where this repository's branch work happens, so it is the shape worth holding.
     def test_Given_AWorktree_When_BothCommandsAreAsked_Then_TheyAnswerTheSame(self):
         # Arrange
         worktree = self.root / "worktree"
@@ -356,6 +380,8 @@ class PredicateAgreementTests(GuardCase):
         # Assert
         self.assertEqual((porcelain, plumbing[1] != []), (plumbing, True))
 
+    # GREEN_ON_BASE(characterization): both commands fail alike on an unborn HEAD.
+    # The exit code is what the guard reads to decide it could not answer.
     def test_Given_AHeadGitCannotResolve_When_BothCommandsAreAsked_Then_TheyFailTheSameWay(self):
         # Arrange — an unborn HEAD, where a guard reading the exit code has to know which of the
         # two it is reading.
