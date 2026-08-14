@@ -1311,6 +1311,35 @@ class ReachTests(unittest.TestCase):
         self.assertEqual(report.splitlines()[0],
                          "1 mutant(s) over 3 changed code line(s); 2 line(s) no operator reaches")
 
+    def test_Given_ARefusedRemovalOnALineAnotherOperatorMutates_When_TheReachIsListed_Then_TheLineIsNotNamedUnreached(self):
+        # Arrange — line 7 loses its guard removal to the declaration refusal and keeps the `false`,
+        # which is the shape a narrowing hides behind: reach carries one bit per line, so a line that
+        # lost a question reads the same as one that never had it. Taken off what the run prints
+        # rather than off a second copy of the sum. `Generators~/README.md` ▸ Mutation testing states
+        # this, and no other case holds it.
+        campaign = StubbedCampaign(textwrap.dedent("""\
+            namespace Velvet
+            {
+                internal static class Probe
+                {
+                    internal static bool Ready(Map map, int key)
+                    {
+                        if (!map.TryGetValue(key, out var found)) return false;
+                    }
+                }
+            }
+            """))
+
+        # Act
+        campaign.run("--list")
+
+        # Assert
+        self.assertEqual(
+            (sorted(re.findall(r"Probe\.cs:7 .*\((.+)\)$", campaign.printed, re.MULTILINE)),
+             next(line.rsplit(":", 1)[-1] for line in campaign.printed.splitlines()
+                  if "unreached" in line)),
+            (["literal"], "1,3,5"))
+
 
 class UnreachableChangeTests(unittest.TestCase):
     def test_Given_ADiffOfCodeNoOperatorReaches_When_TheCampaignStarts_Then_ItRefusesToVerdict(self):

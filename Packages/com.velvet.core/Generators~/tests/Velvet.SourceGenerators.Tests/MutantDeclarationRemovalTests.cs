@@ -30,7 +30,10 @@ namespace Velvet.SourceGenerators.Tests
     /// The name and the block's line span, not the symbol: binding it would want the whole compilation
     /// with its references, which is the Unity build rather than this. So a second declaration of the
     /// same name inside the block reads as a surviving use of the first, and a widening that would let
-    /// such a line through has to answer this before it can be measured.
+    /// such a line through has to answer this before it can be measured. The syntax-only narrowing that
+    /// would isolate that case — require the mutated tree to declare the name nowhere in the scope — was
+    /// rejected for the direction it trades in: a strand a later sibling block redeclares would read as
+    /// fine, which buys one false positive back with a false negative in a guard whose failure is silence.
     /// </remarks>
     public sealed class MutantDeclarationRemovalTests
     {

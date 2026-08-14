@@ -332,6 +332,8 @@ GUARD_STATEMENT = re.compile(r"^if \(.+\)\s*(?:return[^;]*|continue|break);$")
 # where the argument is a discard or a member access: those carry no type token, so exempting them
 # opens no `out Dictionary<int, string> d` hole, which telling `out var spec` from `out existingField`
 # by shape does -- the type there carries a separator the shape has no bound for.
+# The pattern arm reads one type token or one brace group ahead of the name, never a type token
+# followed by one, so `is T { P: 1 } t` and `is Point (1, 2) p` are let through.
 # `MutantDeclarationRemovalTests` is the reading, so a spelling missing from here is one red line.
 DECLARES_A_NAME = re.compile(
     r"\bvar\s*\("
