@@ -280,8 +280,10 @@ reaching for it.
 An exception is not that reading on its own. A branch that fixes a crash leaves the base throwing inside
 the production code the fix repairs, which is the base disagreeing and stays **red on the base**. The two
 are told apart by the first frame of the throw that names a file of this repository — production code, or
-the test side. A throw that names none keeps the non-answer, so what a crash regression is read as is
-bounded by the stack trace its results file carries.
+the test side — read over the throw the case's own body left. A case carries its teardown's throw as well,
+and a teardown runs after the body, reaching what the case never asked about. A throw that names no file
+of this repository keeps the non-answer, so what a crash regression is read as is bounded by the stack
+trace its results file carries.
 
 Two kinds of case belong on the base, and say so above themselves with a reason a reviewer can weigh:
 
@@ -301,9 +303,16 @@ the base already carries and does not cover this one — restate it. A reason ma
 lines under it: the declaration is read from its marker to the end of that block, and a branch that
 rewrote any of those lines wrote it. The word floor is measured on the marker's own line rather than
 over that span, so the first line has to be a claim in its own right — measured over the span, a
-comment line that is not the reason at all counts toward it. The base tree is a checkout the
-machine has never imported, and that import is most of what a base run costs; `--warm-library` copies
-an existing `Library` into it, sharing blocks where the filesystem will.
+comment line that is not the reason at all counts toward it.
+
+Only the comment block directly above a case is read, so one written above a helper, or with a blank
+line between, or left over the case before, silences nothing while looking as though it does. The run
+says so on a line of its own — `orphaned: 1 of 3 declaration(s) in <file> sit above no case, so
+nothing reads them` — because the alternative is that case failing as green on the base under advice
+to write the declaration already above it.
+
+The base tree is a checkout the machine has never imported, and that import is most of what a base run
+costs; `--warm-library` copies an existing `Library` into it, sharing blocks where the filesystem will.
 
 `Test ▸ base-red-python` runs the Python lane on every pull request and needs no licence.
 `Test ▸ base-red` runs the C# lane where one is configured, but only one round of it: a base that

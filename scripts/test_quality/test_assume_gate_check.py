@@ -429,7 +429,8 @@ class RecordTests(unittest.TestCase):
         # nothing and report nothing, which is the same answer as a clean one.
         # Act
         outside = [path for path in self.tracked_test_files()
-                   if not path.startswith(assume_gate_check.PACKAGE_REL + "/")]
+                   if not any(path.startswith(root + "/")
+                              for root in assume_gate_check.SOURCE_ROOTS)]
 
         # Assert
         self.assertEqual(outside, [])

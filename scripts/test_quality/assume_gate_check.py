@@ -42,7 +42,12 @@ import sys
 from pathlib import Path
 
 DEFAULT_BASELINE = "scripts/test_quality/assume_gate_baseline.txt"
-PACKAGE_REL = "Packages/com.velvet.core"
+
+# The two roots a Unity project compiles its own code from. Walking the package alone leaves any test
+# assembly beside it read by nothing, which reports the same as a clean one; the sample ships its
+# fixtures under `Assets`. Library is outside both, so Unity's own bundled fixtures stay out of this
+# without being named. `RecordTests` fails when a tracked fixture sits outside these.
+SOURCE_ROOTS = ("Assets", "Packages")
 
 GATES_ACT_VALUE = "gates-act-value"
 GATES_IN_ASSERT = "gates-in-assert"
@@ -200,19 +205,19 @@ def scan(project):
     adding another -- which nets to a record that did not move.
     """
     entries, read = set(), 0
-    package = project / PACKAGE_REL
-    for path in sorted(package.rglob("*.cs")):
-        relative = path.relative_to(project).as_posix()
-        if kind_of(relative) != "csharp":
-            continue
-        text = path.read_text(encoding="utf-8", errors="replace")
-        code = code_lines(text)
-        raw = text.splitlines()
-        for case in csharp_cases(text, relative):
-            read += 1
-            body = slice(case.first_line - 1, case.last_line)
-            for reading, detail in readings_of(code[body], raw[body]):
-                entries.add("\t".join((reading, relative, case.name, detail)))
+    for root in SOURCE_ROOTS:
+        for path in sorted((project / root).rglob("*.cs")):
+            relative = path.relative_to(project).as_posix()
+            if kind_of(relative) != "csharp":
+                continue
+            text = path.read_text(encoding="utf-8", errors="replace")
+            code = code_lines(text)
+            raw = text.splitlines()
+            for case in csharp_cases(text, relative):
+                read += 1
+                body = slice(case.first_line - 1, case.last_line)
+                for reading, detail in readings_of(code[body], raw[body]):
+                    entries.add("\t".join((reading, relative, case.name, detail)))
     return entries, read
 
 

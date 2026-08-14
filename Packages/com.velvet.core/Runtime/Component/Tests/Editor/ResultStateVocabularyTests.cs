@@ -17,9 +17,7 @@ namespace Velvet.Tests
     /// </summary>
     /// <remarks>
     /// Both sides are read rather than listed: the script's tuple out of the script, NUnit's out of NUnit.
-    /// A drift guard written from memory goes stale on the side nobody re-reads. This is also the one fact
-    /// the script rests on that its own tests cannot reach — they hand it hand-written XML, which agrees
-    /// with whatever it was written to say.
+    /// A drift guard written from memory goes stale on the side nobody re-reads.
     /// </remarks>
     [TestFixture]
     internal sealed class ResultStateVocabularyTests
@@ -63,8 +61,7 @@ namespace Velvet.Tests
             // Act
             var read = ScriptLabels();
 
-            // Assert — a failure is either half: a label NUnit added that the script would read as a
-            // disagreement, or one the script reads that NUnit no longer writes.
+            // Assert
             Assert.That(string.Join(",", read), Is.EqualTo(string.Join(",", declared)),
                 $"{Script} reads a results file by labels that are no longer NUnit's");
         }

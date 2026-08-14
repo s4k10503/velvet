@@ -59,8 +59,10 @@ the cases that were answered.
 inside the production code the fix repairs, which is the base disagreeing in the plainest way there
 is -- and it arrives under the same label as the case that died in its own scaffolding. What
 separates them is the first frame of the throw that names a file of this tree: production code, or
-the test side. A throw naming no such file keeps the non-answer, so what this reads as red is bounded
-by what the results file carries.
+the test side. Read over the throw the *body* left, since a case carries its teardown's throw as well
+as its own and a teardown runs after the body, reaching what the case never asked about. A throw
+naming no such file keeps the non-answer, so what this reads as red is bounded by what the results
+file carries.
 
 *A case that belongs on the base says so*, above itself, with a reason:
 
@@ -77,6 +79,7 @@ Run: python3 scripts/test_quality/base_red_check.py --base origin/main
 import argparse
 import ast
 import importlib.util
+import io
 import json
 import re
 import shutil
@@ -84,6 +87,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import tokenize
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -156,6 +160,8 @@ _mutation_check = _sibling("mutation_check")
 code_mask = _mutation_check.code_mask
 line_spans = _mutation_check.line_spans
 folded_reason = _mutation_check.folded_reason
+mask_spans = _mutation_check.mask_spans
+COMMENT_SPANS = (_mutation_check.LINE_COMMENT, _mutation_check.BLOCK_COMMENT)
 
 
 class Declaration:
@@ -215,7 +221,12 @@ class Case:
 # Reading a test file
 # --------------------------------------------------------------------------------------------------
 
-CSHARP_TEST_DIR = re.compile(r"/Tests/(Editor|PlayMode)/")
+# A dot before `Tests` as readily as a slash: the package splits its assemblies as `<Area>/Tests/
+# Editor`, and the sample splits its own as `<Name>.Tests/Editor`. Anchoring on the slash alone reads
+# the second spelling as production, which leaves the fixtures under it carried onto no base tree and
+# their cases in scope of nothing. `RepositoryTests` fails when a fixture Unity compiles reads that
+# way, and `assume_gate_check.py` takes its lane reading from here.
+CSHARP_TEST_DIR = re.compile(r"[./]Tests/(Editor|PlayMode)/")
 CSHARP_ATTRIBUTE = re.compile(r"^\s*\[")
 CSHARP_CASE_ATTRIBUTE = re.compile(r"\[\s*(Test|UnityTest|TestCase|TestCaseSource|Theory)\b")
 CSHARP_METHOD = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*\(")
@@ -330,6 +341,38 @@ def leading_declaration(lines, index):
             claim, reason = folded_reason(match.group(2), lines[probe + 1:index])
             return Declaration(match.group(1), reason, claim=claim, line=probe + 1, through=index)
     return None
+
+
+def comments_in(relative, text):
+    """Every comment a file holds, per its language -- the only place a declaration can be read from.
+
+    A string literal is where that distinction earns its keep: this repository's test modules hold
+    C# fixtures as Python text, markers and all, and a marker there is a fixture's material.
+
+    Python is tokenised rather than matched on a comment opener at the head of a line, which is a
+    different reading and a wrong one here: a C# fixture inside a Python string has lines that open
+    with `//`.
+    """
+    if relative.endswith(".py"):
+        try:
+            return [token.string for token in
+                    tokenize.generate_tokens(io.StringIO(text).readline)
+                    if token.type == tokenize.COMMENT]
+        except (tokenize.TokenError, IndentationError, SyntaxError):
+            return []
+    return [text[start:end] for start, end, kind in mask_spans(text) if kind in COMMENT_SPANS]
+
+
+def orphaned_declarations(relative, text):
+    """(declarations the file writes, declarations its cases carry). Equal, or one of them is lost.
+
+    One written above a helper, one with a blank line between it and its case, one left in the block
+    over the case before: each silences nothing and looks like it does. The case it was meant for
+    then fails as green on the base, under advice to write the declaration already above it.
+    """
+    written = sum(1 for comment in comments_in(relative, text)
+                  for line in comment.splitlines() if DECLARATION.search(line))
+    return written, sum(1 for case in cases_in(relative, text) if case.declaration)
 
 
 def member_end(lines, ends, signature):
@@ -690,6 +733,12 @@ def run_unity(unity, tree, platform, fixtures, results, log, timeout):
 # under so that what comes back is the repository-relative path `is_test_side` reads.
 STACK_FRAME_SOURCE = re.compile(r"\bin\s+\.?/?((?:Assets|Packages)/[^\s:]+):\d+")
 
+# Where a case's own trace stops and its teardown's begins. A teardown throw is recorded onto the
+# case rather than beside it, so both traces arrive in one element in that order, under the label a
+# throw from the body would have carried and without the site that would name the teardown.
+# `TeardownRecordingTests` fails when any of those stops being how a results file is written.
+TEARDOWN_SECTION = re.compile(r"^--TearDown\b", re.MULTILINE)
+
 
 def threw_in_production(case):
     """Whether the throw that stopped this case came from production code rather than its own body.
@@ -700,14 +749,18 @@ def threw_in_production(case):
     a crash leaves the base throwing inside the production code the fix repairs: that is the base
     disagreeing.
 
-    The separator is the first frame that names a file of this tree. Frames naming none are skipped
-    rather than decided on, since they place the throw on neither side. A throw naming no file of
-    this tree at all keeps the non-answer, because the verdicts that fail a run are not ones to take
-    from a reading nobody could complete.
+    The separator is the first frame that names a file of this tree, over the section the body left.
+    A teardown runs after the body and reaches whatever the fixture handed it, which is not what the
+    case asked about, so reading past the marker credits the branch with a disagreement the case
+    never had -- hardest where the body passed and the marker is all there is.
+
+    Frames naming no file of this tree are skipped rather than decided on, since they place the
+    throw on neither side. A throw naming none at all keeps the non-answer, because the verdicts
+    that fail a run are not ones to take from a reading nobody could complete.
     """
     trace = case.find("./failure/stack-trace")
     text = (trace.text or "") if trace is not None else ""
-    for match in STACK_FRAME_SOURCE.finditer(text):
+    for match in STACK_FRAME_SOURCE.finditer(TEARDOWN_SECTION.split(text, maxsplit=1)[0]):
         return not is_test_side(match.group(1))
     return False
 
@@ -1046,11 +1099,20 @@ def report(cases, control, reported, canaries=None, wrote=True):
         print("\n{} of {} case(s) sit in a fixture the base built none of, so the reading is that "
               "fixture's rather than each case's".format(len(unbuilt), len(cases)))
     offenders = [case for case in cases if case.verdict in FAILING_VERDICTS]
-    if offenders:
-        print("\n{} case(s) the base already answers, or cannot be answered for. Green on both sides "
-              "separates\nnothing: sharpen the case until it goes red without this branch, or say why "
-              "it belongs there:".format(len(offenders)))
+    # Split by whose fault the verdict is, because one remedy does not cover both. A run that never
+    # measured a case is repaired in the run, and offering the declaration there sends the author to
+    # sharpen a case that may be perfectly sharp -- a neighbour's Assume is enough to land one here.
+    unmeasured = [case for case in offenders if case.verdict in (NOT_REPORTED, BASE_UNSOUND)]
+    answered = [case for case in offenders if case.verdict not in (NOT_REPORTED, BASE_UNSOUND)]
+    if answered:
+        print("\n{} case(s) the base already answers. Green on both sides separates nothing: sharpen "
+              "the\ncase until it goes red without this branch, or say why it belongs "
+              "there:".format(len(answered)))
         print("  // GREEN_ON_BASE({}): <why>".format("|".join(CATEGORIES)))
+    if unmeasured:
+        print("\n{} case(s) the base run never measured, so none of them carries a reading either "
+              "way. A\ndeclaration does not answer for that -- the detail beside each says which part "
+              "of the run to\nrepair.".format(len(unmeasured)))
     return offenders
 
 
@@ -1156,6 +1218,14 @@ def main():
         print("  no control: {} is carried onto the base, so every case that calls it is this "
               "branch's\n              text there. The base's own fixtures are what read the tree."
               .format(relative))
+    for relative in sorted({case.path for case in cases}):
+        source = project / relative
+        if not source.exists():
+            continue
+        written, carried = orphaned_declarations(relative, source.read_text())
+        if written > carried:
+            print("  orphaned: {} of {} declaration(s) in {} sit above no case, so nothing reads "
+                  "them".format(written - carried, written, relative))
     if args.plan:
         return 0
 

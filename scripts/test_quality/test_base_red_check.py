@@ -23,22 +23,20 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
-# Split so the repository scan below, which reads this file among the rest, does not find the sample
-# declaration in the fixture text and report it as one nothing carries.
-MARKER = "GREEN_ON" "_BASE"
 
-
-def load_module():
-    """Imports base_red_check by path, since scripts/test_quality is not a package."""
+def load_module(name):
+    """Imports a sibling script by path, since scripts/test_quality is not a package."""
     spec = importlib.util.spec_from_file_location(
-        "base_red_check", Path(__file__).resolve().with_name("base_red_check.py")
+        name, Path(__file__).resolve().with_name(name + ".py")
     )
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 
 
-base_red_check = load_module()
+base_red_check = load_module("base_red_check")
+
+MARKER = "GREEN_ON_BASE"
 
 FIXTURE_TEMPLATE = """using NUnit.Framework;
 
@@ -73,7 +71,6 @@ namespace Velvet.Tests
 }
 """
 
-
 FIXTURE = FIXTURE_TEMPLATE.replace("{marker}", MARKER)
 
 
@@ -103,6 +100,30 @@ def csharp_test_files():
     """Every tracked C# file that declares at least one test case."""
     return [(relative, text) for relative, text in tracked("csharp")
             if base_red_check.CSHARP_CASE_ATTRIBUTE.search(text)]
+
+
+def imported_csharp_fixtures():
+    """Every fixture file Unity compiles, found without asking `kind_of` which lane it is in.
+
+    `tracked` selects by lane, and a file the lane reader misses is exactly what nothing built on it
+    can report. The generator solution under `Generators~` builds and runs outside Unity, so its
+    fixtures are not ones a test platform reports and not ones to carry onto a base tree.
+
+    The attribute is looked for in the code rather than the raw text, since `[Test]` occurs in this
+    repository's prose about tests as well as in its declarations of them.
+    """
+    names = subprocess.run(["git", "-C", str(REPO_ROOT), "ls-files"],
+                           capture_output=True, text=True, check=True).stdout.splitlines()
+    found = []
+    for relative in names:
+        path = REPO_ROOT / relative
+        if not relative.endswith(".cs") or "~/" in relative or not path.exists():
+            continue
+        code = "\n".join(base_red_check.code_lines(
+            path.read_text(encoding="utf-8", errors="replace")))
+        if base_red_check.CSHARP_CASE_ATTRIBUTE.search(code):
+            found.append(relative)
+    return found
 
 
 def python_test_files():
@@ -468,6 +489,55 @@ class DeclarationTests(unittest.TestCase):
         # Assert
         self.assertEqual((restored.key, base_red_check.measured_by(restored.path)),
                          (case.key, base_red_check.measured_by(case.path)))
+
+    # A C# fixture as the modules here hold them, so the line below opens with `//` while being no
+    # part of any comment. A reader keyed on that opener counts it, and no case here carries it.
+    CSHARP_IN_A_PYTHON_STRING = '''
+// GREEN_ON_BASE(characterization): the keyed-reorder order this refactor must not change.
+'''
+
+    def test_Given_APythonStringHoldingAMarker_When_TheFileIsCounted_Then_OnlyTheCommentCounts(self):
+        # Arrange -- both halves in one module, since a reading that reaches neither is the other way
+        # of getting this wrong.
+        module = ('# GREEN_ON_BASE(refactor): the settle-path names this rename preserves.\n'
+                  'SNIPPET = """' + self.CSHARP_IN_A_PYTHON_STRING + '"""\n')
+
+        # Act
+        written, _ = base_red_check.orphaned_declarations(
+            "scripts/test_quality/test_probe.py", module)
+
+        # Assert
+        self.assertEqual(written, 1)
+
+    def test_Given_ACSharpStringHoldingAMarker_When_TheFileIsCounted_Then_OnlyTheCommentCounts(self):
+        # Arrange -- the other lane's spelling of the same thing: a fixture asserting over the
+        # declaration syntax carries it as data.
+        text = ('class C\n{\n'
+                '    // GREEN_ON_BASE(refactor): the reordering this rename preserves.\n'
+                '    const string Sample = @"// GREEN_ON_BASE(characterization): a sample of one.";\n'
+                '}\n')
+
+        # Act
+        written, _ = base_red_check.orphaned_declarations(
+            "Packages/p/Runtime/A/Tests/Editor/CTests.cs", text)
+
+        # Assert
+        self.assertEqual(written, 1)
+
+    def test_Given_ADeclarationWrittenOverAHelper_When_TheFileIsRead_Then_ItIsReportedAsOrphaned(self):
+        # Arrange -- it silences nothing and looks like it does, and the case it was meant for then
+        # fails as green on the base under advice to write what is already there.
+        text = ('class C\n{\n'
+                '    // GREEN_ON_BASE(refactor): the reordering this rename preserves.\n'
+                '    private void Helper() { }\n\n'
+                '    [Test]\n    public void Given_A_When_B_Then_C() => Assert.Pass();\n}\n')
+
+        # Act
+        written, carried = base_red_check.orphaned_declarations(
+            "Packages/p/Runtime/A/Tests/Editor/CTests.cs", text)
+
+        # Assert
+        self.assertEqual((written, carried), (1, 0))
 
     def test_Given_ACategoryNothingDefines_When_TheDeclarationIsChecked_Then_ItIsComplainedAbout(self):
         # Act
@@ -1175,14 +1245,16 @@ class ResultLabelTests(unittest.TestCase):
         return cls.labelled("Error", "System.NullReferenceException : Object reference not set to "
                                      "an instance of an object", *frames)
 
-    # A frame naming no file of this tree, so the arrangements below exercise the skipping rather
-    # than happening to put the deciding frame first.
+    # A frame naming no file of this tree, which `THREW_IN_PRODUCTION` puts in front of the deciding
+    # one so that arrangement reads past a frame rather than off the top of the trace.
     ENGINE_FRAME = ("  at System.Reflection.MonoField.GetValue (System.Object obj) [0x00080] in "
                     "&lt;c5eeda5e65d44b388e164c6c5cfe0702&gt;:0 ")
     TEST_FRAME = ("  at N.ProbeTests.Given_A_When_B_Then_C () [0x00011] in "
                   "./Packages/p/Runtime/A/Tests/Editor/ProbeTests.cs:41 ")
     PRODUCTION_FRAME = ("  at P.FiberElementPoolReset.Clear (P.Fiber fiber) [0x0000c] in "
                         "./Packages/p/Runtime/A/FiberElementPoolReset.cs:120 ")
+    TEARDOWN_FRAME = ("  at N.ProbeTests.TearDown () [0x00001] in "
+                      "./Packages/p/Runtime/A/Tests/Editor/ProbeTests.cs:70 ")
 
     @property
     def THREW(self):
@@ -1193,6 +1265,15 @@ class ResultLabelTests(unittest.TestCase):
     def THREW_IN_PRODUCTION(self):
         """The crash-regression shape: the base throwing where the branch's fix stops it."""
         return self.threw(self.ENGINE_FRAME, self.PRODUCTION_FRAME, self.TEST_FRAME)
+
+    @classmethod
+    def threw_in_teardown(cls, body, teardown):
+        """A case whose teardown threw, over whatever frames its body left in front of the marker.
+
+        One element carries both traces in that order, because NUnit records a teardown throw onto
+        the case's own result. `TeardownRecordingTests` pins that shape against the runner.
+        """
+        return cls.threw(*body, "--TearDown", *teardown)
 
     def refused(self, label, *frames):
         """A reported case the runner stopped from outside its body, over `frames` if any."""
@@ -1243,8 +1324,6 @@ class ResultLabelTests(unittest.TestCase):
     # GREEN_ON_BASE(characterization): a crash the branch fixes, counted red before the label was
     # read at all and having to stay red now that it is.
     def test_Given_ACaseThatThrewInsideProductionCode_When_TheResultsAreRead_Then_ItIsADisagreement(self):
-        # Arrange -- the shape a regression test for a crash leaves on the base, which arrives under
-        # the same label as the scaffolding throw above and is the opposite reading.
         # Act
         reported = self.read(self.THREW_IN_PRODUCTION)
 
@@ -1273,6 +1352,53 @@ class ResultLabelTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(verdict, base_red_check.DECLARED_STALE)
+
+    def test_Given_AThrowWhoseTestSideFrameComesFirst_When_ItIsDecided_Then_ItKeepsTheNonAnswer(self):
+        # Arrange -- production called back into the fixture and the fixture threw, so both sides
+        # are named and the innermost of them is the test side. The first such frame decides, not
+        # whichever side occurs anywhere in the trace.
+        # Act
+        verdict = self.verdict_for(
+            self.threw(self.ENGINE_FRAME, self.TEST_FRAME, self.PRODUCTION_FRAME))
+
+        # Assert
+        self.assertEqual(verdict, base_red_check.COULD_NOT_ANSWER)
+
+    def test_Given_ATeardownThrowAfterABodyThatPassed_When_ItIsDecided_Then_ItIsNotCountedRed(self):
+        # Arrange -- the body left no trace, so the marker opens the element and every frame under it
+        # is the teardown's own reach.
+        # Act
+        verdict = self.verdict_for(
+            self.threw_in_teardown((), (self.PRODUCTION_FRAME, self.TEARDOWN_FRAME)))
+
+        # Assert -- the base agreed with this case; crediting it red hands back the evidence the
+        # gate exists to demand.
+        self.assertEqual(verdict, base_red_check.COULD_NOT_ANSWER)
+
+    def test_Given_ADeclaredCaseWhoseTeardownThrew_When_ItIsDecided_Then_ItIsNotCalledStale(self):
+        # Arrange
+        declared = base_red_check.Declaration(
+            "characterization", "the keyed-reorder order this refactor must not change")
+
+        # Act
+        verdict = self.verdict_for(
+            self.threw_in_teardown((), (self.PRODUCTION_FRAME, self.TEARDOWN_FRAME)), declared)
+
+        # Assert
+        self.assertNotIn(verdict, base_red_check.FAILING_VERDICTS)
+
+    # GREEN_ON_BASE(characterization): the red a body's own production throw already carries, which
+    # cutting the trace at the teardown must not take away.
+    def test_Given_ATeardownThrowAfterTheBodyThrewInProduction_When_ItIsDecided_Then_ItIsCountedRed(self):
+        # Arrange -- the body's own trace stands in front of the marker and answers for the case. The
+        # teardown threw in the teardown method itself, so the section after the marker is test-side
+        # first and a reading taken there returns the opposite verdict.
+        # Act
+        verdict = self.verdict_for(self.threw_in_teardown(
+            (self.PRODUCTION_FRAME, self.TEST_FRAME), (self.TEARDOWN_FRAME,)))
+
+        # Assert
+        self.assertEqual(verdict, base_red_check.RED_ON_BASE)
 
     def test_Given_AThrowNamingNoFileOfThisTree_When_ItIsDecided_Then_ItKeepsTheNonAnswer(self):
         # Arrange -- a throw whose trace places it on neither side. The reading falls to the side
@@ -1522,6 +1648,26 @@ class UnmeasuredRunTests(unittest.TestCase):
         # Assert
         self.assertEqual([case.verdict for case in offenders], [base_red_check.BASE_UNSOUND])
 
+    def printed(self, reported, canaries, wrote):
+        held = io.StringIO()
+        with contextlib.redirect_stdout(held):
+            base_red_check.report(self.cases(), [], reported, canaries, wrote)
+        return held.getvalue()
+
+    def test_Given_BothKindsOfOffender_When_TheRemedyIsPrinted_Then_OnlyTheAnsweredOneIsOfferedIt(self):
+        # Arrange -- a declaration answers for a case the base measured. Over one it never measured
+        # it sends the author to sharpen a case that may be perfectly sharp, since a neighbour's own
+        # Assume is enough to withdraw the fixture. Both halves in one comparison, because printing
+        # it for neither is the other way of getting this wrong.
+        marker = "GREEN_ON_BASE"
+
+        # Act
+        unmeasured = self.printed({}, {"EditMode": []}, wrote=False)
+        answered = self.printed({"N.C.Given_A_When_B_Then_C": "Passed"}, {}, wrote=True)
+
+        # Assert
+        self.assertEqual((marker in unmeasured, marker in answered), (False, True))
+
     def test_Given_ARunThatWroteAnEmptyResultsFile_When_TheVerdictsAreTaken_Then_TheCanaryFailsIt(self):
         # Arrange -- the other half of the same bar, kept beside it: a file that parses to no case is
         # a run that happened and built nothing, and the canary is what reads that.
@@ -1662,6 +1808,19 @@ class RepositoryTests(unittest.TestCase):
         # Assert -- the count rides along because an empty corpus reports nothing silent.
         self.assertEqual((len(files) > 100, silent), (True, []))
 
+    def test_Given_EveryFixtureUnityCompiles_When_ItIsClassified_Then_EachIsCarriedOntoTheBase(self):
+        # Arrange
+        fixtures = imported_csharp_fixtures()
+
+        # Act
+        production = [relative for relative in fixtures
+                      if not base_red_check.is_test_side(relative)]
+
+        # Assert -- a fixture read as production is carried onto no base tree and its cases are in
+        # scope of nothing, so a branch that rewrites one is measured against nothing and passes.
+        # The count rides along because an empty corpus reports nothing misread.
+        self.assertEqual((len(fixtures) > 100, production), (True, []))
+
     def test_Given_EveryCSharpFixtureHere_When_ItIsRead_Then_NoTwoCaseSpansOverlap(self):
         # Act
         overlapping = []
@@ -1727,9 +1886,8 @@ class RepositoryTests(unittest.TestCase):
         # like it does.
         written, carried = 0, 0
         for relative, text in csharp_test_files() + python_test_files():
-            written += sum(1 for line in text.splitlines()
-                           if base_red_check.DECLARATION.search(line))
-            carried += sum(1 for case in base_red_check.cases_in(relative, text) if case.declaration)
+            wrote, carries = base_red_check.orphaned_declarations(relative, text)
+            written, carried = written + wrote, carried + carries
 
         # Act / Assert
         self.assertEqual(written, carried)
