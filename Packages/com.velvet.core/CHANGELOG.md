@@ -222,8 +222,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   where v5 dispatches it, so a handler no longer reads its own call's outcome and `Data` stands only
   under `Status == Success`.
 
-- `RouteBlockerState.Proceed()` now re-issues the navigation its Blocker held, so the confirm-dialog flow
-  it exists for reaches the destination: the user clicks "Leave" and the router goes there. It used to
+- `RouteBlockerState.Proceed()` now runs the blocked navigation again, from the request the caller made,
+  so the confirm-dialog flow it exists for reaches the destination: the user clicks "Leave" and the
+  router goes there. It used to
   clear the state and invoke a callback nothing assigned, leaving the dialog closed and the navigation
   gone — reaching the destination meant copying `Attempt.NextPath` and `Attempt.NavigationMode` out before
   calling `Proceed()`, re-issuing them by hand, and arranging for the predicate to stop blocking, because
@@ -233,8 +234,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   user was standing on. `RouteBlockerStatus` has a third member, `Proceeding`, for the span between
   `Proceed()` and the re-issued navigation settling: over it the Blocker still reports its `Attempt` and
   is consulted about nothing, and it returns to `Idle` — which is what arms it for the next navigation —
-  once that navigation has committed, ended without committing or been abandoned, and no Blocker is still
-  holding it. A second Blocker vetoing the re-issue is what holds it, and the first waits on that one
+  once that navigation has committed, ended without committing or been abandoned, and no Blocker is left
+  blocking. A second Blocker vetoing the re-issue is what leaves one, and the first waits on that one
   being answered. `Reset()` still abandons the attempt and leaves the router where it is, and now ends it
   for the Blockers holding it alongside: their dialogs close too, and a `Proceed()` on one of them no
   longer sends the router at a destination the user declined. An exhaustive `switch` expression over
