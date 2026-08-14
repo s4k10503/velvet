@@ -12,10 +12,11 @@ namespace Velvet.Tests
     /// Machine-checks every markdown file the repository walk reaches against the actual runtime API
     /// surface, so a doc referencing a renamed/removed <c>V.*</c> factory or <c>Hooks.*</c> hook,
     /// a path or a type that no longer exists, or an index that has drifted from the files on disk, fails a
-    /// test instead of shipping silently wrong. Each check pins a failure mode that has actually shipped: a
-    /// guide referencing a never-implemented factory, a hook table drifting from the real hook surface, an
-    /// index missing real guide files, a type name written for a file that holds differently-named types,
-    /// and a harness function named in a skill under a name no harness declares.
+    /// test instead of shipping silently wrong. The failure modes below have actually shipped: a guide
+    /// referencing a never-implemented factory, a hook table drifting from the real hook surface, an index
+    /// missing real guide files, and a type name written for a file that holds differently-named types.
+    /// One more is pinned as a shape rather than as a shipped instance: a harness function named in a skill
+    /// under a name no harness declares.
     /// </summary>
     [TestFixture]
     internal sealed class DocumentationDriftTests
@@ -459,6 +460,10 @@ namespace Velvet.Tests
                 "Documentation names identifiers that appear in no source file:\n" + string.Join("\n", unresolved));
         }
 
+        // GREEN_ON_BASE(characterization): the base's own markdown names no wrong symbol, so it is green there.
+        // Not a behaviour the base has — the case is new — but a property of content the base already
+        // holds on both sides of the comparison. What shows it can fail is a reference perturbed to a name
+        // no script defines, measured, rather than the base run.
         [Test]
         public void Given_MarkdownNamingAScriptSymbol_When_TheSymbolIsSoughtInThatScript_Then_ItIsDefinedThere()
         {
@@ -484,13 +489,20 @@ namespace Velvet.Tests
                 + string.Join("\n", unresolved));
         }
 
-        // A def, a class or a module-level binding. Nothing narrower, because a document naming a harness
-        // constant makes the same claim as one naming a function.
+        // What the module itself exposes, which is what `module.symbol` claims: a def or a class at column
+        // zero rather than at any indentation, since a method's name is the class's rather than the
+        // module's. A binding counts alongside them, because a document naming a harness constant makes
+        // the same claim as one naming a function, and the target may be a tuple — one hook here binds
+        // three of its policy names in a single one, and an arm reading only `NAME =` reports a document
+        // that names them correctly.
         private static bool DefinesSymbol(string source, string symbol) =>
             Regex.IsMatch(source,
-                $@"^[^\S\n]*(?:async[^\S\n]+)?(?:def|class)[^\S\n]+{Regex.Escape(symbol)}\b",
+                $@"^(?:async[^\S\n]+)?(?:def|class)[^\S\n]+{Regex.Escape(symbol)}\b",
                 RegexOptions.Multiline)
-            || Regex.IsMatch(source, $@"^{Regex.Escape(symbol)}[^\S\n]*=", RegexOptions.Multiline);
+            || Regex.IsMatch(source,
+                $@"^(?:[A-Za-z_]\w*[^\S\n]*,[^\S\n]*)*{Regex.Escape(symbol)}"
+                + @"(?:[^\S\n]*,[^\S\n]*[A-Za-z_]\w*)*[^\S\n]*(?::[^=\n]+)?=",
+                RegexOptions.Multiline);
 
         // Every Python source in the walk, keyed on its stem, with prose taken out the way StripProse takes
         // it: a def or a binding inside a string literal is not a definition, and several harness tests
