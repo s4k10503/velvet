@@ -15,8 +15,8 @@ namespace Velvet.Tests
     /// test instead of shipping silently wrong. The failure modes below have actually shipped: a guide
     /// referencing a never-implemented factory, a hook table drifting from the real hook surface, an index
     /// missing real guide files, and a type name written for a file that holds differently-named types.
-    /// One more is pinned as a shape rather than as a shipped instance: a harness function named in a skill
-    /// under a name no harness declares.
+    /// One more is pinned as a shape rather than as a shipped instance: a markdown span naming one of the
+    /// repository's scripts and a symbol that script does not define.
     /// </summary>
     [TestFixture]
     internal sealed class DocumentationDriftTests
