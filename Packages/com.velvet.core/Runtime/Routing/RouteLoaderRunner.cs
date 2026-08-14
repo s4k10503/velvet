@@ -41,8 +41,11 @@ namespace Velvet
         // Cancellation can overlap rounds, so this counts live tasks across all rounds.
         internal int ActiveSuspendTaskCount => _activeSuspendTaskCount;
 
-        // A Loader may make a nested round current before its outer RunLoadersSync returns.
-        public LoaderRound RunLoadersSync(
+        // A Loader may make a nested round current before its outer RunLoadersAsync returns.
+        // Every loader delegate is invoked before the first await below, so an Await-mode chain runs
+        // concurrently and a delegate that navigates still supersedes this round from inside the launch
+        // loop; awaiting inside that loop would change both.
+        public async VelvetTask<LoaderRound> RunLoadersAsync(
             IReadOnlyList<RouteMatch> matches,
             CancellationToken externalToken)
         {
@@ -101,14 +104,7 @@ namespace Velvet
             {
                 try
                 {
-                    if (!task.Status.IsCompleted())
-                    {
-                        throw new InvalidOperationException(
-                            $"Await mode loader for route '{routeId}' returned an incomplete task. " +
-                            "Use LoaderMode.Suspend for async loaders.");
-                    }
-                    var result = task.GetAwaiter().GetResult();
-                    round.Results[routeId] = result;
+                    round.Results[routeId] = await task;
                 }
                 catch (OperationCanceledException)
                 {

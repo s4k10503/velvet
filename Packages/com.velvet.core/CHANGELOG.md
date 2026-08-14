@@ -18,6 +18,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   yet; it arrives first so that the change moving the framework onto it is one a reader can weigh
   against a tree that already has the type.
 
+- `V.RouterProvider(router)` is the router root, as `<RouterProvider router={router}/>` is: it
+  subscribes to the router and publishes the location, the loader data and the loader errors that
+  `Hooks.UseLocation`, `Hooks.UseLoaderData` and `Hooks.UseRouteError` read, then renders the matched
+  route through a `V.Outlet` of its own. It takes no children. Nothing in the package published those
+  three contexts before, so an application had to write the bridge itself — a `Hooks.UseState` over
+  `Router.CurrentLocation`, a `Hooks.UseEffect` subscribing to `Router.OnLocationChanged` and a
+  re-read to cover the navigation that lands before the subscription attaches, under three nested
+  `V.Provider`s — and the starter sample's copy of it wired only the location, which leaves
+  `Hooks.UseLoaderData` empty and every `errorElement` unreachable with nothing reported. The new
+  routing guide states what the provider publishes and where an outlet context comes from.
+
+- A routing guide: `Documentation~/routing.md`. Navigation blocking had one; the rest of routing
+  had none.
+
 - `animate-spin` — a full turn a second, linear, forever, with `animate-spin-[<time>]` overriding the
   loop like the other looping utilities. It owns the rotate slot while it runs, on the terms
   `animate-hue` owns the filter.
@@ -462,6 +476,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   portals guide states which containers a portal of either form may target.
 
 ### Changed
+
+- `LoaderMode.Await`, which is the default, awaits the loader. The route already on screen stays there,
+  `Hooks.UseNavigation().State` reports `NavigationLifecycle.Loading`, and the location commits with the
+  data — React Router's plain `loader` contract. It previously accepted only a loader that handed back
+  an already-completed task: anything else was rejected with a framework-authored
+  `InvalidOperationException` recorded as that route's loader error, so the naive port of a React loader
+  navigated and then rendered the route's `errorElement`, or a blank subtree where the matched chain had
+  none. Two consequences to read before upgrading. An `Await` loader that never completes is now a
+  navigation that never commits, where it used to fail fast. And a navigation whose loaders suspend
+  leaves `NavigateAsync` genuinely asynchronous, so a caller that took its result synchronously has to
+  await it. A navigation whose loaders all hand back already-completed tasks still completes
+  synchronously.
+
+- `Router.PendingLocation` — the location an in-flight navigation is heading for, resolved against the
+  route tree so it carries the destination's `Params` and `Matches`, and null whenever no navigation is
+  in flight. `Hooks.UseNavigation().Location` reports it while `State` is `NavigationLifecycle.Loading`,
+  which is React Router's `navigation.location` and what a pending-UI branch is keyed on. It used to
+  report the location already on screen in that window. The idle half of it still reports the committed
+  location where React Router reports `undefined`; the guide states why and what to branch on instead.
 
 - The container a `V.Component` is written into is part of which instance it is, as the position of a
   component is in React. Two sibling containers each holding the same component now hold two instances

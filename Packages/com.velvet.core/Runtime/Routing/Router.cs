@@ -60,6 +60,15 @@ namespace Velvet
         }
         /// <summary>Location information for the most recently successful navigation. null before the first navigation.</summary>
         public RouterLocation? CurrentLocation { get; private set; }
+        /// <summary>
+        /// The location an in-flight navigation is heading for — resolved against the route tree, so it
+        /// carries the destination's parameters and matches. Set once the path has matched, and cleared by
+        /// the commit that makes it <see cref="CurrentLocation"/>, by the attempt that gives up on it, and
+        /// by <see cref="Dispose"/>. <c>UseNavigation</c> reports it as
+        /// <see cref="NavigationState.Location"/>; the routing guide states where that lands relative to
+        /// React Router's <c>navigation.location</c>.
+        /// </summary>
+        public RouterLocation? PendingLocation { get; private set; }
         /// <summary>True when the history stack can be moved backward.</summary>
         public bool CanGoBack => _historyIndex > 0;
         /// <summary>True when the history stack can be moved forward.</summary>
@@ -351,12 +360,14 @@ namespace Velvet
         {
             if (redirectCount >= MaxRedirects)
             {
+                WithdrawInitiatorsDestination(initiator);
                 Status = RouterStatus.Error;
                 return NavigationResult.Error;
             }
 
             if (path == null)
             {
+                WithdrawInitiatorsDestination(initiator);
                 Status = RouterStatus.NotFound;
                 return NavigationResult.NotFound;
             }
@@ -369,6 +380,7 @@ namespace Velvet
 
             if (matches == null)
             {
+                WithdrawInitiatorsDestination(initiator);
                 Status = RouterStatus.NotFound;
                 return NavigationResult.NotFound;
             }
@@ -389,7 +401,11 @@ namespace Velvet
                 pending = new PendingNavigation(++_navigationSequence, CommitIndexFor(mode), path, mode);
             }
 
-            RouterLocation location;
+            // Built here rather than at the commit so the phases below have a destination to publish while
+            // they run, and reused as the committed location so the two are one object.
+            var location = BuildLocation(path, matches);
+            PendingLocation = location;
+
             RouteLoaderRunner.LoaderRound round;
             try
             {
@@ -413,7 +429,7 @@ namespace Velvet
                 round = loaderRound;
                 // Inside the try: the commit throws on a navigation mode outside the enum, and leaving that
                 // to escape past the handlers is what left Status mid-flight before.
-                location = CommitHistoryEntry(path, matches, mode, pending, round);
+                CommitHistoryEntry(path, matches, mode, pending, round);
             }
             catch (OperationCanceledException)
             {
@@ -434,6 +450,7 @@ namespace Velvet
             }
 
             CurrentLocation = location;
+            PendingLocation = null;
             // Only now may the round's late results reach the live state: the write-back they trigger reads
             // CurrentLocation and _historyIndex, and both describe this round's location from here on.
             _committedRound = round;
@@ -490,6 +507,17 @@ namespace Velvet
         private bool StillCurrent(PendingNavigation pending) =>
             pending.Sequence == _navigationSequence;
 
+        // The three returns above a redirect's own claim end the attempt its initiator published a destination
+        // for, and the initiator does nothing afterwards but forward the result — so the destination is
+        // withdrawn here or not at all. Status is left to the caller, which has already put its outcome there.
+        private void WithdrawInitiatorsDestination(PendingNavigation? initiator)
+        {
+            if (initiator.HasValue && StillCurrent(initiator.Value))
+            {
+                PendingLocation = null;
+            }
+        }
+
         private void ReleaseClaim(PendingNavigation pending, RouterStatus status)
         {
             if (!StillCurrent(pending))
@@ -497,6 +525,9 @@ namespace Velvet
                 return;
             }
 
+            // Before the Status write, which raises OnStatusChanged to subscribers that read the destination
+            // alongside the status.
+            PendingLocation = null;
             Status = status;
         }
 
@@ -628,7 +659,7 @@ namespace Velvet
 
             if (restoring)
             {
-                // The else branch cancels the previous round by reaching RunLoadersSync; this one commits
+                // The else branch cancels the previous round by reaching RunLoadersAsync; this one commits
                 // without ever reaching it. Leaving that round's CTS installed keeps it current for
                 // RouteLoaderRunner's supersession guard, so the round being navigated away from would write
                 // its late result into the entry restored here. Nothing downstream separates the two: RouteId
@@ -646,7 +677,10 @@ namespace Velvet
             }
 
             Status = RouterStatus.Loading;
-            var round = _loaderRunner.RunLoadersSync(matches, cancellationToken);
+            // An Await-mode loader suspends here, holding the commit — and so the route on screen — until it
+            // resolves. A newer navigation arriving inside that window cancels this token, which is what the
+            // check below is reading.
+            var round = await _loaderRunner.RunLoadersAsync(matches, cancellationToken);
 
             if (cancellationToken.IsCancellationRequested)
             {
@@ -703,8 +737,7 @@ namespace Velvet
                 new Dictionary<string?, Exception>(_loaderErrors),
                 round.Settled);
 
-        private RouterLocation CommitHistoryEntry(string path, IReadOnlyList<RouteMatch> matches, NavigationMode mode,
-            PendingNavigation pending, RouteLoaderRunner.LoaderRound round)
+        private static RouterLocation BuildLocation(string path, IReadOnlyList<RouteMatch> matches)
         {
             var allParams = new Dictionary<string, string>();
             foreach (var match in matches)
@@ -715,13 +748,17 @@ namespace Velvet
                 }
             }
 
-            var location = new RouterLocation
+            return new RouterLocation
             {
                 Path = path,
                 Params = allParams,
                 Matches = matches,
             };
+        }
 
+        private void CommitHistoryEntry(string path, IReadOnlyList<RouteMatch> matches, NavigationMode mode,
+            PendingNavigation pending, RouteLoaderRunner.LoaderRound round)
+        {
             switch (mode)
             {
                 case NavigationMode.Push:
@@ -755,8 +792,6 @@ namespace Velvet
                 default:
                     throw new ArgumentOutOfRangeException(nameof(mode), mode, null);
             }
-
-            return location;
         }
 
         #endregion
@@ -764,7 +799,7 @@ namespace Velvet
         /// <summary>
         /// Re-emits <see cref="OnLocationChanged"/> with a fresh <see cref="RouterLocation"/> instance
         /// carrying the same content, so a Suspend-mode loader that resolved within the current location
-        /// forces a re-render. The path/params/matches are unchanged, but the canonical router-root Provider
+        /// forces a re-render. The path/params/matches are unchanged, but <c>V.RouterProvider</c>
         /// stores the location in a <c>UseState</c> whose setter bails on a referentially-equal value
         /// (Object.is). Reusing the same instance would silently drop the re-render, leaving
         /// <c>UseLoaderData</c> / <c>UseRouteError</c> on the pre-resolution snapshot. The new identity forces
@@ -890,15 +925,15 @@ namespace Velvet
             _loaderData.GetValueOrDefault(routeId);
 
         /// <summary>
-        /// Snapshot of the current loader data, keyed by <see cref="RouteMatch.RouteId"/>. The router's
-        /// root Provider exposes this through <see cref="RouterContext.LoaderData"/> for the
+        /// Snapshot of the current loader data, keyed by <see cref="RouteMatch.RouteId"/>.
+        /// <c>V.RouterProvider</c> exposes this through <see cref="RouterContext.LoaderData"/> for the
         /// <c>UseLoaderData</c> hook.
         /// </summary>
         public IReadOnlyDictionary<string?, object> CurrentLoaderData => _loaderData;
 
         /// <summary>
-        /// Snapshot of the current loader errors, keyed by <see cref="RouteMatch.RouteId"/>. The router's
-        /// root Provider exposes this through <see cref="RouterContext.Errors"/> for the
+        /// Snapshot of the current loader errors, keyed by <see cref="RouteMatch.RouteId"/>.
+        /// <c>V.RouterProvider</c> exposes this through <see cref="RouterContext.Errors"/> for the
         /// <c>UseRouteError</c> hook and for <c>ErrorElement</c> rendering.
         /// </summary>
         public IReadOnlyDictionary<string?, Exception> CurrentLoaderErrors => _loaderErrors;
@@ -911,6 +946,9 @@ namespace Velvet
             // that same synchronous unwind would write an index back and raise OnStatusChanged on a router
             // being torn down.
             _navigationSequence++;
+            // Retiring the claim above is what stops the unwinding attempt from clearing this itself, and a
+            // destination left published would outlive the navigation that was heading for it.
+            PendingLocation = null;
             // Cancel and dispose any in-flight navigation CTS so a pending Blocker await unwinds
             // cleanly during shutdown.
             _activeNavigationCts?.Cancel();

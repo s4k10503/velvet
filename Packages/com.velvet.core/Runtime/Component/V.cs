@@ -2325,14 +2325,37 @@ namespace Velvet
         #region Routing DSL
 
         /// <summary>
+        /// Root of a routed tree: subscribes to <paramref name="router"/> and publishes its location, loader
+        /// data and loader errors to every routing hook below, then renders the matched route through an
+        /// <see cref="Outlet"/> of its own. Mount it above everything that navigates.
+        /// </summary>
+        /// <remarks>
+        /// It takes no children, as React Router's <c>RouterProvider</c> does not: what renders beneath it is
+        /// the route table's own elements. A value for <c>UseOutletContext</c> comes from an
+        /// <see cref="Outlet"/> written in a layout route, which is where React Router's
+        /// <c>&lt;Outlet context&gt;</c> lives too.
+        /// </remarks>
+        /// <param name="router">The router to publish. Navigation may start before or after this mounts.</param>
+        /// <param name="key">Key used to disambiguate siblings at the same position.</param>
+        /// <returns>A <see cref="ComponentNode"/> publishing the router's state to its subtree.</returns>
+        public static ComponentNode RouterProvider(Router router, string? key = null)
+        {
+            if (router == null) throw new ArgumentNullException(nameof(router));
+            return Component(
+                global::Velvet.RouterProvider.Render,
+                new global::Velvet.RouterProvider.Props(router),
+                key);
+        }
+
+        /// <summary>
         /// Path-based route definition. Declaratively expresses Velvet Router's nested routes and Loaders.
         /// </summary>
         /// <param name="path">URL path pattern for matching. Must not be null.</param>
         /// <param name="element">Component rendered when the route matches. Mutually exclusive with <paramref name="redirectTo"/>.</param>
         /// <param name="scopeId">Optional VContainer scope ID associated with this route.</param>
         /// <param name="loader">Async loader invoked on entry; result is exposed via Loader hook.</param>
-        /// <param name="loaderMode">Whether the navigator awaits the loader (Await) or commits immediately and streams the result (Suspend).</param>
-        /// <param name="errorElement">Component rendered when the loader throws.</param>
+        /// <param name="loaderMode">Whether the navigation waits for the loader before committing (Await) or commits immediately and streams the result in (Suspend). See <see cref="LoaderMode"/>.</param>
+        /// <param name="errorElement">Component rendered in place of <paramref name="element"/> when this route's loader fails, or a descendant route's does with no nearer errorElement.</param>
         /// <param name="children">Nested child route definitions.</param>
         /// <param name="redirectTo">Path to redirect to. Mutually exclusive with <paramref name="element"/> and <paramref name="guard"/>.</param>
         /// <param name="guard">Pass-through guard returning a redirect path or null. Cannot be combined with <paramref name="redirectTo"/>.</param>

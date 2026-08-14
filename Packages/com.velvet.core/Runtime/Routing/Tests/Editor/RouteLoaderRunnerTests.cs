@@ -75,6 +75,60 @@ namespace Velvet.Tests
             Assert.That(results["test"], Is.EqualTo("loaded-data"));
         }
 
+        [Test]
+        public void Given_AnUnresolvedAwaitLoader_When_RunLoaders_Then_TheRoundStaysOpen()
+        {
+            // Arrange
+            var runner = new RouteLoaderRunner();
+            var unresolved = new VelvetTaskCompletionSource<object>();
+            var matches = MakeMatch("test", loader: (ctx, ct) => unresolved.Task);
+
+            // Act
+            var round = runner.RunLoadersAsync(matches, CancellationToken.None);
+
+            // Assert
+            Assert.That(round.Status, Is.EqualTo(VelvetTaskStatus.Pending),
+                "An Await loader that has not resolved is one the round is still waiting on");
+        }
+
+        [UnityTest]
+        public IEnumerator Given_AnUnresolvedAwaitLoader_When_ItsTaskResolves_Then_TheResultIsKeyedByRouteId()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            var runner = new RouteLoaderRunner();
+            var unresolved = new VelvetTaskCompletionSource<object>();
+            var matches = MakeMatch("test", loader: (ctx, ct) => unresolved.Task);
+            var round = runner.RunLoadersAsync(matches, CancellationToken.None);
+
+            // Act
+            unresolved.TrySetResult("late-data");
+            var settled = await round;
+
+            // Assert
+            Assert.That(settled.Results.GetValueOrDefault("test"), Is.EqualTo("late-data"));
+        });
+
+        [UnityTest]
+        public IEnumerator Given_AnUnresolvedAwaitLoader_When_ItsTaskFails_Then_TheRoundRecordsTheLoadersOwnError()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // The framework used to author the exception itself for a loader that had not finished, so the
+            // route's error was one no application code raised.
+            // Arrange
+            var runner = new RouteLoaderRunner();
+            var unresolved = new VelvetTaskCompletionSource<object>();
+            var matches = MakeMatch("fail", loader: (ctx, ct) => unresolved.Task);
+            var round = runner.RunLoadersAsync(matches, CancellationToken.None);
+
+            // Act
+            unresolved.TrySetException(new InvalidOperationException("late-failure"));
+            var settled = await round;
+
+            // Assert
+            Assert.That(settled.Errors.GetValueOrDefault("fail")?.Message, Is.EqualTo("late-failure"));
+        });
+
         #endregion
 
         #region Suspend mode
