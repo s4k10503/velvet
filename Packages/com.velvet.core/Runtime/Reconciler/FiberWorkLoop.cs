@@ -580,8 +580,10 @@ namespace Velvet
         }
 
         // The async starter runs its callback through this overload and awaits the returned task outside the
-        // scope, so the transition covers the callback's synchronous prefix. Awaiting inside would extend it
-        // across every await the action takes.
+        // scope, so the transition covers everything the callback runs before it first suspends — not
+        // everything before its first `await`, which is a different boundary whenever the awaited task had
+        // already completed. UseTransitionTests holds both sides of that difference. Awaiting inside would
+        // extend the scope across every await the action takes.
         private static T RunInTransitionScope<T>(HookTransitionSlot slot, Func<T> body)
         {
             OpenTransitionScopes.Add(slot);
@@ -598,11 +600,13 @@ namespace Velvet
         // Asynchronous StartTransition (an async callback: StartTransition(async () => ...)).
         // isPending stays true across every await inside asyncUpdates and is
         // cleared only after the returned task completes (and no Transition-lane render remains queued). The
-        // updates the action makes before its first await are scheduled on the Transition lane; reaching it
-        // after one means wrapping those updates in a further StartTransition call, which joins this
-        // transition. A call on another slot does not.
+        // updates the action makes before it first suspends are scheduled on the Transition lane (see
+        // RunInTransitionScope for where that boundary falls); reaching it past a suspension means wrapping
+        // those updates in a further StartTransition call, which joins this transition. A call on another
+        // slot does not.
         // fiber: Fiber whose transition slot tracks this call's pending state.
-        // asyncUpdates: Async action whose synchronous prefix runs at Transition priority. Must not be null.
+        // asyncUpdates: Async action whose run up to its first suspension is at Transition priority. Must not
+        // be null.
         // A task that completes when asyncUpdates has fully run.
         public static async Cysharp.Threading.Tasks.UniTask StartTransition(
             ComponentFiber fiber, HookTransitionSlot slot, Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates)

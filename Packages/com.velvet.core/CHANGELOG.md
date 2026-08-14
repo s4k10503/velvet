@@ -43,18 +43,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   portal's boundary, which holds even where the two sides share a container, so neither rule subsumes
   the other. Keeping state across such a move means lifting it above both containers, to a `Store` or
   to a `UseState` in the component that declares them. The migration guide states what a position is.
-- An update a `UseTransition` action makes after an `await` no longer takes the Transition lane on its
-  own. The transition now covers what its callback schedules synchronously, and an action that wants its
-  post-`await` update deferred wraps it in the starter again, which joins the transition already running
+- A `UseTransition` transition now covers what its callback runs before that callback first suspends,
+  rather than every update the action makes for as long as it is in flight. An update made after an
+  `await` that suspended the action takes the lane it would have taken outside a transition, and an
+  action that wants it deferred wraps it in the starter again, which joins the transition already running
   and keeps `isPending` lit. React's `startTransition` reference asks for the same wrapping, calling the
   restriction a known limitation it means to fix rather than the shape it is aiming for. Velvet used to
   infer the transition instead from the action still being in flight on that component, which had no way
   to tell the action's own continuation from a timer tick, a `UseStore` notification or a `UseMutation`
   callback landing in the same window, so those took the Transition lane too and waited out the delayed
   tier's 100 ms instead of committing at the next frame boundary. `isPending` itself is unchanged: it
-  stays true across the awaits until the task completes. One consequence to expect: an action writing
-  both before and after its await now leaves two lanes rather than one, so those writes commit in two
-  renders instead of coalescing into a single transition render.
+  stays true across the awaits until the task completes. One consequence to expect where the await does
+  suspend: an action writing both before and after it now leaves two lanes rather than one, so those
+  writes commit in two renders instead of coalescing into a single transition render.
+  Which of the two an `await` is, C# decides at run time. An `await` of a task that had **already
+  completed** does not suspend — the continuation runs inline — so the callback carries on inside the
+  scope and the write after that `await` is a transition too, `isPending` staying lit until it commits on
+  the delayed tier. `await UniTask.CompletedTask` reaches it, as does any `async UniTask` the action
+  awaits that returns without suspending — a cache answering from memory being the shape to expect. One
+  source line therefore takes either schedule depending on the data, and the counter-intuitive way round:
+  the cache hit that answered instantly is the one whose write waits out the delayed tier, where the miss
+  commits at the next frame boundary. Wrapping the post-`await` update in the starter makes the two paths
+  agree, since a joined call is a transition on both. The migration guide's `useTransition` row states the
+  rule and where React's behaviour stops being a guide to it.
 - Moving a component across a `V.Portal`'s boundary is an unmount and a remount in every case now, so
   its state, refs and effects do not survive the move and the departing instance's cleanups run. A
   component written into a live portal's children that a previous render had outside them — and the same
@@ -115,7 +126,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   render from the same interaction (the urgent update a click also makes, or an ancestor's) to
   observe it.
 - An `async` `startTransition` action takes its own pending indicator down when it finishes. Its
-  `isPending` correctly outlasts the commit of whatever the callback queued before the first `await`
+  `isPending` correctly outlasts the commit of whatever the callback queued before it first suspended
   — the action is still running — but the clear at the far end scheduled nothing, so the flag went
   false while the component carried on rendering its pending branch until some unrelated interaction
   re-rendered it. An action that writes before its `await` and then outlasts the transition tier's

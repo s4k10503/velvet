@@ -431,7 +431,14 @@ namespace Velvet
             {
                 return;
             }
-            FiberWorkLoop.ScheduleRerender(declaring, FiberUpdatePriority.Normal);
+            // Classified from the ambient context, the way FiberWorkLoop.RequestRenderFromHook classifies an
+            // ordinary state update. A fixed Normal took a second lane where the clear was reached inside a
+            // discrete handler that had already scheduled Urgent on this fiber — measured on an async action
+            // the handler resumed by completing its awaited task — and one lane per FlushState is one render
+            // each.
+            FiberWorkLoop.ScheduleRerender(
+                declaring,
+                FiberWorkLoop.IsInDiscreteEvent ? FiberUpdatePriority.Urgent : FiberUpdatePriority.Normal);
         }
 
         /// <summary>
