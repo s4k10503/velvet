@@ -24,8 +24,8 @@ spellings are here, one with the gate inside the Act section and one with it bel
 *It sits in the Assert section.* Everything there is a reading of the behaviour, which is what the
 section means. A precondition about the environment or about another component belongs above the Act.
 
-A case whose sections cannot be located is judged by neither, and says so rather than passing: it is
-recorded as unreadable and a new one fails the same way a new gate does.
+Each reading needs the marker that delimits it, and a case carrying an `Assume` without one is
+recorded as unreadable -- one entry per reading that could not be taken -- rather than passed.
 
 The baseline records what is here rather than a count, for the reason duplication_check.py's does:
 a total nets a fix off against a new one, and the new one is what this exists to catch. An entry the
@@ -48,12 +48,31 @@ GATES_ACT_VALUE = "gates-act-value"
 GATES_IN_ASSERT = "gates-in-assert"
 UNREADABLE = "unreadable"
 
-# Read off the raw line, since this is the one thing in a test body that lives in a comment.
-SECTION = re.compile(r"^\s*//\s*(Arrange|Act|Assert)\b", re.IGNORECASE)
+# Read off the raw line, since this is the one thing in a test body that lives in a comment. A line
+# names as many sections as it chains, because this repository writes `// Arrange / Act` and
+# `// Act + Assert` where one stretch of code is both, 471 times: taking only the first name off
+# those recorded 75 cases as missing a marker they carry, and hid 52 gates behind an Act section
+# never located. The three separators are the ones the package writes, so a fourth reads as no chain
+# and puts the case in the record as unreadable rather than passing it quietly.
+SECTION = re.compile(
+    r"^\s*//\s*((?:Arrange|Act|Assert)(?:\s*[/+&]\s*(?:Arrange|Act|Assert))*)\b", re.IGNORECASE)
+SECTION_NAME = re.compile(r"Arrange|Act|Assert", re.IGNORECASE)
 ASSUME = re.compile(r"\bAssume\s*\.\s*That\s*(?:<[^<>()]*>)?\s*\(")
 IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 # `out var x`, `var x =`, `out x`, and the deconstruction spelling this repository also writes.
 INTRODUCED = re.compile(r"\bvar\s*\(([^)]*)\)|\b(?:out\s+var|var|out)\s+([A-Za-z_][A-Za-z0-9_]*)")
+# The typed spelling, which a case reaches for when the local is assigned inside a lambda or a branch
+# and so cannot be `var`. Two identifiers have to sit before the `=`, so an assignment to something
+# already declared -- `element.style.width = 10` -- is not one. The start anchor holds it to one
+# attempt per line, which is what makes that rule mean a declaration; a mutation sweep found nothing
+# in this repository that tells the anchored reading from the unanchored one, so no case here fails
+# when the anchor goes.
+TYPED = re.compile(
+    r"^[ \t]*(?:(?:readonly|const|using|await|static)\s+)*"
+    r"[A-Za-z_][A-Za-z0-9_]*(?:\s*\.\s*[A-Za-z_][A-Za-z0-9_]*)*"
+    r"(?:\s*<[^<>;=]*>)?(?:\s*\[\s*\])*\s*\??\s+"
+    r"([A-Za-z_][A-Za-z0-9_]*)\s*=",
+    re.MULTILINE)
 
 
 def _sibling(name):
@@ -75,7 +94,12 @@ kind_of = _base_red_check.kind_of
 
 
 def first_argument(text, open_paren):
-    """The first argument of the call whose `(` is at `open_paren`, or None if it does not close."""
+    """(start, end) of the first argument of the call whose `(` is at `open_paren`, or None.
+
+    A span rather than the text, so the same offsets read the masked body for what the expression
+    names and the raw body for what it says. Two gates differing only inside a string literal are one
+    line in the record when the masked form is what gets written there.
+    """
     depth = 0
     for offset in range(open_paren, len(text)):
         character = text[offset]
@@ -84,9 +108,9 @@ def first_argument(text, open_paren):
         elif character in ")]}":
             depth -= 1
             if depth == 0:
-                return text[open_paren + 1:offset]
+                return open_paren + 1, offset
         elif character == "," and depth == 1:
-            return text[open_paren + 1:offset]
+            return open_paren + 1, offset
     return None
 
 
@@ -105,8 +129,12 @@ def roots_of(text):
 
 
 def introduced_by(text):
-    """Every local a stretch of code declares, over the spellings this repository's Acts use."""
-    names = set()
+    """The locals a stretch of code declares, over the spellings this repository's Acts are written in.
+
+    Which spellings those are is the whole reach of the reading below: a case declaring its local as
+    `VisualElement spacer = null` rather than `var` gates the same behaviour and was invisible here.
+    """
+    names = set(TYPED.findall(text))
     for match in INTRODUCED.finditer(text):
         if match.group(1) is not None:
             names |= set(IDENTIFIER.findall(match.group(1)))
@@ -122,30 +150,43 @@ def sections_of(raw_body):
     for index, line in enumerate(raw_body):
         found = SECTION.match(line)
         if found:
-            marks.setdefault(found.group(1).lower(), index)
+            for name in SECTION_NAME.findall(found.group(1)):
+                marks.setdefault(name.lower(), index)
     return marks
 
 
 def readings_of(code_body, raw_body):
-    """Every (reading, detail) one case's `Assume` calls are read as. Empty where none gates."""
+    """Every (reading, detail) one case's `Assume` calls are read as. Empty where none gates.
+
+    A missing marker is reported rather than worked around. Each reading needs one: the act-value one
+    needs `// Act` to know which lines the behaviour is, the position one needs `// Assert`. Taking
+    the readings that remain and saying nothing about the other is a case judged on half the question
+    and reported as clean.
+    """
     if not any(ASSUME.search(line) for line in code_body):
         return []
     marks = sections_of(raw_body)
     act, assert_at = marks.get("act"), marks.get("assert")
-    if act is None and assert_at is None:
-        return [(UNREADABLE, "no // Act or // Assert marker delimits its sections")]
+    found = []
+    if act is None:
+        found.append((UNREADABLE, "no // Act marker, so a gate over what the Act made is not read"))
+    if assert_at is None:
+        found.append((UNREADABLE, "no // Assert marker, so a gate below it is not read"))
     act_text = "\n".join(code_body[act:assert_at if assert_at is not None else len(code_body)]) \
         if act is not None else ""
     produced = introduced_by(act_text)
-    found = []
     for index, line in enumerate(code_body):
         for match in ASSUME.finditer(line):
-            tail = "\n".join(code_body[index:])
-            subject = first_argument(tail, match.end() - 1)
-            if subject is None:
+            masked = "\n".join(code_body[index:])
+            span = first_argument(masked, match.end() - 1)
+            if span is None:
                 found.append((UNREADABLE, "an Assume argument list does not close in this case"))
                 continue
-            written = " ".join(subject.split())
+            start, end = span
+            subject = masked[start:end]
+            # The detail is the raw text at the same offsets: what the case says, not what the mask
+            # left of it. `code_lines` keeps each line's length, so the two bodies index together.
+            written = " ".join("\n".join(raw_body[index:])[start:end].split())
             if roots_of(subject) & produced:
                 found.append((GATES_ACT_VALUE, written))
             elif assert_at is not None and index >= assert_at:

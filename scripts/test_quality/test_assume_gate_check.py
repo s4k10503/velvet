@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Unit tests for assume_gate_check.py's reading, plus a guard over this repository's own record.
 
-A case this reader does not reach, a gate it does not recognise and a section marker it misreads all
-come back the same way -- as a repository with nothing to report -- so none of them announces itself.
-Each reading is therefore measured against a case written in the spelling this repository uses, and
-the record is held to the source it was taken from.
+A case this reader does not reach and a gate it does not recognise come back the same way -- as a
+repository with nothing to report -- so neither announces itself. A section marker it misreads is
+worse than silent: it announces a case as missing the marker the case carries, and hides every gate
+the section it failed to locate would have found. Each reading is therefore measured against a case
+written in the spelling this repository uses, and the record is held to the source it was taken from.
 
 Run: python3 scripts/test_quality/test_assume_gate_check.py
 """
@@ -112,6 +113,33 @@ class ActValueTests(unittest.TestCase):
         # Act / Assert
         self.assertEqual(readings(body), [])
 
+    def test_Given_AGateOverATypedLocalTheActDeclared_When_TheCaseIsRead_Then_ItGatesTheBehaviour(self):
+        # Arrange -- the spelling a case reaches for when the local is assigned inside a lambda, so
+        # `var` will not do. It is the same gate over the same behaviour, and the repository has one.
+        body = ("            // Act\n"
+                "            VisualElement spacer = null;\n"
+                "            Root.Query<VisualElement>().ForEach(e => spacer = e);\n\n"
+                "            // Assert\n"
+                "            Assume.That(spacer, Is.Not.Null);\n"
+                "            Assert.That(spacer.resolvedStyle.width, Is.EqualTo(4f));")
+
+        # Act / Assert
+        self.assertEqual(readings(body), [(assume_gate_check.GATES_ACT_VALUE, "spacer")])
+
+    def test_Given_AnAssignmentToSomethingAlreadyDeclared_When_TheCaseIsRead_Then_ItDeclaresNothing(self):
+        # Arrange -- `element.style.width = 4` is two identifiers and an `=` like a declaration is,
+        # and reading it as one would put every case touching an Act-side property under a gate.
+        body = ("            // Arrange\n"
+                "            var element = Mount();\n"
+                "            Assume.That(width, Is.EqualTo(4f));\n\n"
+                "            // Act\n"
+                "            element.style.width = 4;\n\n"
+                "            // Assert\n"
+                "            Assert.That(element.resolvedStyle.width, Is.EqualTo(4f));")
+
+        # Act / Assert
+        self.assertEqual(readings(body), [])
+
     def test_Given_AGateOverAMemberNamedLikeAnActLocal_When_TheCaseIsRead_Then_ItIsNotOne(self):
         # Arrange -- the subject reads `element` and reaches a member that happens to be spelled
         # like the Act's local. Reading every identifier in it instead puts the case under a gate it
@@ -139,6 +167,42 @@ class ActValueTests(unittest.TestCase):
 
         # Act / Assert
         self.assertEqual(readings(body), [])
+
+
+class ChainedMarkerTests(unittest.TestCase):
+    """A comment line naming two or three sections, which this repository writes 471 times.
+
+    Reading only the first name off one leaves the sections it also names unlocated, and an unlocated
+    section is not a refusal -- the act-value reading simply finds nothing, and the case is recorded
+    as missing a marker it carries.
+    """
+
+    def test_Given_EachSeparatorThePackageWrites_When_TheCaseIsRead_Then_TheActIsLocatedThrough(self):
+        # Arrange -- the same case three times over `/`, `+` and `&`, which are the separators the
+        # package uses. One spelling per case would leave the other two deletable from the pattern.
+        bodies = ["            // Arrange {} Act — the resolve is the behaviour and its setup at once.\n"
+                  "            var ok = Resolver.TryResolve(\"m-[10px]\", out var spec);\n"
+                  "            Assume.That(ok, Is.True);\n\n"
+                  "            // Assert\n"
+                  "            Assert.That(spec.Property, Is.EqualTo(\"margin\"));".format(separator)
+                  for separator in ("/", "+", "&")]
+
+        # Act
+        found = [readings(body) for body in bodies]
+
+        # Assert
+        self.assertEqual(found, [[(assume_gate_check.GATES_ACT_VALUE, "ok")]] * 3)
+
+    def test_Given_AllThreeSectionsOnOneLine_When_TheCaseIsRead_Then_TheAssertMarkerIsLocatedToo(self):
+        # Arrange -- the last name of a chain is the one a pattern reading a single separator drops,
+        # and dropping the Assert one turns a gate below it into no reading at all.
+        body = ("            // Arrange / Act / Assert — the call is the setup, the behaviour and the reading.\n"
+                "            var resolved = Resolver.Resolve(\"m-[10px]\");\n"
+                "            Assume.That(resolved, Is.Not.Null);\n"
+                "            Assert.That(resolved.Property, Is.EqualTo(\"margin\"));")
+
+        # Act / Assert
+        self.assertEqual(readings(body), [(assume_gate_check.GATES_IN_ASSERT, "resolved")])
 
 
 class AssertSectionTests(unittest.TestCase):
@@ -171,9 +235,10 @@ class AssertSectionTests(unittest.TestCase):
 
 
 class UnreadableTests(unittest.TestCase):
-    def test_Given_ACaseWithNoSectionMarkers_When_ItIsRead_Then_ItSaysItCannotJudgeIt(self):
+    def test_Given_ACaseWithNoSectionMarkers_When_ItIsRead_Then_ItSaysBothReadingsAreUnavailable(self):
         # Arrange -- neither reading is available without the sections, and a case that quietly
-        # passed because nothing could look at it is what this exists to refuse.
+        # passed because nothing could look at it is what this exists to refuse. One entry per
+        # reading rather than per case, so restoring one marker takes one entry off the record.
         body = ("            Mount();\n"
                 "            Assume.That(HasBinding, Is.True);\n"
                 "            Step(1);\n"
@@ -183,7 +248,26 @@ class UnreadableTests(unittest.TestCase):
         found = readings(body)
 
         # Assert
-        self.assertEqual([reading for reading, _ in found], [assume_gate_check.UNREADABLE])
+        self.assertEqual(found, [(assume_gate_check.UNREADABLE,
+                                  "no // Act marker, so a gate over what the Act made is not read"),
+                                 (assume_gate_check.UNREADABLE,
+                                  "no // Assert marker, so a gate below it is not read")])
+
+    def test_Given_ACaseWithOnlyTheActMarker_When_ItIsRead_Then_TheMissingReadingIsAnnounced(self):
+        # Arrange -- half the question is still answerable, and taking that half while saying nothing
+        # about the other is what reported these cases as clean.
+        body = ("            // Act\n"
+                "            var ok = Resolve();\n"
+                "            Assume.That(ok, Is.True);\n"
+                "            Assert.That(ok, Is.True);")
+
+        # Act
+        found = readings(body)
+
+        # Assert
+        self.assertEqual(found, [(assume_gate_check.UNREADABLE,
+                                  "no // Assert marker, so a gate below it is not read"),
+                                 (assume_gate_check.GATES_ACT_VALUE, "ok")])
 
     def test_Given_ACaseWithNoAssumeAtAll_When_ItIsRead_Then_NothingIsReported(self):
         # Arrange -- the sections are missing here too, so the absence of the Assume has to be what
@@ -219,6 +303,27 @@ class EntryTests(unittest.TestCase):
         entries, _ = assume_gate_check.scan(Path(holder))
         return entries
 
+    def test_Given_TwoGatesDifferingOnlyInsideAStringLiteral_When_ItIsScanned_Then_EachIsItsOwnEntry(self):
+        # Arrange -- the reading is taken off the masked body, where both of these are the same text.
+        # Writing that into the record collapses them, which is the net-zero the key change was made
+        # to prevent: fix one of the two and add another, and the record does not move.
+        body = ("            // Arrange\n"
+                "            var element = Mount();\n\n"
+                "            // Act\n"
+                "            Patch(element);\n\n"
+                "            // Assert\n"
+                "            Assume.That(element.ClassListContains(\"absolute\"), Is.True);\n"
+                "            Assume.That(element.ClassListContains(\"child\"), Is.True);\n"
+                "            Assert.That(element.childCount, Is.Zero);")
+
+        # Act
+        entries = self.entries_for(body)
+
+        # Assert
+        self.assertEqual(sorted(entry.split("\t")[-1] for entry in entries),
+                         ['element.ClassListContains("absolute")',
+                          'element.ClassListContains("child")'])
+
     def test_Given_TwoGatesOfOneKindInOneCase_When_ItIsScanned_Then_EachIsItsOwnEntry(self):
         # Arrange -- keyed on the case alone these collapse, and what that hides is one of them
         # being fixed while the other arrives: the record does not move and the check exits zero.
@@ -234,6 +339,51 @@ class EntryTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(sorted(entry.split("\t")[-1] for entry in entries), ["ok", "spec.Value"])
+
+
+class RefusalTests(unittest.TestCase):
+    """Both directions the record can disagree with the tree, taken through the exit status.
+
+    `RecordTests` runs the script whole as well, over a record that agrees and over records nothing
+    in the tree answers to, so the direction this exists for -- an entry that arrived -- is reached
+    by nothing else. A guard that stopped refusing one keeps every reading in this module correct and
+    every other case green.
+    """
+
+    GATED = ("            // Act\n"
+             "            var ok = Resolver.TryResolve(\"m-[10px]\", out var spec);\n"
+             "            Assume.That(ok, Is.True);\n"
+             "            Assume.That(spec.Value, Is.Not.Null);\n\n"
+             "            // Assert\n"
+             "            Assert.That(spec.Property, Is.EqualTo(\"margin\"));")
+
+    def exit_status(self, record):
+        holder = tempfile.mkdtemp(prefix="assume-gate-refusal-")
+        self.addCleanup(shutil.rmtree, holder, ignore_errors=True)
+        root = Path(holder)
+        source = root / RELATIVE
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_text(FIXTURE.format(body=self.GATED))
+        kept = root / assume_gate_check.DEFAULT_BASELINE
+        kept.parent.mkdir(parents=True, exist_ok=True)
+        entries, _ = assume_gate_check.scan(root)
+        kept.write_text("".join(entry + "\n" for entry in sorted(record(entries))))
+        return subprocess.run(
+            [sys.executable, str(REPO_ROOT / "scripts/test_quality/assume_gate_check.py"),
+             "--project", str(root)], capture_output=True, text=True).returncode
+
+    def test_Given_ARecordMissingOneGate_When_TheCheckRuns_Then_ItRefusesForThatOneAlone(self):
+        # Arrange -- the record holds every other entry of the same tree, so nothing was removed and
+        # the refusal can only be the arrived gate. The complete record rides alongside because a
+        # check that refused everything would satisfy the first half on its own.
+        arrived = self.exit_status(
+            lambda entries: {entry for entry in entries if not entry.endswith("\tok")})
+
+        # Act
+        complete = self.exit_status(lambda entries: entries)
+
+        # Assert
+        self.assertEqual((arrived, complete), (1, 0))
 
 
 class RecordTests(unittest.TestCase):
@@ -268,8 +418,8 @@ class RecordTests(unittest.TestCase):
 
     def test_Given_TheCasesGitTracks_When_TheScanWalksTheTree_Then_ItReadsEveryOneOfThem(self):
         # Arrange -- against git's list rather than a floor, because a floor a growing repository
-        # clears is one a directory the walk stopped reaching clears too. Five of the ten areas here
-        # contribute no entry, so a walk that dropped one would change no verdict and no count but
+        # clears is one a directory the walk stopped reaching clears too. Areas here contribute no
+        # entry at all, so a walk that stopped reaching one would change no verdict and no count but
         # this.
         declared = sum(len(assume_gate_check.csharp_cases(
             (REPO_ROOT / path).read_text(encoding="utf-8", errors="replace"), path))
@@ -280,6 +430,25 @@ class RecordTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(read, declared)
+
+    def test_Given_AnEmptyRecordAndNoCaseToRead_When_TheCheckRuns_Then_ItIsStillNotSatisfied(self):
+        # Arrange -- `--write-baseline` over a tree the walk reads nothing in leaves an empty file,
+        # and an empty record agrees with an empty scan. That is the same vacuous pass as the case
+        # below, reached through the record rather than through the tree, and the two are separate
+        # readings: the record there is this repository's own and carries every entry.
+        holder = tempfile.mkdtemp(prefix="assume-gate-blank-")
+        self.addCleanup(shutil.rmtree, holder, ignore_errors=True)
+        blank = Path(holder)
+        (blank / assume_gate_check.DEFAULT_BASELINE).parent.mkdir(parents=True)
+        (blank / assume_gate_check.DEFAULT_BASELINE).write_text("")
+
+        # Act
+        result = subprocess.run(
+            [sys.executable, str(REPO_ROOT / "scripts/test_quality/assume_gate_check.py"),
+             "--project", str(blank)], capture_output=True, text=True)
+
+        # Assert
+        self.assertNotEqual(result.returncode, 0)
 
     def test_Given_ARepositoryHoldingNoTestAtAll_When_ItIsScanned_Then_TheRecordIsNotSatisfied(self):
         # Arrange -- the vacuous pass this shape is prone to: nothing read, nothing to report, green.

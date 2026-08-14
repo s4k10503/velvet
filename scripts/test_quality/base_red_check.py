@@ -242,11 +242,16 @@ def code_lines(text):
     """Each line with every comment, string and character literal blanked to spaces.
 
     Blanked rather than removed, so a code line is as long as the raw one and the two can be indexed
-    together -- which they are, since a declaration lives in a comment and everything else does not.
+    together -- which they are, since a declaration lives in a comment and everything else does not,
+    and `MaskedLineTests` fails when one stops matching. Stripping the terminator off the end instead
+    of cutting at the raw line's length does not hold that: a mask that swallows the terminator -- a
+    line comment on a CRLF file, or a verbatim string or block comment crossing to the next line --
+    leaves a space in its place, which no strip removes and which moves every offset after it.
     """
     mask = code_mask(text)
-    return ["".join(text[offset] if mask[offset] else " " for offset in range(start, end)).rstrip("\r\n")
-            for start, end in line_spans(text)]
+    return ["".join(text[start + offset] if mask[start + offset] else " "
+                    for offset in range(len(raw)))
+            for raw, (start, _) in zip(text.splitlines(), line_spans(text))]
 
 
 def brace_profile(text):
@@ -669,11 +674,10 @@ def python_outcome(output):
     exception and a failed assertion both exit non-zero and only one of them is the base disagreeing,
     and a skip exits zero and is not the base agreeing.
 
-    No trailer at all is the same reading as an exception rather than one of its own: what produces
-    it is a module whose own top level raises something the loader does not wrap, which is the shape of
-    a case reaching for what the branch added. Which deaths print one and which do not is held by
-    `UnittestTrailerTests`. A lane where nothing printed a trailer is the canary's question, not this
-    one's.
+    No trailer at all is the same reading as an exception rather than one of its own. A module whose
+    own top level raises something the loader does not wrap prints none, which is the shape of a case
+    reaching for what the branch added; `UnittestTrailerTests` holds which deaths print one. A lane
+    where nothing printed a trailer is the canary's question, not this one's.
     """
     summary = None
     for match in UNITTEST_SUMMARY.finditer(output):
@@ -699,19 +703,12 @@ def run_python(tree, cases, transcript):
     for case in cases:
         module = Path(case.path)
         identifier = "{}.{}".format(module.stem, case.name)
-        try:
-            result = subprocess.run([sys.executable, "-m", "unittest", "-v", identifier],
-                                    cwd=str(tree / module.parent), capture_output=True, text=True)
-            printed = result.stdout + result.stderr
-            verdict = python_outcome(printed)
-        except OSError as error:
-            # A tree without the directory to run in has not got the module either, which is the
-            # reading an import that failed carries rather than a reason to stop the lane.
-            printed = "{}: {}".format(type(error).__name__, error)
-            verdict = "Error"
+        result = subprocess.run([sys.executable, "-m", "unittest", "-v", identifier],
+                                cwd=str(tree / module.parent), capture_output=True, text=True)
+        printed = result.stdout + result.stderr
         transcript.append("$ python3 -m unittest {} (in {})\n{}".format(
             identifier, module.parent, printed))
-        outcome[case.key] = verdict
+        outcome[case.key] = python_outcome(printed)
     return outcome
 
 
@@ -825,7 +822,7 @@ def answered(result):
     could not be read and one nothing reported at all each stopped before that, and the verdicts
     below say which.
     """
-    return result is not None and result not in NOT_AN_ANSWER
+    return result is not None and result not in NOT_AN_ANSWER and result != "Unreadable"
 
 
 def decide(case, result, fixture_ran):

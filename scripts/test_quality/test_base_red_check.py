@@ -193,6 +193,28 @@ def unanswered_names(corpus, heirs):
     return unanswered
 
 
+class MaskedLineTests(unittest.TestCase):
+    """That a masked line is as long as the raw one, which two readers index against each other by.
+
+    A construct whose mask reaches the line terminator is where it stops being true, and the cost is
+    silent: `assume_gate_check.py` takes the expression an `Assume` gates off the masked body and
+    writes the raw text at those offsets into its record, so a line one character longer than its
+    raw twin misquotes every gate below it in the same case.
+    """
+
+    def test_Given_AMaskCrossingALineTerminator_When_TheLinesAreMasked_Then_EachKeepsItsRawLength(self):
+        # Arrange -- the three spellings that reach a terminator: a line comment before a CRLF, and a
+        # verbatim string and a block comment that carry on to the next line.
+        text = ("int a = 1; // note\r\nvar s = @\"one\ntwo\";\n/* three\nfour */\nint b = 2;\n")
+
+        # Act
+        masked = base_red_check.code_lines(text)
+
+        # Assert
+        self.assertEqual([len(line) for line in masked],
+                         [len(line) for line in text.splitlines()])
+
+
 class CSharpReadingTests(unittest.TestCase):
     def test_Given_AFixture_When_ItIsRead_Then_OnlyTheTestMethodsAreCases(self):
         # Act
@@ -567,6 +589,18 @@ class VerdictTests(unittest.TestCase):
         # Assert
         self.assertEqual(verdict, base_red_check.COULD_NOT_ANSWER)
 
+    def test_Given_AMalformedDeclarationOnACaseGreenOnTheBase_When_ItIsDecided_Then_ItFailsTheRun(self):
+        # Arrange -- a category the script does not know reads to everyone else as an approved
+        # exemption, and the case it sits on is one that passes there, which is the reading this
+        # whole check exists to refuse.
+        # Act
+        verdict, _ = base_red_check.decide(
+            self.probe(base_red_check.Declaration("invented", "the names this rename preserves")),
+            "Passed", fixture_ran=True)
+
+        # Assert
+        self.assertIn(verdict, base_red_check.FAILING_VERDICTS)
+
     def test_Given_ACaseWhoseRunSaidSomethingUnreadable_When_ItIsDecided_Then_ItFailsTheRun(self):
         # Arrange -- unlike the three above, nothing here says what the base did with the case, so
         # the two directions it could be filed under are both a guess and one of them exits zero.
@@ -586,6 +620,17 @@ class VerdictTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(verdict, base_red_check.COULD_NOT_ANSWER)
+
+    def test_Given_ADeclaredCaseWhoseRunSaidSomethingUnreadable_When_ItIsDecided_Then_ItIsNotCalledStale(self):
+        # Arrange -- the third way the base can fail to reach a verdict, and the one that reads as a
+        # verdict to anything comparing against the two named readings rather than against the set.
+        # Act
+        verdict, _ = base_red_check.decide(
+            self.probe(base_red_check.Declaration("refactor", "the names this rename preserves")),
+            "Unreadable", fixture_ran=True)
+
+        # Assert
+        self.assertEqual(verdict, base_red_check.NOT_REPORTED)
 
     def test_Given_ADeclaredCaseWhoseFixtureTheBaseNeverBuilt_When_ItIsDecided_Then_ItIsStillEvidence(self):
         # Arrange -- the same reading in the C# lane's spelling, and the older of the two.
@@ -1025,6 +1070,18 @@ class PlatformInstrumentTests(unittest.TestCase):
 
         # Assert
         self.assertIn("EditMode", withdrawn)
+
+    def test_Given_APythonCanaryThatDidNotPass_When_TheLaneIsWithdrawn_Then_ItIsNamedReadably(self):
+        # Arrange -- a Python fixture key is a path and a class, and the C# spelling of this message
+        # cuts at the last dot, which lands inside the file extension.
+        reported = {"scripts/x/test_theirs.py::T.test_Given_A_When_B_Then_C": "Failed"}
+
+        # Act
+        withdrawn = base_red_check.unsound_platforms(
+            {base_red_check.PYTHON_LANE: ["scripts/x/test_theirs.py::T"]}, reported)
+
+        # Assert
+        self.assertEqual(withdrawn[base_red_check.PYTHON_LANE], "none of T passed there")
 
     def test_Given_APlatformTheBaseTreeOffersNoCanary_When_ItIsRead_Then_ItIsNotWithdrawn(self):
         # Arrange -- with nothing to read the tree by there is no reading, and inventing a verdict

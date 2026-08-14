@@ -333,20 +333,23 @@ python3 scripts/test_quality/assume_gate_check.py --write-baseline scripts/test_
 
 Whether an `Assume` is somebody else's business or a gate on the behaviour turns on whether a
 regression can falsify it, which the text does not say. Two sub-shapes fall out of the
-`// Arrange` / `// Act` / `// Assert` sections, because those are a
-statement about which lines are the behaviour: a gate over a value the Act introduced, and a gate
-sitting in the Assert section. A case whose sections cannot be located is recorded as unreadable rather
-than passed. `scripts/test_quality/assume_gate_baseline.txt` carries what is here now, for the reason
+`// Arrange` / `// Act` / `// Assert` sections, because those are a statement about which lines are
+the behaviour: a gate over a local the Act declared, and a gate sitting in the Assert section. A
+comment line names as many sections as it chains, since `// Arrange / Act` and `// Act + Assert` are
+how a case says one stretch of code is both. Each reading needs the marker that delimits it, so a
+case carrying an `Assume` and missing one is recorded as unreadable — one entry per reading that
+could not be taken — rather than passed.
+`scripts/test_quality/assume_gate_baseline.txt` carries what is here now, for the reason
 `neuter_holes.txt` does — a total nets a fix off against a new one — and both a new entry and one the
 scan no longer finds fail the check. It runs in `Test ▸ test-quality` and needs no licence. What to do
 about an entry is the fold the fixture conventions above prescribe, and the check prints it.
 
-**What it does not reach** is a gate above the Act over state the Act does not introduce — the shape
-the rule itself was written from. Separating that from a legitimate precondition needs to know
-whether a regression can falsify the assumption, which the text does not say, and the filters tried
-instead select so much of the suite that the record would stop being a list anybody reads. Nothing
-finds that shape today, and a case carrying it is recorded here only if it also carries one of the
-two above.
+**What it does not reach** is a gate above the `// Assert` marker over state the Act changes without
+declaring it — a field, or a member of something the Arrange built. That is the shape the rule itself
+was written from. Separating it from a legitimate precondition needs to know whether a regression can
+falsify the assumption, which the text does not say, and the filters tried instead select so much of
+the suite that the record would stop being a list anybody reads. A case carrying only that shape is
+not in the record; what still reaches it is `assert_no_inconclusive.py`, on the day it fires.
 
 ### Repository scripts
 
