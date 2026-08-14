@@ -410,15 +410,24 @@ namespace Velvet
         // (CaptureRaw) deliberately does not share.
         public Dictionary<VisualElement, bool> TextNodeElements { get; } = new();
 
-        // Which container's [&>*]: walk last wrote a payload to a child. A child pooled out of one container
-        // and re-rented under another is in both walks' tracked lists, and without this the one it left would
-        // turn the payload off on an element the other had just turned it on for. An arbitrary
-        // payload does not need the two containers to carry the same token: an inline layer is keyed by
-        // property and priority, so [&>*]:w-[8px] takes [&>*]:w-[12px]'s layer away.
+        // The three per-child claim tables — StyleChildOwnership owns why they exist and why they are split by
+        // property domain rather than by manipulator. Each is enrolled below because its value is a claim
+        // marker: the manipulators' own lifetimes are held by the tables further down, so dropping the entry
+        // is the whole of a claim's teardown.
         //
-        // Enrolled below because the value is a claim marker: the manipulator's own lifetime is held by
-        // ChildVariantManipulators, so dropping the entry is the whole of this table's teardown.
-        public Dictionary<VisualElement, StyleChildVariantManipulator> ChildVariantOwners { get; } = new();
+        // The [&>*]: walk's payload. An arbitrary payload does not need the two containers to carry the same
+        // token: an inline layer is keyed by property and priority, so [&>*]:w-[8px] takes [&>*]:w-[12px]'s
+        // layer away.
+        public Dictionary<VisualElement, Manipulator> ChildVariantOwners { get; } = new();
+
+        // The child's own box — the margins StyleGapManipulator writes, and the width plus four margins
+        // StyleGridManipulator writes. Shared by those two because a grid container and a gap container
+        // write the same margin slots on whichever child they hold.
+        public Dictionary<VisualElement, Manipulator> ChildBoxOwners { get; } = new();
+
+        // The divider border StyleDivideManipulator writes on a child, along with the dashed-stroke paint
+        // binding that rides on the same edge.
+        public Dictionary<VisualElement, Manipulator> ChildDividerOwners { get; } = new();
 
         // The one table for this subsystem that is NOT pure, backing the Decoration axis's Overline value
         // specifically:
@@ -1346,6 +1355,8 @@ namespace Velvet
                 TextWhitespaceOwned,
                 TextNodeElements,
                 ChildVariantOwners,
+                ChildBoxOwners,
+                ChildDividerOwners,
                 VariantGateClasses,
                 ZLayerHosts,
                 ZLayerMembers,

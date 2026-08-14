@@ -12,13 +12,15 @@ Run the following inside the `Generators~/` directory:
 
 Needs `python3` on PATH alongside the .NET SDK. On Windows, close Unity and any IDE first: Windows cannot overwrite an analyzer assembly a Roslyn host still holds open.
 
-It regenerates all three committed artifacts, leaving the tree in the same state:
+It regenerates all three committed artifacts:
 
 - `../Runtime/Styling/StyleUtilityProperties.g.cs`
 - `../Runtime/Plugins/Generators/Velvet.SourceGenerators.dll`
 - `../Runtime/Plugins/Analyzers/Velvet.SourceGenerators.CodeFixes.dll`
 
 Commit all three. The distribution model assumes Unity users do not need to install `dotnet`.
+
+A run that follows no source change leaves the working tree clean, so `git status` after one answers whether the committed artifacts correspond to the sources — run it to check something and there is nothing to restore afterwards. The builds behind that were measured on macOS and on Linux; CI runs the Linux one. Windows carries no reading either way.
 
 ## Test
 
@@ -75,17 +77,23 @@ Every mutant is one batchmode launch, since the mutated source has to be compile
 
 The last form narrows anyway, because it asks a different question — the one to reach for when a fixture is under suspicion rather than a change. A whole-suite run answers whether anything notices, so a fixture that asks nothing stays invisible behind every other test that does; narrowed to one fixture, a surviving mutant is that fixture not noticing.
 
-Only changed lines are mutated, and only in the shapes it knows: a spaced binary operator, a boolean literal, and a statement whose entire value is a call, which it deletes. A change can therefore yield no mutants at all — a rename, a move, a signature — which `--list` shows for free and which means the run asked nothing, not that everything survived scrutiny.
+Only changed lines are mutated, and only in the shapes it knows: a spaced binary operator, a boolean literal, a statement whose entire value is a call, a clause of a logical chain, and a single-line guard — the last two removed rather than rewritten, because the operators before them keep the clause they land in participating in the condition, so a clause no test reaches survives all of them. A change can therefore yield no mutants at all, and what happens then is decided by the lines rather than by the kind of change. A change touching no code line — documentation comments alone — passes quietly, because there was never anything to ask. A change touching code lines none of the operators reach refuses, since a verdict there would be about no line at all: measured, an added `using` and a `protected` turned `internal` both refuse, while two renames of private fields in the same file generated mutants, because their lines carried operators too. `--list` takes the same reading, so it costs one command to learn which of the three a change is before spending an editor launch per mutant on it.
 
-Three of the verdicts need reading rather than counting:
+**Most of a diff is in none of those shapes, so a survivor count is a statement about the lines an operator reached rather than about the change.** Measured over the twenty commits ending at `48057c8`, with the generator as it stands after the parse fixes below: 478 changed production code lines, 213 mutants, and 149 lines reached — 31%. Two things move this number, so re-take it against both rather than quoting it bare: the window slides as main moves, and a change to what the operators generate moves it without the window moving at all. A method written as a run of assignments generates nothing at all: a branch adding state-transition methods to the mutation hook came back with six mutants over its 27 changed code lines, and all 22 lines of the file holding those transitions were reached by none of them. So every verdict is printed against that denominator and the unreached lines are named, and a change whose code lines are reached by nothing at all refuses rather than reporting a clean run over no line.
 
-- **survived** — no test failed. Either a test that never asked about the mutated behaviour, or a mutation the behaviour does not depend on.
+Widening the operator set is the obvious answer and is not free: a statement-deletion operator over the same twenty commits would add 113 mutants to the 213 — around half as much wall clock again — to reach 113 of the 329 unreached lines. It also has to emit compilable C#, which deleting a declaration the rest of the method reads does not.
+
+Six verdicts, and five of them need reading rather than counting:
+
+- **survived** — no test failed. Either a test that never asked about the mutated behaviour, or a mutation the behaviour does not depend on. Which of the two it was has to be written down: the run fails until the line either stops surviving or carries the declaration [CONTRIBUTING.md ▸ Checking that the tests can fail](../../../CONTRIBUTING.md#checking-that-the-tests-can-fail) shows.
 - **not rebuilt** — the assembly came out byte-identical to the baseline, so the suite ran the unmutated binary and answered nothing. This is what an edit the editor never compiled looks like, and it is the only case the check catches: a mutation the compiler did see but discarded — one inside an `#if` the editor does not define — still comes out as a different assembly and reads as **survived**, which was measured on this package rather than assumed.
+- **not measured (timed out)** — the editor was killed at `--timeout`. A mutation that leaves a loop unbounded and a timeout shorter than the suite arrive here identically, and a killed editor writes no verdict either way, so this is a mutant nobody asked about and it fails the run: raise `--timeout`, or read the log.
+- **uncompilable** — the build stopped, so no assembly existed for any test to run against. It is not a survivor, because nothing could have failed; it fails the run for the same reason the two above do. Twenty-five clause cuts in shapes that compile nowhere existed in this package before the probe learned to stop at an enclosing comma or ternary.
 - **killed** — the failing tests are named, because a mutant killed only by a test that also fails on an unmutated tree was killed by nothing, and because whether the fixture that caught it is the one named for the behaviour is the second question worth asking of a kill.
 
-A run that does not finish inside `--timeout` is counted as killed and says so: a mutation that leaves the suite running forever — an inverted loop bound, most often — did change the behaviour, and the alternative is a harness that waits on it for as long as the machine is left alone.
+A run is killed at `--timeout` rather than waited on for as long as the machine is left alone; what that costs is the verdict above, which cannot tell an unbounded loop from a timeout set too low.
 
-It computes no score, for the reason the paragraph above gives about this solution's: the denominator is a different set of changed lines on every branch, so the ratio is not comparable with itself and only the survivors are worth reading. A red or inconclusive baseline stops the run before any mutant is applied — a suite that fails on its own would report mutants as killed by its own flakiness, which is worse than no run at all.
+It computes no score, for the reason the paragraph above gives about this solution's: the denominator is a different set of changed lines on every branch, so the ratio is not comparable with itself and only the survivors are worth reading. A red or inconclusive baseline stops the run before any mutant is applied — a suite that fails on its own would report mutants as killed by its own flakiness, which is worse than no run at all. Two more states stop it before it starts, for the same reason: a second editor on the machine, whose failures are a second explanation for every one the mutant gets blamed for, and a target file whose comment-and-string mask blanks a span running past the line that opened it, since a blanked offset yields no mutant and nothing downstream can tell that from a line with nothing to ask. Two others let the run finish and then fail it, because what they cost is a mutant nobody asked about rather than a reading taken wrongly: a `--max` cap with mutants left behind it, and an editor killed at `--timeout` — a mutation that leaves a loop unbounded and a timeout shorter than the suite reach that point identically, and a killed editor writes no verdict either way.
 
 ## Directory layout
 
@@ -310,9 +318,10 @@ fixture owns why each half needs the instrument it uses, and what the pair of th
 The analyzers arrive from a **second compile** of the same sources rather than from the project that declares
 them, because a project cannot reference itself as an analyzer — MSBuild rejects the cycle with `MSB4006`
 during restore, before any compile starts. The alternative, pointing at the already-committed
-`../Runtime/Plugins/Generators/Velvet.SourceGenerators.dll`, was rejected: nothing verifies that artifact was
-rebuilt from the current sources, so an edit to a rule would go on being enforced by the previous rule until
-someone remembered to redeploy — the failure mode this wiring exists to remove.
+`../Runtime/Plugins/Generators/Velvet.SourceGenerators.dll`, was rejected: `build.py` deploys that artifact
+after this compile, so an edit to a rule would go on being enforced by the previous rule throughout the very
+build that introduced it — the failure mode this wiring exists to remove, and one a check run afterwards
+cannot reach.
 
 The bootstrap therefore compiles the sibling's `**/*.cs` through a glob and is not itself opted in; its
 content is measured by the sibling's own compile. A glob that stopped matching would produce an analyzer
@@ -328,12 +337,21 @@ This README is now scoped to **contributor concerns** (build / test / artifact s
 
 ## CI
 
-`.github/workflows/generators.yml` has a single job with one build/test step: check out, install the .NET SDK pinned by `global.json`, then `dotnet test Velvet.SourceGenerators.sln -c Release --nologo` (which restores and builds as part of the run). No Unity license is required.
+`.github/workflows/generators.yml` builds and tests this solution in its `source-generators` job: check out, install the .NET SDK pinned by `global.json`, then `dotnet test Velvet.SourceGenerators.sln -c Release --nologo` (which restores and builds as part of the run), then the repository guards that run without a Unity license.
 
 Which paths trigger it is stated in the repository's `CLAUDE.md`; the reason `Runtime/**` is among them is that the drift guards read the runtime sources, so a PR that only renames a hook, reshapes its signature or edits a stylesheet must still run this job.
 
-**CI does not check the committed DLLs under `../Runtime/Plugins/` at all.** It tests the sources; it never compares the deployed assemblies against a rebuild, so a PR that edits generator sources and forgets to rerun the build script goes green while Unity keeps consuming the stale binaries. Rebuilding and committing them is the contributor's responsibility. The third committed artifact, `../Runtime/Styling/StyleUtilityProperties.g.cs`, is the exception — `BundledStyleSheetCensusTests` compares it against a fresh derivation, so forgetting to regenerate that one is caught.
+Each committed artifact is compared against a fresh derivation, so forgetting to regenerate one fails rather than reaching Unity:
 
-A plain `git diff --exit-code` against a rebuild would not close that gap either: the SDK writes the commit `HEAD` was at when the build ran into the assembly's informational version (`0.1.0+<sha>`), so a rebuild at any other commit carries a different id. What does compare is a build at the commit the assembly names — measured byte-identical from a separate working tree, because `ContinuousIntegrationBuild` replaces the source paths with `/_/`.
+- `../Runtime/Styling/StyleUtilityProperties.g.cs` — `BundledStyleSheetCensusTests`, which re-derives the table from the bundled stylesheets
+- both DLLs under `../Runtime/Plugins/` — `scripts/generators/deployed_dll_check.py`, which rebuilds each deployed project and compares byte for byte
 
-The deployed pair is still not checkable that way. `build.py` runs before the commit that carries its output, so a redeploy that also edits generator sources names a commit those sources are not in. And when that commit lived only on a PR branch, the squash merge left nothing to build at: the pair on `main` names one that no ref here reaches.
+The byte comparison is possible because the build reproduces across machines as well as across commits. Two inputs had to be removed for that, and each is set where it is because of the measurement below.
+
+**The commit.** The SDK queries git and writes the commit `HEAD` was at into the assembly's informational version (`0.1.0+<sha>`), so identical sources built at two commits differed by 143 bytes — that string, the Win32 version resource repeating it, and the identity fields computed over the result: the MVID, the PE timestamp, the debug directory timestamp, the PDB GUID and the PDB checksum. Two clean builds in one working tree, and two builds of one commit from two different paths, were already byte-identical, so neither repetition nor the path was varying the output while the commit was. `build.py` runs before the commit that carries its output, so a deployed assembly named a commit older than the one it shipped in; the pair this replaced named one three commits back. `Directory.Build.props` turns those queries off.
+
+**The runtime the compiler ran on.** With the commit gone, a macOS build and the Linux CI build still differed by 72 bytes, in five runs: the PE timestamp, the MVID, the debug directory timestamp, the PDB GUID and the PDB checksum. Every other byte of both assemblies was identical across the two operating systems and the two architectures. A portable PDB records the compilation options, and comparing them named the difference: `runtime-version`, because `global.json` pins the SDK rather than the runtime the SDK's compiler executes on. The assembly carries the PDB's checksum, so a PDB that differs moves the assembly. Each deployed project drops its Release PDB, which removes the carrier — measured byte-identical between macOS on arm64 and Linux on x86-64 afterwards. The cost is real: a contributor debugging a Release build of a generator gets no line numbers. Debug builds keep their PDB.
+
+Pinning the runtime instead was rejected. It is set through the .NET host's DOTNET_ROLL_FORWARD variable rather than through a project property, so it would have to be right in CI, in every contributor's shell and in every IDE that builds this solution — and a build that did not set it would produce different bytes with nothing to say so. A guard that holds only where an environment variable was remembered is the failure mode this exists to remove.
+
+The check refuses rather than passes when it cannot make the comparison — an absent binary, a build that fails, an SDK other than the one `global.json` pins. `test_deployed_dll_check.py` runs each of those states, because a guard that exits 0 having compared nothing is indistinguishable from one that compared and was satisfied.

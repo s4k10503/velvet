@@ -118,11 +118,86 @@ A green suite says nothing about whether the tests would have noticed the change
 answers that for the lines a branch touched, by breaking each of them and rerunning the suite:
 
 ```bash
+python3 scripts/test_quality/mutation_check.py --base main --list   # the mutants, and what they cost, without a run
 python3 scripts/test_quality/mutation_check.py --base main
 ```
 
+`--list` takes the readings that come before an editor is launched — the outstanding-mutation record,
+the comment-and-string mask, and which changed code lines an operator reaches — so it refuses where
+those would, which is the point of running it first rather than a reason to distrust it. The readings
+that need a run, the declarations and the cap among them, it does not take.
+
 [Generators~/README.md ▸ Mutation testing](Packages/com.velvet.core/Generators~/README.md#mutation-testing)
-covers this and the generator solution's own run, and owns what the verdicts mean and how to read a survivor.
+covers this and the generator solution's own run, and owns what the verdicts mean, how to read a
+survivor, and which line shapes the operators reach — which is 31% of the changed code lines measured
+over the twenty commits ending at `48057c8` with the generator as this branch leaves it, so **a survivor count is a statement about the lines an
+operator reached and not about the change**. The run prints both numbers and names the lines it could
+not ask about.
+
+**A survivor is closed or answered for; it is not reported and left.** Either the test that should have
+noticed gets written, or the line says why nothing could have, above itself:
+
+```csharp
+// MUTANT_SURVIVES(equivalent): every caller clamps the operand, so both bounds accept the same set.
+```
+
+`equivalent` says the mutated program cannot behave differently; `unreachable` says the state where it
+would is not reachable from any entry point. A mutant whose run came back inconclusive counts as
+surviving and needs the same answer: an `Assume` that stopped holding measured nothing either. A declaration answers for the change written under it and
+is read the three ways the base-red one below is: one over a statement whose mutants all died is stale
+and fails, one whose category or reason the script refuses fails, and one the branch did not itself
+write answers for the base's change rather than for this one — restate it. It answers for the statement
+rather than the line, because a condition broken across two lines carries mutants on both. Only a
+whole-suite run over the diff reads any: `--files`, `--filter` and `--assemblies` each ask a narrower
+question, and under one nearly everything survives. `--platform` is not one of those — it runs a whole
+suite, just a different one — so it reads declarations and writes a receipt, and the platform is part
+of the receipt's key so that an EditMode question is never answered by a PlayMode run.
+
+The run also fails on the ways it can measure less than it looks like it measured: a `--max` cap that
+left mutants unrun, an editor killed at `--timeout`, a build the compiler or an analyzer stopped, an
+assembly the editor never rebuilt, a second editor sharing the machine, and a source whose
+comment-and-string mask swallows code, which generates no mutant there and reports nothing.
+
+**What asks whether the campaign was run is a receipt, not attentiveness.** A finished run leaves one
+under the campaign's own log directory, keyed on the merge base, the platform and the content of
+every file it mutated, and `gh pr create` is refused where no receipt covers the checkout it is run in. A
+branch that changes no mutable package source is owed nothing and is not asked; a change no operator
+reaches records that verdict and is accepted, since such a branch cannot earn a passing run at all. The
+receipt is keyed on what the campaign measured rather than on the head commit, because the campaign
+diffs the merge base against the **working tree** — an uncommitted edit to a mutated file changes what
+it measured and moves no tree sha — and because 16 of 44 commits over five recent branches changed no
+mutable source, each of which would have voided a receipt over a change no operator can see. What it
+does not cover is a test-side change: removing a test can make a killed mutant survive, and including
+tests would void the receipt on the ordinary act of adding one after the run.
+
+**Merge time is not gated, and cannot be from here.** A guard on `gh pr merge` would read the checkout
+the command runs in, which at merge time is `main` after a pull — a tree with no change in it — so it
+would pass every merge while printing a verdict about a change it never read. `scripts/pr/settle.py`
+merges through the REST merge endpoint besides, which no hook matcher sees. The effective contract is one
+campaign at pull-request-open time, and a review round that changes production code after that is
+measured by nothing until the next `gh pr create`.
+
+**Nothing in CI runs the campaign, and at the measured cost nothing can.** A mutant is one editor launch.
+Over the twenty commits ending at `48057c8`, ten generated no mutant at all and the other ten ranged
+3 to 51 with a median of 22. A mutant's launch-compile-run measured 100–118 s here against a 94 s
+baseline, so a median branch is around 41 minutes and the largest around an hour and a half; on the CI
+runner, where the EditMode job alone takes 5m47s, a median branch is 23 sequential Unity jobs.
+Run it on a branch before opening the pull request. `Test ▸ test-quality` holds the half that
+needs no editor: that the mutants can be generated at all, and that every declaration in the package is one
+the script would accept rather than one it silently refuses.
+
+A campaign holds a mutation in the working tree while the suite runs, and records what it holds in
+MUTATION_IN_PROGRESS.json at the repository root — untracked, and deliberately not in `.gitignore`, so
+`git status` names it beside the file it explains. `SIGINT`, `SIGTERM` and `SIGHUP` put the source back;
+a SIGKILL and a machine losing power cannot, so the record outlives them and the next campaign refuses
+to start while one is present. Being named in `git status` is not enough on its own — a mutation reads
+as an unfinished edit in a file the branch is already touching, and `git add -u` stages it with
+everything else — so a commit that would record the held file is refused as well. Put it back by hand
+with:
+
+```bash
+python3 scripts/test_quality/mutation_check.py --restore
+```
 
 A mutation asks whether any test depends on one line. `scripts/test_quality/neuter_check.py` asks the other question a
 fixture's name makes — with the mechanism it is named for disabled, does it still pass?
@@ -143,8 +218,31 @@ so a rename is caught by the pull request that makes it rather than by the next 
 Most holes are legitimate — a negative assertion no cut can falsify, a case whose subject is another cut's
 layer — so what is worth catching is not the count but a change to the set, which a hole appearing while
 another disappears leaves identical. `scripts/test_quality/neuter_holes.txt` carries the approved set;
-`--report` regenerates it, so a sweep is read as a diff against it. Nothing runs the sweep automatically:
-wiring it into CI needs a licence activation this repository does not have.
+`--report` regenerates it, so a sweep is read as a diff against it.
+
+A sweep is one editor run per cut with a source edit between each. `Test ▸ unity-tests` is a single
+run with no edit between, and `Test ▸ test-quality` has no editor at all, so what runs there is the
+half that needs none:
+
+```bash
+python3 scripts/test_quality/neuter_check.py --audit
+```
+
+It reads the anchors a sweep cuts at, the hole baseline a sweep's output is diffed against, and
+`scripts/test_quality/neuter_uncovered.txt`, which records the parsers and appliers no cut reaches.
+Only the anchors are read by a sweep itself — the record by nothing else at all, the baseline only
+when `--baseline` is passed — so before this, two of the three were checked by running neither.
+Which files those are is two name shapes globbed in `neuter_check.py`, and they are not every
+class-driven mechanism — a parser named otherwise, or a manipulator, is answered for by nobody. Within
+the two, the record is what an arrival answers to: a class-driven mechanism fails by being ignored,
+which reads exactly like a class nobody wrote, so one arriving tomorrow must be given a cut or
+recorded as having none.
+
+Each of the three carries a floor, and the audit refuses when one of them reads short. The hole baseline's floor
+is on the fixtures it names, because `--report` writes only the fixtures its run swept: aimed at the
+record from a narrowed sweep it would replace the rest with them, which is refused before the run
+rather than after. A floor catches a collapse, not a thinning — a record rewritten to eighteen
+fixtures of one line each still passes.
 
 ### Checking that a new test could have failed
 
@@ -196,11 +294,29 @@ workflow does not. Run it locally on a branch whose tests are the point.
 `scripts/test_quality/test_base_red_check.py` holds the reader against every test file in this
 repository and runs in `Test ▸ test-quality`.
 
+### Trusting the reading itself
+
+Everything above asks what a run measured. `scripts/test_quality/assert_results_from_this_tree.py`
+asks the prior question — whether the results are this checkout's reading at all. A results file is
+written where the caller points rather than by the run that later reads it, so a run that aborts
+leaves the previous one there to be read; the guard refuses a results file no log in the run names,
+a log carrying a line rendered as a compiler error whichever analyzer raised it, and a fixture no
+source here declares reported under any assembly but one a resolved package owns alone — the last of
+these asking nothing of the log at all. Every reading it cannot take is a refusal too, since a guard
+exiting 0 unread looks exactly like one that checked. What it cannot separate is two runs writing a
+results file of the same name; what answers that is the headless recipe's per-worktree logs
+directory, not the guard.
+
+Each Unity job in CI runs it after the suite, and CLAUDE.md's headless recipe runs it beside
+`assert_no_inconclusive.py`. `scripts/test_quality/test_assert_results_from_this_tree.py` holds it,
+its type reader against every fixture this repository's case reader finds, and its log reading
+against every diagnostic identifier the analyzer sources declare, in `Test ▸ test-quality`.
+
 ### Repository scripts
 
 `scripts/` holds the harnesses, grouped by what they are for — `test_quality/` (mutation, neuter,
-inconclusive-result guard), `release/` (the release-note builder), `unity/` (sample sync). Two rules keep
-the tree readable:
+inconclusive-result and results-provenance guards), `release/` (the release-note builder), `unity/`
+(sample sync). Two rules keep the tree readable:
 
 - **Python, named in `snake_case`.** Every harness is importable, so a test can exercise it directly rather
   than only through a shell invocation — which is what `release/test_release_notes.py` does. Python needs no
@@ -266,6 +382,19 @@ directory refuses the same probe — otherwise the tool call is guarded by nothi
 the licence-free `source-generators` job rather than beside the fixtures above, which are skipped
 entirely on a checkout with no `UNITY_LICENSE` secret.
 
+The `Stop` guards declare the same policy and are held to one thing more, because blocking was never
+what they got wrong. They blocked, and described the pull requests rather than the reading — so the
+deferral the message invited named the API error instead of whatever the work was waiting on.
+`.claude/hooks/lib/repository.py` owns both halves of the remedy: a second way of asking, drawn on a
+different quota, before blindness is declared at all, and the sentence a block has to carry when it
+is. The same check runs every guard in `.claude/hooks/stop` and requires that sentence of one that
+blocks. It poses two modes: nothing answers, and — the one a second way of asking creates — the
+listing answers while every per-pull-request read fails, which is where a guard can report on a
+pull request it learned nothing about. An empty answer is posed as neither, being the ordinary state
+`open_backlog.py` acts on. A guard whose own question is answered in a mode that broke somebody
+else's reading declares `UNREADABLE_ALLOWS`, with a comment and with a sibling that refuses there,
+so an exemption no other guard stands behind is reported rather than taken.
+
 ### Source generators
 
 The Roslyn source generators live under `Packages/com.velvet.core/Generators~/` and target a
@@ -286,17 +415,18 @@ on every platform.
 | Workflow | Trigger | Unity license | Required to merge |
 |----------|---------|---------------|-------------------|
 | `Source generators ▸ source-generators` | push (filtered) / every PR / merge group | not required | no |
-| `Source generators ▸ Required checks (generators)` | every PR / merge group | not required | **yes** |
+| `Source generators ▸ repository-settings` | push (filtered) / every PR / merge group; skipped when the workflow runs in a fork | not required | no |
+| `Source generators ▸ Required checks (generators)` | push (filtered) / every PR / merge group | not required | **yes** |
+| `Test ▸ license-check` | push (filtered) / every PR / merge group | not required | no |
 | `Test ▸ unity-tests` (EditMode / PlayMode) | push (filtered) / every PR / merge group | **required** (skipped if absent) | no |
 | `Test ▸ release-notes` | push (filtered) / every PR / merge group | not required | no |
 | `Test ▸ publication` | push (filtered) / every PR / merge group | not required | no |
 | `Test ▸ test-quality` | push (filtered) / every PR / merge group | not required | no |
 | `Test ▸ base-red-python` | push (filtered) / every PR / merge group | not required | no |
 | `Test ▸ base-red` (EditMode / PlayMode) | every PR | **required** (skipped if absent) | no |
-| `Test ▸ Required checks (Unity)` | every PR / merge group | not required | **yes** |
-| `UPM ▸ split` | push to `main` | not required | no |
-| `UPM ▸ release` | manual (`workflow_dispatch`) | not required | no |
-| `Docs` (DocFX → GitHub Pages) | push to `main` / release / manual | **required** (skipped if absent) | no |
+| `Test ▸ Required checks (Unity)` | push (filtered) / every PR / merge group | not required | **yes** |
+| `UPM ▸ split` | push to `main` / manual (`workflow_dispatch`, which also tags and publishes the release) | not required | no |
+| `Docs` (DocFX → GitHub Pages) | push (filtered) / release / manual | **required** (skipped if absent) | no |
 
 The two required checks are aggregates, and the real jobs are not required themselves. A required check
 that does not run stays `Pending` and blocks the pull request with nothing able to clear it, which is what
@@ -365,9 +495,12 @@ policy on is what would close it server-side, at the cost that buys.
 
 **A green pull request left sitting starts refusing every edit.**
 `.claude/hooks/refuse/edit_while_a_ready_pr_sits.py` refuses every editing tool once one has been ready
-for fifteen minutes, and the instruction it prints is `settle.py merge`, which the publication guard now
-declines. Both are behaving correctly and the combination is a stall: record the deferral the hook's own
-message describes, or publish.
+for fifteen minutes, and the instruction it prints is `settle.py merge`. Ready is that command's own
+decision rather than a second reading beside it, so a pull request this window declines is not
+recorded ready while the window can be read. It is read by
+`published_check.unpublished_reason`, which answers None on any git failure, so an `ls-remote` that
+times out mid-poll records the green ones ready again and the stall is back for as long as that
+lasts. The deferral the hook's own message describes is still what clears it.
 
 **If the dispatch itself is what is broken, the guard has no in-band escape.** `upm.yml` runs from the
 workflow file at whatever ref is dispatched, so tagging the release commit and dispatching from the tag
