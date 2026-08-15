@@ -392,7 +392,7 @@ namespace Velvet
         /// committed, and from the two places it will never commit from: unmount, and the scheduler dropping
         /// a starvation-promoted lane at its update-depth cap.
         /// </summary>
-        internal void DischargeTransitionEnrolments()
+        internal void DischargeTransitionEnrolments(bool requestLocalRender = false)
         {
             if (EnrolledTransitionSlots == null)
             {
@@ -405,10 +405,14 @@ namespace Velvet
                 {
                     continue;
                 }
-                // The component that reads isPending renders from its own lanes, and this drain renders this
-                // fiber's tree — the same fiber only where the callback wrote its own component's state.
+                // A pre-render settle needs no separate local render because this fiber's imminent render reads
+                // the clear. A post-commit settle does: its completed render read the flag while it was still lit.
                 if (ReferenceEquals(slot.DeclaringFiber, this))
                 {
+                    if (requestLocalRender)
+                    {
+                        RequestRenderForClearedPending(slot);
+                    }
                     continue;
                 }
                 // Anywhere else nothing is left to take the indicator off the screen. Where this drain does
@@ -458,18 +462,8 @@ namespace Velvet
         /// </summary>
         internal void SettleTransitionPendingAfterCommit()
         {
-            SettleTransitionPending();
-            if (TransitionSlots == null)
-            {
-                return;
-            }
-            foreach (var slot in TransitionSlots)
-            {
-                if (!slot.IsPending && slot.LastRenderedPending)
-                {
-                    RequestRenderForClearedPending(slot);
-                }
-            }
+            DischargeTransitionEnrolments(requestLocalRender: true);
+            ClearSettledTransitionPending();
         }
 
         /// <summary>
