@@ -320,6 +320,27 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ABlockedBlockerWhoseRegistrationDied_When_Proceed_Then_ItSettlesAfterTheResume()
+        {
+            // Arrange
+            var router = BuildRouter("/home", Route("home"), Route("other"));
+            var state = new RouteBlockerState();
+            var registration = router.RouteBlockerManager.Register(_ => true, state);
+            var blockedResult = router.NavigateSync("/other");
+            var statusBeforeProceed = state.Status;
+            registration.Dispose();
+
+            // Act
+            state.Proceed();
+
+            // Assert
+            Assert.That(
+                (blockedResult, statusBeforeProceed, state.Status, state.Attempt, router.CurrentLocation.Path),
+                Is.EqualTo((NavigationResult.Blocked, RouteBlockerStatus.Blocked, RouteBlockerStatus.Idle,
+                    (NavigationAttempt)null, "/other")));
+        }
+
+        [Test]
         public void Given_AResumedNavigationThatCommitsNothing_When_NavigatingAgain_Then_TheBlockerBlocksIt()
         {
             // Arrange — the Guard lets the first attempt through to the Blocker and sends the resumed one at
@@ -364,6 +385,33 @@ namespace Velvet.Tests
             Assert.That(
                 (blockedResult, router.CurrentLocation.Path),
                 Is.EqualTo((NavigationResult.Blocked, "/other")));
+        }
+
+        [Test]
+        public void Given_AProceedingBlockerWhoseRegistrationDiedBesideAHoldingBlocker_When_TheHolderProceeds_Then_BothSettle()
+        {
+            // Arrange
+            var router = BuildRouter("/home", Route("home"), Route("other"));
+            var released = new RouteBlockerState();
+            var releasedRegistration = router.RouteBlockerManager.Register(_ => true, released);
+            var holding = new RouteBlockerState();
+            var holdingChecks = 0;
+            router.RouteBlockerManager.Register(_ => ++holdingChecks == 2, holding);
+            var blockedResult = router.NavigateSync("/other");
+            released.Proceed();
+            var statusesBeforeFinalProceed = (released.Status, holding.Status);
+            releasedRegistration.Dispose();
+
+            // Act
+            holding.Proceed();
+
+            // Assert
+            Assert.That(
+                (blockedResult, holdingChecks, statusesBeforeFinalProceed, released.Status, released.Attempt,
+                    holding.Status, router.CurrentLocation.Path),
+                Is.EqualTo((NavigationResult.Blocked, 2,
+                    (RouteBlockerStatus.Proceeding, RouteBlockerStatus.Blocked), RouteBlockerStatus.Idle,
+                    (NavigationAttempt)null, RouteBlockerStatus.Idle, "/other")));
         }
 
         [Test]

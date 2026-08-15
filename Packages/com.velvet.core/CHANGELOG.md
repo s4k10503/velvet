@@ -236,7 +236,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is consulted about nothing, and it returns to `Idle` — which is what arms it for the next navigation —
   once that navigation has committed, ended without committing or been abandoned, and no Blocker is left
   blocking. A second Blocker vetoing the re-issue is what leaves one, and the first waits on that one
-  being answered. `Reset()` still abandons the attempt and leaves the router where it is, and now ends it
+  being answered. Disposing a registration stops its predicate immediately without stranding a Blocker
+  already holding or releasing that attempt; a saved dialog's `Proceed()` still settles back to `Idle`.
+  `Reset()` still abandons the attempt and leaves the router where it is, and now ends it
   for the Blockers holding it alongside: their dialogs close too, and a `Proceed()` on one of them no
   longer sends the router at a destination the user declined. An exhaustive `switch` expression over
   `RouteBlockerStatus` needs an arm for the new member. The navigation-blocking guide covers the whole
@@ -2018,4 +2020,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Preserve `StyleAttributeVariantClass` presence matching for `data-[key]:` variants (do not coerce
   to empty-string equality).
 - `V.When` throws `ArgumentNullException` when the condition is true but the factory is null.
-
