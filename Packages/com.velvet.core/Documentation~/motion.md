@@ -70,10 +70,10 @@ V.Div(name: "row", className: "flex flex-row gap-x-2", children: new VNode[]
 - Re-adding a key mid-exit cancels the exit and returns the element to its resting variant —
   including inline geometry the pose had overwritten.
 - **The presence itself leaving is not an exit.** A `cond ? V.AnimatePresence(…) : null` flipping
-  to `null` takes its children with it and forgets them, ghosts included; rendering it again at the
-  same position is a first mount, which is the mount `initial: false` suppresses. The same holds
-  when the element it expands into is torn down, and when a `V.Portal` it is written inside closes
-  or its `targetId` is registered to a different element.
+  to `null` takes its children with it and forgets them, ghosts included; once they are out of the
+  tree, rendering it again at the same position is a first mount, which is the mount `initial: false`
+  suppresses. The same holds when the element it expands into is torn down, and when a `V.Portal` it
+  is written inside closes or its `targetId` is registered to a different element.
 - **What an exit animates:** under the default Tween driver, any USS-transitionable property the
   pose swap changed animates — `transition-property: all` picks up the whole class delta, not a
   fixed channel set. Spring and cubic-bezier exits drive the channels they can resolve a number

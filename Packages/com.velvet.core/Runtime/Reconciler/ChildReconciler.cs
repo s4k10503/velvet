@@ -213,8 +213,7 @@ namespace Velvet
             // The presence reproductions this container's own walk takes, retirable only once the removal
             // pass below has run — see ReconcilerContext.EndPresenceReproductionScope.
             var presenceScope = _ctx.BeginPresenceReproductionScope();
-            // Only an exception unwinding out of the try below reads this, since both branches assign
-            // first. Skipped is the reading that costs nothing there: it leaves a live entry alone.
+            // Only an exception unwinding out of the try below reads this, since both branches assign first.
             var removals = ReconcilerContext.PresenceRemovalOutcome.Skipped;
             try
             {

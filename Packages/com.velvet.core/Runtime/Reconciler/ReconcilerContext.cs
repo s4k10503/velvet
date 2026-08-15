@@ -1134,14 +1134,13 @@ namespace Velvet
             _suspenseFallbackKeys.Remove(boundary);
         }
 
-        // Per-AnimatePresence state for the DOM-less (wrapper-less) expansion, keyed as PresenceStates
-        // below is. The keyed children are expanded
-        // directly into the parent's slot range (no wrapper element); this state records, per
-        // AnimatePresence, the leaf
-        // composition currently committed to the DOM so the old-side structural walk can reproduce it for
-        // the diff, plus which keys are mid-exit (kept mounted as ghosts) and which have finished exiting
-        // (dropped on the next render). PresenceStateOwner enumerates what it is pruned with, and
-        // RetirePresenceStatesNotReRendered is the fourth way it ends.
+        // Per-AnimatePresence state for the DOM-less (wrapper-less) expansion, keyed as PresenceStates below
+        // is. The keyed children are expanded directly into the parent's slot range (no wrapper element);
+        // this state records, per AnimatePresence, the leaf composition currently committed to the DOM so
+        // the old-side structural walk can reproduce it for the diff, plus which keys are mid-exit (kept
+        // mounted as ghosts) and which have finished exiting (dropped on the next render). PresenceStateOwner
+        // enumerates what it is pruned with; RetirePresenceStatesNotReRendered and the whole-table clear in
+        // Reconciler.ReleaseHostsAndScopes are the other two ways it ends.
         internal sealed class PresenceBoundaryState
         {
             // Keyed children currently in the DOM (in DOM order), including exiting ghosts.
@@ -1214,8 +1213,9 @@ namespace Velvet
         // Motion's resting set and be clobbered by the wrapper's own class patching.
         internal VisualElement? PresenceAnchorMotionElement;
 
-        // The three owners a DOM-less AnimatePresence entry dies with. A presence whose node stops being
-        // rendered outlives all three, which is what RetirePresenceStatesNotReRendered answers for.
+        // The three subjects a prune retires a DOM-less AnimatePresence entry for. A presence whose node
+        // stops being rendered outlives all three, which is what RetirePresenceStatesNotReRendered
+        // answers for.
         private enum PresenceStateOwner
         {
             // The fiber that rendered the AnimatePresence, unregistered.
@@ -1262,11 +1262,12 @@ namespace Velvet
         internal void PrunePresenceParentElementState(VisualElement parent)
             => PrunePresenceStates(PresenceStateOwner.ParentElement, parent);
 
-        // Called from FiberElementCleaner.CleanupPortal, which the retarget release also runs through.
-        // The other three routes all miss a presence inside a Portal's own children: no walk of the tree
-        // CONTAINING the PortalNode names it — the node emits as an opaque leaf there. The Portal's own
-        // children reconcile does name it, on both sides, which is what retires a presence that stops
-        // being rendered while the Portal stays open; what it cannot see is the Portal itself going.
+        // Called from FiberElementCleaner.CleanupPortal, which the retarget release also runs through. The
+        // Portal itself going is what the other three routes can all miss: the container it renders into
+        // belongs to the caller, the boundary fiber that rendered it can go on living, and no walk of the
+        // tree CONTAINING the PortalNode names what is inside — the node emits as an opaque leaf there. The
+        // Portal's own children reconcile does name it, on both sides, which is what retires a presence that
+        // stops being rendered while the Portal stays open.
         internal void PrunePresencePortalState(VisualElement placeholder)
             => PrunePresenceStates(PresenceStateOwner.PortalPlaceholder, placeholder);
 
@@ -1300,8 +1301,7 @@ namespace Velvet
             // Emptied, so the span may retire.
             Ran,
 
-            // Skipped, with nothing left to run it. The span is dropped rather than carried, since carrying
-            // is for a park and a container that did not park has no later slice to hand it to.
+            // Skipped, with nothing left to run it. The span is dropped rather than carried.
             Skipped,
 
             // Parked mid-diff. ContinueIndexed / ContinueKeyed resume from the old side this pass already

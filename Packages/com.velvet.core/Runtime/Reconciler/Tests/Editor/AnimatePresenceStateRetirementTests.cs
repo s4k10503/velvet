@@ -49,7 +49,8 @@ namespace Velvet.Tests
     /// that finishes the removals. The entry retires then, rather than outliving the leaf it named.</item>
     /// <item>A park a fresh pass discards carries nothing into a later park's resume, since the diff that
     /// owed those removals is the one nobody finishes. A resume that unwinds leaves the same diff behind,
-    /// so what it owed must not reach the next park's resume and retire an entry still naming its leaf.</item>
+    /// so what it owed must not reach the next park's resume and retire an entry still naming its leaf —
+    /// read once per strategy, since a resume settles only what its own call was handed.</item>
     /// <item>A pass that walks neither side of a presence retires nothing of it — the last case holds
     /// that to what it already did, since retiring a live entry strands its leaf where the next old side
     /// can no longer name it.</item>
@@ -252,8 +253,8 @@ namespace Velvet.Tests
 
 
         // A presence and a container holding another one, side by side: the outer container's own old-side
-        // reproduction is already recorded when the inner container opens its scope, which is the only
-        // arrangement where an inner scope begins anywhere but at the start of the list.
+        // reproduction is already recorded when the inner container opens its scope, which is what makes an
+        // inner scope begin anywhere but at the start of the list.
         [Component]
         private static VNode PresenceBesideAContainerHoldingAnother()
         {
@@ -666,28 +667,20 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AParkedFastPathContainer_When_ItsResumeUnwinds_Then_ALaterParksResumeLeavesTheStrandedEntryAlone()
+        public void Given_AParkedFastPathContainer_When_ItsKeyedResumeUnwinds_Then_ALaterParksResumeLeavesTheStrandedEntryAlone()
         {
             // Arrange — one reconciler, two roots. The first root's resume throws partway through the
             // diff, leaving its removals unrun and its leaf in the tree; the second root then parks and
             // resumes cleanly, which is the slice that settles whatever the first left owed.
             using var reconciler = new Reconciler();
             var ctx = reconciler.Context;
-            var first = new VisualElement();
+            var first = new VisualElement { name = "first" };
             var firstCommitted = RowsWith(Presence("a"));
             reconciler.Reconcile(first, Array.Empty<VNode>(), firstCommitted, frameBudgetMs: 0);
             reconciler.Reconcile(first, firstCommitted, RowsThrowingAt("moved-", 99), frameBudgetMs: 0.001);
-            var firstParked = reconciler.HasPendingWork;
-            var unwound = false;
-            try
-            {
-                reconciler.ContinueReconcile();
-            }
-            catch (InvalidOperationException e) when (e.Message == ResumeUnwindMessage)
-            {
-                unwound = true;
-            }
-            var second = new VisualElement();
+            var firstParkedKeyed = ParkedInTheKeyedState(reconciler);
+            var unwound = UnwindOfTheResume(reconciler);
+            var second = new VisualElement { name = "second" };
             var secondCommitted = RowsWith(Presence("b"));
             reconciler.Reconcile(second, Array.Empty<VNode>(), secondCommitted, frameBudgetMs: 0);
             reconciler.Reconcile(second, secondCommitted, Rows("gone-"), frameBudgetMs: 0.001);
@@ -698,9 +691,40 @@ namespace Velvet.Tests
 
             // Assert — the first root's entry is the one left, since the unwound diff never emptied its
             // slots. Both parks and the unwind are folded in: each is what puts the span in play, and
-            // without it the count would be right for the wrong reason.
-            Assert.That((firstParked, unwound, secondParked, ctx.PresenceStates.Count),
-                Is.EqualTo((true, true, true, 1)));
+            // without it the survivor would be right for the wrong reason. The strategy is pinned for the
+            // reason ParkedInTheKeyedState carries.
+            Assert.That((firstParkedKeyed, unwound, secondParked, PresenceParentNamesOf(ctx)),
+                Is.EqualTo((true, true, true, "first")));
+        }
+
+        [Test]
+        public void Given_AnEmptyPresenceOnAParkedFastPathContainer_When_ItsIndexedResumeUnwinds_Then_ALaterParksResumeLeavesTheStrandedEntryAlone()
+        {
+            // Arrange — the same two roots as the keyed unwind above, with the first root's presence
+            // committing no child so its container parks in the indexed strategy instead. Resuming that
+            // park runs ContinueIndexed, so its own bracket is the only one on the unwinding path.
+            using var reconciler = new Reconciler();
+            var ctx = reconciler.Context;
+            var first = new VisualElement { name = "first" };
+            var firstCommitted = RowsWith(V.AnimatePresence(key: "presence", children: Array.Empty<VNode>()));
+            reconciler.Reconcile(first, Array.Empty<VNode>(), firstCommitted, frameBudgetMs: 0);
+            reconciler.Reconcile(first, firstCommitted, RowsThrowingAt("moved-", 99), frameBudgetMs: 0.001);
+            var firstParkedIndexed = ParkedInTheIndexedState(reconciler);
+            var unwound = UnwindOfTheResume(reconciler);
+            var second = new VisualElement { name = "second" };
+            var secondCommitted = RowsWith(Presence("b"));
+            reconciler.Reconcile(second, Array.Empty<VNode>(), secondCommitted, frameBudgetMs: 0);
+            reconciler.Reconcile(second, secondCommitted, Rows("gone-"), frameBudgetMs: 0.001);
+            var secondParked = reconciler.HasPendingWork;
+
+            // Act — the continuation finishes the second root's diff, and only that one.
+            reconciler.ContinueReconcile();
+
+            // Assert — same reading as the keyed unwind above, through the other strategy's resume: that
+            // the park landed in the indexed state is folded in, since parking in the keyed one would make
+            // this a second reading of that case rather than a reading of this one.
+            Assert.That((firstParkedIndexed, unwound, secondParked, PresenceParentNamesOf(ctx)),
+                Is.EqualTo((true, true, true, "first")));
         }
 
         [Test]
@@ -710,12 +734,12 @@ namespace Velvet.Tests
             // fresh pass on the second, whose own diff parks in turn.
             using var reconciler = new Reconciler();
             var ctx = reconciler.Context;
-            var first = new VisualElement();
+            var first = new VisualElement { name = "first" };
             var firstCommitted = RowsWith(Presence("a"));
             reconciler.Reconcile(first, Array.Empty<VNode>(), firstCommitted, frameBudgetMs: 0);
             reconciler.Reconcile(first, firstCommitted, Rows("moved-"), frameBudgetMs: 0.001);
             var firstParked = reconciler.HasPendingWork;
-            var second = new VisualElement();
+            var second = new VisualElement { name = "second" };
             var secondCommitted = RowsWith(Presence("b"));
             reconciler.Reconcile(second, Array.Empty<VNode>(), secondCommitted, frameBudgetMs: 0);
             reconciler.Reconcile(second, secondCommitted, Rows("gone-"), frameBudgetMs: 0.001);
@@ -727,8 +751,8 @@ namespace Velvet.Tests
             // Assert — the first root's entry has to be the one left, since the discarded diff never
             // emptied its slots. Both parks are folded in: without either, nothing is owed across a discard.
             Assert.That(
-                (firstParked, secondParked, ctx.PresenceStates.Count),
-                Is.EqualTo((true, true, 1)));
+                (firstParked, secondParked, PresenceParentNamesOf(ctx)),
+                Is.EqualTo((true, true, "first")));
         }
 
         // GREEN_ON_BASE(characterization): a pass that walks neither side of a presence says nothing of it.
@@ -769,6 +793,30 @@ namespace Velvet.Tests
                 transition: new StyleTransitionConfig { DurationSec = 0.3f }),
         });
 
+        // The parent element each surviving entry is keyed on, in table order. A count says how many are
+        // left but not which, and the two-root cases turn on which of two entries the pass spared.
+        private static string PresenceParentNamesOf(ReconcilerContext ctx)
+        {
+            var names = new List<string>();
+            foreach (var key in ctx.PresenceStates.Keys) names.Add(key.parent?.name ?? "<none>");
+            return string.Join(",", names);
+        }
+
+        // Runs the resume the arranged throw is waiting on, and reports whether it unwound. The filter is
+        // on the arranged message so any other InvalidOperationException still leaves the case.
+        private static bool UnwindOfTheResume(Reconciler reconciler)
+        {
+            try
+            {
+                reconciler.ContinueReconcile();
+                return false;
+            }
+            catch (InvalidOperationException e) when (e.Message == ResumeUnwindMessage)
+            {
+                return true;
+            }
+        }
+
         private static string NamesOf(VisualElement parent)
         {
             var names = new List<string>();
@@ -799,9 +847,11 @@ namespace Velvet.Tests
         }
 
         // One row whose child expansion throws, so a resume that reaches it unwinds out of the strategy
-        // rather than parking or finishing. The memo sits under the row rather than beside it so the
-        // container keeps the fast path: only the nested walk of that row's own children resolves it, and
-        // the container's own children stay a flat list of host leaves.
+        // rather than parking or finishing. A memo factory rather than a component: FiberRenderer routes a
+        // component's own throw to FiberErrorBoundary.OnRenderError, which unwinds nothing, and the memo
+        // factory runs outside that try. The memo sits under the row rather than beside it so the container
+        // keeps the fast path: only the nested walk of that row's own children resolves it, and the
+        // container's own children stay a flat list of host leaves.
         private static VNode[] RowsThrowingAt(string prefix, int index)
         {
             var rows = Rows(prefix);
