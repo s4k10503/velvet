@@ -648,6 +648,26 @@ class DeclarationReadingTests(unittest.TestCase):
         # Assert
         self.assertEqual(found, [3])
 
+    def test_Given_ADeclarationInsideABlockComment_When_ItIsRead_Then_ItReachesTheFollowingCode(self):
+        # Arrange
+        texts = [("/*\n"
+                  " * MUTANT_SURVIVES(equivalent): both spellings agree here.\n"
+                  " */\n"
+                  "if (a <= b) { }\n"),
+                 ("/* MUTANT_SURVIVES(equivalent): both spellings agree here. */\n"
+                  "if (a <= b) { }\n"),
+                 ("/* MUTANT_SURVIVES(equivalent): both spellings agree here. */\n"
+                  "/* The boundary is shared by both paths. */\n"
+                  "if (a <= b) { }\n"),
+                 ("/* MUTANT_SURVIVES(equivalent): both spellings agree here.\n"
+                  " */ if (a <= b) { }\n")]
+
+        # Act
+        found = [[subject for subject, _ in mutation_check.declarations_in(text)] for text in texts]
+
+        # Assert
+        self.assertEqual(found, [[4], [2], [3], [2]])
+
     def test_Given_AShortClaimAboveAnUnrelatedRemark_When_ItIsRead_Then_TheFloorStillRefusesIt(self):
         # Arrange
         text = ("// MUTANT_SURVIVES(equivalent): rename\n"

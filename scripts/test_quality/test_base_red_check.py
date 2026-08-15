@@ -833,6 +833,19 @@ class VerdictTests(unittest.TestCase):
         # Assert
         self.assertEqual(verdict, base_red_check.COULD_NOT_ANSWER)
 
+    def test_Given_ACaseTheBaseCouldNotAnswer_When_ItIsReported_Then_ItFailsTheGate(self):
+        # Arrange
+        case = self.probe()
+
+        # Act
+        offenders = base_red_check.report(
+            [case], [], {case.key: "Skipped", "N.CanaryTests.Given_X_When_Y_Then_Z": "Passed"},
+            {"EditMode": ["N.CanaryTests"]}, wrote=True)
+
+        # Assert
+        self.assertEqual([offender.verdict for offender in offenders],
+                         [base_red_check.COULD_NOT_ANSWER])
+
     # GREEN_ON_BASE(characterization): the unknown-category refusal the new verdicts must leave alone.
     def test_Given_AMalformedDeclarationOnACaseGreenOnTheBase_When_ItIsDecided_Then_ItFailsTheRun(self):
         # Arrange -- a category the script does not know reads to everyone else as an approved
@@ -1193,7 +1206,7 @@ class PythonLaneRunTests(unittest.TestCase):
 
         # Assert -- the verdict rides with the status because the two failures differ: crediting it
         # as red exits zero too, and only the verdict says which reading was taken.
-        self.assertEqual((status, base_red_check.COULD_NOT_ANSWER in printed), (0, True))
+        self.assertEqual((status, base_red_check.COULD_NOT_ANSWER in printed), (1, True))
 
     # GREEN_ON_BASE(characterization): the half of the separation the new verdict must leave alone.
     def test_Given_ACaseTheBaseRanAndDisagreedWith_When_TheLaneRuns_Then_ItIsCountedRed(self):
@@ -1226,7 +1239,7 @@ class PythonLaneRunTests(unittest.TestCase):
         status, printed = self.run_lane(base, branch)
 
         # Assert
-        self.assertEqual((status, base_red_check.COULD_NOT_ANSWER in printed), (0, True))
+        self.assertEqual((status, base_red_check.COULD_NOT_ANSWER in printed), (1, True))
 
     def test_Given_ABaseTreeWhoseOwnCasesAllDie_When_TheLaneRuns_Then_ItRefusesToPass(self):
         # Arrange -- nothing in the lane answers there, which is the reading a canary exists to take.
@@ -1346,6 +1359,12 @@ class ResultLabelTests(unittest.TestCase):
                     "&lt;c5eeda5e65d44b388e164c6c5cfe0702&gt;:0 ")
     TEST_FRAME = ("  at N.ProbeTests.Given_A_When_B_Then_C () [0x00011] in "
                   "./Packages/p/Runtime/A/Tests/Editor/ProbeTests.cs:41 ")
+    STATE_MACHINE_TEST_FRAME = (
+        "  at N.ProbeTests+&lt;Given_A_When_B_Then_C&gt;d__4.MoveNext () [0x00011] in "
+        "./Packages/p/Runtime/A/Tests/Editor/ProbeTests.cs:41 ")
+    SIMILAR_HELPER_FRAME = (
+        "  at N.ProbeTests.Given_A_When_B_Then_Cleanup () [0x00011] in "
+        "./Packages/p/Runtime/A/Tests/Editor/ProbeTests.cs:70 ")
     PRODUCTION_FRAME = ("  at P.FiberElementPoolReset.Clear (P.Fiber fiber) [0x0000c] in "
                         "./Packages/p/Runtime/A/FiberElementPoolReset.cs:120 ")
     TEARDOWN_FRAME = ("  at N.ProbeTests.TearDown () [0x00001] in "
@@ -1454,7 +1473,7 @@ class ResultLabelTests(unittest.TestCase):
         verdict = self.verdict_for(self.THREW, declared)
 
         # Assert
-        self.assertNotIn(verdict, base_red_check.FAILING_VERDICTS)
+        self.assertNotEqual(verdict, base_red_check.DECLARED_STALE)
 
     # GREEN_ON_BASE(characterization): a crash the branch fixes, counted red before the label was
     # read at all and having to stay red now that it is.
@@ -1520,7 +1539,7 @@ class ResultLabelTests(unittest.TestCase):
             self.threw_in_teardown((), (self.PRODUCTION_FRAME, self.TEARDOWN_FRAME)), declared)
 
         # Assert
-        self.assertNotIn(verdict, base_red_check.FAILING_VERDICTS)
+        self.assertNotEqual(verdict, base_red_check.DECLARED_STALE)
 
     # GREEN_ON_BASE(characterization): the red a body's own production throw already carries, which
     # cutting the trace at the teardown must not take away.
@@ -1557,7 +1576,7 @@ class ResultLabelTests(unittest.TestCase):
             self.threw_in_setup((self.PRODUCTION_FRAME, self.SETUP_FRAME)), declared)
 
         # Assert
-        self.assertNotIn(verdict, base_red_check.FAILING_VERDICTS)
+        self.assertNotEqual(verdict, base_red_check.DECLARED_STALE)
 
     def test_Given_ATestActionThrowAfterABodyThatPassed_When_ItIsDecided_Then_ItIsNotCountedRed(self):
         # Arrange -- an action wraps the case the way a teardown follows it, and its section is
@@ -1629,11 +1648,12 @@ class ResultLabelTests(unittest.TestCase):
 
         # Act
         verdict = self.verdict_for(self.unlabelled(
-            "SetUp : Unhandled log message: 'a mount threw'. Use UnityEngine.TestTools.LogAssert"),
+            "SetUp : Unhandled log message: 'a mount threw'. Use UnityEngine.TestTools.LogAssert",
+            self.SETUP_FRAME),
             declared)
 
         # Assert
-        self.assertNotIn(verdict, base_red_check.FAILING_VERDICTS)
+        self.assertNotEqual(verdict, base_red_check.DECLARED_STALE)
 
     # GREEN_ON_BASE(characterization): the red a body's own disagreement already carries, which
     # reading the message must not widen over.
@@ -1647,6 +1667,38 @@ class ResultLabelTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(verdict, base_red_check.RED_ON_BASE)
+
+    def test_Given_BodyAssertionsBeginningWithEachSectionName_When_Decided_Then_TheyStayRed(self):
+        # Arrange
+        sections = base_red_check.SCAFFOLD_SECTIONS
+
+        # Act
+        verdicts = [self.verdict_for(self.unlabelled(
+            "{} : the body expected this text".format(section), self.TEST_FRAME))
+                    for section in sections]
+
+        # Assert
+        self.assertEqual(verdicts, [base_red_check.RED_ON_BASE] * len(sections))
+
+    def test_Given_AStateMachineBodyAssertionBeginningWithASectionName_When_Decided_Then_ItStaysRed(self):
+        # Arrange
+        message = "TearDown : the coroutine body expected this text"
+
+        # Act
+        verdict = self.verdict_for(self.unlabelled(message, self.STATE_MACHINE_TEST_FRAME))
+
+        # Assert
+        self.assertEqual(verdict, base_red_check.RED_ON_BASE)
+
+    def test_Given_AScaffoldTraceWhoseHelperExtendsTheCaseName_When_Decided_Then_ItStaysAScaffold(self):
+        # Arrange
+        message = "TearDown : the cleanup helper threw"
+
+        # Act
+        verdict = self.verdict_for(self.unlabelled(message, self.SIMILAR_HELPER_FRAME))
+
+        # Assert
+        self.assertEqual(verdict, base_red_check.COULD_NOT_ANSWER)
 
     def test_Given_AThrowNamingNoFileOfThisTree_When_ItIsDecided_Then_ItKeepsTheNonAnswer(self):
         # Arrange -- a throw whose trace places it on neither side. The reading falls to the side
@@ -1674,7 +1726,7 @@ class ResultLabelTests(unittest.TestCase):
         verdict = self.verdict_for(self.refused("Invalid"), declared)
 
         # Assert
-        self.assertNotIn(verdict, base_red_check.FAILING_VERDICTS)
+        self.assertNotEqual(verdict, base_red_check.DECLARED_STALE)
 
     def test_Given_ACaseWhoseRunWasCancelled_When_ItIsDecided_Then_ItIsNotCountedRed(self):
         # Arrange -- a cancelled run stopped the case from outside it, which says nothing about the
@@ -1771,11 +1823,12 @@ class PlatformInstrumentTests(unittest.TestCase):
         # Assert
         self.assertEqual(withdrawn[base_red_check.PYTHON_LANE], "none of T passed there")
 
-    def test_Given_APlatformTheBaseTreeOffersNoCanary_When_ItIsRead_Then_ItIsNotWithdrawn(self):
-        # Arrange -- with nothing to read the tree by there is no reading, and inventing a verdict
-        # from its absence would refuse every branch on a tree that holds no other fixture.
+    def test_Given_APlatformTheBaseTreeOffersNoCanary_When_ItIsRead_Then_ItIsWithdrawn(self):
+        # Arrange -- without a base-owned case, no result can distinguish a branch test that could not
+        # compile from a run that never built its fixture.
         # Act / Assert
-        self.assertEqual(base_red_check.unsound_platforms({"EditMode": []}, {}), {})
+        self.assertEqual(base_red_check.unsound_platforms({"EditMode": []}, {}),
+                         {"EditMode": "no base-tree canary was available there"})
 
 
 class InstrumentTests(unittest.TestCase):
@@ -1926,6 +1979,23 @@ class UnmeasuredRunTests(unittest.TestCase):
 
         # Assert
         self.assertEqual([case.verdict for case in offenders], [base_red_check.BASE_UNSOUND])
+
+    def test_Given_ARunWithNoAvailableCanary_When_TheVerdictsAreTaken_Then_TheLaneFailsClosed(self):
+        # Arrange
+        python_cases = [base_red_check.Case(
+            "test_probe.ProbeTests.test_Given_A_When_B_Then_C", "scripts/test_probe.py", 1, 2)]
+        csharp_cases = self.cases()
+
+        # Act
+        python_offenders = base_red_check.report(
+            python_cases, [], {}, {base_red_check.PYTHON_LANE: []}, wrote=True)
+        csharp_offenders = base_red_check.report(
+            csharp_cases, [], {}, {"EditMode": []}, wrote=True)
+
+        # Assert
+        self.assertEqual(([case.verdict for case in python_offenders],
+                          [case.verdict for case in csharp_offenders]),
+                         ([base_red_check.BASE_UNSOUND], [base_red_check.BASE_UNSOUND]))
 
 
 class BranchReadingTests(unittest.TestCase):

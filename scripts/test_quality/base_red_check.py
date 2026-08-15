@@ -18,8 +18,8 @@ is indistinguishable, from the results file alone, from a base that built nothin
 was never asked. So each of those is closed separately:
 
 *The tree is read by cases the branch did not carry.* `canary_fixtures` picks fixtures of the base's
-own for a platform and `python_canaries` picks cases of the base's own for that lane, and where either
-found any, at least one has to pass. A tree where nothing built reports every case as uncompilable,
+own for a platform and `python_canaries` picks cases of the base's own for that lane. At least one has
+to exist and pass. A tree where nothing built reports every case as uncompilable,
 which is not a failure here, so without that reading such a run comes back green having measured
 nothing at all. The Python lane needs the same reading in its own spelling: a case that stopped before
 it disagreed is not a failure here either, so a lane in which none of them answered exits green
@@ -52,8 +52,8 @@ Inconclusive or Skipped there did not run to a verdict either, nor did one the r
 non-runnable or one whose run was cancelled. Counting any of those as red hands back the evidence the
 gate exists to demand, in the exact shape it was written to refuse: the branch adds a helper, every
 case in the module that reaches for it dies there, and the run reports them all as pinning something.
-So they take a verdict of their own, which says the base could not answer and leaves the red count to
-the cases that were answered.
+So they take a verdict of their own, which says the base could not answer, fails the gate, and leaves
+the red count to the cases that were answered.
 
 *An exception is not that reading by itself.* A branch that fixes a crash leaves the base throwing
 inside the production code the fix repairs, which is the base disagreeing in the plainest way there
@@ -68,9 +68,10 @@ what the results file carries.
 own -- which is what Unity's end-of-scope log check raises, and so what a fixture whose teardown
 disposes a base tree's crashing mount produces -- replaces the case's trace outright, marker and
 body's frames together, and arrives under the status a failed assertion carries with no label beside
-it. The section survives at the head of the message, which is built after that replacement, and that
-is where this reads it. Behind a body's own message it is not read: a case that disagreed did so
-whatever its scaffolding went on to do.
+it. The section survives at the head of the message, which is built after that replacement. This reads
+it only where the trace does not lead back to the case method, so an assertion beginning with those
+words remains a body's disagreement. Behind a body's own message it is not read: a case that disagreed
+did so whatever its scaffolding went on to do.
 
 *A case that belongs on the base says so*, above itself, with a reason:
 
@@ -113,7 +114,7 @@ DECLARED_STALE = "declared, and not as declared"
 NOT_REPORTED = "no result was written"
 BASE_UNSOUND = "the base tree cannot answer"
 
-FAILING_VERDICTS = (PASSED_ON_BASE, DECLARED_STALE, NOT_REPORTED, BASE_UNSOUND)
+FAILING_VERDICTS = (PASSED_ON_BASE, COULD_NOT_ANSWER, DECLARED_STALE, NOT_REPORTED, BASE_UNSOUND)
 
 # The one reading below that no runner reports: a case its scaffolding failed arrives under a status
 # and a label that name a disagreement, so the reading has to be taken rather than read off.
@@ -832,11 +833,19 @@ def threw_in_production(case):
 def scaffolded(case):
     """Whether a runner recorded this case's failure out of its scaffolding rather than its body.
 
-    Read off the message rather than the trace, for the shape `SCAFFOLD_MESSAGE` names: one where the
-    trace the marker would have stood in has been replaced.
+    The message names the section after its marker was replaced. A trace leading back to the case
+    method says the body supplied those words itself; the replacement trace does not carry that frame.
     """
     message = case.find("./failure/message")
-    return message is not None and bool(SCAFFOLD_MESSAGE.match((message.text or "").strip()))
+    match = (SCAFFOLD_MESSAGE.match((message.text or "").strip())
+             if message is not None else None)
+    if match is None:
+        return False
+    trace = case.find("./failure/stack-trace")
+    name = (case.get("fullname") or case.get("name") or "").split("(")[0].rsplit(".", 1)[-1]
+    body = re.search(r"(?:\.|<){}(?:\s*\(|>)".format(re.escape(name)),
+                     (trace.text or "") if trace is not None else "")
+    return body is None
 
 
 def reading_of(case):
@@ -1007,6 +1016,7 @@ def unsound_platforms(canaries, reported):
     broken = {}
     for platform, fixtures in canaries.items():
         if not fixtures:
+            broken[platform] = "no base-tree canary was available there"
             continue
         ran = [result for name, result in reported.items()
                if name.split("(")[0].rsplit(".", 1)[0] in fixtures]
@@ -1180,20 +1190,21 @@ def report(cases, control, reported, canaries=None, wrote=True):
         print("\n{} of {} case(s) sit in a fixture the base built none of, so the reading is that "
               "fixture's rather than each case's".format(len(unbuilt), len(cases)))
     offenders = [case for case in cases if case.verdict in FAILING_VERDICTS]
-    # Split by whose fault the verdict is, because one remedy does not cover both. A run that never
-    # measured a case is repaired in the run, and offering the declaration there sends the author to
-    # sharpen a case that may be perfectly sharp -- a neighbour's Assume is enough to land one here.
-    unmeasured = [case for case in offenders if case.verdict in (NOT_REPORTED, BASE_UNSOUND)]
-    answered = [case for case in offenders if case.verdict not in (NOT_REPORTED, BASE_UNSOUND)]
+    # Split by whether a behavioural verdict exists, because one remedy does not cover both. Offering
+    # a declaration where the run produced none sends the author to sharpen a case that may be perfectly
+    # sharp -- a neighbour's Assume is enough to land one here.
+    unanswered = [case for case in offenders
+                  if case.verdict in (COULD_NOT_ANSWER, NOT_REPORTED, BASE_UNSOUND)]
+    answered = [case for case in offenders if case not in unanswered]
     if answered:
         print("\n{} case(s) the base already answers. Green on both sides separates nothing: sharpen "
               "the\ncase until it goes red without this branch, or say why it belongs "
               "there:".format(len(answered)))
         print("  // GREEN_ON_BASE({}): <why>".format("|".join(CATEGORIES)))
-    if unmeasured:
-        print("\n{} case(s) the base run never measured, so none of them carries a reading either "
-              "way. A\ndeclaration does not answer for that -- the detail beside each says which part "
-              "of the run to\nrepair.".format(len(unmeasured)))
+    if unanswered:
+        print("\n{} case(s) yielded no base verdict, so none of them carries a reading either way. A\n"
+              "declaration does not answer for that -- the detail beside each says what to repair."
+              .format(len(unanswered)))
     return offenders
 
 

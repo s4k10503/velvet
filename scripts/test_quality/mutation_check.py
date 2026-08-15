@@ -217,7 +217,7 @@ def declarations_in(text):
         if not match:
             continue
         subject = index + 1
-        while subject < len(lines) and lines[subject].strip().startswith("//"):
+        while subject < len(lines) and lines[subject].strip() and not seen(subject).strip():
             subject += 1
         if subject >= len(lines) or not lines[subject].strip():
             continue

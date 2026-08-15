@@ -262,8 +262,9 @@ a pass. So a case that passes on the base fails the check, and a case that could
 not — it names something the branch adds, which is a pin doing its job — but that second reading is only
 believed on a tree the run proved can build and answer at all. Two things prove it. Cases of the
 base's own that the branch did not carry run alongside — C# fixtures for a platform, Python cases for
-that lane — and at least one has to pass; a run that wrote no results file at all fails outright rather
-than reading as a base that built none of the branch's tests.
+that lane — and at least one has to pass. A lane with no eligible canary fails closed, as does a run
+that wrote no results file at all, rather than reading either as a base that built none of the branch's
+tests.
 Alongside that, the cases the branch left alone in a file it changed nothing shared in are the base's own
 text, so one of those going red means the tree is answering about itself and that fixture's verdicts are
 withdrawn. Change a `[SetUp]`, a field, a private helper or anything under `TestUtilities/`, and those
@@ -273,7 +274,7 @@ Red on the base means the base ran the case and the case said no, and only that.
 reaching for what the branch adds — a Python import or attribute, a C# fixture reflecting for private
 production state the base has not got, which compiles there and throws where it would have compared —
 and a case the base reported Inconclusive, Skipped, non-runnable or cancelled, are reported as cases
-**the base could not answer**: no evidence either way, and not part of the red count. The distinction
+**the base could not answer**: no evidence either way, not part of the red count, and a failed gate. The distinction
 is what stops a branch that adds a helper, or a field, from being credited for the cases that die
 reaching for it.
 
@@ -294,8 +295,9 @@ a failed assertion carries with no label beside it. That is the shape a failing 
 scope produces, which is how a fixture whose `[TearDown]` disposes a mount the base crashes in gets here:
 Velvet logs a cleanup-path throw rather than rethrowing it, and the runner turns an unexpected error log
 into exactly that exception. The section survives at the head of the **message**, which the runner builds
-after the replacement, and that is where the check reads it — behind a body's own message it is not read,
-because a case that disagreed did so whatever its scaffolding went on to do.
+after the replacement. The check reads it only where the trace does not lead back to the case method;
+the same words at the head of a body's assertion remain that body's disagreement. Behind a body's own
+message it is not read, because a case that disagreed did so whatever its scaffolding went on to do.
 
 Two kinds of case belong on the base, and say so above themselves with a reason a reviewer can weigh:
 
