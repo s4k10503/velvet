@@ -109,6 +109,12 @@ namespace Velvet.Tests
         /// invocations pass through without blocking. Await the returned <c>Entered</c> to be sure the
         /// navigation has reached the blocker await before cancelling it.
         /// </summary>
+        /// <remarks>
+        /// <c>Entered</c> is raised from inside the predicate, so a Blocker the router stops consulting
+        /// never raises it and the await never returns. A fixture awaiting it therefore carries a
+        /// <c>[Timeout]</c>: without one that change hangs the whole run instead of failing the tests
+        /// that await it, and a mutation of the consultation gate cannot be measured at all.
+        /// </remarks>
         public static (Func<NavigationAttempt, CancellationToken, UniTask<bool>> Check, UniTaskCompletionSource Entered) MakeOneShotBlocker()
         {
             var entered = new UniTaskCompletionSource();

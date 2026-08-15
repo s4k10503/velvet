@@ -31,6 +31,9 @@ namespace Velvet.Tests
     /// location that navigation committed, rather than clearing state it never owned.</item>
     /// </list>
     /// </summary>
+    // Bounded because tests here await the blocker stubs' Entered signal, which a Blocker the router
+    // stops consulting never raises; RouteTestStubs.MakeOneShotBlocker states what that costs.
+    [Timeout(30000)]
     [TestFixture]
     internal sealed class RouterUnfinishedNavigationTests
     {
