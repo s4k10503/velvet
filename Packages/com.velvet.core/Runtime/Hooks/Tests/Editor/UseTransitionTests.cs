@@ -12,8 +12,8 @@ namespace Velvet.Tests
     /// false on the first render.</item>
     /// <item>State updates run inside <c>startTransition</c> are scheduled on the Transition lane and commit on the
     /// next flush, not synchronously during the call.</item>
-    /// <item>The render that commits a transition observes <c>isPending == false</c> where that commit is the
-    /// last thing the transition was waiting on. It observes it lit while something else still is: an
+    /// <item>The render that commits a transition observes <c>isPending == true</c> until its terminal commit
+    /// completes, then a follow-up render observes it false. It stays lit while something else still is: an
     /// <c>async</c> action in flight, whose pre-<c>await</c> write commits with the flag up, or a second
     /// fiber the same callback enrolled that this commit does not reach.</item>
     /// <item>Setting a state to an equal value inside a transition schedules no re-render.</item>
@@ -42,7 +42,7 @@ namespace Velvet.Tests
     /// <item>A transition's callback covers the updates it schedules on other fibers too, so a setter a component
     /// received as a prop is deferred by the transition that wraps the call. <c>isPending</c> then stays lit
     /// until each of those other fibers has discharged that work — committed it, unmounted, or had the
-    /// scheduler drop it — and the declaring component re-renders on the commit that finishes them,
+    /// scheduler drop it — and the declaring component re-renders after the commit that finishes them,
     /// including where nothing else would have re-rendered it, as for a write to a store another component
     /// reads, and whether or not it had the indicator up — that settle carries no counterpart of the
     /// exit's last-rendered term. Two such fibers wait on each other: the first to commit settles nothing. For an async
@@ -102,7 +102,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_StartedTransition_When_Flushed_Then_CommitRendersExactlyOnce()
+        public void Given_StartedTransition_When_Flushed_Then_ContentCommitAndPendingClearRender()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(TransitionRender, key: "transition"));
@@ -112,7 +112,8 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.AreEqual(2, s_transitionRenderCount, "The transition update commits in a single render on flush");
+            Assert.AreEqual(3, s_transitionRenderCount,
+                "The transition content commits while pending before the terminal clear renders");
         }
 
         [Test]
@@ -228,7 +229,37 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.AreEqual(2, s_transitionRenderCount, "The nested transition's update commits on flush");
+            Assert.AreEqual(5, s_transitionLastValue, "The nested transition's update commits on flush");
+        }
+
+        [Test]
+        public void Given_AnAsyncTransitionStartsAJoinedAsyncCall_When_TheOuterActionCompletes_Then_IsPendingWaitsForTheJoinedCall()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(TransitionRender, key: "transition"));
+            var outerGate = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
+            var joinedGate = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
+            var joinedStarted = false;
+            s_transitionStarter.Invoke(async () =>
+            {
+                await outerGate.Task;
+                s_transitionStarter.Invoke(async () =>
+                {
+                    joinedStarted = true;
+                    await joinedGate.Task;
+                });
+            });
+
+            // Act
+            outerGate.TrySetResult();
+            var result = (joinedStarted,
+                s_transitionFiber.TransitionSlots[0].HasActiveOwner,
+                s_transitionFiber.IsTransitionPending);
+            joinedGate.TrySetResult();
+
+            // Assert
+            Assert.That(result, Is.EqualTo((true, true, true)),
+                "A joined async call keeps the shared transition pending after the action that started it completes");
         }
 
         // GREEN_ON_BASE(characterization): the unwind closed the per-fiber scope the base kept too.
@@ -846,7 +877,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AChildsTransitionOnTheParentsState_When_TheParentCommitsIt_Then_TheChildRendersOnceForThatCommit()
+        public void Given_AChildsTransitionOnTheParentsState_When_TheParentCommitsIt_Then_TheChildRendersPendingAndCleared()
         {
             // Arrange — the child is pending, so this commit owes it both the parent's new output and the
             // render that takes its indicator down
@@ -860,8 +891,8 @@ namespace Velvet.Tests
             mounted.GetSchedulerForTest().DrainDelayedForTest();
 
             // Assert — the difference, since the mount and the pending render both land before the act
-            Assert.That(s_propSetterChildRenderCount - rendersBeforeTheCommit, Is.EqualTo(1),
-                "The render the settle owes is the one the commit already makes, not a pass of its own");
+            Assert.That(s_propSetterChildRenderCount - rendersBeforeTheCommit, Is.EqualTo(2),
+                "The parent commit renders the child pending before the terminal clear renders it again");
         }
 
         [Test]

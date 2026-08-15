@@ -118,12 +118,14 @@ namespace Velvet
         // on that clean fiber — the settle-time sweep (SettleTransitionPending) must not read the absence of
         // enrolled work as "the transition settled" and wipe the flag mid-flight. Only the async completion
         // path clears IsPending while this is set.
-        public bool IsAsyncInFlight;
-        // Set while a StartTransition call owns THIS slot's pending lifecycle, so a further call on the
-        // same slot joins it instead of opening a second scope whose exit would clear a flag the first
-        // call is still managing. Scoped to the slot, not the fiber: a call on a different slot is a
-        // concurrent transition, not a nested one, and owns its own pending flag.
-        public bool HasActiveOwner;
+        public int AsyncOwnerDepth;
+        public bool IsAsyncInFlight => AsyncOwnerDepth > 0;
+        // Every StartTransition call sharing THIS slot contributes one level until its callback completes.
+        // A further call joins the pending lifecycle already open instead of clearing the flag when an outer
+        // callback returns first. Scoped to the slot, not the fiber: a call on a different slot is a concurrent
+        // transition, not a nested one, and owns its own pending flag.
+        public int OwnerDepth;
+        public bool HasActiveOwner => OwnerDepth > 0;
         // The fibers a write scheduled under THIS slot's open scope enrolled the Transition lane on, each
         // removed by the drain that commits it. Recorded per fiber rather than as a flag on this slot,
         // because the component owning the state a callback writes need not be the one the hook was

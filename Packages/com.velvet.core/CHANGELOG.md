@@ -92,6 +92,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `UseTransition` no longer clears `isPending` when the first slice of a time-sliced transition commit
+  parks. The flag now spans every parked slice and clears after the terminal commit; that commit asks for
+  the render that takes an observed indicator down.
+- A same-starter async `startTransition` call keeps the joined transition owned until its own task
+  completes. If an outer action started that call without awaiting it and then completed first, its exit
+  used to release the shared slot and clear `isPending` while the joined action was still awaiting.
+
 - A child that moves from one `gap-*`, `divide-*` or `grid-cols-*` container to another keeps the
   spacing, divider or column sizing the container it joined wrote. Each of the three tracked the children
   it had written to by raw reference and reset the value on one no longer in the container, and the
@@ -2077,4 +2084,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Preserve `StyleAttributeVariantClass` presence matching for `data-[key]:` variants (do not coerce
   to empty-string equality).
 - `V.When` throws `ArgumentNullException` when the condition is true but the factory is null.
-

@@ -298,8 +298,7 @@ namespace Velvet
                 // The Transition label alone is not the settled signal — starvation promotion erases it
                 // while the promoted work is still queued (possibly parked behind an Urgent drain), so
                 // the promoted marker must ALSO be clear before the pending flags may sweep.
-                if (fiber.LaneQueue.Count == 0
-                    || (!fiber.LaneQueue.Contains(FiberUpdatePriority.Transition) && !fiber.HasPromotedTransition))
+                if (ShouldSettleBeforeReconcile(fiber, drainsTransitionWork))
                 {
                     fiber.SettleTransitionPending();
                 }
@@ -329,6 +328,7 @@ namespace Velvet
             // would observe null. ContinueReconcile's terminal chunk runs these once the work completes.
             if (fiber.Reconciler?.HasPendingWork != true)
             {
+                SettleCompletedTransition(fiber);
                 // Bottom-up commit — descendant effects run before this fiber's so a
                 // parent effect that reads a child imperative handle / measured size observes the
                 // child's already-applied effect. The drain pops fibers in LIFO order (deepest first).
@@ -338,6 +338,29 @@ namespace Velvet
                 // DOM mutations are committed so a has- ancestor that did not itself reconcile is not left stale.
                 // Scoped to this flush's region (the fiber's MountPoint subtree) — see RefreshHasVariants.
                 FiberNodePatcher.RefreshHasVariants(fiber.Reconciler?.Context, fiber.MountPoint);
+                FlushCompletedTransitionIndicator(fiber);
+            }
+        }
+
+        private static void SettleCompletedTransition(ComponentFiber fiber)
+        {
+            if (fiber.PendingReconcileDrainsTransitionWork)
+            {
+                fiber.SettleTransitionPendingAfterCommit();
+            }
+        }
+
+        private static bool ShouldSettleBeforeReconcile(ComponentFiber fiber, bool drainsTransitionWork)
+            => !drainsTransitionWork
+                && (fiber.LaneQueue.Count == 0
+                    || (!fiber.LaneQueue.Contains(FiberUpdatePriority.Transition)
+                        && !fiber.HasPromotedTransition));
+
+        private static void FlushCompletedTransitionIndicator(ComponentFiber fiber)
+        {
+            if (fiber.PendingReconcileDrainsTransitionWork)
+            {
+                fiber.Reconciler?.Context.BatchScheduler.FlushImmediate();
             }
         }
 
@@ -433,6 +456,7 @@ namespace Velvet
                     var completedBaseline = fiber.PendingOldTree;
                     fiber.PendingOldTree = null;
                     FiberTreeReturn.ReturnRetiredTree(completedBaseline, fiber);
+                    SettleCompletedTransition(fiber);
                     // The commit is now fully applied — run the insertion / layout / passive effects FlushState
                     // deferred while this reconcile was paused. Runs once, only on the terminal chunk.
                     // Bottom-up — descendant effects (LIFO drain) before this fiber's.
@@ -457,6 +481,10 @@ namespace Velvet
                 var abortedBaseline = fiber.PendingOldTree;
                 fiber.PendingOldTree = null;
                 FiberTreeReturn.ReturnRetiredTree(abortedBaseline, fiber);
+                if (fiber.PendingReconcileDrainsTransitionWork)
+                {
+                    fiber.SettleTransitionPending();
+                }
                 FiberErrorBoundary.OnRenderError(fiber, ex);
             }
             finally
@@ -518,18 +546,13 @@ namespace Velvet
                 return;
             }
 
-            // Joined call: the owner keeps the pending lifecycle, so a joined call cannot clear a flag the
-            // owner is still managing. It opens its own scope regardless — an owner parked on an await has
-            // none open, and these updates were explicitly wrapped in a transition.
-            if (slot.HasActiveOwner)
+            if (!slot.HasActiveOwner)
             {
-                RunInTransitionScope(slot, updates);
-                return;
+                slot.IsPending = true;
+                slot.OwnerGeneration++;
             }
-
-            slot.IsPending = true;
-            slot.HasActiveOwner = true;
-            var ownerGeneration = ++slot.OwnerGeneration;
+            var ownerGeneration = slot.OwnerGeneration;
+            slot.OwnerDepth++;
             try
             {
                 RunInTransitionScope(slot, updates);
@@ -538,12 +561,12 @@ namespace Velvet
             {
                 if (slot.OwnerGeneration == ownerGeneration)
                 {
-                    slot.HasActiveOwner = false;
+                    slot.OwnerDepth--;
                     // A callback that enrolled nothing has settled the moment it returns, whatever else the
                     // fiber is busy with — the previous fiber-wide dirty test held isPending up for the
                     // duration of another slot's work. Once it did enrol, what settles it is the drain of
                     // each fiber it enrolled — see ComponentFiber.DischargeTransitionEnrolments.
-                    if (!slot.HasQueuedWork)
+                    if (!slot.HasActiveOwner && !slot.HasQueuedWork)
                     {
                         var showedPending = slot.IsPending && slot.LastRenderedPending;
                         slot.IsPending = false;
@@ -631,20 +654,17 @@ namespace Velvet
                 return;
             }
 
-            // Same slot-ownership join as the sync overload.
-            if (slot.HasActiveOwner)
+            if (!slot.HasActiveOwner)
             {
-                await RunInTransitionScope(slot, asyncUpdates);
-                return;
+                slot.IsPending = true;
+                slot.OwnerGeneration++;
             }
-
-            slot.IsPending = true;
             // While the action is awaiting (before its setState calls land) the fiber can be entirely
             // clean, and a drain callback armed earlier that fires on that clean fiber must not read the
             // empty lane queue as this transition having settled (see SettleTransitionPending).
-            slot.IsAsyncInFlight = true;
-            slot.HasActiveOwner = true;
-            var ownerGeneration = ++slot.OwnerGeneration;
+            slot.AsyncOwnerDepth++;
+            slot.OwnerDepth++;
+            var ownerGeneration = slot.OwnerGeneration;
             var suspended = false;
             try
             {
@@ -663,10 +683,10 @@ namespace Velvet
                 // must not write over whatever took the slot since — see ReleaseTransitionSlotOwnership.
                 if (slot.OwnerGeneration == ownerGeneration)
                 {
-                    slot.IsAsyncInFlight = false;
-                    slot.HasActiveOwner = false;
+                    slot.AsyncOwnerDepth--;
+                    slot.OwnerDepth--;
                     // Same slot-scoped exit as the sync overload.
-                    if (fiber.IsDisposed || !slot.HasQueuedWork)
+                    if (!slot.HasActiveOwner && (fiber.IsDisposed || !slot.HasQueuedWork))
                     {
                         var wasPending = slot.IsPending;
                         slot.IsPending = false;

@@ -453,6 +453,26 @@ namespace Velvet
         }
 
         /// <summary>
+        /// Settles transition work after its terminal reconcile slice committed, then requests the render that
+        /// takes down any indicator whose last render observed it as pending.
+        /// </summary>
+        internal void SettleTransitionPendingAfterCommit()
+        {
+            SettleTransitionPending();
+            if (TransitionSlots == null)
+            {
+                return;
+            }
+            foreach (var slot in TransitionSlots)
+            {
+                if (!slot.IsPending && slot.LastRenderedPending)
+                {
+                    RequestRenderForClearedPending(slot);
+                }
+            }
+        }
+
+        /// <summary>
         /// Clears the pending flag on this fiber's own transition slots with nothing outstanding, leaving the
         /// rest lit. Used where the pending Transition lane is not evidence either way: see
         /// <c>FiberRenderer.SubsumeFiberIntoThisPass</c>, whose surviving lane may have been requested by a
@@ -520,8 +540,8 @@ namespace Velvet
             foreach (var slot in TransitionSlots)
             {
                 slot.OwnerGeneration++;
-                slot.HasActiveOwner = false;
-                slot.IsAsyncInFlight = false;
+                slot.OwnerDepth = 0;
+                slot.AsyncOwnerDepth = 0;
                 ClearTransitionEnrolments(slot);
                 slot.IsPending = false;
             }
