@@ -1259,6 +1259,23 @@ class NarrowedRunTests(unittest.TestCase):
         self.assertEqual(code, 1)
 
 
+class EmitLinesTests(unittest.TestCase):
+    """A mode a read-only reviewer is told to run, on the strength of its mutating no source."""
+
+    def test_Given_AnEmptyEmitLinesOperand_When_TheFlagIsRead_Then_NoCampaignStarts(self):
+        # Arrange — an empty operand, which read as absence and fell through to the campaign, so a
+        # command contracted to write nothing put a mutation into a package source.
+        campaign = StubbedCampaign()
+
+        # Act — the emit path itself refuses an empty destination; what is asked here is what ran
+        # before it got there.
+        with contextlib.suppress(OSError):
+            campaign.run("--emit-lines", "")
+
+        # Assert — nothing asked whether the machine was free, so neither a baseline nor a mutant ran.
+        self.assertEqual(campaign.seen, [])
+
+
 class ReceiptTests(unittest.TestCase):
     """What asks whether the campaign was run at all.
 
