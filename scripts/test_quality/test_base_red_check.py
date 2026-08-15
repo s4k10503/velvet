@@ -557,6 +557,38 @@ class DeclarationTests(unittest.TestCase):
         # Assert
         self.assertEqual(carried, [None])
 
+    def test_Given_ACSharpStringMarkerOnALineThatAlsoComments_When_TheFileIsRead_Then_NoCaseCarriesIt(self):
+        # Arrange — the literal closes and a comment opens on the one line. Asking whether the line
+        # is commented accepts a marker that sits in neither, and the written count accepts it too,
+        # so the file balances and the case is silenced with nothing having written a declaration.
+        text = ('class C\n{\n'
+                '    const string Sample = @"\n'
+                '// GREEN_ON_BASE(characterization): the keyed-reorder order this preserves."; // note\n'
+                '    [Test]\n    public void Given_A_When_B_Then_C() => Assert.Pass();\n}\n')
+
+        # Act
+        carried = [case.declaration for case
+                   in base_red_check.cases_in("Packages/p/Runtime/A/Tests/Editor/CTests.cs", text)]
+
+        # Assert
+        self.assertEqual(carried, [None])
+
+    def test_Given_APythonStringMarkerOnALineThatAlsoComments_When_TheFileIsRead_Then_NoCaseCarriesIt(self):
+        # Arrange — the other lane's spelling of the same line, in the shape these modules hold: the
+        # triple quote closes the fixture text and a comment follows it.
+        module = ('import unittest\n\n\n'
+                  'class Fixture(unittest.TestCase):\n'
+                  '    SNIPPET = """\n'
+                  '# GREEN_ON_BASE(refactor): the settle-path names this rename preserves.""" # note\n'
+                  '    def test_something(self):\n        self.assertTrue(True)\n')
+
+        # Act
+        carried = [case.declaration for case
+                   in base_red_check.cases_in("scripts/test_quality/test_probe.py", module)]
+
+        # Assert
+        self.assertEqual(carried, [None])
+
     def test_Given_APythonStringMarkerAboveACase_When_TheFileIsRead_Then_NoCaseCarriesIt(self):
         # Arrange -- the other lane's spelling of it, in the shape these modules already hold: a
         # marker inside the text a fixture asserts over, with a case directly beneath.
@@ -643,6 +675,20 @@ class SelectionTests(unittest.TestCase):
 
         # Act / Assert
         self.assertEqual(base_red_check.outside(cases, {20}), set())
+
+    def test_Given_AStringLineOpeningLikeAComment_When_TheUnjudgedLinesAreCounted_Then_ItIsAmongThem(self):
+        # Arrange -- a field holding a C# fixture as data, whose last line opens with `//` and sits
+        # directly above a case. Walking the block up over it absorbs the field into that case, and
+        # what a case covers is what `outside` subtracts: the line stops being reported as shared,
+        # so a run stops saying the file's other cases are no longer the base's text.
+        text = ('class C\n{\n'
+                '    const string Sample = @"[Test]\n'
+                '// a line of the fixture this asserts over";\n'
+                '    [Test]\n    public void Given_A_When_B_Then_C() => Assert.Pass();\n}\n')
+        cases = base_red_check.csharp_cases(text)
+
+        # Act / Assert
+        self.assertEqual(base_red_check.outside(cases, {4}), {4})
 
     def test_Given_AFileTheBranchAddedWhole_When_ItIsSelected_Then_EveryCaseIsTaken(self):
         # Arrange
@@ -1340,6 +1386,30 @@ class ResultLabelTests(unittest.TestCase):
         """A case wrapped by a test action that threw after it. Same shape, one attribute over."""
         return cls.threw(*body, "--AfterTest", *action)
 
+    @classmethod
+    def threw_before_the_body(cls, action):
+        """A case whose wrapping action threw ahead of it, which leaves the marker opening the trace.
+
+        An action's before half stands where a setup's does. Which sections a runner opens at all is
+        `ScaffoldingSectionRecordingTests`'s question rather than this module's.
+        """
+        return cls.threw("--BeforeTest", *action)
+
+    @staticmethod
+    def unlabelled(message, *frames):
+        """A reported case carrying no label at all, which is what a failed assertion arrives as.
+
+        The shape a `ResultStateException` out of a scaffold lands in too: its state carries an empty
+        label, so nothing is written beside the result, and the trace it replaced the case's own with
+        opens with no marker. `ScaffoldingSectionRecordingTests` pins both halves against the runner.
+        """
+        return ('<test-run>'
+                '<test-case fullname="N.ProbeTests.Given_A_When_B_Then_C" result="Failed">'
+                '<failure><message>{}</message>{}</failure>'
+                '</test-case></test-run>'.format(
+                    message,
+                    '<stack-trace>{}</stack-trace>'.format("\n".join(frames)) if frames else ""))
+
     def refused(self, label, *frames):
         """A reported case the runner stopped from outside its body, over `frames` if any."""
         return self.labelled(label, "the runner gave a reason of its own", *frames)
@@ -1499,6 +1569,20 @@ class ResultLabelTests(unittest.TestCase):
         # Assert
         self.assertEqual(verdict, base_red_check.COULD_NOT_ANSWER)
 
+    # GREEN_ON_BASE(characterization): a cut the script already made and this module measured nothing
+    # of, so the reading it pins is the base's as much as this branch's.
+    def test_Given_ATestActionThrowAheadOfTheBody_When_ItIsDecided_Then_ItIsNotCountedRed(self):
+        # Arrange -- the fourth section, and the only one this module measured nothing of: dropping
+        # its name from the script reddened no case here. A `[Test, Performance]` case is wrapped by
+        # one, `PerformanceAttribute` being an `IOuterUnityTestAction`, so four PlayMode fixtures in
+        # this repository carry the section.
+        # Act
+        verdict = self.verdict_for(
+            self.threw_before_the_body((self.PRODUCTION_FRAME, self.SETUP_FRAME)))
+
+        # Assert
+        self.assertEqual(verdict, base_red_check.COULD_NOT_ANSWER)
+
     # GREEN_ON_BASE(characterization): a body's own production throw is red on the base already.
     # Naming the scaffolding sections one by one, rather than matching every opener of their shape,
     # must not take that away.
@@ -1523,6 +1607,46 @@ class ResultLabelTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(verdict, base_red_check.COULD_NOT_ANSWER)
+
+    def test_Given_AScaffoldThrowCarryingNoLabel_When_ItIsDecided_Then_ItIsNotCountedRed(self):
+        # Arrange -- Unity's end-of-scope log check raises a `ResultStateException` out of a teardown,
+        # which arrives as a plain failure: no label, and a trace the runner replaced whole, so the
+        # marker and the body's frames are both gone. The frames left behind name production code, so
+        # a reading taken over them credits the base with a disagreement the case never had.
+        # Act
+        verdict = self.verdict_for(self.unlabelled(
+            "TearDown : Unhandled log message: 'a cleanup threw'. Use UnityEngine.TestTools.LogAssert",
+            self.PRODUCTION_FRAME, self.TEARDOWN_FRAME))
+
+        # Assert -- the base agreed with this case, and its scaffolding is what failed it.
+        self.assertEqual(verdict, base_red_check.COULD_NOT_ANSWER)
+
+    def test_Given_ADeclaredCaseWhoseScaffoldFailedIt_When_ItIsDecided_Then_ItIsNotCalledStale(self):
+        # Arrange -- the harm this reading exists to prevent: a correct declaration told to delete
+        # itself over a case whose body the base never disagreed with.
+        declared = base_red_check.Declaration(
+            "characterization", "the keyed-reorder order this refactor must not change")
+
+        # Act
+        verdict = self.verdict_for(self.unlabelled(
+            "SetUp : Unhandled log message: 'a mount threw'. Use UnityEngine.TestTools.LogAssert"),
+            declared)
+
+        # Assert
+        self.assertNotIn(verdict, base_red_check.FAILING_VERDICTS)
+
+    # GREEN_ON_BASE(characterization): the red a body's own disagreement already carries, which
+    # reading the message must not widen over.
+    def test_Given_AScaffoldThrowAfterTheBodyDisagreed_When_ItIsDecided_Then_ItIsStillCountedRed(self):
+        # Arrange -- the other half of the line. A body that disagreed leaves its own message, and
+        # the section is appended behind it, so the head of the message is what separates a case its
+        # scaffolding decided from one that disagreed and then had a scaffold throw as well.
+        # Act
+        verdict = self.verdict_for(self.unlabelled(
+            "Expected: (1, a)\nTearDown : Unhandled log message: 'and then a cleanup threw'"))
+
+        # Assert
+        self.assertEqual(verdict, base_red_check.RED_ON_BASE)
 
     def test_Given_AThrowNamingNoFileOfThisTree_When_ItIsDecided_Then_ItKeepsTheNonAnswer(self):
         # Arrange -- a throw whose trace places it on neither side. The reading falls to the side

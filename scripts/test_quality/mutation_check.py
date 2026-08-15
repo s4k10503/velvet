@@ -40,6 +40,7 @@ already touching, and two of them reached a commit that way.
 """
 
 import argparse
+import bisect
 import hashlib
 import json
 import os
@@ -147,20 +148,47 @@ class Declaration:
         return "Declaration({!r}, line {})".format(self.category, self.line)
 
 
-def commented_lines(text):
-    """The 1-based lines a comment covers, which is the only place a declaration is read from.
+def comment_spans(text):
+    """(start, end) for each span `mask_spans` read as a comment."""
+    return [(start, end) for start, end, kind in mask_spans(text)
+            if kind in (LINE_COMMENT, BLOCK_COMMENT)]
+
+
+def declared_lines(text, marker, spans):
+    """1-based line -> the `marker` match that opens inside one of `spans`, for each line holding one.
 
     A string literal is what this rules out. A marker there is the material of whatever asserts over
-    the declaration syntax, and reading one off the raw line adopts it as an answer for the statement
-    beneath -- which silences that statement instead of reporting it.
+    the declaration syntax, and adopting it as an answer for the statement beneath silences that
+    statement instead of reporting it.
+
+    Membership is the match's own offset rather than its line's, because one line can carry a literal
+    and a comment at once -- a verbatim string closing above a trailing remark is the shape in this
+    repository's own fixtures. Asked by the line, both the reading and the count that exists to catch
+    a lost declaration accept such a marker, so the file balances and nothing reports it.
     """
-    covered = set()
-    for start, end, kind in mask_spans(text):
-        if kind not in (LINE_COMMENT, BLOCK_COMMENT):
+    starts = [start for start, _ in line_spans(text)]
+    found = {}
+    for match in marker.finditer(text):
+        if any(start <= match.start() < end for start, end in spans):
+            found.setdefault(bisect.bisect_right(starts, match.start()), match)
+    return found
+
+
+def comment_lines(text, spans):
+    """The 1-based lines whose first non-space character sits inside one of `spans`.
+
+    Which lines are prose rather than which hold a marker, so a block comment's continuation counts
+    and a remark trailing a statement does not.
+    """
+    found = set()
+    for number, (start, end) in enumerate(line_spans(text), start=1):
+        line = text[start:end]
+        if not line.strip():
             continue
-        covered.update(range(text.count("\n", 0, start) + 1,
-                             text.count("\n", 0, max(start, end - 1)) + 2))
-    return covered
+        head = start + len(line) - len(line.lstrip())
+        if any(opened <= head < closed for opened, closed in spans):
+            found.add(number)
+    return found
 
 
 def declarations_in(text):
@@ -177,15 +205,15 @@ def declarations_in(text):
     lines = text.splitlines()
     mask = code_mask(text)
     spans = line_spans(text)
-    commented = commented_lines(text)
+    declared = declared_lines(text, DECLARATION, comment_spans(text))
 
     def seen(number):
         start, end = spans[number]
         return "".join(text[offset] for offset in range(start, end) if mask[offset])
 
     found = []
-    for index, line in enumerate(lines):
-        match = DECLARATION.search(line) if index + 1 in commented else None
+    for index in range(len(lines)):
+        match = declared.get(index + 1)
         if not match:
             continue
         subject = index + 1

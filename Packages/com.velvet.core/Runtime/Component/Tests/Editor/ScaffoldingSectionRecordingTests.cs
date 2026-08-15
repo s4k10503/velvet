@@ -10,13 +10,13 @@ using NUnit.Framework.Internal.Commands;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Holds the markers <c>scripts/test_quality/base_red_check.py</c> cuts a stack trace at against the
-    /// ones a runner opens a scaffolding section with. A case carries what its setup, teardown or test
-    /// actions threw on its own result, under the status and label a throw from its body would have
-    /// carried, so the script reads only the section in front of the first marker to decide which side
-    /// threw. Read past one, a scaffold that reached production code is credited to the merge base as a
-    /// disagreement over a case the base agreed with; over a case declared green on the base, that
-    /// reading tells the author to delete a correct declaration.
+    /// Holds the sections <c>scripts/test_quality/base_red_check.py</c> names against the ones a runner
+    /// opens around a test case. A case carries what its setup, teardown or test actions threw on its
+    /// own result, under the status and label a throw from its body would have carried, so the script
+    /// reads only the section in front of the first marker to decide which side threw. Read past one, a
+    /// scaffold that reached production code is credited to the merge base as a disagreement over a case
+    /// the base agreed with; over a case declared green on the base, that reading tells the author to
+    /// delete a correct declaration.
     /// </summary>
     /// <remarks>Pinned here for the reason <c>ResultStateVocabularyTests</c> is.</remarks>
     [TestFixture]
@@ -24,17 +24,24 @@ namespace Velvet.Tests
     {
         private const string Script = "scripts/test_quality/base_red_check.py";
 
-        private static readonly Regex CutMarkers =
-            new(@"SCAFFOLD_SECTION\s*=\s*re\.compile\(r""\^--\(\?:([A-Za-z|]+)\)", RegexOptions.Compiled);
+        private static readonly Regex SectionTuple =
+            new(@"SCAFFOLD_SECTIONS\s*=\s*\(([^)]*)\)", RegexOptions.Compiled);
 
-        /// <summary>Where the script cuts, read out of the script so neither side is written from memory.</summary>
-        private static string[] ScriptMarkers()
+        private static readonly Regex Quoted = new("\"([^\"]+)\"", RegexOptions.Compiled);
+
+        /// <summary>The sections the script names, read out of it so neither side is written from memory.</summary>
+        private static string[] ScriptSections()
         {
-            var found = CutMarkers.Match(File.ReadAllText(Path.GetFullPath(Script)));
-            return found.Success
-                ? found.Groups[1].Value.Split('|').Select(name => "--" + name).OrderBy(name => name).ToArray()
+            var tuple = SectionTuple.Match(File.ReadAllText(Path.GetFullPath(Script)));
+            return tuple.Success
+                ? Quoted.Matches(tuple.Groups[1].Value).Select(match => match.Groups[1].Value)
+                    .OrderBy(name => name).ToArray()
                 : Array.Empty<string>();
         }
+
+        /// <summary>Those sections as the marker that opens one, which is where the script cuts a trace.</summary>
+        private static string[] ScriptMarkers()
+            => ScriptSections().Select(name => "--" + name).ToArray();
 
         /// <summary>An exception that has been thrown, so it carries the trace an unthrown one has not.</summary>
         private static Exception Thrown(string message, Exception inner = null)
@@ -44,6 +51,23 @@ namespace Velvet.Tests
                 throw new InvalidOperationException(message, inner);
             }
             catch (InvalidOperationException caught)
+            {
+                return caught;
+            }
+        }
+
+        /// <summary>
+        /// A thrown exception carrying a result state of its own, which is the shape Unity's end-of-scope
+        /// log check raises out of a scaffolding section. <c>AssertionException</c> stands in for it
+        /// because the runner branches on the base type they share, and because that type is public.
+        /// </summary>
+        private static Exception ThrownWithAState(string message)
+        {
+            try
+            {
+                throw new AssertionException(message);
+            }
+            catch (AssertionException caught)
             {
                 return caught;
             }
@@ -114,20 +138,26 @@ namespace Velvet.Tests
                 .ToArray();
         }
 
-        /// <summary>Opens a section the way the runner does, and hands back the line it opened with.</summary>
-        private static string SectionOpenedBy(string prefix)
+        /// <summary>Records <paramref name="thrown"/> onto a result the way the runner records a scaffold's throw.</summary>
+        private static TestCaseResult RecordedUnder(string prefix, Exception thrown,
+            TestCaseResult onto = null)
         {
             var record = Runner()?.GetType("UnityEngine.TestRunner.NUnitExtensions.TestResultExtensions")
                 ?.GetMethod("RecordPrefixedException", Any);
-            if (record == null)
-            {
-                return "<no recorder>";
-            }
-
-            var result = CaseResult();
-            record.Invoke(null, new object[] { result, prefix, Thrown("a scaffold threw"), null });
-            return FirstLine(result.StackTrace);
+            var result = onto ?? CaseResult();
+            record?.Invoke(null, new object[] { result, prefix, thrown, null });
+            return result;
         }
+
+        private static bool HasRecorder()
+            => Runner()?.GetType("UnityEngine.TestRunner.NUnitExtensions.TestResultExtensions")
+                ?.GetMethod("RecordPrefixedException", Any) != null;
+
+        /// <summary>Opens a section the way the runner does, and hands back the line it opened with.</summary>
+        private static string SectionOpenedBy(string prefix)
+            => HasRecorder()
+                ? FirstLine(RecordedUnder(prefix, Thrown("a scaffold threw")).StackTrace)
+                : "<no recorder>";
 
         [Test]
         public void Given_ATeardownThrowOnACaseThatLeftNoTrace_When_TheResultIsRead_Then_AScriptMarkerOpensIt()
@@ -191,6 +221,71 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(opened, Is.EqualTo(ScriptMarkers()));
+        }
+
+        // GREEN_ON_BASE(characterization): what a throw carrying its own result state leaves behind,
+        // which is what the script reads the message for rather than the trace.
+        [Test]
+        public void Given_AThrowCarryingAStateOutOfAScaffold_When_TheResultIsRead_Then_OnlyTheMessageNamesTheSection()
+        {
+            // Arrange — the body passed, so everything on this result is the scaffold's.
+            var result = RecordedUnder("TearDown", ThrownWithAState("an unhandled log message"));
+
+            // Act
+            var opened = FirstLine(result.StackTrace ?? string.Empty);
+
+            // Assert — the trace no longer opens with a marker and the message does open with the
+            // section, so one comparison over the pair says which of them the script can read.
+            Assert.That((ScriptMarkers().Contains(opened),
+                    result.Message.StartsWith("TearDown : ", StringComparison.Ordinal)),
+                Is.EqualTo((false, true)));
+        }
+
+        // GREEN_ON_BASE(characterization): the two attributes that would separate such a result from
+        // a body that failed an assertion, and are the same on both.
+        [Test]
+        public void Given_AThrowCarryingAStateOutOfAScaffold_When_ItIsWrittenToXml_Then_NoLabelStandsBesideIt()
+        {
+            // Arrange
+            var result = RecordedUnder("TearDown", ThrownWithAState("an unhandled log message"));
+
+            // Act
+            var written = result.ToXml(recursive: false);
+
+            // Assert
+            Assert.That((written.Attributes["result"], written.Attributes["label"]),
+                Is.EqualTo(("Failed", (string)null)));
+        }
+
+        // GREEN_ON_BASE(characterization): that such a result still carries a trace. Reading its
+        // absence instead of the message was the alternative, and there is no absence to read.
+        [Test]
+        public void Given_AThrowCarryingAStateOutOfAScaffold_When_TheResultIsRead_Then_ItStillCarriesATrace()
+        {
+            // Arrange
+            var result = RecordedUnder("TearDown", ThrownWithAState("an unhandled log message"));
+
+            // Act
+            var trace = result.StackTrace;
+
+            // Assert
+            Assert.That(string.IsNullOrWhiteSpace(trace), Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): where a body's own message stands once a scaffold has
+        // thrown behind it, which is what keeps a case that disagreed from reading as one it did not.
+        [Test]
+        public void Given_AScaffoldThrowAfterTheBodyFailed_When_TheResultIsRead_Then_TheBodysMessageStandsInFront()
+        {
+            // Arrange
+            var result = CaseResult();
+            result.RecordException(ThrownWithAState("the body disagreed"));
+
+            // Act
+            RecordedUnder("TearDown", ThrownWithAState("and then a cleanup threw"), result);
+
+            // Assert
+            Assert.That(FirstLine(result.Message), Is.EqualTo("the body disagreed"));
         }
 
         // GREEN_ON_BASE(characterization): an opener the throw itself brought is not a section marker.

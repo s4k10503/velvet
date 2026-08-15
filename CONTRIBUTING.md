@@ -281,11 +281,21 @@ An exception is not that reading on its own. A branch that fixes a crash leaves 
 the production code the fix repairs, which is the base disagreeing and stays **red on the base**. The two
 are told apart by the first frame of the throw that names a file of this repository — production code, or
 the test side — read over the throw the case's own body left. A case carries what its scaffolding threw
-as well, each section under a marker of its own: a `[TearDown]` or `[UnityTearDown]` reaches past what
-the case asked about, and a `[SetUp]` or `[UnitySetUp]` that threw means the body never ran at all — so a
-fixture that mounts in its setup, against a base that crashes there, is not the base disagreeing with the
-case. A throw that names no file of this repository keeps the non-answer, so what a crash regression is
-read as is bounded by the stack trace its results file carries.
+as well, so the reading stops at the first section a runner opened: a `[TearDown]`, a `[UnityTearDown]`
+or the after half of a test action reaches past what the case asked about, and a `[SetUp]`, a
+`[UnitySetUp]` or a before half that threw means the body never ran at all — so a fixture that mounts in
+its setup, against a base that crashes there, is not the base disagreeing with the case. A throw that
+names no file of this repository keeps the non-answer, so what a crash regression is read as is bounded
+by the stack trace its results file carries.
+
+Not every scaffolding throw opens a section in the trace. One carrying a result state of its own replaces
+the trace outright — the section marker and the body's own frames together — and arrives under the status
+a failed assertion carries with no label beside it. That is the shape a failing log inside a teardown's
+scope produces, which is how a fixture whose `[TearDown]` disposes a mount the base crashes in gets here:
+Velvet logs a cleanup-path throw rather than rethrowing it, and the runner turns an unexpected error log
+into exactly that exception. The section survives at the head of the **message**, which the runner builds
+after the replacement, and that is where the check reads it — behind a body's own message it is not read,
+because a case that disagreed did so whatever its scaffolding went on to do.
 
 Two kinds of case belong on the base, and say so above themselves with a reason a reviewer can weigh:
 

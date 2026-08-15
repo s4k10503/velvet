@@ -64,6 +64,14 @@ as well as its own -- a setup, a teardown or a test action, each reaching what t
 about. A throw naming no such file keeps the non-answer, so what this reads as red is bounded by
 what the results file carries.
 
+*And a scaffolding throw does not always say so in the trace.* One carrying a result state of its
+own -- which is what Unity's end-of-scope log check raises, and so what a fixture whose teardown
+disposes a base tree's crashing mount produces -- replaces the case's trace outright, marker and
+body's frames together, and arrives under the status a failed assertion carries with no label beside
+it. The section survives at the head of the message, which is built after that replacement, and that
+is where this reads it. Behind a body's own message it is not read: a case that disagreed did so
+whatever its scaffolding went on to do.
+
 *A case that belongs on the base says so*, above itself, with a reason:
 
     // GREEN_ON_BASE(characterization): the keyed-reorder order this refactor must not change.
@@ -107,15 +115,20 @@ BASE_UNSOUND = "the base tree cannot answer"
 
 FAILING_VERDICTS = (PASSED_ON_BASE, DECLARED_STALE, NOT_REPORTED, BASE_UNSOUND)
 
-# What a runner reports for a case that stopped before it disagreed with anything, and what to print
-# for each. `reading_of` and `python_outcome` each name a non-answer out of this one dict, so a
-# reading is worded the same whichever lane took it.
+# The one reading below that no runner reports: a case its scaffolding failed arrives under a status
+# and a label that name a disagreement, so the reading has to be taken rather than read off.
+SCAFFOLDED = "Scaffolded"
+
+# What a case that stopped before it disagreed with anything comes back as, and what to print for
+# each. `reading_of` and `python_outcome` each name a non-answer out of this one dict, so a reading
+# is worded the same whichever lane took it.
 NOT_AN_ANSWER = {
     "Error": "it raised there rather than failing an assertion",
     "Inconclusive": "an assumption of its own was false there",
     "Skipped": "it was skipped there",
     "Invalid": "the runner would not run it there",
     "Cancelled": "its run was cancelled there",
+    SCAFFOLDED: "its scaffolding failed it there, so its body reached no verdict",
 }
 
 # Which of those a results file spells as a `label` beside the result rather than as the result
@@ -161,7 +174,9 @@ _mutation_check = _sibling("mutation_check")
 code_mask = _mutation_check.code_mask
 line_spans = _mutation_check.line_spans
 folded_reason = _mutation_check.folded_reason
-csharp_commented_lines = _mutation_check.commented_lines
+csharp_comment_spans = _mutation_check.comment_spans
+declared_lines = _mutation_check.declared_lines
+comment_lines = _mutation_check.comment_lines
 
 
 class Declaration:
@@ -319,60 +334,66 @@ def brace_profile(text):
     return profile
 
 
-def comment_block_start(lines, index):
+def comment_block_start(lines, index, prose):
     """The first line of the contiguous comment block directly above `index`, or `index` itself.
 
     Directly above and nothing between: a blank line or any code ends the block. A comment further up
     belongs to whatever sits under it, and reaching past the gap would let one case's prose cover a
     neighbour nobody wrote it for. The block counts as part of the case, so editing the declaration
     below re-poses the question the declaration answers.
+
+    `prose` is which lines a comment opens, not which lines begin with an opener. Reaching over a
+    string literal whose line begins with `//` -- a C# fixture this repository holds as Python data --
+    widens the case to cover the field holding it, and what a case covers is what `outside` subtracts:
+    the run then stops reporting that the file's other cases are no longer the base's own text.
     """
     probe = index
-    while probe > 0 and lines[probe - 1].strip().startswith(("//", "#")):
+    while probe > 0 and probe in prose:
         probe -= 1
     return probe
 
 
-def leading_declaration(lines, index, commented):
+def leading_declaration(lines, index, declared, prose):
     """The declaration in the comment block `comment_block_start` delimits, if there is one.
 
-    `commented` is the same reading `orphaned_declarations` counts the written side over, so a line
-    the one accepts is a line the other counts. Read the marker off the raw line instead and the two
-    stop agreeing in one direction only: a marker inside a string literal is carried by the case
-    under it and written by nothing, which silences that case rather than reporting it.
+    `declared` is the same reading `orphaned_declarations` counts the written side over, so a marker
+    the one accepts is a marker the other counts.
     """
-    for probe in range(comment_block_start(lines, index), index):
-        if probe + 1 not in commented:
-            continue
-        match = DECLARATION.search(lines[probe].strip())
+    for probe in range(comment_block_start(lines, index, prose), index):
+        match = declared.get(probe + 1)
         if match:
             claim, reason = folded_reason(match.group(2), lines[probe + 1:index])
             return Declaration(match.group(1), reason, claim=claim, line=probe + 1, through=index)
     return None
 
 
-def python_commented_lines(text):
-    """The 1-based lines a Python comment covers.
+def python_comment_spans(text):
+    """(start, end) for each span a Python comment covers.
 
     Tokenised rather than matched on a comment opener at the head of a line, which is a different
     reading and a wrong one here: a C# fixture inside a Python string has lines that open with `//`.
     """
     try:
-        return {token.start[0] for token in tokenize.generate_tokens(io.StringIO(text).readline)
-                if token.type == tokenize.COMMENT}
+        tokens = list(tokenize.generate_tokens(io.StringIO(text).readline))
     except (tokenize.TokenError, IndentationError, SyntaxError):
-        return set()
+        return []
+    starts = [start for start, _ in line_spans(text)]
+    spans = []
+    for token in tokens:
+        if token.type == tokenize.COMMENT:
+            opened = starts[token.start[0] - 1] + token.start[1]
+            spans.append((opened, opened + len(token.string)))
+    return spans
 
 
-def commented_lines(relative, text):
-    """Where a declaration can be read from -- the only place either side of the count reads one.
+def comment_spans_of(relative, text):
+    """Where a comment stands in a file, per its language -- what both readings above are taken from.
 
     A string literal is where that distinction earns its keep: this repository's test modules hold
     C# fixtures as Python text, markers and all, and a marker there is a fixture's material. The C#
     half is `mutation_check`'s, beside the mask everything else here reads structure through.
     """
-    return (python_commented_lines(text) if relative.endswith(".py")
-            else csharp_commented_lines(text))
+    return python_comment_spans(text) if relative.endswith(".py") else csharp_comment_spans(text)
 
 
 def orphaned_declarations(relative, text):
@@ -385,10 +406,8 @@ def orphaned_declarations(relative, text):
     Compared per file rather than over the tree. Summed, a file that writes one nothing carries is
     cancelled by a file that carries one nothing wrote, and two defects report as none.
     """
-    lines = text.splitlines()
-    written = sum(1 for number in commented_lines(relative, text)
-                  if number <= len(lines) and DECLARATION.search(lines[number - 1]))
-    return written, sum(1 for case in cases_in(relative, text) if case.declaration)
+    written = declared_lines(text, DECLARATION, comment_spans_of(relative, text))
+    return len(written), sum(1 for case in cases_in(relative, text) if case.declaration)
 
 
 def member_end(lines, ends, signature):
@@ -427,7 +446,9 @@ def csharp_cases(text, path="?"):
     """
     lines = text.splitlines()
     code = code_lines(text)
-    commented = csharp_commented_lines(text)
+    spans = csharp_comment_spans(text)
+    declared = declared_lines(text, DECLARATION, spans)
+    prose = comment_lines(text, spans)
     profile = brace_profile(text)
     ends = [leaving for _, _, leaving in profile]
 
@@ -462,9 +483,9 @@ def csharp_cases(text, path="?"):
             if CSHARP_CASE_ATTRIBUTE.search(attributes) and name:
                 owner = ".".join(part for part, _, _, _ in types)
                 qualified = ".".join(part for part in (namespace, owner, name.group(1)) if part)
-                case = Case(qualified, path, comment_block_start(lines, block) + 1,
+                case = Case(qualified, path, comment_block_start(lines, block, prose) + 1,
                             member_end(code, ends, index) + 1,
-                            leading_declaration(lines, block, commented))
+                            leading_declaration(lines, block, declared, prose))
                 case.abstract_owner = types[-1][0] if types and types[-1][2] else None
                 cases.append(case)
             continue
@@ -479,7 +500,9 @@ def python_cases(text, path="?"):
     except SyntaxError:
         return []
     lines = text.splitlines()
-    commented = python_commented_lines(text)
+    spans = python_comment_spans(text)
+    declared = declared_lines(text, DECLARATION, spans)
+    prose = comment_lines(text, spans)
     cases = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.ClassDef):
@@ -489,10 +512,10 @@ def python_cases(text, path="?"):
                 continue
             if not member.name.startswith("test"):
                 continue
-            declared = min([member.lineno] + [decorator.lineno for decorator in member.decorator_list])
+            opens = min([member.lineno] + [decorator.lineno for decorator in member.decorator_list])
             cases.append(Case("{}.{}".format(node.name, member.name), path,
-                              comment_block_start(lines, declared - 1) + 1, member.end_lineno,
-                              leading_declaration(lines, declared - 1, commented)))
+                              comment_block_start(lines, opens - 1, prose) + 1, member.end_lineno,
+                              leading_declaration(lines, opens - 1, declared, prose)))
     return cases
 
 
@@ -752,16 +775,31 @@ def run_unity(unity, tree, platform, fixtures, results, log, timeout):
 # under so that what comes back is the repository-relative path `is_test_side` reads.
 STACK_FRAME_SOURCE = re.compile(r"\bin\s+\.?/?((?:Assets|Packages)/[^\s:]+):\d+")
 
-# Where a case's own trace stops and a section the fixture's scaffolding left begins. A throw out of
-# a setup, a teardown or a test action is recorded onto the case rather than beside it, so the traces
-# arrive in one element in the order they ran, under the label a throw from the body would have
+# The sections a runner opens around one test case. Both readings below are built from this tuple, so
+# a name cannot reach one and miss the other. `ScaffoldingSectionRecordingTests` holds it against the
+# prefixes the runner's own wrapping commands are constructed with, and owns which commands those are.
+SCAFFOLD_SECTIONS = ("AfterTest", "BeforeTest", "SetUp", "TearDown")
+
+# Where a case's own trace stops and a section its scaffolding left begins. A throw out of one is
+# recorded onto the case rather than beside it, under the label a throw from the body would have
 # carried and without a site naming which of them threw.
 #
 # Named one by one rather than matched as any `--word`, since an opener of that shape can belong to
 # the throw itself and cutting there would lose the body's own trace.
-# `ScaffoldingSectionRecordingTests` holds both halves: every section the runner opens is a name here,
-# and an opener the throw brought with it is not.
-SCAFFOLD_SECTION = re.compile(r"^--(?:AfterTest|BeforeTest|SetUp|TearDown)\b", re.MULTILINE)
+SCAFFOLD_SECTION = re.compile(
+    r"^--(?:{})\b".format("|".join(SCAFFOLD_SECTIONS)), re.MULTILINE)
+
+# The same section at the head of the message, which is the reading that survives where the marker
+# does not. A `ResultStateException` out of a scaffold -- what Unity's end-of-scope log check raises,
+# and what a fixture disposing a base tree's crashing mount produces -- takes a branch that replaces
+# the trace whole, marker and the body's own frames together, and the message is built after that
+# replacement. `ScaffoldingSectionRecordingTests` holds that, and holds the result and label such a
+# case arrives under against the ones a body that disagreed arrives under.
+#
+# At the head and nowhere else -- a body that disagreed leaves its own message in front, and that case
+# disagreed whatever its scaffolding went on to do. `scaffolded` anchors it, and an `^` here as well
+# would leave neither able to fail on its own.
+SCAFFOLD_MESSAGE = re.compile(r"(?:{}) : ".format("|".join(SCAFFOLD_SECTIONS)))
 
 
 def threw_in_production(case):
@@ -791,6 +829,16 @@ def threw_in_production(case):
     return False
 
 
+def scaffolded(case):
+    """Whether a runner recorded this case's failure out of its scaffolding rather than its body.
+
+    Read off the message rather than the trace, for the shape `SCAFFOLD_MESSAGE` names: one where the
+    trace the marker would have stood in has been replaced.
+    """
+    message = case.find("./failure/message")
+    return message is not None and bool(SCAFFOLD_MESSAGE.match((message.text or "").strip()))
+
+
 def reading_of(case):
     """One reported case's reading: its label where that names one, and its result otherwise.
 
@@ -798,12 +846,19 @@ def reading_of(case):
     disagreeing with it -- the same line `python_outcome` draws off a unittest trailer. Which throws
     those are is `threw_in_production`'s question.
 
-    Never over a passing case: nothing a label names can reach `passed on the base`, so a label read
+    A scaffolding failure is read ahead of both, since the shape no label distinguishes is also the
+    shape whose trace has been replaced, leaving the message to carry the reading.
+
+    Never over a passing case: nothing read here can reach `passed on the base`, so reading anything
     there could only ever turn that verdict into silence.
     """
     result = case.get("result")
     label = case.get("label")
-    if result == "Passed" or label not in NOT_A_VERDICT_LABEL:
+    if result == "Passed":
+        return result
+    if scaffolded(case):
+        return SCAFFOLDED
+    if label not in NOT_A_VERDICT_LABEL:
         return result
     if label == "Error" and threw_in_production(case):
         return result
