@@ -400,9 +400,9 @@ namespace Velvet.Tests
         [Test]
         public void Given_AnAnimatePresenceInsideAPortal_When_ThePortalStopsBeingRendered_Then_TheDepartedChildIsNotResurrected()
         {
-            // Arrange — the entry is keyed by the Portal's resolved target, a container the caller owns
-            // and nothing tears down, and the walk of the tree HOLDING the PortalNode never names what is
-            // inside it. Neither of the other routes can see this one go.
+            // Arrange — s_overlay is this Portal's target, and the fixture neither mounts it into the tree
+            // nor tears it down, so no element-teardown route reaches the entry keyed on it. The walk of
+            // the tree HOLDING the PortalNode never names what is inside it either.
             using var store = new PresenceStore();
             s_store = store;
             using var mounted = V.Mount(_root, V.Component(PortalHost, key: "host"));
