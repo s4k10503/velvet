@@ -31,12 +31,14 @@ namespace Velvet.Tests
     /// unconditionally, since a task continuation renders nobody. The updates it makes after an
     /// <c>await</c> that suspended it fall outside the scope its callback opened: they take the Normal lane,
     /// or the priority of whatever scope they do land in — a discrete handler's, or a further
-    /// <c>startTransition</c> call's — and where the resume and the completion land in one handler, the two
-    /// requests coalesce into a single render. An <c>await</c> of an already-completed task suspends
+    /// <c>startTransition</c> call's — and a completion reached inside a discrete handler asks for its render
+    /// there too, coalescing with a resumed update that asked alongside it rather than costing a second pass.
+    /// An <c>await</c> of an already-completed task suspends
     /// nothing, so what follows such an await is still inside the scope and is still a transition. An update
     /// from elsewhere that lands while the action awaits keeps its own priority.</item>
     /// <item>A nested <c>startTransition</c> joins the outer transition: it applies its updates without starting a
-    /// new transition and without throwing; a callback leaving by an exception still closes its scope.</item>
+    /// new transition and without throwing; a callback leaving by an exception still closes its scope, in
+    /// either overload.</item>
     /// <item>A transition's callback covers the updates it schedules on other fibers too, so a setter a component
     /// received as a prop is deferred by the transition that wraps the call. <c>isPending</c> then stays lit
     /// until each of those other fibers has discharged that work — committed it, unmounted, or had the
@@ -61,7 +63,8 @@ namespace Velvet.Tests
     /// <item>A remounted fiber's slots are owned by nobody, even when the unmounted owner's task has not
     /// settled.</item>
     /// <item>A starter whose own component has been disposed still marks the updates its callback schedules
-    /// on live components, in both overloads, without taking the slot's pending flag.</item>
+    /// on live components, in both overloads, without taking the slot's pending flag or recording work
+    /// against it.</item>
     /// </list>
     /// </summary>
     /// <remarks>
@@ -337,9 +340,9 @@ namespace Velvet.Tests
                 "An update made after an await that suspended is outside the scope the callback opened, so it takes no transition lane");
         }
 
-        // The scope closes at the callback's first suspension, not at its first `await`. The two cases below
-        // hold that difference, which shows only where the awaited task had already completed; the case
-        // above is the same shape with a task that had not.
+        // The scope closes at the callback's first suspension, not at its first `await`. The cases below hold
+        // that difference, which shows only where the awaited task had already completed; the case above is
+        // the same shape with a task that had not.
         // GREEN_ON_BASE(characterization): the base put this write on the transition lane as well.
         // Twice over, in fact: a per-fiber call depth held for the callback's synchronous run, and an
         // in-flight fallback behind it. Pinned because the boundary is easy to state wrongly — four shipped
@@ -385,8 +388,11 @@ namespace Velvet.Tests
             // Act — the action's completion path has already run by the time this returns
             s_transitionStarter.Invoke(asyncUpdates);
 
-            // Assert
-            Assert.That(s_transitionFiber.IsTransitionPending, Is.True,
+            // Assert — the surrendered ownership is folded in, since a completion that took the
+            // generation-mismatch exit instead leaves the ownership set and this flag lit with it
+            Assert.That(
+                (s_transitionFiber.TransitionSlots[0].HasActiveOwner, s_transitionFiber.IsTransitionPending),
+                Is.EqualTo((false, true)),
                 "An action that never suspended still leaves enrolled work, so its completion cannot settle it");
         }
 
@@ -451,6 +457,39 @@ namespace Velvet.Tests
                 (threw, s_transitionFiber.IsDirty),
                 Is.EqualTo((true, false)),
                 "A callback that threw before returning a task suspended nothing, so its clear asks for no render");
+        }
+
+        // The case above observes the unwind's effect on the fiber, which a leaked scope leaves looking the
+        // same. The scope is process-wide and nothing in the fixture's reset scrubs it, so a leak here
+        // reaches later writes on any component in the run, not only this one's.
+        // GREEN_ON_BASE(characterization): the unwind closed the per-fiber scope the base kept too.
+        [Test]
+        public void Given_AnAsyncTransitionCallbackThatThrewBeforeReturningItsTask_When_ALaterSetterRuns_Then_ThatUpdateTakesTheNormalLane()
+        {
+            // Arrange — the callback throws instead of handing a task back, so its scope closes on the unwind
+            // out of the starter or not at all
+            using var mounted = V.Mount(_root, V.Component(TransitionRender, key: "transition"));
+            Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates =
+                () => throw new InvalidOperationException("transition callback");
+            var action = FiberWorkLoop.StartTransition(
+                s_transitionFiber, s_transitionFiber.TransitionSlots[0], asyncUpdates);
+            try
+            {
+                action.GetAwaiter().GetResult();
+            }
+            catch (InvalidOperationException)
+            {
+            }
+
+            // Act
+            s_transitionSetValue.Invoke(1);
+
+            // Assert
+            Assert.That(
+                (s_transitionFiber.LaneQueue.Contains(FiberUpdatePriority.Normal),
+                 s_transitionFiber.LaneQueue.Contains(FiberUpdatePriority.Transition)),
+                Is.EqualTo((true, false)),
+                "An async callback that throws leaves no scope open behind it either");
         }
 
         [Test]
@@ -704,13 +743,16 @@ namespace Velvet.Tests
             // Act — A resumes and writes, then B's own action completes having queued nothing
             gateA.TrySetResult();
             gateB.TrySetResult();
+            // Read B before the drain: the drain's own settle sweep finds B outstanding nowhere and clears it
+            // there too, so a flag B's completion never touched still reads false afterwards.
+            var pendingAfterItsOwnCompletion = s_twoFiber.TransitionSlots[1].IsPending;
             mounted.GetSchedulerForTest().DrainImmediateForTest();
 
             // Assert — three terms, because B clearing means nothing unless two actions really were in flight
             // together and A's write really landed. A's committed value is what says the second of those: a
             // lane or dirty term reads true for the render each completion asks for, write or no write
             Assert.That(
-                (bothInFlightBeforeTheAct, s_twoLastValueA, s_twoFiber.TransitionSlots[1].IsPending),
+                (bothInFlightBeforeTheAct, s_twoLastValueA, pendingAfterItsOwnCompletion),
                 Is.EqualTo((true, 1, false)),
                 "A slot settles on what its own callback queued, not on what another slot's action wrote");
         }
@@ -939,15 +981,10 @@ namespace Velvet.Tests
                 "A component whose transition wrote only elsewhere renders again when that work commits");
         }
 
-        // GREEN_ON_BASE(characterization): nothing on the base could reach the released slot.
-        // It credited a Transition-lane enrolment to the slots of the fiber the write landed on, and the
-        // released slot is on another one. What
-        // this pins is the ambient scope this branch replaces that with, where every open call is a candidate.
         [Test]
         public void Given_AnUnmountInsideATransitionCallback_When_ALaterWriteRunsInTheSameCallback_Then_TheReleasedSlotRecordsNothing()
         {
-            // Arrange — the unmount hands the child's slots back to nobody while its callback is still running,
-            // and the slot list survives so a remount reuses this very slot
+            // Arrange — the unmount hands the child's slots back to nobody while its callback is still running
             using var mounted = V.Mount(_root, V.Component(PropSetterParentRender, key: "prop-setter-parent"));
             var slot = s_propSetterChildFiber.TransitionSlots[0];
             var releasedByTheUnmount = false;
@@ -960,9 +997,14 @@ namespace Velvet.Tests
                 s_propSetterChildSetCount.Invoke(1);
             });
 
-            // Assert — the release is folded in, since a slot that was never released has an owner to
-            // discharge the record and the second term would hold for a reason the case is not about
-            Assert.That((releasedByTheUnmount, slot.HasQueuedWork), Is.EqualTo((true, false)),
+            // Assert — three terms: the release is folded in, since a slot that was never released has an owner
+            // to discharge the record; and the parent's lane is folded in rather than assumed, since a write
+            // that never reached the classification the open scope drives records nothing either
+            Assert.That(
+                (releasedByTheUnmount,
+                 s_propSetterParentFiber.LaneQueue.Contains(FiberUpdatePriority.Transition),
+                 slot.HasQueuedWork),
+                Is.EqualTo((true, true, false)),
                 "A released slot records no work from the callback it was released inside");
         }
 
@@ -1147,8 +1189,7 @@ namespace Velvet.Tests
             using var mounted = V.Mount(_root, V.Component(FlushingTransitionRender, key: "flushing"));
             s_flushingSetValue.Invoke(2);
 
-            // Act — the callback renders the component by clicking a control whose handler writes nothing,
-            // and only then makes the write it is deferring
+            // Act — the callback renders the component by clicking a control whose handler writes nothing
             s_flushingStarter.Invoke(() =>
             {
                 _root.Q<Button>("flushing-inert").SimulateClick();
@@ -1364,6 +1405,29 @@ namespace Velvet.Tests
                 "The render a cleared pending flag asks for coalesces with the update that resumed alongside it");
         }
 
+        // The case above cannot fall to nought: the continuation's own write renders the component whether or
+        // not the completion asked for anything, so it separates the lane the request takes and not whether one
+        // was made. Dropping the write is what leaves the request alone in the handler.
+        [Test]
+        public void Given_AnAwaitingAsyncTransitionThatWroteNothing_When_AClickCompletesItsAwaitedTask_Then_TheClearedFlagStillCostsARender()
+        {
+            // Arrange — the action's whole effect is its await, so nothing but the completion can render the
+            // component inside the click
+            using var mounted = V.Mount(_root, V.Component(ClickableTransitionRender, key: "clickable"));
+            var gate = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
+            s_clickableGate = gate;
+            Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () => await gate.Task;
+            s_clickableStarter.Invoke(asyncUpdates);
+            var rendersBeforeTheClick = s_clickableRenderCount;
+
+            // Act
+            _root.Q<Button>("release").SimulateClick();
+
+            // Assert
+            Assert.That(s_clickableRenderCount - rendersBeforeTheClick, Is.EqualTo(1),
+                "A completion reached inside a discrete handler still asks for the render that observes its clear");
+        }
+
         #endregion
 
         #region Two-transition component
@@ -1449,12 +1513,14 @@ namespace Velvet.Tests
 
             // Assert — the disposal is folded in, since a declaring fiber still alive would put the write on
             // the Transition lane whatever the disposed path does, and the Normal term separates the lane
-            // this case is about from a write that never landed
+            // this case is about from a write that never landed. The fourth term is what makes the disposed
+            // path safe: this call takes no ownership, so the enrolment side has to skip the slot it opened
             Assert.That(
                 (declaring.IsDisposed,
                  s_outlivedTargetFiber.LaneQueue.Contains(FiberUpdatePriority.Transition),
-                 s_outlivedTargetFiber.LaneQueue.Contains(FiberUpdatePriority.Normal)),
-                Is.EqualTo((true, true, false)),
+                 s_outlivedTargetFiber.LaneQueue.Contains(FiberUpdatePriority.Normal),
+                 declaring.TransitionSlots[0].HasQueuedWork),
+                Is.EqualTo((true, true, false, false)),
                 "A starter outliving the component that declared it still marks what its callback writes");
         }
 
@@ -1477,12 +1543,13 @@ namespace Velvet.Tests
                 await gate.Task;
             });
 
-            // Assert — same three terms as the synchronous case, for the same two reasons
+            // Assert — same four terms as the synchronous case, for the same three reasons
             Assert.That(
                 (declaring.IsDisposed,
                  s_outlivedTargetFiber.LaneQueue.Contains(FiberUpdatePriority.Transition),
-                 s_outlivedTargetFiber.LaneQueue.Contains(FiberUpdatePriority.Normal)),
-                Is.EqualTo((true, true, false)),
+                 s_outlivedTargetFiber.LaneQueue.Contains(FiberUpdatePriority.Normal),
+                 declaring.TransitionSlots[0].HasQueuedWork),
+                Is.EqualTo((true, true, false, false)),
                 "The async overload marks the action's pre-suspension writes on a disposed fiber too");
         }
 
