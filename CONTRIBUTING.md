@@ -292,9 +292,9 @@ the base already carries and does not cover this one — restate it. Only the fi
 is a claim on its own, and it is the line these readings are taken on, so a reason long enough to
 clear the four-word floor and still wrapped mid-clause is read as saying whatever stands before the
 wrap: `.claude/hooks/refuse/declaration_first_line_fragment.py` refuses one whose first line breaks
-off on a word that has to be followed by more of its own clause, on a comma, or with a delimiter
-still open. A first line that reads as a whole claim is left alone however the reason continues
-under it. The base tree is a checkout the
+off on a word that has to be followed by more of its own clause, on a comma or on a comma and a
+relativiser, or on a delimiter it opens and does not close. A first line none of those reach is
+left alone however the reason continues under it. The base tree is a checkout the
 machine has never imported, and that import is most of what a base run costs; `--warm-library` copies an
 existing `Library` into it, sharing blocks where the filesystem will.
 

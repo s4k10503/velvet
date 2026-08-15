@@ -1,19 +1,20 @@
 #!/usr/bin/env python3
 """Refuse a GREEN_ON_BASE or MUTANT_SURVIVES declaration whose first line breaks off mid-clause.
 
-Only the first line of a declaration is a claim on its own, and it is the line the readers measure
-their four-word floor on — which holds whether or not they fold the lines under it into the reason.
-So where the sentence runs on past it, the wrap position is part of what the declaration says.
+Only the first line of a declaration is a claim on its own, and it is the whole of what the readers
+take as the reason: both stop the capture at the newline and measure their four-word floor on what
+stands before it. So where the sentence runs on past it, the wrap position is part of what the
+declaration says.
 
 The floor is not what this adds. A first line under four words is refused by the readers already,
 by name, and saying so twice would buy nothing. What gets through them is a line long enough to
 clear the floor and still not a claim, and that is the whole of what is refused here.
 
 Only what can be shown is refused: a first line ending on a word that must be followed by more of
-its own clause, one ending on a comma or on a comma and a relativiser, and one leaving a delimiter
-open. A first line that reads as a whole claim is allowed however the rest of the reason continues,
-because judging that would mean judging prose, and a guard that refuses good declarations is turned
-off and takes the rest of the class with it.
+its own clause, one ending on a comma or on a comma and a relativiser, and one that opens a
+delimiter it does not close. A first line the table has nothing to say about is allowed however the
+rest of the reason continues, because judging whether it stands would mean judging prose, and a
+guard that refuses good declarations is turned off and takes the rest of the class with it.
 
 The table below is small on purpose and every member of it is posed a case: a rule nothing exercises
 is a way to refuse good work that nobody has measured, and deleting one has to turn the suite red or
@@ -42,6 +43,7 @@ HOOK_TOOLS = {"Edit", "Write"}
 # The two markers, with the claim `mutation_check.py` and `base_red_check.py` measure their floor
 # on. Their own patterns stay theirs: those run over a tree and this over a proposed edit, and the
 # one thing all three must agree on is that the claim begins after the colon and ends at the newline.
+# `ReaderFloorTests` is what fails when they stop.
 DECLARATION = re.compile(r"(GREEN_ON_BASE|MUTANT_SURVIVES)\([A-Za-z]*\)\s*:\s*(.*)")
 
 # Where a declaration is read from. Nothing reads one out of markdown -- a marker there is prose
@@ -75,22 +77,31 @@ RELATIVISERS = {"which", "who", "whom", "whose", "where", "when"}
 # whole claim, and no declaration in this tree ends on a colon at all.
 UNCLOSED = (",",)
 
+# A closer with no opener is not a wrap: the first line has no line above it for the opener to sit
+# on, so `answers a) and b) the same way` is prose punctuation and stands.
 PAIRS = (("(", ")"), ("[", "]"))
 # `'` is not paired here, since this repository's prose spells possessives with it.
 BALANCED = (("`", "backtick"), ('"', "quotation mark"))
+
+# A code span's brackets are the code's rather than the sentence's, and this repository writes
+# `switch (` and `EndsWith(")", …)` in comment prose. Taken out only where the backticks pair, so a
+# span left open is still the odd backtick the table refuses.
+CODE_SPAN = re.compile(r"`[^`]*`")
 
 
 def fragment(reason):
     """Why this first line cannot be read as a claim on its own, or None when it can be.
 
     An empty reason answers None: the readers' four-word floor already refuses it, by name, and a
-    second refusal of the same thing is one more rule to keep true for nothing.
+    second refusal of the same thing is one more rule to keep true for nothing. `ReaderFloorTests`
+    is what fails if a reader stops refusing it.
     """
+    prose = CODE_SPAN.sub("", reason) if reason.count("`") % 2 == 0 else reason
     for opener, closer in PAIRS:
-        if reason.count(opener) != reason.count(closer):
+        if prose.count(opener) > prose.count(closer):
             return f"leaves {opener!r} unmatched"
     for mark, name in BALANCED:
-        if reason.count(mark) % 2:
+        if prose.count(mark) % 2:
             return f"leaves a {name} open"
     stripped = reason.rstrip()
     for mark in UNCLOSED:
@@ -112,8 +123,13 @@ def comment_lines(text, suffix):
 
     Neither lane reads the raw line, because both hold snippets of the other's language inside
     string literals and a reading over the line's prefix takes those for declarations. Python is
-    tokenized; C# goes through the mask `mutation_check.py` owns, which is where the question of
-    what the compiler sees as code is answered for this repository.
+    tokenized; C# goes through the mask `mutation_check.py` owns.
+
+    That mask does not read a raw string literal, and says so through `mask_defects`. Where it
+    reports a defect this reads nothing out of the file, rather than skipping the lines it flagged:
+    measured on a raw string, the lines the mask misplaced were not the ones it flagged, so a
+    span-scoped stand-down left the misreading in place. `RawStringTests` is what fails if that
+    stops holding.
 
     A Python file that does not tokenize is left to the prefix test rather than dropped: standing
     down there would make a syntax error a way through.
@@ -126,6 +142,8 @@ def comment_lines(text, suffix):
         except (tokenize.TokenError, IndentationError, SyntaxError, ValueError):
             return {number for number, line in enumerate(text.splitlines(), 1)
                     if COMMENT.match(line)}
+    if mutation_check.mask_defects(text):
+        return set()
     starts = [start for start, _ in mutation_check.line_spans(text)]
     return {bisect.bisect_right(starts, start)
             for start, _, kind in mutation_check.mask_spans(text)

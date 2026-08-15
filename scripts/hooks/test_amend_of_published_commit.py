@@ -24,6 +24,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 GUARD = REPO_ROOT / ".claude/hooks/refuse/amend_of_published_commit.py"
+HOOK_LIBRARY = REPO_ROOT / ".claude/hooks/lib"
 
 REFUSE = 2
 ALLOW = 0
@@ -573,6 +574,25 @@ class GitOptionGrammarTests(unittest.TestCase):
 
         # Assert
         self.assertEqual((len(attached_only), swallowed), (4, []))
+
+    def test_Given_TheTableAsItStands_When_EachMemberIsAskedOfGit_Then_GitSwallowsTheAmend(self):
+        # Arrange — read from the table rather than spelled, which is the one direction the spelled
+        # case above cannot cover: a flag wrongly added is asked about by no list anybody wrote, and
+        # the guard then reads `git commit <flag> --amend` as carrying no amend at all. That is the
+        # defect this branch fixed for `-S`, and `-u` sat one edit away from it.
+        #
+        # Imported here rather than at module scope: a tree whose `shell_commands.py` keeps no such
+        # table would fail the import and take every case in this file down with it, and the base is
+        # such a tree.
+        sys.path.insert(0, str(HOOK_LIBRARY))
+        from shell_commands import COMMIT_VALUE_FLAGS
+        held = sorted(COMMIT_VALUE_FLAGS)
+
+        # Act
+        amended = sorted(flag for flag in held if self.amends_behind(flag))
+
+        # Assert — the member count rides along, since an empty table amends nothing either.
+        self.assertEqual((len(held) > 0, amended), (True, []))
 
 
 if __name__ == "__main__":

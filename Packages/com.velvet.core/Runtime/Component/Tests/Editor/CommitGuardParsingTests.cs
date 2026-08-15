@@ -29,6 +29,13 @@ namespace Velvet.Tests
             ("git commit --message=wip", "|False|"),
             ("git commit -q -m x", "|False|"),
             ("git commit m.py -m wip", "|False|m.py"),
+
+            // A signing flag takes its key id only when attached, so the path behind it is a
+            // pathspec. Read as value-taking, this yielded no pathspec at all, and the audit then
+            // read only what was staged -- never the working-tree bytes a pathspec commit records.
+            ("git commit -S Runtime/Foo.cs -m msg", "|False|Runtime/Foo.cs"),
+            ("git commit --gpg-sign -m msg Runtime/Foo.cs", "|False|Runtime/Foo.cs"),
+
             ("git commit -m \"wip\" -- a.py b.py", "|False|a.py,b.py"),
             ("git -C /elsewhere commit -m x", "/elsewhere|False|"),
             ("git -C \"/quoted path\" commit -m x", "/quoted path|False|"),

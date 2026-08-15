@@ -13,6 +13,7 @@ come back allowed.
 Run: python3 scripts/hooks/test_declaration_first_line_fragment.py
 """
 
+import bisect
 import importlib.util
 import json
 import shutil
@@ -24,6 +25,9 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 GUARD = REPO_ROOT / ".claude/hooks/refuse/declaration_first_line_fragment.py"
+
+# The two scripts whose reading of a declaration this guard is written against.
+READER_NAMES = ("base_red_check", "mutation_check")
 
 REFUSE = 2
 ALLOW = 0
@@ -38,15 +42,18 @@ CONTINUATION = "    // The rest of the sentence sits under it.\n"
 FIXTURE = "namespace Velvet.Tests\n{\n" + SETTLED + "    [Test] void X() { }\n}\n"
 
 
-def load_guard():
-    """Imports the guard by path, since .claude/hooks holds no packages."""
-    spec = importlib.util.spec_from_file_location("declaration_first_line_fragment", GUARD)
+def load(name, path):
+    """Imports a script by path, since neither .claude/hooks nor scripts/test_quality is a package."""
+    spec = importlib.util.spec_from_file_location(name, path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 
 
-guard = load_guard()
+guard = load("declaration_first_line_fragment", GUARD)
+READERS = {name: load(name, REPO_ROOT / "scripts/test_quality" / f"{name}.py")
+           for name in READER_NAMES}
+mutation_check = READERS["mutation_check"]
 
 
 class GuardCase(unittest.TestCase):
@@ -212,30 +219,54 @@ class StandingClaimTests(GuardCase):
         # Assert
         self.assertEqual(code, ALLOW)
 
+    def test_Given_ACodeSpanHoldingAnUnclosedBracket_When_TheEditIsPosed_Then_ItIsAllowed(self):
+        # Arrange / Act — the bracket is the code's, not the sentence's. This repository writes
+        # `switch (` and `EndsWith(")", …)` in comment prose already, and counted whole the span
+        # made a first line that stands read as one that wraps.
+        code = self.writes("the reading `fragment(` takes is what the branch keeps")
+
+        # Assert
+        self.assertEqual(code, ALLOW)
+
+    def test_Given_AFirstLineCarryingBareListLabels_When_TheEditIsPosed_Then_ItIsAllowed(self):
+        # Arrange / Act — a closer with no opener cannot be a wrap of the first line, since there
+        # is no line above it for the opener to sit on.
+        code = self.writes("the base answers a) and b) the same way as the branch")
+
+        # Assert
+        self.assertEqual(code, ALLOW)
+
 
 class TableTests(GuardCase):
     """Every member of the decision table posed a case, and the near misses posed one too.
 
-    Deleting a member is what a refuse hook cannot afford to take in silence, and until these ran,
-    seventeen of the twenty-one rules could be removed with the suite still green. The probes are
-    spelled here rather than read from the guard: a list taken from the table itself passes whatever
-    the table holds, so it can never notice a member leaving it.
+    Deleting a member is what a refuse hook cannot afford to take in silence, and until these ran
+    members could be removed with the suite still green. The probes are spelled here rather than
+    read from the guard: a list taken from the table itself passes whatever the table holds, so it
+    can never notice a member leaving it.
+
+    Spelling them leaves the other direction open — a member the table *gains* is asked about by
+    nothing, and a word wrongly in `DANGLING` refuses good declarations, which is the direction that
+    gets a guard turned off. `Then_NoneIsUnposed` below closes it by comparing the two.
     """
 
     # A frame that ends on whatever it is given and trips nothing else on the way.
     FRAME = "the base already separates these two on the reading given {}"
 
-    def test_Given_EveryWordTheTableRefuses_When_AFirstLineEndsOnOne_Then_EachIsRefused(self):
-        # Arrange
-        dangling = ("a", "an", "the", "and", "or", "nor",
-                    "its", "their", "our", "your", "my", "every")
+    DANGLING = ("a", "an", "the", "and", "or", "nor",
+                "its", "their", "our", "your", "my", "every")
+    RELATIVISERS = ("which", "who", "whom", "whose", "where", "when")
+    OPENERS = ("(", "[", "`", '"')
+    # Posed by `FragmentTests` rather than here; spelled so the comparison below covers its table too.
+    UNCLOSED = (",",)
 
-        # Act
-        allowed = sorted(word for word in dangling
+    def test_Given_EveryWordTheTableRefuses_When_AFirstLineEndsOnOne_Then_EachIsRefused(self):
+        # Arrange / Act
+        allowed = sorted(word for word in self.DANGLING
                          if self.writes(self.FRAME.format(word)) != REFUSE)
 
         # Assert — the count rides along, since an empty set of words leaves nothing allowed either.
-        self.assertEqual((len(dangling), allowed), (12, []))
+        self.assertEqual((len(self.DANGLING), allowed), (12, []))
 
     def test_Given_EveryWordTheTableLeavesOut_When_AFirstLineEndsOnOne_Then_EachIsAllowed(self):
         # Arrange — one class away from the members above, and every one of them ends a clause in
@@ -252,27 +283,40 @@ class TableTests(GuardCase):
         self.assertEqual((len(standing), refused), (14, []))
 
     def test_Given_EveryRelativiserBehindAComma_When_AFirstLineEndsOnOne_Then_EachIsRefused(self):
-        # Arrange
-        relativisers = ("which", "who", "whom", "whose", "where", "when")
-
-        # Act
-        allowed = sorted(word for word in relativisers
+        # Arrange / Act
+        allowed = sorted(word for word in self.RELATIVISERS
                          if self.writes(f"the base already separates these two, {word}") != REFUSE)
 
         # Assert
-        self.assertEqual((len(relativisers), allowed), (6, []))
+        self.assertEqual((len(self.RELATIVISERS), allowed), (6, []))
 
     def test_Given_EveryDelimiterTheTableBalances_When_OneIsLeftOpen_Then_EachIsRefused(self):
-        # Arrange — the bracket and the quotation mark had no case of their own, so the rules for
-        # them could be dropped with nothing going red.
-        openers = ("(", "[", "`", '"')
-
-        # Act
-        allowed = sorted(opener for opener in openers
+        # Arrange / Act — the bracket and the quotation mark had no case of their own, so the rules
+        # for them could be dropped with nothing going red.
+        allowed = sorted(opener for opener in self.OPENERS
                          if self.writes(self.FRAME.format(f"{opener}portal scope")) != REFUSE)
 
         # Assert
-        self.assertEqual((len(openers), allowed), (4, []))
+        self.assertEqual((len(self.OPENERS), allowed), (4, []))
+
+    def test_Given_EveryMemberTheTableHolds_When_TheProbesAreCompared_Then_NoneIsUnposed(self):
+        # Arrange — spelled probes cannot notice a member arriving, only one leaving. Compared
+        # against the table rather than read from it, so both directions are closed at once.
+        posed = ({("word", word) for word in self.DANGLING}
+                 | {("relativiser", word) for word in self.RELATIVISERS}
+                 | {("opener", opener) for opener in self.OPENERS}
+                 | {("mark", mark) for mark in self.UNCLOSED})
+        held = ({("word", word) for word in guard.DANGLING}
+                | {("relativiser", word) for word in guard.RELATIVISERS}
+                | {("opener", opener) for opener, _ in guard.PAIRS}
+                | {("opener", mark) for mark, _ in guard.BALANCED}
+                | {("mark", mark) for mark in guard.UNCLOSED})
+
+        # Act
+        unposed = sorted(held - posed)
+
+        # Assert — the member count rides along, since an empty table leaves nothing unposed either.
+        self.assertEqual((len(held), unposed), (23, []))
 
     def test_Given_EveryMarkThatFollowsAWholeClause_When_AFirstLineEndsOnOne_Then_EachIsAllowed(self):
         # Arrange — the three that were refused on the reading that only a comma leaves a sentence
@@ -416,6 +460,106 @@ class ScopeTests(GuardCase):
 
         # Assert
         self.assertEqual(code, ALLOW)
+
+
+class RawStringTests(GuardCase):
+    """The C# shape the mask behind the guard does not read.
+
+    `mutation_check.mask_spans` reads no raw string literal, so the body of one comes back as a
+    string that ended on the first lone quotation mark in it and a run of line comments after that.
+    A file with nothing wrong in it was refused that way, and a fresh `Write` has no in-band route
+    past a refusal.
+    """
+
+    # A raw string whose body holds a lone quotation mark and then a marker line, and a genuine
+    # comment carrying a second marker below it. Assembled the way the module header is, so the
+    # readers do not count these as declarations of this file's own.
+    SOURCE = ("internal sealed class Probe\n{\n"
+              '    private const string Source = """\n'
+              '        a body that mentions a " quotation mark\n'
+              f"        // {GREEN}: the base already separates these two and\n"
+              "        // the branch does not change that.\n"
+              '        """;\n\n'
+              f"    // {GREEN}: the base already anchors the drained child and\n"
+              "    // the branch does not change where it lands.\n"
+              "    [Test] void X() { }\n}\n")
+
+    STRING_BODY_MARKER = 5
+
+    def test_Given_AMarkerInsideACSharpRawString_When_AWriteIsPosed_Then_ItIsAllowed(self):
+        # Arrange / Act — the marker inside the string body is not a declaration, and refusing it
+        # made a well-formed file unwritable. The genuine one below the string is missed either
+        # way: the mask swallowed the comment carrying it before the stand-down could reach it.
+        code, _ = self.pose({"file_path": str(self.root / "Probe.cs"), "content": self.SOURCE},
+                            tool="Write")
+
+        # Assert
+        self.assertEqual(code, ALLOW)
+
+    def test_Given_ARawStringTheMaskMisreads_When_ItsDefectsAreRead_Then_TheMisreadLineIsOutsideThem(self):
+        # Arrange — why the stand-down is the whole file. Skipping only the lines `mask_defects`
+        # flags would leave the line the refusal was written about still being read.
+        flagged = {number
+                   for first, last, _ in mutation_check.mask_defects(self.SOURCE)
+                   for number in range(first, last + 1)}
+        starts = [start for start, _ in mutation_check.line_spans(self.SOURCE)]
+
+        # Act
+        read_as_comment = sorted(
+            bisect.bisect_right(starts, start)
+            for start, _, kind in mutation_check.mask_spans(self.SOURCE)
+            if kind == mutation_check.LINE_COMMENT)
+
+        # Assert — the flagged set rides along, since a mask reporting no defect at all would leave
+        # every line outside it too.
+        self.assertEqual((len(flagged) > 0, self.STRING_BODY_MARKER in read_as_comment,
+                          self.STRING_BODY_MARKER in flagged),
+                         (True, True, False))
+
+
+class ReaderFloorTests(unittest.TestCase):
+    """The readers' side of what this guard leaves to them.
+
+    The guard adds no word count, on the stated ground that a first line under four words is
+    refused by the readers already and that the first line is what they measure. Both are facts
+    about `base_red_check.py` and `mutation_check.py`, so they fail here rather than in a sentence
+    beside the early return that rests on them.
+    """
+
+    SHORT = "the base already"
+
+    # Spelled rather than read from either reader, which would agree with itself whatever the floor
+    # became. Four is the number the guard's own docstring declines to reimplement.
+    UNDER_THE_FLOOR = "the reason is under 4 words"
+
+    def test_Given_AReasonUnderFourWords_When_EachReaderReadsIt_Then_EachRefusesItByTheFloor(self):
+        # Arrange — each reader's own first category, so what the complaint answers is the word
+        # count and not a category one of them does not hold.
+        declared = [reader.Declaration(reader.CATEGORIES[0], self.SHORT, line=1)
+                    for reader in READERS.values()]
+
+        # Act
+        complaints = sorted(declaration.complaint or "allowed" for declaration in declared)
+
+        # Assert
+        self.assertEqual(complaints, [self.UNDER_THE_FLOOR] * len(READERS))
+
+    def test_Given_AReasonWrappedOntoASecondLine_When_EachPatternReadsIt_Then_EachStopsAtTheWrap(self):
+        # Arrange — the guard judges the first line because that is the whole of what the readers
+        # take as the claim. A reader that folded the continuation in would be measuring a reason
+        # this guard never saw.
+        first = "the base already separates these two and"
+        blocks = {"base_red_check": f"// {BASE}(characterization): {first}\n// the rest of it.\n",
+                  "mutation_check": f"// {SURVIVES}(equivalent): {first}\n// the rest of it.\n"}
+
+        # Act
+        read = {name: reader.DECLARATION.search(blocks[name]).group(2)
+                for name, reader in READERS.items()}
+        read.update((f"guard/{name}", guard.DECLARATION.search(block).group(2))
+                    for name, block in blocks.items())
+
+        # Assert
+        self.assertEqual(sorted(set(read.values())), [first])
 
 
 class TreeTests(unittest.TestCase):
