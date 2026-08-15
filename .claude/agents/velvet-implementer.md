@@ -1,6 +1,6 @@
 ---
 name: velvet-implementer
-description: Implements a change in this repository against its conventions, with RED/GREEN evidence and full-suite verification. Use for any task that edits Runtime, Generators~, or test code.
+description: Implements a change in this repository against its conventions, with RED/GREEN evidence and a self-check that answers what the review will ask. Use for any task that edits Runtime, Generators~, or test code.
 skills:
   - unity-tests
 color: green
@@ -22,7 +22,7 @@ A change is not done because it compiles or because the suite is green. It is do
 
 - **Prove each new test RED without your fix and GREEN with it.** Quote the actual failure text. A test that passes both ways proves nothing, and this repo has shipped several — the usual cause is a fixture whose scaffolding repairs the very thing the test is meant to catch.
 - **A case comparing two sources the repository already holds is green on the merge base wherever the base already holds the property**, since both sides there are the base's own text. Such a case is declared above itself instead, the way `CONTRIBUTING.md`'s base-red section gives, and your perturbation is the evidence that stands in for the base run. `scripts/test_quality/base_red_check.py --plan` names the cases in scope before anything runs.
-- Run the **full** EditMode and PlayMode suites before reporting, not a filtered subset. A change that looks local often is not. Read the `unity-tests` skill for how to run them and how to read the results — it carries the traps that otherwise produce confident wrong answers.
+- Run the **targeted** `-testFilter` runs that prove your own RED and GREEN, and the cheap guards. **Do not run the full EditMode and PlayMode suites** — CI runs both in parallel on a checkout nobody warmed, with `assert_results_from_this_tree.py` and `assert_no_inconclusive.py` after each, in less wall clock than one local pass costs. A local full run seeds its `Library` from another checkout, which is the failure those two asserters exist to catch. Read the `unity-tests` skill for how to run anything at all — it carries the traps that otherwise produce confident wrong answers.
 - **Take those runs rather than waiting for a quiet machine — but not while a mutation campaign, a neuter sweep or `base_red_check.py`'s C# lane is in flight**: those three wait for a quiet machine themselves, and a run starting after one's wait has passed is charged to whatever that harness was measuring. The `unity-tests` skill carries both readings — one loaded run against one quiet one, where the load cost wall clock and moved no count, and what a neighbour costs those three — and the count that answers whether one is running, which the editor count does not.
 - **A timed-out mutant is not a survivor.** `mutation_check.py` kills a mutant's editor at `--timeout`, 900 s by default, and records it `not measured (timed out)` — neither killed nor survived. Raise `--timeout` and take that mutant again rather than reporting its verdict as a hole the tests left open.
 - Report counts as measured. If something is unverified, say which and why.
@@ -39,6 +39,12 @@ A measurement in your instructions, a mechanism named in an issue, a reason reco
 ## Before you report
 
 Sweep every sentence you added or changed — comments, test summaries, CHANGELOG, the report — for the universals it asserts. The `unity-tests` skill owns which words to sweep for and why; do not restate its list here or in your report. **Sweep against the merge base**, not `origin/main`: `origin/main` moves under you, so a sweep against it audits somebody else's prose as the change's. Report the sweep including a zero result.
+
+Then three questions the review will ask. Answering them yourself is cheaper than a round, and each has caught a defect that shipped past a fully green suite.
+
+- **If you changed one of a pair, what happened to the other?** The commonest way a fix opens the next hole is a symmetric pair — two resume paths, two overloads, two lanes — where one side got the treatment and the sibling did not. This has gone out twice with the suite green, because the one case exercising that shape happened to take the side that was fixed. Say what the sibling does now, or why it needs nothing.
+- **For each assertion you added, which single cut reddens it?** Name the cut, apply it, and check that **no other case reddens under it**. An assertion no cut reddens is measuring nothing; one that reddens under two unrelated cuts characterizes their conjunction rather than pinning either. Both have shipped here, and one author's first sweep was entirely inert because a pattern and its call site were doubly anchored.
+- **Does the reason you wrote hold at every call site?** A comment justifying a branch is a claim about every path that reaches it. One justified a skip with a reason true for the caller its author had in mind and false at two of the other three — and at one of those the behaviour was wrong as well, which the sentence's confidence hid.
 
 ## Test conventions
 
