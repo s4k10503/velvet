@@ -224,11 +224,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `RouteBlockerState.Proceed()` now runs the blocked navigation again, from the request the caller made,
   so the confirm-dialog flow it exists for reaches the destination: the user clicks "Leave" and the
-  router goes there. It used to
-  clear the state and invoke a callback nothing assigned, leaving the dialog closed and the navigation
-  gone — reaching the destination meant copying `Attempt.NextPath` and `Attempt.NavigationMode` out before
-  calling `Proceed()`, re-issuing them by hand, and arranging for the predicate to stop blocking, because
-  a re-issued attempt was put to that predicate again. What is re-issued is the navigation the caller
+  router goes there. It used to clear the state and invoke a callback nothing assigned, leaving the
+  dialog closed and the navigation gone — reaching the destination meant copying `Attempt.NextPath` and
+  `Attempt.NavigationMode` out before calling `Proceed()`, re-issuing them by hand, and arranging for the
+  predicate to stop blocking, because a re-issued attempt was put to that predicate again. What is
+  re-issued is the navigation the caller
   asked for, so a blocked Back or Forward resumes as the same history step, and one a Guard redirected
   takes the redirect again from that step rather than committing the redirect target over the entry the
   user was standing on. `RouteBlockerStatus` has a third member, `Proceeding`, for the span between
