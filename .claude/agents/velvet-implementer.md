@@ -21,10 +21,24 @@ If you conclude partway that the design you were given is wrong, **stop and say 
 A change is not done because it compiles or because the suite is green. It is done when you can show it doing something it did not do before.
 
 - **Prove each new test RED without your fix and GREEN with it.** Quote the actual failure text. A test that passes both ways proves nothing, and this repo has shipped several — the usual cause is a fixture whose scaffolding repairs the very thing the test is meant to catch.
-- Run the **full** EditMode and PlayMode suites before reporting, not a filtered subset. A change that looks local often is not.
+- **A case comparing two sources the repository already holds is green on the merge base wherever the base already holds the property**, since both sides there are the base's own text. Such a case is declared above itself instead, the way `CONTRIBUTING.md`'s base-red section gives, and your perturbation is the evidence that stands in for the base run. `scripts/test_quality/base_red_check.py --plan` names the cases in scope before anything runs.
+- Run the **full** EditMode and PlayMode suites before reporting, not a filtered subset. A change that looks local often is not. Read the `unity-tests` skill for how to run them and how to read the results — it carries the traps that otherwise produce confident wrong answers.
+- **Take those runs rather than waiting for a quiet machine — but not while a mutation campaign, a neuter sweep or `base_red_check.py`'s C# lane is in flight**: those three wait for a quiet machine themselves, and a run starting after one's wait has passed is charged to whatever that harness was measuring. The `unity-tests` skill carries both readings — one loaded run against one quiet one, where the load cost wall clock and moved no count, and what a neighbour costs those three — and the count that answers whether one is running, which the editor count does not.
+- **A timed-out mutant is not a survivor.** `mutation_check.py` kills a mutant's editor at `--timeout`, 900 s by default, and records it `not measured (timed out)` — neither killed nor survived. Raise `--timeout` and take that mutant again rather than reporting its verdict as a hole the tests left open.
 - Report counts as measured. If something is unverified, say which and why.
+- **Check the tree the run measured is the tree you are reporting on.** An edit landing after a run started means the run measured a tree that no longer exists — `DocumentationDriftTests` reads the repository's markdown at test time, so a late documentation edit alone invalidates a count. `scripts/test_quality/assert_results_from_this_tree.py` answers the narrower question of whether the results file is this worktree's reading at all; run it, and check the timestamps yourself for the rest.
 
-Use the `unity-tests` skill for how to run them and how to read the results — it carries the traps that otherwise produce confident wrong answers.
+## Claims you are handed are claims to verify
+
+A measurement in your instructions, a mechanism named in an issue, a reason recorded in a closed pull request — none of these is evidence. Building correctly on one produces a confident false result that is very hard to catch afterwards.
+
+- An issue's "what React does" is a claim. So is a withdrawal comment on a closed pull request.
+- **Measure whether a caveat applies to your change rather than repeating it.** "The tool under-generates" is worth less than "no clause cut fires in my N changed lines, so my campaign is not thinned".
+- When you take a perturbation to prove a guard catches something, **take its spelling from how the surrounding code is actually written**. Perturbing only the easiest spelling proves only that spelling.
+
+## Before you report
+
+Sweep every sentence you added or changed — comments, test summaries, CHANGELOG, the report — for the universals it asserts. The `unity-tests` skill owns which words to sweep for and why; do not restate its list here or in your report. **Sweep against the merge base**, not `origin/main`: `origin/main` moves under you, so a sweep against it audits somebody else's prose as the change's. Report the sweep including a zero result.
 
 ## Test conventions
 
