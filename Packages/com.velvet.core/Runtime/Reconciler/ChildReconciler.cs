@@ -227,7 +227,9 @@ namespace Velvet
                     // (CreateElement / PatchNode) while its ancestor Providers are still pushed, so
                     // element descendants render in-scope without a pre-captured snapshot. Orphan
                     // effect-cleanup + sweep and the LIS reorder are performed inside.
-                    removals = _general.ReconcileGeneral(parent, oldNodes, newChildren, slotStart, in pairing)
+                    var removalPassRan = _general.ReconcileGeneral(
+                        parent, oldNodes, newChildren, slotStart, in pairing, ref removals);
+                    removals = removalPassRan
                         ? ReconcilerContext.PresenceRemovalOutcome.Ran
                         : ReconcilerContext.PresenceRemovalOutcome.Skipped;
                 }

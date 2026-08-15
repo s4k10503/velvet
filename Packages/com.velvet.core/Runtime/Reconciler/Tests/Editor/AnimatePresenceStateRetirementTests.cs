@@ -54,6 +54,8 @@ namespace Velvet.Tests
     /// <item>A pass that walks neither side of a presence retires nothing of it — the last case holds
     /// that to what it already did, since retiring a live entry strands its leaf where the next old side
     /// can no longer name it.</item>
+    /// <item>A cleanup failure after the presence leaf was removed does not keep its committed state alive;
+    /// the failure still leaves the reconcile call.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -101,6 +103,7 @@ namespace Velvet.Tests
         // Distinguishes the arranged throw from any other InvalidOperationException the pass could raise,
         // so the case cannot record an unwind it did not cause.
         private const string ResumeUnwindMessage = "arranged unwind out of a resumed diff";
+        private const string CleanupUnwindMessage = "arranged unwind out of cleanup";
 
         private VisualElement _root;
 
@@ -312,6 +315,36 @@ namespace Velvet.Tests
             // Assert — a surviving committed set would splice "a" back in as an exiting ghost. Names rather
             // than a count, so the one element left standing is identified.
             Assert.That(NamesOf(host), Is.EqualTo("item-b"));
+        }
+
+        [Test]
+        public void Given_APresenceCleanupThrowsDuringRemoval_When_ItIsRenderedAgain_Then_TheDepartedChildIsNotResurrected()
+        {
+            // Arrange
+            using var reconciler = new Reconciler();
+            var root = new VisualElement();
+            var committed = new VNode[]
+            {
+                V.Div(name: "sibling"),
+                ThrowingCleanupPresence("a"),
+            };
+            reconciler.Reconcile(root, Array.Empty<VNode>(), committed);
+            var empty = new VNode[] { V.Fragment(Array.Empty<VNode>()) };
+            var unwound = false;
+            try
+            {
+                reconciler.Reconcile(root, committed, empty);
+            }
+            catch (InvalidOperationException e) when (e.Message == CleanupUnwindMessage)
+            {
+                unwound = true;
+            }
+
+            // Act
+            reconciler.Reconcile(root, empty, new VNode[] { Presence("b") });
+
+            // Assert
+            Assert.That((unwound, PresenceNamesOf(root)), Is.EqualTo((true, "item-b")));
         }
 
         [Test]
@@ -793,6 +826,15 @@ namespace Velvet.Tests
                 transition: new StyleTransitionConfig { DurationSec = 0.3f }),
         });
 
+        private static VNode ThrowingCleanupPresence(string childKey)
+            => V.AnimatePresence(key: "presence", children: new VNode[]
+            {
+                V.Motion(name: "item-" + childKey, key: childKey,
+                    refCallback: _ => () => throw new InvalidOperationException(CleanupUnwindMessage),
+                    variants: s_fade, animate: "visible", exit: "hidden",
+                    transition: new StyleTransitionConfig { DurationSec = 0.3f }),
+            });
+
         // The parent element each surviving entry is keyed on, in table order. A count says how many are
         // left but not which, and the two-root cases turn on which of two entries the pass spared.
         private static string PresenceParentNamesOf(ReconcilerContext ctx)
@@ -821,6 +863,17 @@ namespace Velvet.Tests
         {
             var names = new List<string>();
             for (var i = 0; i < parent.childCount; i++) names.Add(parent.ElementAt(i).name);
+            return string.Join(",", names);
+        }
+
+        private static string PresenceNamesOf(VisualElement parent)
+        {
+            var names = new List<string>();
+            for (var i = 0; i < parent.childCount; i++)
+            {
+                var name = parent.ElementAt(i).name;
+                if (name.StartsWith("item-", StringComparison.Ordinal)) names.Add(name);
+            }
             return string.Join(",", names);
         }
 

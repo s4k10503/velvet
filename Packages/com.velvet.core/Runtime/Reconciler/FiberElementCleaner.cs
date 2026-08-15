@@ -33,9 +33,18 @@ namespace Velvet
 
             var element = parent.ElementAt(index);
             var poolable = PoolableOccupantOf(element);
-            CleanupElement(element);
-            parent.RemoveAt(index);
-            ReturnOccupantToPool(element, poolable);
+            // A teardown failure still completes the unmount, but a partially cleaned occupant cannot be pooled.
+            var cleanupCompleted = false;
+            try
+            {
+                CleanupElement(element);
+                cleanupCompleted = true;
+            }
+            finally
+            {
+                parent.RemoveAt(index);
+                if (cleanupCompleted) ReturnOccupantToPool(element, poolable);
+            }
         }
 
         // Removes an element from its parent directly (by element reference, not index).

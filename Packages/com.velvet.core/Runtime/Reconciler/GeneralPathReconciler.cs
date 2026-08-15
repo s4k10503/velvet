@@ -1,6 +1,7 @@
 #nullable enable
 using System;
 using System.Collections.Generic;
+using System.Runtime.ExceptionServices;
 using UnityEngine.UIElements;
 
 namespace Velvet
@@ -115,7 +116,8 @@ namespace Velvet
             VNode?[] oldNodes,
             VNode?[] newChildren,
             int slotStart,
-            in InlinePairing pairing)
+            in InlinePairing pairing,
+            ref ReconcilerContext.PresenceRemovalOutcome presenceRemovals)
         {
             var oldFibers = pairing.OldFibers;
             var newFibers = pairing.NewFibers;
@@ -170,7 +172,10 @@ namespace Velvet
                 // Ref.Current is still valid, then the DOM is removed. The sweep (full dispose) runs after.
                 RunOrphanEffectCleanups(oldFibers, newFibers);
                 var removalsRan = !_ctx.IsAborted;
-                if (removalsRan) FinalizeGeneralCommit(commit);
+                if (removalsRan)
+                {
+                    FinalizeGeneralCommit(commit, ref presenceRemovals);
+                }
                 SweepOrphans(oldFibers, newFibers);
                 return removalsRan;
             }
@@ -364,14 +369,18 @@ namespace Velvet
         // a patience-sort LIS (anchors stay put). Mirrors the removal + LIS reorder tail of
         // ReconcileKeyedSync with linearEnd == 0 (the live-context walk performs
         // no linear prefix pass — all matching happened in CommitLeaf).
-        private void FinalizeGeneralCommit(GeneralCommitState commit)
+        private void FinalizeGeneralCommit(
+            GeneralCommitState commit,
+            ref ReconcilerContext.PresenceRemovalOutcome presenceRemovals)
         {
             var parent = commit.Parent!;
             var slotStart = commit.SlotStart;
             var oldNodes = commit.OldNodes!;
             var newElements = commit.NewElements;
 
-            // Removal (reverse so not-yet-visited indices stay valid).
+            // Removal (reverse so not-yet-visited indices stay valid). Finish the batch before rethrowing
+            // a teardown failure, or entries already removed earlier in the batch cannot be retired safely.
+            ExceptionDispatchInfo? removalFailure = null;
             for (var i = oldNodes.Length - 1; i >= 0; i--)
             {
                 var key = _keying.ReconcileKey(oldNodes[i], i);
@@ -379,9 +388,18 @@ namespace Velvet
                     || !commit.UsedKeys.Contains(key)
                     || commit.ReplacedKeys.Contains(key))
                 {
-                    _cleaner.RemoveElement(parent, LogicalChildSlots.ToPhysical(parent, slotStart + i));
+                    try
+                    {
+                        _cleaner.RemoveElement(parent, LogicalChildSlots.ToPhysical(parent, slotStart + i));
+                    }
+                    catch (Exception exception)
+                    {
+                        removalFailure ??= ExceptionDispatchInfo.Capture(exception);
+                    }
                 }
             }
+            presenceRemovals = ReconcilerContext.PresenceRemovalOutcome.Ran;
+            removalFailure?.Throw();
 
             // LIS reorder over the post-removal DOM positions. linearEnd == 0 here (the live-context
             // walk performs no linear prefix pass), so the region begins at slotStart.

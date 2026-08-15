@@ -83,7 +83,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   written inside a `V.Portal`'s own children was the same defect reached a third way, since its
   bookkeeping is keyed by the container the portal renders into and that container belongs to the
   caller: closing the portal resurrected the children the presence had already let go, as did
-  registering its `targetId` to a different element and back.
+  registering its `targetId` to a different element and back. The same stale set survived when a
+  `refCallback` cleanup threw while the removal batch was taking out the presence's leaf;
+  the cleanup exception still leaves the reconcile call, but the removed child no longer returns.
 - A child that moves from one `gap-*`, `divide-*` or `grid-cols-*` container to another keeps the
   spacing, divider or column sizing the container it joined wrote. Each of the three tracked the children
   it had written to by raw reference and reset the value on one no longer in the container, and the
@@ -2012,4 +2014,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Preserve `StyleAttributeVariantClass` presence matching for `data-[key]:` variants (do not coerce
   to empty-string equality).
 - `V.When` throws `ArgumentNullException` when the condition is true but the factory is null.
-
