@@ -415,6 +415,35 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AProceedingBlockerBesideAHoldingBlockerWhoseRegistrationDies_When_NavigatingAgain_Then_TheLiveBlockerIsRearmed()
+        {
+            // Arrange
+            var router = BuildRouter("/home", Route("home"), Route("other"), Route("third"));
+            var released = new RouteBlockerState();
+            router.RouteBlockerManager.Register(_ => true, released);
+            var holding = new RouteBlockerState();
+            var holdingChecks = 0;
+            var holdingRegistration = router.RouteBlockerManager.Register(_ => ++holdingChecks == 2, holding);
+            var blockedResult = router.NavigateSync("/other");
+            released.Proceed();
+            var statusesBeforeDispose = (released.Status, holding.Status);
+            holdingRegistration.Dispose();
+            var statusesAfterDispose = (released.Status, holding.Status, holding.Attempt?.NextPath);
+
+            // Act
+            var nextResult = router.NavigateSync("/third");
+
+            // Assert
+            Assert.That(
+                (blockedResult, holdingChecks, statusesBeforeDispose, statusesAfterDispose, nextResult,
+                    router.CurrentLocation.Path),
+                Is.EqualTo((NavigationResult.Blocked, 2,
+                    (RouteBlockerStatus.Proceeding, RouteBlockerStatus.Blocked),
+                    (RouteBlockerStatus.Idle, RouteBlockerStatus.Blocked, "/other"),
+                    NavigationResult.Blocked, "/home")));
+        }
+
+        [Test]
         public void Given_ASecondBlockerHoldingTheResumedAttempt_When_ItResets_Then_TheFirstBlocksTheNextNavigation()
         {
             // Arrange

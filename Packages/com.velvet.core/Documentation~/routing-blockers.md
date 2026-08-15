@@ -57,7 +57,9 @@ navigation it released:
 
 Disposing a Blocker's registration stops its predicate from being consulted immediately. If that
 Blocker is already holding or releasing an attempt, its state still settles with that attempt, including
-when a saved dialog handler calls `Proceed()` after the disposal.
+when a saved dialog handler calls `Proceed()` after the disposal. A disposed Blocker still holding the
+attempt no longer keeps registered Blockers in `Proceeding`; they return to `Idle` and can veto the next
+navigation, while the disposed Blocker's saved handler remains usable.
 
 The first two wait on one thing more: no Blocker left `Blocked`. A second Blocker vetoing the re-issue
 is what that runs into, and the section below has the rest of it.
