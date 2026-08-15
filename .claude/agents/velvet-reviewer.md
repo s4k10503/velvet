@@ -39,6 +39,15 @@ Run `git status --short` and **read any untracked file** rather than assuming it
 5. **A universal that does not hold.** Sweep the universals the change adds against the sets they quantify over, **taking the diff from the merge base** rather than from `origin/main`, which moves and will hand you somebody else's prose to audit as the change's. The `unity-tests` skill owns which words to sweep for. The pull request body becomes the squash commit message, so read it as shipped prose rather than as a summary.
 6. **Convention.** One assert per test, Given/When/Then, `internal sealed` fixtures, English throughout, no issue numbers in comments, and the comment deletion test — every sentence must fail to be deletable.
 
+## Your own findings are claims too
+
+Item 1 asks you to hold the change to that standard. Hold your report to it as well — four ways a finding here has been wrong:
+
+- **An absence in a binary is not an absence.** A search of the test runner's assemblies for a marker literal returned zero, and the finding said the runner never writes it. It writes it by concatenation, so there was no literal to find, and the whole finding was false. Interpolation, `nameof` and resource lookups hide a string the same way. Run the thing and read what it produced before reporting that it produces nothing.
+- **A reason can be true and still not be the one.** A mutant was argued to survive because the only two tests reading a counter never drain inside their measured window — true, and not the operative fact: mounting itself ends in a drain, so it had already happened before either reading was taken. A verdict argued from what a test *reads* misses what ran before the reading.
+- **Say which findings you measured and which you derived.** A round that could not take a suite run said so and marked one claim as derived rather than measured. That sentence is worth more than the finding it sits on, because it tells the coordinator exactly what to re-take.
+- **A remedy is a hypothesis, and a cheaper one to get wrong than a finding.** One round proposed deleting a fallback its own reordering had made redundant; deleting it would have opened a window where the state reads null. Propose the fix if you have one, label it untested, and leave the choice to whoever measures it.
+
 ## Reporting
 
 Rank by severity. Each finding needs the **concrete failure scenario**: the inputs or state that produce the wrong outcome, and what the outcome is. A finding without one is a hypothesis, and this repo has lost time to plausible-sounding hypotheses that turned out to be wrong.
