@@ -35,6 +35,8 @@ namespace Velvet.Tests
     /// <item>A blocker's Block() side effect lands only for live registrations on a live attempt: an entry
     /// disposed mid-pass (by its own check, or by an earlier blocker's decision) stays Idle, and a pass whose
     /// attempt token is already cancelled flips no state at all.</item>
+    /// <item><c>Reset</c> clears the state it is called on rather than relying on the manager-wide release,
+    /// so a Blocker blocked before its registration was disposed still returns to Idle.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -755,6 +757,28 @@ namespace Velvet.Tests
 
             // Assert — the abandoned attempt leaves no Blocked state behind.
             Assert.That(state.Status, Is.EqualTo(RouteBlockerStatus.Idle));
+        }
+
+        [Test]
+        public void Given_ABlockedBlockerWhoseRegistrationDied_When_Reset_Then_ItStillReturnsToIdle()
+        {
+            // Arrange — the registration is disposed after the block, the shape of an owner unmounting
+            // while the dialog bound to its state is still up.
+            var manager = new RouteBlockerManager();
+            var state = new RouteBlockerState();
+            var registration = manager.Register(_ => true, state);
+            manager.CheckAsync(Attempt(), NoResume).GetAwaiter().GetResult();
+            var statusBeforeReset = state.Status;
+            registration.Dispose();
+
+            // Act
+            state.Reset();
+
+            // Assert — the status before the call rides along because a pass that never blocked leaves
+            // Idle here too, which would make the release read as correct without it having run.
+            Assert.That(
+                (statusBeforeReset, state.Status),
+                Is.EqualTo((RouteBlockerStatus.Blocked, RouteBlockerStatus.Idle)));
         }
 
         #endregion
