@@ -33,11 +33,12 @@ HOOK_TOOLS = {"Bash"}
 HOOK_SCOPE = "session"
 
 AMEND = "--amend"
+SHORTEST_AMEND = "--am"
 
-# `-C`, `--git-dir` and a `GIT_DIR=` assignment each name the tree the amend acts on, and they are
-# the operands of it this guard reads. What refuses one the shell has yet to rewrite is the
-# unreadable answer below rather than a check of its own, which is a spelling
-# `test_amend_of_published_commit.py` poses rather than a claim about what git does with a literal.
+# The repository selectors are replayed together; `PublishedHeadTests` holds the cases where `-C`
+# and `--git-dir` disagree. What refuses one the shell has yet to rewrite is the unreadable answer
+# below rather than a check of its own, which is a spelling `test_amend_of_published_commit.py`
+# poses rather than a claim about what git does with a literal.
 UNEXPANDED_POLICY = "refuse"
 UNEXPANDED_PROBE = 'git -C $WORKTREE commit --amend'
 
@@ -63,14 +64,14 @@ def amends(command):
     it back to git.
     """
     found = []
-    for directory, _, operands in git_invocations(command, {"commit"}, git_directory=True):
+    for context, _, operands in git_invocations(command, {"commit"}, git_directory=True):
         index = 0
         amending = False
         while index < len(operands):
             token = operands[index]
             if token == "--":
                 break
-            if token == AMEND:
+            if token.startswith(SHORTEST_AMEND) and AMEND.startswith(token):
                 amending = True
                 index += 1
                 continue
@@ -91,26 +92,37 @@ def amends(command):
                 continue
             index += 1
         if amending:
-            found.append(directory)
+            found.append(context)
     return found
 
 
-def publishing_refs(directory, cwd):
+def git_location_arguments(context, cwd):
+    arguments = ["-C", context.working_directory or cwd]
+    if context.git_directory:
+        arguments.append(f"--git-dir={context.git_directory}")
+    return arguments
+
+
+def display_location(context, cwd):
+    return context.git_directory or context.working_directory or cwd
+
+
+def publishing_refs(context, cwd):
     """The remote-tracking refs that reach HEAD, or UNREADABLE when git did not answer.
 
     The namespace is written into the command rather than left to porcelain's idea of a remote
     branch, so what counts as published is readable here.
     """
-    root = directory or cwd
     answer = repository.git(
-        ["-C", root, "for-each-ref", "--contains", "HEAD", "--format=%(refname)", "refs/remotes/"],
+        [*git_location_arguments(context, cwd), "for-each-ref", "--contains", "HEAD",
+         "--format=%(refname)", "refs/remotes/"],
         cwd=None, timeout=15)
     if answer is None:
         return UNREADABLE
     return [line.strip() for line in answer.splitlines() if line.strip()]
 
 
-def named(refs, directory, cwd):
+def named(refs, context, cwd):
     """How to describe the refs reaching HEAD: one of them, and how many others there are.
 
     The branch's own upstream is preferred where it is one of them. Every ref here answers the
@@ -119,7 +131,8 @@ def named(refs, directory, cwd):
     from, so which one is named is not a detail.
     """
     upstream = repository.git(
-        ["-C", directory or cwd, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"],
+        [*git_location_arguments(context, cwd), "rev-parse", "--abbrev-ref",
+         "--symbolic-full-name", "@{upstream}"],
         cwd=None, timeout=15)
     tracked = "refs/remotes/" + upstream.strip() if upstream and upstream.strip() else None
     # `origin/HEAD` is the default branch under another name, so naming it says less than naming
@@ -131,8 +144,8 @@ def named(refs, directory, cwd):
             + (f" and {others} other remote branch{'es' if others > 1 else ''}" if others else ""))
 
 
-def head_sha(directory, cwd):
-    answer = repository.git(["-C", directory or cwd, "rev-parse", "--short", "HEAD"],
+def head_sha(context, cwd):
+    answer = repository.git([*git_location_arguments(context, cwd), "rev-parse", "--short", "HEAD"],
                             cwd=None, timeout=15)
     return answer.strip() if answer else "HEAD"
 
@@ -147,13 +160,13 @@ UNREAD = "Refusing `git commit --amend`: git could not say whether this commit i
 def findings(command, cwd):
     """(headline, what to say about each tree) for the amends refused, or None when none is."""
     read, blind = [], []
-    for directory in amends(command):
-        refs = publishing_refs(directory, cwd)
+    for context in amends(command):
+        refs = publishing_refs(context, cwd)
         if refs is UNREADABLE:
-            blind.append(f"{directory or cwd}: git did not answer")
+            blind.append(f"{display_location(context, cwd)}: git did not answer")
         elif refs:
-            read.append(f"{head_sha(directory, cwd)} is reachable from "
-                        f"{named(refs, directory, cwd)}")
+            read.append(f"{head_sha(context, cwd)} is reachable from "
+                        f"{named(refs, context, cwd)}")
     if not read and not blind:
         return None
     return (PUBLISHED if read else UNREAD), read + blind

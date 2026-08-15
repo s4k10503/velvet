@@ -8,6 +8,7 @@ The mask locates command boundaries, where it is correct, and the tokens come fr
 text, because a masked argument has been replaced by spaces and cannot be read.
 """
 
+import collections
 import os
 import re
 import shlex
@@ -32,6 +33,8 @@ GLOBAL_VALUE_FLAGS = {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--
 # hand it back to git may.
 GIT_DIRECTORY_FLAG = "--git-dir"
 GIT_DIRECTORY_VARIABLE = "GIT_DIR"
+
+GitContext = collections.namedtuple("GitContext", "working_directory git_directory")
 
 # `git commit` options that swallow the token after them. Which flags a guard cares about stays its
 # own, per the note above; this is the one reading they share, and two guards taking it two ways
@@ -168,9 +171,9 @@ def without_redirections(tokens):
 def git_invocation(tokens, git_directory=False):
     """(directory, subcommand, operands) when the segment runs git, else None.
 
-    The directory is the `-C` operand. `git_directory` adds the two spellings that name a git
-    directory instead, on the terms above; where a command carries both, `-C` wins, since that is
-    the one git resolves paths against.
+    The directory is the `-C` operand. With `git_directory`, the first value is a `GitContext` that
+    keeps it alongside either spelling of the git directory. A caller needs both to replay the
+    repository selectors rather than replace one with the other.
     """
     index = 0
     named = None
@@ -204,7 +207,8 @@ def git_invocation(tokens, git_directory=False):
 
     if index >= len(tokens):
         return None
-    return directory or named, tokens[index], tokens[index + 1:]
+    context = GitContext(directory, named) if git_directory else directory
+    return context, tokens[index], tokens[index + 1:]
 
 
 def git_invocations(command, subcommands, git_directory=False):

@@ -125,6 +125,13 @@ class PublishedHeadTests(GuardCase):
         # Assert
         self.assertEqual(answer, (REFUSE, PUBLISHED))
 
+    def test_Given_AHeadAtTheRemoteTip_When_AnAbbreviatedAmendIsPosed_Then_ItIsRefused(self):
+        # Arrange / Act
+        answers = tuple(self.refused(f"git commit {flag}") for flag in ("--am", "--ame", "--amen"))
+
+        # Assert
+        self.assertEqual(answers, ((REFUSE, PUBLISHED),) * 3)
+
     def test_Given_AnAmendBehindAShortSigningFlag_When_ItIsPosed_Then_ItIsRefused(self):
         # Arrange — `-S` takes a key id only attached, so it swallows nothing and `--amend` behind
         # it is the amend. Read as value-taking, this is the spelling anyone with `commit.gpgsign`
@@ -197,16 +204,28 @@ class PublishedHeadTests(GuardCase):
         # Assert
         self.assertEqual(("origin/main" in text, "could not say" in text), (True, False))
 
-    def test_Given_AnAmendCarryingBothDashCAndGitDir_When_ItIsPosed_Then_DashCIsWhatDecides(self):
-        # Arrange — git resolves paths against `-C`, so a command carrying both is about that tree.
-        # The unpublished worktree is named by the one that must lose, so a reading that preferred
-        # the git directory would allow this.
+    def test_Given_AnAmendCarryingBothDashCAndGitDir_When_GitDirIsPublished_Then_ItIsRefused(self):
+        # Arrange
         worktree = self.root / "worktree"
         git(self.clone, "worktree", "add", "-q", "-b", "side", str(worktree))
         commit(worktree, "two")
 
         # Act
-        code = self.verdict(f"git -C {worktree} --git-dir={self.clone}/.git commit --amend")
+        answer = self.refused(f"git -C {worktree} --git-dir={self.clone}/.git commit --amend")
+
+        # Assert
+        self.assertEqual(answer, (REFUSE, PUBLISHED))
+
+    def test_Given_AnAmendCarryingBothDashCAndGitDir_When_GitDirIsUnpublished_Then_ItIsAllowed(self):
+        # Arrange
+        unpublished = self.root / "unpublished"
+        unpublished.mkdir()
+        git(unpublished, "init", "-q", "-b", MAIN, ".")
+        commit(unpublished, "one")
+
+        # Act
+        code = self.verdict(
+            f"git -C {self.clone} --git-dir={unpublished}/.git commit --amend")
 
         # Assert
         self.assertEqual(code, ALLOW)
@@ -340,6 +359,21 @@ class CommandReadingTests(GuardCase):
         # Arrange — `--` ends the options, so what follows is a path.
         # Act
         code = self.verdict("git commit -- --amend")
+
+        # Assert
+        self.assertEqual(code, ALLOW)
+
+    def test_Given_TheNegatedAmendAbbreviation_When_ItIsPosed_Then_ItIsAllowed(self):
+        # Arrange / Act
+        codes = tuple(self.verdict(f"git commit {flag}")
+                      for flag in ("--no-am", "--no-ame", "--no-amen", "--no-amend"))
+
+        # Assert
+        self.assertEqual(codes, (ALLOW,) * 4)
+
+    def test_Given_TheAmbiguousAmendPrefix_When_ItIsPosed_Then_ItIsAllowed(self):
+        # Arrange / Act
+        code = self.verdict("git commit --a")
 
         # Assert
         self.assertEqual(code, ALLOW)
@@ -534,6 +568,25 @@ class GitOptionGrammarTests(unittest.TestCase):
 
         # Assert
         self.assertTrue(amended)
+
+    # GREEN_ON_BASE(characterization): the branch changes the guard's reading, not Git's grammar.
+    def test_Given_EachUnambiguousAmendAbbreviation_When_ItIsPosed_Then_GitReadsTheAmend(self):
+        # Arrange / Act
+        amended = tuple(self.amends_behind(flag) for flag in ("--am", "--ame", "--amen"))
+
+        # Assert
+        self.assertEqual(amended, (True, True, True))
+
+    # GREEN_ON_BASE(characterization): the rejected boundary is Git's on either tree.
+    def test_Given_TheShorterAmendPrefix_When_ItIsPosed_Then_GitRejectsItAsAmbiguous(self):
+        # Arrange / Act
+        finished = subprocess.run(
+            ["git", "commit", "--a", "--allow-empty", "--no-edit"], cwd=self.root,
+            capture_output=True, text=True, timeout=60, env={**os.environ, **GIT_ENVIRONMENT})
+
+        # Assert
+        self.assertEqual((finished.returncode != 0, "ambiguous option" in finished.stderr),
+                         (True, True))
 
     # GREEN_ON_BASE(characterization): git takes `--amend` behind `-m` as the message on either tree.
     # Same standing as the two above.
