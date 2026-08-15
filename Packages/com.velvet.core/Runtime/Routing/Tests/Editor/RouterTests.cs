@@ -44,6 +44,9 @@ namespace Velvet.Tests
     /// during that window also maps to Cancelled rather than throwing.</item>
     /// </list>
     /// </summary>
+    // Bounded because tests here await the blocker stubs' Entered signal, which a Blocker the router
+    // stops consulting never raises; RouteTestStubs.MakeOneShotBlocker states what that costs.
+    [Timeout(30000)]
     [TestFixture]
     internal sealed class RouterTests
     {
