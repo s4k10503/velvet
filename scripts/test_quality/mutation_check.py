@@ -338,7 +338,7 @@ GUARD_STATEMENT = re.compile(r"^if \(.+\)\s*(?:return[^;]*|continue|break);$")
 # parenthesised pattern, is not read as one.
 # `MutantDeclarationRemovalTests` is the reading -- of the declaration and of the `out` assignment
 # both -- so a spelling missing from here is one red line there, and so is any narrowing that lets a
-# removal carry off an `out` argument the two exemptions do not cover.
+# removal carry off an `out` argument spelled as a bare name.
 DECLARES_A_NAME = re.compile(
     r"\bvar\s*\("
     r"|\bout\b(?!\s*(?:_|[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+)\s*[,)])"
