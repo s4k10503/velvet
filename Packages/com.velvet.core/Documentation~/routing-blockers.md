@@ -40,9 +40,10 @@ outcome arrives through `Router.OnLocationChanged` and `Router.Status`, not from
 can call it, so this clears the state the dialogs are bound to and nothing else.
 
 Both do nothing unless the Blocker is `Blocked`, so a stale button handler is a no-op rather than an
-error. React Router has no such guard: `proceed()` outside `blocked` throws on the state transition.
-Its `proceed` is also bound to the attempt it was made for, where `Proceed()` reads that attempt off
-the Blocker and so re-issues whichever one it is holding when the button is pressed.
+error. React Router matches that for `reset`, which writes the idle state whatever the current one is,
+but not for `proceed()`: outside `blocked` it throws on the state transition. Its `proceed` is also
+bound to the attempt it was made for, where `Proceed()` reads that attempt off the Blocker and so
+re-issues whichever one it is holding when the button is pressed.
 
 ## When a Blocker is armed again
 
@@ -69,17 +70,15 @@ from the same place.
 
 ## More than one Blocker
 
-React Router supports a single blocker: it warns when a second is registered and then silently consults
-only the last one. In Velvet a block does not end the pass — the Blockers after the one that blocked are
-consulted too, bar any already `Proceeding` — so two dirty forms both veto one navigation, and both
-dialogs have to be answered.
+React Router supports a single blocker: only the last one registered is consulted. In Velvet a block
+does not end the pass — the Blockers after the one that blocked are consulted too, bar any already
+`Proceeding` — so two dirty forms both veto one navigation, and both dialogs have to be answered.
 
 The order they are answered in does not matter. Each `Proceed()` re-issues the attempt; the Blockers
 that have already consented stay out of the way, and the ones that have not veto it again — until they
 all have, at which point no Blocker is left in its way. A `Reset()` from any that is still blocking
 abandons the attempt for all of them: the others are released with it, and the ones that had consented
-come back into the way. React Router does not settle this, since it consults one blocker and never has
-a second to release.
+come back into the way. React Router does not settle this: it consults one blocker per navigation.
 
 ## Where the router puts Blockers in the sequence
 
