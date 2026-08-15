@@ -163,6 +163,9 @@ namespace Velvet.Tests
             ("gh pr create --title x -dfb=hello", "|hello|no"),
             ("gh pr create --title x --body-file=b.md", "b.md||no"),
             ("gh pr create --title x --body text", "|text|no"),
+            ("gh pr new --title x --body-file b.md", "b.md||no"),
+            ("gh pr edit 7 --body text", "|text|no"),
+            ("gh pr edit 7", "||no"),
             // A head naming a fork is not read at all, so it neither answers nor disturbs the body.
             ("gh pr create --title x --body-file b.md --head someone:feat/x", "b.md||no"),
             ("cd d && gh pr create --title x --body-file b.md", "b.md||yes"),
@@ -274,12 +277,11 @@ namespace Velvet.Tests
 
             // Act
             const string expression =
-                "lambda g,c: ','.join([r for s in g.command_segments(c) "
-                + "for o in g.program_invocations(s, 'gh', ('pr', 'create')) "
+                "lambda g,c: ','.join([r for _,o,m in g.invocations(c, ('pr', 'create'), "
+                + "('pr', 'new'), ('pr', 'edit')) "
                 + "for r in ['|'.join([str(g.valued(o, f) or '') "
                 + "for f in (g.BODY_FILE_FLAGS, g.BODY_FLAGS)]) "
-                + "+ ('|yes' if any(g.moves_directory(p) for p in g.command_segments(c[:c.index(s)])) "
-                + "else '|no')]])";
+                + "+ ('|yes' if m else '|no')]])";
             var answers = Ask(hook, expression, Bodies.Select(row => row.Command));
 
             var disagreements = Disagreements(Bodies, answers);

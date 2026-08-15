@@ -214,6 +214,7 @@ class VerdictTests(unittest.TestCase):
         ("gh pr create --title x -b 'goes through `widget.nope`'", REFUSE),
         ("gh pr create --title x -dfb'goes through `widget.nope`'", REFUSE),
         ("gh pr create --title x -dfb='goes through `widget.nope`'", REFUSE),
+        ("gh pr new --title x --body 'goes through `widget.nope`'", REFUSE),
         # A description corrected after the fact is posted by edit, and reaches the squash message
         # the same way a created one does.
         ("gh pr edit 1 --body-file {DIR}/absent.md", REFUSE),
@@ -228,7 +229,14 @@ class VerdictTests(unittest.TestCase):
         ("gh pr create --title x -h --body-file {DIR}/absent.md", ALLOW),
         ("gh pr create --title x -dh --body-file {DIR}/absent.md", ALLOW),
         ("gh pr create --title x -dh=false --body-file {DIR}/absent.md", REFUSE),
+        ("gh pr create --title x --help=true --body-file {DIR}/absent.md", ALLOW),
+        ("gh pr create --title x --help=TRUE --body-file {DIR}/absent.md", ALLOW),
+        ("gh pr create --title x --help=1 --body-file {DIR}/absent.md", ALLOW),
+        ("gh pr create --title x --help=false --body-file {DIR}/absent.md", REFUSE),
+        ("gh pr create --title x --dry-run=true --body-file {DIR}/absent.md", ALLOW),
+        ("gh pr create --title x --dry-run=FALSE --body-file {DIR}/absent.md", REFUSE),
         ("gh pr create --fill", ALLOW),
+        ("gh pr new --fill", ALLOW),
         ("gh pr list", ALLOW),
         ("echo 'gh pr create --body-file {DIR}/absent.md'", ALLOW),
     )
@@ -370,6 +378,52 @@ class VerdictTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(verdict, self.ALLOW)
+
+    def test_Given_TheNewAlias_When_TheProvenanceGuardAnswers_Then_ItJudgesTheBody(self):
+        # Arrange
+        command = "gh pr new --body-file {DIR}/silent.md"
+
+        # Act
+        verdict = self.provenance_answer(command)
+
+        # Assert
+        self.assertEqual(verdict, self.REFUSE)
+
+    def test_Given_AnEditRemovingProvenance_When_TheProvenanceGuardAnswers_Then_ItRefusesTheEdit(self):
+        # Arrange
+        command = "gh pr edit 1 --body-file {DIR}/silent.md"
+
+        # Act
+        verdict = self.provenance_answer(command)
+
+        # Assert
+        self.assertEqual(verdict, self.REFUSE)
+
+    def test_Given_LongBooleanExemptions_When_TheProvenanceGuardAnswers_Then_OnlyTrueSkipsTheBody(self):
+        # Arrange
+        commands = ("gh pr create --help=true --body-file {DIR}/silent.md",
+                    "gh pr create --help=false --body-file {DIR}/silent.md",
+                    "gh pr create --dry-run=1 --body-file {DIR}/silent.md",
+                    "gh pr create --dry-run=0 --body-file {DIR}/silent.md")
+
+        # Act
+        verdicts = tuple(self.provenance_answer(command) for command in commands)
+
+        # Assert
+        self.assertEqual(verdicts, (self.ALLOW, self.REFUSE, self.ALLOW, self.REFUSE))
+
+    def test_Given_AliasesEditsAndNoBody_When_TheProvenanceGuardAnswers_Then_ValidUpdatesPass(self):
+        # Arrange
+        commands = ("gh pr new --body-file {DIR}/origin.md",
+                    "gh pr edit 1 --body-file {DIR}/origin.md",
+                    "gh pr new --fill",
+                    "gh pr edit 1")
+
+        # Act
+        verdicts = tuple(self.provenance_answer(command) for command in commands)
+
+        # Assert
+        self.assertEqual(verdicts, (self.ALLOW,) * len(commands))
 
     def test_Given_ThisRepositorysOwnScripts_When_TheWalkIsRun_Then_ItReachesEveryDirectoryHoldingOne(self):
         # Arrange — the walk against git's own listing, so a root dropped from it fails here rather

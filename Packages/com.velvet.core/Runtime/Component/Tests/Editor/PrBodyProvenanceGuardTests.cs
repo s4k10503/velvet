@@ -64,6 +64,7 @@ namespace Velvet.Tests
             ("gh pr create --title x --body-file {DIR}/no-issue-lower.md", "allow"),
             ("gh pr create --title x -F{DIR}/closes.md", "allow"),
             ("gh pr create --title x -dF{DIR}/closes.md", "allow"),
+            ("gh pr new --title x --body-file {DIR}/closes.md", "allow"),
             // Backticks and a `$` in an inline body are the description rather than a name for it.
             ("gh pr create --title x --body 'Closes #7. `Foo.Bar` now reads $HOME.'", "allow"),
             ("gh pr create --fill", "allow"),
@@ -78,12 +79,14 @@ namespace Velvet.Tests
             ("gh pr create --title x -h --body-file {DIR}/silent.md", "allow"),
             ("gh pr create --title x -dh --body-file {DIR}/silent.md", "allow"),
             ("gh pr create --title x --help --body-file {DIR}/silent.md", "allow"),
+            ("gh pr create --title x --help=true --body-file {DIR}/silent.md", "allow"),
+            ("gh pr create --title x --dry-run=true --body-file {DIR}/silent.md", "allow"),
             // Body files take precedence even when an inline body occurs later in the command.
             ("gh pr create --title x --body-file {DIR}/closes.md "
              + "--body 'A change to the pooled reset helper.'", "allow"),
-            // Only `create` posts a new description. Editing one is how a body gets its answer added
-            // after the fact, so a guard that claimed it would refuse the remedy it hands out.
-            ("gh pr edit 1 --body-file {DIR}/silent.md", "allow"),
+            ("gh pr new --fill", "allow"),
+            ("gh pr edit 1 --body-file {DIR}/closes.md", "allow"),
+            ("gh pr edit 1", "allow"),
             // A head is not read at all now. One naming a fork used to be refused, with the remedy
             // being to pass the head the command had already passed.
             ("gh pr create --title x --body-file {DIR}/closes.md --head someone:feat/x", "allow"),
@@ -109,6 +112,11 @@ namespace Velvet.Tests
             ("gh pr create --title x --body 'Closes #7.' --body-file {DIR}/silent.md", "no-origin"),
             ("gh pr create --title -h --body-file {DIR}/silent.md", "no-origin"),
             ("gh pr create -t -h --body-file {DIR}/silent.md", "no-origin"),
+            ("gh pr create --help=false --body-file {DIR}/silent.md", "no-origin"),
+            ("gh pr create --dry-run=false --body-file {DIR}/silent.md", "no-origin"),
+            ("gh pr new --body-file {DIR}/silent.md", "no-origin"),
+            ("gh pr edit 1 --body-file {DIR}/silent.md", "no-origin"),
+            ("gh pr edit 1 --body 'A change to the pooled reset helper.'", "no-origin"),
             // Each spelling of a value gh takes, on the side where missing one lets the body through
             // unread: the accepted rows above pass whether or not the value was found. `-Fs` is the
             // shortest token that carries one attached.
@@ -198,8 +206,8 @@ namespace Velvet.Tests
 
         // Posed as whole events rather than as commands, because each row varies something the tables
         // above hold fixed: the tool, the working directory, the type of the command, or the payload
-        // being no event at all. What the guard cannot read it refuses; what is no `gh pr create` of
-        // its it allows.
+        // being no event at all. What the guard cannot read it refuses; what is no body-posting
+        // `gh pr` invocation of its it allows.
         private static readonly (string Payload, string Expected)[] Events =
         {
             // A working directory that is not a string reaches the code that opens the body.
@@ -209,7 +217,7 @@ namespace Velvet.Tests
             ("this is not an event", "allow"),
             // JSON that parses but is no object, which reads nothing back and answers nothing either.
             ("[1, 2]", "allow"),
-            // A command that is not text is no `gh pr create`, and Bash will reject it on its own.
+            // A command that is not text is no body update, and Bash will reject it on its own.
             ("{\"tool_name\":\"Bash\",\"cwd\":\".\",\"tool_input\":{\"command\":12345}}", "allow"),
             // A tool outside the declared set, carrying a command that would be refused under Bash, so
             // the tool name is the only thing between this row and a refusal.

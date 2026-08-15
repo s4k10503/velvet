@@ -91,7 +91,7 @@ ISSUE_REFERENCE = re.compile(
 NO_ISSUE_LINE = re.compile(r"^[^\S\n]*No issue[:.][^\S\n]*\S", re.MULTILINE | re.IGNORECASE)
 
 NO_ANSWER = (
-    "Refusing `gh pr create`: the body names no issue.\n\n"
+    "the body names no issue.\n\n"
     "CONTRIBUTING.md asks every pull request to say where it came from. If it closes an\n"
     "issue, the first line closes it on merge:\n\n"
     "  Closes #<n>.\n\n"
@@ -105,21 +105,26 @@ def refuse(message):
     return 2
 
 
+def refuse_command(command, message):
+    return refuse(f"Refusing `{command}`: {message}")
+
+
 def answered(text):
     """Whether the body says where the change came from, either way round."""
     return bool(ISSUE_REFERENCE.search(text) or NO_ISSUE_LINE.search(text))
 
 
-def judge_inline(text):
+def judge_inline(text, command):
     """0, or 2 with the reason written to stderr."""
     if answered(text):
         return 0
     if unexpanded(text):
-        return refuse(
-            "Refusing `gh pr create`: the body is assembled by the shell, so the description this\n"
+        return refuse_command(
+            command,
+            "the body is assembled by the shell, so the description this\n"
             "can read is not the one that will be posted.\n\n"
             "Write it to a file in a step of its own and pass `--body-file <path>`.")
-    return refuse(NO_ANSWER)
+    return refuse_command(command, NO_ANSWER)
 
 
 # One remedy per obstruction, because a body this cannot read is refused rather than skipped and a
@@ -127,32 +132,32 @@ def judge_inline(text):
 # say about each is here.
 UNREADABLE_BODY = {
     UNEXPANDED_PATH: (
-        "Refusing `gh pr create`: the body file's path is still unexpanded, so this cannot open\n"
+        "the body file's path is still unexpanded, so this cannot open\n"
         "the description that will be posted.\n\n"
         "Run it with the path spelled out."),
     STDIN: (
-        "Refusing `gh pr create`: the body comes from stdin, which this cannot read.\n\n"
+        "the body comes from stdin, which this cannot read.\n\n"
         "Write it to a file and pass that, so the description that will be posted is one this\n"
         "can read too."),
     RELATIVE_AFTER_MOVE: (
-        "Refusing `gh pr create`: the command changes directory, so a relative body path\n"
+        "the command changes directory, so a relative body path\n"
         "names one file here and another one to `gh`.\n\n"
         "Give the body an absolute path."),
     MISSING: (
-        "Refusing `gh pr create`: {path} does not exist.\n\n"
+        "{path} does not exist.\n\n"
         "The body has to be there before this command runs, so a body written by this same\n"
         "command is too late — write it in a step of its own and create the pull request in\n"
         "the next. A path that is missing for any other reason is usually one whose write did\n"
         "not run: a refused hook stops the whole `&&` chain it was in, including the write."),
-    UNREADABLE: "Refusing `gh pr create`: {path} cannot be read.",
+    UNREADABLE: "{path} cannot be read.",
 }
 
 
-def check(operands, cwd, after_a_move):
+def check(operands, cwd, after_a_move, command="gh pr create"):
     """0, or 2 with the reason written to stderr."""
     text, obstruction, path = effective_body(operands, cwd, after_a_move)
     if obstruction is not None:
-        return refuse(UNREADABLE_BODY[obstruction].replace("{path}", path))
+        return refuse_command(command, UNREADABLE_BODY[obstruction].replace("{path}", path))
     if text is None:
         # No body operand at all: --fill and its relatives, --template, --recover, --editor, and the
         # interactive form. The description comes from commits, from a file every branch reuses, or
@@ -160,8 +165,8 @@ def check(operands, cwd, after_a_move):
         # question goes unasked, which CONTRIBUTING states without this exception.
         return 0
     if path is not None:
-        return 0 if answered(text) else refuse(NO_ANSWER)
-    return judge_inline(text)
+        return 0 if answered(text) else refuse_command(command, NO_ANSWER)
+    return judge_inline(text, command)
 
 
 def main():
@@ -176,15 +181,16 @@ def main():
         cwd = event.get("cwd") or "."
         if not isinstance(command, str):
             return 0
-        for _, operands, moved in invocations(command, ("pr", "create")):
-            verdict = check(operands, cwd, moved)
+        for words, operands, moved in invocations(
+                command, ("pr", "create"), ("pr", "new"), ("pr", "edit")):
+            verdict = check(operands, cwd, moved, "gh pr " + words[1])
             if verdict:
                 return verdict
         return 0
     except Exception as err:
         # Exit 1 is not a refusal — PreToolUse runs the tool anyway — so an unforeseen shape here
         # would let through exactly what this exists to stop.
-        print(f"Refusing `gh pr create`: this guard failed to reach a verdict ({err!r}).",
+        print(f"Refusing a pull-request body update: this guard failed to reach a verdict ({err!r}).",
               file=sys.stderr)
         return 2
 

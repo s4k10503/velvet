@@ -194,14 +194,14 @@ def main():
         cwd = event.get("cwd") or "."
         if not isinstance(command, str):
             return 0
-        # `gh pr edit` is asked alongside `gh pr create`, because a body corrected after the fact is
-        # posted by it and reaches the squash message the same way.
+        # An alias or a later edit posts the same description into the squash message.
         posted = []
-        for words, operands, after_a_move in invocations(command, ("pr", "create"), ("pr", "edit")):
+        for words, operands, after_a_move in invocations(
+                command, ("pr", "create"), ("pr", "new"), ("pr", "edit")):
             body, obstruction, _ = effective_body(operands, cwd, after_a_move)
             subcommand = "gh pr " + words[1]
             if obstruction is not None:
-                # `pr_body_of_another_branch` owns unreadable create bodies; edit has no sibling.
+                # The provenance guard owns unreadable create and alias bodies; edit also fails here.
                 if words[1] == "edit":
                     return refuse(
                         subcommand,

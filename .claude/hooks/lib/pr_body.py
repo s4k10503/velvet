@@ -30,6 +30,7 @@ VALUE_FLAGS = {
     "-r", "--template", "-T", "--title", "-t",
 }
 SHORT_BOOLEAN_FLAGS = {"-d", "-e", "-f", "-h", "-w"}
+LONG_BOOLEAN_FLAGS = {"--dry-run", "--help"}
 
 # Why a body could not be read, decided in this order.
 UNEXPANDED_PATH = "unexpanded-path"
@@ -50,6 +51,10 @@ def options(operands):
         if token == "--":
             break
         name, separator, inline = token.partition("=")
+        if name in LONG_BOOLEAN_FLAGS:
+            found.append((name, inline if separator else None))
+            index += 1
+            continue
         if name in VALUE_FLAGS:
             if separator:
                 found.append((name, inline))
