@@ -258,9 +258,12 @@ python3 scripts/test_quality/base_red_check.py --base origin/main --warm-library
 
 **It passes only where every changed case was measured on a base tree that demonstrably answers.** Most
 of what goes wrong with a run like this ends in a reading nobody took, and a reading nobody took is never
-a pass. So a case that passes on the base fails the check, and a case that could not compile there does
-not — it names something the branch adds, which is a pin doing its job — but that second reading is only
-believed on a tree the run proved can build and answer at all. Two things prove it. Cases of the
+a pass. So a case that passes on the base fails the check, while a surface that only the branch
+provides is evidence that the case depends on the change. C# reports that as a compile failure.
+Python reports it while loading or running, so the gate accepts it only when static comparison proves
+that the named repository file, sibling module or top-level name is absent on the base and present on
+the branch. That reading is only believed on a tree the run proved can build and answer at all. Two
+things prove it. Cases of the
 base's own that the branch did not carry run alongside — C# fixtures for a platform, Python cases for
 that lane — and at least one has to pass. A lane with no eligible canary fails closed, as does a run
 that wrote no results file at all, rather than reading either as a base that built none of the branch's
@@ -270,13 +273,12 @@ text, so one of those going red means the tree is answering about itself and tha
 withdrawn. Change a `[SetUp]`, a field, a private helper or anything under `TestUtilities/`, and those
 cases stop being the base's text and stop being read as the instrument — the run says which and why.
 
-Red on the base means the base ran the case and the case said no, and only that. A case that died
-reaching for what the branch adds — a Python import or attribute, a C# fixture reflecting for private
-production state the base has not got, which compiles there and throws where it would have compared —
-and a case the base reported Inconclusive, Skipped, non-runnable or cancelled, are reported as cases
-**the base could not answer**: no evidence either way, not part of the red count, and a failed gate. The distinction
-is what stops a branch that adds a helper, or a field, from being credited for the cases that die
-reaching for it.
+Red on the base means the base ran the case and the case said no, and only that. Except for a
+statically proven branch-only Python surface or a C# compile failure, a case that dies before it
+compares and a case the base reported Inconclusive, Skipped, non-runnable or cancelled are reported
+as cases **the base could not answer**: no evidence either way, not part of the red count, and a
+failed gate. This includes a misspelled Python member, a missing environment file, and a C# fixture
+that compiles there but throws while reflecting for private production state the base has not got.
 
 An exception is not that reading on its own. A branch that fixes a crash leaves the base throwing inside
 the production code the fix repairs, which is the base disagreeing and stays **red on the base**. The two

@@ -1153,6 +1153,32 @@ class PythonCanaryTests(unittest.TestCase):
         self.assertEqual(base_red_check.python_canaries(root, carry=[carried]), [])
 
 
+class PythonSurfaceEvidenceTests(unittest.TestCase):
+    def test_Given_UnprovenMissingSurfaces_When_TheyAreCompared_Then_NeitherIsEvidence(self):
+        # Arrange -- one name is absent on both trees, and one path belongs to the environment rather
+        # than the repository. Neither absence demonstrates a dependency on what the branch changed.
+        holder = tempfile.mkdtemp(prefix="base-red-pysurface-")
+        self.addCleanup(shutil.rmtree, holder, ignore_errors=True)
+        root = Path(holder)
+        base = root / "base"
+        branch = root / "branch"
+        for tree in (base, branch):
+            module = tree / "scripts/helper.py"
+            module.parent.mkdir(parents=True)
+            module.write_text("def kept():\n    return 1\n")
+        case = base_red_check.Case("T.test_a", "scripts/test_mine.py", 1, 2)
+
+        # Act
+        misspelled = base_red_check.added_python_surface(
+            "AttributeError: module 'helper' has no attribute 'misspelled'", base, branch, case)
+        environment = base_red_check.added_python_surface(
+            "FileNotFoundError: [Errno 2] No such file or directory: '/tmp/not-provided'",
+            base, branch, case)
+
+        # Assert
+        self.assertEqual((misspelled, environment), (False, False))
+
+
 class PythonLaneRunTests(unittest.TestCase):
     """The Python lane end to end, over trees arranged to answer in the ways it must separate.
 
@@ -1191,7 +1217,7 @@ class PythonLaneRunTests(unittest.TestCase):
                         capture_output=True)
         return result.returncode, result.stdout + result.stderr
 
-    def test_Given_ACaseReachingForASymbolTheBranchAdds_When_TheLaneRuns_Then_ItIsNotCountedRed(self):
+    def test_Given_ACaseReachingForASymbolTheBranchAdds_When_TheLaneRuns_Then_ItIsLoadEvidence(self):
         # Arrange -- the shape a branch produces for free: a helper it added, and a case that dies
         # reaching for it on a base which has not got it.
         base = {"scripts/helper.py": self.HELPER,
@@ -1204,9 +1230,9 @@ class PythonLaneRunTests(unittest.TestCase):
         # Act
         status, printed = self.run_lane(base, branch)
 
-        # Assert -- the verdict rides with the status because the two failures differ: crediting it
-        # as red exits zero too, and only the verdict says which reading was taken.
-        self.assertEqual((status, base_red_check.COULD_NOT_ANSWER in printed), (1, True))
+        # Assert -- the base tree demonstrably lacks a symbol the branch defines, which is evidence
+        # only while it is separated from an arbitrary exception under the other verdict.
+        self.assertEqual((status, "could not load there" in printed), (0, True))
 
     # GREEN_ON_BASE(characterization): the half of the separation the new verdict must leave alone.
     def test_Given_ACaseTheBaseRanAndDisagreedWith_When_TheLaneRuns_Then_ItIsCountedRed(self):
@@ -1224,7 +1250,7 @@ class PythonLaneRunTests(unittest.TestCase):
         # Assert
         self.assertEqual((status, base_red_check.RED_ON_BASE in printed), (0, True))
 
-    def test_Given_AModuleWhoseTopLevelReachesForTheAddedSymbol_When_TheLaneRuns_Then_ItIsNotCountedRed(self):
+    def test_Given_AModuleWhoseTopLevelReachesForTheAddedSymbol_When_TheLaneRuns_Then_ItIsLoadEvidence(self):
         # Arrange -- the case the trailer alone does not cover. A module raising anything but
         # ImportError at its own top level takes the loader down with it, so the process prints a
         # traceback where the summary would be and the exit status is the same one a disagreement has.
@@ -1239,7 +1265,77 @@ class PythonLaneRunTests(unittest.TestCase):
         status, printed = self.run_lane(base, branch)
 
         # Assert
-        self.assertEqual((status, base_red_check.COULD_NOT_ANSWER in printed), (1, True))
+        self.assertEqual((status, "could not load there" in printed), (0, True))
+
+    def test_Given_ACaseImportingAFileTheBranchAdds_When_TheLaneRuns_Then_ItIsLoadEvidence(self):
+        # Arrange -- the self-hosting shape: a changed test module imports a sibling implementation
+        # the same branch adds, so the carried test reaches a path the base tree demonstrably lacks.
+        base = {"scripts/test_mine.py": self.CASE.format(name="C", body="pass"),
+                "scripts/test_theirs.py": self.CASE.format(name="D", body="pass"),
+                "scripts/helper.py": self.HELPER}
+        branch = {"scripts/added.py": "VALUE = 2\n",
+                  "scripts/test_mine.py": self.CASE.replace("import helper", "import added").format(
+                      name="C", body="self.assertEqual(added.VALUE, 2)")}
+
+        # Act
+        status, printed = self.run_lane(base, branch)
+
+        # Assert
+        self.assertEqual((status, "could not load there" in printed), (0, True))
+
+    def test_Given_AModuleOpeningAFileTheBranchAdds_When_TheLaneRuns_Then_ItIsLoadEvidence(self):
+        # Arrange -- importlib-backed sibling loaders report a missing repository file rather than a
+        # missing module. Resolving the base worktree path must still reach the branch counterpart.
+        module = ("import unittest\nfrom pathlib import Path\n\n"
+                  "exec(Path(__file__).with_name('added.py').read_text())\n\n\n"
+                  "class T(unittest.TestCase):\n"
+                  "    def test_Given_A_When_B_Then_C(self):\n"
+                  "        self.assertEqual(VALUE, 2)\n")
+        base = {"scripts/test_mine.py": self.CASE.format(name="C", body="pass"),
+                "scripts/test_theirs.py": self.CASE.format(name="D", body="pass"),
+                "scripts/helper.py": self.HELPER}
+        branch = {"scripts/added.py": "VALUE = 2\n", "scripts/test_mine.py": module}
+
+        # Act
+        status, printed = self.run_lane(base, branch)
+
+        # Assert
+        self.assertEqual((status, "could not load there" in printed), (0, True))
+
+    def test_Given_ACaseRaisingForAnotherReason_When_TheLaneRuns_Then_ItStillFailsClosed(self):
+        # Arrange -- the branch passes this case, but the base takes an ordinary exception path. That
+        # says neither that the assertion disagreed nor that a branch-added surface was unavailable.
+        base = {"scripts/helper.py": self.HELPER,
+                "scripts/test_mine.py": self.CASE.format(name="C", body="pass"),
+                "scripts/test_theirs.py": self.CASE.format(name="D", body="pass")}
+        body = ("self.assertEqual(helper.kept(), 2) if helper.kept() != 1 "
+                "else (_ for _ in ()).throw(RuntimeError('not a surface gap'))")
+        branch = {"scripts/helper.py": "def kept():\n    return 2\n",
+                  "scripts/test_mine.py": self.CASE.format(name="C", body=body)}
+
+        # Act
+        status, printed = self.run_lane(base, branch)
+
+        # Assert
+        self.assertEqual((status, "could not answer there" in printed), (1, True))
+
+    # GREEN_ON_BASE(characterization): assertion messages do not replace unittest's failure result.
+    def test_Given_AFailedAssertionNamingAnAddedSurface_When_TheLaneRuns_Then_ItStaysRed(self):
+        # Arrange -- exception-shaped text is only the assertion's message. The unittest result says
+        # the case compared and disagreed, so the message must not replace that stronger reading.
+        base = {"scripts/helper.py": self.HELPER,
+                "scripts/test_mine.py": self.CASE.format(name="C", body="pass"),
+                "scripts/test_theirs.py": self.CASE.format(name="D", body="pass")}
+        message = "AttributeError: module 'helper' has no attribute 'added'"
+        body = "self.assertEqual(helper.kept(), 2, {!r})".format(message)
+        branch = {"scripts/helper.py": self.HELPER + "\n\ndef added():\n    return 2\n",
+                  "scripts/test_mine.py": self.CASE.format(name="C", body=body)}
+
+        # Act
+        status, printed = self.run_lane(base, branch)
+
+        # Assert
+        self.assertEqual((status, base_red_check.RED_ON_BASE in printed), (0, True))
 
     def test_Given_ABaseTreeWhoseOwnCasesAllDie_When_TheLaneRuns_Then_ItRefusesToPass(self):
         # Arrange -- nothing in the lane answers there, which is the reading a canary exists to take.
@@ -1680,6 +1776,7 @@ class ResultLabelTests(unittest.TestCase):
         # Assert
         self.assertEqual(verdicts, [base_red_check.RED_ON_BASE] * len(sections))
 
+    # GREEN_ON_BASE(characterization): a state-machine frame still identifies the body on the base.
     def test_Given_AStateMachineBodyAssertionBeginningWithASectionName_When_Decided_Then_ItStaysRed(self):
         # Arrange
         message = "TearDown : the coroutine body expected this text"

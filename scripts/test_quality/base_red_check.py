@@ -34,20 +34,22 @@ messages -- a type leaves the stack when its body closes, and a case written in 
 is named for each concrete heir. `test_base_red_check.py` holds every C# case in this repository to
 a name the tree declares in full: every owner segment, nested as the name nests them.
 
-*A case that cannot compile is evidence, not an error* -- it names something the branch adds -- and
-that reading holds only where the same file compiles on the branch, which is the condition running
-this after the branch's own suite satisfies. A round that reports no case of a fixture is one where
-something the branch carried did not build: that file is withdrawn and the run repeated, so the rest
-is still measured rather than lost behind it. Which file is picked off the editor log, over every
-carried file rather than only the ones holding cases, since a shared helper takes its whole assembly
-down with it. A runner that hands back a results file and nothing else can still take every verdict
--- one round of it, without the withdrawing.
+*A surface that exists only on the branch is evidence, not an error.* C# reports that at compile
+time. Python reports it while loading or running the case, so its spelling is accepted only when the
+trace names a repository file, module or top-level name that static comparison finds absent on the
+base and present on the branch. That reading holds only where the same file passes on the branch,
+which is the condition running this after the branch's own suite satisfies. For C#, a round that
+reports no case of a fixture is one where something the branch carried did not build: that file is
+withdrawn and the run repeated, so the rest is still measured rather than lost behind it. Which file
+is picked off the editor log, over every carried file rather than only the ones holding cases, since
+a shared helper takes its whole assembly down with it. A runner that hands back a results file and
+nothing else can still take every verdict -- one round of it, without the withdrawing.
 
 *A case that stopped before it disagreed answered nothing.* Red on the base means the base ran the
-case and the case said no. A case that dies reaching for what the branch adds said nothing at all,
-in either lane and under either lane's spelling of it: a Python import or attribute, and -- since
-reflecting from the test assembly for private production state is this repository's convention -- a
-C# fixture that compiles on the base and throws where it would have compared. A case reported
+case and the case said no. Except for the statically proven branch-only surface above, a case that
+dies before comparing said nothing at all. That includes a C# fixture that compiles on the base and
+throws while reflecting for private production state, and every Python exception whose missing
+surface is not present on the branch. A case reported
 Inconclusive or Skipped there did not run to a verdict either, nor did one the runner refused as
 non-runnable or one whose run was cancelled. Counting any of those as red hands back the evidence the
 gate exists to demand, in the exact shape it was written to refuse: the branch adds a helper, every
@@ -108,6 +110,7 @@ UNITY_RUNNING = "^/Applications/.*/MacOS/Unity -runTests"
 PASSED_ON_BASE = "passed on the base"
 RED_ON_BASE = "red on the base"
 COULD_NOT_COMPILE = "could not compile there"
+COULD_NOT_LOAD = "could not load there"
 COULD_NOT_ANSWER = "could not answer there"
 DECLARED_KEPT = "declared, and green as declared"
 DECLARED_STALE = "declared, and not as declared"
@@ -130,6 +133,7 @@ NOT_AN_ANSWER = {
     "Invalid": "the runner would not run it there",
     "Cancelled": "its run was cancelled there",
     SCAFFOLDED: "its scaffolding failed it there, so its body reached no verdict",
+    "Unavailable": "it reached a Python surface only the branch provides",
 }
 
 # Which of those a results file spells as a `label` beside the result rather than as the result
@@ -916,7 +920,81 @@ def python_outcome(output):
     return "Unreadable"
 
 
-def run_python(tree, cases, transcript):
+MISSING_MODULE = re.compile(r"ModuleNotFoundError: No module named ['\"]([^'\"]+)['\"]")
+MISSING_FILE = re.compile(
+    r"FileNotFoundError: \[Errno 2\] No such file or directory: ['\"]([^'\"]+)['\"]")
+MISSING_ATTRIBUTE = re.compile(
+    r"AttributeError: module ['\"]([^'\"]+)['\"] has no attribute ['\"]([^'\"]+)['\"]")
+
+
+def top_level_names(text):
+    """Names a Python module binds without executing it."""
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        return set()
+
+    def targets(node):
+        if isinstance(node, ast.Name):
+            return {node.id}
+        if isinstance(node, (ast.Tuple, ast.List)):
+            return set().union(*(targets(item) for item in node.elts)) if node.elts else set()
+        return set()
+
+    names = set()
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            names.add(node.name)
+        elif isinstance(node, ast.Assign):
+            for target in node.targets:
+                names.update(targets(target))
+        elif isinstance(node, ast.AnnAssign):
+            names.update(targets(node.target))
+        elif isinstance(node, (ast.Import, ast.ImportFrom)):
+            names.update(alias.asname or alias.name.split(".")[0] for alias in node.names)
+    return names
+
+
+def module_relative(case, module):
+    """The sibling module spelling Python resolves for the test modules this repository carries."""
+    return Path(case.path).parent.joinpath(*module.split(".")).with_suffix(".py")
+
+
+def added_python_surface(output, base_tree, branch_tree, case):
+    """Whether the traceback names a file or module member present only on the branch.
+
+    The branch's own suite is the precondition that the surface exists and works there. Both sides are
+    inspected here so an arbitrary exception, missing environment file or misspelled member remains a
+    non-answer and fails the gate.
+    """
+    missing = MISSING_FILE.search(output)
+    if missing:
+        path = Path(missing.group(1))
+        try:
+            relative = path.resolve().relative_to(base_tree.resolve())
+        except ValueError:
+            return False
+        return not (base_tree / relative).exists() and (branch_tree / relative).is_file()
+
+    missing = MISSING_MODULE.search(output)
+    if missing:
+        relative = module_relative(case, missing.group(1))
+        return not (base_tree / relative).exists() and (branch_tree / relative).is_file()
+
+    missing = MISSING_ATTRIBUTE.search(output)
+    if not missing:
+        return False
+    relative = module_relative(case, missing.group(1))
+    base = base_tree / relative
+    branch = branch_tree / relative
+    if not base.is_file() or not branch.is_file():
+        return False
+    name = missing.group(2)
+    return (name not in top_level_names(base.read_text(encoding="utf-8", errors="replace"))
+            and name in top_level_names(branch.read_text(encoding="utf-8", errors="replace")))
+
+
+def run_python(tree, branch_tree, cases, transcript):
     """Runs one case at a time, so a module-level failure cannot report as some other case's verdict."""
     outcome = {}
     for case in cases:
@@ -927,7 +1005,11 @@ def run_python(tree, cases, transcript):
         printed = result.stdout + result.stderr
         transcript.append("$ python3 -m unittest {} (in {})\n{}".format(
             identifier, module.parent, printed))
-        outcome[case.key] = python_outcome(printed)
+        verdict = python_outcome(printed)
+        if verdict in ("Error", "Unreadable") and added_python_surface(
+                printed, tree, branch_tree, case):
+            verdict = "Unavailable"
+        outcome[case.key] = verdict
     return outcome
 
 
@@ -1077,6 +1159,8 @@ def decide(case, result, fixture_ran):
         if answered(result):
             return DECLARED_STALE, "it is {} on the base; remove the declaration".format(
                 result.lower())
+    if result == "Unavailable":
+        return COULD_NOT_LOAD, NOT_AN_ANSWER[result]
     if result == "Passed":
         return PASSED_ON_BASE, "nothing this branch changed decides it"
     if result in NOT_AN_ANSWER:
@@ -1362,7 +1446,7 @@ def main():
         if python_lane:
             guards = python_canaries(base_tree, carry)
             canaries[PYTHON_LANE] = [case.fixture for case in guards]
-            reported.update(run_python(base_tree, python_lane + guards, transcript))
+            reported.update(run_python(base_tree, project, python_lane + guards, transcript))
 
         platforms = sorted({platform_of(case.path) for case in cases
                             if kind_of(case.path) == "csharp"})
