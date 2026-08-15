@@ -1,7 +1,6 @@
 #nullable enable
 using System;
 using System.Collections.Generic;
-using System.Runtime.ExceptionServices;
 using UnityEngine.UIElements;
 
 namespace Velvet
@@ -380,7 +379,7 @@ namespace Velvet
 
             // Removal (reverse so not-yet-visited indices stay valid). Finish the batch before rethrowing
             // a teardown failure, or entries already removed earlier in the batch cannot be retired safely.
-            ExceptionDispatchInfo? removalFailure = null;
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo? removalFailure = null;
             for (var i = oldNodes.Length - 1; i >= 0; i--)
             {
                 var key = _keying.ReconcileKey(oldNodes[i], i);
@@ -394,7 +393,7 @@ namespace Velvet
                     }
                     catch (Exception exception)
                     {
-                        removalFailure ??= ExceptionDispatchInfo.Capture(exception);
+                        removalFailure ??= System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(exception);
                     }
                 }
             }
