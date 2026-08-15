@@ -114,6 +114,13 @@ jobs:
       - name: Hook repository-reading tests
         run: python3 scripts/hooks/test_hook_repository.py
 
+      # The span grammar the body guard shares with DocumentationDriftTests, and the verdicts it
+      # reaches. Licence-free here rather than in test.yml because the grammar half compares two
+      # files and needs no editor, and because a Unity job skipped for a missing licence would take
+      # the verdict half with it.
+      - name: Pull-request body symbol guard tests
+        run: python3 scripts/hooks/test_pr_body_naming_no_such_symbol.py
+
   # ---------------------------------------------------------------------------
   # Repository settings live only in GitHub's own state; nothing in this
   # repository reads them back. contents:read is enough for the rulesets

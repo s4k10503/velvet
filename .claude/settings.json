@@ -118,6 +118,11 @@
             "type": "command",
             "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse/pr_body_of_another_branch.py\"",
             "timeout": 15000
+          },
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse/pr_body_naming_no_such_symbol.py\"",
+            "timeout": 15000
           }
         ]
       },

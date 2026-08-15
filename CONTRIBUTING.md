@@ -43,8 +43,8 @@ meet:
 
 A command carrying no body operand at all — `--fill` and its relatives, `--template`, `--editor`, the
 interactive form — holds no text here, so the question goes unasked, and `--dry-run` or `--help`
-opens nothing to ask about. Only `gh pr create` is asked: `gh pr edit --body-file` is how an answer
-gets added after the fact.
+opens nothing to ask about. Only `gh pr create` is asked for an origin: `gh pr edit --body-file` is
+how an answer gets added after the fact.
 
 It does not judge what the body is about, and no longer tries to. An earlier version dated the body
 file against the branch's first commit. Posed the leftover it existed for — a body stamped when one
@@ -56,6 +56,25 @@ already at the path rather than the description that will be posted.
 A gh that the parser does not recognise — behind sudo or bash -c, or with gh's own options before the
 subcommand — is not seen at all rather than refused. Four attempts to reach it each refused ordinary
 commands or broke a sibling guard, so the guard stops where it can answer.
+
+### What the body names
+
+The body becomes the squash commit message, so it is prose this repository ships, and no guard read
+it: `DocumentationDriftTests` scans every markdown file in the tree for a name that resolves nowhere,
+and a body is not in the tree. `refuse/pr_body_naming_no_such_symbol.py` runs one of that fixture's
+scans over the description before it is posted — a backticked `script.symbol` span whose script
+spells no such name — against the worktree the command runs in, and asks it of `gh pr edit` as well
+as `gh pr create`, because a description corrected afterwards reaches the squash message the same
+way. A body it cannot open it says nothing about; that one is the guard above's to decline.
+
+One scan and not the rest of them, because a description is not a guide. It is written about a
+change, so it names the state before as well as the state after — a member the branch deleted, a
+file it renamed — and it quotes what a run printed. Measured over the 67 merged bodies this
+repository has, each against its own head tree: resolving every backticked identifier declines 38 of
+them, on 173 spans of which 40 are the NUnit failure text a body is asked to carry as its RED
+evidence; resolving backticked paths declines 12. The scan that ships declined three spans across
+those 67 bodies and the 115 earlier revisions of them GitHub's edit history holds, and each named a
+symbol no file in the repository spells.
 
 ## Local development
 

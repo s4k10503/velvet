@@ -570,8 +570,8 @@ namespace Velvet.Tests
         // %SCRATCH% is a directory this fixture makes, and writes a released CHANGELOG into for the
         // payload that names one. Pointed at the checkout instead, a guard reading branch state answers one way on main and
         // another on a branch, and the probe would pass or fail with whichever tree the suite happened
-        // to run in. %PROJECT% is named by the one payload whose guard reads the repository's own
-        // top-level directories.
+        // to run in. %PROJECT% is named by the two payloads whose guards read the repository's own
+        // directories — one the top-level ones, one the scripts under them.
         private static readonly (string Label, string Body)[] GatePayloads =
         {
             ("a merge naming an unexpanded pull request",
@@ -596,6 +596,11 @@ namespace Velvet.Tests
              "\"cwd\":\"%SCRATCH%\",\"tool_input\":{\"file_path\":\"%SCRATCH%/CHANGELOG.md\","
              + "\"old_string\":\"- As shipped.\","
              + "\"new_string\":\"- As shipped.\\n\\n- Smuggled in.\"}"),
+            // The checkout rather than the scratch directory, because the guard this is for resolves
+            // the span against the scripts the walk finds and answers nothing where it finds none.
+            ("a pull request whose body names a symbol no script spells",
+             "\"cwd\":\"%PROJECT%\",\"tool_input\":{\"command\":\"gh pr create --title x "
+             + "--body 'reached through `neuter_check.velvet_no_such_symbol`'\"}"),
         };
 
         // No matcher in the settings routes this, so a guard that answers under it has a gate that is
