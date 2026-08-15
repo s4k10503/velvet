@@ -238,6 +238,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   blocking. A second Blocker vetoing the re-issue is what leaves one, and the first waits on that one
   being answered. Disposing a registration stops its predicate immediately without stranding a Blocker
   already holding or releasing that attempt; a saved dialog's `Proceed()` still settles back to `Idle`.
+  A disposed Blocker holding the re-issued attempt also no longer keeps the registered Blockers that
+  already consented in `Proceeding`; they are armed for the next navigation while its saved handler stays
+  usable.
   `Reset()` still abandons the attempt and leaves the router where it is, and now ends it
   for the Blockers holding it alongside: their dialogs close too, and a `Proceed()` on one of them no
   longer sends the router at a destination the user declined. An exhaustive `switch` expression over

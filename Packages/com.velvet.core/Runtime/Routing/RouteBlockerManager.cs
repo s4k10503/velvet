@@ -148,16 +148,16 @@ namespace Velvet
         /// committing, and when an attempt is abandoned.
         /// </summary>
         /// <remarks>
-        /// A Blocker still Blocked is a confirm nobody has answered yet, over an attempt that has therefore
-        /// not finished. Arming the Blockers that already consented to it would put them back in the way of
-        /// what they consented to, and the two would go on releasing each other in turn without it ever
-        /// landing.
+        /// A registered Blocker still Blocked is a confirm nobody has answered yet, over an attempt that
+        /// has therefore not finished. Arming the Blockers that already consented to it would put them back
+        /// in the way of what they consented to, and the two would go on releasing each other in turn
+        /// without it ever landing.
         /// </remarks>
         internal void SettleProceeding()
         {
             foreach (var entry in _blockers)
             {
-                if (entry.State.Status == RouteBlockerStatus.Blocked)
+                if (entry.IsRegistered && entry.State.Status == RouteBlockerStatus.Blocked)
                 {
                     return;
                 }
@@ -183,6 +183,10 @@ namespace Velvet
             if (entry.State.Status == RouteBlockerStatus.Idle)
             {
                 _blockers.Remove(entry);
+            }
+            else if (entry.State.Status == RouteBlockerStatus.Blocked)
+            {
+                SettleProceeding();
             }
         }
 
