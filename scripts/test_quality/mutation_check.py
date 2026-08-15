@@ -147,6 +147,22 @@ class Declaration:
         return "Declaration({!r}, line {})".format(self.category, self.line)
 
 
+def commented_lines(text):
+    """The 1-based lines a comment covers, which is the only place a declaration is read from.
+
+    A string literal is what this rules out. A marker there is the material of whatever asserts over
+    the declaration syntax, and reading one off the raw line adopts it as an answer for the statement
+    beneath -- which silences that statement instead of reporting it.
+    """
+    covered = set()
+    for start, end, kind in mask_spans(text):
+        if kind not in (LINE_COMMENT, BLOCK_COMMENT):
+            continue
+        covered.update(range(text.count("\n", 0, start) + 1,
+                             text.count("\n", 0, max(start, end - 1)) + 2))
+    return covered
+
+
 def declarations_in(text):
     """(a line it answers for, the declaration) for every one in a file, once per line it covers.
 
@@ -161,6 +177,7 @@ def declarations_in(text):
     lines = text.splitlines()
     mask = code_mask(text)
     spans = line_spans(text)
+    commented = commented_lines(text)
 
     def seen(number):
         start, end = spans[number]
@@ -168,7 +185,7 @@ def declarations_in(text):
 
     found = []
     for index, line in enumerate(lines):
-        match = DECLARATION.search(line)
+        match = DECLARATION.search(line) if index + 1 in commented else None
         if not match:
             continue
         subject = index + 1

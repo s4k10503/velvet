@@ -584,6 +584,19 @@ class DeclarationReadingTests(unittest.TestCase):
         # Assert
         self.assertEqual(found, [])
 
+    def test_Given_AMarkerInsideAStringLiteral_When_ItIsRead_Then_ItAnswersForNothing(self):
+        # Arrange — the marker is the material of whatever asserts over the declaration syntax, not
+        # an answer for the statement beneath it. Adopted as one, it silences that statement.
+        text = ('const string Sample = @"\n'
+                '// MUTANT_SURVIVES(equivalent): both spellings agree here.";\n'
+                'if (a <= b) { }\n')
+
+        # Act
+        found = mutation_check.declarations_in(text)
+
+        # Assert
+        self.assertEqual(found, [])
+
     def test_Given_AConditionBrokenOverTwoLines_When_ItIsRead_Then_TheDeclarationCoversBoth(self):
         # Arrange — mutants land on both lines, so a declaration answering for the first alone leaves
         # one survivor UNANSWERED on the second and the declaration STALE against it.

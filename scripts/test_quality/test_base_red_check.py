@@ -524,6 +524,55 @@ class DeclarationTests(unittest.TestCase):
         # Assert
         self.assertEqual(written, 1)
 
+    # GREEN_ON_BASE(characterization): a marker anywhere inside a block comment counts as written.
+    # Moving the reading onto lines rather than onto whole comment texts had to keep that.
+    def test_Given_AMarkerOnTheSecondLineOfABlockComment_When_TheFileIsCounted_Then_ItIsWritten(self):
+        # Arrange -- the block spans two lines and only the first of them opens it, so a reading that
+        # covers the opener alone stops seeing the marker while still calling the file balanced.
+        text = ('class C\n{\n'
+                '    /* a note standing over the case below,\n'
+                '       GREEN_ON_BASE(refactor): the reordering this rename preserves. */\n'
+                '    [Test]\n    public void Given_A_When_B_Then_C() => Assert.Pass();\n}\n')
+
+        # Act
+        written, _ = base_red_check.orphaned_declarations(
+            "Packages/p/Runtime/A/Tests/Editor/CTests.cs", text)
+
+        # Assert
+        self.assertEqual(written, 1)
+
+    def test_Given_ACSharpStringMarkerAboveACase_When_TheFileIsRead_Then_NoCaseCarriesIt(self):
+        # Arrange -- the marker is a fixture's own material and the case sits directly under it, so a
+        # reading taken off the raw line carries it. That silences the case as declared instead of
+        # failing it, and the written side counts nothing to say so.
+        text = ('class C\n{\n'
+                '    const string Sample = @"\n'
+                '// GREEN_ON_BASE(characterization): the keyed-reorder order this preserves.";\n'
+                '    [Test]\n    public void Given_A_When_B_Then_C() => Assert.Pass();\n}\n')
+
+        # Act
+        carried = [case.declaration for case
+                   in base_red_check.cases_in("Packages/p/Runtime/A/Tests/Editor/CTests.cs", text)]
+
+        # Assert
+        self.assertEqual(carried, [None])
+
+    def test_Given_APythonStringMarkerAboveACase_When_TheFileIsRead_Then_NoCaseCarriesIt(self):
+        # Arrange -- the other lane's spelling of it, in the shape these modules already hold: a
+        # marker inside the text a fixture asserts over, with a case directly beneath.
+        module = ('import unittest\n\n\n'
+                  'class Fixture(unittest.TestCase):\n'
+                  '    SNIPPET = """\n'
+                  '# GREEN_ON_BASE(refactor): the settle-path names this rename preserves."""\n'
+                  '    def test_something(self):\n        self.assertTrue(True)\n')
+
+        # Act
+        carried = [case.declaration for case
+                   in base_red_check.cases_in("scripts/test_quality/test_probe.py", module)]
+
+        # Assert
+        self.assertEqual(carried, [None])
+
     def test_Given_ADeclarationWrittenOverAHelper_When_TheFileIsRead_Then_ItIsReportedAsOrphaned(self):
         # Arrange -- it silences nothing and looks like it does, and the case it was meant for then
         # fails as green on the base under advice to write what is already there.
@@ -1255,6 +1304,8 @@ class ResultLabelTests(unittest.TestCase):
                         "./Packages/p/Runtime/A/FiberElementPoolReset.cs:120 ")
     TEARDOWN_FRAME = ("  at N.ProbeTests.TearDown () [0x00001] in "
                       "./Packages/p/Runtime/A/Tests/Editor/ProbeTests.cs:70 ")
+    SETUP_FRAME = ("  at N.ProbeTests.SetUp () [0x00001] in "
+                   "./Packages/p/Runtime/A/Tests/Editor/ProbeTests.cs:24 ")
 
     @property
     def THREW(self):
@@ -1270,10 +1321,24 @@ class ResultLabelTests(unittest.TestCase):
     def threw_in_teardown(cls, body, teardown):
         """A case whose teardown threw, over whatever frames its body left in front of the marker.
 
-        One element carries both traces in that order, because NUnit records a teardown throw onto
-        the case's own result. `TeardownRecordingTests` pins that shape against the runner.
+        One element carries both traces in that order, because a runner records a teardown throw onto
+        the case's own result. `ScaffoldingSectionRecordingTests` pins that shape against the runner.
         """
         return cls.threw(*body, "--TearDown", *teardown)
+
+    @classmethod
+    def threw_in_setup(cls, setup):
+        """A case whose setup threw, which leaves the marker opening the element: no body ran.
+
+        A setup's section stands where the body's would, so a reading that does not cut at it takes
+        the setup's reach for the case's own.
+        """
+        return cls.threw("--SetUp", *setup)
+
+    @classmethod
+    def threw_in_action(cls, body, action):
+        """A case wrapped by a test action that threw after it. Same shape, one attribute over."""
+        return cls.threw(*body, "--AfterTest", *action)
 
     def refused(self, label, *frames):
         """A reported case the runner stopped from outside its body, over `frames` if any."""
@@ -1399,6 +1464,65 @@ class ResultLabelTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(verdict, base_red_check.RED_ON_BASE)
+
+    def test_Given_ASetupThrowThatReachedProduction_When_ItIsDecided_Then_ItIsNotCountedRed(self):
+        # Arrange -- a fixture that mounts in its setup, on a base whose production code crashes
+        # there. The marker opens the element because no body ran, so every frame under it is the
+        # setup's reach and the case itself never disagreed with anything.
+        # Act
+        verdict = self.verdict_for(
+            self.threw_in_setup((self.PRODUCTION_FRAME, self.SETUP_FRAME)))
+
+        # Assert
+        self.assertEqual(verdict, base_red_check.COULD_NOT_ANSWER)
+
+    def test_Given_ADeclaredCaseWhoseSetupThrew_When_ItIsDecided_Then_ItIsNotCalledStale(self):
+        # Arrange -- the harmful half: a correct declaration told to delete itself over a case the
+        # base never ran.
+        declared = base_red_check.Declaration(
+            "characterization", "the keyed-reorder order this refactor must not change")
+
+        # Act
+        verdict = self.verdict_for(
+            self.threw_in_setup((self.PRODUCTION_FRAME, self.SETUP_FRAME)), declared)
+
+        # Assert
+        self.assertNotIn(verdict, base_red_check.FAILING_VERDICTS)
+
+    def test_Given_ATestActionThrowAfterABodyThatPassed_When_ItIsDecided_Then_ItIsNotCountedRed(self):
+        # Arrange -- an action wraps the case the way a teardown follows it, and its section is
+        # recorded onto the case just the same.
+        # Act
+        verdict = self.verdict_for(
+            self.threw_in_action((), (self.PRODUCTION_FRAME, self.TEARDOWN_FRAME)))
+
+        # Assert
+        self.assertEqual(verdict, base_red_check.COULD_NOT_ANSWER)
+
+    # GREEN_ON_BASE(characterization): a body's own production throw is red on the base already.
+    # Naming the scaffolding sections one by one, rather than matching every opener of their shape,
+    # must not take that away.
+    def test_Given_ABodyThrowWhoseInnerExceptionOpensASection_When_ItIsDecided_Then_ItStaysRed(self):
+        # Arrange -- an inner exception's frames are opened by a marker of a section's shape, and the
+        # outer throw names no file of this tree, so the only repository frame stands behind that
+        # opener. Cutting at any opener rather than at the named ones loses the case's whole reading.
+        # Act
+        verdict = self.verdict_for(self.threw(
+            self.ENGINE_FRAME, "--InvalidTimeZoneException", self.PRODUCTION_FRAME, self.TEST_FRAME))
+
+        # Assert
+        self.assertEqual(verdict, base_red_check.RED_ON_BASE)
+
+    def test_Given_ASetupThrowBeforeATeardownThrow_When_ItIsDecided_Then_TheFirstMarkerCuts(self):
+        # Arrange -- both scaffolds threw, so the element carries two sections and no body between
+        # them. Cutting at the teardown alone would read the setup's reach as the case's own.
+        # Act
+        verdict = self.verdict_for(self.threw(
+            "--SetUp", self.PRODUCTION_FRAME, self.SETUP_FRAME,
+            "--TearDown", self.TEARDOWN_FRAME))
+
+        # Assert
+        self.assertEqual(verdict, base_red_check.COULD_NOT_ANSWER)
 
     def test_Given_AThrowNamingNoFileOfThisTree_When_ItIsDecided_Then_ItKeepsTheNonAnswer(self):
         # Arrange -- a throw whose trace places it on neither side. The reading falls to the side
@@ -1883,14 +2007,14 @@ class RepositoryTests(unittest.TestCase):
 
     def test_Given_EveryDeclarationHere_When_ItIsCounted_Then_NoneIsOrphaned(self):
         # Arrange -- one written over a helper, or too far above a case, silences nothing and looks
-        # like it does.
-        written, carried = 0, 0
-        for relative, text in csharp_test_files() + python_test_files():
-            wrote, carries = base_red_check.orphaned_declarations(relative, text)
-            written, carried = written + wrote, carried + carries
+        # like it does. Per file rather than over the tree: a total cancels a file that writes one
+        # nothing carries against a file that carries one nothing wrote, and reports two as none.
+        # Act
+        uneven = [(relative, base_red_check.orphaned_declarations(relative, text))
+                  for relative, text in csharp_test_files() + python_test_files()]
 
-        # Act / Assert
-        self.assertEqual(written, carried)
+        # Assert
+        self.assertEqual([name for name, (wrote, carries) in uneven if wrote != carries], [])
 
 
 if __name__ == "__main__":

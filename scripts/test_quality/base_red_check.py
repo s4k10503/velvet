@@ -59,10 +59,10 @@ the cases that were answered.
 inside the production code the fix repairs, which is the base disagreeing in the plainest way there
 is -- and it arrives under the same label as the case that died in its own scaffolding. What
 separates them is the first frame of the throw that names a file of this tree: production code, or
-the test side. Read over the throw the *body* left, since a case carries its teardown's throw as well
-as its own and a teardown runs after the body, reaching what the case never asked about. A throw
-naming no such file keeps the non-answer, so what this reads as red is bounded by what the results
-file carries.
+the test side. Read over the throw the *body* left, since a case carries what its scaffolding threw
+as well as its own -- a setup, a teardown or a test action, each reaching what the case never asked
+about. A throw naming no such file keeps the non-answer, so what this reads as red is bounded by
+what the results file carries.
 
 *A case that belongs on the base says so*, above itself, with a reason:
 
@@ -154,14 +154,14 @@ def _sibling(name):
 # Which offsets the C# compiler sees as code is one question with one answer, and mutation_check.py
 # owns it. Everything here that reads C# structure -- braces, types, namespaces, attributes -- reads
 # it through that mask, so a brace or a `class` inside a string or a comment names nothing here.
-# How a declaration's reason is read comes from there for the same reason: CONTRIBUTING.md says the
-# two markers are read one way, which a second copy of the fold here would be free to stop being.
+# How a declaration's reason is read, and which lines one may be read off at all, come from there for
+# the same reason: CONTRIBUTING.md says the two markers are read one way, which a second copy of
+# either here would be free to stop being.
 _mutation_check = _sibling("mutation_check")
 code_mask = _mutation_check.code_mask
 line_spans = _mutation_check.line_spans
 folded_reason = _mutation_check.folded_reason
-mask_spans = _mutation_check.mask_spans
-COMMENT_SPANS = (_mutation_check.LINE_COMMENT, _mutation_check.BLOCK_COMMENT)
+csharp_commented_lines = _mutation_check.commented_lines
 
 
 class Declaration:
@@ -333,9 +333,17 @@ def comment_block_start(lines, index):
     return probe
 
 
-def leading_declaration(lines, index):
-    """The declaration in the comment block `comment_block_start` delimits, if there is one."""
+def leading_declaration(lines, index, commented):
+    """The declaration in the comment block `comment_block_start` delimits, if there is one.
+
+    `commented` is the same reading `orphaned_declarations` counts the written side over, so a line
+    the one accepts is a line the other counts. Read the marker off the raw line instead and the two
+    stop agreeing in one direction only: a marker inside a string literal is carried by the case
+    under it and written by nothing, which silences that case rather than reporting it.
+    """
     for probe in range(comment_block_start(lines, index), index):
+        if probe + 1 not in commented:
+            continue
         match = DECLARATION.search(lines[probe].strip())
         if match:
             claim, reason = folded_reason(match.group(2), lines[probe + 1:index])
@@ -343,24 +351,28 @@ def leading_declaration(lines, index):
     return None
 
 
-def comments_in(relative, text):
-    """Every comment a file holds, per its language -- the only place a declaration can be read from.
+def python_commented_lines(text):
+    """The 1-based lines a Python comment covers.
+
+    Tokenised rather than matched on a comment opener at the head of a line, which is a different
+    reading and a wrong one here: a C# fixture inside a Python string has lines that open with `//`.
+    """
+    try:
+        return {token.start[0] for token in tokenize.generate_tokens(io.StringIO(text).readline)
+                if token.type == tokenize.COMMENT}
+    except (tokenize.TokenError, IndentationError, SyntaxError):
+        return set()
+
+
+def commented_lines(relative, text):
+    """Where a declaration can be read from -- the only place either side of the count reads one.
 
     A string literal is where that distinction earns its keep: this repository's test modules hold
-    C# fixtures as Python text, markers and all, and a marker there is a fixture's material.
-
-    Python is tokenised rather than matched on a comment opener at the head of a line, which is a
-    different reading and a wrong one here: a C# fixture inside a Python string has lines that open
-    with `//`.
+    C# fixtures as Python text, markers and all, and a marker there is a fixture's material. The C#
+    half is `mutation_check`'s, beside the mask everything else here reads structure through.
     """
-    if relative.endswith(".py"):
-        try:
-            return [token.string for token in
-                    tokenize.generate_tokens(io.StringIO(text).readline)
-                    if token.type == tokenize.COMMENT]
-        except (tokenize.TokenError, IndentationError, SyntaxError):
-            return []
-    return [text[start:end] for start, end, kind in mask_spans(text) if kind in COMMENT_SPANS]
+    return (python_commented_lines(text) if relative.endswith(".py")
+            else csharp_commented_lines(text))
 
 
 def orphaned_declarations(relative, text):
@@ -369,9 +381,13 @@ def orphaned_declarations(relative, text):
     One written above a helper, one with a blank line between it and its case, one left in the block
     over the case before: each silences nothing and looks like it does. The case it was meant for
     then fails as green on the base, under advice to write the declaration already above it.
+
+    Compared per file rather than over the tree. Summed, a file that writes one nothing carries is
+    cancelled by a file that carries one nothing wrote, and two defects report as none.
     """
-    written = sum(1 for comment in comments_in(relative, text)
-                  for line in comment.splitlines() if DECLARATION.search(line))
+    lines = text.splitlines()
+    written = sum(1 for number in commented_lines(relative, text)
+                  if number <= len(lines) and DECLARATION.search(lines[number - 1]))
     return written, sum(1 for case in cases_in(relative, text) if case.declaration)
 
 
@@ -411,6 +427,7 @@ def csharp_cases(text, path="?"):
     """
     lines = text.splitlines()
     code = code_lines(text)
+    commented = csharp_commented_lines(text)
     profile = brace_profile(text)
     ends = [leaving for _, _, leaving in profile]
 
@@ -446,7 +463,8 @@ def csharp_cases(text, path="?"):
                 owner = ".".join(part for part, _, _, _ in types)
                 qualified = ".".join(part for part in (namespace, owner, name.group(1)) if part)
                 case = Case(qualified, path, comment_block_start(lines, block) + 1,
-                            member_end(code, ends, index) + 1, leading_declaration(lines, block))
+                            member_end(code, ends, index) + 1,
+                            leading_declaration(lines, block, commented))
                 case.abstract_owner = types[-1][0] if types and types[-1][2] else None
                 cases.append(case)
             continue
@@ -461,6 +479,7 @@ def python_cases(text, path="?"):
     except SyntaxError:
         return []
     lines = text.splitlines()
+    commented = python_commented_lines(text)
     cases = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.ClassDef):
@@ -473,7 +492,7 @@ def python_cases(text, path="?"):
             declared = min([member.lineno] + [decorator.lineno for decorator in member.decorator_list])
             cases.append(Case("{}.{}".format(node.name, member.name), path,
                               comment_block_start(lines, declared - 1) + 1, member.end_lineno,
-                              leading_declaration(lines, declared - 1)))
+                              leading_declaration(lines, declared - 1, commented)))
     return cases
 
 
@@ -733,11 +752,16 @@ def run_unity(unity, tree, platform, fixtures, results, log, timeout):
 # under so that what comes back is the repository-relative path `is_test_side` reads.
 STACK_FRAME_SOURCE = re.compile(r"\bin\s+\.?/?((?:Assets|Packages)/[^\s:]+):\d+")
 
-# Where a case's own trace stops and its teardown's begins. A teardown throw is recorded onto the
-# case rather than beside it, so both traces arrive in one element in that order, under the label a
-# throw from the body would have carried and without the site that would name the teardown.
-# `TeardownRecordingTests` fails when any of those stops being how a results file is written.
-TEARDOWN_SECTION = re.compile(r"^--TearDown\b", re.MULTILINE)
+# Where a case's own trace stops and a section the fixture's scaffolding left begins. A throw out of
+# a setup, a teardown or a test action is recorded onto the case rather than beside it, so the traces
+# arrive in one element in the order they ran, under the label a throw from the body would have
+# carried and without a site naming which of them threw.
+#
+# Named one by one rather than matched as any `--word`, since an opener of that shape can belong to
+# the throw itself and cutting there would lose the body's own trace.
+# `ScaffoldingSectionRecordingTests` holds both halves: every section the runner opens is a name here,
+# and an opener the throw brought with it is not.
+SCAFFOLD_SECTION = re.compile(r"^--(?:AfterTest|BeforeTest|SetUp|TearDown)\b", re.MULTILINE)
 
 
 def threw_in_production(case):
@@ -750,9 +774,11 @@ def threw_in_production(case):
     disagreeing.
 
     The separator is the first frame that names a file of this tree, over the section the body left.
-    A teardown runs after the body and reaches whatever the fixture handed it, which is not what the
-    case asked about, so reading past the marker credits the branch with a disagreement the case
-    never had -- hardest where the body passed and the marker is all there is.
+    A teardown or a test action runs around the body and reaches what the case never asked about, so
+    reading past the first marker credits the branch with a disagreement the case never had --
+    hardest where the body passed and a marker is all there is. A setup lands on the same side from
+    the other direction: its section stands where the body's would, and a case whose setup crashed
+    in production never ran the body a verdict would be about.
 
     Frames naming no file of this tree are skipped rather than decided on, since they place the
     throw on neither side. A throw naming none at all keeps the non-answer, because the verdicts
@@ -760,7 +786,7 @@ def threw_in_production(case):
     """
     trace = case.find("./failure/stack-trace")
     text = (trace.text or "") if trace is not None else ""
-    for match in STACK_FRAME_SOURCE.finditer(TEARDOWN_SECTION.split(text, maxsplit=1)[0]):
+    for match in STACK_FRAME_SOURCE.finditer(SCAFFOLD_SECTION.split(text, maxsplit=1)[0]):
         return not is_test_side(match.group(1))
     return False
 
