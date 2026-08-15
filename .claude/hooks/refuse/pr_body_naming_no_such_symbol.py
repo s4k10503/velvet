@@ -60,7 +60,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-from pr_body import (BODY_FILE_FLAGS, BODY_FLAGS, exempted, invocations, read_body_file, valued)
+from pr_body import effective_body, invocations
 
 # Registered on the event in .claude/settings.json rather than narrowed to the agents expected to
 # open pull requests, which would leave every other session unguarded. `HookWiringCoverageTests`
@@ -182,20 +182,6 @@ def naming(references):
             "the span is not a reference.")
 
 
-def bodies_of(operands, cwd, after_a_move):
-    """(description, obstruction) for the one body this invocation will post."""
-    if exempted(operands):
-        return None, None
-    path = valued(operands, BODY_FILE_FLAGS)
-    if path is not None:
-        return read_body_file(path, cwd, after_a_move)
-    # Read as it stands, expansions and all. A `$(…)` standing for the whole description leaves
-    # nothing here to find, which is a question unasked rather than a wrong answer, and the sibling
-    # that reads the same invocation declines that spelling outright.
-    text = valued(operands, BODY_FLAGS)
-    return text, None
-
-
 def main():
     try:
         event = json.load(sys.stdin)
@@ -212,7 +198,7 @@ def main():
         # posted by it and reaches the squash message the same way.
         posted = []
         for words, operands, after_a_move in invocations(command, ("pr", "create"), ("pr", "edit")):
-            body, obstruction = bodies_of(operands, cwd, after_a_move)
+            body, obstruction, _ = effective_body(operands, cwd, after_a_move)
             subcommand = "gh pr " + words[1]
             if obstruction is not None:
                 # `pr_body_of_another_branch` owns unreadable create bodies; edit has no sibling.

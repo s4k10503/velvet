@@ -1,10 +1,9 @@
 """Where a pull-request body is in a `gh pr` invocation, shared by the guards that read one.
 
 Two guards now read the same description, and the reading is not the obvious one. gh takes a body
-under four flags and each flag's value in three spellings, one of which — a short flag carrying its
-value attached — was missed once and let `-F/tmp/pr-body.md` past every check with the invocation
-claimed and no body found. Held in one place so the next spelling is added once rather than to
-whichever guard its author had open.
+under four flags, lets short flags carry their value attached, and permits boolean shorthand before
+them in the same token. Held in one place so the next spelling is added once rather than to whichever
+guard its author had open.
 
 What is NOT shared is what to do about a body that cannot be read. `read_body_file` names the
 obstruction and stops there: each guard decides whether another guard covers that command or the
@@ -30,6 +29,7 @@ VALUE_FLAGS = {
     "--remove-label", "--remove-project", "--remove-reviewer", "--repo", "-R", "--reviewer",
     "-r", "--template", "-T", "--title", "-t",
 }
+SHORT_BOOLEAN_FLAGS = {"-d", "-e", "-f", "-h", "-w"}
 
 # Why a body could not be read, decided in this order.
 UNEXPANDED_PATH = "unexpanded-path"
@@ -59,12 +59,33 @@ def options(operands):
                 found.append((name, value))
                 index += 2
             continue
-        matching = next((flag for flag in VALUE_FLAGS
-                         if len(flag) == 2 and token.startswith(flag) and len(token) > 2), None)
-        if matching is not None:
-            found.append((matching, token[2:]))
-        elif token.startswith("-"):
+        if token.startswith("--"):
             found.append((token, None))
+            index += 1
+            continue
+        if token.startswith("-") and len(token) > 1:
+            cluster = token[1:]
+            for offset, shorthand in enumerate(cluster):
+                flag = "-" + shorthand
+                if flag in SHORT_BOOLEAN_FLAGS:
+                    attached = cluster[offset + 1:]
+                    if attached.startswith("="):
+                        found.append((flag, attached[1:]))
+                        break
+                    found.append((flag, None))
+                    continue
+                if flag in VALUE_FLAGS:
+                    attached = cluster[offset + 1:]
+                    if attached.startswith("="):
+                        attached = attached[1:]
+                    value = attached or (operands[index + 1]
+                                         if index + 1 < len(operands) else None)
+                    found.append((flag, value))
+                    if not attached:
+                        index += 1
+                    break
+                found.append((token, None))
+                break
         index += 1
     return found
 
@@ -87,7 +108,19 @@ def valued(operands, flags):
 
 def exempted(operands):
     """Whether the invocation carries an exemption as an option rather than another option's value."""
-    return any(name in EXEMPT_FLAGS for name, _ in options(operands))
+    return any(name in EXEMPT_FLAGS and (value is None or value.casefold() in {"1", "t", "true"})
+               for name, value in options(operands))
+
+
+def effective_body(operands, cwd, after_a_move):
+    """(text, obstruction, file path) for the single body the invocation will post."""
+    if exempted(operands):
+        return None, None, None
+    path = valued(operands, BODY_FILE_FLAGS)
+    if path is not None:
+        text, obstruction = read_body_file(path, cwd, after_a_move)
+        return text, obstruction, path
+    return valued(operands, BODY_FLAGS), None, None
 
 
 def moves_directory(segment):

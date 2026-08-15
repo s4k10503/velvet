@@ -156,7 +156,11 @@ namespace Velvet.Tests
             ("gh issue create --label pr --title x", ""),
             ("gh pr create --title x -F b.md", "b.md||no"),
             ("gh pr create --title x -Fb.md", "b.md||no"),
+            ("gh pr create --title x -dFb.md", "b.md||no"),
+            ("gh pr create --title x -dF=b.md", "b.md||no"),
             ("gh pr create --title x -bhello", "|hello|no"),
+            ("gh pr create --title x -dfbhello", "|hello|no"),
+            ("gh pr create --title x -dfb=hello", "|hello|no"),
             ("gh pr create --title x --body-file=b.md", "b.md||no"),
             ("gh pr create --title x --body text", "|text|no"),
             // A head naming a fork is not read at all, so it neither answers nor disturbs the body.

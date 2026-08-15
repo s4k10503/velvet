@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Unit tests for the guard over a pull-request body naming a symbol no script spells.
+"""Unit tests for the guards that read a pull-request body.
 
 Two halves, and the second is why the first is not enough. The grammar half compares the guard's
 span patterns and its walk against the C# fixture they are taken from, because a body checked by a
@@ -22,6 +22,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 HOOK = REPO_ROOT / ".claude/hooks/refuse/pr_body_naming_no_such_symbol.py"
+PROVENANCE_HOOK = REPO_ROOT / ".claude/hooks/refuse/pr_body_of_another_branch.py"
 DRIFT_FIXTURE = (REPO_ROOT / "Packages/com.velvet.core/Runtime/Component/Tests/Editor"
                  / "DocumentationDriftTests.cs")
 CORPUS_FIXTURE = (REPO_ROOT / "Packages/com.velvet.core/Runtime/Component/Tests/Editor"
@@ -162,6 +163,7 @@ class VerdictTests(unittest.TestCase):
         cls.write("three.md", "Reached as `widget.Cut.nope`, three segments deep.\n")
         cls.write("called.md", "Reached as `widget.nope()`, with its argument list dropped.\n")
         cls.write("silent.md", "A description naming nothing at all.\n")
+        cls.write("origin.md", "Closes #7.\n")
 
     @classmethod
     def tearDownClass(cls):
@@ -182,6 +184,17 @@ class VerdictTests(unittest.TestCase):
             return self.REFUSE if "does not spell" in finished.stderr else "refused for something else"
         return f"exit {finished.returncode}"
 
+    def provenance_answer(self, command):
+        payload = json.dumps({"tool_name": "Bash", "cwd": str(self.root),
+                              "tool_input": {"command": command.replace("{DIR}", str(self.root))}})
+        finished = subprocess.run([sys.executable, "-B", str(PROVENANCE_HOOK)],
+                                  input=payload, text=True, capture_output=True, timeout=120)
+        if finished.returncode == 0:
+            return self.ALLOW
+        if finished.returncode == 2 and "names no issue" in finished.stderr:
+            return self.REFUSE
+        return f"exit {finished.returncode}: {finished.stderr}"
+
     def disagreements(self, table):
         """(rows answered, the rows that answered otherwise)."""
         answers = [(command, expected, self.answer(command)) for command, expected in table]
@@ -195,8 +208,12 @@ class VerdictTests(unittest.TestCase):
         ("gh pr create --title x --body-file={DIR}/absent.md", REFUSE),
         ("gh pr create --title x -F{DIR}/absent.md", REFUSE),
         ("gh pr create --title x -F {DIR}/absent.md", REFUSE),
+        ("gh pr create --title x -dF{DIR}/absent.md", REFUSE),
+        ("gh pr create --title x -dF={DIR}/absent.md", REFUSE),
         ("gh pr create --title x --body 'goes through `widget.nope`'", REFUSE),
         ("gh pr create --title x -b 'goes through `widget.nope`'", REFUSE),
+        ("gh pr create --title x -dfb'goes through `widget.nope`'", REFUSE),
+        ("gh pr create --title x -dfb='goes through `widget.nope`'", REFUSE),
         # A description corrected after the fact is posted by edit, and reaches the squash message
         # the same way a created one does.
         ("gh pr edit 1 --body-file {DIR}/absent.md", REFUSE),
@@ -209,6 +226,8 @@ class VerdictTests(unittest.TestCase):
         # Neither opens or updates a pull request.
         ("gh pr create --title x --dry-run --body-file {DIR}/absent.md", ALLOW),
         ("gh pr create --title x -h --body-file {DIR}/absent.md", ALLOW),
+        ("gh pr create --title x -dh --body-file {DIR}/absent.md", ALLOW),
+        ("gh pr create --title x -dh=false --body-file {DIR}/absent.md", REFUSE),
         ("gh pr create --fill", ALLOW),
         ("gh pr list", ALLOW),
         ("echo 'gh pr create --body-file {DIR}/absent.md'", ALLOW),
@@ -330,6 +349,27 @@ class VerdictTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(verdict, "refused for something else")
+
+    def test_Given_AnExemptionSpelledAsATitleValue_When_TheProvenanceGuardAnswers_Then_ItJudgesTheBody(self):
+        # Arrange
+        command = "gh pr create --title -h --body-file {DIR}/silent.md"
+
+        # Act
+        verdict = self.provenance_answer(command)
+
+        # Assert
+        self.assertEqual(verdict, self.REFUSE)
+
+    def test_Given_InlineAndFileBodies_When_TheProvenanceGuardAnswers_Then_ItJudgesOnlyTheFile(self):
+        # Arrange
+        command = ("gh pr create --body-file {DIR}/origin.md "
+                   "--body 'A change to the pooled reset helper.'")
+
+        # Act
+        verdict = self.provenance_answer(command)
+
+        # Assert
+        self.assertEqual(verdict, self.ALLOW)
 
     def test_Given_ThisRepositorysOwnScripts_When_TheWalkIsRun_Then_ItReachesEveryDirectoryHoldingOne(self):
         # Arrange — the walk against git's own listing, so a root dropped from it fails here rather

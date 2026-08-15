@@ -54,8 +54,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-from pr_body import (BODY_FILE_FLAGS, BODY_FLAGS, EXEMPT_FLAGS, MISSING, RELATIVE_AFTER_MOVE, STDIN,
-                     UNEXPANDED_PATH, UNREADABLE, invocations, moves_directory, read_body_file,
+from pr_body import (BODY_FILE_FLAGS, BODY_FLAGS, MISSING, RELATIVE_AFTER_MOVE, STDIN,
+                     UNEXPANDED_PATH, UNREADABLE, effective_body, invocations, moves_directory,
                      valued)
 # GuardCommandCoverageTests drives the parse through this module rather than through the lib, so
 # the two names it calls stay bound here even though `invocations` is what the guard itself uses.
@@ -148,35 +148,20 @@ UNREADABLE_BODY = {
 }
 
 
-def judge_file(path, cwd, after_a_move):
-    """0, or 2 with the reason written to stderr."""
-    text, obstruction = read_body_file(path, cwd, after_a_move)
-    if obstruction is not None:
-        return refuse(UNREADABLE_BODY[obstruction].replace("{path}", path))
-    return 0 if answered(text) else refuse(NO_ANSWER)
-
-
 def check(operands, cwd, after_a_move):
     """0, or 2 with the reason written to stderr."""
-    if any(token in EXEMPT_FLAGS for token in operands):
-        return 0
-    path = valued(operands, BODY_FILE_FLAGS)
-    text = valued(operands, BODY_FLAGS)
-    if path is None and text is None:
+    text, obstruction, path = effective_body(operands, cwd, after_a_move)
+    if obstruction is not None:
+        return refuse(UNREADABLE_BODY[obstruction].replace("{path}", path))
+    if text is None:
         # No body operand at all: --fill and its relatives, --template, --recover, --editor, and the
         # interactive form. The description comes from commits, from a file every branch reuses, or
         # from a prompt after this has run, and none of those is text held here to search — so the
         # question goes unasked, which CONTRIBUTING states without this exception.
         return 0
-    # Both are judged when both are given: which one gh posts is not something this holds, so an
-    # answer carried only by the one it does not post would be an answer nobody reads.
-    if text is not None:
-        verdict = judge_inline(text)
-        if verdict:
-            return verdict
     if path is not None:
-        return judge_file(path, cwd, after_a_move)
-    return 0
+        return 0 if answered(text) else refuse(NO_ANSWER)
+    return judge_inline(text)
 
 
 def main():

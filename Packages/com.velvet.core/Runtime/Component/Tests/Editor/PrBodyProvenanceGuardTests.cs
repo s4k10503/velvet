@@ -63,6 +63,7 @@ namespace Velvet.Tests
             ("gh pr create --title x --body-file {DIR}/no-issue-later.md", "allow"),
             ("gh pr create --title x --body-file {DIR}/no-issue-lower.md", "allow"),
             ("gh pr create --title x -F{DIR}/closes.md", "allow"),
+            ("gh pr create --title x -dF{DIR}/closes.md", "allow"),
             // Backticks and a `$` in an inline body are the description rather than a name for it.
             ("gh pr create --title x --body 'Closes #7. `Foo.Bar` now reads $HOME.'", "allow"),
             ("gh pr create --fill", "allow"),
@@ -75,7 +76,11 @@ namespace Velvet.Tests
             ("gh pr create --title x --editor", "allow"),
             ("gh pr create --title x --dry-run --body-file {DIR}/absent.md", "allow"),
             ("gh pr create --title x -h --body-file {DIR}/silent.md", "allow"),
+            ("gh pr create --title x -dh --body-file {DIR}/silent.md", "allow"),
             ("gh pr create --title x --help --body-file {DIR}/silent.md", "allow"),
+            // Body files take precedence even when an inline body occurs later in the command.
+            ("gh pr create --title x --body-file {DIR}/closes.md "
+             + "--body 'A change to the pooled reset helper.'", "allow"),
             // Only `create` posts a new description. Editing one is how a body gets its answer added
             // after the fact, so a guard that claimed it would refuse the remedy it hands out.
             ("gh pr edit 1 --body-file {DIR}/silent.md", "allow"),
@@ -102,10 +107,13 @@ namespace Velvet.Tests
             ("gh pr create --title x -b 'A change to the pooled reset helper.'", "no-origin"),
             ("gh pr create --title x --web --body-file {DIR}/silent.md", "no-origin"),
             ("gh pr create --title x --body 'Closes #7.' --body-file {DIR}/silent.md", "no-origin"),
+            ("gh pr create --title -h --body-file {DIR}/silent.md", "no-origin"),
+            ("gh pr create -t -h --body-file {DIR}/silent.md", "no-origin"),
             // Each spelling of a value gh takes, on the side where missing one lets the body through
             // unread: the accepted rows above pass whether or not the value was found. `-Fs` is the
             // shortest token that carries one attached.
             ("gh pr create --title x -F{DIR}/silent.md", "no-origin"),
+            ("gh pr create --title x -dF{DIR}/silent.md", "no-origin"),
             ("gh pr create --title x --body-file={DIR}/silent.md", "no-origin"),
             ("gh pr create --title x -Fs", "no-origin"),
             // A relative path with nothing having moved is opened against the directory the command
