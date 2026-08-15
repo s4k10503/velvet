@@ -60,6 +60,11 @@ namespace Velvet
             // ToArray() snapshots the list so a blocker that unregisters during an await does not mutate it.
             foreach (var entry in _blockers.ToArray())
             {
+                if (!entry.IsRegistered)
+                {
+                    continue;
+                }
+
                 if (entry.State.Status == RouteBlockerStatus.Proceeding)
                 {
                     continue;
@@ -92,7 +97,7 @@ namespace Velvet
                 // Skip entries whose registration died during this pass (the snapshot keeps them
                 // iterable, but their owner unmounted or an earlier blocker's decision tore them
                 // down): nothing live is waiting on their state.
-                if (blocked && _blockers.Contains(entry))
+                if (blocked && entry.IsRegistered)
                 {
                     entry.State.Block(attempt, resume, AbandonAttempt);
                     anyBlocked = true;
@@ -122,6 +127,7 @@ namespace Velvet
                     entry.State.InternalReset();
                 }
             }
+            RemoveSettledRegistrations();
         }
 
         /// <summary>
@@ -164,13 +170,24 @@ namespace Velvet
                     entry.State.InternalReset();
                 }
             }
+            RemoveSettledRegistrations();
         }
 
         #endregion
 
         #region Internal
 
-        private void Unregister(BlockerEntry entry) => _blockers.Remove(entry);
+        private void Unregister(BlockerEntry entry)
+        {
+            entry.IsRegistered = false;
+            if (entry.State.Status == RouteBlockerStatus.Idle)
+            {
+                _blockers.Remove(entry);
+            }
+        }
+
+        private void RemoveSettledRegistrations() =>
+            _blockers.RemoveAll(entry => !entry.IsRegistered && entry.State.Status == RouteBlockerStatus.Idle);
 
         // Private class - mutable public fields are used intentionally.
         // Not referenced externally, so promoting them to properties would just add noise.
@@ -179,6 +196,7 @@ namespace Velvet
             public Func<NavigationAttempt, bool>? SyncCheck;
             public Func<NavigationAttempt, CancellationToken, UniTask<bool>>? AsyncCheck;
             public RouteBlockerState State = null!;
+            public bool IsRegistered = true;
         }
 
         private sealed class BlockerRegistration : IDisposable

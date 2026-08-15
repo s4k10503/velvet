@@ -55,6 +55,10 @@ navigation it released:
   failure;
 - is abandoned — a Blocker still blocking it calls `Reset()`, which releases the rest of them with it.
 
+Disposing a Blocker's registration stops its predicate from being consulted immediately. If that
+Blocker is already holding or releasing an attempt, its state still settles with that attempt, including
+when a saved dialog handler calls `Proceed()` after the disposal.
+
 The first two wait on one thing more: no Blocker left `Blocked`. A second Blocker vetoing the re-issue
 is what that runs into, and the section below has the rest of it.
 
