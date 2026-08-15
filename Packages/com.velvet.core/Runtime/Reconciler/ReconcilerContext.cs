@@ -1263,8 +1263,7 @@ namespace Velvet
             => PrunePresenceStates(PresenceStateOwner.ParentElement, parent);
 
         // Called from FiberElementCleaner.CleanupPortal, which the retarget release also runs through.
-        // The other three routes all miss a presence inside a Portal's own children: the entry is keyed by
-        // the resolved target, which the caller owns and nothing tears down, and no walk of the tree
+        // The other three routes all miss a presence inside a Portal's own children: no walk of the tree
         // CONTAINING the PortalNode names it — the node emits as an opaque leaf there. The Portal's own
         // children reconcile does name it, on both sides, which is what retires a presence that stops
         // being rendered while the Portal stays open; what it cannot see is the Portal itself going.
@@ -1301,8 +1300,8 @@ namespace Velvet
             // Emptied, so the span may retire.
             Ran,
 
-            // Skipped, with nothing left to run it. The next pass to reconcile this container expands both
-            // sides again and takes its own reading, so the span can be dropped.
+            // Skipped, with nothing left to run it. The span is dropped rather than carried, since carrying
+            // is for a park and a container that did not park has no later slice to hand it to.
             Skipped,
 
             // Parked mid-diff. ContinueIndexed / ContinueKeyed resume from the old side this pass already
@@ -1350,8 +1349,8 @@ namespace Velvet
 
         // Closes what a park left owed, once the slice that resumed it has run. Its outcome is read the
         // same way the container's own was, so a slice that parked again leaves the span where it is.
-        // Dropping it is a discarded park's reading: nobody finishes that diff, so the entry stays live
-        // for the next pass to walk both sides of.
+        // Dropping it is a discarded park's reading — the diff that owed those removals is the one nobody
+        // finishes, so the entry must stay live (see PresenceRemovalOutcome.Skipped).
         internal void SettlePresenceReproductionsOwedByAPark(
             PresenceRemovalOutcome outcome,
             List<(ComponentFiber? boundary, VisualElement? parent, string presenceKey)> owed)

@@ -34,8 +34,11 @@ namespace Velvet.Tests
     /// leaves the other's committed child alone.</item>
     /// <item>A presence beside a container holding another retires only its own entry — the one the same
     /// pass rendered again survives it.</item>
+    /// <item>A presence replaced by a flat list of host leaves retires through the time-sliced diff's own
+    /// removals, the reading a container that never reaches the general walk's finalize takes.</item>
     /// <item>Both suspended states are read, since a presence with committed children puts their keys on
-    /// the container's old side and one with none does not — the two park in different strategies.</item>
+    /// the container's old side and one with none does not — the two park in different strategies, and
+    /// each strategy's resume settles what its own park left owed.</item>
     /// <item>An abort stops the removal pass of the container it reaches and holds for the rest of the
     /// pass, so whether an entry may retire is read per container: one whose own removals ran retires
     /// even though a later container's did not. The reading covers the fast path too, where the removals
@@ -45,7 +48,8 @@ namespace Velvet.Tests
     /// old side this pass already expanded, so nothing retakes it and the reading is carried to the slice
     /// that finishes the removals. The entry retires then, rather than outliving the leaf it named.</item>
     /// <item>A park a fresh pass discards carries nothing into a later park's resume, since the diff that
-    /// owed those removals is the one nobody finishes.</item>
+    /// owed those removals is the one nobody finishes. A resume that unwinds leaves the same diff behind,
+    /// so what it owed must not reach the next park's resume and retire an entry still naming its leaf.</item>
     /// <item>A pass that walks neither side of a presence retires nothing of it — the last case holds
     /// that to what it already did, since retiring a live entry strands its leaf where the next old side
     /// can no longer name it.</item>
@@ -92,6 +96,10 @@ namespace Velvet.Tests
         };
 
         private const string RetargetId = "presence-retarget-target";
+
+        // Distinguishes the arranged throw from any other InvalidOperationException the pass could raise,
+        // so the case cannot record an unwind it did not cause.
+        private const string ResumeUnwindMessage = "arranged unwind out of a resumed diff";
 
         private VisualElement _root;
 
@@ -542,8 +550,10 @@ namespace Velvet.Tests
 
             // Assert — that the park really did leave the presence's leaf standing is folded in: a diff
             // that ran to completion would have emptied the slot, and retiring the entry would be right.
-            Assert.That((root.Q<VisualElement>("item-a") != null, ctx.PresenceStates.Count),
-                Is.EqualTo((true, 1)));
+            // The strategy is pinned for the reason ParkedInTheKeyedState carries.
+            Assert.That(
+                (ParkedInTheKeyedState(reconciler), root.Q<VisualElement>("item-a") != null, ctx.PresenceStates.Count),
+                Is.EqualTo((true, true, 1)));
         }
 
         // GREEN_ON_BASE(characterization): the base had no retirement route a parked container could reach.
@@ -579,14 +589,15 @@ namespace Velvet.Tests
             reconciler.Reconcile(root, Array.Empty<VNode>(), committed, frameBudgetMs: 0);
             var ctx = reconciler.Context;
             reconciler.Reconcile(root, committed, Rows("moved-"), frameBudgetMs: 0.001);
-            var parked = reconciler.HasPendingWork;
+            var parkedKeyed = ParkedInTheKeyedState(reconciler);
 
             // Act — the continuation runs the removals the park left owed.
             reconciler.ContinueReconcile();
 
             // Assert — that the diff really did park is folded in: a first slice that ran to completion
             // would retire the entry through the container's own reading and measure nothing of the resume.
-            Assert.That((parked, root.Q<VisualElement>("item-a") != null, ctx.PresenceStates.Count),
+            // The strategy is pinned for the reason ParkedInTheKeyedState carries.
+            Assert.That((parkedKeyed, root.Q<VisualElement>("item-a") != null, ctx.PresenceStates.Count),
                 Is.EqualTo((true, false, 0)));
         }
 
@@ -633,6 +644,66 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AnEmptyPresenceOnAParkedFastPathContainer_When_TheIndexedResumeFinishesTheDiff_Then_ItsBoundaryStateIsRetired()
+        {
+            // Arrange — the park Given_AnEmptyPresenceOnAFastPathContainer_When_ItsIndexedDiffParks_… stops
+            // at, carried to the slice that resumes it. The keyed resume above reaches the same settle
+            // through the other strategy's call, and only through that one.
+            using var reconciler = new Reconciler();
+            var root = new VisualElement();
+            var committed = RowsWith(V.AnimatePresence(key: "presence", children: Array.Empty<VNode>()));
+            reconciler.Reconcile(root, Array.Empty<VNode>(), committed, frameBudgetMs: 0);
+            var ctx = reconciler.Context;
+            reconciler.Reconcile(root, committed, Rows("moved-"), frameBudgetMs: 0.001);
+            var parkedIndexed = ParkedInTheIndexedState(reconciler);
+
+            // Act — the continuation runs the removals the park left owed.
+            reconciler.ContinueReconcile();
+
+            // Assert — that the park landed in the indexed state is folded in: parking in the keyed one
+            // would make this a second reading of the keyed resume rather than a reading of this one.
+            Assert.That((parkedIndexed, ctx.PresenceStates.Count), Is.EqualTo((true, 0)));
+        }
+
+        [Test]
+        public void Given_AParkedFastPathContainer_When_ItsResumeUnwinds_Then_ALaterParksResumeLeavesTheStrandedEntryAlone()
+        {
+            // Arrange — one reconciler, two roots. The first root's resume throws partway through the
+            // diff, leaving its removals unrun and its leaf in the tree; the second root then parks and
+            // resumes cleanly, which is the slice that settles whatever the first left owed.
+            using var reconciler = new Reconciler();
+            var ctx = reconciler.Context;
+            var first = new VisualElement();
+            var firstCommitted = RowsWith(Presence("a"));
+            reconciler.Reconcile(first, Array.Empty<VNode>(), firstCommitted, frameBudgetMs: 0);
+            reconciler.Reconcile(first, firstCommitted, RowsThrowingAt("moved-", 99), frameBudgetMs: 0.001);
+            var firstParked = reconciler.HasPendingWork;
+            var unwound = false;
+            try
+            {
+                reconciler.ContinueReconcile();
+            }
+            catch (InvalidOperationException e) when (e.Message == ResumeUnwindMessage)
+            {
+                unwound = true;
+            }
+            var second = new VisualElement();
+            var secondCommitted = RowsWith(Presence("b"));
+            reconciler.Reconcile(second, Array.Empty<VNode>(), secondCommitted, frameBudgetMs: 0);
+            reconciler.Reconcile(second, secondCommitted, Rows("gone-"), frameBudgetMs: 0.001);
+            var secondParked = reconciler.HasPendingWork;
+
+            // Act — the continuation finishes the second root's diff, and only that one.
+            reconciler.ContinueReconcile();
+
+            // Assert — the first root's entry is the one left, since the unwound diff never emptied its
+            // slots. Both parks and the unwind are folded in: each is what puts the span in play, and
+            // without it the count would be right for the wrong reason.
+            Assert.That((firstParked, unwound, secondParked, ctx.PresenceStates.Count),
+                Is.EqualTo((true, true, true, 1)));
+        }
+
+        [Test]
         public void Given_AParkDiscardedByAFreshPass_When_ALaterParkResumes_Then_OnlyTheLaterParksEntryRetires()
         {
             // Arrange — one reconciler, two roots. The first root's diff parks and is then discarded by a
@@ -653,11 +724,11 @@ namespace Velvet.Tests
             // Act — the continuation finishes the second root's diff, and only that one.
             reconciler.ContinueReconcile();
 
-            // Assert — the discarded park's leaf is still in the first root, so its entry has to be the one
-            // left. Both parks are folded in: without either, nothing is owed across a discard.
+            // Assert — the first root's entry has to be the one left, since the discarded diff never
+            // emptied its slots. Both parks are folded in: without either, nothing is owed across a discard.
             Assert.That(
-                (firstParked, secondParked, first.Q<VisualElement>("item-a") != null, ctx.PresenceStates.Count),
-                Is.EqualTo((true, true, true, 1)));
+                (firstParked, secondParked, ctx.PresenceStates.Count),
+                Is.EqualTo((true, true, 1)));
         }
 
         // GREEN_ON_BASE(characterization): a pass that walks neither side of a presence says nothing of it.
@@ -675,8 +746,8 @@ namespace Velvet.Tests
             var host = _root.Q<VisualElement>("host");
 
             // Act — a pass that reproduces the presence, then a top-level pass it takes no part in, then
-            // the swap that reads its state. The middle pass is the one under test; the first is what
-            // leaves a reading of the presence behind for it to be wrong about.
+            // the swap that reads its state. The middle pass is the one under test; the first is what puts
+            // the presence through a reproduction, so a route keyed on one has something to act on.
             store.Touch();
             scheduler.DrainImmediateForTest();
             ticks.Bump();
@@ -727,6 +798,20 @@ namespace Velvet.Tests
             return rows;
         }
 
+        // One row whose child expansion throws, so a resume that reaches it unwinds out of the strategy
+        // rather than parking or finishing. The memo sits under the row rather than beside it so the
+        // container keeps the fast path: only the nested walk of that row's own children resolves it, and
+        // the container's own children stay a flat list of host leaves.
+        private static VNode[] RowsThrowingAt(string prefix, int index)
+        {
+            var rows = Rows(prefix);
+            rows[index] = V.Div(name: prefix + index, children: new VNode[]
+            {
+                V.Memoized(() => throw new InvalidOperationException(ResumeUnwindMessage)),
+            });
+            return rows;
+        }
+
         private static VNode[] RowsWith(VNode tail)
         {
             var rows = Rows("row-");
@@ -737,15 +822,23 @@ namespace Velvet.Tests
         }
 
         // Which of the two suspended states the container parked in. Read by reflection rather than from a
-        // member on the reconciler, since production types here carry nothing test-only.
+        // member on the reconciler, since production types here carry nothing test-only. A case that stands
+        // opposite the other strategy's reading pins which state it parked in, so a change moving it onto
+        // the other's fails rather than leaving the pair measuring one term twice.
         private static bool ParkedInTheIndexedState(Reconciler reconciler)
+            => PendingState(reconciler, "PendingIndexedState") != null;
+
+        private static bool ParkedInTheKeyedState(Reconciler reconciler)
+            => PendingState(reconciler, "PendingKeyedState") != null;
+
+        private static object PendingState(Reconciler reconciler, string property)
         {
             var child = typeof(Reconciler)
                 .GetField("_childReconciler", BindingFlags.Instance | BindingFlags.NonPublic)!
                 .GetValue(reconciler)!;
             return child.GetType()
-                .GetProperty("PendingIndexedState", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)!
-                .GetValue(child) != null;
+                .GetProperty(property, BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)!
+                .GetValue(child);
         }
 
         #endregion

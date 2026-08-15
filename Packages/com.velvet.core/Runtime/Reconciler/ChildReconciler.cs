@@ -533,9 +533,20 @@ namespace Velvet
 
             var state = PendingIndexedState.Value;
             PendingIndexedState = null;
-            ReconcileIndexedFrom(state.Parent, state.OldNodes, state.NewNodes,
-                state.ResumePhase, state.ResumeIndex, frameBudgetMs, state.SlotStart, state.SlotLimit);
-            _ctx.SettlePresenceReproductionsOwedByAPark(FastPathRemovalOutcome(), _presenceOwedByThisPark);
+            // Read only when the resume unwinds, for the reason Reconcile's own initialiser carries.
+            // Deriving the outcome inside the finally instead is what this shape rejects: measured, the
+            // unwound resume then retires an entry whose slots the unfinished diff never emptied.
+            var removals = ReconcilerContext.PresenceRemovalOutcome.Skipped;
+            try
+            {
+                ReconcileIndexedFrom(state.Parent, state.OldNodes, state.NewNodes,
+                    state.ResumePhase, state.ResumeIndex, frameBudgetMs, state.SlotStart, state.SlotLimit);
+                removals = FastPathRemovalOutcome();
+            }
+            finally
+            {
+                _ctx.SettlePresenceReproductionsOwedByAPark(removals, _presenceOwedByThisPark);
+            }
         }
 
         // Resumes a suspended KeyedReconcile.
@@ -546,8 +557,17 @@ namespace Velvet
 
             var state = PendingKeyedState;
             PendingKeyedState = null;
-            ReconcileKeyedFrom(state, frameBudgetMs);
-            _ctx.SettlePresenceReproductionsOwedByAPark(FastPathRemovalOutcome(), _presenceOwedByThisPark);
+            // Same initialiser discipline as ContinueIndexed.
+            var removals = ReconcilerContext.PresenceRemovalOutcome.Skipped;
+            try
+            {
+                ReconcileKeyedFrom(state, frameBudgetMs);
+                removals = FastPathRemovalOutcome();
+            }
+            finally
+            {
+                _ctx.SettlePresenceReproductionsOwedByAPark(removals, _presenceOwedByThisPark);
+            }
         }
 
         // Shifts the captured SlotStart of whichever time-sliced state is currently parked by
