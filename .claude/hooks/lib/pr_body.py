@@ -7,8 +7,8 @@ claimed and no body found. Held in one place so the next spelling is added once 
 whichever guard its author had open.
 
 What is NOT shared is what to do about a body that cannot be read. `read_body_file` names the
-obstruction and stops there: one guard declines each of them with its own remedy, and the other has
-nothing to say about a description it never sees.
+obstruction and stops there: each guard decides whether another guard covers that command or the
+unreadable body must be refused here.
 """
 
 import os
@@ -23,6 +23,14 @@ BODY_FLAGS = ("--body", "-b")
 # None of these opens or updates a pull request, so none of them posts a description.
 EXEMPT_FLAGS = ("--dry-run", "--help", "-h")
 
+VALUE_FLAGS = {
+    "--add-assignee", "--add-label", "--add-project", "--add-reviewer", "--assignee", "-a",
+    "--base", "-B", "--body", "-b", "--body-file", "-F", "--head", "-H", "--label", "-l",
+    "--milestone", "-m", "--project", "-p", "--recover", "--remove-assignee",
+    "--remove-label", "--remove-project", "--remove-reviewer", "--repo", "-R", "--reviewer",
+    "-r", "--template", "-T", "--title", "-t",
+}
+
 # Why a body could not be read, decided in this order.
 UNEXPANDED_PATH = "unexpanded-path"
 STDIN = "stdin"
@@ -33,8 +41,36 @@ UNREADABLE = "unreadable"
 MOVERS = {"cd", "pushd", "popd"}
 
 
+def options(operands):
+    """Every parsed (option, value), preserving order and excluding positional operands."""
+    found = []
+    index = 0
+    while index < len(operands):
+        token = operands[index]
+        if token == "--":
+            break
+        name, separator, inline = token.partition("=")
+        if name in VALUE_FLAGS:
+            if separator:
+                found.append((name, inline))
+                index += 1
+            else:
+                value = operands[index + 1] if index + 1 < len(operands) else None
+                found.append((name, value))
+                index += 2
+            continue
+        matching = next((flag for flag in VALUE_FLAGS
+                         if len(flag) == 2 and token.startswith(flag) and len(token) > 2), None)
+        if matching is not None:
+            found.append((matching, token[2:]))
+        elif token.startswith("-"):
+            found.append((token, None))
+        index += 1
+    return found
+
+
 def valued(operands, flags):
-    """The value given to one of `flags`, or None.
+    """The last value given to one of `flags`, or None.
 
     Three spellings, because gh takes all three: `--flag v`, `--flag=v`, and `-Fv` — a short flag
     carrying its value attached. The last was missed, so `-F/tmp/pr-body.md` reached none of the
@@ -42,23 +78,16 @@ def valued(operands, flags):
     meant for a body that cannot be read. That is the accident these guards exist for, one character
     apart.
 
-    A name is read off any token, including one that is another option's value, so `-t -Fx` gives a
-    body file of `x` and the file asked about is not the one gh will post. Separating the two needs a
-    mirror of which of gh's options take a value, and an unpinned mirror drifts.
+    Repeated scalar options use their last value. Options are parsed before names are matched so a
+    value belonging to another option is not treated as a body flag.
     """
-    short = tuple(flag for flag in flags if len(flag) == 2 and flag.startswith("-") and flag[1] != "-")
-    for index, token in enumerate(operands):
-        name, sep, inline = token.partition("=")
-        if name in flags:
-            if sep:
-                return inline
-            if index + 1 < len(operands):
-                return operands[index + 1]
-            return None
-        for flag in short:
-            if len(token) > 2 and token.startswith(flag):
-                return token[2:]
-    return None
+    values = [value for name, value in options(operands) if name in flags]
+    return values[-1] if values else None
+
+
+def exempted(operands):
+    """Whether the invocation carries an exemption as an option rather than another option's value."""
+    return any(name in EXEMPT_FLAGS for name, _ in options(operands))
 
 
 def moves_directory(segment):

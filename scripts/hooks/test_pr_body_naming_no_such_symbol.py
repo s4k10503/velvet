@@ -289,6 +289,48 @@ class VerdictTests(unittest.TestCase):
         # Assert
         self.assertEqual(verdict, self.ALLOW)
 
+    def test_Given_RepeatedInlineBodies_When_TheGuardAnswers_Then_ItJudgesTheLastBody(self):
+        # Arrange
+        command = ("gh pr edit 1 --body 'goes through `widget.spin`' "
+                   "--body 'goes through `widget.nope`'")
+
+        # Act
+        verdict = self.answer(command)
+
+        # Assert
+        self.assertEqual(verdict, self.REFUSE)
+
+    def test_Given_AnExemptionSpelledAsATitleValue_When_TheGuardAnswers_Then_ItJudgesTheBody(self):
+        # Arrange
+        command = "gh pr edit 1 --title -h --body 'goes through `widget.nope`'"
+
+        # Act
+        verdict = self.answer(command)
+
+        # Assert
+        self.assertEqual(verdict, self.REFUSE)
+
+    def test_Given_InlineAndFileBodies_When_TheGuardAnswers_Then_ItJudgesTheFileBody(self):
+        # Arrange
+        command = ("gh pr edit 1 --body 'goes through `widget.nope`' "
+                   "--body-file {DIR}/present.md")
+
+        # Act
+        verdict = self.answer(command)
+
+        # Assert
+        self.assertEqual(verdict, self.ALLOW)
+
+    def test_Given_AnUnreadableEditBodyFile_When_TheGuardAnswers_Then_ItRefusesTheEdit(self):
+        # Arrange — a directory exists at the path but cannot be read as the body text.
+        command = "gh pr edit 1 --body-file {DIR}"
+
+        # Act
+        verdict = self.answer(command)
+
+        # Assert
+        self.assertEqual(verdict, "refused for something else")
+
     def test_Given_ThisRepositorysOwnScripts_When_TheWalkIsRun_Then_ItReachesEveryDirectoryHoldingOne(self):
         # Arrange — the walk against git's own listing, so a root dropped from it fails here rather
         # than emptying the corpus in silence.

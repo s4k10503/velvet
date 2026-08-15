@@ -60,7 +60,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-from pr_body import (BODY_FILE_FLAGS, BODY_FLAGS, EXEMPT_FLAGS, invocations, read_body_file, valued)
+from pr_body import (BODY_FILE_FLAGS, BODY_FLAGS, exempted, invocations, read_body_file, valued)
 
 # Registered on the event in .claude/settings.json rather than narrowed to the agents expected to
 # open pull requests, which would leave every other session unguarded. `HookWiringCoverageTests`
@@ -183,25 +183,17 @@ def naming(references):
 
 
 def bodies_of(operands, cwd, after_a_move):
-    """The descriptions this invocation will post, out of every spelling gh takes one under."""
-    if any(token in EXEMPT_FLAGS for token in operands):
-        return []
-    found = []
+    """(description, obstruction) for the one body this invocation will post."""
+    if exempted(operands):
+        return None, None
+    path = valued(operands, BODY_FILE_FLAGS)
+    if path is not None:
+        return read_body_file(path, cwd, after_a_move)
     # Read as it stands, expansions and all. A `$(…)` standing for the whole description leaves
     # nothing here to find, which is a question unasked rather than a wrong answer, and the sibling
     # that reads the same invocation declines that spelling outright.
     text = valued(operands, BODY_FLAGS)
-    if text is not None:
-        found.append(text)
-    path = valued(operands, BODY_FILE_FLAGS)
-    if path is not None:
-        # A body this cannot read is not a defect, and a sibling already names every way of arriving
-        # at one. Both are judged when both are given: which of the two gh posts is not something
-        # this holds.
-        content, _ = read_body_file(path, cwd, after_a_move)
-        if content is not None:
-            found.append(content)
-    return found
+    return text, None
 
 
 def main():
@@ -218,13 +210,22 @@ def main():
             return 0
         # `gh pr edit` is asked alongside `gh pr create`, because a body corrected after the fact is
         # posted by it and reaches the squash message the same way.
-        posted = [(words, body)
-                  # The corpus is built only once a description is in hand, so a command that posts
-                  # none — `--fill`, `--dry-run`, a body written by this same command — is neither
-                  # read nor held to the tree the walk below wants.
-                  for words, operands, after_a_move in invocations(command, ("pr", "create"),
-                                                                   ("pr", "edit"))
-                  for body in bodies_of(operands, cwd, after_a_move)]
+        posted = []
+        for words, operands, after_a_move in invocations(command, ("pr", "create"), ("pr", "edit")):
+            body, obstruction = bodies_of(operands, cwd, after_a_move)
+            subcommand = "gh pr " + words[1]
+            if obstruction is not None:
+                # `pr_body_of_another_branch` owns unreadable create bodies; edit has no sibling.
+                if words[1] == "edit":
+                    return refuse(
+                        subcommand,
+                        "the body file could not be read, so no description was checked.\n\n"
+                        "Write the body to a readable file before posting it.")
+                continue
+            # The corpus is built only once a description is in hand, so a command that posts none
+            # is neither read nor held to the tree the walk below wants.
+            if body is not None:
+                posted.append((words, body))
         if not posted:
             return 0
         subcommand = "gh pr " + posted[0][0][1]
