@@ -1,9 +1,7 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Text.Json;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Xunit;
@@ -29,7 +27,8 @@ namespace Velvet.SourceGenerators.Tests
     /// Syntax only. A mutant can parse and still not compile — a type error, an unassigned local — and
     /// answering that needs the whole compilation with its references, which is the Unity build rather
     /// than this. What it catches is the class the generator can actually create: an edit that leaves
-    /// punctuation belonging to the construct around it.
+    /// punctuation belonging to the construct around it. <see cref="MutantDeclarationRemovalTests"/>
+    /// answers the one shape of that class the parser accepts.
     /// </remarks>
     public sealed class MutantParseabilityTests
     {
@@ -37,8 +36,8 @@ namespace Velvet.SourceGenerators.Tests
         public void Given_EveryMutantThisPackageGenerates_When_ItIsParsed_Then_NoneIsRejected()
         {
             // Arrange
-            var repository = RepositoryRoot();
-            var mutants = Generate(repository);
+            var repository = GeneratedMutants.RepositoryRoot();
+            var mutants = GeneratedMutants.Generate(repository);
             Assume.NotEmpty(mutants, "the generator emitted mutants to parse");
 
             // Act
@@ -63,7 +62,7 @@ namespace Velvet.SourceGenerators.Tests
                 }
             }
 
-            // The whole list to a file, because the assertion message is truncated and every entry is
+            // The whole list to a file: the assertion carries the count alone, and every entry is
             // a line somebody has to look at.
             if (rejected.Count > 0)
             {
@@ -87,56 +86,5 @@ namespace Velvet.SourceGenerators.Tests
             CSharpSyntaxTree.ParseText(source)
                 .GetDiagnostics()
                 .Count(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
-
-        private static string RepositoryRoot() =>
-            Path.GetFullPath(Path.Combine(SolutionPaths.GeneratorsRoot(), "..", "..", ".."));
-
-        private sealed record Mutant(string Path, int Line, string Operator, string Text);
-
-        private static List<Mutant> Generate(string repository)
-        {
-            var emitted = Path.Combine(Path.GetTempPath(), "velvet-mutants-" + Guid.NewGuid().ToString("N") + ".json");
-            try
-            {
-                var start = new ProcessStartInfo("python3")
-                {
-                    WorkingDirectory = repository,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                };
-                start.ArgumentList.Add("-B");
-                start.ArgumentList.Add(Path.Combine("scripts", "test_quality", "mutation_check.py"));
-                start.ArgumentList.Add("--project");
-                start.ArgumentList.Add(repository);
-                start.ArgumentList.Add("--emit-lines");
-                start.ArgumentList.Add(emitted);
-
-                using var process = Process.Start(start)!;
-                var error = process.StandardError.ReadToEnd();
-                process.StandardOutput.ReadToEnd();
-                process.WaitForExit();
-                if (process.ExitCode != 0)
-                {
-                    throw new InvalidOperationException(
-                        "the mutant generator did not run, so nothing here was parsed: " + error);
-                }
-
-                using var json = JsonDocument.Parse(File.ReadAllText(emitted));
-                return json.RootElement.EnumerateArray()
-                    .Select(item => new Mutant(
-                        item.GetProperty("path").GetString()!,
-                        item.GetProperty("line").GetInt32(),
-                        item.GetProperty("operator").GetString()!,
-                        item.GetProperty("text").GetString()!))
-                    .ToList();
-            }
-            finally
-            {
-                if (File.Exists(emitted))
-                {
-                    File.Delete(emitted);
-                }
-            }
-        }
     }
 }
