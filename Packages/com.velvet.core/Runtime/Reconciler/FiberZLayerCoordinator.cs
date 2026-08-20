@@ -135,8 +135,6 @@ namespace Velvet
         // Drain-time resolution of a queued mount (ChildReconciler.DrainPendingPortalMounts's new case arm).
         // By now placeholder.parent is set (the caller already inserted it at the ordinary slot like any
         // other created element), so the stacking parent — and therefore its container — is finally known.
-        // drain (see RebaseParkedSlotsForContainerChange) — threaded through only so GetOrCreateContainer can
-        // rebase a same-pass self-park; it plays no other part in resolving this mount.
         internal static void ResolveQueuedMount(
             ReconcilerContext ctx, VisualElement placeholder, ZLayerMountNode node)
         {

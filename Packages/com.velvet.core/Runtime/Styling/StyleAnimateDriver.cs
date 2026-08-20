@@ -79,12 +79,15 @@ namespace Velvet
 
         // Only the two slots named here have a flag in MotionTransitionSlots; the filter and background-position
         // the other three modes write have none, so those are left to whatever transition covers them.
+#pragma warning disable CS8524 // no discard arm: a new mode has to name the slots it guards
         private static MotionTransitionSlots GuardedSlots(AnimateMode mode) => mode switch
         {
             AnimateMode.Spin => MotionTransitionSlots.Rotate,
             AnimateMode.Pulse => MotionTransitionSlots.Opacity,
-            _ => MotionTransitionSlots.None,
+            AnimateMode.None or AnimateMode.Gradient or AnimateMode.Shimmer or AnimateMode.Hue
+                => MotionTransitionSlots.None,
         };
+#pragma warning restore CS8524
 
         // Tears down a running motion: hands back any transition suspension, pauses the tick, removes any
         // deferred-attach callback, and restores the styles the motion drove. Pan modes restore the gradient's
