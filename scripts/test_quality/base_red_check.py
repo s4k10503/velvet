@@ -1164,13 +1164,20 @@ def added_keyword(output, base_tree, branch_tree, case):
     read by looking, over the directories the run imports from. One base-side definition accepting the
     keyword is enough to refuse: the reading has to be that the base could not have taken this call,
     not that some module somewhere could not.
+
+    The name readings are gated on `reaches_surface` and this one is not, deliberately. A keyword is
+    a single token: each of those compares a set of spellings that includes the module's own name, so
+    a case naming the module qualifies however it spells the member, while a keyword appears at the
+    call site and nowhere else. Cases here drive their subject through a
+    helper class the fixture does not derive from -- `Polled`, `Workspace`, `StubbedCampaign` -- so
+    the call site sits outside every line the case reaches, and gating this would refuse those cases
+    with no declaration able to clear the verdict. What it costs is a call made at class scope
+    answering for the whole file, which `KeywordAtClassScopeTests` records.
     """
     missing = MISSING_KEYWORD.search(output)
     if not missing:
         return False
     function, keyword = missing.group(1), missing.group(2)
-    if not reaches_surface(case, base_tree, keyword):
-        return False
     found = False
     for directory in import_directories(case, base_tree):
         for module in sorted((branch_tree / directory).glob("*.py")) if (
@@ -1188,9 +1195,9 @@ def fixture_classes(parsed, owner):
     """`owner` and the classes it derives from, over the ones this file declares by bare name.
 
     A shared base class is where unittest puts scaffolding two fixtures need, so a `setUp` there is
-    as much an heir's reach as one written in its own body. A dotted base names another module's
-    class and is left alone: this cannot read that file, and taking the last segment would resolve
-    an in-file class that happens to share the name instead.
+    as much an heir's reach as one written in its own body. A dotted base is left alone because its
+    last segment is not a spelling this file binds: resolving `helpers.Shared` to a `Shared` declared
+    here picks a class the fixture never derived from.
     """
     declared = {node.name: node for node in ast.walk(parsed) if isinstance(node, ast.ClassDef)}
     found, pending = set(), [owner]

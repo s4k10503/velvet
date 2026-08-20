@@ -1530,7 +1530,7 @@ class PythonSurfaceReachTests(unittest.TestCase):
 
     # GREEN_ON_BASE(characterization): a sibling's decorator is a sibling's code.
     # It sits above the `def` the subtraction is taken from, so leaving the range to open there
-    # hands every other case of the file a reach it never had.
+    # hands the rest of that fixture, and its heirs, a reach they never had.
     def test_Given_TheNameOnlyInASiblingsDecorator_When_ThisOneIsRead_Then_ThatIsNotEvidence(self):
         # Arrange -- the decorator of the case beside this one, which runs at import for the file
         # rather than for either case.
@@ -1580,6 +1580,26 @@ class PythonSurfaceReachTests(unittest.TestCase):
                           "class Shared(unittest.TestCase):\n"
                           "    SEEN = ADDED\n\n\n"
                           "class T(helpers.Shared):\n"
+                          "    def test_mine(self):\n"
+                          "        self.assertEqual(OPEN, 1)\n")
+
+        # Assert
+        self.assertFalse(found)
+
+    # GREEN_ON_BASE(characterization): a definition opens at the first of its stacked decorators.
+    # Reading the last one instead leaves the ones above it outside the range, so a name written in
+    # the outer decorator of a sibling case reads as this case's reach.
+    def test_Given_TheNameInASiblingsOuterStackedDecorator_When_ItIsRead_Then_ThatIsNotEvidence(
+            self):
+        # Arrange -- two decorators on the case beside this one, and the name in the outer of them.
+        # Act
+        found = self.read("import unittest\n"
+                          "from notes import ADDED, OPEN\n\n\n"
+                          "class T(unittest.TestCase):\n"
+                          "    @unittest.skipIf(ADDED, 'x')\n"
+                          "    @unittest.expectedFailure\n"
+                          "    def test_other(self):\n"
+                          "        pass\n\n"
                           "    def test_mine(self):\n"
                           "        self.assertEqual(OPEN, 1)\n")
 
@@ -2007,19 +2027,6 @@ class AddedKeywordTests(unittest.TestCase):
         # Assert
         self.assertFalse(found)
 
-    def test_Given_TheCallMadeInAnotherClassBody_When_ACaseIsRead_Then_ItIsNotEvidence(self):
-        # Arrange -- a class body runs at import, so this TypeError reaches every case of the file
-        # and is no more this one's than a module-level import of a branch-only name would be. The
-        # same shape on the import reading is refused, and the two answer alike here.
-        # Act
-        found = self.read("def report(cases):\n    return cases\n",
-                          "def report(cases, unbuildable=None):\n    return cases\n",
-                          "TypeError: report() got an unexpected keyword argument 'unbuildable'",
-                          self.ELSEWHERE)
-
-        # Assert
-        self.assertFalse(found)
-
     def test_Given_AParameterOnAModuleBehindAnInsert_When_TheTraceIsRead_Then_ItIsEvidence(self):
         # Arrange -- the same reading over the same directories a module name resolves against,
         # since the callee sits behind the insert rather than beside the case.
@@ -2028,6 +2035,70 @@ class AddedKeywordTests(unittest.TestCase):
             "def report(cases):\n    return cases\n",
             "def report(cases, unbuildable=None):\n    return cases\n",
             "TypeError: report() got an unexpected keyword argument 'unbuildable'")
+
+        # Assert
+        self.assertTrue(found)
+
+
+class KeywordAtClassScopeTests(unittest.TestCase):
+    """What the ungated keyword reading costs, recorded rather than left to be rediscovered.
+
+    A call at class scope runs at import and so raises for every case of the file, and this reading
+    answers yes for all of them. Gating it on the keyword refuses the shape three of this
+    repository's suites are built out of -- a case driving its subject through a helper class its
+    fixture does not derive from -- and `COULD_NOT_ANSWER` is a failing verdict no declaration
+    clears, so the author of a correct test would have nothing to do about it.
+    """
+
+    HELPER = "scripts/helper.py"
+    CASE = "scripts/test_mine.py"
+    AT_CLASS_SCOPE = ("import unittest\n\n\nclass Other(unittest.TestCase):\n"
+                      "    SPEC = report(cases, unbuildable=True)\n\n\n"
+                      "class T(unittest.TestCase):\n"
+                      "    def test_a(self):\n"
+                      "        self.assertEqual(1, 1)\n")
+    THROUGH_A_HELPER = ("import unittest\n\n\nclass Support:\n"
+                        "    @staticmethod\n"
+                        "    def build():\n"
+                        "        return report(cases, unbuildable=True)\n\n\n"
+                        "class T(unittest.TestCase):\n"
+                        "    def test_a(self):\n"
+                        "        self.assertIsNotNone(Support.build())\n")
+
+    def read(self, module):
+        holder = tempfile.mkdtemp(prefix="base-red-kwscope-")
+        self.addCleanup(shutil.rmtree, holder, ignore_errors=True)
+        root = Path(holder)
+        for name, helper in (("base", "def report(cases):\n    return cases\n"),
+                             ("branch", "def report(cases, unbuildable=None):\n    return cases\n")):
+            for relative, held in ((self.HELPER, helper), (self.CASE, module)):
+                path = root / name / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(held)
+        return base_red_check.added_python_surface(
+            "TypeError: report() got an unexpected keyword argument 'unbuildable'",
+            root / "base", root / "branch", base_red_check.Case("T.test_a", self.CASE, 1, 2))
+
+    # GREEN_ON_BASE(characterization): the keyword reading answers for the file, not the case.
+    # The name readings are case-scoped and this one is not, and the two cases here are the pair
+    # that says why: a gate cannot tell them apart, since the keyword sits at the call site in both.
+    def test_Given_ACallAtClassScope_When_ACaseOfThatFileIsRead_Then_ItIsEvidenceAnyway(self):
+        # Arrange -- the case reaches nothing the branch added.
+        # Act
+        found = self.read(self.AT_CLASS_SCOPE)
+
+        # Assert
+        self.assertTrue(found)
+
+    # GREEN_ON_BASE(characterization): a case can drive its subject through a helper class.
+    # Its fixture derives nothing from that class, so the call site lies outside every line the case
+    # reaches. The base answers yes for want of a gate and the branch by keeping none, so what this
+    # records is the case a gate would refuse with no verdict an author could clear.
+    def test_Given_ACallThroughAHelperTheCaseDrives_When_ItIsRead_Then_ItIsEvidence(self):
+        # Arrange -- the case does reach the branch's surface, through a class its fixture does not
+        # derive from, which is how `Polled`, `Workspace` and `StubbedCampaign` are written.
+        # Act
+        found = self.read(self.THROUGH_A_HELPER)
 
         # Assert
         self.assertTrue(found)
