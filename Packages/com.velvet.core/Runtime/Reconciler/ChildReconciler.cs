@@ -267,16 +267,13 @@ namespace Velvet
                     // context, like any ordinary sibling) — only its CONTAINER placement was deferred,
                     // because placeholder.parent (the stacking parent) is only knowable now. No target
                     // resolution, no nested Reconcile, no PortalState entry: resolve the layer placement
-                    // and move on to the next queued entry. `this` is passed through so a first-of-its-
-                    // sign container creation can rebase a park THIS SAME instance's Reconcile() call just
-                    // captured (see RebasePendingSlotStartIfTargeting) — invisible to any other lookup
-                    // until this whole top-level call returns.
+                    // and move on to the next queued entry.
                     // Ahead of the containment below rather than inside it: that catch answers for a failed
                     // target resolution and this arm resolves none — it performs the whole placement, and
                     // the insert that lands the element runs the panel-attach callbacks a V.Custom<T>
                     // subclass registered on it (PortalLayersTests pins that the insert reaches them).
-                    // Sending that application throw to the Error Boundary is the decision here; contained,
-                    // it is reported to the console with `real` already in the container and no
+                    // Leaving that application throw on the render's own escape path is the decision here;
+                    // contained, it is reported to the console with `real` already in the container and no
                     // ZLayerMembers entry, which is the key Reposition needs to move it again.
                     FiberZLayerCoordinator.ResolveQueuedMount(_ctx, placeholder, zLayerMount);
                     continue;
@@ -425,8 +422,7 @@ namespace Velvet
                     resolvedTarget, slotStart, slotLength, (node as PortalNode)?.TargetId, logicalParent);
             }
             // Same safe (post-pass, no diff in flight) context as the drain above: a container that lost its
-            // last member this pass tears down here, never synchronously mid-diff. `this` mirrors
-            // ResolveQueuedMount's own reason above (a self-caused park from THIS instance's own pass).
+            // last member this pass tears down here, never synchronously mid-diff.
             FiberZLayerCoordinator.DrainTeardowns(_ctx);
         }
 

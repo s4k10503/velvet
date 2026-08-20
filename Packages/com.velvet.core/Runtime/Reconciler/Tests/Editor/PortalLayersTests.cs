@@ -22,7 +22,8 @@ namespace Velvet.Tests
     /// <c>z-*</c> placements queued behind it in the same pass still land, and the render that queued it
     /// still commits.</item>
     /// <item>A <c>z-*</c> placement resolves no target and sits outside that containment: an application
-    /// throw from the insert that lands its element reaches the enclosing Error Boundary.</item>
+    /// throw from the insert that lands its element escapes the render pass, so an Error Boundary above
+    /// the component whose update began that pass shows its fallback.</item>
     /// </list>
     /// Host accounting reads through Resources.FindObjectsOfTypeAll, which sees hidden objects.
     /// </summary>

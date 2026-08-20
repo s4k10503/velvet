@@ -79,8 +79,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   committed tree of the fiber that began the pass short of what the pass had already put in the DOM,
   so each later render appended another copy of the difference. A `z-*` placement resolves no target
   and stays outside that containment, unchanged: it performs its own insert, so a throw from the
-  panel-attach callbacks a `V.Custom<T>` subclass registered on the element being landed still reaches
-  the enclosing Error Boundary rather than the console.
+  panel-attach callbacks a `V.Custom<T>` subclass registered on the element being landed escapes the
+  render pass rather than being reported by the drain, and the entries queued behind it are still
+  lost.
 - The switch behind the layer offset now names every layer, for the reason the `StyleVariantClass` entry
   above gives, and so do the ones behind `divide-*` colours, `clip-path` radius keywords, `animate-*`
   transition slots and the structural variants — each already answered every named member as it does now.
