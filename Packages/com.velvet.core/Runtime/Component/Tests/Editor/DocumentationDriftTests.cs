@@ -35,10 +35,10 @@ namespace Velvet.Tests
         // UpdateForRepaint, Alloc and UE means the repo holds the name only inside a string: one handed to
         // reflection, one to the profiler, one a test's case data; names an external toolchain owns, which
         // no source file here spells and which the contributor README quotes when it says how to invoke it —
-        // DOTNET_ROOT, StrykerOutput, MSB4006, ContinuousIntegrationBuild, ProjectReference. What each one
-        // does is the toolchain's to state and has been got wrong here more than once; the reason for the
-        // entry is only that the name is not code in this repository. And the analyzer identifiers, which
-        // C# holds only as string literals and the corpus therefore strips.
+        // DOTNET_ROOT, StrykerOutput, MSB4006, ProjectReference. What each one does is the toolchain's to
+        // state and has been got wrong here more than once; the reason for the entry is only that the name
+        // is not code in this repository. And the analyzer identifiers, which C# holds only as string
+        // literals and the corpus therefore strips.
         //
         // That last group is checked, just not here: DocumentationDiagnosticTableTests over in the
         // Generators~ suite reads the same README and compares its VEL and USS spellings, and the diagnostic
@@ -62,9 +62,8 @@ namespace Velvet.Tests
             "MultiColumnListView", "PopupWindow", "TreeView", "TabView", "ToggleButtonGroup", "Raycast",
             "GetAllocatedBytesForCurrentThread", "FocusController", "ScaleWithScreenSize", "RoslynAnalyzer",
             "UnityUIEFilter", "FocusIn", "KeyDown", "PointerDown", "Move", "Leave", "Up", "Wheel", "Enter",
-            "RoslynAdditionalFileImporter", "DOTNET_ROOT", "StrykerOutput", "MSB4006",
-            "ContinuousIntegrationBuild", "USS001", "USS011", "VEL", "VEL500", "VEL501", "VEL502",
-            "ProjectReference", "VEL503",
+            "RoslynAdditionalFileImporter", "DOTNET_ROOT", "StrykerOutput", "MSB4006", "USS001", "USS011",
+            "VEL", "VEL500", "VEL501", "VEL502", "ProjectReference", "VEL503",
             "Save", "ForTest",
             "NullReferenceException", "BringToFront", "SendToBack", "SetCursor", "AllocatingGCMemory",
             "UpdateForRepaint", "Alloc", "StandaloneOSX", "MacOS", "InitTestScene", "Unity_lic", "UE",
@@ -436,30 +435,63 @@ namespace Velvet.Tests
                 "Documentation names paths that do not exist:\n" + string.Join("\n", unresolved));
         }
 
+        // GREEN_ON_BASE(refactor): the case is the base's own and green there. What this change does to it
+        // is move its tokenisation into the derivation the allowlist guard below also reads, which must
+        // leave what it reports alone.
         [Test]
         public void Given_ProjectMarkdown_When_ScannedForBacktickedIdentifiers_Then_EveryIdentifierAppearsInASource()
         {
             // Arrange / Act
-            var unresolved = ScanBacktickSpans((path, reference) =>
-                // A file name is claimed by the path check first, which resolves it against the filesystem —
-                // the stronger question. Without this, VNodePool.cs would also be read as two identifiers.
-                PathReferencePattern.IsMatch(reference)
-                    // An elision leaves out the part that would say what is being named: a naming convention
-                    // written as a shape, a signature with its arguments dropped. The V.* and Hooks.* checks
-                    // still resolve the head of a dropped-argument call, so what this gives up is a span whose
-                    // head is neither — and the alternative is reporting the elision's own fragments.
-                    || ElisionPattern.IsMatch(reference)
-                        ? Array.Empty<string>()
-                        : IdentifierTokenPattern.Matches(JsxElementPattern.Replace(reference, " "))
-                            .Select(token => token.Value)
-                            .Where(token => !SourceIdentifiers(includeClaude: true).Contains(token)
-                                            && !IdentifierAllowlist.Contains(token))
-                            .Select(token => $"{path}: {token} (in `{reference}`)"));
+            var unresolved = IdentifierTokenSpans()
+                .Where(span => !SourceIdentifiers(includeClaude: true).Contains(span.Token)
+                               && !IdentifierAllowlist.Contains(span.Token))
+                .Select(span => $"{span.Path}: {span.Token} (in `{span.Reference}`)")
+                .Distinct()
+                .ToList();
 
             // Assert
             Assert.That(unresolved, Is.Empty,
                 "Documentation names identifiers that appear in no source file:\n" + string.Join("\n", unresolved));
         }
+
+        // GREEN_ON_BASE(characterization): the list this reads is declared above, in a file the base run
+        // carries from the branch along with the case, so the base answers over the branch's own entries
+        // whatever it holds. What stands in for the base run is the entry this change drops put back and
+        // the case run, measured: it named ContinuousIntegrationBuild.
+        [Test]
+        public void Given_TheIdentifierAllowlist_When_EachEntryIsSoughtInTheScannedSpans_Then_EveryEntryIsWritten()
+        {
+            // Arrange
+            var written = new HashSet<string>(
+                IdentifierTokenSpans().Select(span => span.Token), StringComparer.Ordinal);
+
+            // Act
+            var dead = IdentifierAllowlist
+                .Where(entry => !written.Contains(entry))
+                .OrderBy(entry => entry, StringComparer.Ordinal);
+
+            // Assert
+            Assert.That(string.Join(", ", dead), Is.Empty,
+                "Allowlist entries no scanned span writes suppress nothing, and a reader cannot tell them "
+                + "apart from the load-bearing ones. Drop the entry, or land the prose that needs it in the "
+                + "same change — there is no escape for one added ahead of its prose.");
+        }
+
+        // The check above and the guard over its suppression list read one derivation: a guard built from
+        // its own walk of the spans stops answering for the check the day either of them moves.
+        //
+        // A file name is claimed by the path check first, which resolves it against the filesystem — the
+        // stronger question. Without this, VNodePool.cs would also be read as two identifiers. An elision
+        // leaves out the part that would say what is being named: a naming convention written as a shape, a
+        // signature with its arguments dropped. The V.* and Hooks.* checks still resolve the head of a
+        // dropped-argument call, so what this gives up is a span whose head is neither — and the alternative
+        // is reporting the elision's own fragments.
+        private static IEnumerable<(string Path, string Reference, string Token)> IdentifierTokenSpans() =>
+            BacktickSpans().SelectMany(span =>
+                PathReferencePattern.IsMatch(span.Reference) || ElisionPattern.IsMatch(span.Reference)
+                    ? Enumerable.Empty<(string Path, string Reference, string Token)>()
+                    : IdentifierTokenPattern.Matches(JsxElementPattern.Replace(span.Reference, " "))
+                        .Select(token => (span.Path, span.Reference, Token: token.Value)));
 
         // GREEN_ON_BASE(characterization): the base's own markdown names no wrong symbol, so it is green there.
         // Not a behaviour the base has — the case is new — but a property of content the base already
@@ -785,6 +817,49 @@ namespace Velvet.Tests
             Assert.That((scanned.Count > 20, string.Join(", ", unwalked)), Is.EqualTo((true, string.Empty)),
                 "markdown under a root the walk does not reach is checked by nothing; add the root to the "
                 + "walk, or to .gitignore if it is machine-local");
+        }
+
+        // GREEN_ON_BASE(characterization): the exclusion this pins is a value in DocumentationCorpus, which
+        // is a test-assembly file, so the base run carries the branch's own list and answers with it. What
+        // stands in for the base run is the entry removed and the case run, measured: it reported
+        // scripts/.pytest_cache and the markdown under it as walked.
+        [Test]
+        public void Given_APytestCacheUnderAWalkedRoot_When_TheWalkRuns_Then_ItsMarkdownStaysOutOfTheCorpus()
+        {
+            // Arrange — both cached corpora are forced before the directory exists, so the walk every other
+            // fixture reads cannot take it in. Walk is invoked directly below because that cache would
+            // otherwise answer from before the directory was there.
+            DocumentationCorpus.RepoEntries(includeClaude: true);
+            DocumentationCorpus.RepoEntries(includeClaude: false);
+            var cache = Path.GetFullPath(Path.Combine("scripts", ".pytest_cache"));
+            var cacheExisted = Directory.Exists(cache);
+            var readme = Path.Combine(cache, "walked-root-pytest-cache-probe.md");
+            Directory.CreateDirectory(cache);
+            File.WriteAllText(readme, "# pytest cache directory #\n");
+            try
+            {
+                // Act
+                var walked = (List<string>)typeof(DocumentationCorpus)
+                    .GetMethod("Walk", BindingFlags.NonPublic | BindingFlags.Static)!
+                    .Invoke(null, new object[] { false })!;
+                var reached = walked.Where(entry => entry.Contains(".pytest_cache", StringComparison.Ordinal));
+
+                // Assert — that the walk descended into the root holding the cache rides along, because a
+                // walk stopping short of scripts/ reports nothing under it either.
+                Assert.That(
+                    (walked.Any(entry => entry.StartsWith("scripts/", StringComparison.Ordinal)),
+                        string.Join(", ", reached)),
+                    Is.EqualTo((true, string.Empty)),
+                    "a tool's cache written into a walked root enters the corpus and is scanned as prose");
+            }
+            finally
+            {
+                File.Delete(readme);
+                if (!cacheExisted)
+                {
+                    Directory.Delete(cache, recursive: true);
+                }
+            }
         }
     }
 }

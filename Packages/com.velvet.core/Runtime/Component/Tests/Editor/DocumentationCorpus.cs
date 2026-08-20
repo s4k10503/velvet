@@ -92,11 +92,13 @@ namespace Velvet.Tests
         // a mutation report is a couple of megabytes of source excerpts, it is gitignored, and it survives
         // the run that made it. One left over from three days earlier put the word this fixture was asked
         // about into the corpus, so the check passed on the machine that had it and failed on CI.
+        // .pytest_cache is the same shape, and it is in this list rather than left to .gitignore: Walk
+        // below reads no ignore file, so an entry there cannot keep anything out of the corpus.
         private static readonly HashSet<string> BaseUnwalkedDirectories =
             new()
             {
                 ".git", "Library", "Temp", "Logs", "Build", "UserSettings",
-                "obj", "bin", "api", "_site", "StrykerOutput",
+                "obj", "bin", "api", "_site", "StrykerOutput", ".pytest_cache",
             };
 
         private static readonly Lazy<List<string>> DocumentationWalk = new(() => Walk(includeClaude: false));
