@@ -1078,13 +1078,13 @@ namespace Velvet
             _suspenseFallbackKeys.Remove(boundary);
         }
 
-        // Per-AnimatePresence state for the DOM-less (wrapper-less) expansion, keyed by
-        // (boundary fiber, the AnimatePresence's scoped position key). The keyed children are expanded
-        // directly into the parent's slot range (no wrapper element); this state records, per
-        // AnimatePresence, the leaf
-        // composition currently committed to the DOM so the old-side structural walk can reproduce it for
-        // the diff, plus which keys are mid-exit (kept mounted as ghosts) and which have finished exiting
-        // (dropped on the next render). Pruned when the boundary fiber is disposed.
+        // Per-AnimatePresence state for the DOM-less (wrapper-less) expansion, keyed as PresenceStates below
+        // is. The keyed children are expanded directly into the parent's slot range (no wrapper element);
+        // this state records, per AnimatePresence, the leaf composition currently committed to the DOM so
+        // the old-side structural walk can reproduce it for the diff, plus which keys are mid-exit (kept
+        // mounted as ghosts) and which have finished exiting (dropped on the next render). PresenceStateOwner
+        // enumerates what it is pruned with; RetirePresenceStatesNotReRendered and the whole-table clear in
+        // Reconciler.ReleaseHostsAndScopes are the other two ways it ends.
         internal sealed class PresenceBoundaryState
         {
             // Keyed children currently in the DOM (in DOM order), including exiting ghosts.
@@ -1111,6 +1111,15 @@ namespace Velvet
             // element, is what the ghost's exit dispatch falls back to. Entries retire with their key
             // (exit-complete drop / instant removal) so a pooled element is never resurrected as a target.
             public readonly Dictionary<string, VisualElement> MotionElements = new();
+
+            // The Portal placeholder whose children reconcile last expanded this presence, if any. Kept
+            // rather than rewritten from a null the way ComponentFiber.OwningPortalPlaceholder is: the
+            // fiber an isolated re-render leaves unstamped is still reached through the parent index, and
+            // an entry has no second route to it. Several Portals rendering into one container reach one
+            // entry, so this names the last of them to expand it rather than all of them —
+            // AnimatePresenceStateRetirementTests' shared-container case is what goes red if a teardown
+            // starts reaching an entry another Portal still holds leaves for.
+            public VisualElement? OwningPortalPlaceholder;
         }
 
         // Keyed by (boundary fiber, parent element, scoped position key). The parent element is part of the
@@ -1148,21 +1157,167 @@ namespace Velvet
         // Motion's resting set and be clobbered by the wrapper's own class patching.
         internal VisualElement? PresenceAnchorMotionElement;
 
-        // Removes all DOM-less AnimatePresence state keyed by boundary. Invoked from
-        // ComponentRegistry when the boundary fiber is unregistered, so a boundary that
-        // unmounts while a child is exiting leaves no dangling fiber reference in PresenceStates.
-        internal void PrunePresenceBoundaryState(ComponentFiber boundary)
+        // The three subjects a prune retires a DOM-less AnimatePresence entry for. A presence whose node
+        // stops being rendered outlives all three, which is what RetirePresenceStatesNotReRendered
+        // answers for.
+        private enum PresenceStateOwner
+        {
+            // The fiber that rendered the AnimatePresence, unregistered.
+            Boundary,
+
+            // The element its children expand into, leaving the DOM.
+            ParentElement,
+
+            // The Portal placeholder whose children reconcile expanded it, releasing its range.
+            PortalPlaceholder,
+        }
+
+        // One collect-then-remove for the three, so a fourth owner is a case rather than a fourth copy of
+        // the loop. Collected first because Remove mutates the dictionary this walks.
+        private void PrunePresenceStates(PresenceStateOwner owner, object subject)
         {
             if (PresenceStates.Count == 0) return;
             List<(ComponentFiber? boundary, VisualElement? parent, string presenceKey)>? stale = null;
-            foreach (var key in PresenceStates.Keys)
+            foreach (var entry in PresenceStates)
             {
-                if (key.boundary == boundary) (stale ??= new()).Add(key);
+#pragma warning disable CS8524 // no discard arm, so a fourth owner fails the build rather than falling in here
+                var owned = owner switch
+                {
+                    PresenceStateOwner.Boundary => ReferenceEquals(entry.Key.boundary, subject),
+                    PresenceStateOwner.ParentElement => ReferenceEquals(entry.Key.parent, subject),
+                    PresenceStateOwner.PortalPlaceholder =>
+                        ReferenceEquals(entry.Value.OwningPortalPlaceholder, subject),
+                };
+#pragma warning restore CS8524
+                if (owned) (stale ??= new()).Add(entry.Key);
             }
             if (stale != null)
             {
                 foreach (var key in stale) PresenceStates.Remove(key);
             }
+        }
+
+        // Invoked from ComponentRegistry when the boundary fiber is unregistered, so a boundary that
+        // unmounts while a child is exiting leaves no dangling fiber reference in PresenceStates.
+        internal void PrunePresenceBoundaryState(ComponentFiber boundary)
+            => PrunePresenceStates(PresenceStateOwner.Boundary, boundary);
+
+        // Called from FiberElementCleaner, which owns which teardowns reach it.
+        internal void PrunePresenceParentElementState(VisualElement parent)
+            => PrunePresenceStates(PresenceStateOwner.ParentElement, parent);
+
+        // Called from FiberElementCleaner.CleanupPortal, which the retarget release also runs through. The
+        // Portal itself going is what the other three routes can all miss: the container it renders into
+        // belongs to the caller, the boundary fiber that rendered it can go on living, and no walk of the
+        // tree CONTAINING the PortalNode names what is inside — the node emits as an opaque leaf there. The
+        // Portal's own children reconcile does name it, on both sides, which is what retires a presence that
+        // stops being rendered while the Portal stays open.
+        internal void PrunePresencePortalState(VisualElement placeholder)
+            => PrunePresenceStates(PresenceStateOwner.PortalPlaceholder, placeholder);
+
+        // The presence entries one top-level pass reproduced on its old side, and the ones its new side
+        // rendered again. The case this exists for is the one no prune above can see: an AnimatePresence
+        // node stops being rendered while its boundary fiber, its parent element and any Portal it sits
+        // under all go on living, and the difference between the two readings is what says so.
+        private readonly List<(ComponentFiber? boundary, VisualElement? parent, string presenceKey)> _presenceReproduced = new();
+        private readonly List<(ComponentFiber? boundary, VisualElement? parent, string presenceKey)> _presenceRetirable = new();
+        private readonly HashSet<(ComponentFiber? boundary, VisualElement? parent, string presenceKey)> _presenceReRendered = new();
+
+        internal void MarkPresenceReproduced((ComponentFiber? boundary, VisualElement? parent, string presenceKey) key)
+            => _presenceReproduced.Add(key);
+
+        internal void MarkPresenceReRendered((ComponentFiber? boundary, VisualElement? parent, string presenceKey) key)
+            => _presenceReRendered.Add(key);
+
+        // Opens the span of reproductions one container's reconcile takes, closed by
+        // EndPresenceReproductionScope. Nested containers reconcile inside that span and close their own
+        // first, so the tail this returns is exactly the enclosing container's own.
+        internal int BeginPresenceReproductionScope() => _presenceReproduced.Count;
+
+        // What a container's removal pass — GeneralPathReconciler's FinalizeGeneralCommit, or the
+        // time-sliced diff's own removal phase — did about the slots an absent presence held. Until it has
+        // run, the reproduced leaves are still in the DOM and the entry is what the next old side names
+        // them from, so the entry must not retire. The reading is per container rather than per pass: an
+        // abort holds for the rest of the pass, while every container that finalized before it emptied its
+        // slots for real.
+        internal enum PresenceRemovalOutcome
+        {
+            // Emptied, so the span may retire.
+            Ran,
+
+            // Skipped, with nothing left to run it. The span is dropped rather than carried.
+            Skipped,
+
+            // Parked mid-diff. ContinueIndexed / ContinueKeyed resume from the old side this pass already
+            // expanded, so no walk names these presences a second time — dropping the span would leave the
+            // entry to outlive the leaves it names rather than defer its retirement.
+            OwedByAContinuation,
+        }
+
+        // Where a span an outcome describes belongs: the pass's own retirable list, the parked
+        // container's carry list, or nowhere.
+        private List<(ComponentFiber? boundary, VisualElement? parent, string presenceKey)>? DestinationFor(
+            PresenceRemovalOutcome outcome,
+            List<(ComponentFiber? boundary, VisualElement? parent, string presenceKey)> owedByThisPark)
+        {
+#pragma warning disable CS8524 // no discard arm, so a fourth outcome fails the build rather than being dropped
+            return outcome switch
+            {
+                PresenceRemovalOutcome.Ran => _presenceRetirable,
+                PresenceRemovalOutcome.OwedByAContinuation => owedByThisPark,
+                PresenceRemovalOutcome.Skipped => null,
+            };
+#pragma warning restore CS8524
+        }
+
+        internal void EndPresenceReproductionScope(
+            int scope,
+            PresenceRemovalOutcome outcome,
+            List<(ComponentFiber? boundary, VisualElement? parent, string presenceKey)> owedByThisPark)
+        {
+            var destination = DestinationFor(outcome, owedByThisPark);
+            if (destination != null)
+            {
+                for (var i = scope; i < _presenceReproduced.Count; i++)
+                {
+                    destination.Add(_presenceReproduced[i]);
+                }
+            }
+            // MUTANT_SURVIVES(equivalent): the tail this drops is already answered for by the enclosing scope.
+            // No enclosing scope reports removals run over a span an inner one did not: an abort holds for the
+            // rest of the pass, a nested container is entered at budget 0 so only the top-level one can park,
+            // and a throw unwinds the enclosing container too. What it buys is a bounded list and no duplicate
+            // entries; measured, the full EditMode suite is green with it cut.
+            _presenceReproduced.RemoveRange(scope, _presenceReproduced.Count - scope);
+        }
+
+        // Closes what a park left owed, once the slice that resumed it has run. Its outcome is read the
+        // same way the container's own was, so a slice that parked again leaves the span where it is.
+        // Dropping it is a discarded park's reading — the diff that owed those removals is the one nobody
+        // finishes, so the entry must stay live (see PresenceRemovalOutcome.Skipped).
+        internal void SettlePresenceReproductionsOwedByAPark(
+            PresenceRemovalOutcome outcome,
+            List<(ComponentFiber? boundary, VisualElement? parent, string presenceKey)> owed)
+        {
+            if (outcome == PresenceRemovalOutcome.OwedByAContinuation) return;
+            DestinationFor(outcome, owed)?.AddRange(owed);
+            owed.Clear();
+        }
+
+        // Retires every retirable entry the pass did not render again, then drops the pass's marks.
+        internal void RetirePresenceStatesNotReRendered()
+        {
+            foreach (var key in _presenceRetirable)
+            {
+                if (!_presenceReRendered.Contains(key)) PresenceStates.Remove(key);
+            }
+            // MUTANT_SURVIVES(equivalent): this list is already empty here, so the clear removes nothing.
+            // BeginPresenceReproductionScope and EndPresenceReproductionScope are one call site each, paired
+            // across a finally, and the End truncates its own span unconditionally — so the outermost
+            // container leaves the list at the length it entered with, which at a top-level pass is zero.
+            _presenceReproduced.Clear();
+            _presenceRetirable.Clear();
+            _presenceReRendered.Clear();
         }
 
         // Tree-wide auto-batching scheduler. Coalesces setState across every fiber that shares this
