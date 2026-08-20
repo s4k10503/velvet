@@ -1033,8 +1033,8 @@ def climbed(path, levels):
 def path_bindings(parsed):
     """Name -> the expressions a module assigns to it, over the whole file rather than its top level.
 
-    A `sys.path.insert` inside a case body reads a constant declared above it, and one whose target
-    is computed in the function that inserts it binds its name there.
+    An insert can sit inside a case body, and the path it hands over can be bound there or above it,
+    so neither the statement nor its name is reliably at the top level.
     """
     found = {}
     for node in ast.walk(parsed):
@@ -1085,8 +1085,9 @@ def folded_path(node, home, bound, seen=frozenset()):
 def import_directories(case, tree):
     """The repository directories an import in the case is looked for under, its own first.
 
-    A `sys.path.insert` is how `scripts/pr` reaches `scripts/release` and how a hook script reaches
-    `.claude/hooks/lib`, so a module named through one need not sit beside the case at all.
+    Only the case's own file is read, so an insert a module it imports performs reaches nothing here.
+    `scripts/hooks/test_amend_of_published_commit.py` is the file this is written for: it puts
+    `.claude/hooks/lib` on the path itself, and a module named through that sits beside no case.
     """
     home = Path(case.path)
     found = [home.parent]
@@ -1172,6 +1173,88 @@ def added_keyword(output, base_tree, branch_tree, case):
     return found
 
 
+def reaching_lines(text, case_name):
+    """The lines of a test module whose text one case could have reached.
+
+    Module level, the case's own class outside its other cases, and the case itself. Import
+    statements are left out: `from module import name` is evaluated once for the file, so a name
+    spelled only there belongs to no case in particular.
+    """
+    try:
+        parsed = ast.parse(text)
+    except SyntaxError:
+        return set()
+    owner, method = case_name.rsplit(".", 1) if "." in case_name else ("", case_name)
+    reaching = set(range(1, len(text.splitlines()) + 1))
+    for node in ast.walk(parsed):
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            reaching -= set(range(node.lineno, (node.end_lineno or node.lineno) + 1))
+        elif isinstance(node, ast.ClassDef) and node.name != owner:
+            reaching -= set(range(node.lineno, node.end_lineno + 1))
+        elif isinstance(node, ast.ClassDef):
+            for member in node.body:
+                if (isinstance(member, (ast.FunctionDef, ast.AsyncFunctionDef))
+                        and member.name.startswith("test") and member.name != method):
+                    reaching -= set(range(member.lineno, member.end_lineno + 1))
+    return reaching - comment_lines(text, python_comment_spans(text))
+
+
+def imported_from(text, module):
+    """Every alias the file binds out of `module`, as (the name the case spells, the module's own)."""
+    try:
+        parsed = ast.parse(text)
+    except SyntaxError:
+        return []
+    bound = []
+    for node in ast.walk(parsed):
+        if isinstance(node, ast.ImportFrom) and node.module == module and not node.level:
+            bound.extend((alias.asname or alias.name, alias.name) for alias in node.names)
+        elif isinstance(node, ast.Import):
+            bound.extend((alias.asname or alias.name.split(".")[0], alias.name)
+                         for alias in node.names if alias.name == module)
+    return bound
+
+
+def surface_spellings(case, base_tree, branch_tree, module, name=None):
+    """How the case's own file could be spelling the branch-only surface, not just how Python named it.
+
+    A traceback names one missing name however many of them an import list holds, so a case reaching
+    another of them would read as reaching nothing at all. `name` is the one it named; the rest are
+    read off the import list and kept only where the same comparison holds. A module the base has not
+    got is every name its imports bind, since none of them resolves there.
+    """
+    spellings = {name} if name else set()
+    source = base_tree / case.path
+    if not source.is_file():
+        return spellings
+    bound = imported_from(source.read_text(encoding="utf-8", errors="replace"), module)
+    if name is None:
+        return spellings | {spelled for spelled, _ in bound} | {module.split(".")[0]}
+    for relative in module_relatives(case, module, base_tree):
+        base, branch = base_tree / relative, branch_tree / relative
+        spellings |= {spelled for spelled, attribute in bound
+                      if added_top_level_name(base, branch, attribute)}
+    return spellings
+
+
+def reaches_surface(case, tree, name):
+    """Whether this case, rather than the file it sits in, is the one that reached `name`.
+
+    A module that will not load takes every case in it down together, so without this the tolerance
+    below answers for cases that never touched the branch's surface -- and each of those is a reading
+    nobody took being recorded as a pass, which is what this whole check exists to refuse.
+    Scaffolding counts as the case's own reach: a `setUpClass` naming the surface fails for each case
+    of its fixture, which is that dependence written once.
+    """
+    source = tree / case.path
+    if not source.is_file():
+        return False
+    text = source.read_text(encoding="utf-8", errors="replace")
+    lines = text.splitlines()
+    return any(name in names_in(lines[number - 1])
+               for number in reaching_lines(text, case.name) if number <= len(lines))
+
+
 def added_python_surface(output, base_tree, branch_tree, case):
     """Whether the traceback names a file or module member present only on the branch.
 
@@ -1190,8 +1273,11 @@ def added_python_surface(output, base_tree, branch_tree, case):
 
     missing = MISSING_MODULE.search(output)
     if missing:
-        return any(not (base_tree / relative).exists() and (branch_tree / relative).is_file()
-                   for relative in module_relatives(case, missing.group(1), base_tree))
+        module = missing.group(1)
+        return any(reaches_surface(case, base_tree, spelled) for spelled in
+                   surface_spellings(case, base_tree, branch_tree, module)) and any(
+            not (base_tree / relative).exists() and (branch_tree / relative).is_file()
+            for relative in module_relatives(case, module, base_tree))
 
     missing = MISSING_ATTRIBUTE.search(output) or MISSING_PATCH_TARGET.search(output)
     if missing:
@@ -1201,8 +1287,10 @@ def added_python_surface(output, base_tree, branch_tree, case):
         if not missing:
             return added_keyword(output, base_tree, branch_tree, case)
         module, name = missing.group(2), missing.group(1)
-    return any(added_top_level_name(base_tree / relative, branch_tree / relative, name)
-               for relative in module_relatives(case, module, base_tree))
+    return any(reaches_surface(case, base_tree, spelled) for spelled in
+               surface_spellings(case, base_tree, branch_tree, module, name)) and any(
+        added_top_level_name(base_tree / relative, branch_tree / relative, name)
+        for relative in module_relatives(case, module, base_tree))
 
 
 IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
@@ -1583,9 +1671,16 @@ def report(cases, control, reported, canaries=None, wrote=True, unbuildable=None
     print("\n--- what the base said ---")
     for case in cases:
         print("{:<32} {}  ({})".format(case.verdict, case.name, case.detail))
-    # Two counts, never one. A case the base could not build names a symbol the branch adds, which is
-    # the strongest pin this takes, and folding it into the readings nobody took would tell the author
-    # of a correct test that the run measured nothing.
+    # Three counts, never one. A case the base could not build names a symbol the branch adds, which
+    # is the strongest pin this takes, and folding it into the readings nobody took would tell the
+    # author of a correct test that the run measured nothing. The third passes: a run where every
+    # changed case was tolerated exits zero, and without a line of its own it does so in silence,
+    # which reads exactly like a run that measured them.
+    tolerated = [case for case in cases if case.verdict == COULD_NOT_LOAD]
+    if tolerated:
+        print("\n{} of {} case(s) reached a surface only the branch provides, so the base could not "
+              "load them\nand each is counted as depending on this change".format(
+                  len(tolerated), len(cases)))
     silent = [case for case in cases if case.verdict == COULD_NOT_ANSWER]
     if silent:
         print("\nthe base could not answer for {} of {} case(s), so they carry no reading either "

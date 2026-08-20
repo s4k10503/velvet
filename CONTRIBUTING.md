@@ -281,11 +281,18 @@ goes down with the round, withdrawals included.
 Python reports it while loading or running, so the gate accepts it only when static comparison proves
 that the named repository file, module, top-level name or callee's keyword parameter is absent on the
 base and present on the branch. A module is looked for under the case's own directory and under the
-directories the case's file puts on `sys.path`, which is how `scripts/pr` reaches `scripts/release` and
-how a hook script reaches `.claude/hooks/lib`; a top-level name is read off three exceptions rather
+directories that file itself puts on `sys.path` — an insert performed by something it imports is out
+of reach, since only the case's own file is read; a top-level name is read off three exceptions rather
 than one — the AttributeError of an attribute read, the ImportError of `from module import name`, and
 what `mock.patch` raises for a patch by name. An argument *count* is not among them: a call the base
 refuses on arity alone reads as a case that could not answer.
+
+A module-level import is answered for case by case, not file by file. `from module import name` is
+evaluated once, so a branch-only name in one takes every case of that file down on the base together
+— and only the cases that reach the name, in their own body or in scaffolding their fixture shares,
+are read as depending on the branch. The rest count against it, because a reading nobody took is
+never a pass. Every tolerated case is counted on a line of its own, so a run that measured none of
+them cannot say so in silence.
 
 Either reading is only believed on a tree the run proved can build and answer at all, and two things
 prove it. Cases of the base's own that the branch did not carry run alongside — C# fixtures for a

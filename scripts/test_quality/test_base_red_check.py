@@ -19,6 +19,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import traceback
 import unittest
 from pathlib import Path
 
@@ -1223,24 +1224,41 @@ class PythonNamedSurfaceTests(unittest.TestCase):
 
     HOOK_CASE = "scripts/hooks/test_mine.py"
     HOOK_INSERT = ("import sys\n"
-                   "from pathlib import Path\n\n"
+                   "from pathlib import Path\n"
                    "REPO_ROOT = Path(__file__).resolve().parents[2]\n"
                    "HOOK_LIBRARY = REPO_ROOT / '.claude/hooks/lib'\n"
                    "sys.path.insert(0, str(HOOK_LIBRARY))\n")
 
     SCRIPT_CASE = "scripts/pr/test_mine.py"
-    SCRIPT_INSERT = (
-        "import sys\n"
-        "from pathlib import Path\n\n"
-        "sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'release'))\n")
+    SCRIPT_INSERT = ("import sys\n"
+                     "from pathlib import Path\n"
+                     "sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'release'))\n")
 
-    def read(self, output, case_path, base, branch):
-        """What the gate makes of `output`, over a base and a branch tree holding the files given."""
-        holder = tempfile.mkdtemp(prefix="base-red-pyimport-")
+    # The target computed in the function that inserts it, which is the other place a name a fold
+    # has to resolve can be bound.
+    LOCAL_INSERT = ("import sys\n"
+                    "from pathlib import Path\n"
+                    "def _reach():\n"
+                    "    release = Path(__file__).resolve().parent.parent / 'release'\n"
+                    "    sys.path.insert(0, str(release))\n"
+                    "_reach()\n")
+
+    @staticmethod
+    def case_module(spells, preamble=""):
+        """A module of one case reaching `spells`, which is the reach the tolerance asks about."""
+        return ("import unittest\n" + preamble + "\n\nclass T(unittest.TestCase):\n"
+                "    def test_a(self):\n"
+                "        self.assertIsNotNone({})\n".format(spells))
+
+    def read(self, output, case_path, base, branch, spells, preamble=""):
+        """What the gate makes of `output`, over trees holding the files given and the case itself."""
+        holder = tempfile.mkdtemp(prefix="base-red-pyname-")
         self.addCleanup(shutil.rmtree, holder, ignore_errors=True)
         root = Path(holder)
         for label, files in (("base", base), ("branch", branch)):
-            for relative, text in files.items():
+            held = dict(files)
+            held.setdefault(case_path, self.case_module(spells, preamble))
+            for relative, text in held.items():
                 path = root / label / relative
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text(text)
@@ -1248,14 +1266,38 @@ class PythonNamedSurfaceTests(unittest.TestCase):
             output, root / "base", root / "branch",
             base_red_check.Case("T.test_a", case_path, 1, 2))
 
+    def raised_importing(self, module, files):
+        """The exception line a real import leaves, rather than one transcribed into this file.
+
+        The readings below turn on words Python chooses, and a transcription is a mirror nothing
+        updates. The circular case is why it matters which way that fails: were its wording to
+        change, `MISSING_MEMBER` would begin matching a circular import, the gate would begin
+        tolerating one, and a transcribed case would go on passing.
+        """
+        holder = tempfile.mkdtemp(prefix="base-red-raise-")
+        self.addCleanup(shutil.rmtree, holder, ignore_errors=True)
+        for name, text in files.items():
+            (Path(holder) / name).write_text(text)
+        sys.path.insert(0, holder)
+        self.addCleanup(sys.path.remove, holder)
+        for name in files:
+            self.addCleanup(sys.modules.pop, name[:-len(".py")], None)
+        try:
+            importlib.import_module(module)
+        except ImportError as raised:
+            return "".join(traceback.format_exception_only(type(raised), raised)).strip()
+        return ""
+
     def test_Given_ANameOnlyTheBranchBinds_When_ItsImportRaises_Then_ThatIsEvidence(self):
-        # Arrange -- the traceback is the one `from notes import UNRELEASED` leaves on a tree that
-        # does not bind the name.
+        # Arrange -- the raise is a real one, taken off an import of a module that does not bind the
+        # name, so the reading is held to the words Python chose rather than to a transcription.
+        raised = self.raised_importing(
+            "notes_user", {"notes.py": "OPEN = 1\n",
+                           "notes_user.py": "from notes import UNRELEASED\n"})
+
         # Act
-        found = self.read(
-            "ImportError: cannot import name 'UNRELEASED' from 'notes' "
-            "(/tmp/base-red/tree/scripts/release/notes.py)",
-            self.SIBLING_CASE, self.BASE_NOTES, self.BRANCH_NOTES)
+        found = self.read(raised, self.SIBLING_CASE, self.BASE_NOTES, self.BRANCH_NOTES,
+                          "UNRELEASED")
 
         # Assert
         self.assertTrue(found)
@@ -1264,12 +1306,28 @@ class PythonNamedSurfaceTests(unittest.TestCase):
     # Reading ImportError at all is what this change adds, and a case that raised for a reason the
     # branch did not create took no reading, so it goes on counting against the branch.
     def test_Given_ANameNeitherTreeBinds_When_ItsImportRaises_Then_ThatIsNotEvidence(self):
-        # Arrange -- the same trees as the case above, asked for a name that is on neither of them.
+        # Arrange -- the same trees as the case above, and a case that reaches the misspelling, so
+        # what refuses this is the comparison rather than the reach beside it.
         # Act
         found = self.read(
             "ImportError: cannot import name 'UNRELESED' from 'notes' "
             "(/tmp/base-red/tree/scripts/release/notes.py)",
-            self.SIBLING_CASE, self.BASE_NOTES, self.BRANCH_NOTES)
+            self.SIBLING_CASE, self.BASE_NOTES, self.BRANCH_NOTES, "UNRELESED")
+
+        # Assert
+        self.assertFalse(found)
+
+    # GREEN_ON_BASE(characterization): a name the base already binds is not the branch's to claim.
+    # It is the half of the comparison that answers about the base, and the tolerance rests on it:
+    # without it any name the branch happens to bind excuses any raise that named it.
+    def test_Given_ANameBothTreesBind_When_ItsImportRaises_Then_ThatIsNotEvidence(self):
+        # Arrange -- a base that binds the name too, which is the one arrangement that separates the
+        # two halves of the comparison.
+        # Act
+        found = self.read(
+            "ImportError: cannot import name 'UNRELEASED' from 'notes' "
+            "(/tmp/base-red/tree/scripts/release/notes.py)",
+            self.SIBLING_CASE, self.BRANCH_NOTES, self.BRANCH_NOTES, "UNRELEASED")
 
         # Assert
         self.assertFalse(found)
@@ -1278,15 +1336,21 @@ class PythonNamedSurfaceTests(unittest.TestCase):
     # Widening this to ImportError must not start tolerating one, so the reading is held to the
     # sentence that quotes the module directly.
     def test_Given_AHalfInitialisedModule_When_TheNameCannotBeImported_Then_ThatIsNotEvidence(self):
-        # Arrange -- the name is the branch's own, which is what makes this the widening's edge.
-        # Act
-        found = self.read(
-            "ImportError: cannot import name 'UNRELEASED' from partially initialized module 'notes' "
-            "(most likely due to a circular import) (/tmp/base-red/tree/scripts/release/notes.py)",
-            self.SIBLING_CASE, self.BASE_NOTES, self.BRANCH_NOTES)
+        # Arrange -- a real circular import, and trees in which the name it names is the branch's
+        # own, so what separates this from the case at the head of the fixture is the wording.
+        raised = self.raised_importing(
+            "circular_a", {"circular_a.py": "import circular_b\n\nUNRELEASED = 1\n",
+                           "circular_b.py": "from circular_a import UNRELEASED\n"})
 
-        # Assert
-        self.assertFalse(found)
+        # Act
+        found = self.read(raised, self.SIBLING_CASE,
+                          {"scripts/release/circular_a.py": "import circular_b\n"},
+                          {"scripts/release/circular_a.py": "import circular_b\n\nUNRELEASED = 1\n"},
+                          "UNRELEASED")
+
+        # Assert -- the clause rides along, since an import that raised nothing reads as no evidence
+        # too and would leave this passing with the wording it exists to hold unread.
+        self.assertEqual((found, "partially initialized module" in raised), (False, True))
 
     def test_Given_AModuleUnderAPathInsert_When_OnlyTheBranchHoldsIt_Then_ThatIsEvidence(self):
         # Arrange -- no test module sits under `.claude/hooks/lib`, so a module the branch adds
@@ -1294,9 +1358,8 @@ class PythonNamedSurfaceTests(unittest.TestCase):
         # Act
         found = self.read(
             "ModuleNotFoundError: No module named 'shell_commands'", self.HOOK_CASE,
-            {self.HOOK_CASE: self.HOOK_INSERT},
-            {self.HOOK_CASE: self.HOOK_INSERT,
-             ".claude/hooks/lib/shell_commands.py": "FLAGS = ()\n"})
+            {}, {".claude/hooks/lib/shell_commands.py": "FLAGS = ()\n"},
+            "shell_commands", self.HOOK_INSERT + "import shell_commands\n")
 
         # Assert
         self.assertTrue(found)
@@ -1308,10 +1371,23 @@ class PythonNamedSurfaceTests(unittest.TestCase):
         found = self.read(
             "AttributeError: module 'published_check' has no attribute 'OPEN_VERSIONS'",
             self.SCRIPT_CASE,
-            {self.SCRIPT_CASE: self.SCRIPT_INSERT,
-             "scripts/release/published_check.py": "CLOSED = 1\n"},
-            {self.SCRIPT_CASE: self.SCRIPT_INSERT,
-             "scripts/release/published_check.py": "CLOSED = 1\nOPEN_VERSIONS = 2\n"})
+            {"scripts/release/published_check.py": "CLOSED = 1\n"},
+            {"scripts/release/published_check.py": "CLOSED = 1\nOPEN_VERSIONS = 2\n"},
+            "OPEN_VERSIONS", self.SCRIPT_INSERT)
+
+        # Assert
+        self.assertTrue(found)
+
+    def test_Given_AnInsertTargetBoundWhereItIsInserted_When_TheTraceIsRead_Then_ThatIsEvidence(self):
+        # Arrange -- the same reach, with the path bound in the function that hands it over rather
+        # than above it, which is the binding a fold reading only the top level would miss.
+        # Act
+        found = self.read(
+            "AttributeError: module 'published_check' has no attribute 'OPEN_VERSIONS'",
+            self.SCRIPT_CASE,
+            {"scripts/release/published_check.py": "CLOSED = 1\n"},
+            {"scripts/release/published_check.py": "CLOSED = 1\nOPEN_VERSIONS = 2\n"},
+            "OPEN_VERSIONS", self.LOCAL_INSERT)
 
         # Assert
         self.assertTrue(found)
@@ -1323,12 +1399,12 @@ class PythonNamedSurfaceTests(unittest.TestCase):
     def test_Given_AModuleOutsideEveryDirectorySearched_When_ItsImportRaises_Then_ThatIsNotEvidence(
             self):
         # Arrange -- the branch adds `elsewhere`, under neither the case's directory nor the one it
-        # inserts.
+        # inserts, and the case reaches it, so the directories are what refuse this.
         # Act
         found = self.read(
             "ModuleNotFoundError: No module named 'elsewhere'", self.HOOK_CASE,
-            {self.HOOK_CASE: self.HOOK_INSERT},
-            {self.HOOK_CASE: self.HOOK_INSERT, "scripts/other/elsewhere.py": "X = 1\n"})
+            {}, {"scripts/other/elsewhere.py": "X = 1\n"},
+            "elsewhere", self.HOOK_INSERT + "import elsewhere\n")
 
         # Assert
         self.assertFalse(found)
@@ -1340,7 +1416,7 @@ class PythonNamedSurfaceTests(unittest.TestCase):
         found = self.read(
             "AttributeError: <module 'notes' from '/tmp/base-red/tree/scripts/release/notes.py'> "
             "does not have the attribute 'UNRELEASED'",
-            self.SIBLING_CASE, self.BASE_NOTES, self.BRANCH_NOTES)
+            self.SIBLING_CASE, self.BASE_NOTES, self.BRANCH_NOTES, "UNRELEASED")
 
         # Assert
         self.assertTrue(found)
@@ -1354,10 +1430,101 @@ class PythonNamedSurfaceTests(unittest.TestCase):
         found = self.read(
             "AttributeError: <module 'notes' from '/tmp/base-red/tree/scripts/release/notes.py'> "
             "does not have the attribute 'UNRELESED'",
-            self.SIBLING_CASE, self.BASE_NOTES, self.BRANCH_NOTES)
+            self.SIBLING_CASE, self.BASE_NOTES, self.BRANCH_NOTES, "UNRELESED")
 
         # Assert
         self.assertFalse(found)
+
+
+class PythonSurfaceReachTests(unittest.TestCase):
+    """Which case a module-level import took down, over a file where it took down every one.
+
+    `from module import name` is evaluated once for the file. Reading the raise as evidence for each
+    case in it answers for cases that never touched the branch's surface, and a reading nobody took
+    recorded as a pass is what this whole check exists to refuse.
+    """
+
+    CASE = "scripts/release/test_mine.py"
+    BASE = {"scripts/release/notes.py": "OPEN = 1\n"}
+    BRANCH = {"scripts/release/notes.py": "OPEN = 1\nADDED = 2\nALSO = 3\n"}
+    RAISED = ("ImportError: cannot import name 'ADDED' from 'notes' "
+              "(/tmp/base-red/tree/scripts/release/notes.py)")
+
+    def read(self, module, case="T.test_mine"):
+        """What the gate makes of one case of `module`, which is a file the base cannot load."""
+        holder = tempfile.mkdtemp(prefix="base-red-pyreach-")
+        self.addCleanup(shutil.rmtree, holder, ignore_errors=True)
+        root = Path(holder)
+        for label, files in (("base", self.BASE), ("branch", self.BRANCH)):
+            for relative, text in list(files.items()) + [(self.CASE, module)]:
+                path = root / label / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(text)
+        return base_red_check.added_python_surface(
+            self.RAISED, root / "base", root / "branch",
+            base_red_check.Case(case, self.CASE, 1, 2))
+
+    def test_Given_TheNameSpelledOnlyByTheImport_When_ACaseIsRead_Then_ThatIsNotEvidence(self):
+        # Arrange -- the case reaches nothing the branch added; the import line above it does, and
+        # that line is what the base died on.
+        # Act
+        found = self.read("import unittest\n"
+                          "from notes import ADDED, OPEN\n\n\n"
+                          "class T(unittest.TestCase):\n"
+                          "    def test_mine(self):\n"
+                          "        self.assertEqual(OPEN, 1)\n")
+
+        # Assert
+        self.assertFalse(found)
+
+    def test_Given_TheNameSpelledByAnotherCaseOfTheFile_When_ThisOneIsRead_Then_ThatIsNotEvidence(
+            self):
+        # Arrange -- one case of the file does depend on the branch, and the reading it earns is its
+        # own; the case beside it is what a file-wide answer would throw away.
+        # Act
+        found = self.read("import unittest\n"
+                          "from notes import ADDED, OPEN\n\n\n"
+                          "class T(unittest.TestCase):\n"
+                          "    def test_mine(self):\n"
+                          "        self.assertEqual(OPEN, 1)\n\n"
+                          "    def test_other(self):\n"
+                          "        self.assertEqual(ADDED, 2)\n")
+
+        # Assert
+        self.assertFalse(found)
+
+    # GREEN_ON_BASE(characterization): scaffolding a fixture shares is reached by each of its cases.
+    # A setUp naming the surface fails for every case of that fixture, so those cases depend on the
+    # branch exactly as one spelling it in its own body does.
+    def test_Given_TheNameSpelledByTheFixturesSetUp_When_ACaseIsRead_Then_ThatIsEvidence(self):
+        # Arrange -- the case body reaches nothing the branch added, and its setUp reaches it for it.
+        # Act
+        found = self.read("import unittest\n"
+                          "from notes import ADDED, OPEN\n\n\n"
+                          "class T(unittest.TestCase):\n"
+                          "    @classmethod\n"
+                          "    def setUpClass(cls):\n"
+                          "        cls.seen = ADDED\n\n"
+                          "    def test_mine(self):\n"
+                          "        self.assertEqual(OPEN, 1)\n")
+
+        # Assert
+        self.assertTrue(found)
+
+    # GREEN_ON_BASE(characterization): a traceback names one missing name, not all of them.
+    # Which one it names decides nothing about the case, so the names beside it in the same statement
+    # are read off the import list and compared the same way.
+    def test_Given_ASecondAddedNameTheRaiseDidNotName_When_ACaseReachesIt_Then_ThatIsEvidence(self):
+        # Arrange -- the raise names ADDED and the case reaches ALSO, which the branch adds as well.
+        # Act
+        found = self.read("import unittest\n"
+                          "from notes import ADDED, ALSO\n\n\n"
+                          "class T(unittest.TestCase):\n"
+                          "    def test_mine(self):\n"
+                          "        self.assertEqual(ALSO, 3)\n")
+
+        # Assert
+        self.assertTrue(found)
 
 
 class CSharpSurfaceEvidenceTests(unittest.TestCase):
