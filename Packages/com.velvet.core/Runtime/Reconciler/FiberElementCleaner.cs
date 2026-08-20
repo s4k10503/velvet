@@ -85,10 +85,8 @@ namespace Velvet
         // that from a V.Custom child — their reset detaches one by exclusion instead
         // (FiberElementPoolReset.DetachForeignChildren), on this path and on ordinary unmount alike. A
         // container orphan — including a Button or a Label declared with children — has its subtree's
-        // resources released recursively via CleanupElementCore, which deliberately does NOT dispose the
-        // subtree's fibers (that is CleanupElement's job): those anchor on the fiber tree
-        // and may be re-paired when the suspended primary later resolves. The element was never in the hierarchy, so there
-        // is no DOM detach.
+        // resources released recursively via CleanupElementCore. The element was never in the hierarchy,
+        // so there is no DOM detach.
         public void ReturnRolledBackOrphan(VisualElement? element)
         {
             if (element == null) return;
@@ -114,9 +112,7 @@ namespace Velvet
             else
             {
                 // A plain container orphan (Div), a Button or Label declared with children, or a user
-                // subclass of a poolable primitive (never pooled — see ReturnToPool). Release the
-                // orphan subtree's element-keyed resources without disposing its fibers and
-                // without pooling the non-poolable container.
+                // subclass of a poolable primitive (never pooled — see ReturnToPool).
                 CleanupElementCore(element);
             }
         }
