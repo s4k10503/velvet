@@ -112,15 +112,6 @@ namespace Velvet
 
         #endregion
 
-        #region ChildReconciler — position counter for unkeyed inline components
-
-        private readonly ClearablePool<Dictionary<object, int>> _positionCounterPool = new(m => m.Clear());
-
-        public Dictionary<object, int> RentPositionCounter() => _positionCounterPool.Rent();
-        public void ReturnPositionCounter(Dictionary<object, int> map) => _positionCounterPool.Return(map);
-
-        #endregion
-
         #region ChildReconciler — for duplicate-key orphans (HashSet<int>)
 
         private readonly ClearablePool<HashSet<int>> _orphanedIndexSetPool = new(s => s.Clear());
