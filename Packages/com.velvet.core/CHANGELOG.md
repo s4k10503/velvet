@@ -64,8 +64,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   exhaustive by compilation rather than by review — `Runtime/csc.rsp` compiles CS8509 as an error — so a
   `StyleVariantKind` member added without an arm fails the build rather than warning into a log that
   nothing gates on. That response file ships with the package, so a project compiling `Velvet.asmdef`
-  compiles CS8509 as an error too; it applies to Velvet's own sources only, and none of the switches it
-  reaches is over an engine-owned enum.
+  compiles CS8509 as an error too, applying to Velvet's own sources only.
 - `V.Portal(layer:)` throws for a `UILayer` value naming no layer, where it sorted the host panel at the
   `Overlay` offset before. Every named layer sorts as it did; only a cast outside the enum's range
   reaches the throw, and a silent `Overlay` there is how such a cast survives to put a portal on a layer
