@@ -120,6 +120,16 @@ jobs:
       - name: Pull-request body option-table tests
         run: python3 scripts/hooks/test_pr_body_flags.py
 
+      # Both guards decide from something the licence-free half can build: one from a pair of
+      # repositories git makes here, the other from the text of an edit. Neither needs the editor,
+      # and the amend guard's cases are the only place the two commands that answer its question are
+      # held to each other.
+      - name: Amend guard tests
+        run: python3 scripts/hooks/test_amend_of_published_commit.py
+
+      - name: Declaration first-line tests
+        run: python3 scripts/hooks/test_declaration_first_line_fragment.py
+
   # ---------------------------------------------------------------------------
   # Repository settings live only in GitHub's own state; nothing in this
   # repository reads them back. contents:read is enough for the rulesets

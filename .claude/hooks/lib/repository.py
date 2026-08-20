@@ -27,15 +27,30 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from deferrals import DEFERRALS  # noqa: E402
 
 
-def git(args, cwd, timeout=15):
-    """Run git and return its stdout, or None when it could not answer."""
+GitAnswer = collections.namedtuple("GitAnswer", "stdout stderr code")
+
+
+def git_answer(args, cwd, timeout=15):
+    """git's stdout, what it wrote about a failure, and its exit code. A git that never started
+    reports exit 1.
+
+    Separate from `git` below for the reason `gh_answer` is separate from `gh`: a caller that has to
+    say why a reading failed needs what git said, and one that only wants the answer must not have
+    to decide what an empty string meant.
+    """
     try:
         result = subprocess.run(
             ["git", *args], cwd=cwd, capture_output=True, text=True, timeout=timeout,
         )
-    except (OSError, subprocess.SubprocessError):
-        return None
-    return result.stdout if result.returncode == 0 else None
+    except (OSError, subprocess.SubprocessError) as error:
+        return GitAnswer("", str(error), 1)
+    return GitAnswer(result.stdout, result.stderr.strip(), result.returncode)
+
+
+def git(args, cwd, timeout=15):
+    """Run git and return its stdout, or None when it could not answer."""
+    answer = git_answer(args, cwd, timeout)
+    return answer.stdout if answer.code == 0 else None
 
 
 Answer = collections.namedtuple("Answer", "stdout combined code")
