@@ -117,7 +117,7 @@ namespace Velvet.Tests
             // Arrange — whether the failure left the reconcile call is the case above's subject; this one
             // reads only how many times the route the navigation left behind had its scope disposed. That
             // count does not localise to the catch: measured, removing the catch alone leaves it at 1 and
-            // reddens this case only through its unmatched log expectation, while reversing the registry
+            // reddens this case only through its unmatched log expectations, while reversing the registry
             // removal back behind the Dispose leaves it wholly green.
             var mounted = MountRoutedApp();
             _router.NavigateAsync("/other").GetAwaiter().GetResult();
@@ -210,10 +210,9 @@ namespace Velvet.Tests
                 });
 
         // The spine renders inside a component so the location move on the second render has a fiber under
-        // it: at the top level of a Reconcile call FiberStack.Current is null and
-        // GeneralPathReconciler.NotifyContextValueChange asserts that it is skipping live propagation, a
-        // diagnostic these two cases would then have to expect. The Outlet patch reaches the route change
-        // from either shape — measured — so that log is the whole of the difference.
+        // it. Reconciled from the walk root instead, GeneralPathReconciler.NotifyContextValueChange finds
+        // none to propagate from and asserts that it is skipping live propagation — a diagnostic these two
+        // cases would then have to expect. The Outlet patch reaches the route change from either shape.
         private VNode[] MountRoutedApp()
         {
             var tree = new VNode[] { V.Component(RoutedApp, _router.CurrentLocation!, key: "app") };
@@ -225,8 +224,7 @@ namespace Velvet.Tests
             => _reconciler.Reconcile(_root, mounted,
                 new VNode[] { V.Component(RoutedApp, _router.CurrentLocation!, key: "app") });
 
-        // The same spine at the top level, which the removal cases can take because they never move the
-        // location.
+        // The same spine at the top level, which the cases that never move the location can take.
         private static VNode RoutedOutlet()
             => V.Provider(RouterContext.Location, Router.Current!.CurrentLocation!,
                 children: new VNode[]
