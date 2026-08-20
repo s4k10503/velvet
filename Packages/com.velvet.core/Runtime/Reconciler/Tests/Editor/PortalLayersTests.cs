@@ -21,6 +21,8 @@ namespace Velvet.Tests
     /// <item>A deferred mount that cannot resolve where it goes is reported on its own: the portals and
     /// <c>z-*</c> placements queued behind it in the same pass still land, and the render that queued it
     /// still commits.</item>
+    /// <item>A <c>z-*</c> placement resolves no target and sits outside that containment: an application
+    /// throw from the insert that lands its element reaches the enclosing Error Boundary.</item>
     /// </list>
     /// Host accounting reads through Resources.FindObjectsOfTypeAll, which sees hidden objects.
     /// </summary>
@@ -191,7 +193,7 @@ namespace Velvet.Tests
         // What a layer naming no offset reports: FiberLogger.LogException's tag line, then the throw.
         private static void ExpectUnnamedLayerReport()
         {
-            LogAssert.Expect(LogType.Error, new Regex(@"\[Portal\]"));
+            LogAssert.Expect(LogType.Error, new Regex(@"^\[Portal\] An exception occurred"));
             LogAssert.Expect(LogType.Exception, new Regex("SwitchExpressionException"));
         }
 
@@ -283,6 +285,64 @@ namespace Velvet.Tests
             var root = _host.Root.Q<VisualElement>("unnamed-root");
             Assert.That((root.childCount, ((Label)root[0]).text, RenderedAnywhere("unnamed-child")),
                 Is.EqualTo((2, "tick=2", false)));
+        }
+
+        private static int s_attachRuns;
+        private static bool s_attachedIntoALayerContainer;
+
+        // Stands in for a V.Custom&lt;T&gt; whose element registers a panel-attach callback: the insert a
+        // z-* placement performs is what runs it.
+        internal sealed class LayerAttachThrower : VisualElement
+        {
+            public LayerAttachThrower()
+            {
+                RegisterCallback<AttachToPanelEvent>(_ =>
+                {
+                    s_attachRuns++;
+                    s_attachedIntoALayerContainer =
+                        parent != null && FiberZLayerCoordinator.IsLayerContainer(parent);
+                    throw new System.InvalidOperationException("attach callback");
+                });
+            }
+        }
+
+        private static StateUpdater<bool> s_showStacked;
+
+        [Component]
+        private static VNode StackedArrivalHost()
+        {
+            var (show, setShow) = Hooks.UseState(false);
+            s_showStacked = setShow;
+            return V.Div(name: "queue-root", className: "relative", children: new VNode[]
+            {
+                show ? V.Custom<LayerAttachThrower>(className: "absolute z-10", name: "stacked") : null,
+            });
+        }
+
+        // GREEN_ON_BASE(characterization): the boundary a z placement's application throw already reached,
+        // which the containment beside it must leave alone; it is the commit before this one that reddens.
+        [Test]
+        public void Given_AnAttachCallbackThatThrows_When_ADeferredZPlacementLandsItsElement_Then_TheBoundaryAboveShowsItsFallback()
+        {
+            // Arrange — the element arrives on an update, so the pass is the declaring fiber's own and the
+            // boundary above it is reachable. A first placement is queued unconditionally
+            // (FiberZLayerCoordinator.EnqueueMount has no synchronous branch), so the only insert this
+            // element ever sees is the drain's.
+            s_attachRuns = 0;
+            s_attachedIntoALayerContainer = false;
+            MountAndLayout(V.ErrorBoundary(
+                fallback: _ => V.Div(name: "fallback"),
+                children: new VNode[] { V.Component(StackedArrivalHost, key: "host") }));
+
+            // Act
+            s_showStacked.Invoke(true);
+            FlushAndLayout();
+
+            // Assert — the container term is what fails when the arrangement stops being a layer placement,
+            // so the fallback cannot stand in for an ordinary mount's own throw reaching the same boundary.
+            Assert.That((s_attachRuns, s_attachedIntoALayerContainer,
+                    _host.Root.Q<VisualElement>("fallback") != null),
+                Is.EqualTo((1, true, true)));
         }
 
         [Test]

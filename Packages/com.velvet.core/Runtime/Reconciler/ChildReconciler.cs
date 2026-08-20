@@ -260,6 +260,27 @@ namespace Velvet
                 {
                     continue;
                 }
+                if (node is ZLayerMountNode zLayerMount)
+                {
+                    // Not a host mount: the real element is already fully built (CreateElement / a
+                    // patch-time none-to-z transition ran its whole child reconcile inline, under live
+                    // context, like any ordinary sibling) — only its CONTAINER placement was deferred,
+                    // because placeholder.parent (the stacking parent) is only knowable now. No target
+                    // resolution, no nested Reconcile, no PortalState entry: resolve the layer placement
+                    // and move on to the next queued entry. `this` is passed through so a first-of-its-
+                    // sign container creation can rebase a park THIS SAME instance's Reconcile() call just
+                    // captured (see RebasePendingSlotStartIfTargeting) — invisible to any other lookup
+                    // until this whole top-level call returns.
+                    // Ahead of the containment below rather than inside it: that catch answers for a failed
+                    // target resolution and this arm resolves none — it performs the whole placement, and
+                    // the insert that lands the element runs the panel-attach callbacks a V.Custom<T>
+                    // subclass registered on it (PortalLayersTests pins that the insert reaches them).
+                    // Sending that application throw to the Error Boundary is the decision here; contained,
+                    // it is reported to the console with `real` already in the container and no
+                    // ZLayerMembers entry, which is the key Reposition needs to move it again.
+                    FiberZLayerCoordinator.ResolveQueuedMount(_ctx, placeholder, zLayerMount);
+                    continue;
+                }
                 // Resolve the deferred targets: a same-panel portal (a registered id, or the container
                 // the caller passed) arrived with its target resolved at enqueue; a layer portal
                 // creates (or reuses) the per-layer framework host here, and a world-space node
@@ -279,22 +300,11 @@ namespace Velvet
                         case PortalNode samePanelPortal:
                             (target, children) = ResolveSamePanelPortalTarget(target, samePanelPortal);
                             break;
-                        case ZLayerMountNode zLayerMount:
-                            // Not a host mount: the real element is already fully built (CreateElement / a
-                            // patch-time none-to-z transition ran its whole child reconcile inline, under live
-                            // context, like any ordinary sibling) — only its CONTAINER placement was deferred,
-                            // because placeholder.parent (the stacking parent) is only knowable now. No target
-                            // resolution, no nested Reconcile, no PortalState entry: resolve the layer placement
-                            // and move on to the next queued entry. `this` is passed through so a first-of-its-
-                            // sign container creation can rebase a park THIS SAME instance's Reconcile() call just
-                            // captured (see RebasePendingSlotStartIfTargeting) — invisible to any other lookup
-                            // until this whole top-level call returns.
-                            FiberZLayerCoordinator.ResolveQueuedMount(_ctx, placeholder, zLayerMount);
-                            continue;
                         default:
-                            // Only PortalNode / WorldSpaceNode enqueue deferred mounts; anything else is
-                            // a missing branch for a new node kind and must fail loudly rather than
-                            // mount nothing in silence.
+                            // The three kinds this queue holds are PortalNode, WorldSpaceNode
+                            // (FiberNodeFactory.EnqueueDeferredHostMount has no third caller) and the
+                            // ZLayerMountNode left above, so a node arriving here is a missing branch for a
+                            // new kind and must fail loudly rather than mount nothing in silence.
                             FiberLogger.LogWarning("Portal",
                                 $"Unsupported deferred host mount node: {node.GetType().Name}. Entry skipped.");
                             continue;
