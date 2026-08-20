@@ -279,9 +279,13 @@ production file the branch changed does have is withdrawn before the run. That r
 approximation of a compile failure, so it does not survive a run that wrote nothing — the platform
 goes down with the round, withdrawals included.
 Python reports it while loading or running, so the gate accepts it only when static comparison proves
-that the named repository file, sibling module, top-level name or callee's keyword parameter is absent
-on the base and present on the branch. An argument *count* is not among them: a call the base refuses
-on arity alone reads as a case that could not answer.
+that the named repository file, module, top-level name or callee's keyword parameter is absent on the
+base and present on the branch. A module is looked for under the case's own directory and under the
+directories the case's file puts on `sys.path`, which is how `scripts/pr` reaches `scripts/release` and
+how a hook script reaches `.claude/hooks/lib`; a top-level name is read off three exceptions rather
+than one — the AttributeError of an attribute read, the ImportError of `from module import name`, and
+what `mock.patch` raises for a patch by name. An argument *count* is not among them: a call the base
+refuses on arity alone reads as a case that could not answer.
 
 Either reading is only believed on a tree the run proved can build and answer at all, and two things
 prove it. Cases of the base's own that the branch did not carry run alongside — C# fixtures for a

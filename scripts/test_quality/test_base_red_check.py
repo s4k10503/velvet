@@ -1209,6 +1209,157 @@ class PythonSurfaceEvidenceTests(unittest.TestCase):
         self.assertEqual((misspelled, environment), (False, False))
 
 
+class PythonNamedSurfaceTests(unittest.TestCase):
+    """A name only the branch binds, in the spellings a run says a module has not got one in.
+
+    Three spellings say it here: the AttributeError of an attribute read, the ImportError of
+    `from module import name`, and what `mock.patch` raises for a patch by name. The module any of
+    them names may be one a `sys.path.insert` put on the path rather than a sibling of the case.
+    """
+
+    SIBLING_CASE = "scripts/release/test_mine.py"
+    BASE_NOTES = {"scripts/release/notes.py": "OPEN = 1\n"}
+    BRANCH_NOTES = {"scripts/release/notes.py": "OPEN = 1\nUNRELEASED = 2\n"}
+
+    HOOK_CASE = "scripts/hooks/test_mine.py"
+    HOOK_INSERT = ("import sys\n"
+                   "from pathlib import Path\n\n"
+                   "REPO_ROOT = Path(__file__).resolve().parents[2]\n"
+                   "HOOK_LIBRARY = REPO_ROOT / '.claude/hooks/lib'\n"
+                   "sys.path.insert(0, str(HOOK_LIBRARY))\n")
+
+    SCRIPT_CASE = "scripts/pr/test_mine.py"
+    SCRIPT_INSERT = (
+        "import sys\n"
+        "from pathlib import Path\n\n"
+        "sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'release'))\n")
+
+    def read(self, output, case_path, base, branch):
+        """What the gate makes of `output`, over a base and a branch tree holding the files given."""
+        holder = tempfile.mkdtemp(prefix="base-red-pyimport-")
+        self.addCleanup(shutil.rmtree, holder, ignore_errors=True)
+        root = Path(holder)
+        for label, files in (("base", base), ("branch", branch)):
+            for relative, text in files.items():
+                path = root / label / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(text)
+        return base_red_check.added_python_surface(
+            output, root / "base", root / "branch",
+            base_red_check.Case("T.test_a", case_path, 1, 2))
+
+    def test_Given_ANameOnlyTheBranchBinds_When_ItsImportRaises_Then_ThatIsEvidence(self):
+        # Arrange -- the traceback is the one `from notes import UNRELEASED` leaves on a tree that
+        # does not bind the name.
+        # Act
+        found = self.read(
+            "ImportError: cannot import name 'UNRELEASED' from 'notes' "
+            "(/tmp/base-red/tree/scripts/release/notes.py)",
+            self.SIBLING_CASE, self.BASE_NOTES, self.BRANCH_NOTES)
+
+        # Assert
+        self.assertTrue(found)
+
+    # GREEN_ON_BASE(characterization): a name neither tree binds is a misspelling.
+    # Reading ImportError at all is what this change adds, and a case that raised for a reason the
+    # branch did not create took no reading, so it goes on counting against the branch.
+    def test_Given_ANameNeitherTreeBinds_When_ItsImportRaises_Then_ThatIsNotEvidence(self):
+        # Arrange -- the same trees as the case above, asked for a name that is on neither of them.
+        # Act
+        found = self.read(
+            "ImportError: cannot import name 'UNRELESED' from 'notes' "
+            "(/tmp/base-red/tree/scripts/release/notes.py)",
+            self.SIBLING_CASE, self.BASE_NOTES, self.BRANCH_NOTES)
+
+        # Assert
+        self.assertFalse(found)
+
+    # GREEN_ON_BASE(characterization): a circular import leaves no reading either way.
+    # Widening this to ImportError must not start tolerating one, so the reading is held to the
+    # sentence that quotes the module directly.
+    def test_Given_AHalfInitialisedModule_When_TheNameCannotBeImported_Then_ThatIsNotEvidence(self):
+        # Arrange -- the name is the branch's own, which is what makes this the widening's edge.
+        # Act
+        found = self.read(
+            "ImportError: cannot import name 'UNRELEASED' from partially initialized module 'notes' "
+            "(most likely due to a circular import) (/tmp/base-red/tree/scripts/release/notes.py)",
+            self.SIBLING_CASE, self.BASE_NOTES, self.BRANCH_NOTES)
+
+        # Assert
+        self.assertFalse(found)
+
+    def test_Given_AModuleUnderAPathInsert_When_OnlyTheBranchHoldsIt_Then_ThatIsEvidence(self):
+        # Arrange -- no test module sits under `.claude/hooks/lib`, so a module the branch adds
+        # there is a sibling of no case at all.
+        # Act
+        found = self.read(
+            "ModuleNotFoundError: No module named 'shell_commands'", self.HOOK_CASE,
+            {self.HOOK_CASE: self.HOOK_INSERT},
+            {self.HOOK_CASE: self.HOOK_INSERT,
+             ".claude/hooks/lib/shell_commands.py": "FLAGS = ()\n"})
+
+        # Assert
+        self.assertTrue(found)
+
+    def test_Given_AnAttributeUnderAPathInsert_When_OnlyTheBranchBindsIt_Then_ThatIsEvidence(self):
+        # Arrange -- another spelling a non-sibling is reached by here, one script putting a second
+        # script's directory on the path, under the exception an attribute read leaves.
+        # Act
+        found = self.read(
+            "AttributeError: module 'published_check' has no attribute 'OPEN_VERSIONS'",
+            self.SCRIPT_CASE,
+            {self.SCRIPT_CASE: self.SCRIPT_INSERT,
+             "scripts/release/published_check.py": "CLOSED = 1\n"},
+            {self.SCRIPT_CASE: self.SCRIPT_INSERT,
+             "scripts/release/published_check.py": "CLOSED = 1\nOPEN_VERSIONS = 2\n"})
+
+        # Assert
+        self.assertTrue(found)
+
+    # GREEN_ON_BASE(characterization): a module under a directory the run never searches.
+    # The branch adding a file by that name somewhere else in the tree is not what the case reached
+    # for, so what a module resolves against stays the case's own directory and the ones its file
+    # names.
+    def test_Given_AModuleOutsideEveryDirectorySearched_When_ItsImportRaises_Then_ThatIsNotEvidence(
+            self):
+        # Arrange -- the branch adds `elsewhere`, under neither the case's directory nor the one it
+        # inserts.
+        # Act
+        found = self.read(
+            "ModuleNotFoundError: No module named 'elsewhere'", self.HOOK_CASE,
+            {self.HOOK_CASE: self.HOOK_INSERT},
+            {self.HOOK_CASE: self.HOOK_INSERT, "scripts/other/elsewhere.py": "X = 1\n"})
+
+        # Assert
+        self.assertFalse(found)
+
+    def test_Given_APatchedNameOnlyTheBranchBinds_When_ThePatchRaises_Then_ThatIsEvidence(self):
+        # Arrange -- `mock.patch` reports a name it could not replace in words of its own, so a
+        # constant patched by name reaches this reading under neither of the spellings above.
+        # Act
+        found = self.read(
+            "AttributeError: <module 'notes' from '/tmp/base-red/tree/scripts/release/notes.py'> "
+            "does not have the attribute 'UNRELEASED'",
+            self.SIBLING_CASE, self.BASE_NOTES, self.BRANCH_NOTES)
+
+        # Assert
+        self.assertTrue(found)
+
+    # GREEN_ON_BASE(characterization): a patch names its target as a string.
+    # A misspelling reaches this reading looking exactly like a name the branch added, so the
+    # comparison is the whole of what separates them.
+    def test_Given_APatchedNameNeitherTreeBinds_When_ThePatchRaises_Then_ThatIsNotEvidence(self):
+        # Arrange -- the same trees as the case above, patched for a name that is on neither of them.
+        # Act
+        found = self.read(
+            "AttributeError: <module 'notes' from '/tmp/base-red/tree/scripts/release/notes.py'> "
+            "does not have the attribute 'UNRELESED'",
+            self.SIBLING_CASE, self.BASE_NOTES, self.BRANCH_NOTES)
+
+        # Assert
+        self.assertFalse(found)
+
+
 class CSharpSurfaceEvidenceTests(unittest.TestCase):
     """The C# spelling of the same comparison, which no traceback carries.
 
@@ -1449,6 +1600,11 @@ class AddedKeywordTests(unittest.TestCase):
     HELPER = "scripts/helper.py"
     CASE = "scripts/test_mine.py"
 
+    INSERT_CASE = "scripts/pr/test_mine.py"
+    INSERT = ("import sys\n"
+              "from pathlib import Path\n\n"
+              "sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'release'))\n")
+
     def trees(self, base, branch):
         holder = tempfile.mkdtemp(prefix="base-red-keyword-")
         self.addCleanup(shutil.rmtree, holder, ignore_errors=True)
@@ -1463,9 +1619,27 @@ class AddedKeywordTests(unittest.TestCase):
         return base_red_check.added_python_surface(
             output, *self.trees(base, branch), base_red_check.Case("T.test_a", self.CASE, 1, 2))
 
+    def read_under_insert(self, base, branch, output):
+        """The same reading, over a case whose helper sits behind a `sys.path.insert`."""
+        holder = tempfile.mkdtemp(prefix="base-red-keyword-")
+        self.addCleanup(shutil.rmtree, holder, ignore_errors=True)
+        root = Path(holder)
+        for name, helper in (("base", base), ("branch", branch)):
+            for relative, text in ((self.INSERT_CASE, self.INSERT),
+                                   ("scripts/release/helper.py", helper)):
+                path = root / name / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(text)
+        return base_red_check.added_python_surface(
+            output, root / "base", root / "branch",
+            base_red_check.Case("T.test_a", self.INSERT_CASE, 1, 2))
+
+    # GREEN_ON_BASE(characterization): the case's own directory is one the run imports from.
+    # Widening the search past it must leave a sibling callee reading as it did, and the case that
+    # shows so is one the base answers too.
     def test_Given_AParameterOnlyTheBranchAccepts_When_TheTraceIsRead_Then_ItIsEvidence(self):
         # Arrange -- the call names the parameter and Python names nothing else, so which module
-        # defines it is read by looking at the siblings the case resolves against.
+        # defines it is read by looking, over the directories the case resolves against.
         # Act
         found = self.read("def report(cases):\n    return cases\n",
                           "def report(cases, unbuildable=None):\n    return cases\n",
@@ -1496,6 +1670,18 @@ class AddedKeywordTests(unittest.TestCase):
 
         # Assert
         self.assertFalse(found)
+
+    def test_Given_AParameterOnAModuleBehindAnInsert_When_TheTraceIsRead_Then_ItIsEvidence(self):
+        # Arrange -- the same reading over the same directories a module name resolves against,
+        # since the callee sits behind the insert rather than beside the case.
+        # Act
+        found = self.read_under_insert(
+            "def report(cases):\n    return cases\n",
+            "def report(cases, unbuildable=None):\n    return cases\n",
+            "TypeError: report() got an unexpected keyword argument 'unbuildable'")
+
+        # Assert
+        self.assertTrue(found)
 
 
 class PythonLaneRunTests(unittest.TestCase):
