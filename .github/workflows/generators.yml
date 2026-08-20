@@ -114,6 +114,12 @@ jobs:
       - name: Hook repository-reading tests
         run: python3 scripts/hooks/test_hook_repository.py
 
+      # Holds the body guards' record of which gh options take a value against the gh on the runner,
+      # which needs no licence and no token, only `--help`. The script owns what a disagreement
+      # costs in either direction.
+      - name: Pull-request body option-table tests
+        run: python3 scripts/hooks/test_pr_body_flags.py
+
   # ---------------------------------------------------------------------------
   # Repository settings live only in GitHub's own state; nothing in this
   # repository reads them back. contents:read is enough for the rulesets
