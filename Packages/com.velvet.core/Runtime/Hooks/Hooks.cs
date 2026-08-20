@@ -137,7 +137,7 @@ namespace Velvet
         /// <param name="comparer">
         /// Equality comparer used to detect changes. The default applies the same <c>Object.is</c> rule as
         /// the <c>UseState</c> setter, branch for branch — see the remarks on <see cref="StateUpdater{T}"/>.
-        /// Passing <see cref="EqualityComparer{TSel}.Default"/> therefore only changes a reference-type
+        /// Passing <see cref="EqualityComparer{TSel}.Default"/> therefore changes a reference-type
         /// selector, where it swaps instance identity for the type's own <c>Equals</c> so that a selector
         /// returning a fresh record of stable content skips the re-render instead of triggering one. For a
         /// string selector, or a value-type selector other than <c>float</c>/<c>double</c>, the default

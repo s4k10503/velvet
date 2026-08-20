@@ -43,6 +43,10 @@ namespace Velvet.Tests
             ResetPayloadSelector();
         }
 
+        // GREEN_ON_BASE(characterization): this branch changes no production code — it corrects prose
+        // that restated the comparer — so every case here is green on both sides. What shows this one
+        // can fail is the comparer's string branch perturbed to compare by reference, measured: the
+        // rebuilt-but-equal string then re-renders.
         [Test]
         public void Given_StringState_When_SetterInvokedWithRebuiltEqualString_Then_NoRerender()
         {
@@ -65,6 +69,10 @@ namespace Velvet.Tests
                 Is.EqualTo((false, "beta-1", renderCountAfterChange)));
         }
 
+        // GREEN_ON_BASE(characterization): this branch changes no production code — it corrects prose
+        // that restated the comparer — so every case here is green on both sides. What shows this one
+        // can fail is the comparer's value-type fall-through perturbed to compare by reference, measured:
+        // the field-equal struct then re-renders.
         [Test]
         public void Given_StructState_When_SetterInvokedWithFieldEqualInstance_Then_NoRerender()
         {
@@ -85,6 +93,10 @@ namespace Velvet.Tests
                 Is.EqualTo((new Point(3, 4), renderCountAfterChange)));
         }
 
+        // GREEN_ON_BASE(characterization): this branch changes no production code — it corrects prose
+        // that restated the comparer — so every case here is green on both sides. What shows this one
+        // can fail is the comparer's reference branch perturbed to EqualityComparer<T>.Default, measured:
+        // the fresh record then bails instead.
         [Test]
         public void Given_RecordState_When_SetterInvokedWithFreshContentEqualInstance_Then_ComponentReRenders()
         {
@@ -105,6 +117,10 @@ namespace Velvet.Tests
                 Is.EqualTo((true, renderCountBefore + 1)));
         }
 
+        // GREEN_ON_BASE(characterization): this branch changes no production code — it corrects prose
+        // that restated the comparer — so every case here is green on both sides. What shows this one
+        // can fail is UseStore's default comparer swapped for EqualityComparer<TSel>.Default, measured: it
+        // is the only case of the four that reddens there, which is why the surface carries its own case.
         [Test]
         public void Given_DefaultComparer_When_SelectorReturnsFreshContentEqualRecord_Then_ComponentReRenders()
         {
