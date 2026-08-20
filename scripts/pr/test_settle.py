@@ -262,8 +262,11 @@ def poll(states, listing_answers=True):
                     mock.patch.object(settle, "open_pull_requests", refuse_to_answer))
             for name, path in (("READY_STATE", ready_state),
                                ("HEARTBEAT", heartbeat),
-                               ("LOCK", Path(directory) / "lock")):
-                stack.enter_context(mock.patch.object(settle.watcher_state, name, path))
+                               ("LOCK", Path(directory) / "lock"),
+                               ("ASKED", Path(directory) / "asked")):
+                # `create` so the redirect survives being carried onto a tree without the name, where
+                # the alternative is a case that stops before it disagrees.
+                stack.enter_context(mock.patch.object(settle.watcher_state, name, path, create=True))
             stack.enter_context(mock.patch.object(settle.time, "sleep", side_effect=Polled))
             stack.enter_context(contextlib.redirect_stdout(printed))
             try:
@@ -407,8 +410,9 @@ class FakeClock:
 
 
 # How a run of `watch` ended: its exit code, or None where it was still polling when the clock gave
-# up, what it printed on the way out, and whether the lock was free by then.
-Watched = collections.namedtuple("Watched", "code output lock_released")
+# up, what it printed on the way out, whether the lock was free by then, and the ready record it
+# left.
+Watched = collections.namedtuple("Watched", "code output lock_released ready")
 
 
 def keeping_the_lock(handles):
@@ -422,23 +426,37 @@ def keeping_the_lock(handles):
     return held
 
 
-def watch_until(between_polls=None, asked=None):
-    """Run `watch` over one green pull request and a clock only its own sleep advances.
+# Half again the sixty polls the interval takes, written out rather than derived from it: with a
+# bound of three times RETIRE_AFTER, raising that interval to a hundred polls left every case here
+# green, because the bound moved with it.
+CLOCK_BOUND = 90
 
-    The clock's bound is three times the retirement interval, so it cannot be what a case reads as
-    retirement. `asked` sends the record somewhere else, for a case about it not being written.
+
+def watch_until(between_polls=None, asked=None, listing_answers=True, seed_ready=None,
+                states=None):
+    """Run `watch` over green pull requests and a clock only its own sleep advances.
+
+    `asked` sends the record somewhere else, for a case about it not being written; `seed_ready`
+    writes a ready file for the run to find, the way a watcher that has already stopped leaves one.
     """
-    clock = FakeClock(3 * settle.watcher_state.RETIRE_AFTER // settle.watcher_state.POLL_SECONDS,
-                      between_polls)
+    clock = FakeClock(CLOCK_BOUND, between_polls)
     printed = io.StringIO()
     handles = []
     with tempfile.TemporaryDirectory(prefix="settle-retire-") as directory:
-        with fabricated_readings({1: fabricate(1)}) as stack:
+        ready_state = Path(directory) / "ready_state"
+        if seed_ready is not None:
+            ready_state.write_text(seed_ready, encoding="utf-8")
+        with fabricated_readings({1: fabricate(1)} if states is None else states) as stack:
             for name in ("READY_STATE", "HEARTBEAT", "LOCK", "ASKED"):
+                # `create` for the reason `poll` gives over the same redirect.
                 stack.enter_context(mock.patch.object(settle.watcher_state, name,
-                                                      Path(directory) / name.lower()))
+                                                      Path(directory) / name.lower(), create=True))
             if asked is not None:
-                stack.enter_context(mock.patch.object(settle.watcher_state, "ASKED", asked))
+                stack.enter_context(mock.patch.object(settle.watcher_state, "ASKED", asked,
+                                                      create=True))
+            if not listing_answers:
+                stack.enter_context(mock.patch.object(settle, "open_pull_requests",
+                                                     refuse_to_answer))
             stack.enter_context(mock.patch.object(settle, "hold_the_watch",
                                                   keeping_the_lock(handles)))
             stack.enter_context(mock.patch.object(settle.time, "sleep", clock.sleep))
@@ -452,7 +470,8 @@ def watch_until(between_polls=None, asked=None):
             # the handle is held until the reading rather than left to fall out of scope.
             released = handles[0].closed
             handles[0].close()
-    return Watched(code, printed.getvalue(), released)
+        recorded = ready_state.read_text(encoding="utf-8") if ready_state.exists() else ""
+    return Watched(code, printed.getvalue(), released, recorded)
 
 
 class RetirementTests(unittest.TestCase):
@@ -486,6 +505,26 @@ class RetirementTests(unittest.TestCase):
 
         # Assert
         self.assertTrue(watched.lock_released)
+
+    def test_Given_ReadingsThatNeverAnswer_When_TheIntervalPasses_Then_ItStillRetires(self):
+        # Arrange — the wedge that reads to a guard as nothing watching: each poll fails, prints,
+        # sleeps and comes back, so the retirement is reached on that path or not at all.
+        watched = watch_until(listing_answers=False)
+
+        # Act / Assert
+        self.assertEqual(watched.code, 0)
+
+    def test_Given_AReadyRecordAnEarlierWatcherLeft_When_OneStarts_Then_OnlyTheUsableAgeIsCarried(self):
+        # Arrange — two pull requests recorded ready before this run started, one of them stamped
+        # ahead of the clock. Retirement makes restarts ordinary, and a run that began its record
+        # empty would date every green pull request to its own start, which is the age
+        # `refuse/edit_while_a_ready_pr_sits.py` refuses on; carrying the second forward would date
+        # one of them permanently ahead of that age instead.
+        watched = watch_until(seed_ready="1 900\n2 9999999999\n",
+                              states={1: fabricate(1), 2: fabricate(2)})
+
+        # Act / Assert — the clock's start is 1000, so the second is redated and the first is not.
+        self.assertEqual(watched.ready.split(), ["1", "900", "2", "1000"])
 
     def test_Given_AGuardAskingEachPoll_When_TheRecordCannotBeWritten_Then_ItStillGetsItsAnswer(self):
         # Arrange — a directory the write cannot reach. The retirement is folded in beside the

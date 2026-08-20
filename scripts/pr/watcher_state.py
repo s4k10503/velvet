@@ -38,11 +38,13 @@ STALE_AFTER = 3 * POLL_SECONDS
 # session's guards may read it, so an orphan is unowned rather than unread.
 ASKED = Path.home() / ".velvet-pr-watch.asked"
 
-# The stamp above is a reader's cadence rather than the watcher's own poll, which is what makes this
-# a different quantity from STALE_AFTER. Thirty polls: long enough to cover a turn that spends its
-# whole length inside long-running commands, and short enough that an unattended watcher costs tens
-# of polls rather than the ten thousand a seven-day one reached.
-RETIRE_AFTER = 30 * POLL_SECONDS
+# A reader's cadence rather than the watcher's own poll, which is what makes this a different
+# quantity from STALE_AFTER. Nothing here stamps during a stretch of Bash alone, so this caps such a
+# stretch rather than clearing it: sixty polls is twice the 1800s wait for a quiet machine that all
+# three of this repository's suite harnesses take, so that wait sits inside the interval rather than
+# on its edge. Longer stretches exist — a campaign takes that wait once per mutant — and no interval
+# covers those; what a session gets back there is the command the guards name.
+RETIRE_AFTER = 60 * POLL_SECONDS
 
 
 def beat(pid, now=None):

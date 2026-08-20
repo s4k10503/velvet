@@ -416,6 +416,28 @@ def write_ready_state(ready, since):
         "".join(f"{number} {since[number]}\n" for number in sorted(since)))
 
 
+def read_ready_state():
+    """When each recorded pull request first read as ready, out of the file a watcher left behind.
+
+    Retirement makes a restart ordinary rather than a machine reboot, and a `since` that began
+    empty would hand every green pull request a new clock — the one
+    `refuse/edit_while_a_ready_pr_sits.py` reads to decide that a pull request has sat. A stamp in
+    the future is dropped rather than carried, for the reason `watcher_state.stamp_age` gives about
+    the one in the heartbeat.
+    """
+    try:
+        text = watcher_state.READY_STATE.read_text(encoding="utf-8")
+    except OSError:
+        return {}
+    now = int(time.time())
+    carried = {}
+    for line in text.splitlines():
+        fields = line.split()
+        if len(fields) == 2 and all(field.isdigit() for field in fields) and int(fields[1]) <= now:
+            carried[int(fields[0])] = int(fields[1])
+    return carried
+
+
 def hold_the_watch():
     """(the open lock, the pid holding it). No lock means another watcher already has it.
 
@@ -503,7 +525,7 @@ def watch(project, base):
         return 1
 
     seen = set()
-    ready_since = {}
+    ready_since = read_ready_state()
     started = time.time()
     while True:
         # Before the readings, so the error path that sleeps and continues cannot skip it — a
