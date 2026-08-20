@@ -91,12 +91,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   too. An `AnimatePresence` whose own leaf the batch had already removed then kept committed state
   naming a child that was gone, and the next render at that position spliced it back as an exiting
   ghost. The delegate is the caller's, and reconciler disposal already contained it this way.
-- An `IRouteScope.Dispose` that throws is reported the same way, both where an unmounting `V.Outlet`
-  disposes its scope and where whole-reconciler teardown sweeps the scopes still registered. The scope
-  is the application's, built by the `IRouteScopeFactory` handed to `Router`. From the unmount the
-  escape reached the same interrupted removal batch and the same resurrected `AnimatePresence` child as
-  above, and left the scope registered for the teardown sweep to dispose a second time; from the sweep
-  it left the rest of that sweep unrun, including every scope it had not reached yet.
+- An `IRouteScope.Dispose` that throws is reported the same way, at each of the three places a route
+  scope is disposed: the patch that swaps in a newly matched route, an unmounting `V.Outlet`, and the
+  whole-reconciler teardown sweep. The scope is the application's, built by the `IRouteScopeFactory`
+  handed to `Router`. From the route change the escape left the `V.Outlet` blank — the route navigated
+  away from torn down, the route navigated to never mounted — and a later render at that position
+  mounted the new route on the already-disposed scope. From the unmount it reached the same interrupted
+  removal batch and the same resurrected `AnimatePresence` child as above. Both also left the scope
+  registered for the teardown sweep to dispose a second time; from the sweep itself the escape left the
+  rest of that sweep unrun, including every scope it had not reached yet.
 - A child that moves from one `gap-*`, `divide-*` or `grid-cols-*` container to another keeps the
   spacing, divider or column sizing the container it joined wrote. Each of the three tracked the children
   it had written to by raw reference and reset the value on one no longer in the container, and the

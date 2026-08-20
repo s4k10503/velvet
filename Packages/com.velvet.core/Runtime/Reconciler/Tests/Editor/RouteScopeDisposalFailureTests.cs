@@ -8,19 +8,21 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Specifies what an <see cref="IRouteScope"/> whose <c>Dispose</c> throws does to the teardown that
-    /// invoked it. The scope is built by the application's <see cref="IRouteScopeFactory"/>, so each
-    /// entrance below reaches the caller's code — the reason a <c>refCallback</c> cleanup is contained at
-    /// the same two.
+    /// invoked it. The scope is built by the application's <see cref="IRouteScopeFactory"/>, so every
+    /// entrance below reaches the caller's code, and each contains it the way a <c>refCallback</c>
+    /// cleanup is contained.
     /// <list type="bullet">
+    /// <item>Changing route: the Outlet still mounts the route it navigated to, and the scope it left
+    /// behind is disposed once rather than again by the teardown sweep.</item>
     /// <item>Removing the Outlet: the removal batch continues, so the rows the walk had not reached yet
     /// leave too.</item>
     /// <item>An AnimatePresence beside the Outlet retires with those removals, so a later render at its
     /// position does not splice the departed child back as an exiting ghost.</item>
     /// <item>Disposing the whole reconciler: every other scope still registered is disposed anyway.</item>
     /// </list>
-    /// The first two fold in whether the failure left the reconcile call, because a tree where it escapes
-    /// never reaches the state each is named for and a bare rethrow says nothing about which of the two
-    /// moved.
+    /// Every case that reads the tree folds in whether the failure left the reconcile call, because a
+    /// tree where it escapes never reaches the state the case is named for and a bare rethrow says
+    /// nothing about which of the two moved.
     /// </summary>
     [TestFixture]
     internal sealed class RouteScopeDisposalFailureTests
@@ -29,43 +31,104 @@ namespace Velvet.Tests
 
         private static int s_disposeAttempts;
 
+        // Switched off so a case can run its arrangement once without the failure, as the control its
+        // measured run is compared against.
+        private static bool s_throwOnDispose;
+
         private sealed class ThrowingRouteScope : IRouteScope
         {
+            public int DisposeCount { get; private set; }
+
             public T Resolve<T>() => throw new NotSupportedException();
 
             public void Dispose()
             {
+                DisposeCount++;
                 s_disposeAttempts++;
-                throw new InvalidOperationException(DisposeFailureMessage);
+                if (s_throwOnDispose)
+                {
+                    throw new InvalidOperationException(DisposeFailureMessage);
+                }
             }
         }
 
         private sealed class ThrowingRouteScopeFactory : IRouteScopeFactory
         {
-            public IRouteScope CreateScope(RouteDefinition? route, IRouteScope? parent) => new ThrowingRouteScope();
+            public List<ThrowingRouteScope> Scopes { get; } = new();
+
+            public IRouteScope CreateScope(RouteDefinition? route, IRouteScope? parent)
+            {
+                var scope = new ThrowingRouteScope();
+                Scopes.Add(scope);
+                return scope;
+            }
         }
 
         private Reconciler _reconciler = null!;
         private VisualElement _root = null!;
         private Router _router = null!;
+        private ThrowingRouteScopeFactory _scopeFactory = null!;
 
         [SetUp]
         public void SetUp()
         {
             s_disposeAttempts = 0;
+            s_throwOnDispose = true;
+            s_appLocation = null;
             _reconciler = new Reconciler();
             _root = new VisualElement();
+            _scopeFactory = new ThrowingRouteScopeFactory();
             _router = new Router(
-                V.Routes(V.Route(path: "/", element: V.Component(RouteBody, key: "route"))),
-                new ThrowingRouteScopeFactory());
+                V.Routes(
+                    V.Route(path: "/", element: V.Component(RouteBody, key: "route")),
+                    V.Route(path: "/other", element: V.Component(OtherRouteBody, key: "other"))),
+                _scopeFactory);
             _router.NavigateAsync("/").GetAwaiter().GetResult();
         }
 
         [TearDown]
         public void TearDown()
         {
+            // A case that leaves a scope registered has the fixture's own disposal sweep it, and a throw
+            // from there is fixture noise rather than anything a case arranged. Each case arms the log
+            // expectations for the failures it does arrange, and LogAssert settles them before this runs.
+            s_throwOnDispose = false;
             _router.Dispose();
             _reconciler.Dispose();
+        }
+
+        [Test]
+        public void Given_ARouteScopeDisposeThatThrows_When_TheRouteChanges_Then_TheIncomingRouteStillMounts()
+        {
+            // Arrange — the departing route's scope is disposed by the patch that installs the incoming one.
+            var mounted = MountRoutedApp();
+            _router.NavigateAsync("/other").GetAwaiter().GetResult();
+            ContainedFailureLog.Expect<InvalidOperationException>("FiberNodePatcher", DisposeFailureMessage);
+
+            // Act
+            var escaped = EscapesFrom(() => ReRenderAppAtCurrentLocation(mounted));
+
+            // Assert
+            Assert.That((escaped, LabelTextsUnder(_root)), Is.EqualTo((false, "other")));
+        }
+
+        [Test]
+        public void Given_ARouteScopeDisposeThatThrows_When_TheRouteChanges_Then_TheDepartedScopeIsNotSweptAgain()
+        {
+            // Arrange — whether the failure left the reconcile call is the case above's subject; this one
+            // reads only how many times the route the navigation left behind had its scope disposed.
+            var mounted = MountRoutedApp();
+            _router.NavigateAsync("/other").GetAwaiter().GetResult();
+            ContainedFailureLog.Expect<InvalidOperationException>("FiberNodePatcher", DisposeFailureMessage);
+            ContainedFailureLog.Expect<InvalidOperationException>("Reconciler", DisposeFailureMessage);
+            _ = EscapesFrom(() => ReRenderAppAtCurrentLocation(mounted));
+
+            // Act — the sweep that disposes whatever is still registered.
+            _reconciler.Dispose();
+            _reconciler = new Reconciler();
+
+            // Assert
+            Assert.That(_scopeFactory.Scopes[0].DisposeCount, Is.EqualTo(1));
         }
 
         [Test]
@@ -92,21 +155,21 @@ namespace Velvet.Tests
         public void Given_ARouteScopeDisposeThatThrows_When_APresenceBesideItIsRemoved_Then_TheDepartedChildIsNotResurrected()
         {
             // Arrange — the presence and the Outlet share a container, so one removal pass answers for both.
-            var committed = new VNode[] { Presence("a"), RoutedOutlet() };
-            _reconciler.Reconcile(_root, Array.Empty<VNode>(), committed);
+            // The expected names are measured from the same sequence run with the scope not throwing, so a
+            // presence that stops retiring for its own reasons moves both readings and this case stays green
+            // for the one it is named for.
+            var withoutFailure = PresenceNamesAfterRemovalBeside(throwOnDispose: false);
             ContainedFailureLog.Expect<InvalidOperationException>("FiberElementCleaner", DisposeFailureMessage);
-            var empty = Array.Empty<VNode>();
-            var escaped = EscapesFrom(() => _reconciler.Reconcile(_root, committed, empty));
 
             // Act
-            _reconciler.Reconcile(_root, empty, new VNode[] { Presence("b") });
+            var withFailure = PresenceNamesAfterRemovalBeside(throwOnDispose: true);
 
             // Assert
-            Assert.That((escaped, NamesOf(_root)), Is.EqualTo((false, "item-b")));
+            Assert.That(withFailure, Is.EqualTo(("escaped:False", withoutFailure.Names)));
         }
 
         [Test]
-        public void Given_TwoOutletsStillMounted_When_TheReconcilerIsDisposedAndTheFirstScopeThrows_Then_TheOtherScopeIsDisposedAnyway()
+        public void Given_TwoOutletsWhoseScopesBothThrow_When_TheReconcilerIsDisposed_Then_TheSweepAttemptsBoth()
         {
             // Arrange — two registered scopes, both throwing, so which one the sweep reaches first cannot
             // decide the reading.
@@ -133,6 +196,39 @@ namespace Velvet.Tests
         [Component]
         private static VNode RouteBody() => V.Label(text: "route");
 
+        [Component]
+        private static VNode OtherRouteBody() => V.Label(text: "other");
+
+        // The location the routed app renders its Provider spine from. Read from the component body rather
+        // than passed as a prop so a re-render at the same identity picks the navigation up; the component
+        // opts out of auto-memoization because that read is not one of the inputs the memo keys on.
+        private static RouterLocation? s_appLocation;
+
+        [Component(Compiler = false)]
+        private static VNode RoutedApp()
+            => V.Provider(RouterContext.Location, s_appLocation!,
+                children: new VNode[]
+                {
+                    V.Provider(RouterContext.Depth, 0, children: new VNode[] { V.Outlet() }),
+                });
+
+        // Renders the app at the router's current location. The Provider spine expands inside the
+        // component render, which is the only place the Outlet patch reaches a route change from: a
+        // context value moving at the top level of a Reconcile call has no fiber to propagate from.
+        private VNode[] MountRoutedApp()
+        {
+            s_appLocation = _router.CurrentLocation;
+            var tree = new VNode[] { V.Component(RoutedApp, key: "app") };
+            _reconciler.Reconcile(_root, Array.Empty<VNode>(), tree);
+            return tree;
+        }
+
+        private void ReRenderAppAtCurrentLocation(VNode[] mounted)
+        {
+            s_appLocation = _router.CurrentLocation;
+            _reconciler.Reconcile(_root, mounted, new VNode[] { V.Component(RoutedApp, key: "app") });
+        }
+
         private static VNode RoutedOutlet()
             => V.Provider(RouterContext.Location, Router.Current!.CurrentLocation!,
                 children: new VNode[]
@@ -146,6 +242,21 @@ namespace Velvet.Tests
                 variants: s_fade, animate: "visible", exit: "hidden",
                 transition: new StyleTransitionConfig { DurationSec = 0.3f }),
         });
+
+        // Mounts a presence beside a routed Outlet on a reconciler of its own, removes both in one pass,
+        // then renders a second presence at the same position and reports what stands there.
+        private static (string Escaped, string Names) PresenceNamesAfterRemovalBeside(bool throwOnDispose)
+        {
+            s_throwOnDispose = throwOnDispose;
+            using var reconciler = new Reconciler();
+            var root = new VisualElement();
+            var committed = new VNode[] { Presence("a"), RoutedOutlet() };
+            reconciler.Reconcile(root, Array.Empty<VNode>(), committed);
+            var empty = Array.Empty<VNode>();
+            var escaped = EscapesFrom(() => reconciler.Reconcile(root, committed, empty));
+            reconciler.Reconcile(root, empty, new VNode[] { Presence("b") });
+            return ("escaped:" + escaped, NamesOf(root));
+        }
 
         // Filtered on the arranged message so any other InvalidOperationException still leaves the case.
         private static bool EscapesFrom(Action reconcile)
@@ -166,6 +277,18 @@ namespace Velvet.Tests
             var names = new List<string>();
             for (var i = 0; i < parent.childCount; i++) names.Add(parent.ElementAt(i).name);
             return string.Join(",", names);
+        }
+
+        private static string LabelTextsUnder(VisualElement parent)
+        {
+            var texts = new List<string>();
+            void Walk(VisualElement element)
+            {
+                if (element is Label label) texts.Add(label.text);
+                for (var i = 0; i < element.childCount; i++) Walk(element.ElementAt(i));
+            }
+            Walk(parent);
+            return string.Join(",", texts);
         }
 
         #endregion
