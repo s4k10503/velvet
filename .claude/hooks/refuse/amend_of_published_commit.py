@@ -3,8 +3,7 @@
 
 A review round's findings cite the commit they were taken on. Amending replaces that commit, so the
 round and the layer that answered it stop being separable, and the branch cannot land without a
-force-push. It happened twice in one session, and both times what caught it was somebody checking
-the parent and the file set by hand before rewriting the remote.
+force-push.
 
 An amend of an unpushed commit is the ordinary case and stays allowed, since refusing every amend
 would cost more than the defect. What is asked of git is whether some `refs/remotes/*` reaches HEAD;
@@ -190,9 +189,9 @@ def blamed(selectors, message, cwd):
 
 
 # What the shell rewrites besides the substitutions `unexpanded` recognises. Widening that reading
-# instead would make `shared_git_state.py` refuse `git checkout '*.cs'`, which is the over-refusal
-# its own `GLOB` and `sole_expansions` are there to avoid. What is asked here is narrower, and only
-# once a reading has already failed: whether git was handed the path the command names.
+# instead would make `shared_git_state.py` refuse `git checkout '*.cs'`. What is asked here is
+# narrower, and only once a reading has already failed: whether git was handed the path the command
+# names.
 SHELL_REWRITES = re.compile(r"^~|[*?\[]")
 
 
@@ -209,7 +208,10 @@ NO_DIRECTORY = "Check the path: git could not enter that directory."
 
 # A selector that is not a repository and a reading from a directory in none arrive under the same
 # marker, and leave the contributor in different positions: one named a path to check and the other
-# named nothing. `quoted_selectors` is what separates them.
+# named nothing. What separates them is whether the command named a selector at all, since that is
+# what the two actions differ on; keying on the path git quoted back instead sent a `-C` naming a
+# directory in no repository to the action that tells a contributor to name one, which
+# `UnreadableTreeTests` poses.
 NO_REPOSITORY_MARKER = "not a git repository"
 
 UNREADABLE_ACTIONS = (
@@ -236,7 +238,7 @@ def unreadable_action(selectors, message):
     for marker, action in UNREADABLE_ACTIONS:
         if marker not in message:
             continue
-        if marker == NO_REPOSITORY_MARKER and quoted_selectors(selectors, message):
+        if marker == NO_REPOSITORY_MARKER and selectors:
             return NOT_A_REPOSITORY
         return action
     return UNCLASSIFIED

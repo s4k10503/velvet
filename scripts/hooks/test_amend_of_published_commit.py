@@ -182,6 +182,8 @@ class PublishedHeadTests(GuardCase):
 
     def test_Given_AnAmendInASecondSegment_When_ItIsPosed_Then_ItIsRefused(self):
         # Arrange — a guard reading only the first command of the line sees a directory change here.
+        # What is read is the event's directory either way: `cd` is not followed, so a second
+        # segment naming an unpublished tree is refused here too.
         # Act
         answer = self.refused("cd /tmp && git commit --amend")
 
@@ -597,6 +599,21 @@ class UnreadableTreeTests(GuardCase):
 
         # Act
         text = self.refusal(f"git --git-dir={absent} commit --amend")
+
+        # Assert
+        self.assertIn(NOT_A_REPOSITORY, text)
+
+    def test_Given_ADashCNamingADirectoryInNoRepository_When_ItIsRefused_Then_ItSaysWhereToLook(self):
+        # Arrange — the sibling nobody ran `git init` in, named from a repository that is fine. The
+        # directory is there, so this is not the route git reports as being unable to enter, and
+        # `UnreadableCauseTests` is where git is held to quoting no path for it. A reading keyed on
+        # the path git quoted therefore puts this with the commands that named nothing, and tells a
+        # contributor who wrote a selector to write one.
+        sibling = self.root / "sibling"
+        sibling.mkdir()
+
+        # Act
+        text = self.refusal(f"git -C {sibling} commit --amend")
 
         # Assert
         self.assertIn(NOT_A_REPOSITORY, text)
@@ -1018,6 +1035,17 @@ class UnreadableCauseTests(unittest.TestCase):
 
         # Assert
         self.assertEqual((placed, "not a git repository" in said), (False, True))
+
+    # GREEN_ON_BASE(characterization): git quotes no path when a `-C` it entered is in no repository.
+    # It is why what git quoted back cannot tell that cause from a reading taken where the command
+    # named no selector, and why `unreadable_action` separates them on the selectors instead.
+    def test_Given_ADashCInNoRepository_When_TheReadingIsTaken_Then_GitNamesNoPath(self):
+        # Arrange / Act — the marker rides in the comparison, since the path term alone is
+        # satisfied by a reading that answered.
+        said = self.read("-C", str(self.plain))
+
+        # Assert
+        self.assertEqual(("not a git repository" in said, f"'{self.plain}'" in said), (True, False))
 
     def test_Given_TheMarkerTableAsItStands_When_EachIsPosed_Then_GitWritesThatMarker(self):
         # Arrange — read from the guard rather than spelled. Each pair the table holds is caught
