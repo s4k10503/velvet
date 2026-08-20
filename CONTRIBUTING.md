@@ -581,8 +581,16 @@ the license on the same account.
 
 ## Releasing
 
-1. Close the version in `Packages/com.velvet.core/CHANGELOG.md` — rename the working section to
-   `## [X.Y.Z] - YYYY-MM-DD` — and bump `version` in `package.json` to match.
+The CHANGELOG holds two open sections, and which one an entry goes in is settled when the entry is
+written rather than when the version closes. `## [Unreleased]` is what a minor or a patch may ship.
+`## [Unreleased — breaking]` is what has to wait for a major: an API a caller has to edit around, and
+behaviour a working application would notice changing.
+
+1. Close the version in `Packages/com.velvet.core/CHANGELOG.md` — rename `## [Unreleased]` to
+   `## [X.Y.Z] - YYYY-MM-DD` — and bump `version` in `package.json` to match. A major moves the
+   breaking entries up into that section first and leaves their heading standing with none; a minor
+   or a patch leaves them where they are. The heading itself is never dated and never deleted;
+   `test_release_notes.py` refuses both.
 2. Merge to `main` (the `upm` branch is updated automatically).
 3. Run the **UPM** workflow via *Actions ▸ UPM ▸ Run workflow*, entering the same version.
    This tags `vX.Y.Z` on the `upm` (package-at-root) commit and publishes a GitHub release.

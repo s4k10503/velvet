@@ -16,14 +16,21 @@ twice, and nothing is written straight into the GitHub release.
 
 ## 1. Close the version in the CHANGELOG
 
-Rename the working section to `## [X.Y.Z] - YYYY-MM-DD` and give it a `### Highlights` block above
+Rename `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD` and give it a `### Highlights` block above
 its `### Added` / `### Changed` / `### Fixed` headings.
+
+`## [Unreleased — breaking]` decides the version rather than following it — there is no way to ship
+what sits there other than a major. Closing a major moves those entries up into the version's own
+subsections and leaves the heading standing with none; closing a minor or a patch leaves them alone.
+That heading is never dated and never deleted; `scripts/release/test_release_notes.py` refuses both.
+CONTRIBUTING.md's release section owns which entry goes where.
 
 **Highlights is what the release note leads with, and the release fails without it.** Five to nine
 bullets, one short paragraph each, ordered by what a user notices first — a fix for something that
 was silently broken outranks a new utility. Lead the last bullet with `**Breaking:**` and list every
-breaking change in it. Write them fresh: a bullet copied verbatim from a long-form entry below fails
-`scripts/release/test_release_notes.py`, because the note would then say the same thing twice.
+breaking change in it — the section above is what that list summarizes. Write them fresh: a bullet
+copied verbatim from a long-form entry below fails `scripts/release/test_release_notes.py`, because
+the note would then say the same thing twice.
 
 Bump `version` in `Packages/com.velvet.core/package.json` to match. SemVer against the previous
 release: a `feat` on `main` makes it a minor, a breaking change makes it a major.

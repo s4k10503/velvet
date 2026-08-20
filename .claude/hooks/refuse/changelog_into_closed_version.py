@@ -187,7 +187,8 @@ def main():
               "A note is rebuilt from the first heading matching its version down to the next "
               "heading, so only one of the two sections is ever published and their order is what "
               "decides which.\n\n"
-              "One heading per version. Put the entry under `## [Unreleased]`.", file=sys.stderr)
+              "One heading per version. Put the entry under `## [Unreleased]` or "
+              "`## [Unreleased — breaking]`.", file=sys.stderr)
         return 2
 
     before, after = released(text), released(proposed)
@@ -214,7 +215,8 @@ def main():
         "That section is the published release note. An entry there claims a version that shipped",
         "without it, and is missing from the version that will ship with it.",
         "",
-        "Put it under `## [Unreleased]` — opening one above the newest release if there is none.",
+        "Put it under `## [Unreleased]`, or `## [Unreleased — breaking]` where it has to wait for a",
+        "major — opening the one it belongs in above the newest release if there is none.",
         "A reword of what that section already says reads the same way here and is refused with it;",
         "it changes a published note, so ask for it rather than making it.",
     ]), file=sys.stderr)

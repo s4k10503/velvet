@@ -12,10 +12,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `animate-spin` — a full turn a second, linear, forever, with `animate-spin-[<time>]` overriding the
   loop like the other looping utilities. It owns the rotate slot while it runs, on the terms
   `animate-hue` owns the filter.
-- `V.Portal(target, …)` takes the element itself, the way `createPortal` does — no registration, no
-  shared name, and an element from a `refCallback` is a valid container. Passing a different target on a
-  later render moves the children — an unmount and a remount, so their state does not survive. The
-  portals guide states which containers a portal of either form may target.
 - `V.TextField` declares four more of the text-input surface: `placeholder:`, `maxLength:`,
   `isReadOnly:` and `isDelayed:` — HTML's `placeholder`, `maxlength` and `readonly`, plus a value that
   catches up with the typed text on Enter, on the field losing focus, and on a render taking
@@ -30,65 +26,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- The container a `V.Component` is written into is part of which instance it is, as the position of a
-  component is in React. Two sibling containers each holding the same component now hold two instances
-  with their own state, where they used to share one: the shared instance rendered its output into
-  whichever container the reconcile reached last, so the other container held a copy that no later
-  render ever updated, and a control inside that copy drove the surviving instance's state. Giving the
-  two occurrences the same `key:` shared one instance too; a key now makes no difference between
-  containers, because it separates siblings of one container rather than one container from another.
-  The consequence to read before upgrading is the other direction: writing a component into a
-  **different** container than the previous render did is now a fresh mount there and an unmount of
-  the one it left, so its state, refs and effects do not travel. The entry below states the same of a
-  portal's boundary, which holds even where the two sides share a container, so neither rule subsumes
-  the other. Keeping state across such a move means lifting it above both containers, to a `Store` or
-  to a `UseState` in the component that declares them. The migration guide states what a position is.
-- A `UseTransition` transition now covers what its callback runs before that callback first suspends,
-  rather than being inferred from the action still being in flight on the calling component. An update
-  made after an `await` that suspended the action takes the lane it would have taken outside a
-  transition, and an action that wants it deferred wraps it in the starter again, which joins the
-  transition already running and keeps `isPending` lit. React's `startTransition` reference asks for the
-  same wrapping, calling the restriction a known limitation it means to fix rather than the shape it is
-  aiming for. That inference had no way to tell the action's own continuation from a timer tick, a
-  `UseStore` notification or a `UseMutation` callback landing in the same window, so those took the
-  Transition lane too and waited out the delayed tier's 100 ms instead of committing at the next frame
-  boundary. `isPending` itself is unchanged: it
-  stays true across the awaits until the task completes. One consequence to expect where the await does
-  suspend: an action writing both before and after it now leaves two lanes rather than one, so those
-  writes commit in two renders instead of coalescing into a single transition render.
-  Which of the two an `await` is, C# decides at run time. An `await` of a task that had **already
-  completed** does not suspend — the continuation runs inline — so the callback carries on inside the
-  scope and the write after that `await` is a transition too, `isPending` staying lit until it commits on
-  the delayed tier. `await UniTask.CompletedTask` reaches it, as does any `async UniTask` the action
-  awaits that returns without suspending — a cache answering from memory being the shape to expect. One
-  source line therefore takes either schedule depending on the data, and the counter-intuitive way round:
-  the cache hit that answered instantly is the one whose write waits out the delayed tier, where the miss
-  commits at the next frame boundary. Wrapping the post-`await` update in the starter makes the two paths
-  agree, since a joined call is a transition on both. The migration guide's `useTransition` row states the
-  rule and where React's behaviour stops being a guide to it.
-- Moving a component across a `V.Portal`'s boundary is an unmount and a remount in every case now, so
-  its state, refs and effects do not survive the move and the departing instance's cleanups run. A
-  component written into a live portal's children that a previous render had outside them — and the same
-  move back out — used to keep its instance whenever a patch of the portal's children had been the last
-  thing to register the portal-side occurrence, the render that closes the portal included; only an
-  occurrence the portal's own deferred mount had registered mounted fresh. Which of the two a given edit
-  got was decided by which of those two entrances had last put the child in the portal, and neither the
-  guide nor `createPortal` promised the surviving half. The portals guide states the contract that now
-  holds in both directions. Keeping state across such a move means lifting it above the portal — to a
-  `Store`, or to a `UseState` in the component that declares the portal.
-- `V.Portal(null)` no longer compiles: a bare `null` first argument is ambiguous between
-  `Portal(string, …)` and the `Portal(VisualElement, …)` overload this version adds. Naming the
-  parameter — `V.Portal(targetId: null)` — or casting the literal says which was meant.
 - The switches that classify a `StyleVariantKind` are exhaustive by compilation rather than by review:
   `Runtime/csc.rsp` compiles CS8509 as an error, so a member added without an arm fails the build rather
   than warning into a log that nothing gates on. That response file ships with the package, so a project
   compiling `Velvet.asmdef` compiles CS8509 as an error too, applying to Velvet's own sources only.
-- `V.Portal(layer:)` no longer mounts its children for a `UILayer` value naming no layer, where it
-  hosted them at the `Overlay` offset before. Every named layer hosts as it did, and only a cast outside
-  the enum's range reaches this. What such a cast now produces: that portal's children do not mount, and
-  the exception is reported to the console rather than raised out of the render — `UseFallback` does not
-  catch it, and the message names the unmatched number rather than the argument it came from. A silent
-  `Overlay` was how such a cast survived to put a portal on a layer nobody asked for.
 - A deferred host mount that cannot resolve where it goes is now reported and skipped rather than
   escaping the render. `V.Portal`, `V.WorldSpace` and a `z-*` placement share one queue drained after
   the pass, and an escape used to take everything still behind it: a portal on a named layer queued
@@ -146,7 +87,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A same-starter async `startTransition` call keeps the joined transition owned until its own task
   completes. If an outer action started that call without awaiting it and then completed first, its exit
   used to release the shared slot and clear `isPending` while the joined action was still awaiting.
-
 - A child that moves from one `gap-*`, `divide-*` or `grid-cols-*` container to another keeps the
   spacing, divider or column sizing the container it joined wrote. Each of the three tracked the children
   it had written to by raw reference and reset the value on one no longer in the container, and the
@@ -246,18 +186,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   outside took the portal's own instance over and rendered it in both places, and the next patch of that
   portal built a second child and left the elements of the previous slot range in the target with nothing
   to reconcile them away.
-- Registering a portal target id again with a different element now moves the portals already mounted
-  into the old one, instead of leaving them writing into an element the UI has replaced. A
-  `"modal-root"` that a screen owns — torn down on navigation and re-registered from the rebuilt
-  screen's `refCallback` — used to leave every live portal's children on the destroyed element, with
-  no way back short of remounting the portal. `Register`'s overwrite warning fires only where the id
-  is still registered, and Velvet unregisters no portal target of its own; neither the warning nor
-  its absence reported the portals left behind on the element the id no longer named. The move is an
-  unmount and a remount, the same as a changed `createPortal` container, so state, refs and effects
-  under the portal do not survive it. Registering the same element again, and unregistering the id,
-  still leave a live portal exactly where it is. A portal declared before its id existed follows the
-  same signal: its children now appear on the first registration, where they used to wait for an
-  unrelated re-render of the declaring component and stay invisible until one happened.
 - A portal that resolved its id late no longer writes over the container's own first child. It
   recorded its range from slot 0 while the id was unregistered and never rebased it, so the healing
   patch reconciled its first child against whatever the container already held — an overlay root with
@@ -296,18 +224,127 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   it, so a mask a `refCallback:` had switched on came off on the first render that dropped the prop.
   A member a render declared and a later one dropped now restores what the field carried when the
   prop was first declared, and one no render has declared is nobody's to write.
-
 - A pooled widget carried the `Focusable` default recorded under a previous consumer into its next
   mount, so a render that dropped a declared `Focusable` prop handed the element that consumer's
   focusability rather than the one it carried when this consumer first declared the prop. The record
   is forgotten on the pool return every poolable type passes through.
-
 - A `TabIndex` or `DelegatesFocus` prop that a later render stopped declaring was written back as `0`
   or `false` rather than as the value the element was constructed with — neither of which is the
   right answer for every type. A `Label` is built out of the tab ring at -1, which shows once a
   consumer declares it focusable; a `TextField`, `Toggle` or `Slider` is built delegating focus to
   the input beneath it, so dropping that prop stranded focus on the field's own root. `Focusable` already restored its
   constructed value; all three do now.
+- A pooled widget carried far more than its reset helper named. Most of the writable surface of
+  `Button`, `Label`, `Toggle`, `Slider` and `TextField` survived a pool cycle and arrived on whatever
+  mounted next: a read-only or multiline `TextField`, a placeholder string the next consumer had not
+  written, a `Toggle` stuck showing a mixed value, a `Slider` whose direction was inverted, the
+  rich-text and emoji-fallback flags on `Button` and `Label`, text-selection colours and behaviour on
+  `Button`, `Label` and `TextField`, and a data-source binding on all five. A `TextField`'s stale
+  placeholder is the sharp end: the pool's own contract is that the next consumer cannot observe the
+  previous one's text.
+- A recycled composite field stopped delegating focus, and a recycled `Slider` or `TextField` also
+  started taking pointer picks on its own root. The shared reset writes the plain `VisualElement`
+  defaults for both, and only `focusable` was written back afterwards. A recycled `Label` carried
+  tab index 0 where its constructor sets -1, which shows once a consumer declares it focusable.
+- A `Slider` still carrying its numeric input field is no longer pooled at all. That sub-element only
+  tears down while the slider is on a panel, and a pool return has already detached it, so a recycled
+  slider showed a stray input box that its own `showInputField` denied.
+- A `Button` or `Label` no longer carries a paint delegate a consumer added onto whatever mounts next.
+- A composite field pooled without a label lost the class its constructor adds for that case, so a
+  recycled one no longer matched a fresh one's class list.
+- `UseMutation`'s `Reset` now abandons the call in flight instead of only clearing what it had written
+  so far. Pressing Save and then Reset used to leave the save owning the handle, so when it landed it
+  wrote `Success` and its result straight back over the idle state the user had asked for. The
+  abandoned call is still not cancelled and still delivers its own `OnSuccess` / `OnError` — what it
+  no longer does is write the handle, which is what v5's `reset()` detaching the observer amounts to.
+- A `UseMutation` handle no longer shows `Data` for a call it reports as failed. The result was
+  written before `OnSuccess` ran, so a handler that threw — which correctly makes the mutation an
+  error — left that result on show underneath the error, and a view rendering `Data` without checking
+  `Status` first showed it. The outcome is now committed after the handlers on both paths, which is
+  where v5 dispatches it, so a handler no longer reads its own call's outcome and `Data` stands only
+  under `Status == Success`.
+
+## [Unreleased — breaking]
+
+### Added
+
+- `V.Portal(target, …)` takes the element itself, the way `createPortal` does — no registration, no
+  shared name, and an element from a `refCallback` is a valid container. Passing a different target on a
+  later render moves the children — an unmount and a remount, so their state does not survive. The
+  portals guide states which containers a portal of either form may target.
+
+### Changed
+
+- The container a `V.Component` is written into is part of which instance it is, as the position of a
+  component is in React. Two sibling containers each holding the same component now hold two instances
+  with their own state, where they used to share one: the shared instance rendered its output into
+  whichever container the reconcile reached last, so the other container held a copy that no later
+  render ever updated, and a control inside that copy drove the surviving instance's state. Giving the
+  two occurrences the same `key:` shared one instance too; a key now makes no difference between
+  containers, because it separates siblings of one container rather than one container from another.
+  The consequence to read before upgrading is the other direction: writing a component into a
+  **different** container than the previous render did is now a fresh mount there and an unmount of
+  the one it left, so its state, refs and effects do not travel. The entry below states the same of a
+  portal's boundary, which holds even where the two sides share a container, so neither rule subsumes
+  the other. Keeping state across such a move means lifting it above both containers, to a `Store` or
+  to a `UseState` in the component that declares them. The migration guide states what a position is.
+- A `UseTransition` transition now covers what its callback runs before that callback first suspends,
+  rather than being inferred from the action still being in flight on the calling component. An update
+  made after an `await` that suspended the action takes the lane it would have taken outside a
+  transition, and an action that wants it deferred wraps it in the starter again, which joins the
+  transition already running and keeps `isPending` lit. React's `startTransition` reference asks for the
+  same wrapping, calling the restriction a known limitation it means to fix rather than the shape it is
+  aiming for. That inference had no way to tell the action's own continuation from a timer tick, a
+  `UseStore` notification or a `UseMutation` callback landing in the same window, so those took the
+  Transition lane too and waited out the delayed tier's 100 ms instead of committing at the next frame
+  boundary. `isPending` itself is unchanged: it
+  stays true across the awaits until the task completes. One consequence to expect where the await does
+  suspend: an action writing both before and after it now leaves two lanes rather than one, so those
+  writes commit in two renders instead of coalescing into a single transition render.
+  Which of the two an `await` is, C# decides at run time. An `await` of a task that had **already
+  completed** does not suspend — the continuation runs inline — so the callback carries on inside the
+  scope and the write after that `await` is a transition too, `isPending` staying lit until it commits on
+  the delayed tier. `await UniTask.CompletedTask` reaches it, as does any `async UniTask` the action
+  awaits that returns without suspending — a cache answering from memory being the shape to expect. One
+  source line therefore takes either schedule depending on the data, and the counter-intuitive way round:
+  the cache hit that answered instantly is the one whose write waits out the delayed tier, where the miss
+  commits at the next frame boundary. Wrapping the post-`await` update in the starter makes the two paths
+  agree, since a joined call is a transition on both. The migration guide's `useTransition` row states the
+  rule and where React's behaviour stops being a guide to it.
+- Moving a component across a `V.Portal`'s boundary is an unmount and a remount in every case now, so
+  its state, refs and effects do not survive the move and the departing instance's cleanups run. A
+  component written into a live portal's children that a previous render had outside them — and the same
+  move back out — used to keep its instance whenever a patch of the portal's children had been the last
+  thing to register the portal-side occurrence, the render that closes the portal included; only an
+  occurrence the portal's own deferred mount had registered mounted fresh. Which of the two a given edit
+  got was decided by which of those two entrances had last put the child in the portal, and neither the
+  guide nor `createPortal` promised the surviving half. The portals guide states the contract that now
+  holds in both directions. Keeping state across such a move means lifting it above the portal — to a
+  `Store`, or to a `UseState` in the component that declares the portal.
+- `V.Portal(null)` no longer compiles: a bare `null` first argument is ambiguous between
+  `Portal(string, …)` and the `Portal(VisualElement, …)` overload this version adds. Naming the
+  parameter — `V.Portal(targetId: null)` — or casting the literal says which was meant.
+- `V.Portal(layer:)` no longer mounts its children for a `UILayer` value naming no layer, where it
+  hosted them at the `Overlay` offset before. Every named layer hosts as it did, and only a cast outside
+  the enum's range reaches this. What such a cast now produces: that portal's children do not mount, and
+  the exception is reported to the console rather than raised out of the render — `UseFallback` does not
+  catch it, and the message names the unmatched number rather than the argument it came from. A silent
+  `Overlay` was how such a cast survived to put a portal on a layer nobody asked for.
+
+### Fixed
+
+- Registering a portal target id again with a different element now moves the portals already mounted
+  into the old one, instead of leaving them writing into an element the UI has replaced. A
+  `"modal-root"` that a screen owns — torn down on navigation and re-registered from the rebuilt
+  screen's `refCallback` — used to leave every live portal's children on the destroyed element, with
+  no way back short of remounting the portal. `Register`'s overwrite warning fires only where the id
+  is still registered, and Velvet unregisters no portal target of its own; neither the warning nor
+  its absence reported the portals left behind on the element the id no longer named. The move is an
+  unmount and a remount, the same as a changed `createPortal` container, so state, refs and effects
+  under the portal do not survive it. Registering the same element again, and unregistering the id,
+  still leave a live portal exactly where it is. A portal declared before its id existed follows the
+  same signal: its children now appear on the first registration, where they used to wait for an
+  unrelated re-render of the declaring component and stay invisible until one happened.
 - `animate-pulse` now suspends the element's native transitions while it runs, on the same terms
   `V.Motion`'s own per-frame drivers already do. An element whose own utilities declare a transition
   covering opacity — including the bare `duration-*` that leaves UI Toolkit's initial `all` standing —
@@ -317,43 +354,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   transitions nothing over opacity is left alone. A `V.Motion` variant swap on the same element owns
   the slot for its own length: the suspension stands aside for the swap, which therefore still tweens,
   and is back once the swap ends.
-
-- A pooled widget carried far more than its reset helper named. Most of the writable surface of
-  `Button`, `Label`, `Toggle`, `Slider` and `TextField` survived a pool cycle and arrived on whatever
-  mounted next: a read-only or multiline `TextField`, a placeholder string the next consumer had not
-  written, a `Toggle` stuck showing a mixed value, a `Slider` whose direction was inverted, the
-  rich-text and emoji-fallback flags on `Button` and `Label`, text-selection colours and behaviour on
-  `Button`, `Label` and `TextField`, and a data-source binding on all five. A `TextField`'s stale
-  placeholder is the sharp end: the pool's own contract is that the next consumer cannot observe the
-  previous one's text.
-
-- A recycled composite field stopped delegating focus, and a recycled `Slider` or `TextField` also
-  started taking pointer picks on its own root. The shared reset writes the plain `VisualElement`
-  defaults for both, and only `focusable` was written back afterwards. A recycled `Label` carried
-  tab index 0 where its constructor sets -1, which shows once a consumer declares it focusable.
-
-- A `Slider` still carrying its numeric input field is no longer pooled at all. That sub-element only
-  tears down while the slider is on a panel, and a pool return has already detached it, so a recycled
-  slider showed a stray input box that its own `showInputField` denied.
-
-- A `Button` or `Label` no longer carries a paint delegate a consumer added onto whatever mounts next.
-
-- A composite field pooled without a label lost the class its constructor adds for that case, so a
-  recycled one no longer matched a fresh one's class list.
-
-- `UseMutation`'s `Reset` now abandons the call in flight instead of only clearing what it had written
-  so far. Pressing Save and then Reset used to leave the save owning the handle, so when it landed it
-  wrote `Success` and its result straight back over the idle state the user had asked for. The
-  abandoned call is still not cancelled and still delivers its own `OnSuccess` / `OnError` — what it
-  no longer does is write the handle, which is what v5's `reset()` detaching the observer amounts to.
-
-- A `UseMutation` handle no longer shows `Data` for a call it reports as failed. The result was
-  written before `OnSuccess` ran, so a handler that threw — which correctly makes the mutation an
-  error — left that result on show underneath the error, and a view rendering `Data` without checking
-  `Status` first showed it. The outcome is now committed after the handlers on both paths, which is
-  where v5 dispatches it, so a handler no longer reads its own call's outcome and `Data` stands only
-  under `Status == Success`.
-
 - A component keeps its own state when a sibling written as `cond ? node : null` stops rendering. An
   unkeyed component written inline among siblings was keyed by how many components of its identity the
   walk had passed rather than by the slot it sat in, so a sibling turning to `null` shifted the
