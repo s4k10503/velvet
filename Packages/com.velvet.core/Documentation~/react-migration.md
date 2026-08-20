@@ -196,8 +196,7 @@ same way:
 | `Array.Empty<object>()` | an empty dependency set: run once and never again | `useEffect(fn, [])` |
 | one or more values | re-run when any of them changes, compared with `Object.is` semantics | `useEffect(fn, [a, b])` |
 
-That comparison reads each value's runtime type and branches on it; `MemoNode.Dependencies`' remarks
-state which branch each type takes.
+`MemoNode.Dependencies`' remarks state which branch each element type takes.
 
 Three consequences worth knowing before writing one:
 
