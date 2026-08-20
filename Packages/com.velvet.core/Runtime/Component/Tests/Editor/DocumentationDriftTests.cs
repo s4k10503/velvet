@@ -931,8 +931,8 @@ namespace Velvet.Tests
             // repository's base-red lane hands one to a container that mounts the checkout under a
             // different prefix, so the recorded path names nothing while the directory it names sits
             // under the checkout unmoved. The gitfile is rewritten to a path that was never there rather
-            // than a mount arranged, because a recorded path that does not resolve is the whole of what
-            // reaches git either way.
+            // than a mount arranged: the recorded path not resolving is the term the resolution below
+            // keys on, and it is the one this reproduces.
             var checkout = Scratch("-relocated");
             var worktree = Path.Combine(checkout, "base-tree");
             try
