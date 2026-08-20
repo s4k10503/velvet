@@ -225,14 +225,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `"modal-root"` that a screen owns — torn down on navigation and re-registered from the rebuilt
   screen's `refCallback` — used to leave every live portal's children on the destroyed element, with
   no way back short of remounting the portal. `Register`'s overwrite warning fires only where the id
-  is still registered, and Velvet unregisters no portal target of its own, so whether a teardown
-  leaves the warning or silence is the screen's own doing; neither reported the portals left behind on
-  the element the id no longer named. The move is an unmount and a remount, the same as a changed
-  `createPortal` container, so state, refs and effects under the portal do not survive it. Registering
-  the same element again, and unregistering the id, still leave a live portal exactly where it is. A
-  portal declared before its id existed follows the same signal: its children now appear on the first
-  registration, where they used to wait for an unrelated re-render of the declaring component and stay
-  invisible until one happened.
+  is still registered, and Velvet unregisters no portal target of its own; neither the warning nor
+  its absence reported the portals left behind on the element the id no longer named. The move is an
+  unmount and a remount, the same as a changed `createPortal` container, so state, refs and effects
+  under the portal do not survive it. Registering the same element again, and unregistering the id,
+  still leave a live portal exactly where it is. A portal declared before its id existed follows the
+  same signal: its children now appear on the first registration, where they used to wait for an
+  unrelated re-render of the declaring component and stay invisible until one happened.
 - A portal that resolved its id late no longer writes over the container's own first child. It
   recorded its range from slot 0 while the id was unregistered and never rebased it, so the healing
   patch reconciled its first child against whatever the container already held — an overlay root with
