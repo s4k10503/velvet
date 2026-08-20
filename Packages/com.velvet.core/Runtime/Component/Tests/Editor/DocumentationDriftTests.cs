@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -26,7 +27,7 @@ namespace Velvet.Tests
         // the same role "<X/>" plays in the JSX column of the same row — not a reference to a real V.* factory.
         private static readonly HashSet<string> VReferenceAllowlist = new() { "X" };
 
-        // Names that resolve nowhere in this repo's code for a reason. Seven groups, each a different one:
+        // Names nothing the corpus reads resolves, for a reason. Seven groups, each a different one:
         // meta-syntactic placeholders standing in for something the reader supplies — Foo, SomeFixture,
         // MyRender, MyStore, ResolveDirection, Save, and ForTest, a suffix written as a shape; API belonging
         // to the upstream libraries Velvet mirrors, which exists there and deliberately not here; names from
@@ -34,11 +35,12 @@ namespace Velvet.Tests
         // directory names — that the docs mention but no source file in this repo uses as code, which for
         // UpdateForRepaint, Alloc and UE means the repo holds the name only inside a string: one handed to
         // reflection, one to the profiler, one a test's case data; names an external toolchain owns, which
-        // no source file here spells and which the contributor README quotes when it says how to invoke it —
-        // DOTNET_ROOT, StrykerOutput, MSB4006, ProjectReference. What each one does is the toolchain's to
-        // state and has been got wrong here more than once; the reason for the entry is only that the name
-        // is not code in this repository. And the analyzer identifiers, which C# holds only as string
-        // literals and the corpus therefore strips.
+        // the contributor README quotes when it says how to invoke it — DOTNET_ROOT, StrykerOutput,
+        // MSB4006, ProjectReference, the last of which the tree does spell — in a .csproj, and in C# only
+        // where StripProse takes it. What each one does is the toolchain's to state and has been got wrong
+        // here more than once; the reason for the entry is only that the name is not code in anything the
+        // corpus reads. And the analyzer identifiers, which C# holds only as string literals and the corpus
+        // therefore strips.
         //
         // That last group is checked, just not here: DocumentationDiagnosticTableTests over in the
         // Generators~ suite reads the same README and compares its VEL and USS spellings, and the diagnostic
@@ -453,12 +455,19 @@ namespace Velvet.Tests
                 "Documentation names identifiers that appear in no source file:\n" + string.Join("\n", unresolved));
         }
 
+        // An entry earns its place only where the check above would otherwise report: some scanned span has
+        // to write it, AND SourceIdentifiers has to miss it, since the check consults that first and never
+        // reaches the allowlist for a name it resolves. Both arms have shipped dead entries — the first
+        // ContinuousIntegrationBuild, the second SIGTERM and ScaleWithScreenSize — and the second arm is the
+        // one that hides: the entry suppresses nothing while the source spelling it is there, and becomes
+        // load-bearing the day that source is deleted, with no review in between.
+        //
         // GREEN_ON_BASE(characterization): the list this reads is declared above, in a file the base run
         // carries from the branch along with the case, so the base answers over the branch's own entries
-        // whatever it holds. What stands in for the base run is the entry this change drops put back and
-        // the case run, measured: it named ContinuousIntegrationBuild.
+        // whatever it holds. What stands in for the base run is each dropped entry put back and the case
+        // run, measured: ContinuousIntegrationBuild names the first arm, SIGTERM the second.
         [Test]
-        public void Given_TheIdentifierAllowlist_When_EachEntryIsSoughtInTheScannedSpans_Then_EveryEntryIsWritten()
+        public void Given_TheIdentifierAllowlist_When_EachEntryIsSoughtInTheSpansAndTheSources_Then_EveryEntrySuppressesAReport()
         {
             // Arrange
             var written = new HashSet<string>(
@@ -466,14 +475,16 @@ namespace Velvet.Tests
 
             // Act
             var dead = IdentifierAllowlist
-                .Where(entry => !written.Contains(entry))
+                .Where(entry => !written.Contains(entry)
+                                || SourceIdentifiers(includeClaude: true).Contains(entry))
                 .OrderBy(entry => entry, StringComparer.Ordinal);
 
             // Assert
             Assert.That(string.Join(", ", dead), Is.Empty,
-                "Allowlist entries no scanned span writes suppress nothing, and a reader cannot tell them "
-                + "apart from the load-bearing ones. Drop the entry, or land the prose that needs it in the "
-                + "same change — there is no escape for one added ahead of its prose.");
+                "Allowlist entries that suppress nothing: no scanned span writes them, or a source file "
+                + "spells them and the check answers before the allowlist is consulted. Either way a reader "
+                + "cannot tell them apart from the load-bearing ones. Drop the entry, or land the prose that "
+                + "needs it in the same change — there is no escape for one added ahead of its prose.");
         }
 
         // The check above and the guard over its suppression list read one derivation: a guard built from
@@ -818,6 +829,121 @@ namespace Velvet.Tests
                 + "walk, or to .gitignore if it is machine-local");
         }
 
+        // The case above enumerates top-level directories, so it answers only for a root nobody walks. The
+        // exclusion lists cut at every depth, and an entry added to either quietly takes content out of the
+        // corpus with nothing left to report it: measured before this case existed, adding Samples~ to
+        // BaseUnwalkedDirectories dropped a README with every case in this fixture and in
+        // WorkflowTriggerCoverageTests still green. Both are the failure this fixture exists to report, one
+        // level out.
+        //
+        // The population is what git tracks, because that is what those lists claim to be free of: each
+        // entry names build output. Asking .gitignore instead would answer a different question — an entry
+        // here matches a basename at any depth while an ignore pattern is anchored, and the two disagree in
+        // both directions today.
+        //
+        // GREEN_ON_BASE(characterization): the lists this reads live in DocumentationCorpus, a test-assembly
+        // file the base run carries from the branch along with the case, so the base answers over the
+        // branch's own lists. What stands in for the base run is an entry added and the case run, measured:
+        // adding Samples~ named Packages/com.velvet.core/Samples~/StarterApp/README.md.
+        [Test]
+        public void Given_EveryTrackedMarkdownFileUnderAWalkedRoot_When_TheCorpusIsRead_Then_TheWalkReachedIt()
+        {
+            // Arrange
+            var roots = new HashSet<string>(
+                DocumentationCorpus.WalkedRoots(includeClaude: true), StringComparer.Ordinal);
+            var tracked = TrackedFiles()
+                .Where(path => path.EndsWith(".md", StringComparison.Ordinal))
+                .Where(path => !path.Contains('/') || roots.Contains(path.Split('/')[0]))
+                .ToList();
+            var scanned = new HashSet<string>(DocumentationCorpus.Files(), StringComparer.Ordinal);
+
+            // Act
+            var dropped = tracked
+                .Where(path => !scanned.Contains(path))
+                .OrderBy(path => path, StringComparer.Ordinal);
+
+            // Assert — that git answered rides along, because an empty answer leaves nothing dropped and
+            // this reports the same silence a healthy corpus does.
+            Assert.That(
+                (tracked.Count > 0, string.Join(", ", dropped)),
+                Is.EqualTo((true, string.Empty)),
+                "an exclusion in DocumentationCorpus took markdown the repository tracks out of the corpus, "
+                + "so nothing scans it; narrow the entry to the path the build writes, or drop it");
+        }
+
+        // GREEN_ON_BASE(characterization): the helper this drives is declared below, in a test-assembly
+        // file the base run carries from the branch along with the case, so the base answers with the
+        // branch's own code. What stands in for the base run is the safe.directory pair dropped and the
+        // case run, measured: the trusted listing came back empty too.
+        [Test]
+        public void Given_ACheckoutTheProcessDoesNotOwn_When_TheTrackedListingIsRead_Then_SafeDirectoryCarriesIt()
+        {
+            // Arrange / Act
+            var untrusted = TrackedFiles(trustDirectory: false, assumeForeignOwner: true);
+            var trusted = TrackedFiles(assumeForeignOwner: true);
+
+            // Assert — that git refuses without the argument rides in the comparison, because a git that
+            // had stopped refusing would satisfy the other half having settled nothing.
+            Assert.That(
+                (untrusted.Count, trusted.Count > 0),
+                Is.EqualTo((0, true)),
+                "the guard above reads git in the project directory, and over a checkout the process does "
+                + "not own git answers only where an argument trusts it — without that, the guard reports "
+                + "every tracked document as dropped");
+        }
+
+        /// <summary>Every path git tracks, repo-relative and slash-separated, or nothing if git did not answer.</summary>
+        private static List<string> TrackedFiles(bool trustDirectory = true, bool assumeForeignOwner = false)
+        {
+            var start = new ProcessStartInfo("git")
+            {
+                WorkingDirectory = Path.GetFullPath("."),
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            if (trustDirectory)
+            {
+                // Scoped to this invocation rather than written into a config anyone else reads. What it
+                // buys is what the case above settles.
+                start.ArgumentList.Add("-c");
+                start.ArgumentList.Add("safe.directory=" + Path.GetFullPath("."));
+            }
+            // -z, and the split on NUL below: what this returns is compared byte for byte against a path
+            // the walk read off the filesystem, so the listing has to arrive unquoted and unescaped.
+            start.ArgumentList.Add("ls-files");
+            start.ArgumentList.Add("-z");
+            if (assumeForeignOwner)
+            {
+                start.Environment["GIT_TEST_ASSUME_DIFFERENT_OWNER"] = "1";
+            }
+
+            try
+            {
+                using var process = Process.Start(start);
+                if (process == null)
+                {
+                    return new List<string>();
+                }
+                var listing = process.StandardOutput.ReadToEnd();
+                process.StandardError.ReadToEnd();
+                if (!process.WaitForExit(60000))
+                {
+                    process.Kill();
+                    return new List<string>();
+                }
+                return process.ExitCode == 0
+                    ? listing.Split('\0', StringSplitOptions.RemoveEmptyEntries).ToList()
+                    : new List<string>();
+            }
+            catch (Exception exception) when (exception is IOException or InvalidOperationException
+                                              or System.ComponentModel.Win32Exception)
+            {
+                return new List<string>();
+            }
+        }
+
         // GREEN_ON_BASE(characterization): the exclusion this pins is a value in DocumentationCorpus, which
         // is a test-assembly file, so the base run carries the branch's own list and answers with it. What
         // stands in for the base run is the entry removed and the case run, measured: it reported
@@ -864,7 +990,7 @@ namespace Velvet.Tests
         // GREEN_ON_BASE(characterization): the exclusion this pins lives in DocumentationCorpus, a
         // test-assembly file the base run carries from the branch along with the case, so the base answers
         // over the branch's own lists. What stands in for the base run is the entry removed and the case
-        // run, measured: it reported the staged directory and the markdown under it as walked.
+        // run, measured: it reported the markdown staged under the directory as walked.
         [Test]
         public void Given_TheDocBuildStagedTheGuides_When_TheWalkRuns_Then_TheStagedCopyStaysOutOfTheCorpus()
         {
@@ -929,5 +1055,74 @@ namespace Velvet.Tests
                 File.ReadAllText(build), @"^GUIDES\s*=\s*HERE\s*/\s*""([^""]+)""", RegexOptions.Multiline);
             return assignment.Success ? "docs/" + assignment.Groups[1].Value : string.Empty;
         }
+
+        // GREEN_ON_BASE(characterization): the exclusions this pins live in DocumentationCorpus, a
+        // test-assembly file the base run carries from the branch along with the case, so the base answers
+        // over the branch's own list. What stands in for the base run is docfx.json's output renamed to
+        // site and the case run, measured: it reported docs/site/docfx-output-probe.md as walked.
+        [Test]
+        public void Given_TheDocfxGeneratedDirectories_When_TheWalkRuns_Then_NeitherEntersTheCorpus()
+        {
+            // Arrange — both cached corpora are forced before the directories exist, for the reason
+            // Given_APytestCacheUnderAWalkedRoot_When_TheWalkRuns_Then_ItsMarkdownStaysOutOfTheCorpus gives.
+            DocumentationCorpus.RepoEntries(includeClaude: true);
+            DocumentationCorpus.RepoEntries(includeClaude: false);
+            var generated = DocfxGeneratedDirectories();
+            var absent = generated.Where(directory => !Directory.Exists(Path.GetFullPath(directory))).ToList();
+            var probes = generated.Select(directory =>
+            {
+                Directory.CreateDirectory(Path.GetFullPath(directory));
+                var probe = Path.Combine(Path.GetFullPath(directory), "docfx-output-probe.md");
+                File.WriteAllText(probe, "# generated #\n");
+                return probe;
+            }).ToList();
+
+            try
+            {
+                // Act
+                var walked = (List<string>)typeof(DocumentationCorpus)
+                    .GetMethod("Walk", BindingFlags.NonPublic | BindingFlags.Static)!
+                    .Invoke(null, new object[] { false })!;
+                var reached = walked.Where(entry => generated.Any(directory =>
+                    entry.StartsWith(directory + "/", StringComparison.Ordinal)));
+
+                // Assert — how many directories were derived rides along, because a derivation finding
+                // neither plants no probe and leaves this reporting the same silence either way.
+                Assert.That(
+                    (generated.Count, string.Join(", ", reached)),
+                    Is.EqualTo((2, string.Empty)),
+                    "docfx writes a directory the corpus walks into, and both formats it writes are in "
+                    + "SourceExtensions — so every type name it copied there resolves, including one the "
+                    + "sources no longer declare");
+            }
+            finally
+            {
+                foreach (var probe in probes)
+                {
+                    File.Delete(probe);
+                }
+                foreach (var directory in absent)
+                {
+                    Directory.Delete(Path.GetFullPath(directory), recursive: true);
+                }
+            }
+        }
+
+        // docfx extracts its metadata into one directory under docs/ and renders its site into another, and
+        // docs is a walked root. Read off docfx.json for the reason StagedGuidesDirectory gives about
+        // build.py: written down a second time, a rename re-opens the leak with nothing to say so.
+        private static List<string> DocfxGeneratedDirectories()
+        {
+            var config = Path.GetFullPath(Path.Combine("docs", "docfx.json"));
+            return File.Exists(config)
+                ? DocfxOutputPattern.Matches(File.ReadAllText(config))
+                    .Select(match => "docs/" + match.Groups[1].Value.Trim('/'))
+                    .Distinct(StringComparer.Ordinal)
+                    .ToList()
+                : new List<string>();
+        }
+
+        private static readonly Regex DocfxOutputPattern =
+            new(@"""(?:dest|output)""\s*:\s*""([^""]+)""", RegexOptions.Compiled);
     }
 }

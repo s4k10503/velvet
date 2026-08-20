@@ -49,7 +49,7 @@ namespace Velvet.Tests
         internal static IReadOnlyList<string> UnwalkedMarkdownRoots()
         {
             var ignored = IgnoredRoots();
-            var walked = new HashSet<string>(BaseWalkedRoots.Append(".claude"), StringComparer.Ordinal);
+            var walked = new HashSet<string>(WalkedRoots(includeClaude: true), StringComparer.Ordinal);
             var found = new List<string>();
             foreach (var directory in Directory.EnumerateDirectories(Path.GetFullPath(".")))
             {
@@ -72,7 +72,6 @@ namespace Velvet.Tests
         // one alternative compared case-insensitively covers both spellings.
         private static readonly Regex CharacterClassPattern = new(@"\[(\w)\w*\]", RegexOptions.Compiled);
 
-        /// <summary>Each .gitignore pattern's leading path segment, where that segment holds no wildcard.</summary>
         /// <remarks>
         /// Derived from .gitignore rather than listed, because the population that must be excluded is
         /// exactly the one git already excludes — and a hand-written list would go red on a machine carrying
@@ -101,6 +100,16 @@ namespace Velvet.Tests
         private static readonly string[] BaseWalkedRoots =
             { "Packages", "Assets", ".github", "scripts", "ProjectSettings", "docs" };
 
+        private static readonly string[] ClaudeAwareRoots = BaseWalkedRoots.Append(".claude").ToArray();
+
+        /// <remarks>
+        /// One derivation for the three readers — the walk, the unwalked-root report, and the caller asking
+        /// which files the walk was supposed to reach. A reader deriving it again stops answering for the
+        /// walk the day a root is added.
+        /// </remarks>
+        internal static IReadOnlyList<string> WalkedRoots(bool includeClaude) =>
+            includeClaude ? ClaudeAwareRoots : BaseWalkedRoots;
+
         // Build output, matched on the basename wherever it appears: nothing a document names lives there,
         // and Library alone would make the walk the slowest thing in this fixture.
         // StrykerOutput is here for a different reason, and it is the reason to be strict about the rest:
@@ -127,8 +136,10 @@ namespace Velvet.Tests
         // Matched on the repo-relative path rather than the basename, because `guides` and `api` are
         // plausible names for prose elsewhere in the tree and a basename entry stops the walk at every
         // directory carrying it: excluding `guides` that way would drop a Documentation~/guides/ in silence.
-        // Given_TheDocBuildStagedTheGuides_... in DocumentationDriftTests is what fails when the staging
-        // path moves out from under this list.
+        // Each of the three is derived where it is pinned, in DocumentationDriftTests, rather than trusted
+        // here: Given_TheDocBuildStagedTheGuides_... reads the staging path off docs/build.py and
+        // Given_TheDocfxGeneratedDirectories_... reads the other two off docs/docfx.json, so a rename in
+        // either owner fails there instead of re-opening the leak in silence.
         private static readonly HashSet<string> BaseUnwalkedPaths =
             new(StringComparer.Ordinal) { "docs/guides", "docs/api", "docs/_site" };
 
@@ -142,9 +153,7 @@ namespace Velvet.Tests
             // directory, and one it misses resolves every name the docs carry against a copy of the very sources
             // the rename was supposed to remove them from — leaving the check structurally green on a developer
             // machine and red only on CI.
-            var walkedRoots = includeClaude
-                ? BaseWalkedRoots.Append(".claude").ToArray()
-                : BaseWalkedRoots;
+            var walkedRoots = WalkedRoots(includeClaude);
             var unwalked = new HashSet<string>(BaseUnwalkedDirectories);
             if (includeClaude)
             {
