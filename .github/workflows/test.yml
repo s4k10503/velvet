@@ -243,12 +243,11 @@ jobs:
   # evidence about the branch where the same file compiles ON the branch, and that job is what says so.
   #
   # This is one round of a loop the local harness runs to a fixed point, and the difference decides
-  # what it can catch. A base that cannot build one carried file writes no results for anything, so a
-  # single round cannot tell which file that was: it reads as the base building none of the branch's
-  # tests, which passes. The harness withdraws one carried file and asks again until something runs,
-  # which is how it separates them — so `base_red_check.py` run locally is the sharper reading of the
-  # same branch, and what stays here is the case the base DID build and answer green, which is the
-  # one this exists for.
+  # what it can catch. A base that cannot build one carried file writes no results for anything, and
+  # a single round has no error list to say which file that was, so the `read` step below withdraws
+  # what it can prove branch-only before the round rather than after it. A round that still writes
+  # nothing measured nothing and fails here — `base_red_check.py` run locally is the sharper reading
+  # of the same branch, and the refusal names that command.
   # ---------------------------------------------------------------------------
   base-red:
     name: Base-red check (${{ matrix.testMode }})

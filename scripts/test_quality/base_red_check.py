@@ -8,7 +8,10 @@ question, so it stayed a matter of attentiveness. Three of the four branches thi
 had a case that passed on the base and had been reported as pinning something.
 
 What runs is the branch's test file over the base's production code: the base commit is checked out,
-the branch's test-side files are copied onto it, and the changed cases are executed there.
+the branch's test-side files are copied onto it, and the changed cases are executed there. Which cases
+those are is settled by each case's own text against the base's, not by which lines a diff calls
+changed: over a large rewrite the aligner describes untouched text as re-added, and `rewritten` is
+what keeps those cases out of a gate their authors never asked for.
 
 **Success here means every changed case was measured on a base tree that demonstrably answers.** Not
 that nothing failed: most of what can go wrong with a run like this ends in a reading nobody took,
@@ -36,14 +39,21 @@ a name the tree declares in full: every owner segment, nested as the name nests 
 
 *A surface that exists only on the branch is evidence, not an error.* C# reports that at compile
 time. Python reports it while loading or running the case, so its spelling is accepted only when the
-trace names a repository file, module or top-level name that static comparison finds absent on the
-base and present on the branch. That reading holds only where the same file passes on the branch,
-which is the condition running this after the branch's own suite satisfies. For C#, a round that
-reports no case of a fixture is one where something the branch carried did not build: that file is
-withdrawn and the run repeated, so the rest is still measured rather than lost behind it. Which file
-is picked off the editor log, over every carried file rather than only the ones holding cases, since
-a shared helper takes its whole assembly down with it. A runner that hands back a results file and
-nothing else can still take every verdict -- one round of it, without the withdrawing.
+trace names a repository file, module, top-level name or callee's parameter that static comparison
+finds absent on the base and present on the branch. That reading holds only where the same file
+passes on the branch, which is the condition running this after the branch's own suite satisfies.
+For C#, a round that reports no case of a fixture is one where something the branch carried did not
+build: that file is withdrawn and the run repeated, so the rest is still measured rather than lost
+behind it. Which file is picked off the editor log, over every carried file rather than only the
+ones holding cases, since a shared helper takes its whole assembly down with it. A runner that hands
+back a results file and nothing else takes one round, and a compile failure there is an empty
+directory -- which is what an editor that never started leaves as well. So the Python lane's
+comparison is taken statically before that round: a carried file spelling a name that no C# source
+of the base spells, and that a file the branch changed and does not carry does, cannot resolve
+there, and it is withdrawn ahead of the run rather than behind an error list that round will not
+produce. What the comparison cannot reach -- a signature the branch changed under a name both trees
+spell -- leaves a run that measured nothing, which fails, and the refusal names the loop that
+separates it.
 
 *A case that stopped before it disagreed answered nothing.* Red on the base means the base ran the
 case and the case said no. Except for the statically proven branch-only surface above, a case that
@@ -158,6 +168,20 @@ PYTHON_LANE = "python"
 # unittest's closing line, which is where it separates an assertion that disagreed from an exception
 # that stopped the case.
 UNITTEST_SUMMARY = re.compile(r"^(OK|FAILED)(?:\s*\((.*)\))?\s*$", re.MULTILINE)
+
+
+def speak_under_a_pipe(stream=None):
+    """Puts stdout where a reader watching a phase can see it, which `PipeOutputTests` holds it to.
+
+    Everything below prints across phases that take minutes -- a worktree, a Library copy, a wait for
+    another editor, an editor run -- so a reader that cannot see a line until the process ends cannot
+    tell a run in progress from a wedged one, and both readings have been acted on here. Line
+    buffering rather than a flush per call, so a print written after this one is covered by having
+    been written.
+    """
+    stream = sys.stdout if stream is None else stream
+    if hasattr(stream, "reconfigure"):
+        stream.reconfigure(line_buffering=True)
 
 
 def _sibling(name):
@@ -586,6 +610,26 @@ def touched(cases, changed_lines):
             if changed_lines & set(range(case.first_line, case.last_line + 1))]
 
 
+def case_text(text, case):
+    return "\n".join(text.splitlines()[case.first_line - 1:case.last_line])
+
+
+def rewritten(relative, cases, before, after):
+    """Out of the cases a line reading attributed to the branch, the ones whose own text it changed.
+
+    A changed line is a proxy for authorship, and which lines a diff calls changed is git's choice
+    rather than the file's: over a large rewrite the aligner is free to describe an untouched tail as
+    deleted and re-added, and every case in it then reads as this branch's. `AuthorshipTests` holds
+    the smallest form of that. The cost of believing it is a green-on-base verdict asking an author to
+    sharpen a case they did not write. `touched` says a case the branch left alone is not a claim
+    about it whatever else in the file moved; this is what holds that when what moved is the case.
+    """
+    if before is None:
+        return list(cases)
+    held = {case.name: case_text(before, case) for case in cases_in(relative, before)}
+    return [case for case in cases if held.get(case.name) != case_text(after, case)]
+
+
 def outside(cases, changed_lines):
     """The changed lines inside no case at all -- a SetUp, a field, a helper, a using, a doc comment.
 
@@ -725,11 +769,19 @@ def unity_busy():
 
 
 def wait_for_quiet(seconds):
-    """Waits rather than sharing the machine, for the reason mutation_check.py waits."""
+    """Waits rather than sharing the machine, for the reason mutation_check.py waits.
+
+    Announced the way `neuter_check.wait_for_quiet` announces it: once, and only where there is
+    something to wait for.
+    """
     deadline = time.time() + seconds
+    announced = False
     while unity_busy():
         if time.time() > deadline:
             return False
+        if not announced:
+            print("  another Unity run is in flight; waiting for the machine")
+            announced = True
         time.sleep(5)
     return True
 
@@ -925,6 +977,8 @@ MISSING_FILE = re.compile(
     r"FileNotFoundError: \[Errno 2\] No such file or directory: ['\"]([^'\"]+)['\"]")
 MISSING_ATTRIBUTE = re.compile(
     r"AttributeError: module ['\"]([^'\"]+)['\"] has no attribute ['\"]([^'\"]+)['\"]")
+MISSING_KEYWORD = re.compile(
+    r"TypeError: (\w+)\(\) got an unexpected keyword argument ['\"]([^'\"]+)['\"]")
 
 
 def top_level_names(text):
@@ -960,6 +1014,51 @@ def module_relative(case, module):
     return Path(case.path).parent.joinpath(*module.split(".")).with_suffix(".py")
 
 
+def accepted_keywords(text, function):
+    """Every keyword a module's definitions of `function` accept, `**kwargs` included."""
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        return set()
+    names = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == function:
+            taken = node.args
+            names.update(argument.arg for argument in
+                         taken.posonlyargs + taken.args + taken.kwonlyargs)
+            if taken.kwarg:
+                names.add(taken.kwarg.arg)
+    return names
+
+
+def added_keyword(output, base_tree, branch_tree, case):
+    """Whether the call that raised named a parameter the branch added to a sibling of the case.
+
+    A parameter is a surface the same way a name is, and the exception is the only place Python says
+    so -- the trace names the caller, so which module holds the definition is read by looking, over
+    the siblings `module_relative` resolves against. One base-side definition accepting the keyword is
+    enough to refuse: the reading has to be that the base could not have taken this call, not that
+    some module somewhere could not.
+    """
+    missing = MISSING_KEYWORD.search(output)
+    if not missing:
+        return False
+    function, keyword = missing.group(1), missing.group(2)
+    directory = Path(case.path).parent
+    found = False
+    for module in sorted((branch_tree / directory).glob("*.py")) if (
+            branch_tree / directory).is_dir() else []:
+        relative = directory / module.name
+        base = base_tree / relative
+        if keyword in accepted_keywords(
+                base.read_text(encoding="utf-8", errors="replace") if base.is_file() else "",
+                function):
+            return False
+        found = found or keyword in accepted_keywords(
+            module.read_text(encoding="utf-8", errors="replace"), function)
+    return found
+
+
 def added_python_surface(output, base_tree, branch_tree, case):
     """Whether the traceback names a file or module member present only on the branch.
 
@@ -983,7 +1082,7 @@ def added_python_surface(output, base_tree, branch_tree, case):
 
     missing = MISSING_ATTRIBUTE.search(output)
     if not missing:
-        return False
+        return added_keyword(output, base_tree, branch_tree, case)
     relative = module_relative(case, missing.group(1))
     base = base_tree / relative
     branch = branch_tree / relative
@@ -992,6 +1091,75 @@ def added_python_surface(output, base_tree, branch_tree, case):
     name = missing.group(2)
     return (name not in top_level_names(base.read_text(encoding="utf-8", errors="replace"))
             and name in top_level_names(branch.read_text(encoding="utf-8", errors="replace")))
+
+
+IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+
+
+def names_in(text):
+    return set(IDENTIFIER.findall(text))
+
+
+def csharp_names(tree, skip=()):
+    """Every identifier the tree's C# sources spell, over the files `skip` does not name.
+
+    Raw rather than masked, and that asymmetry is the point: on the base this decides that a name is
+    *present*, so counting a comment's spelling suppresses a withdrawal that a masked read would have
+    taken. Erring towards leaving a file in the run is the direction a wrong reading here is
+    survivable in.
+    """
+    found = set()
+    for relative in git(tree, "ls-files").stdout.splitlines():
+        if not relative.endswith(".cs") or relative in skip:
+            continue
+        path = tree / relative
+        if path.exists():
+            found |= names_in(path.read_text(encoding="utf-8", errors="replace"))
+    return found
+
+
+def added_csharp_surface(text, base_names, added_names):
+    """The name a carried C# file spells that the base has not got, or None.
+
+    `added_python_surface` reads the same fact off a traceback, which C# leaves nowhere a single round
+    can reach -- the module docstring owns why. What is left is the comparison itself. A name absent
+    from every C# source of the base cannot resolve there, so a carried file spelling one does not
+    build; requiring the branch to spell it too, in a file it changed and does not carry, is what
+    keeps a name that lives in a binary rather than in this repository from reading as one the branch
+    added.
+    """
+    return next((name for name in sorted(names_in("\n".join(code_lines(text))) & added_names)
+                 if name not in base_names), None)
+
+
+def unbuildable_on_base(project, since, base_tree, carry):
+    """Carried C# test file -> the name it spells that the base tree has not got.
+
+    Read before the run rather than after, because after is a silence that names nothing.
+    """
+    changed = [name for name in changed_lines_by_file(project, since)
+               if name.endswith(".cs") and name not in carry]
+    added = set()
+    for relative in changed:
+        source = project / relative
+        if source.exists():
+            added |= names_in("\n".join(code_lines(
+                source.read_text(encoding="utf-8", errors="replace"))))
+    if not added:
+        return {}
+    base_names = csharp_names(base_tree, skip=carry)
+    found = {}
+    for relative in carry:
+        if kind_of(relative) != "csharp":
+            continue
+        source = project / relative
+        if not source.exists():
+            continue
+        name = added_csharp_surface(source.read_text(encoding="utf-8", errors="replace"),
+                                    base_names, added)
+        if name is not None:
+            found[relative] = name
+    return found
 
 
 def run_python(tree, branch_tree, cases, transcript):
@@ -1189,7 +1357,7 @@ def canaries_for(base_tree, cases, carry, only=None):
     return chosen
 
 
-def as_plan(since, cases, control, shared, canaries):
+def as_plan(since, cases, control, shared, canaries, withdrawn=None):
     """The reading, in a form a second invocation can decide from.
 
     A run split across two invocations is what lets the editor be somebody else's -- CI reaches Unity
@@ -1207,6 +1375,7 @@ def as_plan(since, cases, control, shared, canaries):
         }
 
     return {"since": since, "shared": shared, "canaries": canaries,
+            "withdrawn": withdrawn or {},
             "cases": [entry(case) for case in cases],
             "control": [entry(case) for case in control]}
 
@@ -1236,23 +1405,36 @@ def results_from(where):
     return reported, bool(files)
 
 
-def report(cases, control, reported, canaries=None, wrote=True):
+def report(cases, control, reported, canaries=None, wrote=True, unbuildable=None,
+           single_round=None):
     """Prints each case's verdict and returns the ones that fail the run.
 
     `wrote` is whether the run produced a results file at all, and it is read before anything in it.
     A run that wrote nothing measured nothing, and the verdict for a case nothing measured is not
     COULD_NOT_COMPILE -- that reading says the base built the rest and not this, which takes a base
     that built something.
+
+    `unbuildable` is the exception, and it is read before `wrote` for the reason `added_python_surface`
+    is read before a Python case's outcome: the file was proven branch-only and taken out before the
+    run, so no round of any length was ever going to name it.
+
+    `single_round` is the merge base when this invocation decided from one round it did not itself
+    run, and absent when the loop below it ran to a fixed point here -- which is what the remedy the
+    first case prints would be sending its reader to do again.
     """
     unsound = unsound_fixtures(control, reported)
     withdrawn = unsound_platforms(canaries or {}, reported)
+    unbuildable = unbuildable or {}
     if not wrote:
         for platform in {platform_of(case.path) for case in cases
                          if kind_of(case.path) == "csharp"}:
             withdrawn[platform] = "the run wrote no results file, so nothing was measured"
     ran = fixtures_that_ran(reported)
     for case in cases:
-        if case.fixture in unsound:
+        if case.path in unbuildable:
+            case.verdict, case.detail = COULD_NOT_COMPILE, "the base has no {}".format(
+                unbuildable[case.path])
+        elif case.fixture in unsound:
             case.verdict, case.detail = BASE_UNSOUND, unsound[case.fixture]
         elif measured_by(case.path) in withdrawn:
             case.verdict, case.detail = BASE_UNSOUND, withdrawn[measured_by(case.path)]
@@ -1287,9 +1469,34 @@ def report(cases, control, reported, canaries=None, wrote=True):
         print("  // GREEN_ON_BASE({}): <why>".format("|".join(CATEGORIES)))
     if unanswered:
         print("\n{} case(s) yielded no base verdict, so none of them carries a reading either way. A\n"
-              "declaration does not answer for that -- the detail beside each says what to repair."
+              "declaration does not answer for that -- the detail beside each says what happened."
               .format(len(unanswered)))
+    if single_round and not wrote and any(case.verdict == BASE_UNSOUND for case in unanswered):
+        print(local_remedy(single_round, unanswered))
     return offenders
+
+
+def local_remedy(since, cases):
+    """What to run when a single round came back silent and the reading has to be taken another way.
+
+    A base that builds none of what was carried onto it and an editor that never started are the same
+    empty directory, and the withdrawing loop is what separates them. Naming the command is the
+    difference between a refusal an author can act on and one they can only look at.
+    """
+    platforms = sorted({platform_of(case.path) for case in cases
+                        if kind_of(case.path) == "csharp"})
+    return ("\nThe editor wrote nothing, which a single round cannot tell from an editor that never\n"
+            "started. Take the reading where the loop runs -- it withdraws by the editor's own error\n"
+            "list and asks again until something answers:\n"
+            "  python3 scripts/test_quality/base_red_check.py --lane csharp{} --base {} \\\n"
+            "    --warm-library Library".format(
+                "".join(" --platform " + platform for platform in platforms), since or "origin/main"))
+
+
+def held_at(project, commit, relative):
+    """A file's text at a commit, or None where the commit has not got it."""
+    result = git(project, "show", "{}:{}".format(commit, relative), check=False)
+    return result.stdout if result.returncode == 0 else None
 
 
 def corpus_of(project):
@@ -1318,11 +1525,13 @@ def collect(project, base, lane):
         source = project / relative
         if not source.exists():
             continue
-        cases = cases_in(relative, source.read_text())
+        text = source.read_text()
+        cases = cases_in(relative, text)
         for case in cases:
             if case.declaration is not None and lines is not None:
                 case.declaration.written_here = case.declaration.written_in(lines)
-        wanted = {case.name for case in touched(cases, lines)}
+        wanted = {case.name for case in rewritten(relative, touched(cases, lines),
+                                                  held_at(project, since, relative), text)}
         changed.extend(as_the_runner_names_them(
             [case for case in cases if case.name in wanted], heirs))
         loose = outside(cases, lines)
@@ -1360,6 +1569,7 @@ def main():
     parser.add_argument("--results", help="what --verdict reads the run from")
     parser.add_argument("--output", default="", help="directory for the base run's logs and results")
     args = parser.parse_args()
+    speak_under_a_pipe()
 
     if args.verdict:
         plan = json.loads(Path(args.verdict).read_text())
@@ -1372,7 +1582,8 @@ def main():
         if not wrote:
             print("the base run wrote no result, so nothing it was asked was measured")
         return 1 if report(from_plan(plan["cases"]), from_plan(plan["control"]), reported,
-                           plan["canaries"], wrote) else 0
+                           plan["canaries"], wrote, plan.get("withdrawn"),
+                           plan.get("since")) else 0
 
     project = Path(args.project).resolve()
     since, cases, control, shared, shared_helper = collect(project, args.base, args.lane)
@@ -1413,13 +1624,25 @@ def main():
         if not args.base_tree:
             raise SystemExit("--emit needs --base-tree to say where the base is built")
         base_tree = Path(args.base_tree).resolve()
+        print("  building the base tree at {}".format(base_tree))
         build_base_tree(project, since, base_tree, carry, drop, args.warm_library)
+        # Before the run rather than after it, because there is no after: one round of a C# compile
+        # failure is an empty artifacts directory, and every fixture in the tree is behind it.
+        unbuildable = unbuildable_on_base(project, since, base_tree, carry)
+        for relative, name in sorted(unbuildable.items()):
+            withdraw(base_tree, relative)
+            print("  withdrawn: {} spells {}, which the base has not got, so the base builds no "
+                  "fixture\n             of its assembly and the run would report none of them"
+                  .format(relative, name))
         canaries = canaries_for(base_tree, cases, carry, args.platform)
         Path(args.emit).write_text(
-            json.dumps(as_plan(since, cases, control, shared, canaries), indent=2))
+            json.dumps(as_plan(since, cases, control, shared, canaries, unbuildable), indent=2))
         # The fixtures, not the cases: a run over the fixture brings the control cases with it, and
-        # they are what says whether the tree it built can answer at all.
+        # they are what says whether the tree it built can answer at all. A withdrawn file's are left
+        # out, since what stands in its place is the base's own text under the same fixture names --
+        # answering for cases whose bodies this branch wrote.
         wanted = {case.fixture for case in cases + control if kind_of(case.path) == "csharp"
+                  and case.path not in unbuildable
                   and (not args.platform or platform_of(case.path) in args.platform)}
         for chosen in canaries.values():
             wanted.update(chosen)
@@ -1440,12 +1663,15 @@ def main():
     canaries = {}
     ever_wrote = not any(kind_of(case.path) == "csharp" for case in cases)
     try:
+        print("  building the base tree at {}".format(base_tree))
         build_base_tree(project, since, base_tree, carry, drop, args.warm_library)
 
         python_lane = [case for case in cases + control if kind_of(case.path) == "python"]
         if python_lane:
             guards = python_canaries(base_tree, carry)
             canaries[PYTHON_LANE] = [case.fixture for case in guards]
+            print("  running {} Python case(s) there, one process each".format(
+                len(python_lane) + len(guards)))
             reported.update(run_python(base_tree, project, python_lane + guards, transcript))
 
         platforms = sorted({platform_of(case.path) for case in cases

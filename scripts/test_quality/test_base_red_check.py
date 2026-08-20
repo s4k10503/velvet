@@ -18,6 +18,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 
@@ -1179,6 +1180,181 @@ class PythonSurfaceEvidenceTests(unittest.TestCase):
         self.assertEqual((misspelled, environment), (False, False))
 
 
+class CSharpSurfaceEvidenceTests(unittest.TestCase):
+    """The C# spelling of the same comparison, which no traceback carries.
+
+    A compile failure stops the editor before it writes a results file, so the reading a single round
+    can take of it is the empty directory a crash leaves as well. What separates them is this.
+    """
+
+    def surface(self, text, base=("Idle", "Blocked"), added=("Proceeding",)):
+        return base_red_check.added_csharp_surface(text, set(base), set(added))
+
+    def test_Given_ACarriedFileSpellingANameOnlyTheBranchAdds_When_ItIsRead_Then_ThatNameIsEvidence(self):
+        # Arrange -- the shape a fixture for a new enum member has: the branch declares it in the
+        # production file it changed, and the base resolves nothing by that name.
+        # Act
+        found = self.surface("class T { void M() { var x = Status.Proceeding; } }")
+
+        # Assert
+        self.assertEqual(found, "Proceeding")
+
+    def test_Given_ANameTheBaseSpellsToo_When_ItIsRead_Then_ItIsNotEvidence(self):
+        # Arrange -- the counterpart, so the reading above is not every name in the file: a name the
+        # base carries resolves there, and a file spelling only those compiles.
+        # Act
+        found = self.surface("class T { void M() { var x = Status.Blocked; } }",
+                             base=("Idle", "Blocked", "Proceeding"))
+
+        # Assert
+        self.assertIsNone(found)
+
+    def test_Given_ANameNeitherTreeDeclares_When_ItIsRead_Then_ItIsNotEvidence(self):
+        # Arrange -- the first use of a type that lives in an assembly rather than in this repository.
+        # It is absent from the base's sources for the same reason it is absent from the branch's, and
+        # reading absence alone would withdraw a file that builds there perfectly well.
+        # Act
+        found = self.surface("class T { void M() { var pool = ArrayPool<int>.Shared; } }")
+
+        # Assert
+        self.assertIsNone(found)
+
+    def test_Given_TheNameSpelledOnlyInAComment_When_ItIsRead_Then_ItIsNotEvidence(self):
+        # Arrange -- a comment naming what the branch adds is not a reference to it, and a file whose
+        # only mention is one compiles on the base.
+        # Act
+        found = self.surface("class T { /* Proceeding is next */ void M() { } }")
+
+        # Assert
+        self.assertIsNone(found)
+
+
+class UnbuildableOnBaseTests(unittest.TestCase):
+    """Which carried files the reading withdraws, over a real base tree rather than an invented one."""
+
+    ENUM = "Packages/p/Runtime/A/Status.cs"
+    HELPER = "Packages/p/TestUtilities/Probe.cs"
+    FIXTURE = "Packages/p/Runtime/A/Tests/Editor/ProbeTests.cs"
+
+    def fixture(self, body):
+        return ("namespace N\n{\n    class ProbeTests\n    {\n        [Test]\n"
+                "        public void Given_A_When_B_Then_C() => " + body + ";\n    }\n}\n")
+
+    def trees(self, base, branch):
+        """(project, merge base, the base tree the branch's test files were carried onto)."""
+        holder = tempfile.mkdtemp(prefix="base-red-unbuildable-")
+        self.addCleanup(shutil.rmtree, holder, ignore_errors=True)
+        root = Path(holder)
+        run = lambda *arguments: subprocess.run(["git", "-C", holder, *arguments], check=True,
+                                                capture_output=True, text=True)
+        run("init", "-q")
+        run("config", "user.email", "probe@example.com")
+        run("config", "user.name", "probe")
+        for label, files in (("base", base), ("branch", branch)):
+            for relative, text in files.items():
+                path = root / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(text)
+            run("add", "-A")
+            run("commit", "-qm", label)
+        since = run("rev-parse", "HEAD^").stdout.strip()
+        carry = sorted(name for name in base_red_check.changed_lines_by_file(root, since)
+                       if base_red_check.is_test_side(name))
+        tree = Path(holder + "-tree")
+        self.addCleanup(subprocess.run, ["git", "-C", holder, "worktree", "remove", "--force",
+                                         str(tree)], capture_output=True)
+        base_red_check.build_base_tree(root, since, tree, carry, [])
+        return root, since, tree, carry
+
+    def read(self, base, branch):
+        root, since, tree, carry = self.trees(base, branch)
+        return base_red_check.unbuildable_on_base(root, since, tree, carry)
+
+    def test_Given_AFixtureNamingAMemberTheBranchAdds_When_TheTreeIsRead_Then_ItIsUnbuildable(self):
+        # Arrange -- the file compiles on the branch and cannot on the base, which is the strongest
+        # evidence this check takes and the one a silent round throws away.
+        # Act
+        found = self.read({self.ENUM: "enum Status { Idle }\n",
+                           self.FIXTURE: self.fixture("Assert.Pass()")},
+                          {self.ENUM: "enum Status { Idle, Proceeding }\n",
+                           self.FIXTURE: self.fixture("Assert.That(Status.Proceeding, Is.Not.Null)")})
+
+        # Assert
+        self.assertEqual(found, {self.FIXTURE: "Proceeding"})
+
+    def test_Given_AFixtureTheBaseCanBuild_When_TheTreeIsRead_Then_NothingIsWithdrawn(self):
+        # Arrange -- the counterpart, and the one that decides whether this is safe to act on before
+        # a run: withdrawing a file the base builds hands its cases a verdict nothing measured.
+        # Act
+        found = self.read({self.ENUM: "enum Status { Idle }\n",
+                           self.FIXTURE: self.fixture("Assert.Pass()")},
+                          {self.ENUM: "enum Status { Idle, Proceeding }\n",
+                           self.FIXTURE: self.fixture("Assert.That(Status.Idle, Is.Not.Null)")})
+
+        # Assert
+        self.assertEqual(found, {})
+
+    def test_Given_AMemberOnlyACarriedHelperDeclares_When_TheTreeIsRead_Then_ItIsNotWithdrawn(self):
+        # Arrange -- the helper is carried onto the base too, so what it declares resolves there. The
+        # base tree not holding the name is the one thing every reading here has in common, and it is
+        # not enough on its own.
+        # Act
+        found = self.read({self.HELPER: "class Probe { }\n",
+                           self.FIXTURE: self.fixture("Assert.Pass()")},
+                          {self.HELPER: "class Probe { public static int Reach; }\n",
+                           self.FIXTURE: self.fixture("Assert.That(Probe.Reach, Is.Zero)")})
+
+        # Assert
+        self.assertEqual(found, {})
+
+
+class AddedKeywordTests(unittest.TestCase):
+    """A parameter the branch added, which is a surface a name comparison cannot see.
+
+    Measured over one branch head before any of this existed: of the Python cases wrongly counted red
+    on the base, several died on an argument count rather than on a name.
+    """
+
+    HELPER = "scripts/helper.py"
+    CASE = "scripts/test_mine.py"
+
+    def trees(self, base, branch):
+        holder = tempfile.mkdtemp(prefix="base-red-keyword-")
+        self.addCleanup(shutil.rmtree, holder, ignore_errors=True)
+        root = Path(holder)
+        for name, text in (("base", base), ("branch", branch)):
+            path = root / name / self.HELPER
+            path.parent.mkdir(parents=True)
+            path.write_text(text)
+        return root / "base", root / "branch"
+
+    def read(self, base, branch, output):
+        return base_red_check.added_python_surface(
+            output, *self.trees(base, branch), base_red_check.Case("T.test_a", self.CASE, 1, 2))
+
+    def test_Given_AParameterOnlyTheBranchAccepts_When_TheTraceIsRead_Then_ItIsEvidence(self):
+        # Arrange -- the call names the parameter and Python names nothing else, so which module
+        # defines it is read by looking at the siblings the case resolves against.
+        # Act
+        found = self.read("def report(cases):\n    return cases\n",
+                          "def report(cases, unbuildable=None):\n    return cases\n",
+                          "TypeError: report() got an unexpected keyword argument 'unbuildable'")
+
+        # Assert
+        self.assertTrue(found)
+
+    def test_Given_AParameterTheBaseAcceptsToo_When_TheTraceIsRead_Then_ItIsNotEvidence(self):
+        # Arrange -- the counterpart, and the one that keeps a misspelling out: a base that takes the
+        # keyword raised for some other reason, and that reason is a non-answer.
+        # Act
+        found = self.read("def report(cases, unbuildable=None):\n    return cases\n",
+                          "def report(cases, unbuildable=None):\n    return cases\n",
+                          "TypeError: report() got an unexpected keyword argument 'unbuildable'")
+
+        # Assert
+        self.assertFalse(found)
+
+
 class PythonLaneRunTests(unittest.TestCase):
     """The Python lane end to end, over trees arranged to answer in the ways it must separate.
 
@@ -2093,6 +2269,215 @@ class UnmeasuredRunTests(unittest.TestCase):
         self.assertEqual(([case.verdict for case in python_offenders],
                           [case.verdict for case in csharp_offenders]),
                          ([base_red_check.BASE_UNSOUND], [base_red_check.BASE_UNSOUND]))
+
+
+class WithdrawnFileVerdictTests(unittest.TestCase):
+    """What the deciding half does with the files the reading half took out before the run."""
+
+    UNBUILDABLE = "Packages/p/Runtime/A/Tests/Editor/NewTests.cs"
+    BESIDE = "Packages/p/Runtime/A/Tests/Editor/OldTests.cs"
+
+    def cases(self):
+        return [base_red_check.Case("N.NewTests.Given_A_When_B_Then_C", self.UNBUILDABLE, 1, 2),
+                base_red_check.Case("N.OldTests.Given_D_When_E_Then_F", self.BESIDE, 1, 2)]
+
+    def verdicts(self, reported, wrote):
+        cases = self.cases()
+        with contextlib.redirect_stdout(io.StringIO()):
+            base_red_check.report(cases, [], reported, {"EditMode": ["N.CanaryTests"]}, wrote,
+                                  {self.UNBUILDABLE: "Proceeding"}, single_round="0" * 40)
+        return {case.path: case.verdict for case in cases}
+
+    def test_Given_AWithdrawnFileAndARunThatWroteNothing_When_TheVerdictsAreTaken_Then_ItIsStillEvidence(self):
+        # Arrange -- the empty round is what makes this the reading rather than a restatement of one:
+        # with results present, a fixture nothing named is already read off the run's own silence.
+        # The file was taken out before the run, so what the editor went on to do says nothing about it.
+        # Act
+        verdicts = self.verdicts({}, wrote=False)
+
+        # Assert
+        self.assertEqual(verdicts[self.UNBUILDABLE], base_red_check.COULD_NOT_COMPILE)
+
+    def test_Given_ACaseBesideAWithdrawnOne_When_ItPassedOnTheBase_Then_ItStillFails(self):
+        # Arrange -- what decides whether withdrawing one file credits the run: its neighbour was
+        # measured on a tree that built, and green there separates nothing.
+        reported = {"N.CanaryTests.Given_X_When_Y_Then_Z": "Passed",
+                    "N.OldTests.Given_D_When_E_Then_F": "Passed"}
+
+        # Act
+        verdicts = self.verdicts(reported, wrote=True)
+
+        # Assert
+        self.assertEqual(verdicts[self.BESIDE], base_red_check.PASSED_ON_BASE)
+
+    def test_Given_AWithdrawnFileAndAnEditorThatWroteNothing_When_TheVerdictsAreTaken_Then_TheRestStillFails(self):
+        # Arrange -- withdrawing what could be proven does not make the rest of the platform measured.
+        # A round that still came back empty measured the neighbour no more than it measured anything.
+        # Act
+        verdicts = self.verdicts({}, wrote=False)
+
+        # Assert
+        self.assertEqual(verdicts[self.BESIDE], base_red_check.BASE_UNSOUND)
+
+    def test_Given_AWithdrawalTheReadingTook_When_ADifferentProcessDecides_Then_ItStillReadsIt(self):
+        # Arrange -- the two halves are separate invocations with a JSON file between them, and a
+        # field the emitting half writes that the deciding half never asks for is a silent fail-closed
+        # on exactly the branches this exists to let through. Built by `as_plan` for the reason its
+        # own round trip is: a literal here would go on carrying what the emitter had stopped writing.
+        holder = tempfile.mkdtemp(prefix="base-red-roundtrip-")
+        self.addCleanup(shutil.rmtree, holder, ignore_errors=True)
+        case = base_red_check.Case("N.NewTests.Given_A_When_B_Then_C", self.UNBUILDABLE, 1, 2)
+        Path(holder, "plan.json").write_text(json.dumps(base_red_check.as_plan(
+            "0" * 40, [case], [], {}, {"EditMode": ["N.CanaryTests"]},
+            withdrawn={self.UNBUILDABLE: "Proceeding"})))
+        Path(holder, "results").mkdir()
+
+        # Act
+        status = subprocess.run(
+            [sys.executable, str(REPO_ROOT / "scripts/test_quality/base_red_check.py"),
+             "--verdict", str(Path(holder, "plan.json")),
+             "--results", str(Path(holder, "results"))], capture_output=True, text=True).returncode
+
+        # Assert
+        self.assertEqual(status, 0)
+
+
+class RemedyTests(unittest.TestCase):
+    """What a refusal tells its author to do, which is the half a gate is useless without."""
+
+    def cases(self):
+        return [base_red_check.Case("N.C.Given_A_When_B_Then_C",
+                                    "Packages/p/Runtime/A/Tests/Editor/CTests.cs", 1, 2)]
+
+    def printed(self, single_round):
+        held = io.StringIO()
+        with contextlib.redirect_stdout(held):
+            base_red_check.report(self.cases(), [], {}, {"EditMode": ["N.CanaryTests"]},
+                                  wrote=False, single_round=single_round)
+        return held.getvalue()
+
+    def test_Given_ASilentRoundSomebodyElseRan_When_TheRefusalIsPrinted_Then_ItNamesTheLoop(self):
+        # Arrange -- one round cannot say which carried file silenced the platform, and the loop that
+        # can is a command. Without it the refusal names a state and no way out of it.
+        # Act
+        printed = self.printed("c0ffee")
+
+        # Assert
+        self.assertIn("--lane csharp --platform EditMode --base c0ffee", printed)
+
+    def test_Given_ARunThatLoopedHere_When_TheRefusalIsPrinted_Then_TheLoopIsNotOfferedAgain(self):
+        # Arrange -- the counterpart, so the line above is not printed unconditionally: this
+        # invocation ran the loop to its own limit, and sending its author back to it is advice to
+        # repeat what just failed.
+        # Act
+        printed = self.printed(None)
+
+        # Assert
+        self.assertNotIn("--warm-library", printed)
+
+
+class PipeOutputTests(unittest.TestCase):
+    """Whether the harness speaks while it is still working, which is only in question under a pipe.
+
+    Every phase this script runs takes minutes and prints nothing until it is over, so a reader with
+    a block-buffered stream cannot tell a run in progress from a wedged one. Both readings have been
+    acted on here.
+    """
+
+    PROBE = ("import importlib.util, sys, time\n"
+             "spec = importlib.util.spec_from_file_location('brc', {path!r})\n"
+             "module = importlib.util.module_from_spec(spec)\n"
+             "spec.loader.exec_module(module)\n"
+             "{prologue}\n"
+             "print('phase')\n"
+             "time.sleep(60)\n")
+
+    def first_line(self, prologue, seconds=8.0):
+        """The first line a child prints through a pipe before it is killed, or None."""
+        code = self.PROBE.format(
+            path=str(REPO_ROOT / "scripts/test_quality/base_red_check.py"), prologue=prologue)
+        child = subprocess.Popen([sys.executable, "-c", code], stdout=subprocess.PIPE, text=True)
+        self.addCleanup(child.stdout.close)
+        self.addCleanup(child.wait)
+        self.addCleanup(child.kill)
+        held = []
+        reader = threading.Thread(target=lambda: held.append(child.stdout.readline()))
+        reader.daemon = True
+        reader.start()
+        reader.join(seconds)
+        return held[0].rstrip("\n") if held else None
+
+    def test_Given_AHarnessThatPrintsAndKeepsWorking_When_ItsOutputIsAPipe_Then_TheLineArrivesFirst(self):
+        # Arrange -- the control is the reading, not decoration: a pipe that delivers the line anyway
+        # would pass the second half on its own, and this would report a flush nobody performed. Both
+        # halves in one comparison, since the instrument is what the first one measures.
+        # Act
+        buffered = self.first_line("")
+        flushed = self.first_line("module.speak_under_a_pipe()")
+
+        # Assert
+        self.assertEqual((buffered, flushed), (None, "phase"))
+
+
+class AuthorshipTests(unittest.TestCase):
+    """Which cases a branch wrote, where the diff's answer and the file's answer come apart.
+
+    Which lines a diff calls changed is git's choice: text that only moved is described as deleted
+    and re-added, and the cases in it then read as this branch's.
+    """
+
+    FIXTURE = "scripts/test_probe.py"
+
+    def block(self, name, body):
+        return ("class {name}Tests(unittest.TestCase):\n"
+                "    def test_Given_A_When_B_Then_{name}(self):\n"
+                "        # Arrange\n"
+                "        value = {body!r}\n"
+                "        # Act / Assert\n"
+                "        self.assertEqual(value, {body!r})\n\n\n").format(name=name, body=body)
+
+    def changed(self, before, after):
+        holder = tempfile.mkdtemp(prefix="base-red-authorship-")
+        self.addCleanup(shutil.rmtree, holder, ignore_errors=True)
+        root = Path(holder)
+        run = lambda *arguments: subprocess.run(["git", "-C", holder, *arguments], check=True,
+                                                capture_output=True, text=True)
+        run("init", "-q")
+        run("config", "user.email", "probe@example.com")
+        run("config", "user.name", "probe")
+        path = root / self.FIXTURE
+        path.parent.mkdir(parents=True, exist_ok=True)
+        for label, text in (("base", before), ("branch", after)):
+            path.write_text("import unittest\n\n\n" + text)
+            run("add", "-A")
+            run("commit", "-qm", label)
+        _, cases, _, _, _ = base_red_check.collect(root, "HEAD~1", "python")
+        return [case.name for case in cases]
+
+    def test_Given_ACaseTheBranchOnlyMoved_When_TheBranchIsRead_Then_ItIsNotOneOfItsOwn(self):
+        # Arrange -- git describes the swap as one class deleted and re-added, so a line reading calls
+        # the re-added one this branch's. Its text is the base's, and green on the base over it asks
+        # an author to sharpen a case they did not write.
+        kept, moved = self.block("Kept", "kept"), self.block("Moved", "moved")
+
+        # Act
+        changed = self.changed(kept + moved, moved + kept)
+
+        # Assert
+        self.assertEqual(changed, [])
+
+    # GREEN_ON_BASE(characterization): a case whose own body differs from the base's is this branch's,
+    # which is what the reading beside it narrows rather than replaces.
+    def test_Given_ACaseTheBranchRewrote_When_TheBranchIsRead_Then_ItIsOneOfItsOwn(self):
+        # Arrange -- the counterpart, so the reading above is not the reading refusing every case:
+        # a body that differs is this branch's whatever the diff made of the lines around it.
+        kept, moved = self.block("Kept", "kept"), self.block("Moved", "moved")
+
+        # Act
+        changed = self.changed(kept + moved, moved + self.block("Kept", "rewritten"))
+
+        # Assert
+        self.assertEqual(changed, ["KeptTests.test_Given_A_When_B_Then_Kept"])
 
 
 class BranchReadingTests(unittest.TestCase):

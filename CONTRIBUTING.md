@@ -259,16 +259,24 @@ python3 scripts/test_quality/base_red_check.py --base origin/main --warm-library
 **It passes only where every changed case was measured on a base tree that demonstrably answers.** Most
 of what goes wrong with a run like this ends in a reading nobody took, and a reading nobody took is never
 a pass. So a case that passes on the base fails the check, while a surface that only the branch
-provides is evidence that the case depends on the change. C# reports that as a compile failure.
+provides is evidence that the case depends on the change. C# reports that as a compile failure, which
+takes its whole assembly down and, where no second round is available, leaves no error list to read:
+so a carried C# file is also compared statically, and one spelling a name that no C# source of the
+base spells and that a file the branch changed and does not carry does is withdrawn before the run.
 Python reports it while loading or running, so the gate accepts it only when static comparison proves
-that the named repository file, sibling module or top-level name is absent on the base and present on
-the branch. That reading is only believed on a tree the run proved can build and answer at all. Two
-things prove it. Cases of the
-base's own that the branch did not carry run alongside — C# fixtures for a platform, Python cases for
-that lane — and at least one has to pass. A lane with no eligible canary fails closed, as does a run
+that the named repository file, sibling module, top-level name or callee's keyword parameter is absent
+on the base and present on the branch. An argument *count* is not among them: a call the base refuses
+on arity alone reads as a case that could not answer.
+
+Either reading is only believed on a tree the run proved can build and answer at all, and two things
+prove it. Cases of the base's own that the branch did not carry run alongside — C# fixtures for a
+platform, Python cases for that lane — and at least one has to pass. A lane with no eligible canary fails closed, as does a run
 that wrote no results file at all, rather than reading either as a base that built none of the branch's
 tests.
-Alongside that, the cases the branch left alone in a file it changed nothing shared in are the base's own
+
+Which cases are the branch's own is decided by comparing each case's text with the base's, since a diff
+over a large rewrite describes untouched text as re-added and a case nobody here wrote then arrives at
+the gate. Alongside that, the cases the branch left alone in a file it changed nothing shared in are the base's own
 text, so one of those going red means the tree is answering about itself and that fixture's verdicts are
 withdrawn. Change a `[SetUp]`, a field, a private helper or anything under `TestUtilities/`, and those
 cases stop being the base's text and stop being read as the instrument — the run says which and why.
@@ -334,7 +342,9 @@ costs; `--warm-library` copies an existing `Library` into it, sharing blocks whe
 `Test ▸ base-red` runs the C# lane where one is configured, but only one round of it: a base that
 cannot build one carried file writes no results for anything, and separating that file from the ones
 standing next to it takes withdrawing it and asking again, which is what the local run does and a
-workflow does not. Run it locally on a branch whose tests are the point.
+workflow does not. What the workflow withdraws instead is what the static comparison above proves —
+before its round, since after it there is nothing to read. A round that still writes nothing measured
+nothing, fails, and prints the local command. Run it locally on a branch whose tests are the point.
 `scripts/test_quality/test_base_red_check.py` holds the reader against every test file in this
 repository and runs in `Test ▸ test-quality`.
 
