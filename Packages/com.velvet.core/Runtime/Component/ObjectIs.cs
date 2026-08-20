@@ -46,10 +46,10 @@ namespace Velvet
 
         // Boxed-operand variant, for a comparison whose static type is erased to object by the time it
         // gets here — a props type's reflected members, a dependency-array element, a sequence's
-        // elements. Same branches, selected from the operands' runtime type rather than from T, and
-        // reached through the boxed object.Equals so no per-call comparer delegate is allocated.
-        // Do not reroute this through AreEqual<T>: a value type erased to object lands on the
-        // reference branch there and on the value branch here. ObjectIsTests pins that pair.
+        // elements. Same branches, selected from the operands' runtime type rather than from T.
+        // Do not reroute this through AreEqual<T>: an operand whose static type is object lands on the
+        // reference branch there and on its runtime type's branch here, so a boxed value type and a
+        // rebuilt string both change answer. ObjectIsTests pins both.
         public static bool AreEqualObjects(object? a, object? b)
         {
             if (ReferenceEquals(a, b))

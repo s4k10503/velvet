@@ -245,14 +245,15 @@ namespace Velvet
         public required Func<VNode> Factory { get; init; }
 
         /// <summary>
-        /// Dependency array. Compared element-wise (<see cref="ObjectIs.AreEqualDeps"/>) under
-        /// <c>Object.is</c> on each element's runtime type: <c>float</c> and <c>double</c> by raw bit
-        /// pattern, <c>string</c> by ordinal content, any other value type by its own equality — so a
-        /// <c>record struct</c> of equal content is unchanged — and any other reference type by instance,
-        /// so a fresh <c>record class</c> instance of equal content is a change. NOT a structural
-        /// <c>SequenceEqual</c> — there is no recursion into element contents. An empty array declares no
-        /// dependencies and caches for the node's whole life; null declares no dependency array, which no
-        /// newly built node's comparison can satisfy.
+        /// Dependency array. Compared element-wise (<see cref="ObjectIs.AreEqualDeps"/>) on each element's
+        /// runtime type: <c>float</c> and <c>double</c> by raw bit pattern, <c>string</c> by ordinal
+        /// content, any other value type by its own equality — so a <c>record struct</c> of equal content
+        /// is unchanged — and any other reference type by instance, so a fresh <c>record class</c> instance
+        /// of equal content is a change. Where the two branches part is how far the comparison reads: the
+        /// reference branch reads the instance and stops, while the value branch is the element's own
+        /// <c>Equals</c>, which answers for its fields in turn — a nested <c>record class</c> field by that
+        /// record's content. An empty array declares no dependencies and caches for the node's whole life; null
+        /// declares no dependency array, which no newly built node's comparison can satisfy.
         /// </summary>
         public object?[]? Dependencies { get; init; }
     }

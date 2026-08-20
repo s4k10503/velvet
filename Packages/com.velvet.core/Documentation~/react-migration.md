@@ -254,7 +254,7 @@ the flag off mid-edit receives the pending text rather than stranding it on scre
 | React | Velvet | Notes |
 |-------|--------|------|
 | `<MyComponent/>` | `V.Component(MyRender, key: "...")` | `MyRender` is a static method annotated with `[Component]`. Stores are distributed via `V.Provider` + `UseContext` |
-| `React.memo(Component)` | `[Component(Memoize = true)]` | An opt-in attribute that shallow-compares props at the reconcile boundary with `Object.is`, and bails out of parent re-render if they are equal |
+| `React.memo(Component)` | `[Component(Memoize = true)]` | An opt-in attribute that compares props one member at a time at the reconcile boundary and bails out of parent re-render if they are equal. Each member takes the branch [§1-4](#1-4-what-a-dependency-list-means) gives for a dependency |
 | React Compiler (automatic memoization) | no annotation (all `[Component]`) | The ILPP `CompilerWeaver` weaves inner automatic memoization with default-on. Opt out with `[Component(Compiler = false)]` |
 | `useMemo(value, deps)` | `Hooks.UseMemo(() => value, deps)` | Value-memoization hook; recomputes only when a dep changes (use inside render) |
 | `useMemo(() => <X/>, deps)` | `Hooks.UseMemo(() => V.X(), deps)` or `V.Memoized(() => V.X(), deps)` | The hook returns a memoized VNode; `V.Memoized` is a node-level escape hatch usable outside render (e.g. expanded by `[MemoizeMethod]`), diff-skipping the subtree |

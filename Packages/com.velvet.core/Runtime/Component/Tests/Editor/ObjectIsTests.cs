@@ -12,18 +12,21 @@ namespace Velvet.Tests
     /// <list type="bullet">
     /// <item>Deps arrays: the same array reference is equal; both-null is equal; one-null is not equal; a length
     /// mismatch is not equal.</item>
-    /// <item>Deps elements are compared pairwise with <c>Object.is</c> semantics, with no recursion into list or
-    /// record contents.</item>
+    /// <item>Deps elements are compared pairwise on each element's runtime type. A reference element other
+    /// than string is decided by its instance alone, with no recursion into a list's or a <c>record class</c>'s
+    /// contents; a value element is decided by its own <c>Equals</c>, which does read what it holds.</item>
     /// <item>Value-type elements (int, enum) and strings compare by value, matching JS <c>Object.is("a","a")</c>;
     /// without the string special case, a dynamically-built but content-equal string would never bail and would
     /// force a re-render every time.</item>
     /// <item>Reference-type elements other than string compare by identity: a fresh-but-content-equal
     /// <c>record class</c> or list counts as changed, while the same instance counts as unchanged. A
     /// <c>record struct</c> element takes the value branch instead, so a fresh one of equal content counts
-    /// as unchanged.</item>
+    /// as unchanged — and that branch reads on into what the element holds, a nested <c>record class</c>
+    /// included.</item>
     /// <item>The two overloads read the branch from different places — <see cref="ObjectIs.AreEqual{T}"/>
-    /// from the static <c>T</c>, <see cref="ObjectIs.AreEqualObjects"/> from the runtime type — and a value
-    /// type erased to <c>object</c> is where that separates their answers.</item>
+    /// from the static <c>T</c>, <see cref="ObjectIs.AreEqualObjects"/> from the runtime type — and an
+    /// operand whose static type is <c>object</c> is where that separates their answers, for a boxed value
+    /// type and for a rebuilt string alike.</item>
     /// <item>Float elements follow raw-bit equality: <c>NaN</c> equals itself and <c>+0</c> does not equal
     /// <c>-0</c>.</item>
     /// <item>Nullable value types compare by value: a lifted <c>default(T) == null</c> check would otherwise
@@ -40,6 +43,8 @@ namespace Velvet.Tests
         private sealed record DepRec(string Value);
 
         private readonly record struct DepRecStruct(int Value);
+
+        private readonly record struct NestingStruct(DepRec Held);
 
         private enum Color { Red, Green }
 
@@ -139,7 +144,8 @@ namespace Velvet.Tests
         // GREEN_ON_BASE(characterization): this case adds no production change — it pins the value branch a
         // boxed element takes, which the base already has — so it is green on both sides. What shows it can
         // fail is that branch of AreEqualObjects cut to return false, measured: this case reddens beside the
-        // int and enum element cases and the overload-split case below, which share the branch.
+        // int and enum element cases, the nested case below and the boxed overload-split case, which share
+        // the branch.
         [Test]
         public void Given_FreshRecordStructElementSameContent_When_AreEqualDeps_Then_AreEqual()
         {
@@ -150,6 +156,24 @@ namespace Velvet.Tests
                     new object[] { new DepRecStruct(1) },
                     new object[] { new DepRecStruct(1) }),
                 Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): this case adds no production change — it pins how far the value
+        // branch reads, which the base already decides this way — so it is green on both sides. What shows
+        // it can fail is that branch of AreEqualObjects cut to return false, measured: this case reddens
+        // beside the int, enum and bare record struct element cases and the boxed overload-split case,
+        // which share the branch.
+        [Test]
+        public void Given_RecordStructElementHoldingFreshEqualRecordClass_When_AreEqualDeps_Then_AreEqual()
+        {
+            // Arrange — the nested record class instances are distinct, so a comparison stopping at the
+            // boxed element cannot call these deps equal
+            var a = new object[] { new NestingStruct(new DepRec("x")) };
+            var b = new object[] { new NestingStruct(new DepRec("x")) };
+
+            // Act + Assert
+            Assert.That(ObjectIs.AreEqualDeps(a, b), Is.True,
+                "The value branch is the element's own Equals, which reads on into what it holds");
         }
 
         [Test]
@@ -316,8 +340,8 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(characterization): this case adds no production change — it pins the split the base
         // already has between the two overloads — so it is green on both sides. What shows it can fail is
-        // AreEqual<T>'s reference guard narrowed to exclude object, measured: this is then the only case in
-        // the fixture that reddens.
+        // AreEqual<T>'s reference guard narrowed to exclude object, measured: this case and the string one
+        // below are the only two in the fixture that redden.
         [Test]
         public void Given_ValueTypeErasedToObject_When_ComparedBothWays_Then_TheTwoOverloadsDisagree()
         {
@@ -327,6 +351,25 @@ namespace Velvet.Tests
 
             // Act + Assert — the generic overload branches on the static type and the boxed one on the
             // runtime type, which is why rerouting AreEqualObjects through AreEqual<T> would change answers
+            Assert.That(
+                (ObjectIs.AreEqual(a, b), ObjectIs.AreEqualObjects(a, b)),
+                Is.EqualTo((false, true)));
+        }
+
+        // GREEN_ON_BASE(characterization): this case adds no production change — it pins the same split on
+        // the other operand class the base already splits, a string rather than a boxed value type — so it
+        // is green on both sides. What shows it can fail is AreEqualObjects' string branch deleted,
+        // measured: this case reddens beside the string element cases, and the boxed-value-type case above
+        // stays green under that cut.
+        [Test]
+        public void Given_StringErasedToObject_When_ComparedBothWays_Then_TheTwoOverloadsDisagree()
+        {
+            // Arrange — a run-time-built string held in an object, so the static type is object where the
+            // runtime type is string
+            object a = string.Concat("va", "l1");
+            object b = string.Concat("val", "1");
+
+            // Act + Assert — AreEqual<object> never reaches its string branch, because that branch tests T
             Assert.That(
                 (ObjectIs.AreEqual(a, b), ObjectIs.AreEqualObjects(a, b)),
                 Is.EqualTo((false, true)));

@@ -7,15 +7,14 @@ using System.Linq.Expressions;
 
 namespace Velvet
 {
-    // Props-bail predicate: shallow per-property comparison of two props values under Object.is.
-    // Velvet props are record types whose synthesized object.Equals is
-    // deep structural equality. This comparer instead compares props shallowly — each top-level
-    // member on its own, never recursing — so a record's value equality is the wrong key:
-    // it would over-bail when a nested reference changes content in place and is generally a
-    // different memoization axis.
+    // Props-bail predicate: shallow per-member comparison of two props values, each member decided by the
+    // per-type rule ComponentAttribute.Memoize states. Velvet props are record types, and a record's
+    // synthesized Equals compares a nested record CLASS member by content, so it would call a fresh
+    // instance of equal content unchanged where the reconciler counts a fresh instance as a change — a
+    // different memoization axis, and the wrong key here.
     // The member set (public instance properties + fields) is reflected once per props type and
     // cached. Equality protocol: same reference is equal; null vs non-null is not equal; differing
-    // runtime types are not equal; otherwise every member is compared under Object.is.
+    // runtime types are not equal; otherwise every member is compared under that rule.
     //
     // This predicate runs on every parent-driven re-render attempt of a Memoize=true component, so
     // per-call PropertyInfo/FieldInfo.GetValue reflection — and the boxing it does for each
