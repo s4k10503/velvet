@@ -1,4 +1,6 @@
 using System;
+using System.Collections;
+using System.Reflection;
 using System.Threading;
 using Cysharp.Threading.Tasks;
 using NUnit.Framework;
@@ -35,11 +37,15 @@ namespace Velvet.Tests
     /// <item>A blocker's Block() side effect lands only for live registrations on a live attempt: an entry
     /// disposed mid-pass (by its own check, or by an earlier blocker's decision) stays Idle, and a pass whose
     /// attempt token is already cancelled flips no state at all.</item>
-    /// <item><c>Reset</c> clears the state it is called on rather than relying on the manager-wide release,
-    /// so a Blocker blocked before its registration was disposed still returns to Idle.</item>
+    /// <item><c>Reset</c> returns a Blocker to Idle even where its registration was disposed while it was
+    /// blocked, because the manager-wide release it reaches walks entries that a disposal leaves in place
+    /// until their state settles.</item>
     /// <item>A re-render re-registers a <c>UseBlocker</c> without the departure it is holding going unheld
     /// in between, so a second Blocker that released the same departure stays out of its way and the
     /// departure lands once both have answered.</item>
+    /// <item>An entry leaves the manager's list once it is both unregistered and settled: at the disposal
+    /// where it is already Idle, and at the release that settles one disposed while Blocked or
+    /// Proceeding.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -751,6 +757,71 @@ namespace Velvet.Tests
             Assert.That(
                 (blockedResult, router.CurrentLocation.Path),
                 Is.EqualTo((NavigationResult.Blocked, "/other")));
+        }
+
+        #endregion
+
+        #region Registration bookkeeping
+
+        // A registration the manager keeps is one every later check walks and copies, so an entry nothing
+        // can reach again has to leave the list rather than merely stop answering.
+        private static int EntryCountOf(RouteBlockerManager manager) =>
+            ((ICollection)typeof(RouteBlockerManager)
+                .GetField("_blockers", BindingFlags.NonPublic | BindingFlags.Instance)
+                .GetValue(manager)).Count;
+
+        [Test]
+        public void Given_AnIdleBlocker_When_ItsRegistrationIsDisposed_Then_ItsEntryLeavesTheList()
+        {
+            // Arrange
+            var manager = new RouteBlockerManager();
+            var registration = manager.Register(_ => false, new RouteBlockerState());
+            var entriesBeforeDispose = EntryCountOf(manager);
+
+            // Act
+            registration.Dispose();
+
+            // Assert — the count before rides along because a manager that never held the entry reads 0
+            // afterwards too.
+            Assert.That((entriesBeforeDispose, EntryCountOf(manager)), Is.EqualTo((1, 0)));
+        }
+
+        [Test]
+        public void Given_ABlockerDisposedWhileBlocked_When_ANavigationLiftsTheBlock_Then_ItsEntryLeavesTheList()
+        {
+            // Arrange — the disposal itself cannot drop this entry: the state is still Blocked, and a saved
+            // dialog handler may still answer it.
+            var manager = new RouteBlockerManager();
+            var registration = manager.Register(_ => true, new RouteBlockerState());
+            manager.CheckAsync(Attempt(), NoResume).GetAwaiter().GetResult();
+            registration.Dispose();
+            var entriesBeforeTheNextAttempt = EntryCountOf(manager);
+
+            // Act
+            manager.ResetAllBlocked();
+
+            // Assert
+            Assert.That((entriesBeforeTheNextAttempt, EntryCountOf(manager)), Is.EqualTo((1, 0)));
+        }
+
+        [Test]
+        public void Given_ABlockerDisposedWhileProceeding_When_TheAttemptSettles_Then_ItsEntryLeavesTheList()
+        {
+            // Arrange — Proceeding is the one status a disposal leaves that no later navigation's own
+            // release clears, so the settle is the only place this entry can go.
+            var manager = new RouteBlockerManager();
+            var state = new RouteBlockerState();
+            var registration = manager.Register(_ => true, state);
+            manager.CheckAsync(Attempt(), NoResume).GetAwaiter().GetResult();
+            state.Proceed();
+            registration.Dispose();
+            var entriesBeforeTheSettle = EntryCountOf(manager);
+
+            // Act
+            manager.SettleProceeding();
+
+            // Assert
+            Assert.That((entriesBeforeTheSettle, EntryCountOf(manager)), Is.EqualTo((1, 0)));
         }
 
         #endregion
