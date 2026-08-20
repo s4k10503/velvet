@@ -18,6 +18,12 @@ namespace Velvet.Tests
     /// <item>A WorldSpace node creates a per-instance world-space host (render mode WorldSpace,
     /// transform-positioned, fixed virtual panel size), follows position patches, mounts children
     /// inside, and destroys the host on unmount.</item>
+    /// <item>A deferred mount that cannot resolve where it goes is reported on its own: the portals and
+    /// <c>z-*</c> placements queued behind it in the same pass still land, and the render that queued it
+    /// still commits.</item>
+    /// <item>A <c>z-*</c> placement resolves no target and sits outside that containment: an application
+    /// throw from the insert that lands its element escapes the render pass, so an Error Boundary above
+    /// the component whose update began that pass shows its fallback.</item>
     /// </list>
     /// Host accounting reads through Resources.FindObjectsOfTypeAll, which sees hidden objects.
     /// </summary>
@@ -26,6 +32,7 @@ namespace Velvet.Tests
         private HeadlessEditorPanelHost _host;
         private MountedTree _mounted;
         private HashSet<int> _baselineDocs;
+        private HashSet<int> _baselineSettings;
 
         private static StateUpdater<bool> s_setFlag;
         private static string s_observedContext;
@@ -35,6 +42,7 @@ namespace Velvet.Tests
         {
             _host = new HeadlessEditorPanelHost();
             _baselineDocs = DocIds();
+            _baselineSettings = SettingsIds();
         }
 
         [TearDown]
@@ -57,6 +65,16 @@ namespace Velvet.Tests
             return ids;
         }
 
+        private static HashSet<int> SettingsIds()
+        {
+            var ids = new HashSet<int>();
+            foreach (var settings in Resources.FindObjectsOfTypeAll<PanelSettings>())
+            {
+                ids.Add(settings.GetInstanceID());
+            }
+            return ids;
+        }
+
         // The framework-created hosts are the UIDocuments that did not exist at fixture setup.
         private List<UIDocument> NewDocs()
         {
@@ -66,6 +84,21 @@ namespace Velvet.Tests
                 if (!_baselineDocs.Contains(doc.GetInstanceID()))
                 {
                     created.Add(doc);
+                }
+            }
+            return created;
+        }
+
+        // The settings are created unattached and assigned to the document only later, so a host abandoned
+        // before that assignment leaves settings no document reaches.
+        private List<PanelSettings> NewSettings()
+        {
+            var created = new List<PanelSettings>();
+            foreach (var settings in Resources.FindObjectsOfTypeAll<PanelSettings>())
+            {
+                if (!_baselineSettings.Contains(settings.GetInstanceID()))
+                {
+                    created.Add(settings);
                 }
             }
             return created;
@@ -139,6 +172,183 @@ namespace Velvet.Tests
                 Is.EqualTo((true, true)));
         }
 
+        // CreateLayerHost's ordering constraint, from the far side: a host whose record never reached
+        // ReconcilerContext.LayerHosts is one no destroy sweep iterates to.
+        [Test]
+        public void Given_APortalOnALayerNamingNoOffset_When_ItsHostIsAttempted_Then_NoHostPartsAreLeftBehind()
+        {
+            // Arrange — the throw is logged rather than raised out of V.Mount, so the mount completes and
+            // the assertion below is reached.
+            ExpectUnnamedLayerReport();
+
+            // Act
+            MountAndLayout(V.Div(children: new VNode[]
+            {
+                V.Portal((UILayer)99, children: new VNode[] { V.Div(name: "inside") }),
+            }));
+
+            // Assert
+            Assert.That((NewDocs().Count, NewSettings().Count), Is.EqualTo((0, 0)));
+        }
+
+        // What a layer naming no offset reports: FiberLogger.LogException's tag line, then the throw.
+        private static void ExpectUnnamedLayerReport()
+        {
+            LogAssert.Expect(LogType.Error, new Regex(@"^\[Portal\] An exception occurred"));
+            LogAssert.Expect(LogType.Exception, new Regex("SwitchExpressionException"));
+        }
+
+        // Anywhere this reconciler renders: the main panel, or any host it created.
+        private bool RenderedAnywhere(string elementName)
+        {
+            if (_host.Root.Q<VisualElement>(elementName) != null) return true;
+            foreach (var doc in NewDocs())
+            {
+                if (doc.rootVisualElement != null && doc.rootVisualElement.Q<VisualElement>(elementName) != null)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        [Test]
+        public void Given_APortalOnANamedLayerQueuedBehindOneNamingNoOffset_When_Mounted_Then_ItStillReachesItsHost()
+        {
+            // Arrange
+            ExpectUnnamedLayerReport();
+
+            // Act
+            MountAndLayout(V.Div(name: "queue-root", children: new VNode[]
+            {
+                V.Portal((UILayer)99, key: "unnamed", children: new VNode[] { V.Div(name: "unnamed-child") }),
+                V.Portal(UILayer.Overlay, key: "named", children: new VNode[] { V.Div(name: "named-child") }),
+            }));
+
+            // Assert — the offending portal holds its slot and is the only one that loses its children.
+            Assert.That((_host.Root.Q<VisualElement>("queue-root").childCount,
+                    RenderedAnywhere("unnamed-child"), RenderedAnywhere("named-child")),
+                Is.EqualTo((2, false, true)));
+        }
+
+        [Test]
+        public void Given_AZLayerPlacementQueuedBehindAPortalNamingNoOffset_When_Mounted_Then_ItStillLands()
+        {
+            // Arrange — a z-* placement shares the deferred-mount queue with every Portal of the pass.
+            ExpectUnnamedLayerReport();
+
+            // Act
+            MountAndLayout(V.Div(name: "queue-root", children: new VNode[]
+            {
+                V.Portal((UILayer)99, key: "unnamed", children: new VNode[] { V.Div(name: "unnamed-child") }),
+                V.Div(name: "stacked", className: "absolute z-10"),
+            }));
+
+            // Assert — the count carries the offending portal's own slot, so a case arranged without it fails
+            // here rather than only on the report expected above.
+            Assert.That((_host.Root.Q<VisualElement>("queue-root").childCount,
+                    RenderedAnywhere("stacked"), RenderedAnywhere("unnamed-child")),
+                Is.EqualTo((3, true, false)));
+        }
+
+        private static StateUpdater<int> s_bumpUnnamed;
+
+        [Component]
+        private static VNode UnnamedLayerHost()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_bumpUnnamed = setTick;
+            return V.Div(name: "unnamed-root", children: new VNode[]
+            {
+                V.Label(text: "tick=" + tick),
+                tick == 0
+                    ? null
+                    : V.Portal((UILayer)99, key: "unnamed", children: new VNode[] { V.Div(name: "unnamed-child") }),
+            });
+        }
+
+        [Test]
+        public void Given_APortalOnALayerNamingNoOffset_When_ItsDeclarerRendersAgain_Then_NoSecondPlaceholderIsAppended()
+        {
+            // Arrange — the portal has to arrive on an update, so the pass whose drain fails is the
+            // declaring fiber's own: that fiber's committed tree must carry the placeholder the failed
+            // mount left behind, or every later render diffs it as absent and appends another one.
+            MountAndLayout(V.Component(UnnamedLayerHost, key: "root"));
+            ExpectUnnamedLayerReport();
+
+            // Act
+            s_bumpUnnamed.Invoke(v => v + 1);
+            FlushAndLayout();
+            s_bumpUnnamed.Invoke(v => v + 1);
+            FlushAndLayout();
+
+            // Assert — the label carries the re-render the count is read after.
+            var root = _host.Root.Q<VisualElement>("unnamed-root");
+            Assert.That((root.childCount, ((Label)root[0]).text, RenderedAnywhere("unnamed-child")),
+                Is.EqualTo((2, "tick=2", false)));
+        }
+
+        private static int s_attachRuns;
+        private static bool s_attachedIntoALayerContainer;
+
+        // Stands in for a V.Custom&lt;T&gt; whose element registers a panel-attach callback: the insert a
+        // z-* placement performs is what runs it.
+        internal sealed class LayerAttachThrower : VisualElement
+        {
+            public LayerAttachThrower()
+            {
+                RegisterCallback<AttachToPanelEvent>(_ =>
+                {
+                    s_attachRuns++;
+                    s_attachedIntoALayerContainer =
+                        parent != null && FiberZLayerCoordinator.IsLayerContainer(parent);
+                    throw new System.InvalidOperationException("attach callback");
+                });
+            }
+        }
+
+        private static StateUpdater<bool> s_showStacked;
+
+        [Component]
+        private static VNode StackedArrivalHost()
+        {
+            var (show, setShow) = Hooks.UseState(false);
+            s_showStacked = setShow;
+            return V.Div(name: "queue-root", className: "relative", children: new VNode[]
+            {
+                show ? V.Custom<LayerAttachThrower>(className: "absolute z-10", name: "stacked") : null,
+            });
+        }
+
+        // GREEN_ON_BASE(characterization): the boundary a z placement's application throw already reached,
+        // which the containment beside it must leave alone; it is the commit before this one that reddens.
+        [Test]
+        public void Given_AnAttachCallbackThatThrows_When_ADeferredZPlacementLandsItsElement_Then_TheBoundaryAboveShowsItsFallback()
+        {
+            // Arrange — the element arrives on an update, so the pass is the declaring fiber's own and the
+            // boundary above it is reachable. A first placement is queued unconditionally
+            // (FiberZLayerCoordinator.EnqueueMount has no synchronous branch), so the only insert this
+            // element ever sees is the drain's.
+            s_attachRuns = 0;
+            s_attachedIntoALayerContainer = false;
+            MountAndLayout(V.ErrorBoundary(
+                fallback: _ => V.Div(name: "fallback"),
+                children: new VNode[] { V.Component(StackedArrivalHost, key: "host") }));
+
+            // Act
+            s_showStacked.Invoke(true);
+            FlushAndLayout();
+
+            // Assert — the container term is what fails when the arrangement stops being a layer placement,
+            // so the fallback cannot stand in for an ordinary mount's own throw reaching the same boundary.
+            Assert.That((s_attachRuns, s_attachedIntoALayerContainer,
+                    _host.Root.Q<VisualElement>("fallback") != null),
+                Is.EqualTo((1, true, true)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base sorts these two layers the same way, so the case
+        // answers alike on either side. What this commit changes is the verdict a missing host draws,
+        // not the order the base already produces.
         [Test]
         public void Given_DifferentLayers_When_Mounted_Then_SortingOrdersThePanels()
         {
@@ -149,15 +359,15 @@ namespace Velvet.Tests
                 V.Portal(UILayer.Topmost, key: "top", children: new VNode[] { V.Div(name: "top1") }),
             }));
 
-            // Assert — the background layer's panel sorts below the topmost layer's.
+            // Assert — both hosts exist, and the background layer's panel sorts below the topmost layer's.
             float? background = null, topmost = null;
             foreach (var doc in NewDocs())
             {
                 if (doc.rootVisualElement.Q<VisualElement>("bg1") != null) background = doc.panelSettings.sortingOrder;
                 if (doc.rootVisualElement.Q<VisualElement>("top1") != null) topmost = doc.panelSettings.sortingOrder;
             }
-            Assume.That(background.HasValue && topmost.HasValue, Is.True, "Precondition: both hosts exist");
-            Assert.That(background.Value, Is.LessThan(topmost.Value));
+            Assert.That((background.HasValue && topmost.HasValue, background < topmost),
+                Is.EqualTo((true, true)));
         }
 
         private static readonly ComponentContext<string> s_stringContext = ComponentContext<string>.Create();
