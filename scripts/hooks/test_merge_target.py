@@ -45,6 +45,7 @@ exit "$VELVET_MERGE_TARGET_VIEW_CODE"
 class RefsTests(unittest.TestCase):
     def setUp(self):
         self.workspace = Path(tempfile.mkdtemp(prefix="velvet-merge-target-"))
+        (self.workspace / "empty").mkdir()
         stub = self.workspace / "gh"
         stub.write_text(STUB_GH, encoding="utf-8")
         stub.chmod(0o755)
@@ -99,6 +100,29 @@ class RefsTests(unittest.TestCase):
         # Arrange — a guard that raises exits 1, and 1 lets the tool through, so a body that does not
         # decode has to arrive as an unread answer rather than as an exception.
         self.answer(api="gh: HTTP 502")
+
+        # Act
+        target = merge_target.refs_of(str(self.workspace), "733")
+
+        # Assert
+        self.assertIsNone(target)
+
+    def test_Given_NoGhOnThePath_When_TheRefsAreRead_Then_NothingIsRaised(self):
+        # Arrange — a guard that raises exits 1, and 1 lets the tool through. A machine without gh
+        # reaches this as an OSError rather than as an exit code, so it is the one unreadable state
+        # the three modes in unreadable_state_check.py cannot pose: each of them stubs a gh that runs.
+        os.environ["PATH"] = str(self.workspace / "empty")
+
+        # Act
+        target = merge_target.refs_of(str(self.workspace), "733")
+
+        # Assert
+        self.assertIsNone(target)
+
+    def test_Given_APayloadCarryingNoHead_When_TheRefsAreRead_Then_NothingIsReturned(self):
+        # Arrange — the other half of the same guard: a head read as an empty branch name would send
+        # every caller to `origin/`, exactly as an empty base would.
+        self.answer(api=json.dumps({"base": {"ref": "2.x"}}))
 
         # Act
         target = merge_target.refs_of(str(self.workspace), "733")

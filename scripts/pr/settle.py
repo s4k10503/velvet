@@ -371,9 +371,10 @@ def reasons_from(before, after, results, branch, base, holds_base, held_by_workt
 # merge request carries, the branch it deletes afterwards, and the check results, which `watch` prints.
 Blocking = collections.namedtuple("Blocking", "reasons head branch results base")
 
-# The readings that answer for a base rather than for one pull request. Taken once per base and
-# handed down, so a watcher poll over N pull requests costs one fetch and one `git ls-remote --tags`
-# per base rather than N of each.
+# The readings that answer for something wider than one pull request: the publication state of a
+# base, and the branches this checkout's worktrees hold, which is the repository's. Taken once per
+# base and handed down, so a watcher poll over N pull requests costs one fetch and one
+# `git ls-remote --tags` per base rather than N of each.
 ProjectState = collections.namedtuple("ProjectState", "held unpublished_release")
 
 
@@ -499,8 +500,9 @@ def watch(project, base):
             continue
         beat()
 
-        # Emptied per poll, not held across them: a base whose release was dispatched mid-poll would
-        # otherwise go on blocking every pull request that names it until the watcher restarts.
+        # Emptied per poll, not held across them: a base whose release is dispatched between two
+        # polls would otherwise go on blocking every pull request that names it until the watcher
+        # is restarted.
         states = {}
 
         ready = set()

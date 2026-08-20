@@ -40,6 +40,10 @@ UNREADABLE_PROBE = {"command": "gh pr merge 1 --squash --delete-branch"}
 # Repository state any session can move — the scope rule shared_git_state.py states.
 HOOK_SCOPE = "session"
 
+# What `published_check.unpublished_reason`'s own four calls leave of this hook's registered 25 s.
+# That module sizes them against the same 25, and this read goes ahead of them.
+BASE_TIMEOUT = 5
+
 
 def main():
     try:
@@ -62,21 +66,27 @@ def main():
         return 2
 
     cwd = Path(event.get("cwd") or ".").resolve()
-    target = refs_of(cwd, targets[0])
-    if target is None:
-        return 0
+    # Every merge the command carries, deduplicated: a compound command lands each of them, and the
+    # release state is a fact about a base rather than about a pull request, so two merges onto one
+    # base cost one reading.
+    bases = []
+    for pr in targets:
+        target = refs_of(cwd, pr, timeout=BASE_TIMEOUT)
+        if target is not None and target.base not in bases:
+            bases.append(target.base)
 
-    reason = published_check.unpublished_reason(cwd, f"origin/{target.base}", fetch=True)
-    if not reason:
-        return 0
-
-    sys.stderr.write(
-        f"Refusing `gh pr merge`: origin/{target.base} holds an unpublished release.\n\n"
-        f"  {reason}\n\n"
-        "Anything merged now is inside that release when it is finally dispatched, and its note was "
-        "written before this branch existed. Publish first, then merge.\n"
-    )
-    return 2
+    for base in bases:
+        reason = published_check.unpublished_reason(cwd, f"origin/{base}", fetch=True)
+        if not reason:
+            continue
+        sys.stderr.write(
+            f"Refusing `gh pr merge`: origin/{base} holds an unpublished release.\n\n"
+            f"  {reason}\n\n"
+            "Anything merged now is inside that release when it is finally dispatched, and its note "
+            "was written before this branch existed. Publish first, then merge.\n"
+        )
+        return 2
+    return 0
 
 
 if __name__ == "__main__":

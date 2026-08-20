@@ -3,9 +3,11 @@
 
 Each synthetic guard below is one way a merge guard can relate to a base. One compares every head
 against `main` whatever the pull request says, which is the defect the check exists for; two read
-the base off the pull request, one for each thing a base is asked; one refuses nothing, which is how
-a directory satisfies the first world by doing nothing at all; and one reaches for a reading no
-world here arranges, whose verdict is therefore about an unreadable state rather than about a base.
+the base off the pull request, one for each thing a base is asked, and both again reading the first
+merge in a command and no other; one refuses nothing, which is how a directory satisfies the first
+world by doing nothing at all; one refuses by printing a deny decision rather than by its exit code;
+and one reaches for a reading no world here arranges, whose verdict is therefore about an unreadable
+state rather than about a base.
 
 The check over this repository's own guards is a workflow step rather than a case here — running it
 twice per job costs two more worlds and answers the same question.
@@ -41,15 +43,17 @@ import sys
 HOOK_TOOLS = {"Bash"}
 
 
-def where():
+def posed():
+    """The checkout, and every pull request the command would merge."""
     payload = json.load(sys.stdin)
     if payload.get("tool_name") not in HOOK_TOOLS:
         sys.exit(0)
-    return payload["cwd"]
+    command = payload["tool_input"]["command"]
+    return payload["cwd"], [token for token in command.split() if token.isdigit()]
 
 
-def pull_request(cwd):
-    finished = subprocess.run(["gh", "api", "repos/{owner}/{repo}/pulls/1"],
+def pull_request(cwd, number):
+    finished = subprocess.run(["gh", "api", "repos/{owner}/{repo}/pulls/" + number],
                               cwd=cwd, capture_output=True, text=True)
     return json.loads(finished.stdout) if finished.returncode == 0 else None
 
@@ -65,41 +69,55 @@ def refuse(reason):
     sys.exit(2)
 
 
+cwd, numbers = posed()
 '''
 
-COMPARES_AGAINST_MAIN = PREAMBLE + '''cwd = where()
-if not contains(cwd, "main", pull_request(cwd)["head"]["ref"]):
-    refuse("it does not contain origin/main")
+COMPARES_AGAINST_MAIN = PREAMBLE + '''for number in numbers:
+    if not contains(cwd, "main", pull_request(cwd, number)["head"]["ref"]):
+        refuse("it does not contain origin/main")
 sys.exit(0)
 '''
 
-REFUSES_A_HEAD_BEHIND_ITS_BASE = PREAMBLE + '''cwd = where()
-target = pull_request(cwd)
-if not contains(cwd, target["base"]["ref"], target["head"]["ref"]):
-    refuse("it does not contain the base it names")
+REFUSES_A_HEAD_BEHIND_ITS_BASE = PREAMBLE + '''for number in numbers:
+    target = pull_request(cwd, number)
+    if not contains(cwd, target["base"]["ref"], target["head"]["ref"]):
+        refuse("it does not contain the base it names")
 sys.exit(0)
 '''
 
-REFUSES_AN_UNPUBLISHED_BASE = PREAMBLE + '''cwd = where()
-base = pull_request(cwd)["base"]["ref"]
-subprocess.run(["git", "-C", cwd, "fetch", "-q", "origin", base], capture_output=True)
-declared = subprocess.run(
-    ["git", "-C", cwd, "show", "origin/" + base + ":Packages/com.velvet.core/package.json"],
-    capture_output=True, text=True)
-version = json.loads(declared.stdout)["version"]
-tags = subprocess.run(["git", "-C", cwd, "ls-remote", "--tags", "origin"],
-                      capture_output=True, text=True).stdout
-if "refs/tags/v" + version not in tags:
-    refuse("its base holds an unpublished release")
+REFUSES_AN_UNPUBLISHED_BASE = PREAMBLE + '''for number in numbers:
+    base = pull_request(cwd, number)["base"]["ref"]
+    subprocess.run(["git", "-C", cwd, "fetch", "-q", "origin", base], capture_output=True)
+    declared = subprocess.run(
+        ["git", "-C", cwd, "show", "origin/" + base + ":Packages/com.velvet.core/package.json"],
+        capture_output=True, text=True)
+    version = json.loads(declared.stdout)["version"]
+    tags = subprocess.run(["git", "-C", cwd, "ls-remote", "--tags", "origin"],
+                          capture_output=True, text=True).stdout
+    if "refs/tags/v" + version not in tags:
+        refuse("its base holds an unpublished release")
 sys.exit(0)
 '''
 
-REFUSES_NOTHING = PREAMBLE + '''where()
+# The same two, reading the first merge in the command and no other — the shape both base-reading
+# guards had until a compound command was posed to them.
+FIRST_MERGE_ONLY = "for number in numbers[:1]:"
+STALE_FIRST_ONLY = REFUSES_A_HEAD_BEHIND_ITS_BASE.replace("for number in numbers:", FIRST_MERGE_ONLY)
+UNPUBLISHED_FIRST_ONLY = REFUSES_AN_UNPUBLISHED_BASE.replace("for number in numbers:",
+                                                             FIRST_MERGE_ONLY)
+
+REFUSES_NOTHING = PREAMBLE + '''sys.exit(0)
+'''
+
+READS_WHAT_NO_WORLD_ARRANGES = PREAMBLE + '''subprocess.run(
+    ["gh", "api", "repos/{owner}/{repo}/issues"], cwd=cwd, capture_output=True)
 sys.exit(0)
 '''
 
-READS_WHAT_NO_WORLD_ARRANGES = PREAMBLE + '''cwd = where()
-subprocess.run(["gh", "api", "repos/{owner}/{repo}/issues"], cwd=cwd, capture_output=True)
+# A refusal that is not an exit code: blind_git_add.py refuses this way, and reading 0 as a pass
+# would score it as a guard that allowed.
+DENIES_BY_DECISION = PREAMBLE + '''sys.stdout.write(json.dumps({"hookSpecificOutput": {
+    "permissionDecision": "deny", "permissionDecisionReason": "no"}}))
 sys.exit(0)
 '''
 
@@ -160,6 +178,22 @@ class GuardTests(unittest.TestCase):
         self.assertEqual(found, ["no guard refuses a merge onto a base holding a version the "
                                  "CHANGELOG closed and nobody published, so the world above is "
                                  "satisfied by guards that refuse nothing"])
+
+    def test_Given_GuardsReadingOnlyTheFirstMergeInACommand_When_TheCheckRuns_Then_EachIsNamed(self):
+        # Arrange / Act
+        found = self.faults(stale=STALE_FIRST_ONLY, unpublished=UNPUBLISHED_FIRST_ONLY)
+
+        # Assert
+        self.assertEqual([fault.split(":")[0] for fault in found], ["stale.py", "unpublished.py"])
+
+    def test_Given_AGuardRefusingByDecisionRatherThanExitCode_When_TheCheckRuns_Then_ItIsReported(self):
+        # Arrange / Act
+        found = self.faults(stale=REFUSES_A_HEAD_BEHIND_ITS_BASE,
+                            unpublished=REFUSES_AN_UNPUBLISHED_BASE,
+                            denier=DENIES_BY_DECISION)
+
+        # Assert
+        self.assertEqual([fault.split(":")[0] for fault in found], ["denier.py"])
 
     def test_Given_AGuardReadingWhatNoWorldArranges_When_TheCheckRuns_Then_ItIsReported(self):
         # Arrange / Act

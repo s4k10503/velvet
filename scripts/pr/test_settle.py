@@ -637,6 +637,34 @@ class PullRequestBaseTests(unittest.TestCase):
         # Assert
         self.assertEqual(asked, ["main", "2.x"])
 
+    def test_Given_TwoPollsOverOneBase_When_TheyRun_Then_TheSecondReadsItAgain(self):
+        # Arrange — the cache is a poll's, not a watcher's: a base whose release is dispatched
+        # between two polls has to stop blocking at the next poll rather than at the next watcher.
+        states = {1: fabricate(1)}
+        asked = []
+        with tempfile.TemporaryDirectory(prefix="settle-poll-") as directory:
+            with fabricated_readings(states) as stack:
+                for name, path in (("READY_STATE", Path(directory) / "ready"),
+                                   ("HEARTBEAT", Path(directory) / "beat"),
+                                   ("LOCK", Path(directory) / "lock")):
+                    stack.enter_context(mock.patch.object(settle.watcher_state, name, path))
+                stack.enter_context(mock.patch.object(
+                    settle, "project_state",
+                    lambda _project, base: (asked.append(base),
+                                            settle.ProjectState(set(), None))[1]))
+                stack.enter_context(mock.patch.object(settle.time, "sleep",
+                                                      side_effect=[None, Polled]))
+                stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
+
+                # Act
+                try:
+                    settle.watch(Path("."), None)
+                except Polled:
+                    pass
+
+        # Assert
+        self.assertEqual(asked, ["main", "main"])
+
     def test_Given_AnUpdateOfAPullRequestOnAMaintenanceBranch_When_Refused_Then_ItNamesThatBranch(self):
         # Arrange
         printed = io.StringIO()

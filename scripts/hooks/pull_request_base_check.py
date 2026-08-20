@@ -24,6 +24,10 @@ The last two carry the floor. A directory of guards that never refuse anything w
 first world by doing nothing at all, so each of the other two has to leave at least one refusal
 behind — which is also what says the guards read the named base rather than ignoring bases entirely.
 
+The first world is posed a third time as a compound command naming two pull requests, the second of
+them the merge onto `main` that the same world refuses on its own. A guard that answers differently
+about the two is reading an operand rather than the command it was handed.
+
 Run: python3 scripts/hooks/pull_request_base_check.py
 """
 
@@ -46,6 +50,10 @@ GUARD_FLOOR = 16
 # refused for a reason that has nothing to do with the base, and this asks about the base alone.
 COMMAND = "gh pr merge 1 --squash --delete-branch"
 
+# Two merges in one command, the second onto a base the first does not name. A guard that reads one
+# operand covers one of the merges it was posed, and the command lands both.
+COMPOUND = COMMAND + " && gh pr merge 2 --squash --delete-branch"
+
 CHANGELOG_PATH = "Packages/com.velvet.core/CHANGELOG.md"
 PACKAGE_JSON_PATH = "Packages/com.velvet.core/package.json"
 
@@ -56,12 +64,14 @@ UNPUBLISHED = "9.9.9"
 
 # What the stub gh was asked that no world models. A guard reaching for a reading nobody arranged
 # gets an unreadable state rather than a healthy one, and its verdict would then be about that.
+# gh's alone: git is real here, so a git reading no world arranges answers about the world's own
+# repository rather than failing, and nothing below sees it.
 UNMODELLED = "VELVET_BASE_CHECK_UNMODELLED"
 
 STUB_GH = '''#!/usr/bin/env python3
 import json, os, sys
 
-PULL_REQUEST = json.loads(os.environ["VELVET_BASE_CHECK_PULL_REQUEST"])
+BY_NUMBER = json.loads(os.environ["VELVET_BASE_CHECK_PULLS"])
 
 
 def unmodelled():
@@ -85,9 +95,10 @@ def main():
         return unmodelled()
     if argv[0] == "api" and "/pulls/" in argv[1]:
         path = selected(argv)
-        if path is None:
+        number = argv[1].rsplit("/", 1)[1]
+        if path is None or number not in BY_NUMBER:
             return unmodelled()
-        answer = PULL_REQUEST
+        answer = BY_NUMBER[number]
         for step in path:
             if not isinstance(answer, dict) or step not in answer:
                 return unmodelled()
@@ -95,9 +106,10 @@ def main():
         sys.stdout.write(answer if isinstance(answer, str) else json.dumps(answer))
         return 0
     if argv[0] == "pr" and argv[1] == "view":
-        known = {"headRefOid": PULL_REQUEST["head"]["sha"],
-                 "headRefName": PULL_REQUEST["head"]["ref"],
-                 "baseRefName": PULL_REQUEST["base"]["ref"]}
+        pull = BY_NUMBER[next((token for token in argv if token.isdigit()), "1")]
+        known = {"headRefOid": pull["head"]["sha"],
+                 "headRefName": pull["head"]["ref"],
+                 "baseRefName": pull["base"]["ref"]}
         asked = argv[argv.index("--json") + 1].split(",") if "--json" in argv else []
         if not asked or any(field not in known for field in asked):
             return unmodelled()
@@ -199,7 +211,7 @@ def at(project, head, base):
             "base": {"ref": base, "repo": {"full_name": "s4k10503/velvet"}}}
 
 
-def refusals(project, payload, home, unmodelled, refuse_directory):
+def refusals(project, pulls, home, unmodelled, refuse_directory, command=COMMAND):
     """Which guards refuse this pull request, with the first line of each refusal."""
     workspace = Path(tempfile.mkdtemp(prefix="velvet-base-check-"))
     refused = []
@@ -212,15 +224,18 @@ def refusals(project, payload, home, unmodelled, refuse_directory):
         environment["HOME"] = str(home)
         # The session's own project would otherwise decide what a guard reads instead of `cwd`.
         environment.pop("CLAUDE_PROJECT_DIR", None)
-        environment["VELVET_BASE_CHECK_PULL_REQUEST"] = json.dumps(payload)
+        environment["VELVET_BASE_CHECK_PULLS"] = json.dumps(pulls)
         environment[UNMODELLED] = str(unmodelled)
         event = json.dumps({"tool_name": "Bash", "cwd": str(project),
-                            "tool_input": {"command": COMMAND}})
+                            "tool_input": {"command": command}})
         for guard in sorted(Path(refuse_directory).glob("*.py")):
             finished = subprocess.run([sys.executable, "-B", str(guard)], input=event, text=True,
                                       capture_output=True, cwd=str(project), env=environment,
                                       timeout=180)
-            if finished.returncode == 2:
+            # Not the exit code alone: blind_git_add.py refuses by printing a deny decision and
+            # exiting 0, so reading 0 as a pass would score such a refusal as a guard that allowed.
+            denied = '"permissionDecision"' in finished.stdout and '"deny"' in finished.stdout
+            if finished.returncode == 2 or denied:
                 refused.append((guard.name, finished.stderr.strip().splitlines()[0]
                                 if finished.stderr.strip() else ""))
     finally:
@@ -243,7 +258,8 @@ def faults(refuse_directory=None, floor=GUARD_FLOOR):
     unmodelled.write_text("", encoding="utf-8")
     try:
         def refused(project, head, base):
-            return refusals(project, at(project, head, base), home, unmodelled, refuse_directory)
+            return refusals(project, {"1": at(project, head, base)}, home, unmodelled,
+                            refuse_directory)
 
         current = build_world(root / "current", unpublished_on_maintenance=False)
         for name, message in refused(current, "topic", "2.x"):
@@ -260,9 +276,21 @@ def faults(refuse_directory=None, floor=GUARD_FLOOR):
                          "closed and nobody published, so the world above is satisfied by guards "
                          "that refuse nothing")
 
+        # A compound command lands every merge it carries, so a guard that refuses one of them on
+        # its own has to refuse the pair. Compared per guard rather than counted over the directory:
+        # a floor is satisfied by whichever sibling still covers the command, and the guard that
+        # stopped covering it is the one that has to be nameable.
+        compound = {"1": at(current, "topic", "2.x"), "2": at(current, "topic", "main")}
+        alone = {name for name, _ in refused(current, "topic", "main")}
+        together = {name for name, _ in refusals(current, compound, home, unmodelled,
+                                                 refuse_directory, COMPOUND)}
+        for name in sorted(alone - together):
+            found.append(f"{name}: refuses that merge on its own and allows a command carrying it "
+                         f"second, so it reads an operand rather than the command")
+
         asked = sorted(set(unmodelled.read_text(encoding="utf-8").split("\n")) - {""})
         if asked:
-            found.append("a guard reached for a reading no world here arranges, so its verdict is "
+            found.append("a guard asked gh for a reading no world here arranges, so its verdict is "
                          "about an unreadable state rather than about the base:\n  "
                          + "\n  ".join(asked))
     finally:

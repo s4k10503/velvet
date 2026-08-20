@@ -21,11 +21,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 from merge_target import refs_of  # noqa: E402
 from repository import git, project_tree  # noqa: E402
 
-FETCH_TIMEOUT = 15
-
-# What is left of this hook's registered 15 s once the fetch has had its own bound. A report the
-# harness kills reports nothing at all.
-BASE_TIMEOUT = 5
+# The hook is registered for 15 s, and a report the harness kills prints nothing at all — including
+# the local-main half, which no base takes part in. So the pull-request read and both fetches sum
+# inside that, and what is left is git plumbing against refs already on disk. A fetch that runs out
+# of its bound still reports, through FETCH_NOTE; being killed does not.
+FETCH_TIMEOUT = 5
+BASE_TIMEOUT = 4
 
 DEFAULT_BASE = "main"
 
@@ -33,9 +34,21 @@ FETCH_NOTE = """
 origin/main could not be fetched, so the counts above are against the ref already on disk and the
 real distance may be greater."""
 
+# What goes where a remedy would, when nothing here said what the branch is based on. The remedy is
+# a rebase and a force-push, and against the wrong branch it rewrites the commits other work sits
+# on: while this said `main` unconditionally, the 2.1.1 release branch was told to rebase onto main
+# and force-push.
+UNREAD_BASE_NOTE = """
+Nothing here named a base for this branch — either no pull request names one, or gh could not be
+read — so the distance above is against origin/main and no remedy follows it."""
+
 
 def fetch(tree, branch):
-    """True when origin/<branch> was refreshed; a timeout or failure is reported, not fatal."""
+    """True when origin/<branch> was refreshed; a timeout or failure is reported, not fatal.
+
+    One branch per call rather than both in one: a ref the remote has not got makes the whole fetch
+    fatal, and asking for the base alongside main would take main's own reading down with it.
+    """
     try:
         result = subprocess.run(
             ["git", "fetch", "-q", "origin", branch],
@@ -47,14 +60,14 @@ def fetch(tree, branch):
 
 
 def base_of(tree):
-    """The branch this checkout's pull request targets, or main when nothing names one.
+    """The branch this checkout's pull request targets, or None when nothing here named one.
 
     Read from the pull request because git can say what a branch contains and not what it was cut
-    from, and the two differ for a maintenance branch cut from a commit main still holds — which is
-    where a rebase onto main does the damage this report exists to avoid.
+    from. None is not a synonym for main: it is every state in which the remedy below must not be
+    printed, and a failed reading and a branch nothing targets are both of them.
     """
     target = refs_of(tree, "", timeout=BASE_TIMEOUT)
-    return target.base if target else DEFAULT_BASE
+    return target.base if target else None
 
 
 def behind(tree, ref, base):
@@ -73,14 +86,19 @@ def main():
     if tree is None or git(["remote", "get-url", "origin"], tree) is None:
         return 0
 
+    branch = (git(["symbolic-ref", "--quiet", "--short", "HEAD"], tree) or "").strip()
+    # Ahead of the fetches because which ref the second one asks for depends on it. A detached HEAD
+    # names no branch, so no pull request names a base for it either.
+    base = base_of(tree) if branch and branch != "main" else None
+
     # A failed fetch is not a reason to say nothing. main only ever advances here, so the ref already
     # on disk is a lower bound on how far behind the checkout is — the answer it gives is incomplete
     # in one direction only, and reporting it beats reporting silence over an unreachable remote.
     fetch_failed = not fetch(tree, DEFAULT_BASE)
+    if base and base != DEFAULT_BASE:
+        fetch(tree, base)
     if git(["rev-parse", "--verify", "refs/remotes/origin/main"], tree) is None:
         return 0
-
-    branch = (git(["symbolic-ref", "--quiet", "--short", "HEAD"], tree) or "").strip()
 
     main_report = ""
     if git(["rev-parse", "--verify", "refs/heads/main"], tree) is not None:
@@ -98,22 +116,22 @@ def main():
     # behind.
     branch_report = ""
     if branch != "main":
-        # A detached HEAD names no branch, so no pull request names a base for it either.
-        base = base_of(tree) if branch else DEFAULT_BASE
-        if base != DEFAULT_BASE:
-            fetch(tree, base)
+        against = base or DEFAULT_BASE
         merged = subprocess.run(
-            ["git", "merge-base", "--is-ancestor", f"origin/{base}", "HEAD"],
+            ["git", "merge-base", "--is-ancestor", f"origin/{against}", "HEAD"],
             cwd=tree, capture_output=True, text=True,
         ).returncode == 0
         if not merged:
-            count = behind(tree, "HEAD", base)
+            count = behind(tree, "HEAD", against)
             if count > 0 and branch:
-                branch_report = (
-                    f"Branch {branch} is {count} {commits(count)} behind origin/{base}.\n\n"
+                remedy = (
                     "git fetch origin\n"
-                    f"git rebase origin/{base}\n"
+                    f"git rebase origin/{against}\n"
                     f"git push origin {branch} --force-with-lease"
+                ) if base else UNREAD_BASE_NOTE.strip()
+                branch_report = (
+                    f"Branch {branch} is {count} {commits(count)} behind origin/{against}.\n\n"
+                    + remedy
                 )
             elif count > 0:
                 head = (git(["rev-parse", "--short", "HEAD"], tree) or "").strip()

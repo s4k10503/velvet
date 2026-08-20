@@ -1,13 +1,17 @@
 #!/usr/bin/env python3
 """Unit tests for .claude/hooks/report/stale_main.py.
 
-The report is what a session reads first, and its remedy is a rebase — so naming the wrong branch
-there is a destructive instruction rather than a wrong number. It named `main` for every checkout
-until a maintenance branch was cut, at which point a release branch on that line was reported as
-behind main and told to rebase onto it.
+The report is what a session reads first, and its remedy is a rebase and a force-push — so the
+branch it names is a destructive instruction rather than a wrong number. It named `main` for every
+checkout until a maintenance branch was cut, at which point the 2.1.1 release branch was reported as
+fifty commits behind main and told to rebase onto it.
 
-Each case builds a repository with a real `origin` and a branch off a maintenance line, and differs
-only in what gh says about that branch's pull request.
+The base comes off the branch's pull request, and the cases below are the four states that reading
+leaves: a base that names a maintenance line, a base that names main, a base nothing named, and a
+base naming a ref this checkout has no way to reach. Only the first two carry a remedy.
+
+Every remote-tracking ref is dropped before each run, so a fetch that stops happening takes the
+reading with it rather than answering from what an earlier push left behind.
 
 Run: python3 scripts/hooks/test_stale_main.py
 """
@@ -60,6 +64,8 @@ class BranchBaseTests(unittest.TestCase):
         git(self.project, "checkout", "-q", "release/2.1.1")
         commit(self.project, "the change under review")
         git(self.project, "push", "-q", "origin", "main", "2.x", "release/2.1.1")
+        for ref in ("main", "2.x", "release/2.1.1"):
+            git(self.project, "update-ref", "-d", f"refs/remotes/origin/{ref}")
 
         self.stub = self.root / "bin"
         self.stub.mkdir()
@@ -79,35 +85,42 @@ class BranchBaseTests(unittest.TestCase):
         return subprocess.run([sys.executable, "-B", str(HOOK)], capture_output=True, text=True,
                               cwd=str(self.project), env=environment, timeout=120).stdout
 
-    def test_Given_APullRequestNamingAMaintenanceBase_When_TheReportIsTaken_Then_ItRebasesOntoIt(self):
-        # Arrange
-        named = json.dumps({"headRefName": "release/2.1.1", "baseRefName": "2.x"})
+    def named(self, base):
+        return json.dumps({"headRefName": "release/2.1.1", "baseRefName": base})
 
-        # Act
-        printed = self.report(view=named)
+    def test_Given_APullRequestNamingAMaintenanceBase_When_TheReportIsTaken_Then_ItRebasesOntoIt(self):
+        # Arrange / Act
+        printed = self.report(view=self.named("2.x"))
 
         # Assert
         self.assertIn("git rebase origin/2.x", printed)
 
-    # GREEN_ON_BASE(characterization): the fallback to main that this change leaves in place.
-    # The case above says the base comes off the pull request; this one says a branch that has no
-    # pull request yet is still measured against main.
-    def test_Given_NoPullRequestNamingABase_When_TheReportIsTaken_Then_ItRebasesOntoMain(self):
-        # Arrange — the control: gh answers for no branch here, which is the state every branch is
-        # in before its pull request exists, and main is what the report falls back to.
+    # GREEN_ON_BASE(characterization): the remedy this change still offers for a base it read.
+    # Withholding one where nothing named a base is satisfiable by withholding every one, and this
+    # is the case that says an ordinary branch keeps its rebase.
+    def test_Given_APullRequestNamingMain_When_TheReportIsTaken_Then_ItStillRebasesOntoMain(self):
+        # Arrange — the control: a base that was read is a base a remedy may be offered against.
+        printed = self.report(view=self.named("main"))
+
+        # Act / Assert
+        self.assertIn("git rebase origin/main", printed)
+
+    def test_Given_NothingNamingABaseForABaseBranch_When_TheReportIsTaken_Then_NoForcePushIsOffered(self):
+        # Arrange — a branch pull requests target rather than come from, so no pull request of its
+        # own names a base for it. It trails main for as long as main goes on moving, and rebasing
+        # it onto main rewrites the commits every one of those pull requests sits on.
+        git(self.project, "checkout", "-q", "2.x")
 
         # Act
         printed = self.report(view="no pull requests found", view_code=1)
 
-        # Assert
-        self.assertIn("git rebase origin/main", printed)
+        # Assert — the distance is still reported; the remedy is what is withheld.
+        self.assertEqual(("Branch 2.x is" in printed, "--force-with-lease" in printed),
+                         (True, False))
 
     def test_Given_ABaseWhoseRefIsNotHere_When_TheReportIsTaken_Then_TheBranchIsNotReportedOn(self):
-        # Arrange
-        named = json.dumps({"headRefName": "release/2.1.1", "baseRefName": "3.x"})
-
-        # Act
-        printed = self.report(view=named)
+        # Arrange / Act
+        printed = self.report(view=self.named("3.x"))
 
         # Assert
         self.assertEqual(printed, "")
