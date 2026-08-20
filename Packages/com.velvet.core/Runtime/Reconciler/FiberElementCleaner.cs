@@ -85,8 +85,10 @@ namespace Velvet
         // that from a V.Custom child — their reset detaches one by exclusion instead
         // (FiberElementPoolReset.DetachForeignChildren), on this path and on ordinary unmount alike. A
         // container orphan — including a Button or a Label declared with children — has its subtree's
-        // resources released recursively via CleanupElementCore. The element was never in the hierarchy,
-        // so there is no DOM detach.
+        // resources released recursively via CleanupElementCore, which deliberately does NOT dispose the
+        // subtree's fibers / Outlet scopes (that is CleanupElement's job): those anchor on the fiber tree
+        // and may be re-paired when the suspended primary later resolves. The element was never in the hierarchy, so there
+        // is no DOM detach.
         public void ReturnRolledBackOrphan(VisualElement? element)
         {
             if (element == null) return;
@@ -112,7 +114,9 @@ namespace Velvet
             else
             {
                 // A plain container orphan (Div), a Button or Label declared with children, or a user
-                // subclass of a poolable primitive (never pooled — see ReturnToPool).
+                // subclass of a poolable primitive (never pooled — see ReturnToPool). Release the
+                // orphan subtree's element-keyed resources without disposing its fibers and
+                // without pooling the non-poolable container.
                 CleanupElementCore(element);
             }
         }
@@ -192,7 +196,6 @@ namespace Velvet
             CleanupFocusAndNavigationResources(element);
             CleanupDndResources(element);
             CleanupControllerResources(element);
-            _ctx.PrunePresenceParentElementState(element);
         }
 
         // Refs, animation/layout scheduling, the event + component registries, and every
@@ -203,18 +206,7 @@ namespace Velvet
             if (_ctx.RefCallbacks.TryGetValue(element, out var installedRef))
             {
                 _ctx.RefCallbacks.Remove(element);
-                // Contained the way Reconciler.ReleaseRefCallbacks contains the same user delegate. A throw
-                // escaping here skips the rest of this element's teardown — including the ring detach whose
-                // own note says skipping it strands a live band — and unwinds whichever removal loop called
-                // in, so the rows it had not reached yet stay in the tree.
-                try
-                {
-                    installedRef.Cleanup?.Invoke();
-                }
-                catch (System.Exception exception)
-                {
-                    FiberLogger.LogException("FiberElementCleaner", exception);
-                }
+                installedRef.Cleanup?.Invoke();
             }
             _ctx.StyleAnimationScheduler.CancelEnter(element);
             // Teardown-flavored: this element is being released for good (pool return / disposal), not merely
@@ -488,17 +480,8 @@ namespace Velvet
             }
             if (_ctx.OutletScopes.TryGetValue(element, out var routeScope))
             {
-                // The scope comes from the application's IRouteScopeFactory — user code, contained for
-                // the reason CleanupEffectAndStyleBindingResources gives for the refCallback cleanup.
+                routeScope.Dispose();
                 _ctx.OutletScopes.Remove(element);
-                try
-                {
-                    routeScope.Dispose();
-                }
-                catch (System.Exception exception)
-                {
-                    FiberLogger.LogException("FiberElementCleaner", exception);
-                }
             }
             // Identity-side registration added on every Outlet mount; without this per-element
             // removal the set would pin every unmounted Outlet's dead container element until the
@@ -533,8 +516,6 @@ namespace Velvet
             {
                 return;
             }
-
-            _ctx.PrunePresencePortalState(element);
 
             // Both ends of the range are LOGICAL, so BOTH are converted. Adding the logical length to the
             // already-converted start mixes the two bases, and tears out one element too many the moment an

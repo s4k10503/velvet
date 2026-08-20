@@ -2,8 +2,7 @@
     "name": "Velvet.TestUtilities",
     "rootNamespace": "Velvet.TestUtilities",
     "references": [
-        "Velvet",
-        "UnityEngine.TestRunner"
+        "Velvet"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

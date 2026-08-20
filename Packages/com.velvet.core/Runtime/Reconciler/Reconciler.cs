@@ -229,10 +229,6 @@ namespace Velvet
                 // EffectiveKeys is scoped to one top-level pass. VNode references are fresh
                 // per render, so unconsumed entries would otherwise accumulate across renders.
                 _ctx.EffectiveKeys.Clear();
-                // Scoped to one top-level pass because that is the span holding both readings it
-                // compares, and placed after the portal drain above so a presence the drain's own nested
-                // reconciles rendered is marked before the marks are read.
-                _ctx.RetirePresenceStatesNotReRendered();
                 // Return the inline children's old trees (queued by SubsumeFiberIntoThisPass) to the
                 // VNode pool now that the whole pass is done using them as patch baselines — deferred
                 // to here to avoid a mid-pass use-after-return that duplicates re-expanded subtrees.
@@ -773,17 +769,9 @@ namespace Velvet
             // Outlet route scopes are user-supplied DI scopes (IRouteScope extends IDisposable):
             // dispose each so an Outlet still mounted at whole-reconciler teardown does not leak the
             // scope's resources, mirroring FiberElementCleaner's per-element Outlet-scope-dispose.
-            // Best-effort per entry for the reason ReleaseRefCallbacks gives.
             foreach (var scope in _ctx.OutletScopes.Values)
             {
-                try
-                {
-                    scope.Dispose();
-                }
-                catch (System.Exception ex)
-                {
-                    FiberLogger.LogException("Reconciler", ex);
-                }
+                scope.Dispose();
             }
 
             _ctx.OutletScopes.Clear();

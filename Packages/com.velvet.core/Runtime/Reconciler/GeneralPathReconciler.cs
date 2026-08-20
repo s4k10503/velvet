@@ -109,8 +109,7 @@ namespace Velvet
         // Components render, and each emitted host leaf is matched against oldNodes
         // and committed via CommitLeaf while the live stack still reflects its ancestor
         // Providers. Removals and the LIS reorder run afterwards in FinalizeGeneralCommit.
-        // Returns whether the removal pass ran, which an abort raised anywhere earlier in the pass skips.
-        internal bool ReconcileGeneral(
+        internal void ReconcileGeneral(
             VisualElement? parent,
             VNode?[] oldNodes,
             VNode?[] newChildren,
@@ -169,10 +168,8 @@ namespace Velvet
                 // mirroring the flat path: a deleted FunctionComponent's effect cleanups fire while its
                 // Ref.Current is still valid, then the DOM is removed. The sweep (full dispose) runs after.
                 RunOrphanEffectCleanups(oldFibers, newFibers);
-                var removalsRan = !_ctx.IsAborted;
-                if (removalsRan) FinalizeGeneralCommit(commit);
+                if (!_ctx.IsAborted) FinalizeGeneralCommit(commit);
                 SweepOrphans(oldFibers, newFibers);
-                return removalsRan;
             }
             finally
             {
@@ -1236,7 +1233,6 @@ namespace Velvet
 
             if (!walk.IsNewSide)
             {
-                _ctx.MarkPresenceReproduced(stateKey);
                 ReproduceCommittedPresence(walk, stateKey, presencePosition);
                 return;
             }
@@ -1246,10 +1242,6 @@ namespace Velvet
             {
                 state = new ReconcilerContext.PresenceBoundaryState();
                 _ctx.PresenceStates[stateKey] = state;
-            }
-            if (_ctx.CurrentPortalPlaceholder != null)
-            {
-                state!.OwningPortalPlaceholder = _ctx.CurrentPortalPlaceholder;
             }
 
             var newKeyed = _factory.BuildKeyedMapCopy(presence.Children);
@@ -1345,10 +1337,6 @@ namespace Velvet
                 {
                     foreach (var completion in tally.Deferred) completion();
                 }
-
-                // Marked here rather than beside stateKey above, so an expansion that unwound is not
-                // counted as having rendered this presence again.
-                _ctx.MarkPresenceReRendered(stateKey);
             }
             finally
             {
