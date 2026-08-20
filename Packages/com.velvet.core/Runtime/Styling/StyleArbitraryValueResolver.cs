@@ -1314,6 +1314,10 @@ namespace Velvet
                 return saturate;
             }
 
+            // This method's domain is s_filterOrder, which ApplyCombinedFilter — its only caller —
+            // iterates, so naming the ArbitraryProperty members outside that array would map each to a
+            // filter type it is not. What the throw buys over the Sepia it replaces: a filter added to
+            // s_filterOrder with no arm here reports, rather than rendering as sepia.
             var type = prop switch
             {
                 ArbitraryProperty.FilterBlur => FilterFunctionType.Blur,
@@ -1321,7 +1325,8 @@ namespace Velvet
                 ArbitraryProperty.FilterGrayscale => FilterFunctionType.Grayscale,
                 ArbitraryProperty.FilterHueRotate => FilterFunctionType.HueRotate,
                 ArbitraryProperty.FilterInvert => FilterFunctionType.Invert,
-                _ => FilterFunctionType.Sepia,
+                ArbitraryProperty.FilterSepia => FilterFunctionType.Sepia,
+                _ => throw new ArgumentOutOfRangeException(nameof(prop), prop, "not a built-in filter"),
             };
             // Only the single-arg ctor + AddParameter are public (the (type,value) ctors are internal).
             var fn = new FilterFunction(type);
