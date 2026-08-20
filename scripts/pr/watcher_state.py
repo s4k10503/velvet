@@ -42,11 +42,11 @@ ASKED = Path.home() / ".velvet-pr-watch.asked"
 # quantity from STALE_AFTER. An editing tool stamps; the turn boundary stamps only while some open
 # pull request has a check still pending, since that is the branch of `stop/unsettled_pr.py` that
 # asks whether a watcher is alive. So a session running commands with every pull request green
-# stamps nothing, and that stretch is what this is sized against. Two measurements rather than a
-# judgement: past the 1800s wait for a quiet machine all three suite harnesses take, and past the
-# longest run without an editing tool a week of sessions here produced — 1567 runs, the longest 84
-# minutes, two over an hour and none over two. Neither bounds such a stretch, and what a session
-# gets back past one is the command the guards name.
+# stamps nothing, and that stretch is what this is sized against. Two hours, chosen past two
+# measurements rather than by judgement: the 1800s wait for a quiet machine all three suite
+# harnesses take, and the longest such stretch a week of sessions on this machine produced when this
+# was chosen. Neither bounds one, and what a session gets back past one is the command the guards
+# name.
 RETIRE_AFTER = 120 * POLL_SECONDS
 
 

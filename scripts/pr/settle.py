@@ -423,21 +423,23 @@ def read_ready_state():
     empty would hand every green pull request a new clock — the one
     `refuse/edit_while_a_ready_pr_sits.py` reads to decide that a pull request has sat.
 
-    Carried only while the heartbeat says the watcher that wrote it was polling inside the staleness
-    window, because a wider gap is one this watcher cannot answer for: the record's own rule is to
-    drop an entry the moment its pull request stops being ready, and a pull request that left the
-    ready set and returned unseen would be carried here as having sat throughout. Read before this
-    watcher's first beat, which is what leaves that heartbeat naming the watcher that wrote the
-    record. A stamp in the future is dropped for the reason `watcher_state.stamp_age` gives about the
-    one in the heartbeat.
+    Carried only while the record was itself written inside the staleness window, because a wider
+    gap is one nothing polled through: the record's own rule is to drop an entry the moment its pull
+    request stops being ready, so a pull request that left the ready set and returned unseen would
+    be carried here as having sat throughout. Dated by the file rather than by the heartbeat beside
+    it, which a watcher that beat and then died before its first record would leave fresh over
+    somebody else's. The window runs from the last poll rather than from the retirement, which
+    leaves a replacement about two of its three polls — one started later carries nothing. A stamp
+    in the future is dropped, and the window is bounded below as well as above, for the reason
+    `watcher_state.stamp_age` gives about the one in the heartbeat.
     """
     try:
-        beat = watcher_state.HEARTBEAT.read_text(encoding="utf-8")
         text = watcher_state.READY_STATE.read_text(encoding="utf-8")
+        written = watcher_state.READY_STATE.stat().st_mtime
     except (OSError, UnicodeDecodeError):
         return {}
     now = int(time.time())
-    if watcher_state.stamped(beat, now) is None:
+    if not 0 <= now - written < watcher_state.STALE_AFTER:
         return {}
     carried = {}
     for line in text.splitlines():
