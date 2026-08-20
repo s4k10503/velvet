@@ -194,6 +194,10 @@ namespace Velvet
         /// margin, an offset past its edge, tightened tracking). Every other length is a non-negative extent, so
         /// a driver overshooting below zero has to saturate rather than emit a value nothing can render.
         /// </summary>
+        // The discard stays, and it is the one place in this assembly a catch-all answers a switch over a
+        // package enum with a value. Naming the members it absorbs costs one branch each, which VEL501
+        // caps at 20, and ArbitraryProperty is far wider than that — so no exhaustive switch over it can
+        // compile here. ExhaustiveSwitchSeverityTests holds the exemption to enums that wide.
         internal static bool AllowsNegativeLength(ArbitraryProperty property) => property switch
         {
             ArbitraryProperty.MarginTop or ArbitraryProperty.MarginRight or ArbitraryProperty.MarginBottom

@@ -40,12 +40,14 @@ namespace Velvet
         private const float OverlaySortingOffset = 100f;
         private const float TopmostSortingOffset = 200f;
 
+#pragma warning disable CS8524 // no discard arm: a new layer has to declare its own offset
         private static float SortingOffset(UILayer layer) => layer switch
         {
             UILayer.Background => BackgroundSortingOffset,
+            UILayer.Overlay => OverlaySortingOffset,
             UILayer.Topmost => TopmostSortingOffset,
-            _ => OverlaySortingOffset,
         };
+#pragma warning restore CS8524
 
         // One empty theme shared by every host whose declaring panel resolves none: panel creation
         // warns loudly about a missing theme, and per-host instances would pile up one

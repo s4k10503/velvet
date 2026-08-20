@@ -24,6 +24,16 @@ namespace Velvet.Tests
     /// expression inside it is read as well. Scoping the suppression to the switch it means is the answer
     /// to that, and it is what every region here already does.
     /// </para>
+    /// <para>
+    /// The suppression is not what puts a switch in scope, though — it is what a switch already written
+    /// exhaustively adds. A switch that never became exhaustive carries a catch-all and no directive, and
+    /// the last cases here are the ones that reach those: over an enum the package declares, a catch-all
+    /// answering with a VALUE is the silence, because the member added tomorrow gets that value and the
+    /// build stays green. A catch-all that THROWS is left alone. It defeats CS8509 the same way, and the
+    /// exemption is deliberate: the wrong answer becomes a stack trace at the first call instead of a
+    /// value nobody traces back. The switches whose catch-all still answers with a value are named one by
+    /// one in <c>KnownValueAnsweringSites</c>, with what stands in the way of each.
+    /// </para>
     /// </summary>
     [TestFixture]
     internal sealed class ExhaustiveSwitchSeverityTests
@@ -224,6 +234,290 @@ namespace Velvet.Tests
             // switch expression is a suppression with nothing to suppress and worth seeing as a failure of
             // this reading rather than as agreement.
             Assert.That((regions.Count >= 2, string.Join("\n", falling)), Is.EqualTo((true, string.Empty)));
+        }
+
+        /// <summary>
+        /// The simple name of every enum the package's own assemblies declare. Read off the assemblies
+        /// rather than off the sources because a name here has to be a type this repository can add a
+        /// member to: that is what makes CS8509 over it a signal, and what a UI Toolkit enum can never
+        /// give, since nothing here decides when it grows.
+        /// <para/>
+        /// A simple name is the whole of the reading, so a UI Toolkit enum sharing one with a package enum
+        /// is read as the package's. That is the direction to be wrong in — a switch reported and named by
+        /// hand costs a review, and one not reported costs the guard.
+        /// </para>
+        /// </summary>
+        private static HashSet<string> PackageEnumNames()
+        {
+            var names = AppDomain.CurrentDomain.GetAssemblies()
+                .Where(assembly => assembly.GetName().Name is { } name
+                    && name.StartsWith("Velvet", StringComparison.Ordinal)
+                    && !name.Contains("Test", StringComparison.Ordinal))
+                .SelectMany(assembly => assembly.GetTypes())
+                .Where(type => type.IsEnum)
+                .Select(type => type.Name);
+            return new HashSet<string>(names, StringComparer.Ordinal);
+        }
+
+        /// <summary>
+        /// The arms of the brace-delimited list at <paramref name="start"/>..<paramref name="end"/>, as
+        /// (pattern, body, index of the pattern's first character). The commas and the <c>=&gt;</c> are
+        /// read at the list's own nesting depth, so a nested switch expression's arms stay that switch's
+        /// and a lambda in a body is not mistaken for the arm's own arrow.
+        /// </summary>
+        private static IEnumerable<(string Pattern, string Body, int Index)> Arms(
+            string redacted, int start, int end)
+        {
+            var depth = 0;
+            var armStart = start + 1;
+            for (var i = armStart; i < end; i++)
+            {
+                var c = redacted[i];
+                if (c == '{' || c == '(' || c == '[') { depth++; }
+                else if (c == '}' || c == ')' || c == ']') { depth--; }
+                else if (c == ',' && depth == 0)
+                {
+                    if (SplitArm(redacted, armStart, i) is { } arm) { yield return arm; }
+                    armStart = i + 1;
+                }
+            }
+
+            if (SplitArm(redacted, armStart, end) is { } last) { yield return last; }
+        }
+
+        private static (string Pattern, string Body, int Index)? SplitArm(string redacted, int from, int to)
+        {
+            var depth = 0;
+            for (var i = from; i + 1 < to; i++)
+            {
+                var c = redacted[i];
+                if (c == '{' || c == '(' || c == '[') { depth++; }
+                else if (c == '}' || c == ')' || c == ']') { depth--; }
+                else if (c == '=' && redacted[i + 1] == '>' && depth == 0)
+                {
+                    var head = from;
+                    while (head < i && char.IsWhiteSpace(redacted[head])) { head++; }
+                    return (redacted.Substring(from, i - from),
+                        redacted.Substring(i + 2, to - i - 2), head);
+                }
+            }
+
+            return null;
+        }
+
+        // The catch-all forms, anchored over a whole pattern rather than found inside one: `_`, a `var`
+        // designation, and a type pattern (`UILayer other`), which is what someone writes to get the
+        // offending value in scope. A `when` clause does not make an arm safe — its guard can be true for
+        // the member no arm names — so a pattern is tested with the clause stripped.
+        private static readonly Regex WholeCatchAllPattern = new(
+            @"^(?:_|var\s+[A-Za-z_]\w*|[A-Za-z_][\w.]*\s+[A-Za-z_]\w*)$", RegexOptions.Compiled);
+
+        // A qualified constant, capturing the segment the member hangs off, so a spelling carrying its
+        // namespace resolves to the same name as a bare one.
+        private static readonly Regex QualifiedConstant = new(
+            @"(?<![\w.])(?:[A-Za-z_]\w*\.)*([A-Za-z_]\w*)\.[A-Za-z_]\w*(?![\w.])", RegexOptions.Compiled);
+
+        private static bool Throws(string body)
+        {
+            var trimmed = body.TrimStart();
+            return trimmed.StartsWith("throw", StringComparison.Ordinal)
+                && (trimmed.Length == 5 || !char.IsLetterOrDigit(trimmed[5]));
+        }
+
+        /// <summary>
+        /// Every catch-all arm answering with a value, in each switch expression of
+        /// <paramref name="redacted"/> whose other arms name a member of one of
+        /// <paramref name="packageEnums"/>. <c>Examined</c> counts the switches those arms identified, so a
+        /// reading that resolved no governing type at all is visible rather than agreeable.
+        /// </summary>
+        // A pattern holding a brace or a colon is a property or positional pattern, and the constant
+        // inside it belongs to a member rather than to the switch's own type — reading it would put a
+        // switch over some other type in scope on the strength of one subpattern.
+        private static (List<(int Line, string Enum)> Offenders, int Examined) ValueAnsweringCatchAlls(
+            string redacted, ICollection<string> packageEnums)
+        {
+            var offenders = new List<(int, string)>();
+            var examined = 0;
+            foreach (var (start, end) in SwitchArmLists(redacted))
+            {
+                string? governing = null;
+                var catchAlls = new List<(int Index, string Body)>();
+                foreach (var (pattern, body, index) in Arms(redacted, start, end))
+                {
+                    var clause = pattern.IndexOf(" when ", StringComparison.Ordinal);
+                    var bare = string.Join(" ", (clause < 0 ? pattern : pattern.Substring(0, clause))
+                        .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+                    if (WholeCatchAllPattern.IsMatch(bare))
+                    {
+                        catchAlls.Add((index, body));
+                        continue;
+                    }
+                    if (bare.IndexOf('{') >= 0 || bare.IndexOf(':') >= 0) { continue; }
+                    foreach (Match constant in QualifiedConstant.Matches(bare))
+                    {
+                        if (packageEnums.Contains(constant.Groups[1].Value))
+                        {
+                            governing = constant.Groups[1].Value;
+                        }
+                    }
+                }
+
+                if (governing == null) { continue; }
+
+                examined++;
+                offenders.AddRange(catchAlls
+                    .Where(arm => !Throws(arm.Body))
+                    .Select(arm => (LineOf(redacted, arm.Index), governing)));
+            }
+
+            return (offenders, examined);
+        }
+
+        /// <summary>
+        /// Every catch-all answering with a value across the sources of an assembly whose <c>csc.rsp</c>
+        /// raises CS8509, and the number of switch expressions the reading resolved a governing enum for.
+        /// </summary>
+        // Held to the assemblies that raise CS8509 because naming the arms of a switch the compiler
+        // reports nothing about buys nothing there — the catch-all silences no error.
+        private static (List<string> Sites, int Examined) ValueAnsweringSites()
+        {
+            var enums = PackageEnumNames();
+            var sites = new List<string>();
+            var examined = 0;
+            foreach (var file in ProductionSources())
+            {
+                var assembly = AssemblyDirectoryOf(file);
+                var rsp = assembly == null ? null : Path.Combine(assembly, "csc.rsp");
+                if (rsp == null || !File.Exists(rsp)
+                    || !File.ReadAllText(rsp).Contains(Severity, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                var (found, seen) = ValueAnsweringCatchAlls(Redacted(File.ReadAllText(file)), enums);
+                examined += seen;
+                sites.AddRange(found.Select(site => $"{Path.GetFileName(file)} ({site.Enum})"));
+            }
+
+            return (sites, examined);
+        }
+
+        /// <summary>
+        /// The three switches whose catch-all still answers with a value, each for a reason naming the arms
+        /// would not remove. The list is a floor to work down, not a budget: an entry leaving it is a
+        /// tightening, and one arriving is the failure this case exists for.
+        /// <para>
+        /// <c>AllowsNegativeLength</c> cannot be written exhaustively at all. Covering an enum of M members
+        /// costs M branching decisions whatever the grouping — VEL501 charges one per arm and one per
+        /// <c>or</c> — and <c>ArbitraryProperty</c> is several times the cap, so the compiler this guard
+        /// speaks for refuses the arms before CS8509 could ask for them.
+        /// </para>
+        /// <para>
+        /// The two <c>Router</c> switches could be named, and naming them would move a public failure. A
+        /// mode outside the enum is reported by the commit's own switch, and these two are what carry it
+        /// there; arms here would raise it earlier, before the navigation Status the caller reads has been
+        /// set. Where the router should reject such a cast is a question for the router rather than for
+        /// this reading.
+        /// </para>
+        /// </summary>
+        private static readonly string[] KnownValueAnsweringSites =
+        {
+            "MotionPropertyClassParser.cs (ArbitraryProperty)",
+            "Router.cs (NavigationMode)",
+            "Router.cs (NavigationMode)",
+        };
+
+        [Test]
+        public void Given_EveryProductionSwitchOverAPackageEnum_When_ItsArmsAreRead_Then_OnlyTheKnownSitesAnswerACatchAllWithAValue()
+        {
+            // Arrange / Act
+            var (sites, examined) = ValueAnsweringSites();
+
+            // Assert — the floor rides along because an enum set that came back empty, or a source tree
+            // that read as none, reports nothing and would otherwise pass having measured nothing.
+            Assert.That((examined >= 12, string.Join("\n", sites.OrderBy(site => site, StringComparer.Ordinal))),
+                Is.EqualTo((true, string.Join("\n", KnownValueAnsweringSites))));
+        }
+
+        // A switch expression over a package enum, one arm named and a catch-all under it. `{0}` takes the
+        // catch-all's body, so each case below differs from the guard's subject in one term.
+        private const string OneArmAndACatchAll = @"
+internal static class Sample
+{
+    internal static int Of(UILayer layer) => layer switch
+    {
+        UILayer.Background => 0,
+        {0},
+    };
+}";
+
+        private static (List<(int Line, string Enum)> Offenders, int Examined) Scan(string body) =>
+            ValueAnsweringCatchAlls(
+                Redacted(OneArmAndACatchAll.Replace("{0}", body)), PackageEnumNames());
+
+        // GREEN_ON_BASE(characterization): the reading is the branch's and travels with this file, so it
+        // answers the same on either side. What it is for is the case above, whose list the branch works
+        // down to three and which would agree with a shorter one just as readily with the reading broken.
+        [Test]
+        public void Given_ACatchAllAnsweringWithAValue_When_TheSwitchIsRead_Then_ItIsReported()
+        {
+            // Arrange / Act
+            var (offenders, examined) = Scan("_ => 1");
+
+            // Assert — the count rides along so a reading that resolved no governing type cannot report
+            // the one offender this case exists to see and be believed.
+            Assert.That((examined, string.Join("\n", offenders.Select(o => o.Enum))),
+                Is.EqualTo((1, "UILayer")));
+        }
+
+        // GREEN_ON_BASE(characterization): the exemption is the branch's own and reads the same on either
+        // side; it is here so the guard cannot be widened into the two throwing sites without a red.
+        [Test]
+        public void Given_ACatchAllThatThrows_When_TheSwitchIsRead_Then_ItIsNotReported()
+        {
+            // Arrange / Act
+            var (offenders, examined) = Scan("_ => throw new InvalidOperationException()");
+
+            // Assert
+            Assert.That((examined, string.Join("\n", offenders.Select(o => o.Enum))),
+                Is.EqualTo((1, string.Empty)));
+        }
+
+        // GREEN_ON_BASE(characterization): no switch on either side is written this way, so the case is a
+        // statement about the reading rather than about the tree — and the reading is the branch's.
+        [Test]
+        public void Given_ACatchAllUnderAWhenClause_When_TheSwitchIsRead_Then_ItIsReported()
+        {
+            // Arrange / Act — a guard is not an exemption: it can be true for the member no arm names, and
+            // then the value is the same silence an unguarded catch-all gives.
+            var (offenders, examined) = Scan("_ when layer != UILayer.Topmost => 1");
+
+            // Assert
+            Assert.That((examined, string.Join("\n", offenders.Select(o => o.Enum))),
+                Is.EqualTo((1, "UILayer")));
+        }
+
+        // GREEN_ON_BASE(characterization): the boundary the branch draws, read off synthetic sources, so
+        // both sides answer alike. Without it the guard could be widened to every enum and stay green
+        // until a Unity upgrade grew one.
+        [Test]
+        public void Given_ASwitchOverAnEnumThePackageDoesNotDeclare_When_ItIsRead_Then_ItIsNotExamined()
+        {
+            // Arrange — FilterFunctionType is UI Toolkit's, so nothing here decides when it grows and a
+            // catch-all over it is the only way to write the switch.
+            var source = OneArmAndACatchAll
+                .Replace("UILayer.Background", "FilterFunctionType.Blur")
+                .Replace("UILayer layer", "FilterFunctionType type")
+                .Replace("layer switch", "type switch")
+                .Replace("{0}", "_ => 1");
+
+            // Act
+            var engine = ValueAnsweringCatchAlls(Redacted(source), PackageEnumNames());
+            var package = Scan("_ => 1");
+
+            // Assert — the package half rides along because a reading that examines nothing at all leaves
+            // the engine half at zero too, and would pass on the strength of being broken.
+            Assert.That((package.Examined, engine.Examined), Is.EqualTo((1, 0)));
         }
     }
 }
