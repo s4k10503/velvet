@@ -92,6 +92,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A `V.AnimatePresence` that stops being rendered takes its bookkeeping with it. That bookkeeping is
+  keyed by the component the presence renders in, the parent element its children expand into, and the
+  presence's position — and only the component being disposed, or the whole tree being unmounted,
+  retired it. So a `cond ? V.AnimatePresence(…) : null` flipping to `null` left an entry holding the
+  committed children plus each key's exit anchor and Motion element, well after the removal had taken
+  those elements out of the tree. Rendering the presence again at that position then started from
+  that stale set: children that had left were spliced back into the DOM as exiting ghosts, and
+  `initial: false` no longer suppressed the enter, since the second mount was not taken for a first
+  render. The entry also survived its parent element being torn down — once per removal, so a panel
+  mounted and unmounted repeatedly accumulated one per cycle — and a poolable parent (a `V.Button`)
+  rented back for a fresh presence at the same position picked the stale entry up again. A presence
+  written inside a `V.Portal`'s own children was the same defect reached a third way, since its
+  bookkeeping is keyed by the container the portal renders into and that container belongs to the
+  caller: closing the portal resurrected the children the presence had already let go, as did
+  registering its `targetId` to a different element and back.
+- A `refCallback` cleanup that throws while its element is being unmounted is reported and the unmount
+  carries on, instead of the exception leaving the reconcile call. It used to escape from the middle of
+  the teardown, so the rest of that element's release never ran and the element itself was never taken
+  out of the tree, and the removal batch it interrupted left every row it had not reached yet standing
+  too. An `AnimatePresence` whose own leaf the batch had already removed then kept committed state
+  naming a child that was gone, and the next render at that position spliced it back as an exiting
+  ghost. The delegate is the caller's, and reconciler disposal already contained it this way.
+- An `IRouteScope.Dispose` that throws is reported the same way, at each of the three places a route
+  scope is disposed: the patch that swaps in a newly matched route, an unmounting `V.Outlet`, and the
+  whole-reconciler teardown sweep. The scope is the application's, built by the `IRouteScopeFactory`
+  handed to `Router`. From the route change the escape left the `V.Outlet` blank — the route navigated
+  away from torn down, the route navigated to never mounted — and a later render at that position
+  mounted the new route on the already-disposed scope. From the unmount it reached the same interrupted
+  removal batch and the same resurrected `AnimatePresence` child as above. Both also left the scope
+  registered for the teardown sweep to dispose a second time; from the sweep itself the escape left the
+  rest of that sweep unrun, including every scope it had not reached yet.
 - `UseTransition` no longer clears `isPending` when the first slice of a time-sliced transition commit
   parks. The flag now spans every parked slice and clears after the terminal commit; that commit asks for
   the render that takes an observed indicator down.
