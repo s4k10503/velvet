@@ -893,9 +893,10 @@ namespace Velvet.Tests
         public void Given_ACheckoutTheProcessDoesNotOwn_When_TheTrackedListingIsRead_Then_SafeDirectoryCarriesIt()
         {
             // Arrange — a checkout this fixture builds rather than the project directory: measured, the
-            // base-red lane hands the suite a project directory of the shape the case below is named for,
-            // and both arms came back as nothing there, which this comparison can only read as the
-            // argument having stopped lifting the refusal.
+            // base-red lane hands the suite a project directory of the shape
+            // Given_AWorktreeWhoseRecordedGitDirectoryIsGone_When_TheTrackedListingIsRead_Then_TheOneUnderTheCheckoutAnswers
+            // is named for, and both arms came back as nothing there, so this comparison fails in that
+            // lane whatever the argument does.
             var checkout = Scratch("-ownership");
             try
             {
@@ -984,7 +985,7 @@ namespace Velvet.Tests
             // git directory is there and an enclosing directory holds the tail from the .git segment on.
             // The reachability branch is what decides which one runs.
             var checkout = Scratch("-reachable");
-            var worktree = Path.Combine(checkout, "nested", "tree");
+            var worktree = Path.Combine(checkout, "tree");
             try
             {
                 Repository(checkout);
@@ -1008,8 +1009,10 @@ namespace Velvet.Tests
                     "a false left side is no linked worktree here with its recorded git directory "
                     + "present, so nothing was posed; a false right side is this read having taken an "
                     + "explicit git-dir instead of the setup path git chooses for itself, which skips "
-                    + "the dubious-ownership refusal and leaves the safe.directory argument in "
-                    + "TrackedFiles inert");
+                    + "the dubious-ownership refusal, or git refusing nothing here at all, which a "
+                    + "global safe.directory wide enough to cover this checkout does — each leaves the "
+                    + "safe.directory argument in TrackedFiles inert, so the right side does not "
+                    + "separate them");
             }
             finally
             {

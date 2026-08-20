@@ -109,7 +109,7 @@ namespace Velvet.Tests
         internal static IReadOnlyList<string> WalkedRoots(bool includeClaude) =>
             includeClaude ? ClaudeAwareRoots : BaseWalkedRoots;
 
-        // Build output, matched on the basename wherever it appears: nothing a document names lives there.
+        // Tool-written directories, matched on the basename wherever it appears.
         // StrykerOutput is here for a different reason, and it is the reason to be strict about the rest:
         // a mutation report is a couple of megabytes of source excerpts, it is gitignored, and it survives
         // the run that made it. One left over from three days earlier put the word this fixture was asked
