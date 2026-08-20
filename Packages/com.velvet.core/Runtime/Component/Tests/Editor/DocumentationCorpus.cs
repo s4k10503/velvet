@@ -72,7 +72,7 @@ namespace Velvet.Tests
         // one alternative compared case-insensitively covers both spellings.
         private static readonly Regex CharacterClassPattern = new(@"\[(\w)\w*\]", RegexOptions.Compiled);
 
-        /// <summary>The leading path segment of every wildcard-free pattern in .gitignore.</summary>
+        /// <summary>Each .gitignore pattern's leading path segment, where that segment holds no wildcard.</summary>
         /// <remarks>
         /// Derived from .gitignore rather than listed, because the population that must be excluded is
         /// exactly the one git already excludes — and a hand-written list would go red on a machine carrying
