@@ -524,6 +524,15 @@ def csharp_cases(text, path="?"):
     return cases
 
 
+def opens_at(node):
+    """Where a definition starts, which is its first decorator where it carries one.
+
+    An argument written in a decorator is code of the definition it sits on, so a range over that
+    definition opens there rather than at the keyword below it.
+    """
+    return min([node.lineno] + [one.lineno for one in getattr(node, "decorator_list", ())])
+
+
 def python_cases(text, path="?"):
     """Every unittest case in a Python test module, named as `python3 -m unittest` takes it."""
     try:
@@ -543,7 +552,7 @@ def python_cases(text, path="?"):
                 continue
             if not member.name.startswith("test"):
                 continue
-            opens = min([member.lineno] + [decorator.lineno for decorator in member.decorator_list])
+            opens = opens_at(member)
             cases.append(Case("{}.{}".format(node.name, member.name), path,
                               comment_block_start(lines, opens - 1, prose) + 1, member.end_lineno,
                               leading_declaration(lines, opens - 1, declared, prose)))
@@ -1160,6 +1169,8 @@ def added_keyword(output, base_tree, branch_tree, case):
     if not missing:
         return False
     function, keyword = missing.group(1), missing.group(2)
+    if not reaches_surface(case, base_tree, keyword):
+        return False
     found = False
     for directory in import_directories(case, base_tree):
         for module in sorted((branch_tree / directory).glob("*.py")) if (
@@ -1174,10 +1185,12 @@ def added_keyword(output, base_tree, branch_tree, case):
 
 
 def fixture_classes(parsed, owner):
-    """`owner` and the classes it derives from, over the ones this file declares.
+    """`owner` and the classes it derives from, over the ones this file declares by bare name.
 
-    A shared base class is where unittest puts scaffolding two fixtures need, so its `setUp` runs for
-    every case of every heir and is as much their reach as one written in their own body.
+    A shared base class is where unittest puts scaffolding two fixtures need, so a `setUp` there is
+    as much an heir's reach as one written in its own body. A dotted base names another module's
+    class and is left alone: this cannot read that file, and taking the last segment would resolve
+    an in-file class that happens to share the name instead.
     """
     declared = {node.name: node for node in ast.walk(parsed) if isinstance(node, ast.ClassDef)}
     found, pending = set(), [owner]
@@ -1186,11 +1199,7 @@ def fixture_classes(parsed, owner):
         if name in found or name not in declared:
             continue
         found.add(name)
-        for base in declared[name].bases:
-            if isinstance(base, ast.Name):
-                pending.append(base.id)
-            elif isinstance(base, ast.Attribute):
-                pending.append(base.attr)
+        pending.extend(base.id for base in declared[name].bases if isinstance(base, ast.Name))
     return found
 
 
@@ -1216,12 +1225,12 @@ def reaching_lines(text, case_name):
                 and isinstance(node.value.value, str)):
             reaching -= set(range(node.lineno, (node.end_lineno or node.lineno) + 1))
         elif isinstance(node, ast.ClassDef) and node.name not in owners:
-            reaching -= set(range(node.lineno, node.end_lineno + 1))
+            reaching -= set(range(opens_at(node), node.end_lineno + 1))
         elif isinstance(node, ast.ClassDef):
             for member in node.body:
                 if (isinstance(member, (ast.FunctionDef, ast.AsyncFunctionDef))
                         and member.name.startswith("test") and member.name != method):
-                    reaching -= set(range(member.lineno, member.end_lineno + 1))
+                    reaching -= set(range(opens_at(member), member.end_lineno + 1))
     return reaching - comment_lines(text, python_comment_spans(text))
 
 

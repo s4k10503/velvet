@@ -1496,6 +1496,96 @@ class PythonSurfaceReachTests(unittest.TestCase):
         # Assert
         self.assertTrue(found)
 
+    def test_Given_TheNameSpelledByAGrandparentsSetUp_When_ACaseIsRead_Then_ThatIsEvidence(self):
+        # Arrange -- two levels of ancestry, which is what makes this ask about the walk rather than
+        # about the first base a fixture names.
+        # Act
+        found = self.read("import unittest\n"
+                          "from notes import ADDED, OPEN\n\n\n"
+                          "class Root(unittest.TestCase):\n"
+                          "    def setUp(self):\n"
+                          "        self.seen = ADDED\n\n\n"
+                          "class Mid(Root):\n"
+                          "    pass\n\n\n"
+                          "class T(Mid):\n"
+                          "    def test_mine(self):\n"
+                          "        self.assertEqual(OPEN, 1)\n")
+
+        # Assert
+        self.assertTrue(found)
+
+    def test_Given_TheNameInThisCasesOwnDecorator_When_ACaseIsRead_Then_ThatIsEvidence(self):
+        # Arrange -- an argument written above the `def` is code of that case, and the range this is
+        # read over has to open where the decorator does rather than at the keyword below it.
+        # Act
+        found = self.read("import unittest\n"
+                          "from notes import ADDED, OPEN\n\n\n"
+                          "class T(unittest.TestCase):\n"
+                          "    @unittest.skipIf(ADDED, 'x')\n"
+                          "    def test_mine(self):\n"
+                          "        self.assertEqual(OPEN, 1)\n")
+
+        # Assert
+        self.assertTrue(found)
+
+    # GREEN_ON_BASE(characterization): a sibling's decorator is a sibling's code.
+    # It sits above the `def` the subtraction is taken from, so leaving the range to open there
+    # hands every other case of the file a reach it never had.
+    def test_Given_TheNameOnlyInASiblingsDecorator_When_ThisOneIsRead_Then_ThatIsNotEvidence(self):
+        # Arrange -- the decorator of the case beside this one, which runs at import for the file
+        # rather than for either case.
+        # Act
+        found = self.read("import unittest\n"
+                          "from notes import ADDED, OPEN\n\n\n"
+                          "class T(unittest.TestCase):\n"
+                          "    @unittest.skipIf(ADDED, 'x')\n"
+                          "    def test_other(self):\n"
+                          "        pass\n\n"
+                          "    def test_mine(self):\n"
+                          "        self.assertEqual(OPEN, 1)\n")
+
+        # Assert
+        self.assertFalse(found)
+
+    # GREEN_ON_BASE(characterization): a sibling fixture's decorator is that fixture's code.
+    # A class carries decorators above its `class` line just as a method does above its `def`, and
+    # the two subtractions have to open in the same place or one of them hands out a reach.
+    def test_Given_TheNameOnlyInASiblingClasssDecorator_When_ACaseIsRead_Then_ThatIsNotEvidence(self):
+        # Arrange -- the decorator of the fixture beside this one, which the case derives nothing
+        # from.
+        # Act
+        found = self.read("import unittest\n"
+                          "from notes import ADDED, OPEN\n\n\n"
+                          "@unittest.skipIf(ADDED, 'x')\n"
+                          "class Other(unittest.TestCase):\n"
+                          "    def test_other(self):\n"
+                          "        pass\n\n\n"
+                          "class T(unittest.TestCase):\n"
+                          "    def test_mine(self):\n"
+                          "        self.assertEqual(OPEN, 1)\n")
+
+        # Assert
+        self.assertFalse(found)
+
+    # GREEN_ON_BASE(characterization): a dotted base names a class in another file.
+    # Its last segment is not a spelling of an in-file class, and resolving it as one would give a
+    # fixture the reach of whatever the file happens to declare under that name.
+    def test_Given_ADottedBaseSharingAnInFileName_When_ACaseIsRead_Then_ThatIsNotEvidence(self):
+        # Arrange -- the fixture derives from `helpers.Shared`, and an unrelated `Shared` beside it
+        # is what spells the name.
+        # Act
+        found = self.read("import unittest\n"
+                          "import helpers\n"
+                          "from notes import ADDED, OPEN\n\n\n"
+                          "class Shared(unittest.TestCase):\n"
+                          "    SEEN = ADDED\n\n\n"
+                          "class T(helpers.Shared):\n"
+                          "    def test_mine(self):\n"
+                          "        self.assertEqual(OPEN, 1)\n")
+
+        # Assert
+        self.assertFalse(found)
+
     def test_Given_TheNameReachedThroughGetattr_When_ACaseIsRead_Then_ThatIsEvidence(self):
         # Arrange -- the name is a string here, which is why a string is read for one at all; the
         # docstring case below is what that costs and where the line is drawn instead.
@@ -1835,19 +1925,34 @@ class AddedKeywordTests(unittest.TestCase):
               "from pathlib import Path\n\n"
               "sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'release'))\n")
 
-    def trees(self, base, branch):
+    # A call is what names a keyword, so a case has to make one for the comparison to be what
+    # answers rather than the reach beside it.
+    CALLING = ("\n\nclass T(unittest.TestCase):\n"
+               "    def test_a(self):\n"
+               "        self.assertIsNotNone(report(cases, unbuildable=True))\n")
+    # The same call made where a class body runs it, which is at import and for no case in
+    # particular.
+    ELSEWHERE = ("\n\nclass Other(unittest.TestCase):\n"
+                 "    SPEC = report(cases, unbuildable=True)\n\n\n"
+                 "class T(unittest.TestCase):\n"
+                 "    def test_a(self):\n"
+                 "        self.assertEqual(1, 1)\n")
+
+    def trees(self, base, branch, module):
         holder = tempfile.mkdtemp(prefix="base-red-keyword-")
         self.addCleanup(shutil.rmtree, holder, ignore_errors=True)
         root = Path(holder)
         for name, text in (("base", base), ("branch", branch)):
-            path = root / name / self.HELPER
-            path.parent.mkdir(parents=True)
-            path.write_text(text)
+            for relative, held in ((self.HELPER, text), (self.CASE, "import unittest\n" + module)):
+                path = root / name / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(held)
         return root / "base", root / "branch"
 
-    def read(self, base, branch, output):
+    def read(self, base, branch, output, module=None):
         return base_red_check.added_python_surface(
-            output, *self.trees(base, branch), base_red_check.Case("T.test_a", self.CASE, 1, 2))
+            output, *self.trees(base, branch, module or self.CALLING),
+            base_red_check.Case("T.test_a", self.CASE, 1, 2))
 
     def read_under_insert(self, base, branch, output):
         """The same reading, over a case whose helper sits behind a `sys.path.insert`."""
@@ -1855,7 +1960,8 @@ class AddedKeywordTests(unittest.TestCase):
         self.addCleanup(shutil.rmtree, holder, ignore_errors=True)
         root = Path(holder)
         for name, helper in (("base", base), ("branch", branch)):
-            for relative, text in ((self.INSERT_CASE, self.INSERT),
+            for relative, text in ((self.INSERT_CASE,
+                                    "import unittest\n" + self.INSERT + self.CALLING),
                                    ("scripts/release/helper.py", helper)):
                 path = root / name / relative
                 path.parent.mkdir(parents=True, exist_ok=True)
@@ -1897,6 +2003,19 @@ class AddedKeywordTests(unittest.TestCase):
         found = self.read("def report(cases, **kwargs):\n    return cases\n",
                           "def report(cases, unbuildable=None):\n    return cases\n",
                           "TypeError: report() got an unexpected keyword argument 'unbuildable'")
+
+        # Assert
+        self.assertFalse(found)
+
+    def test_Given_TheCallMadeInAnotherClassBody_When_ACaseIsRead_Then_ItIsNotEvidence(self):
+        # Arrange -- a class body runs at import, so this TypeError reaches every case of the file
+        # and is no more this one's than a module-level import of a branch-only name would be. The
+        # same shape on the import reading is refused, and the two answer alike here.
+        # Act
+        found = self.read("def report(cases):\n    return cases\n",
+                          "def report(cases, unbuildable=None):\n    return cases\n",
+                          "TypeError: report() got an unexpected keyword argument 'unbuildable'",
+                          self.ELSEWHERE)
 
         # Assert
         self.assertFalse(found)

@@ -290,10 +290,11 @@ refuses on arity alone reads as a case that could not answer.
 A module-level import is answered for case by case, not file by file. `from module import name` is
 evaluated once, so a branch-only name in one takes every case of that file down on the base together
 — and only the cases that reach the name are read as depending on the branch. A case reaches it in
-its own body, at module level, or anywhere in the classes its fixture is built out of, a shared base
-class included, since a `setUp` there runs for every case of every heir. Prose does not reach it: a
-comment and a docstring are both left out, while an ordinary string is not, because `getattr` names
-a surface that way. The rest count against it, because a reading nobody took is never a pass. Every
+its own body, at module level, or in the scaffolding of the classes its fixture is built out of —
+which includes a shared base class, so long as the file declares it: a base imported from elsewhere
+is out of reach, and so is another case's body wherever it sits. Prose does not reach it: a comment
+and a docstring are both left out, while an ordinary string is not, because `getattr` names a
+surface that way. The rest count against it, because a reading nobody took is never a pass. Every
 tolerated case is counted on a line of its own, so a run that measured none of them cannot say so in
 silence.
 
