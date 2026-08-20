@@ -173,23 +173,26 @@ namespace Velvet.Tests
                 "Fire-and-forget Mutate routes the failure to onError and the Error status without an unobserved rethrow");
         });
 
+        // GREEN_ON_BASE(characterization): the reset-from-succeeded transition this fold reads twice.
         [UnityTest]
         public IEnumerator Given_SucceededMutation_When_Reset_Then_RestoresIdleState() => UniTask.ToCoroutine(async () =>
         {
-            // Arrange
+            // Arrange — the succeeded status is carried into the assertion rather than assumed: the
+            // idle transition produces the same four values whatever preceded it, so a success
+            // transition that stopped setting Status would leave the post-reset reading intact.
             using var mounted = V.Mount(_root, V.Component(CaptureMutationRender, key: "reset"));
             await s_captured!.MutateAsync(10);
             mounted.FlushStateForTest();
-            Assume.That(s_captured.Status, Is.EqualTo(MutationStatus.Success), "Precondition: the mutation succeeded before reset");
+            var succeeded = s_captured.Status;
 
             // Act
             s_captured.Reset();
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That((s_captured.Status, s_captured.Data, s_captured.Variables, s_captured.Error),
-                Is.EqualTo((MutationStatus.Idle, default(int), default(int), (Exception?)null)),
-                "Reset restores Idle and clears data, variables, and error");
+            Assert.That((succeeded, s_captured.Status, s_captured.Data, s_captured.Variables, s_captured.Error),
+                Is.EqualTo((MutationStatus.Success, MutationStatus.Idle, default(int), default(int), (Exception?)null)),
+                "Reset restores Idle and clears data, variables, and error from a succeeded mutation");
         });
 
         [UnityTest]
