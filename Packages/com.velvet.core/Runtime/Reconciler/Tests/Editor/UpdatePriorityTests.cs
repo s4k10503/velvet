@@ -309,11 +309,12 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.AreEqual((2, "transition-update"), (s_simpleRenderCount, s_simpleLastValue));
+            Assert.AreEqual((3, "transition-update"), (s_simpleRenderCount, s_simpleLastValue),
+                "The transition content render is followed by the render that observes isPending cleared");
         }
 
         [Test]
-        public void Given_TransitionUpdate_When_StartedTwiceAndFlushed_Then_CoalescesToSingleRenderWithLastValue()
+        public void Given_TransitionUpdate_When_StartedTwiceAndFlushed_Then_CoalescesContentAndClearsPending()
         {
             // Arrange
             s_simpleInitial = "initial";
@@ -325,8 +326,8 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.AreEqual((2, "transition-2"), (s_simpleRenderCount, s_simpleLastValue),
-                "Multiple Transition updates coalesce into one render that commits the last value");
+            Assert.AreEqual((3, "transition-2"), (s_simpleRenderCount, s_simpleLastValue),
+                "Multiple Transition updates share one content render before the pending-clear render");
         }
 
         [Test]
@@ -352,9 +353,9 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.AreEqual((renderCountBeforeFinal + 1, false), (s_simpleRenderCount, s_simpleFiber.IsDirty),
-                "The threshold flush renders once (the promoted lane coalesces with the preempting Normal) "
-                + "and leaves no lane pending");
+            Assert.AreEqual((renderCountBeforeFinal + 2, false), (s_simpleRenderCount, s_simpleFiber.IsDirty),
+                "The promoted content coalesces with the preempting Normal render, then the pending-clear "
+                + "render leaves no lane queued");
         }
 
         [Test]

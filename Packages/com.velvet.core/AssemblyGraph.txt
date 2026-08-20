@@ -2,7 +2,7 @@ Unity.Velvet.CodeGen refs Velvet platforms Editor
 Velvet refs UniTask,Unity.Addressables,Unity.ResourceManager platforms all
 Velvet.Editor refs Velvet platforms Editor
 Velvet.Samples.StarterApp refs UniTask,Velvet platforms all
-Velvet.TestUtilities refs Velvet platforms all
+Velvet.TestUtilities refs UnityEngine.TestRunner,Velvet platforms all
 Velvet.Tests.BuildInclusion.Editor refs UnityEditor.TestRunner,UnityEngine.TestRunner,Velvet,Velvet.Editor platforms Editor
 Velvet.Tests.Component.Editor refs UniTask,Unity.UI.TestFramework.Editor,Unity.UI.TestFramework.Runtime,UnityEditor.TestRunner,UnityEngine.TestRunner,Velvet,Velvet.Editor,Velvet.TestUtilities platforms Editor
 Velvet.Tests.Component.PlayMode refs Unity.PerformanceTesting,UnityEditor.TestRunner,UnityEngine.TestRunner,Velvet,Velvet.TestUtilities platforms all

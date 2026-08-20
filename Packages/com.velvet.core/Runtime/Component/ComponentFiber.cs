@@ -107,9 +107,6 @@ namespace Velvet
         // The two differ exactly when a request coalesces onto a lane already pending, and that is the case a
         // subsuming render's settle has to keep — see FiberRenderer.SubsumeFiberIntoThisPass.
         public FiberLaneSet LanesRequestedSinceReset;
-        // Several StartTransition callbacks can be open on one fiber at once — a call on another slot, a call
-        // joining an owner — so whichever exits first would clear the others' scope if this were a boolean.
-        public int TransitionCallDepth;
         public int TransitionStarvationCounter;
         // The settle sweep keys off the Transition label's presence, which starvation promotion erases
         // (relabelling the lane to Normal) while the promoted work may still be queued — e.g. parked
@@ -117,10 +114,6 @@ namespace Velvet
         // as "settled" and clear isPending before the promoted content commits.
         public bool HasPromotedTransition;
 
-        // TransitionCallDepth is deliberately not reset here. Its increment and decrement are paired inside
-        // one StartTransition call, and an unmount driven from inside that call's updates would zero a depth
-        // the pending decrement then takes negative — leaving a retained fiber unable to reach a positive
-        // depth on its next transition.
         public void Clear()
         {
             Queue.Clear();
@@ -261,6 +254,14 @@ namespace Velvet
         /// </summary>
         internal List<HookTransitionSlot>? TransitionSlots;
 
+        /// <summary>
+        /// The transition slots — on this fiber or on any other component's — whose callback enrolled the
+        /// Transition lane here, so the drain that commits this fiber's work reaches every slot waiting on it
+        /// without walking the tree. The reverse of <see cref="HookTransitionSlot.EnrolledFibers"/>. Lazily
+        /// allocated; null treated as empty.
+        /// </summary>
+        internal List<HookTransitionSlot>? EnrolledTransitionSlots;
+
         /// <summary>Position cursors per hook kind within one render cycle.</summary>
         internal HookIndexTable Indices;
 
@@ -370,37 +371,106 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Clears the pending flag on every settled transition slot (called when the transition lane
-        /// settles). A slot whose async action is still in flight is skipped: its awaiting action has not
-        /// scheduled its updates yet, so an empty lane queue does not mean that transition settled — its
-        /// own completion path clears the flag once the task finishes.
+        /// Records that a write made under <paramref name="slot"/>'s open transition scope enrolled the
+        /// Transition lane on this fiber, so that slot stays pending past its callback until this fiber
+        /// commits the write.
         /// </summary>
-        /// <remarks>
-        /// The queued-work record is discharged here as well: the caller has established that this fiber's
-        /// transition work drained, which is what that record was tracking.
-        /// </remarks>
-        internal void ClearAllTransitionPending()
+        internal void EnrolTransitionSlot(HookTransitionSlot slot)
         {
-            if (TransitionSlots == null)
+            slot.EnrolledFibers ??= new List<ComponentFiber>();
+            if (slot.EnrolledFibers.Contains(this))
             {
                 return;
             }
-            foreach (var slot in TransitionSlots)
-            {
-                if (slot.IsAsyncInFlight)
-                {
-                    continue;
-                }
-                slot.HasQueuedWork = false;
-                slot.IsPending = false;
-            }
+            slot.EnrolledFibers.Add(this);
+            (EnrolledTransitionSlots ??= new List<HookTransitionSlot>()).Add(slot);
         }
 
         /// <summary>
-        /// Clears the pending flag on transition slots with nothing outstanding of their own — no queued
-        /// writes, and no async action still running — leaving the rest lit. Used where the pending
-        /// Transition lane is not evidence either way: see <c>FiberRenderer.SubsumeFiberIntoThisPass</c>, whose
-        /// surviving lane may have been requested by a different hook during the render it settles.
+        /// Releases every transition slot waiting on this fiber's Transition work and clears the pending flag
+        /// on those left with nothing outstanding anywhere. Called where that work is established as
+        /// committed, and from the two places it will never commit from: unmount, and the scheduler dropping
+        /// a starvation-promoted lane at its update-depth cap.
+        /// </summary>
+        internal void DischargeTransitionEnrolments(bool requestLocalRender = false)
+        {
+            if (EnrolledTransitionSlots == null)
+            {
+                return;
+            }
+            foreach (var slot in EnrolledTransitionSlots)
+            {
+                slot.EnrolledFibers?.Remove(this);
+                if (!SettleIfNothingOutstanding(slot))
+                {
+                    continue;
+                }
+                // A pre-render settle needs no separate local render because this fiber's imminent render reads
+                // the clear. A post-commit settle does: its completed render read the flag while it was still lit.
+                if (ReferenceEquals(slot.DeclaringFiber, this))
+                {
+                    if (requestLocalRender)
+                    {
+                        RequestRenderForClearedPending(slot);
+                    }
+                    continue;
+                }
+                // Anywhere else nothing is left to take the indicator off the screen. Where this drain does
+                // reach the declaring fiber, its render subsumes the lane requested here and it retires
+                // unrendered — see FiberRenderer.SettleSubsumedFiber.
+                RequestRenderForClearedPending(slot);
+            }
+            EnrolledTransitionSlots.Clear();
+        }
+
+        /// <summary>
+        /// Asks the component that declared <paramref name="slot"/> for the render that observes its now-false
+        /// <c>isPending</c>. Nothing renders a component because its flag moved, so a clear reached from a path
+        /// that renders nobody — a drain of some other component's tree, an async action's completion — leaves
+        /// the indicator on screen without this.
+        /// </summary>
+        internal static void RequestRenderForClearedPending(HookTransitionSlot slot)
+        {
+            var declaring = slot.DeclaringFiber;
+            if (declaring is not { IsMounted: true, IsDisposed: false })
+            {
+                return;
+            }
+            // Urgent inside a discrete handler, on the rule an ordinary state update made there follows: the
+            // clear belongs to the interaction being serviced and commits with it. Never the Transition lane,
+            // though, even where this is reached inside an open transition scope — this render is what takes
+            // the indicator down, and the delayed tier would hold it up for its own delay.
+            FiberWorkLoop.ScheduleRerender(
+                declaring,
+                FiberWorkLoop.IsInDiscreteEvent ? FiberUpdatePriority.Urgent : FiberUpdatePriority.Normal);
+        }
+
+        /// <summary>
+        /// Settles this fiber's transition bookkeeping where its Transition work is established as committed:
+        /// the slots that enrolled work here are released, and those of them — plus this fiber's own — left
+        /// with nothing outstanding anywhere clear their pending flag.
+        /// </summary>
+        internal void SettleTransitionPending()
+        {
+            DischargeTransitionEnrolments();
+            ClearSettledTransitionPending();
+        }
+
+        /// <summary>
+        /// Settles transition work after its terminal reconcile slice committed, then requests the render that
+        /// takes down any indicator whose last render observed it as pending.
+        /// </summary>
+        internal void SettleTransitionPendingAfterCommit()
+        {
+            DischargeTransitionEnrolments(requestLocalRender: true);
+            ClearSettledTransitionPending();
+        }
+
+        /// <summary>
+        /// Clears the pending flag on this fiber's own transition slots with nothing outstanding, leaving the
+        /// rest lit. Used where the pending Transition lane is not evidence either way: see
+        /// <c>FiberRenderer.SubsumeFiberIntoThisPass</c>, whose surviving lane may have been requested by a
+        /// different hook during the render it settles.
         /// </summary>
         internal void ClearSettledTransitionPending()
         {
@@ -410,38 +480,33 @@ namespace Velvet
             }
             foreach (var slot in TransitionSlots)
             {
-                if (slot.IsAsyncInFlight || slot.HasQueuedWork)
-                {
-                    continue;
-                }
-                slot.IsPending = false;
+                SettleIfNothingOutstanding(slot);
             }
         }
 
-        /// <summary>
-        /// Records that a Transition-lane enrolment just made belongs to every transition currently open on
-        /// this fiber. Called from the lane classification rather than from <c>StartTransition</c>, because
-        /// the writes an async action makes after its await arrive with none of that call left on the stack.
-        /// </summary>
-        internal void MarkTransitionWorkQueued()
+        // True when this cleared a flag that was lit, which is what a caller owing the declaring component a
+        // render keys off.
+        // A callback still on the stack settles at its own exit instead: it can enrol further fibers, and
+        // nothing would light the flag again after a clear here. An awaiting async action is the same case
+        // one await out — its updates have not been scheduled yet, so nothing outstanding does not mean
+        // settled, and its completion path is what clears the flag.
+        private static bool SettleIfNothingOutstanding(HookTransitionSlot slot)
         {
-            if (TransitionSlots == null)
+            if (slot.HasActiveOwner || slot.IsAsyncInFlight || slot.HasQueuedWork)
             {
-                return;
+                return false;
             }
-            foreach (var slot in TransitionSlots)
-            {
-                if (slot.HasActiveOwner)
-                {
-                    slot.HasQueuedWork = true;
-                }
-            }
+            var wasPending = slot.IsPending;
+            slot.IsPending = false;
+            return wasPending;
         }
 
         /// <summary>
         /// Opens the window <c>FiberRenderer.SubsumeFiberIntoThisPass</c>'s settle reads, resetting both records it
-        /// consumes: which lanes the render asks for again, and which transition slots queue writes inside
-        /// it. Everything queued before the window is what that render satisfies.
+        /// consumes: which lanes the render asks for again, and which transition slots enrolled work here.
+        /// Everything queued before the window is what that render satisfies, so the settle runs ahead of the
+        /// render — as it does in <c>FiberWorkLoop.FlushState</c>, whose commit render is likewise the one
+        /// that observes <c>isPending</c> already false.
         /// </summary>
         /// <remarks>
         /// <see cref="Lanes"/> is left unallocated on purpose — a fiber with no <see cref="LaneState"/> has
@@ -451,14 +516,7 @@ namespace Velvet
         internal void OpenSubsumedRenderWindow()
         {
             Lanes?.LanesRequestedSinceReset.Clear();
-            if (TransitionSlots == null)
-            {
-                return;
-            }
-            foreach (var slot in TransitionSlots)
-            {
-                slot.HasQueuedWork = false;
-            }
+            DischargeTransitionEnrolments();
         }
 
         /// <summary>
@@ -476,41 +534,26 @@ namespace Velvet
             foreach (var slot in TransitionSlots)
             {
                 slot.OwnerGeneration++;
-                slot.HasActiveOwner = false;
-                slot.IsAsyncInFlight = false;
-                slot.HasQueuedWork = false;
+                slot.OwnerDepth = 0;
+                slot.AsyncOwnerDepth = 0;
+                ClearTransitionEnrolments(slot);
                 slot.IsPending = false;
             }
         }
 
-        // Read-only: the paired increment and decrement go through the LaneState the scope holds, so that a
-        // disposal inside the callback cannot make the exit allocate a replacement to record on.
-        internal int TransitionCallDepth => Lanes?.TransitionCallDepth ?? 0;
-
-        /// <summary>
-        /// True while any <see cref="Hooks.UseTransition"/> slot on this fiber has an async action between
-        /// its callback returning and that task completing. Derived from the per-slot
-        /// <c>IsAsyncInFlight</c> flags rather than counted separately, so the settle sweep
-        /// (<see cref="ClearAllTransitionPending"/>) and the lane classification in
-        /// <c>FiberWorkLoop.RequestRenderFromHook</c> cannot disagree about which transitions are live.
-        /// </summary>
-        internal bool HasAsyncTransitionInFlight
+        // Unwinds both sides of the enrolment record, so no fiber is left holding a slot that has stopped
+        // waiting on it.
+        private static void ClearTransitionEnrolments(HookTransitionSlot slot)
         {
-            get
+            if (slot.EnrolledFibers == null)
             {
-                if (TransitionSlots == null)
-                {
-                    return false;
-                }
-                foreach (var slot in TransitionSlots)
-                {
-                    if (slot.IsAsyncInFlight)
-                    {
-                        return true;
-                    }
-                }
-                return false;
+                return;
             }
+            foreach (var fiber in slot.EnrolledFibers)
+            {
+                fiber.EnrolledTransitionSlots?.Remove(slot);
+            }
+            slot.EnrolledFibers.Clear();
         }
 
         internal int TransitionStarvationCounter
