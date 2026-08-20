@@ -107,10 +107,15 @@ def note_asked(now=None):
 
 
 def asked_ago(now=None):
-    """Seconds since something last asked, or None when no stamp is readable."""
+    """Seconds since something last asked, or None when no stamp is readable.
+
+    A file that is not text is one of the unreadable kinds rather than a reason to raise: this is
+    read at the top of every poll, so raising here ends a watcher at its first, and the command a
+    guard names as the way out of a refusal is the one that would keep failing.
+    """
     try:
         text = ASKED.read_text(encoding="utf-8")
-    except OSError:
+    except (OSError, UnicodeDecodeError):
         return None
     return stamp_age(text, time.time() if now is None else now)
 

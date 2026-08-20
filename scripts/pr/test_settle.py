@@ -389,6 +389,12 @@ class HeartbeatDuringAPollTests(unittest.TestCase):
 CLOCK_START = 100000
 
 
+# The staleness window in seconds, written out rather than spelled from `watcher_state.STALE_AFTER`:
+# an arrangement naming the symbol moves with a change to it, and this branch made that width decide
+# a second file besides the heartbeat.
+STALE_SECONDS = 180
+
+
 class FakeClock:
     """Time that moves only when the watcher sleeps, so a poll cycle costs no wall clock.
 
@@ -458,7 +464,9 @@ def watch_until(between_polls=None, asked=None, listing_answers=True, seed_ready
             # The clock the watcher reads is fabricated, so the record's own timestamp is set to
             # match it rather than to whatever the filesystem would have written.
             os.utime(ready_state, (seed_ready_at, seed_ready_at))
-        if seed_asked is not None:
+        if isinstance(seed_asked, bytes):
+            (Path(directory) / "asked").write_bytes(seed_asked)
+        elif seed_asked is not None:
             (Path(directory) / "asked").write_text(f"{int(seed_asked)}\n", encoding="utf-8")
         with fabricated_readings({1: fabricate(1)} if states is None else states) as stack:
             for name in ("READY_STATE", "HEARTBEAT", "LOCK", "ASKED"):
@@ -564,13 +572,14 @@ class RetirementTests(unittest.TestCase):
     def test_Given_AReadyRecordWrittenOutsideTheWindow_When_OneStarts_Then_ThatAgeIsNotCarried(self):
         # Arrange — a record older than the staleness window is one nothing polled through, so the
         # pull request may have left the ready set and returned inside it; one dated ahead of the
-        # clock would sit inside the window for as long as it stayed ahead. The first arm is here
-        # because the other two alone would pass on a watcher that carried nothing at all.
+        # clock would sit inside the window for as long as it stayed ahead. The two arms a second
+        # apart are the window's own edge, and the inner one is what goes red on a watcher that
+        # carried nothing at all.
         seeded = f"1 {CLOCK_START - 900}\n"
-        carried = (watch_until(seed_ready=seeded, seed_ready_at=CLOCK_START).ready.split(),
+        carried = (watch_until(seed_ready=seeded,
+                               seed_ready_at=CLOCK_START - STALE_SECONDS + 1).ready.split(),
                    watch_until(seed_ready=seeded,
-                               seed_ready_at=CLOCK_START - settle.watcher_state.STALE_AFTER
-                               ).ready.split(),
+                               seed_ready_at=CLOCK_START - STALE_SECONDS).ready.split(),
                    watch_until(seed_ready=seeded, seed_ready_at=CLOCK_START + 9000).ready.split())
 
         # Act / Assert — a dropped age is redated to the run's own start.
@@ -583,6 +592,15 @@ class RetirementTests(unittest.TestCase):
         # age it is negative, which is younger than any interval, so a watcher that believed it
         # would poll for as long as the stamp stays ahead — the shape this branch exists to remove.
         watched = watch_until(seed_asked=CLOCK_START + 14400)
+
+        # Act / Assert
+        self.assertEqual(watched.code, 0)
+
+    def test_Given_ARecordOfTheLastReadThatIsNotText_When_OneStarts_Then_ItStartsAnyway(self):
+        # Arrange — read at the top of every poll rather than once, so raising here ends a watcher
+        # at its first, and the command the guards name as the way out of a refusal is the one that
+        # would keep failing. The sibling case covers the ready record, one `try` block away.
+        watched = watch_until(seed_asked=b"\xff\xfe1787240000\n")
 
         # Act / Assert
         self.assertEqual(watched.code, 0)
