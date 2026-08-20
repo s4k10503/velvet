@@ -48,10 +48,12 @@ namespace Velvet.Tests
             // Act
             var reported = written.Except(Ignored(written)).OrderBy(path => path, StringComparer.Ordinal);
 
-            // Assert — the count rides along because a framework source this fixture cannot read yields
-            // no path, and an empty set has nothing left reporting as untracked.
+            // Assert — the count rides along because a reading that yields no path leaves an empty set,
+            // and an empty set has nothing left reporting as untracked.
             Assert.That((written.Count, string.Join("\n", reported)), Is.EqualTo((2, string.Empty)),
-                $"a PlayMode run writes these and {IgnoreFile} leaves them reporting as untracked");
+                written.Count == 0
+                    ? $"no bootstrap scene path came out of {TestFrameworkPackage}, so none was put to {IgnoreFile}"
+                    : $"{IgnoreFile} leaves a path a PlayMode run writes into {AssetsRoot}/ reporting as untracked");
         }
 
         // GREEN_ON_BASE(characterization): the sample tree the narrow rule leaves visible, which an
@@ -67,7 +69,9 @@ namespace Velvet.Tests
 
             // Assert — the count rides along because an empty walk reports nothing hidden.
             Assert.That((carried.Count > 0, string.Join("\n", hidden)), Is.EqualTo((true, string.Empty)),
-                $"{IgnoreFile} hides what this repository ships under {AssetsRoot}/");
+                carried.Count == 0
+                    ? $"no file came out of the walk of {AssetsRoot}/, so none was put to {IgnoreFile}"
+                    : $"{IgnoreFile} hides a file found under {AssetsRoot}/");
         }
 
         /// <summary>The paths a PlayMode run puts in the working tree, as the framework spells them.</summary>
@@ -109,6 +113,10 @@ namespace Velvet.Tests
         }
 
         /// <summary>What is left under <c>Assets/</c> once the OS's files and a run's are set aside.</summary>
+        /// <remarks>
+        /// Walked on disk rather than read from <c>git ls-files</c>, which would have to read this
+        /// checkout's own repository — the reading <see cref="Ignored"/> is built to avoid.
+        /// </remarks>
         private static IReadOnlyCollection<string> Carried()
         {
             var root = Path.GetFullPath(AssetsRoot);
