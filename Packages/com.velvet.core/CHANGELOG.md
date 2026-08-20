@@ -224,11 +224,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   It also let the container it had left take it down: where the arriving container is reconciled first
   and the departing one leaves the tree in that same render, the departing subtree's teardown still
   found the carried component named as living inside it and ran its cleanups.
-  Two components at the same unkeyed position in *different* containers still share one instance where
-  both containers sit in the declaring component's own tree, which is a separate defect; what changes
-  for them is which of the two containers goes stale, since the shared instance's slot index already
-  named the last one reconciled and its container now agrees. Give each an explicit `key:` to keep them
-  apart.
 - A `V.Component` written inside a `V.Portal` now survives a patch of that portal's children. Its mount
   ran in the deferred pass that follows the reconcile, which registered it under a different parent from
   the one every later patch looks it up by, so the first patch failed to find it: the component was
@@ -249,12 +244,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   into the old one, instead of leaving them writing into an element the UI has replaced. A
   `"modal-root"` that a screen owns — torn down on navigation and re-registered from the rebuilt
   screen's `refCallback` — used to leave every live portal's children on the destroyed element, with
-  no warning and no way back short of changing the id or the key. The move is an unmount and a
-  remount, the same as a changed `createPortal` container, so state, refs and effects under the portal
-  do not survive it. Registering the same element again, and unregistering the id, still leave a live
-  portal exactly where it is. A portal declared before its id existed follows the same signal: its
-  children now appear on the first registration, where they used to wait for an unrelated re-render of
-  the declaring component and stay invisible until one happened.
+  no way back short of remounting the portal. `Register`'s overwrite warning fires only where the id
+  is still registered, and Velvet unregisters no portal target of its own; neither the warning nor
+  its absence reported the portals left behind on the element the id no longer named. The move is an
+  unmount and a remount, the same as a changed `createPortal` container, so state, refs and effects
+  under the portal do not survive it. Registering the same element again, and unregistering the id,
+  still leave a live portal exactly where it is. A portal declared before its id existed follows the
+  same signal: its children now appear on the first registration, where they used to wait for an
+  unrelated re-render of the declaring component and stay invisible until one happened.
 - A portal that resolved its id late no longer writes over the container's own first child. It
   recorded its range from slot 0 while the id was unregistered and never rebased it, so the healing
   patch reconciled its first child against whatever the container already held — an overlay root with
