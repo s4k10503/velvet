@@ -1500,7 +1500,8 @@ class PythonSurfaceReachTests(unittest.TestCase):
         self.assertFalse(found)
 
     def test_Given_TheNameSpelledByTheFixturesSetUp_When_ACaseIsRead_Then_ThatIsEvidence(self):
-        # Arrange -- the case body reaches nothing the branch added, and its setUp reaches it for it.
+        # Arrange -- the case body reaches nothing the branch added; the setUp its fixture shares
+        # reaches the name on its behalf.
         # Act
         found = self.read("import unittest\n"
                           "from notes import ADDED, OPEN\n\n\n"
