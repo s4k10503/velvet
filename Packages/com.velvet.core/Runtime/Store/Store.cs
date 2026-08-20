@@ -107,9 +107,9 @@ namespace Velvet
         // component is treated as a no-op, so a setState after disposal is silently ignored rather than
         // throwing.
         //
-        // Reference (Object.is) equality is used deliberately: a value-equal but distinct record instance must
-        // still notify subscribers. EqualityComparer<T>.Default would invoke record value-equality and suppress
-        // the notification, which is not the intended behavior.
+        // Object.is equality is used deliberately: where the snapshot is a record, a value-equal but distinct
+        // instance must still notify subscribers, and EqualityComparer<T>.Default would invoke the record's
+        // value-equality and suppress the notification.
         private bool TryApply(Func<TState, TState> updater, bool force)
         {
             if (_disposed) return false;
@@ -203,7 +203,7 @@ namespace Velvet
         /// <param name="observer">Invoked with <c>(currentSlice, previousSlice)</c> on each change. Must not be null.</param>
         /// <param name="comparer">
         /// Equality comparer that decides whether two consecutive slices are equal. Defaults to
-        /// reference (Object.is) equality, the same default used by <see cref="Hooks.UseStore{TStore,TSel}"/>.
+        /// <c>Object.is</c> equality, the same default used by <see cref="Hooks.UseStore{TStore,TSel}"/>.
         /// Pass <see cref="StoreShallowEqualityComparer.Sequence{TItem}"/> to compare sequence slices
         /// element-by-element instead.
         /// </param>
