@@ -10,8 +10,8 @@ namespace Velvet.Tests
     /// <list type="bullet">
     /// <item>The deps overload returns the same computed value across renders while the dependency array stays
     /// equal, and recomputes a new value when any dependency changes.</item>
-    /// <item>Dependencies are compared by reference identity: a fresh-but-content-equal reference-type dependency
-    /// counts as changed and recomputes.</item>
+    /// <item>Dependencies are compared under <c>Object.is</c>: a fresh-but-content-equal <c>record class</c>
+    /// dependency counts as changed and recomputes.</item>
     /// <item>The no-deps overload (<c>UseMemo&lt;T&gt;(Func&lt;T&gt;)</c>) is unmemoized: it recomputes on every render.</item>
     /// <item>An explicit null dependency array declares no dependency list at all, so it recomputes too.</item>
     /// <item>A null factory raises an <see cref="ArgumentNullException"/>.</item>

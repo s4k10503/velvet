@@ -2,15 +2,11 @@ using System.Collections.Generic;
 
 namespace Velvet
 {
-    // Identity-equality predicate used for Provider value change detection and hook dependency
-    // comparison. Reference types compare by reference; value types compare by value, with the
-    // special-number handling described below.
-    // Reference types are compared by object.ReferenceEquals, EXCEPT
-    // string, which compares by value (ordinal) — strings are treated as primitives,
-    // so a content-equal but freshly-built string bails. float and double are compared by raw
-    // bit pattern so that NaN equals itself and +0 does not equal -0. Other value types
-    // fall back to EqualityComparer<T>.Default because their boxed identity is unstable on
-    // every call boundary.
+    // Object.is predicate behind Provider change detection, the UseState / Store bail and hook
+    // dependency comparison. float and double compare by raw bit pattern, so NaN equals itself and
+    // +0 does not equal -0; string by ordinal content, so a freshly built but content-equal one
+    // bails; any other value type by its own equality, because boxing hands it a fresh identity at
+    // every call boundary; any other reference type by instance.
     internal static class ObjectIs
     {
         public static bool AreEqual<T>(T a, T b)
@@ -33,10 +29,6 @@ namespace Velvet
 
             if (typeof(T) == typeof(string))
             {
-                // Strings are treated as primitives, so compare by value — otherwise a dynamically-built but
-                // content-equal string (interpolation / concat / Format) would never bail and a UseState /
-                // UseStore / Provider holding it would re-render every time. This matches the boxed
-                // AreEqualObjects path. Handles nulls (string.Equals(null, null) is true).
                 return string.Equals((string?)(object?)a, (string?)(object?)b, System.StringComparison.Ordinal);
             }
 
@@ -52,14 +44,12 @@ namespace Velvet
             return EqualityComparer<T>.Default.Equals(a, b);
         }
 
-        // Boxed-operand variant of AreEqual<T> for callers that only hold
-        // object references (e.g. per-property shallow comparison over a
-        // record's reflected members, where the static element type is erased).
-        // Reference types compare by object.ReferenceEquals.
-        // float / double compare by raw bit pattern (NaN equals itself, +0 does
-        // not equal -0). Other value types compare by their boxed object.Equals,
-        // which for primitives and record members yields the same result as
-        // EqualityComparer<T>.Default without per-call delegate allocation.
+        // Boxed-operand variant, for a comparison whose static type is erased to object by the time it
+        // gets here — a props type's reflected members, a dependency-array element, a sequence's
+        // elements. Same branches, selected from the operands' runtime type rather than from T.
+        // Do not reroute this through AreEqual<T>: an operand whose static type is object lands on the
+        // reference branch there and on its runtime type's branch here, so a boxed value type and a
+        // rebuilt string both change answer. ObjectIsTests pins both.
         public static bool AreEqualObjects(object? a, object? b)
         {
             if (ReferenceEquals(a, b))
@@ -92,10 +82,6 @@ namespace Velvet
 
             if (type == typeof(string))
             {
-                // Strings are treated as primitive values: two content-equal strings are equal regardless of
-                // instance identity. C# strings are reference types, so compare by value (otherwise a
-                // dynamically-built but content-equal string prop would never bail). This matches the
-                // generic AreEqual<string> path.
                 return string.Equals((string)a, (string)b, System.StringComparison.Ordinal);
             }
 
@@ -104,18 +90,11 @@ namespace Velvet
                 return a.Equals(b);
             }
 
-            // Other reference-type members follow reference-identity semantics: the comparison is
-            // shallow per-prop and never recurses into nested object identity.
+            // No recursion into the operands' contents: two distinct instances are unequal however
+            // their members compare.
             return false;
         }
 
-        // Element-wise identity comparison of two dependency arrays. Returns true when both
-        // refer to the same instance, and false when either is null or the lengths differ. Each pair
-        // of elements is compared by AreEqualObjects, so reference-type elements bail only on
-        // reference identity and a fresh-but-equal record instance counts as changed — the same strictness
-        // the reconciler and Provider apply when deciding to re-render. This is the comparer the inner
-        // component memo keys on, so a cached VNode is reused only when every captured input is identity-equal
-        // to the committed one.
         public static bool AreEqualDeps(object?[]? a, object?[]? b)
         {
             if (ReferenceEquals(a, b))
@@ -145,9 +124,9 @@ namespace Velvet
         }
     }
 
-    // IEqualityComparer<T> wrapper around ObjectIs.AreEqual<T> so the
-    // identity-equality semantics can be passed to hook APIs that take an explicit comparer
-    // (UseStore / UseDeferredValue). The reused static instance avoids per-call allocation.
+    // IEqualityComparer<T> wrapper around ObjectIs.AreEqual<T> for the two APIs that take an
+    // explicit comparer, Hooks.UseStore and Store.Select. The reused static instance avoids
+    // per-call allocation.
     internal sealed class ObjectIsEqualityComparer<T> : IEqualityComparer<T>
     {
         public static readonly ObjectIsEqualityComparer<T> Instance = new();
