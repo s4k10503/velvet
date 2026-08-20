@@ -48,10 +48,12 @@ behind it. Which file is picked off the editor log, over every carried file rath
 ones holding cases, since a shared helper takes its whole assembly down with it. A runner that hands
 back a results file and nothing else takes one round, and a compile failure there is an empty
 directory -- which is what an editor that never started leaves as well. So the Python lane's
-comparison is taken statically before that round: a carried file spelling a name that no C# source
-of the base spells, and that a file the branch changed and does not carry does, cannot resolve
-there, and it is withdrawn ahead of the run rather than behind an error list that round will not
-produce. What the comparison cannot reach -- a signature the branch changed under a name both trees
+comparison is taken statically before that round: `unbuildable_on_base` withdraws a carried file
+spelling a name the base has not got and a production file the branch changed does have, ahead of
+the run rather than behind an error list that round will not produce. That withdrawal is a static
+approximation of what a compiler would say, so it does not outlive the round it stands beside: one
+that wrote no results file takes its platform down, withdrawals included. What the
+comparison cannot reach -- a signature the branch changed under a name both trees
 spell -- leaves a run that measured nothing, which fails, and the refusal names the loop that
 separates it.
 
@@ -1014,29 +1016,33 @@ def module_relative(case, module):
     return Path(case.path).parent.joinpath(*module.split(".")).with_suffix(".py")
 
 
-def accepted_keywords(text, function):
-    """Every keyword a module's definitions of `function` accept, `**kwargs` included."""
+def takes_keyword(text, function, keyword):
+    """Whether a module's definitions of `function` accept `keyword`.
+
+    A `**kwargs` catch-all accepts every keyword, so any definition carrying one answers yes.
+    Recording the catch-all's own name in a set of accepted keywords instead reads a base that would
+    have taken the call as one that could not, which credits the branch with a surface it did not
+    add.
+    """
     try:
         tree = ast.parse(text)
     except SyntaxError:
-        return set()
-    names = set()
+        return False
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == function:
             taken = node.args
-            names.update(argument.arg for argument in
-                         taken.posonlyargs + taken.args + taken.kwonlyargs)
-            if taken.kwarg:
-                names.add(taken.kwarg.arg)
-    return names
+            if taken.kwarg or any(argument.arg == keyword for argument in
+                                  taken.posonlyargs + taken.args + taken.kwonlyargs):
+                return True
+    return False
 
 
 def added_keyword(output, base_tree, branch_tree, case):
     """Whether the call that raised named a parameter the branch added to a sibling of the case.
 
     A parameter is a surface the same way a name is, and the exception is the only place Python says
-    so -- the trace names the caller, so which module holds the definition is read by looking, over
-    the siblings `module_relative` resolves against. One base-side definition accepting the keyword is
+    so -- the trace names the caller, never the callee's module, so which one holds the definition is
+    read by looking, over the case's own directory. One base-side definition accepting the keyword is
     enough to refuse: the reading has to be that the base could not have taken this call, not that
     some module somewhere could not.
     """
@@ -1048,14 +1054,12 @@ def added_keyword(output, base_tree, branch_tree, case):
     found = False
     for module in sorted((branch_tree / directory).glob("*.py")) if (
             branch_tree / directory).is_dir() else []:
-        relative = directory / module.name
-        base = base_tree / relative
-        if keyword in accepted_keywords(
-                base.read_text(encoding="utf-8", errors="replace") if base.is_file() else "",
-                function):
+        base = base_tree / directory / module.name
+        if takes_keyword(base.read_text(encoding="utf-8", errors="replace") if base.is_file()
+                         else "", function, keyword):
             return False
-        found = found or keyword in accepted_keywords(
-            module.read_text(encoding="utf-8", errors="replace"), function)
+        found = found or takes_keyword(
+            module.read_text(encoding="utf-8", errors="replace"), function, keyword)
     return found
 
 
@@ -1100,8 +1104,13 @@ def names_in(text):
     return set(IDENTIFIER.findall(text))
 
 
-def csharp_names(tree, skip=()):
-    """Every identifier the tree's C# sources spell, over the files `skip` does not name.
+def csharp_names(tree, carried=()):
+    """Every identifier the C# files the base tree holds spell, each read as the base commit wrote it.
+
+    `carried` names the files whose text on disk is the branch's, which is the text being judged:
+    each is read back out of the commit instead. Leaving them out altogether asks a different
+    question -- whether the branch spelled a name occurring in no *other* file -- and answers yes to
+    an identifier the fixture declared before this branch, which the base builds perfectly well.
 
     Raw rather than masked, and that asymmetry is the point: on the base this decides that a name is
     *present*, so counting a comment's spelling suppresses a withdrawal that a masked read would have
@@ -1110,7 +1119,12 @@ def csharp_names(tree, skip=()):
     """
     found = set()
     for relative in git(tree, "ls-files").stdout.splitlines():
-        if not relative.endswith(".cs") or relative in skip:
+        if not relative.endswith(".cs"):
+            continue
+        if relative in carried:
+            held = held_at(tree, "HEAD", relative)
+            if held is not None:
+                found |= names_in(held)
             continue
         path = tree / relative
         if path.exists():
@@ -1122,11 +1136,10 @@ def added_csharp_surface(text, base_names, added_names):
     """The name a carried C# file spells that the base has not got, or None.
 
     `added_python_surface` reads the same fact off a traceback, which C# leaves nowhere a single round
-    can reach -- the module docstring owns why. What is left is the comparison itself. A name absent
-    from every C# source of the base cannot resolve there, so a carried file spelling one does not
-    build; requiring the branch to spell it too, in a file it changed and does not carry, is what
-    keeps a name that lives in a binary rather than in this repository from reading as one the branch
-    added.
+    can reach -- the module docstring owns why. What is left is the comparison itself, and
+    `csharp_names` owns what "the base has not got" is read over. Requiring the branch to spell the
+    name too, in a file it changed and does not carry, is what keeps a name that lives in a binary
+    rather than in this repository from reading as one the branch added.
     """
     return next((name for name in sorted(names_in("\n".join(code_lines(text))) & added_names)
                  if name not in base_names), None)
@@ -1147,7 +1160,7 @@ def unbuildable_on_base(project, since, base_tree, carry):
                 source.read_text(encoding="utf-8", errors="replace"))))
     if not added:
         return {}
-    base_names = csharp_names(base_tree, skip=carry)
+    base_names = csharp_names(base_tree, carried=carry)
     found = {}
     for relative in carry:
         if kind_of(relative) != "csharp":
@@ -1409,14 +1422,16 @@ def report(cases, control, reported, canaries=None, wrote=True, unbuildable=None
            single_round=None):
     """Prints each case's verdict and returns the ones that fail the run.
 
-    `wrote` is whether the run produced a results file at all, and it is read before anything in it.
-    A run that wrote nothing measured nothing, and the verdict for a case nothing measured is not
-    COULD_NOT_COMPILE -- that reading says the base built the rest and not this, which takes a base
-    that built something.
+    `wrote` is whether the run produced a results file at all, and it outranks everything below it,
+    `unbuildable` included. COULD_NOT_COMPILE off the run says the base built the rest and not this,
+    which takes a base that built something; COULD_NOT_COMPILE off `unbuildable` is a static
+    approximation of a compiler question, accepted only beside a round that got as far as writing.
+    A branch whose every changed case sits in a withdrawn file would otherwise pass on a licence
+    failure, an editor crash or a timeout.
 
-    `unbuildable` is the exception, and it is read before `wrote` for the reason `added_python_surface`
-    is read before a Python case's outcome: the file was proven branch-only and taken out before the
-    run, so no round of any length was ever going to name it.
+    `unbuildable` outranks the rest of them, for the reason `added_python_surface` is read before a
+    Python case's outcome: the file was taken out before the run, so a verdict off what that run said
+    under its fixture name is a verdict about the base's own text standing in its place.
 
     `single_round` is the merge base when this invocation decided from one round it did not itself
     run, and absent when the loop below it ran to a fixed point here -- which is what the remedy the
@@ -1425,13 +1440,16 @@ def report(cases, control, reported, canaries=None, wrote=True, unbuildable=None
     unsound = unsound_fixtures(control, reported)
     withdrawn = unsound_platforms(canaries or {}, reported)
     unbuildable = unbuildable or {}
+    unmeasured = {}
     if not wrote:
-        for platform in {platform_of(case.path) for case in cases
-                         if kind_of(case.path) == "csharp"}:
-            withdrawn[platform] = "the run wrote no results file, so nothing was measured"
+        unmeasured = {platform: "the run wrote no results file, so nothing was measured"
+                      for platform in {platform_of(case.path) for case in cases
+                                       if kind_of(case.path) == "csharp"}}
     ran = fixtures_that_ran(reported)
     for case in cases:
-        if case.path in unbuildable:
+        if measured_by(case.path) in unmeasured:
+            case.verdict, case.detail = BASE_UNSOUND, unmeasured[measured_by(case.path)]
+        elif case.path in unbuildable:
             case.verdict, case.detail = COULD_NOT_COMPILE, "the base has no {}".format(
                 unbuildable[case.path])
         elif case.fixture in unsound:
@@ -1638,9 +1656,10 @@ def main():
         Path(args.emit).write_text(
             json.dumps(as_plan(since, cases, control, shared, canaries, unbuildable), indent=2))
         # The fixtures, not the cases: a run over the fixture brings the control cases with it, and
-        # they are what says whether the tree it built can answer at all. A withdrawn file's are left
-        # out, since what stands in its place is the base's own text under the same fixture names --
-        # answering for cases whose bodies this branch wrote.
+        # they are what says whether the tree it built can answer at all. A withdrawn file's is left
+        # out because `report` decides its cases without reading any of them -- what stands in its
+        # place is the base's own text under the same fixture name, so the round would be spent on a
+        # result nothing consults.
         wanted = {case.fixture for case in cases + control if kind_of(case.path) == "csharp"
                   and case.path not in unbuildable
                   and (not args.platform or platform_of(case.path) in args.platform)}

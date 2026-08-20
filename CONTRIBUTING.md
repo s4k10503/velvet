@@ -261,8 +261,10 @@ of what goes wrong with a run like this ends in a reading nobody took, and a rea
 a pass. So a case that passes on the base fails the check, while a surface that only the branch
 provides is evidence that the case depends on the change. C# reports that as a compile failure, which
 takes its whole assembly down and, where no second round is available, leaves no error list to read:
-so a carried C# file is also compared statically, and one spelling a name that no C# source of the
-base spells and that a file the branch changed and does not carry does is withdrawn before the run.
+so a carried C# file is also compared statically, and one spelling a name the base has not got and a
+production file the branch changed does have is withdrawn before the run. That reading is a static
+approximation of a compile failure, so it does not survive a run that wrote nothing — the platform
+goes down with the round, withdrawals included.
 Python reports it while loading or running, so the gate accepts it only when static comparison proves
 that the named repository file, sibling module, top-level name or callee's keyword parameter is absent
 on the base and present on the branch. An argument *count* is not among them: a call the base refuses
