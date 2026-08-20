@@ -40,12 +40,12 @@ namespace Velvet
         // without scanning _inlineInstances (and without the re-entrant dictionary-mutation hazard when
         // FiberRenderer.Dispose recursively triggers disposal during descendant cleanup).
         private readonly Dictionary<ComponentFiber, HashSet<ComponentFiber>> _parentToInlineFibers = new();
-        // Interns the boxed (identity, index) position key that keys an unkeyed inline ComponentNode in
-        // _inlineInstances. The walkers that derive these keys (ExpandInlineRecursive, the context
-        // spine-rewalk) reuse one box per position instead of allocating a fresh box on every pass.
-        // Sharing is equality-safe because position keys are only ever compared by content, never by
-        // reference. Bounded by (distinct identities x sibling count); cleared in Dispose like the indexes.
-        internal Dictionary<(object identity, int index), object> InlinePositionKeyBoxes { get; } = new();
+        // Interns the boxed position key that keys an unkeyed inline ComponentNode in _inlineInstances.
+        // The walkers that derive these keys (ExpandInlineRecursive, the context spine-rewalk) reuse one
+        // box per position instead of allocating a fresh box on every pass. Sharing is equality-safe
+        // because position keys are only ever compared by content, never by reference. Bounded by the
+        // tree positions the walk reaches; cleared in Dispose like the indexes.
+        internal Dictionary<(long slotPath, int nodeIndex), object> InlinePositionKeyBoxes { get; } = new();
 
         // Wrapper-mounted fibers (Velvet divergence: Outlet route mounts / V.List items own a dedicated
         // wrapper VE) anchor on that VisualElement. identity disambiguates an identity swap on the same

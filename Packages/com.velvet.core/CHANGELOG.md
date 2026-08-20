@@ -331,6 +331,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   where v5 dispatches it, so a handler no longer reads its own call's outcome and `Data` stands only
   under `Status == Success`.
 
+- A component keeps its own state when a sibling written as `cond ? node : null` stops rendering. An
+  unkeyed component written inline among siblings was keyed by how many components of its identity the
+  walk had passed rather than by the slot it sat in, so a sibling turning to `null` shifted the
+  components of that identity after it onto the slot keys their predecessors held: the second instance
+  re-bound onto the first one's fiber and rendered the first one's state under its own props, while the
+  fiber it should have kept was disposed in its place. No remount marked the change — the component
+  kept rendering and the state was simply the wrong instance's. The dropped sibling now unmounts and
+  the ones after it keep their slots, which is what React does with the same tree.
+  Three neighbouring shapes moved with it, each a case of that same count standing in for a position:
+  two different components swapping places among siblings kept each other's state where React remounts
+  both; a fragment gaining a child handed the newcomer the following sibling's instance and remounted
+  that sibling; and a component inside a `V.Suspense`'s children collided with the one at the same
+  index of the body around it, which the duplicate-key guard answered by warning and dropping one of
+  the two. What still does not follow React is a conditional wrapped in an element of its own —
+  `cond ? V.Div(V.Component(Row)) : null` beside a second such `V.Div` — where the element diff patches
+  the surviving wrapper onto the leaving one's element and the component inside it re-binds along with
+  it. A `key:` on those wrappers matches each with itself; the migration guide says so.
+
 ## [2.1.0] - 2026-08-09
 
 ### Highlights

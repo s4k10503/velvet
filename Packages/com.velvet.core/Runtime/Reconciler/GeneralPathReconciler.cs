@@ -144,7 +144,6 @@ namespace Velvet
                 }
 
                 // Live-context walk: emit + commit each new leaf under its ancestor Providers.
-                var positionCounters = pool.RentPositionCounter();
                 var prevFlag = _ctx.ContextValueChanged;
                 var walk = pool.RentInlineWalk();
                 walk.IsNewSide = true;
@@ -156,12 +155,11 @@ namespace Velvet
                 walk.Commit = commit;
                 try
                 {
-                    ExpandInlineRecursive(walk, newChildren, positionCounters, FiberKeying.WalkRoot);
+                    ExpandInlineRecursive(walk, newChildren, FiberKeying.WalkRoot);
                 }
                 finally
                 {
                     _ctx.ContextValueChanged = prevFlag;
-                    pool.ReturnPositionCounter(positionCounters);
                     pool.ReturnInlineWalk(walk);
                 }
 
@@ -566,7 +564,6 @@ namespace Velvet
             if (!needsExpand) return nodes;
 
             var buffer = _ctx.BufferPool.RentNodeList();
-            var positionCounters = _ctx.BufferPool.RentPositionCounter();
             var prevFlag = _ctx.ContextValueChanged;
             var walk = _ctx.BufferPool.RentInlineWalk();
             walk.Result = buffer;
@@ -579,14 +576,13 @@ namespace Velvet
             walk.OldProvidersForPairing = oldProvidersForPairing;
             try
             {
-                ExpandInlineRecursive(walk, nodes, positionCounters, FiberKeying.WalkRoot);
+                ExpandInlineRecursive(walk, nodes, FiberKeying.WalkRoot);
                 return buffer.Count == 0 ? Array.Empty<VNode>() : buffer.ToArray();
             }
             finally
             {
                 if (isNewSide) _ctx.ContextValueChanged = prevFlag;
                 _ctx.BufferPool.ReturnNodeList(buffer);
-                _ctx.BufferPool.ReturnPositionCounter(positionCounters);
                 _ctx.BufferPool.ReturnInlineWalk(walk);
             }
         }
@@ -613,7 +609,6 @@ namespace Velvet
         private void ExpandInlineRecursive(
             InlineWalk walk,
             VNode?[] nodes,
-            Dictionary<object, int> positionCounters,
             WalkPosition position)
         {
             var result = walk.Result;
@@ -632,7 +627,7 @@ namespace Velvet
                         {
                             var childPosition = FiberKeying.FragmentChild(
                                 position, fragment.Key, nodeIndex);
-                            ExpandInlineRecursive(walk, fragment.Children, positionCounters, childPosition);
+                            ExpandInlineRecursive(walk, fragment.Children, childPosition);
                         }
                         break;
                     case ContextProviderNode provider when !isNewSide:
@@ -647,15 +642,15 @@ namespace Velvet
                         {
                             var childPosition = FiberKeying.ProviderChild(
                                 position, provider.Key, nodeIndex);
-                            ExpandInlineRecursive(walk, provider.Children, positionCounters, childPosition);
+                            ExpandInlineRecursive(walk, provider.Children, childPosition);
                         }
                         break;
                     }
                     case ContextProviderNode provider:
-                        ExpandNewSideProvider(walk, provider, positionCounters, position, nodeIndex);
+                        ExpandNewSideProvider(walk, provider, position, nodeIndex);
                         break;
                     case ComponentNode component:
-                        ExpandComponentInline(walk, component, positionCounters, position, nodeIndex);
+                        ExpandComponentInline(walk, component, position, nodeIndex);
                         break;
                     case OutletNode:
                         // Wrapper-emitting node: CreateElement(Outlet) / PatchNode(Outlet) resolve the
@@ -713,7 +708,6 @@ namespace Velvet
         private void ExpandNewSideProvider(
             InlineWalk walk,
             ContextProviderNode provider,
-            Dictionary<object, int> positionCounters,
             WalkPosition position,
             int nodeIndex)
         {
@@ -736,7 +730,7 @@ namespace Velvet
                 {
                     var childPosition = FiberKeying.ProviderChild(
                         position, provider.Key, nodeIndex);
-                    ExpandInlineRecursive(walk, provider.Children, positionCounters, childPosition);
+                    ExpandInlineRecursive(walk, provider.Children, childPosition);
                 }
             }
             finally
@@ -748,7 +742,6 @@ namespace Velvet
         private void ExpandComponentInline(
             InlineWalk walk,
             ComponentNode component,
-            Dictionary<object, int> positionCounters,
             WalkPosition position,
             int nodeIndex)
         {
@@ -759,7 +752,8 @@ namespace Velvet
             // tree, blocking proper re-mount on the next normal render.
             if (_ctx.IsAborted) return;
             var identity = component.ResolvedIdentity;
-            var slotKey = component.Key ?? FiberKeying.ResolveInlinePositionKey(positionCounters, identity, _ctx.ComponentRegistry.InlinePositionKeyBoxes);
+            var slotKey = component.Key ?? FiberKeying.ResolveInlinePositionKey(
+                position, nodeIndex, _ctx.ComponentRegistry.InlinePositionKeyBoxes);
             // The scope member of this component's own registry key. Read at this level and never carried
             // into its output: ExpandFiberPreviousTree pushes the fiber below, which is where the reading
             // stops answering — ReconcilerContext.PortalChildKeyScope owns why that has to be so.
@@ -821,11 +815,10 @@ namespace Velvet
             }
         }
 
-        // The descendants' slotKeys must be scoped to THIS fiber's body output — not shared with the
-        // surrounding siblings' position counters. Otherwise the same descendant would compute different
-        // slotKeys when the enclosing fiber re-renders independently (setState) vs when its outer parent
-        // re-renders (where preceding siblings share the position scope and shift the counters). A registry
-        // lookup mismatch would dispose the descendant fiber and reset its state.
+        // FiberKeying.ComponentChild restarts SlotPath here, so the descendants' slotKeys are scoped to
+        // THIS fiber's body output. Otherwise the same descendant would compute different slotKeys when the
+        // enclosing fiber re-renders independently (setState) vs when its outer parent re-renders. A
+        // registry lookup mismatch would dispose the descendant fiber and reset its state.
         //
         // FiberStack.Push around the recursion is required so that nested inline ComponentNodes encountered
         // while walking fiber.PreviousTree are appended as children of THIS fiber, not the outer caller's
@@ -844,17 +837,15 @@ namespace Velvet
         {
             if (fiber.PreviousTree == null || fiber.PreviousTree.Length == 0) return;
 
-            var childCounters = _ctx.BufferPool.RentPositionCounter();
             _ctx.FiberStack.Push(fiber);
             try
             {
                 var componentPosition = FiberKeying.ComponentChild(position, component.Key, nodeIndex);
-                ExpandInlineRecursive(walk, fiber.PreviousTree, childCounters, componentPosition);
+                ExpandInlineRecursive(walk, fiber.PreviousTree, componentPosition);
             }
             finally
             {
                 _ctx.FiberStack.Pop();
-                _ctx.BufferPool.ReturnPositionCounter(childCounters);
             }
         }
 
@@ -889,7 +880,7 @@ namespace Velvet
             // Recurse under this memo's own scope so a nested Memo's position key (or an inner
             // Component's slot key) cannot collide with this memo's scope — e.g. an outer and an
             // inner unkeyed Memo both at node index 0 would otherwise share cacheKey "{scope}/m0".
-            ExpandInlineScoped(walk, new[] { inner }, innerPosition);
+            ExpandInlineRecursive(walk, new[] { inner }, innerPosition);
         }
 
         // Bumps the propagation generation (only on the first change of this reconcile pass to
@@ -950,22 +941,6 @@ namespace Velvet
             return false;
         }
 
-        // Rent/return pairing around an expansion whose descendants must not share the surrounding
-        // siblings' position counters — the first constraint ExpandFiberPreviousTree states. Nothing is
-        // pushed onto FiberStack here; the caller's current fiber stays the parent.
-        private void ExpandInlineScoped(InlineWalk walk, VNode?[] nodes, WalkPosition position)
-        {
-            var counters = _ctx.BufferPool.RentPositionCounter();
-            try
-            {
-                ExpandInlineRecursive(walk, nodes, counters, position);
-            }
-            finally
-            {
-                _ctx.BufferPool.ReturnPositionCounter(counters);
-            }
-        }
-
         // Wrapper-less Suspense expansion. The Suspense emits no container
         // VisualElement: its children are expanded inline into result so they sit
         // directly in the parent's slot range and, on the new side, render in-scope of any enclosing
@@ -1008,18 +983,13 @@ namespace Velvet
                 {
                     if (suspense.Children is { Length: > 0 })
                     {
-                        var counters = _ctx.BufferPool.RentPositionCounter();
                         try
                         {
-                            ExpandInlineRecursive(walk, suspense.Children, counters, primaryPosition);
+                            ExpandInlineRecursive(walk, suspense.Children, primaryPosition);
                         }
                         catch (FiberSuspendSignal)
                         {
                             suspended = true;
-                        }
-                        finally
-                        {
-                            _ctx.BufferPool.ReturnPositionCounter(counters);
                         }
                     }
                     if (!suspended)
@@ -1051,7 +1021,7 @@ namespace Velvet
                         else if (result!.Count > preCount) result.RemoveRange(preCount, result.Count - preCount);
                         if (suspense.Fallback != null)
                         {
-                            ExpandInlineScoped(walk, new[] { suspense.Fallback }, fallbackPosition);
+                            ExpandInlineRecursive(walk, new[] { suspense.Fallback }, fallbackPosition);
                         }
                     }
                 }
@@ -1072,16 +1042,8 @@ namespace Velvet
                     : (suspense.Children ?? Array.Empty<VNode>());
                 if (nodesToExpand.Length > 0)
                 {
-                    var counters = _ctx.BufferPool.RentPositionCounter();
-                    try
-                    {
-                        ExpandInlineRecursive(walk, nodesToExpand, counters,
-                            wasFallback ? fallbackPosition : primaryPosition);
-                    }
-                    finally
-                    {
-                        _ctx.BufferPool.ReturnPositionCounter(counters);
-                    }
+                    ExpandInlineRecursive(walk, nodesToExpand,
+                        wasFallback ? fallbackPosition : primaryPosition);
                 }
             }
         }
@@ -1922,15 +1884,7 @@ namespace Velvet
             var commit = walk.Commit;
             var startIdx = commit != null ? commit.NewElements.Count : walk.Result!.Count;
             var childPosition = FiberKeying.PresenceChild(presencePosition, key);
-            var counters = _ctx.BufferPool.RentPositionCounter();
-            try
-            {
-                ExpandInlineRecursive(walk, new[] { node }, counters, childPosition);
-            }
-            finally
-            {
-                _ctx.BufferPool.ReturnPositionCounter(counters);
-            }
+            ExpandInlineRecursive(walk, new[] { node }, childPosition);
 
             if (commit != null && commit.NewElements.Count > startIdx)
             {
