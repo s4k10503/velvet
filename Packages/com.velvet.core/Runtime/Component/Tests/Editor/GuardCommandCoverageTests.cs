@@ -158,14 +158,25 @@ namespace Velvet.Tests
             ("gh pr create --title x -Fb.md", "b.md||no"),
             ("gh pr create --title x -dFb.md", "b.md||no"),
             ("gh pr create --title x -dF=b.md", "b.md||no"),
+            // The value in the token after the cluster rather than behind the letter, which is the
+            // one spelling of the three where the walk has to consume an operand it has not reached.
+            ("gh pr create --title x -dF b.md", "b.md||no"),
             ("gh pr create --title x -bhello", "|hello|no"),
             ("gh pr create --title x -dfbhello", "|hello|no"),
             ("gh pr create --title x -dfb=hello", "|hello|no"),
+            ("gh pr create --title x -dfb hello", "|hello|no"),
             ("gh pr create --title x --body-file=b.md", "b.md||no"),
             ("gh pr create --title x --body text", "|text|no"),
             ("gh pr new --title x --body-file b.md", "b.md||no"),
             ("gh pr edit 7 --body text", "|text|no"),
+            ("gh pr edit 7 --title x", "||no"),
             ("gh pr edit 7", "||no"),
+            // A body flag standing where another option's value goes belongs to that option. Reading
+            // a name off any token instead found `b.md` here and asked about a file the command
+            // never names. `scripts/hooks/test_pr_body_flags.py` holds the record of which options
+            // take a value against gh's own table.
+            ("gh pr create --title -F b.md", "||no"),
+            ("gh pr create -t -F b.md", "||no"),
             // A head naming a fork is not read at all, so it neither answers nor disturbs the body.
             ("gh pr create --title x --body-file b.md --head someone:feat/x", "b.md||no"),
             ("cd d && gh pr create --title x --body-file b.md", "b.md||yes"),

@@ -1,13 +1,13 @@
-"""Where a pull-request body is in a `gh pr` invocation, shared by the guards that read one.
+"""Where a pull-request body is in a `gh pr` invocation.
 
-Two guards now read the same description, and the reading is not the obvious one. gh takes a body
-under four flags, lets short flags carry their value attached, and permits boolean shorthand before
-them in the same token. Held in one place so the next spelling is added once rather than to whichever
-guard its author had open.
+The reading is not the obvious one. gh takes a body under four flags, lets a short flag carry its
+value attached, permits boolean shorthand ahead of it in the same token, and gives many another
+option a value of its own that a body flag standing in that place would be mistaken for. Held apart
+from the rule that judges the body so the parse can be posed on its own, which is what
+`scripts/hooks/test_pr_body_flags.py` does.
 
-What is NOT shared is what to do about a body that cannot be read. `read_body_file` names the
-obstruction and stops there: each guard decides whether another guard covers that command or the
-unreadable body must be refused here.
+What is not held here is what to do about a body that cannot be read: `read_body_file` names the
+obstruction and stops, and the remedy for each belongs to the guard that refuses it.
 """
 
 import os
@@ -22,6 +22,11 @@ BODY_FLAGS = ("--body", "-b")
 # None of these opens or updates a pull request, so none of them posts a description.
 EXEMPT_FLAGS = ("--dry-run", "--help", "-h")
 
+# Mirrored from gh's own option table and held against it by `scripts/hooks/test_pr_body_flags.py`,
+# which reads the value-taking set and the boolean shorthands. An earlier revision declined to build
+# the mirror at all, on the ground that an unpinned one drifts — and a drift in either direction
+# ends with no body found, which a guard reports by exiting 0, exactly as it reports a body it read
+# and was satisfied by.
 VALUE_FLAGS = {
     "--add-assignee", "--add-label", "--add-project", "--add-reviewer", "--assignee", "-a",
     "--base", "-B", "--body", "-b", "--body-file", "-F", "--head", "-H", "--label", "-l",
@@ -43,7 +48,14 @@ MOVERS = {"cd", "pushd", "popd"}
 
 
 def options(operands):
-    """Every parsed (option, value), preserving order and excluding positional operands."""
+    """Every parsed (option, value), preserving order and excluding positional operands.
+
+    gh takes a value in more spellings than the obvious one: after the flag, after an `=`, attached
+    to a short flag (`-Fv`), and any of those with boolean shorthand ahead of it in the same token
+    (`-dF v`, `-dFv`, `-dF=v`). A body passed the last way reached none of the checks that read
+    this: the invocation was claimed, no body was found, and the command took the exemption meant
+    for a body that cannot be read. That is the accident these guards exist for, one letter apart.
+    """
     found = []
     index = 0
     while index < len(operands):
@@ -98,12 +110,6 @@ def options(operands):
 def valued(operands, flags):
     """The last value given to one of `flags`, or None.
 
-    Three spellings, because gh takes all three: `--flag v`, `--flag=v`, and `-Fv` — a short flag
-    carrying its value attached. The last was missed, so `-F/tmp/pr-body.md` reached none of the
-    checks that read this: the invocation was claimed, no body was found, and it took the exemption
-    meant for a body that cannot be read. That is the accident these guards exist for, one character
-    apart.
-
     Repeated scalar options use their last value. Options are parsed before names are matched so a
     value belonging to another option is not treated as a body flag.
     """
@@ -118,7 +124,7 @@ def exempted(operands):
 
 
 def effective_body(operands, cwd, after_a_move):
-    """(text, obstruction, file path) for the single body the invocation will post."""
+    """(text, obstruction, file path) for a `--body-file`'s body, or else the inline one."""
     if exempted(operands):
         return None, None, None
     path = valued(operands, BODY_FILE_FLAGS)
@@ -144,7 +150,7 @@ def moves_directory(segment):
 
 
 def invocations(command, *word_sets):
-    """Every (words, operands, after_a_move) in the command running `gh` with one of `word_sets`.
+    """Every (words, operands, after_a_move) `program_invocations` claims for `gh` and `word_sets`.
 
     `after_a_move` rides along because a relative body path means one file to a guard reading it here
     and another to a `gh` that an earlier segment moved, and only the caller knows whether that

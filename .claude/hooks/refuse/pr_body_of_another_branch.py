@@ -2,8 +2,8 @@
 """Refuse a pull-request body that names neither an issue nor a reason for having none.
 
 A change that came straight out of an issue was merged without linking it, so the issue stayed open
-with its work already shipped. CI reads the diff and so does review; what the description itself says
-is read by this and by the sibling that resolves the names in it, and by nothing else.
+with its work already shipped. The body is the one artefact nothing else here checks: CI reads the
+diff and so does review, and the description is whatever the file held.
 
 CONTRIBUTING.md owns the rule; this refuses, it does not define. An answer is a closing or referring
 keyword against a number, or a full issue URL, or a `No issue: <where this came from>` line — a
@@ -54,12 +54,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+# GuardCommandCoverageTests poses its table to this module rather than to the lib, so
+# `BODY_FILE_FLAGS` stays bound here although nothing below reads it.
 from pr_body import (BODY_FILE_FLAGS, BODY_FLAGS, MISSING, RELATIVE_AFTER_MOVE, STDIN,
-                     UNEXPANDED_PATH, UNREADABLE, effective_body, invocations, moves_directory,
-                     valued)
-# GuardCommandCoverageTests drives the parse through this module rather than through the lib, so
-# the two names it calls stay bound here even though `invocations` is what the guard itself uses.
-from shell_commands import command_segments, program_invocations, unexpanded
+                     UNEXPANDED_PATH, UNREADABLE, effective_body, invocations, valued)
+from shell_commands import unexpanded
 
 # Registered on the event in .claude/settings.json rather than narrowed to the agents expected to
 # open pull requests, which would leave every other session unguarded. `HookWiringCoverageTests`
@@ -164,9 +163,14 @@ def check(operands, cwd, after_a_move, command="gh pr create"):
         # from a prompt after this has run, and none of those is text held here to search — so the
         # question goes unasked, which CONTRIBUTING states without this exception.
         return 0
-    if path is not None:
-        return 0 if answered(text) else refuse_command(command, NO_ANSWER)
-    return judge_inline(text, command)
+    if path is None:
+        return judge_inline(text, command)
+    if not answered(text):
+        return refuse_command(command, NO_ANSWER)
+    # Both are judged when both are given: which one gh posts is not something this holds, so an
+    # answer carried only by the one it does not post would be an answer nobody reads.
+    inline = valued(operands, BODY_FLAGS)
+    return 0 if inline is None else judge_inline(inline, command)
 
 
 def main():

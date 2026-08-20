@@ -81,11 +81,14 @@ namespace Velvet.Tests
             ("gh pr create --title x --help --body-file {DIR}/silent.md", "allow"),
             ("gh pr create --title x --help=true --body-file {DIR}/silent.md", "allow"),
             ("gh pr create --title x --dry-run=true --body-file {DIR}/silent.md", "allow"),
-            // Body files take precedence even when an inline body occurs later in the command.
-            ("gh pr create --title x --body-file {DIR}/closes.md "
-             + "--body 'A change to the pooled reset helper.'", "allow"),
             ("gh pr new --fill", "allow"),
+            // `gh pr edit` posts into the same squash message a created description lands in, so it
+            // is asked the same question. An earlier version left it unasked, on the ground that a
+            // guard would then refuse the remedy it hands out — but the remedy is an edit carrying
+            // the answer, which the first row here allows; what the refusal table holds is an edit
+            // that leaves the description silent.
             ("gh pr edit 1 --body-file {DIR}/closes.md", "allow"),
+            ("gh pr edit 1 --title 'A pull request under another name'", "allow"),
             ("gh pr edit 1", "allow"),
             // A head is not read at all now. One naming a fork used to be refused, with the remedy
             // being to pass the head the command had already passed.
@@ -109,7 +112,11 @@ namespace Velvet.Tests
             ("gh pr create --title x --body 'A change to the pooled reset helper.'", "no-origin"),
             ("gh pr create --title x -b 'A change to the pooled reset helper.'", "no-origin"),
             ("gh pr create --title x --web --body-file {DIR}/silent.md", "no-origin"),
+            // Either order: which of the two gh posts is not something the guard holds, so an answer
+            // carried only by the one it does not post would be an answer nobody reads.
             ("gh pr create --title x --body 'Closes #7.' --body-file {DIR}/silent.md", "no-origin"),
+            ("gh pr create --title x --body-file {DIR}/closes.md "
+             + "--body 'A change to the pooled reset helper.'", "no-origin"),
             ("gh pr create --title -h --body-file {DIR}/silent.md", "no-origin"),
             ("gh pr create -t -h --body-file {DIR}/silent.md", "no-origin"),
             ("gh pr create --help=false --body-file {DIR}/silent.md", "no-origin"),
