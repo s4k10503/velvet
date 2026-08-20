@@ -16,6 +16,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import types
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -190,17 +191,17 @@ class MergeDecisionTests(unittest.TestCase):
 
 # One pull request's whole state, so `watch` and `merge` can be posed the same table.
 Fabricated = collections.namedtuple(
-    "Fabricated", "sha after branch draft merge_state results holds_base held fork")
+    "Fabricated", "sha after branch base draft merge_state results holds_base held fork")
 
 PASSING = [{"name": "Required checks (Unity)", "bucket": "pass"}]
 
 
 def fabricate(number, results=PASSING, draft=False, merge_state="clean", holds_base=True,
-              held=False, moved=False, fork=False):
+              held=False, moved=False, fork=False, base="main"):
     sha = str(number).rjust(40, "0")
-    return Fabricated(sha=sha, after=MOVED if moved else sha, branch=f"topic-{number}", draft=draft,
-                      merge_state=merge_state, results=results, holds_base=holds_base, held=held,
-                      fork=fork)
+    return Fabricated(sha=sha, after=MOVED if moved else sha, branch=f"topic-{number}", base=base,
+                      draft=draft, merge_state=merge_state, results=results, holds_base=holds_base,
+                      held=held, fork=fork)
 
 
 @contextlib.contextmanager
@@ -216,9 +217,13 @@ def fabricated_readings(states):
         for name, answer in (
             ("repository", lambda *_: "owner/name"),
             ("open_pull_requests", lambda *_: sorted(states)),
-            ("pull_request", lambda _project, number: settle.PullRequest(
-                states[number].sha, states[number].branch, states[number].draft,
-                states[number].merge_state, states[number].fork)),
+            # The attributes the decision reads, rather than settle.PullRequest itself:
+            # base_red_check.py poses these cases against the merge base as well, and a construction
+            # that raises there reports a case as unanswerable instead of as red.
+            ("pull_request", lambda _project, number: types.SimpleNamespace(
+                sha=states[number].sha, branch=states[number].branch, base=states[number].base,
+                draft=states[number].draft, merge_state=states[number].merge_state,
+                fork=states[number].fork)),
             ("checks", lambda _project, sha: by_sha[sha].results),
             ("head_sha", lambda _project, number: states[number].after),
             ("contains_base", lambda _project, branch, _base: (
@@ -267,7 +272,7 @@ def poll(states, listing_answers=True):
             stack.enter_context(mock.patch.object(settle.time, "sleep", side_effect=Polled))
             stack.enter_context(contextlib.redirect_stdout(printed))
             try:
-                settle.watch(Path("."), "main")
+                settle.watch(Path("."), None)
             except Polled:
                 pass
         # None rather than an empty set when the file was never written: a poll that recorded
@@ -288,7 +293,7 @@ def merge_would_take(states):
     """The pull request numbers `settle.py merge` would find nothing blocking, over the same table."""
     with fabricated_readings(states):
         return {number for number in states
-                if not settle.blocking_reasons(Path("."), number, "main").reasons}
+                if not settle.blocking_reasons(Path("."), number).reasons}
 
 
 class ReadinessTests(unittest.TestCase):
@@ -595,6 +600,62 @@ class HeartbeatTests(unittest.TestCase):
                 yield
 
 
+class PullRequestBaseTests(unittest.TestCase):
+    """Which branch the decision is taken against, once more than one of them takes pull requests.
+
+    Every case above poses a pull request based on `main`, which is why nothing noticed that the
+    base was a constant until a maintenance branch was cut and its release could not be merged.
+    """
+
+    def test_Given_APullRequestBasedOnAMaintenanceBranch_When_ItsReasonsAreRead_Then_TheyNameIt(self):
+        # Arrange
+        states = {1: fabricate(1, base="2.x", holds_base=False)}
+
+        # Act
+        with fabricated_readings(states):
+            decided = settle.blocking_reasons(Path("."), 1, None).reasons
+
+        # Assert
+        self.assertEqual(
+            decided, ["does not contain origin/2.x: merge it in and let the checks run again"])
+
+    def test_Given_PullRequestsOnTwoBases_When_OnePollReadsThem_Then_EachBaseIsAskedOnce(self):
+        # Arrange — the dict a poll carries, which is what keeps N pull requests at one fetch per
+        # base rather than one per pull request.
+        states = {1: fabricate(1), 2: fabricate(2, base="2.x"), 3: fabricate(3)}
+        asked, shared = [], {}
+
+        # Act
+        with fabricated_readings(states) as stack:
+            stack.enter_context(mock.patch.object(
+                settle, "project_state",
+                lambda _project, base: (asked.append(base),
+                                        settle.ProjectState(set(), None))[1]))
+            for number in sorted(states):
+                settle.blocking_reasons(Path("."), number, None, states=shared)
+
+        # Assert
+        self.assertEqual(asked, ["main", "2.x"])
+
+    def test_Given_AnUpdateOfAPullRequestOnAMaintenanceBranch_When_Refused_Then_ItNamesThatBranch(self):
+        # Arrange
+        printed = io.StringIO()
+        refs = {".head.ref": "release/2.1.1", ".base.ref": "2.x"}
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(mock.patch.object(settle, "repository", lambda *_: "owner/name"))
+            stack.enter_context(mock.patch.object(settle, "rest", lambda _path, jq: refs[jq]))
+            stack.enter_context(mock.patch.object(settle, "gh_git", lambda *_: ""))
+            stack.enter_context(mock.patch.object(settle, "contains_base", lambda *_: True))
+            stack.enter_context(mock.patch.object(settle, "worktree_branches", lambda *_: set()))
+            stack.enter_context(contextlib.redirect_stderr(printed))
+
+            # Act
+            settle.update(Path("."), 733, None)
+
+        # Assert
+        self.assertIn("already contains origin/2.x", printed.getvalue())
+
+
 class UpdateReasonsTests(unittest.TestCase):
     """The update side of the same decision: what makes bringing the base in the wrong move."""
 
@@ -809,7 +870,7 @@ class ForkReadingTests(unittest.TestCase):
     """Which two names decide a fork, since getting it wrong makes every pull request one."""
 
     PAYLOAD = {"head": {"sha": GREEN, "ref": "topic", "repo": {"full_name": "Owner/Velvet"}},
-               "base": {"repo": {"full_name": "Owner/Velvet"}},
+               "base": {"ref": "main", "repo": {"full_name": "Owner/Velvet"}},
                "draft": False, "mergeable_state": "clean"}
 
     def read(self, payload, slug):
@@ -859,7 +920,7 @@ def stubbed_readings(head=GREEN, branch="topic", title="A title", body="A body")
     """
     return [mock.patch.object(settle, "repository", lambda *_: "owner/name"),
             mock.patch.object(settle, "blocking_reasons",
-                              lambda *_: settle.Blocking([], head, branch, [])),
+                              lambda *_: settle.Blocking([], head, branch, [], "main")),
             mock.patch.object(settle, "pull_request_text", lambda *_: (title, body))]
 
 
@@ -909,6 +970,23 @@ class MergeRequestTests(unittest.TestCase):
 
         # Act / Assert
         self.assertEqual(deleted, ["topic"])
+
+    def test_Given_AMergeOntoAMaintenanceBranch_When_ItReturns_Then_ItNamesTheBaseItLandedOn(self):
+        # Arrange — the decision runs rather than being stubbed, so the base printed is the one the
+        # pull request named rather than one this case handed in.
+        printed = io.StringIO()
+        with fabricated_readings({592: fabricate(592, base="2.x")}) as stack:
+            stack.enter_context(mock.patch.object(settle, "pull_request_text",
+                                                  lambda *_: ("A title", "A body")))
+            stack.enter_context(mock.patch.object(settle, "gh", lambda *args: ""))
+            stack.enter_context(mock.patch.object(settle, "delete_merged_branch", lambda *_: []))
+            stack.enter_context(contextlib.redirect_stdout(printed))
+
+            # Act
+            settle.merge(Path("."), 592, None, dry_run=False)
+
+        # Assert
+        self.assertIn("squashed onto 2.x", printed.getvalue())
 
     def test_Given_AMergeThatWentThrough_When_ItReturns_Then_ItSaysTheMergeHappened(self):
         # Arrange — a dry run that decided nothing and a merge that landed both exit 0.

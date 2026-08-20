@@ -12,6 +12,22 @@ updates:
         patterns:
           - "*"
 
+  # The same for the maintenance branch, which runs these workflows and pins the same SHAs; the
+  # entry above does not reach it, and `target-branch` is what names it. Actions only: what a
+  # maintenance line takes from here is the pins its own workflows resolve, and anything else it
+  # needs arrives as a backport.
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: "2.x"
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: ci
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+
   # Roslyn source-generator solution (standalone .NET project) — one grouped PR, monthly.
   - package-ecosystem: nuget
     directory: /Packages/com.velvet.core/Generators~

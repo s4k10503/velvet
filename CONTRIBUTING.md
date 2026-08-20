@@ -492,6 +492,16 @@ directory refuses the same probe — otherwise the tool call is guarded by nothi
 the licence-free `source-generators` job rather than beside the fixtures above, which are skipped
 entirely on a checkout with no `UNITY_LICENSE` secret.
 
+A third way is being right about the wrong branch. Two of the preconditions over a merge are asked
+of a base — whether the head contains it, and whether it holds an unpublished release — and both
+named `main` for as long as `main` was the only branch taking pull requests. So the day a
+maintenance line was cut, both refused its release outright and no case disagreed: nothing in the
+repository named a second branch at all. The base is the pull request's own field, read through
+`.claude/hooks/lib/merge_target.py`, and `scripts/hooks/pull_request_base_check.py` poses every
+guard in the directory a pull request based on a branch that is not `main`, in a repository where
+`main` holds both of those things and the named base holds neither. A guard that judges either of
+them against `main` fails it without anybody having remembered to write a case.
+
 The `Stop` guards declare the same policy and are held to one thing more, because blocking was never
 what they got wrong. They blocked, and described the pull requests rather than the reading — so the
 deferral the message invited named the API error instead of whatever the work was waiting on.
@@ -604,8 +614,8 @@ of it — so those commits ship inside the release, undescribed. v2.0.1 spent a 
 merges, and publishing it meant tagging the release commit by hand and dispatching from the tag, since
 dispatching from the branch would have shipped all twelve.
 
-So the window is guarded: `settle.py merge` and `gh pr merge` refuse while it is open, and
-`Test ▸ publication` fails for a pull request whose checks run in it.
+So the window is guarded: `settle.py merge` and `gh pr merge` refuse a pull request based on the
+branch whose window is open, and `Test ▸ publication` fails for one whose checks run in it.
 `scripts/release/published_check.py` decides it and states the repair in its own message.
 
 **A pull request that went green *before* the release landed keeps that result.** This repository sets

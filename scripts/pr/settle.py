@@ -28,7 +28,7 @@ Seven preconditions:
 - **The branch must contain the current base.** `mergeStateStatus` reports CLEAN for a branch whose
   tests never saw a commit that is now on main: GitHub reports BEHIND only where the base requires
   up-to-date heads, which this repository deliberately does not. So the merge-base is compared
-  directly.
+  directly. Which branch that is comes off the pull request, and `--base` overrides it.
 - **No worktree may hold the branch.** The branch is deleted locally after the merge, and a worktree
   holding it makes that delete fail once the merge has already happened — so the branch outlives the
   pull request and has to be swept by hand later, when nothing in the checkout can still tell a
@@ -200,7 +200,7 @@ def head_sha(project, number):
 
 # Everything the decision reads off the pull request itself. `mergeable_state` is on this payload and
 # not on the listing one, so a caller that wants it has to ask per pull request anyway.
-PullRequest = collections.namedtuple("PullRequest", "sha branch draft merge_state fork")
+PullRequest = collections.namedtuple("PullRequest", "sha branch base draft merge_state fork")
 
 
 def pull_request(project, number):
@@ -217,9 +217,10 @@ def pull_request(project, number):
     """
     payload = rest_json("repos/{}/pulls/{}".format(repository(project), number))
     head = payload.get("head") or {}
+    base = payload.get("base") or {}
     home = ((head.get("repo") or {}).get("full_name") or "")
-    base_repository = ((payload.get("base") or {}).get("repo") or {}).get("full_name") or ""
-    return PullRequest(head["sha"], head["ref"], bool(payload.get("draft")),
+    base_repository = ((base.get("repo") or {}).get("full_name") or "")
+    return PullRequest(head["sha"], head["ref"], base["ref"], bool(payload.get("draft")),
                        payload.get("mergeable_state") or "", home != base_repository)
 
 
@@ -327,9 +328,9 @@ def reasons_from(before, after, results, branch, base, holds_base, held_by_workt
         return reasons + [f"head moved from {before[:7]} to {after[:7]} while its checks were being read"]
 
     # Not merely a better message for what the containment reading already blocks. The two readings
-    # are of different base tips: `project_state` fetches once a cycle and this is a fresh read per
-    # pull request, so a branch can contain the tip that fetch saw while GitHub reports a conflict
-    # against a newer one. There the containment reason is absent and this is the only thing
+    # are of different base tips: `project_state` fetches once per base in a cycle and this is a
+    # fresh read per pull request, so a branch can contain the tip that fetch saw while GitHub
+    # reports a conflict against a newer one. There the containment reason is absent and this is the only thing
     # blocking, which is why it is read rather than left to the message.
     #
     # `unknown` is still left out: it is the absence of a reading rather than a reading, and a state
@@ -368,11 +369,11 @@ def reasons_from(before, after, results, branch, base, holds_base, held_by_workt
 
 # What merge needs from the readings besides the verdict: the SHA the checks were read at, which the
 # merge request carries, the branch it deletes afterwards, and the check results, which `watch` prints.
-Blocking = collections.namedtuple("Blocking", "reasons head branch results")
+Blocking = collections.namedtuple("Blocking", "reasons head branch results base")
 
-# The readings that answer for the whole repository rather than for one pull request. Taken once and
+# The readings that answer for a base rather than for one pull request. Taken once per base and
 # handed down, so a watcher poll over N pull requests costs one fetch and one `git ls-remote --tags`
-# rather than N of each.
+# per base rather than N of each.
 ProjectState = collections.namedtuple("ProjectState", "held unpublished_release")
 
 
@@ -383,21 +384,32 @@ def project_state(project, base):
                         published_check.unpublished_reason(project, f"origin/{base}", fetch=False))
 
 
-def blocking_reasons(project, number, base, state=None):
-    """reasons_from, with every reading taken from the repository and the API."""
-    state = project_state(project, base) if state is None else state
+def blocking_reasons(project, number, base=None, states=None):
+    """reasons_from, with every reading taken from the repository and the API.
+
+    `base` names the branch to judge against, and None means the pull request's own.
+
+    `states` carries the per-base readings across one poll. They are per base rather than per
+    repository — a fetch and a tag listing each answer about one — and a poll normally sees a single
+    base, so the cache is what keeps a poll over N pull requests at one fetch rather than N.
+    """
     before = pull_request(project, number)
+    target = base or before.base
+    states = {} if states is None else states
+    if target not in states:
+        states[target] = project_state(project, target)
+    state = states[target]
     results = checks(project, before.sha)
     after = head_sha(project, number)
-    return Blocking(reasons_from(before.sha, after, results, before.branch, base,
+    return Blocking(reasons_from(before.sha, after, results, before.branch, target,
                                  holds_base=(not before.fork
-                                             and contains_base(project, before.branch, base)),
+                                             and contains_base(project, before.branch, target)),
                                  held_by_worktree=before.branch in state.held,
                                  unpublished_release=state.unpublished_release,
                                  draft=before.draft,
                                  merge_state=before.merge_state,
                                  fork=before.fork),
-                    after, before.branch, results)
+                    after, before.branch, results, target)
 
 
 def write_ready_state(ready, since):
@@ -481,17 +493,20 @@ def watch(project, base):
     while True:
         try:
             pull_requests = open_pull_requests(project)
-            state = project_state(project, base)
         except RuntimeError as error:
             print(f"! {error}", flush=True)
             time.sleep(watcher_state.POLL_SECONDS)
             continue
         beat()
 
+        # Emptied per poll, not held across them: a base whose release was dispatched mid-poll would
+        # otherwise go on blocking every pull request that names it until the watcher restarts.
+        states = {}
+
         ready = set()
         for number in pull_requests:
             try:
-                blocking = blocking_reasons(project, number, base, state)
+                blocking = blocking_reasons(project, number, base, states)
             except RuntimeError as error:
                 print(f"! PR#{number}: {error}", flush=True)
                 continue
@@ -543,7 +558,9 @@ def update(project, number, base):
     whose files really do conflict needs a person, and the conflicting one this exists for
     (a long-held branch that re-conflicts on every base move) is exactly the case not to automate.
     """
-    branch = rest("repos/{}/pulls/{}".format(repository(project), number), ".head.ref")
+    payload = "repos/{}/pulls/{}".format(repository(project), number)
+    branch = rest(payload, ".head.ref")
+    base = base or rest(payload, ".base.ref")
     gh_git(project, "fetch", "origin", "--quiet")
     reasons = update_reasons(branch, base, contains_base(project, branch, base),
                              branch in worktree_branches(project))
@@ -604,7 +621,7 @@ def merge(project, number, base, dry_run):
        "-f", "commit_message={}".format(body))
     # `gh pr merge` printed its own confirmation and the API call prints nothing, so without this a
     # merge and a dry run that decided nothing look identical from the terminal.
-    print(f"PR#{number} merged: {blocking.branch} squashed onto {base}")
+    print(f"PR#{number} merged: {blocking.branch} squashed onto {blocking.base}")
     for failure in delete_merged_branch(project, blocking.branch):
         print(f"PR#{number} merged, but {failure}", file=sys.stderr)
     return 0
@@ -664,7 +681,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--project", default=".", help="repository root (default: cwd)")
-    parser.add_argument("--base", default="main", help="branch merged into (default: main)")
+    parser.add_argument("--base", help="branch merged into (default: each pull request's own)")
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("watch", help="emit terminal check results for every open pull request")
     merge_parser = sub.add_parser("merge", help="merge one pull request if nothing blocks it")
