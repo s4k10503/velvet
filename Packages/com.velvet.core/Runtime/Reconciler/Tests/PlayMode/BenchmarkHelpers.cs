@@ -54,8 +54,9 @@ namespace Velvet.Tests.Performance
             return nodes;
         }
 
-        // Reference type with value equality so the auto-memoization keyed on props behaves the way a
-        // real component's props do (a record struct would box on every V.Component call).
+        // A reference type, so the auto-memoization keyed on props sees a fresh instance per build the
+        // way it does for a real component's record-class props; the record's own Equals is not what
+        // that comparison reads. A record struct would also box on every V.Component call.
         internal sealed record ExpansionRowProps(int Index, string Prefix);
 
         // The Div's own child must stay a component, not a Label: committing this row re-enters the
