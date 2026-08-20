@@ -834,13 +834,18 @@ namespace Velvet.Tests
         // with nothing here to report it: measured before this case existed, adding Samples~ to
         // BaseUnwalkedDirectories dropped a README with every case in this fixture and in
         // WorkflowTriggerCoverageTests green. One fixture did go red over it — AssemblyGraphTests, on the
-        // asmdef that happens to sit beside that README rather than on the README — so a directory holding
-        // documents and no asmdef had nothing looking at it.
+        // asmdef that happens to sit beside that README rather than on the README.
+        //
+        // How small a drop can hide is what this asks about, and the case above already answers for a large
+        // one: measured, taking Documentation~ out — 17 documents, no asmdef beside them — reddens four
+        // cases besides this one, the case above among them on its scanned.Count arm, which is a floor on
+        // corpus size. So the reading is not that a directory without an asmdef goes unnoticed; it is that
+        // a drop reddening no other guard, and too small to move that floor, does.
         //
         // The population is what git tracks, because nothing those lists exclude is: measured, their
         // entries cover zero tracked files between them. Asking .gitignore instead would answer a different
-        // question — an entry there is a path pattern, one here a basename at any depth, and the two sets
-        // disagree in both directions today.
+        // question — an entry there is a path pattern, one in BaseUnwalkedDirectories a basename at any
+        // depth, and those two sets disagree in both directions today.
         //
         // GREEN_ON_BASE(characterization): the lists this reads live in DocumentationCorpus, a test-assembly
         // file the base run carries from the branch along with the case, so the base answers over the
@@ -852,7 +857,8 @@ namespace Velvet.Tests
             // Arrange
             var roots = new HashSet<string>(
                 DocumentationCorpus.WalkedRoots(includeClaude: true), StringComparer.Ordinal);
-            var tracked = TrackedFiles()
+            var listing = TrackedFiles();
+            var tracked = (listing ?? new List<string>())
                 .Where(path => path.EndsWith(".md", StringComparison.Ordinal))
                 .Where(path => !path.Contains('/') || roots.Contains(path.Split('/')[0]))
                 .ToList();
@@ -863,59 +869,205 @@ namespace Velvet.Tests
                 .Where(path => !scanned.Contains(path))
                 .OrderBy(path => path, StringComparer.Ordinal);
 
-            // Assert — that git answered rides along, because an empty answer leaves nothing dropped and
-            // this reports the same silence a healthy corpus does.
+            // Assert — both halves of "the population arrived" ride along rather than gating, because a
+            // population nobody got leaves nothing dropped and reports the same silence a healthy corpus
+            // does. They are separate terms because they fail for unrelated reasons and the message has to
+            // name which one happened.
             Assert.That(
-                (tracked.Count > 0, string.Join(", ", dropped)),
-                Is.EqualTo((true, string.Empty)),
-                "an exclusion in DocumentationCorpus took markdown the repository tracks out of the corpus, "
-                + "so nothing scans it; narrow the entry to the path the build writes, or drop it");
+                (listing != null, tracked.Count > 0, string.Join(", ", dropped)),
+                Is.EqualTo((true, true, string.Empty)),
+                "a false first term is git declining to list this checkout, so nothing after it was "
+                + "measured; a false second is git listing no markdown under a walked root, so there was "
+                + "nothing to check; a non-empty third is an exclusion in DocumentationCorpus taking "
+                + "markdown the repository tracks out of the corpus, so nothing scans it — narrow the entry "
+                + "to the path the build writes, or drop it");
         }
 
         // GREEN_ON_BASE(characterization): the helper this drives is declared below, in a test-assembly
         // file the base run carries from the branch along with the case, so the base answers with the
         // branch's own code. What stands in for the base run is the safe.directory pair dropped and the
-        // case run, measured: the trusted listing came back empty too.
+        // case run, measured: the trusted listing came back as nothing too.
         [Test]
         public void Given_ACheckoutTheProcessDoesNotOwn_When_TheTrackedListingIsRead_Then_SafeDirectoryCarriesIt()
         {
-            // Arrange / Act
-            var untrusted = TrackedFiles(trustDirectory: false, assumeForeignOwner: true);
-            var trusted = TrackedFiles(assumeForeignOwner: true);
+            // Arrange — a checkout this fixture builds rather than the project directory, so the question
+            // is posed the same way in every lane. Posed on the project directory it was not: the base-red
+            // lane hands the suite a checkout of the shape the case below is named for, and measured
+            // there, both arms came back as nothing — which this comparison can only read as the argument
+            // having stopped lifting the refusal.
+            var checkout = Scratch("-ownership");
+            try
+            {
+                Repository(checkout);
 
-            // Assert — that git refuses without the argument rides in the comparison, because a git that
-            // had stopped refusing would satisfy the other half having settled nothing.
-            Assert.That(
-                (untrusted.Count, trusted.Count > 0),
-                Is.EqualTo((0, true)),
-                "the guard above reads git in the project directory. A left side above zero means git no "
-                + "longer refuses a checkout the process does not own, leaving the safe.directory argument "
-                + "below inert; a false right side means the argument no longer lifts that refusal, and "
-                + "the guard above will report every tracked document as dropped");
+                // Act
+                var untrusted = TrackedFiles(checkout, trustDirectory: false, assumeForeignOwner: true);
+                var trusted = TrackedFiles(checkout, assumeForeignOwner: true);
+
+                // Assert — that git refuses without the argument rides in the comparison, because a git
+                // that had stopped refusing would satisfy the other half having settled nothing.
+                Assert.That(
+                    (untrusted == null, trusted?.Count > 0),
+                    Is.EqualTo((true, true)),
+                    "TrackedFiles reads git in a directory the process may not own. A false left side "
+                    + "means git no longer refuses such a checkout, leaving the safe.directory argument "
+                    + "inert; a false right side means the argument no longer lifts that refusal, and the "
+                    + "tracked-document guard above gets nothing and reports that git did not answer");
+            }
+            finally
+            {
+                Remove(checkout);
+            }
         }
 
-        /// <summary>Every path git tracks, repo-relative and slash-separated, or nothing if git did not answer.</summary>
-        private static List<string> TrackedFiles(bool trustDirectory = true, bool assumeForeignOwner = false)
+        // GREEN_ON_BASE(characterization): the resolution this drives is declared below, in a
+        // test-assembly file the base run carries from the branch along with the case. What stands in for
+        // the base run is the resolution removed and the case run, measured: the listing came back as
+        // nothing.
+        [Test]
+        public void Given_AWorktreeWhoseRecordedGitDirectoryIsGone_When_TheTrackedListingIsRead_Then_TheOneUnderTheCheckoutAnswers()
+        {
+            // Arrange — a linked worktree records its git directory as an absolute path, and this
+            // repository's base-red lane hands one to a container that mounts the checkout under a
+            // different prefix, so the recorded path names nothing while the directory it names sits
+            // under the checkout unmoved. The gitfile is rewritten to a path that was never there rather
+            // than a mount arranged, because a recorded path that does not resolve is the whole of what
+            // reaches git either way.
+            var checkout = Scratch("-relocated");
+            var worktree = Path.Combine(checkout, "base-tree");
+            try
+            {
+                Repository(checkout);
+                Git(checkout, "worktree", "add", "-q", "--detach", worktree);
+                var gitfile = Path.Combine(worktree, ".git");
+                var recorded = File.Exists(gitfile) ? File.ReadAllText(gitfile) : string.Empty;
+                File.WriteAllText(
+                    gitfile,
+                    "gitdir: " + Path.Combine(checkout + "-gone", ".git", "worktrees", "base-tree") + "\n");
+
+                // Act
+                var listing = TrackedFiles(worktree);
+
+                // Assert — that git linked the worktree at all rides in the comparison: one it never
+                // registered carries no gitfile, and the resolution would have nothing to look for.
+                Assert.That(
+                    (recorded.StartsWith("gitdir:", StringComparison.Ordinal), listing?.Count > 0),
+                    Is.EqualTo((true, true)),
+                    "a checkout reached under a prefix its recorded git directory does not know leaves "
+                    + "the tracked-document guard above with no population, and no way to tell that from "
+                    + "a repository that tracks nothing");
+            }
+            finally
+            {
+                Remove(checkout);
+            }
+        }
+
+        /// <summary>
+        /// Every path git tracks in <paramref name="directory"/>, repo-relative and slash-separated, or
+        /// null if git did not answer. The project directory when none is named.
+        /// </summary>
+        private static List<string> TrackedFiles(
+            string directory = null, bool trustDirectory = true, bool assumeForeignOwner = false)
+        {
+            directory ??= Path.GetFullPath(".");
+            var arguments = new List<string>();
+            if (trustDirectory)
+            {
+                // Scoped to this invocation rather than written into a config anyone else reads. What it
+                // buys is what Given_ACheckoutTheProcessDoesNotOwn_... settles.
+                arguments.Add("-c");
+                arguments.Add("safe.directory=" + directory);
+            }
+            var relocated = ReachableGitDirectory(directory);
+            if (relocated != null)
+            {
+                arguments.Add("--git-dir=" + relocated);
+                arguments.Add("--work-tree=" + directory);
+            }
+            // -z, and the split on NUL below: what this returns is compared byte for byte against a path
+            // the walk read off the filesystem, so the listing has to arrive unquoted and unescaped.
+            arguments.Add("ls-files");
+            arguments.Add("-z");
+
+            var (exit, output) = RunGit(directory, arguments, assumeForeignOwner);
+            return exit == 0
+                ? output.Split('\0', StringSplitOptions.RemoveEmptyEntries).ToList()
+                : null;
+        }
+
+        /// <summary>
+        /// The git directory to read <paramref name="directory"/> through when the one it records is not
+        /// there, or null to leave the choice to git.
+        /// </summary>
+        /// <remarks>
+        /// A linked worktree records its git directory as an absolute path, so a checkout reached under a
+        /// prefix other than the one it was created under records a path naming nothing while the directory
+        /// it names sits under the checkout unmoved. Only the prefix moved, so the tail from the .git
+        /// segment on is re-rooted at the nearest enclosing directory holding it.
+        /// <para>
+        /// Answering null wherever the recorded directory is there keeps the ordinary read on the setup
+        /// path git chooses for itself, which is the one
+        /// Given_ACheckoutTheProcessDoesNotOwn_When_TheTrackedListingIsRead_Then_SafeDirectoryCarriesIt
+        /// poses its question on — measured, that case goes red when this answers for a checkout git can
+        /// find on its own.
+        /// </para>
+        /// </remarks>
+        private static string ReachableGitDirectory(string directory)
+        {
+            const string prefix = "gitdir:";
+            var marker = Path.Combine(directory, ".git");
+            if (!File.Exists(marker))
+            {
+                return null;
+            }
+            var recorded = File.ReadAllText(marker).Trim();
+            if (!recorded.StartsWith(prefix, StringComparison.Ordinal))
+            {
+                return null;
+            }
+            recorded = recorded[prefix.Length..].Trim().Replace('\\', '/');
+            if (Directory.Exists(Path.IsPathRooted(recorded)
+                                     ? recorded
+                                     : Path.Combine(directory, recorded)))
+            {
+                return null;
+            }
+            var segment = recorded.LastIndexOf("/.git/", StringComparison.Ordinal);
+            if (segment < 0)
+            {
+                return null;
+            }
+            var tail = recorded[(segment + 1)..].Replace('/', Path.DirectorySeparatorChar);
+            for (var enclosing = Directory.GetParent(Path.GetFullPath(directory));
+                 enclosing != null;
+                 enclosing = enclosing.Parent)
+            {
+                var candidate = Path.Combine(enclosing.FullName, tail);
+                if (Directory.Exists(candidate))
+                {
+                    return candidate;
+                }
+            }
+            return null;
+        }
+
+        /// <summary>Runs git in a directory, handing back its exit code and stdout, or -1 if it never answered.</summary>
+        private static (int Exit, string Output) RunGit(
+            string directory, IEnumerable<string> arguments, bool assumeForeignOwner = false)
         {
             var start = new ProcessStartInfo("git")
             {
-                WorkingDirectory = Path.GetFullPath("."),
+                WorkingDirectory = directory,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
                 CreateNoWindow = true,
             };
-            if (trustDirectory)
+            foreach (var argument in arguments)
             {
-                // Scoped to this invocation rather than written into a config anyone else reads. What it
-                // buys is what the case above settles.
-                start.ArgumentList.Add("-c");
-                start.ArgumentList.Add("safe.directory=" + Path.GetFullPath("."));
+                start.ArgumentList.Add(argument);
             }
-            // -z, and the split on NUL below: what this returns is compared byte for byte against a path
-            // the walk read off the filesystem, so the listing has to arrive unquoted and unescaped.
-            start.ArgumentList.Add("ls-files");
-            start.ArgumentList.Add("-z");
             if (assumeForeignOwner)
             {
                 start.Environment["GIT_TEST_ASSUME_DIFFERENT_OWNER"] = "1";
@@ -926,23 +1078,52 @@ namespace Velvet.Tests
                 using var process = Process.Start(start);
                 if (process == null)
                 {
-                    return new List<string>();
+                    return (-1, string.Empty);
                 }
-                var listing = process.StandardOutput.ReadToEnd();
+                var output = process.StandardOutput.ReadToEnd();
                 process.StandardError.ReadToEnd();
                 if (!process.WaitForExit(60000))
                 {
                     process.Kill();
-                    return new List<string>();
+                    return (-1, string.Empty);
                 }
-                return process.ExitCode == 0
-                    ? listing.Split('\0', StringSplitOptions.RemoveEmptyEntries).ToList()
-                    : new List<string>();
+                return (process.ExitCode, output);
             }
             catch (Exception exception) when (exception is IOException or InvalidOperationException
                                               or System.ComponentModel.Win32Exception)
             {
-                return new List<string>();
+                return (-1, string.Empty);
+            }
+        }
+
+        private static int Git(string directory, params string[] arguments) =>
+            RunGit(directory, arguments).Exit;
+
+        /// <summary>A checkout holding one tracked file, so a listing taken from it is not empty.</summary>
+        private static void Repository(string directory)
+        {
+            Directory.CreateDirectory(directory);
+            Git(directory, "init", "-q", "--template=", ".");
+            File.WriteAllText(Path.Combine(directory, "tracked.md"), "# tracked #\n");
+            Git(directory, "add", "tracked.md");
+            Git(directory, "-c", "user.email=corpus@velvet.test", "-c", "user.name=corpus",
+                "commit", "-q", "-m", "root");
+        }
+
+        private static string Scratch(string suffix) =>
+            Path.Combine(Path.GetTempPath(), "velvet-corpus-" + Guid.NewGuid().ToString("N") + suffix);
+
+        private static void Remove(string directory)
+        {
+            try
+            {
+                if (Directory.Exists(directory))
+                {
+                    Directory.Delete(directory, recursive: true);
+                }
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
             }
         }
 
