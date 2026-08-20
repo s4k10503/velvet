@@ -9,7 +9,8 @@ namespace Velvet.Tests
     /// Specifies the props-bail memoization contract of a child <c>[Component]</c> under a re-rendering parent.
     /// <list type="bullet">
     /// <item>The <c>Memoize</c> flag is an opt-in gate: a <c>[Component(Memoize = true)]</c> child bails its
-    /// re-render when its props are shallow-equal to the committed ones (per-property <c>Object.is</c>).</item>
+    /// re-render when its props are shallow-equal to the committed ones, under the shallow per-member rule
+    /// <see cref="ComponentAttribute.Memoize"/> states.</item>
     /// <item>A plain (non-memo) <c>[Component]</c> child re-renders whenever its parent re-renders, even when
     /// the props are shallow-equal — the bail is opt-in, not the default.</item>
     /// <item>A memoized child re-renders when any prop is no longer shallow-equal to the committed value.</item>
