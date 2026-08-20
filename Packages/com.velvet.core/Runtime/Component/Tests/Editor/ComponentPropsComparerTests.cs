@@ -4,7 +4,7 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Specifies the props-bail predicate <see cref="ComponentPropsComparer.ShallowEquals"/>, the shallow
-    /// per-property comparison that decides whether a memoized component can skip a re-render.
+    /// per-member comparison that decides whether a memoized component can skip a re-render.
     /// <list type="bullet">
     /// <item>The same reference is equal; both-null is equal; null versus non-null is not equal.</item>
     /// <item>Props of differing runtime types are not equal.</item>
@@ -13,8 +13,14 @@ namespace Velvet.Tests
     /// <item>Any single member that differs makes the props not equal.</item>
     /// <item>String members compare by value, so content-equal strings built at runtime are equal regardless
     /// of instance identity.</item>
-    /// <item>Reference-type members compare by identity and the comparison never recurses: distinct
-    /// instances with equal content are not equal, the same instance is equal.</item>
+    /// <item>Reference-type members other than string compare by identity and the comparison stops there:
+    /// distinct instances with equal content are not equal, the same instance is equal.</item>
+    /// <item>A value-type member is decided by its own <c>Equals</c> instead, which reads on into what the
+    /// member holds — a nested <c>record class</c> of equal content makes the props equal — and which
+    /// answers for a nested <c>float</c> itself, so the <c>+0</c>/<c>-0</c> split above does not reach
+    /// inside one.</item>
+    /// <item>A bare string or primitive props value is compared as a whole rather than through a member
+    /// set.</item>
     /// <item>Float members follow <c>Object.is</c> raw-bit equality: <c>NaN</c> equals itself and <c>+0</c>
     /// does not equal <c>-0</c>.</item>
     /// </list>
@@ -26,6 +32,11 @@ namespace Velvet.Tests
         private sealed record RefMemberProps(object Handle);
         private sealed record FloatProps(float X);
         private sealed record NullableFloatProps(float? X);
+        private sealed record Inner(string Value);
+        private readonly record struct Wrapper(Inner Held);
+        private sealed record NestedRefProps(Wrapper W);
+        private readonly record struct FloatBox(float F);
+        private sealed record NestedFloatProps(FloatBox B);
 
         private readonly struct Point
         {
@@ -113,6 +124,28 @@ namespace Velvet.Tests
             Assert.That(ComponentPropsComparer.ShallowEquals(a, b), Is.False);
         }
 
+        // GREEN_ON_BASE(characterization): this case adds no production change — it pins the guard that
+        // routes an unwrapped props value away from the member-set comparison, which the base already
+        // has — so it is green on both sides. What shows it can fail is that guard deleted, measured:
+        // this case and the primitive one below are the only two in the fixture that redden.
+        [Test]
+        public void Given_BareStringProps_When_ContentDiffersAtEqualLength_Then_IsNotEqual()
+        {
+            // Act + Assert — the lengths match, which is what made this pair compare equal with the guard removed
+            Assert.That(ComponentPropsComparer.ShallowEquals("ab", "cd"), Is.False,
+                "A bare string props value is compared as a whole rather than through a member set");
+        }
+
+        // GREEN_ON_BASE(characterization): the other half of the guard above, on a primitive rather than a
+        // string; green on both sides for the same reason, and red under the same deletion.
+        [Test]
+        public void Given_BarePrimitiveProps_When_ValuesDiffer_Then_IsNotEqual()
+        {
+            // Act + Assert
+            Assert.That(ComponentPropsComparer.ShallowEquals(1, 2), Is.False,
+                "A bare primitive props value is compared as a whole rather than through a member set");
+        }
+
         [Test]
         public void Given_StringMemberWithEqualContent_When_ShallowEquals_Then_IsEqual()
         {
@@ -127,6 +160,10 @@ namespace Velvet.Tests
                 "String members compare by value, not by instance identity");
         }
 
+        // GREEN_ON_BASE(characterization): this branch changes no production code — it corrects the failure
+        // message, which claimed for the whole comparison what holds of a reference-type member — so the
+        // case is green on both sides. What shows it can fail is the reference fall-through of
+        // ObjectIs.AreEqualObjects cut to return true, measured: the two distinct arrays then compare equal.
         [Test]
         public void Given_ReferenceTypeMemberWithEqualContent_When_ShallowEquals_Then_IsNotEqual()
         {
@@ -136,7 +173,7 @@ namespace Velvet.Tests
 
             // Act + Assert
             Assert.That(ComponentPropsComparer.ShallowEquals(a, b), Is.False,
-                "Reference-type members compare by identity and the comparison never recurses into content");
+                "A reference-type member is decided by its instance, with no read into its content");
         }
 
         [Test]
@@ -172,6 +209,40 @@ namespace Velvet.Tests
 
             // Act + Assert
             Assert.That(ComponentPropsComparer.ShallowEquals(a, b), Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): this branch changes no production code — it pins how far a
+        // value-type member is read, which the base already decides this way — so the case is green on
+        // both sides. What shows it can fail is AreEqual<T>'s value fall-through cut to return false,
+        // measured: six cases in this fixture redden under it, this one among them.
+        [Test]
+        public void Given_RecordStructMemberHoldingFreshEqualRecordClass_When_ShallowEquals_Then_IsEqual()
+        {
+            // Arrange — the nested record class instances are distinct, so a comparison stopping at the
+            // struct member cannot call these props equal
+            var a = new NestedRefProps(new Wrapper(new Inner("x")));
+            var b = new NestedRefProps(new Wrapper(new Inner("x")));
+
+            // Act + Assert
+            Assert.That(ComponentPropsComparer.ShallowEquals(a, b), Is.True,
+                "A value-type member is decided by its own Equals, which reads on into what it holds");
+        }
+
+        // GREEN_ON_BASE(characterization): this branch changes no production code — it pins that the
+        // float rule stops at the member boundary, which the base already does — so the case is green on
+        // both sides. What shows it can fail is the same cut as the case above, measured: it reddens with
+        // it, while the bare-float +0/-0 case above stays green — which is the boundary this case pins.
+        [Test]
+        public void Given_RecordStructMemberDifferingOnlyInZeroSign_When_ShallowEquals_Then_IsEqual()
+        {
+            // Arrange — the same +0/-0 pair the bare float member above distinguishes, one level inside a
+            // value-type member
+            var a = new NestedFloatProps(new FloatBox(0f));
+            var b = new NestedFloatProps(new FloatBox(-0f));
+
+            // Act + Assert
+            Assert.That(ComponentPropsComparer.ShallowEquals(a, b), Is.True,
+                "Object.is raw-bit equality applies to a float member, not inside a value-type member");
         }
 
         [Test]

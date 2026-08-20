@@ -11,7 +11,8 @@ namespace Velvet.Tests
     /// <item>The first render delivers the parent's props to the child, which observes their values exactly once.</item>
     /// <item>When the parent re-renders with different props, the new values propagate and the child re-renders.</item>
     /// <item>When the parent re-renders with shallow-equal props, a memoized child bails the re-render (the opt-in
-    /// props-equality gate), comparing each property by identity.</item>
+    /// props-equality gate), comparing one member at a time under the rule
+    /// <see cref="ComponentAttribute.Memoize"/> states.</item>
     /// <item>A <c>UseCallback</c> inside the child returns a stable delegate while its dependencies are unchanged and
     /// rebuilds when a dependency changes.</item>
     /// </list>
