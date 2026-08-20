@@ -15,8 +15,8 @@ namespace Velvet.Tests
     /// <item>A re-render whose dependency array changed is a cache miss: the factory re-runs. When the
     /// new inner is the same element type the existing instance is patched in place; a different type
     /// replaces the element.</item>
-    /// <item>Dependency equality follows reference identity, so a fresh-but-content-equal record
-    /// dependency is a cache miss and recomputes.</item>
+    /// <item>Dependency equality compares a <c>record class</c> element by instance, so a fresh-but-content-equal
+    /// one is a cache miss and recomputes.</item>
     /// <item>An explicit key supplied via <c>V.MemoizedWithKey</c> becomes the cache key, so a re-render
     /// with the same key and the same dependencies is a cache hit.</item>
     /// <item>Sibling Memos cache independently — changing one's dependencies never re-runs the other.</item>
