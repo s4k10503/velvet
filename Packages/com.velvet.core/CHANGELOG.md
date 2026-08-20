@@ -76,22 +76,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   guide nor `createPortal` promised the surviving half. The portals guide states the contract that now
   holds in both directions. Keeping state across such a move means lifting it above the portal — to a
   `Store`, or to a `UseState` in the component that declares the portal.
-- `V.TextField`'s four new parameters sit between `isPasswordField:` and `enabled:`, so a call passing
-  arguments positionally past `isPasswordField` now binds them to different parameters. Every argument
-  there but a `null` literal changes type across the shift, so such a call fails to compile rather than
-  rebinding silently; pass them by name.
-- `StyleVariantClass.BreakpointPx` and `IsResponsive` throw for a value naming no `StyleVariantKind`,
-  where they answered `0f` and `false` before 2.0.1. Every named kind is answered as it was; only a cast
-  outside the enum's range reaches the throw, and a silent `0f` there is how such a cast survives to
-  produce a wrong layout instead of a stack trace. The classification switches this comes from are now
-  exhaustive by compilation rather than by review — `Runtime/csc.rsp` compiles CS8509 as an error — so a
-  `StyleVariantKind` member added without an arm fails the build rather than warning into a log that
-  nothing gates on. That response file ships with the package, so a project compiling `Velvet.asmdef`
-  compiles CS8509 as an error too; it applies to Velvet's own sources only, and none of the switches it
-  reaches is over an engine-owned enum.
+- The switches that classify a `StyleVariantKind` are exhaustive by compilation rather than by review:
+  `Runtime/csc.rsp` compiles CS8509 as an error, so a member added without an arm fails the build rather
+  than warning into a log that nothing gates on. That response file ships with the package, so a project
+  compiling `Velvet.asmdef` compiles CS8509 as an error too, applying to Velvet's own sources only.
 
 ### Fixed
 
+- A `V.AnimatePresence` that stops being rendered takes its bookkeeping with it. That bookkeeping is
+  keyed by the component the presence renders in, the parent element its children expand into, and the
+  presence's position — and only the component being disposed, or the whole tree being unmounted,
+  retired it. So a `cond ? V.AnimatePresence(…) : null` flipping to `null` left an entry holding the
+  committed children plus each key's exit anchor and Motion element, well after the removal had taken
+  those elements out of the tree. Rendering the presence again at that position then started from
+  that stale set: children that had left were spliced back into the DOM as exiting ghosts, and
+  `initial: false` no longer suppressed the enter, since the second mount was not taken for a first
+  render. The entry also survived its parent element being torn down — once per removal, so a panel
+  mounted and unmounted repeatedly accumulated one per cycle — and a poolable parent (a `V.Button`)
+  rented back for a fresh presence at the same position picked the stale entry up again. A presence
+  written inside a `V.Portal`'s own children was the same defect reached a third way, since its
+  bookkeeping is keyed by the container the portal renders into and that container belongs to the
+  caller: closing the portal resurrected the children the presence had already let go, as did
+  registering its `targetId` to a different element and back.
+- A `refCallback` cleanup that throws while its element is being unmounted is reported and the unmount
+  carries on, instead of the exception leaving the reconcile call. It used to escape from the middle of
+  the teardown, so the rest of that element's release never ran and the element itself was never taken
+  out of the tree, and the removal batch it interrupted left every row it had not reached yet standing
+  too. An `AnimatePresence` whose own leaf the batch had already removed then kept committed state
+  naming a child that was gone, and the next render at that position spliced it back as an exiting
+  ghost. The delegate is the caller's, and reconciler disposal already contained it this way.
+- An `IRouteScope.Dispose` that throws is reported the same way, at each of the three places a route
+  scope is disposed: the patch that swaps in a newly matched route, an unmounting `V.Outlet`, and the
+  whole-reconciler teardown sweep. The scope is the application's, built by the `IRouteScopeFactory`
+  handed to `Router`. From the route change the escape left the `V.Outlet` blank — the route navigated
+  away from torn down, the route navigated to never mounted — and a later render at that position
+  mounted the new route on the already-disposed scope. From the unmount it reached the same interrupted
+  removal batch and the same resurrected `AnimatePresence` child as above. Both also left the scope
+  registered for the teardown sweep to dispose a second time; from the sweep itself the escape left the
+  rest of that sweep unrun, including every scope it had not reached yet.
 - `UseTransition` no longer clears `isPending` when the first slice of a time-sliced transition commit
   parks. The flag now spans every parked slice and clears after the terminal commit; that commit asks for
   the render that takes an observed indicator down.
@@ -182,11 +204,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   It also let the container it had left take it down: where the arriving container is reconciled first
   and the departing one leaves the tree in that same render, the departing subtree's teardown still
   found the carried component named as living inside it and ran its cleanups.
-  Two components at the same unkeyed position in *different* containers still share one instance where
-  both containers sit in the declaring component's own tree, which is a separate defect; what changes
-  for them is which of the two containers goes stale, since the shared instance's slot index already
-  named the last one reconciled and its container now agrees. Give each an explicit `key:` to keep them
-  apart.
 - A `V.Component` written inside a `V.Portal` now survives a patch of that portal's children. Its mount
   ran in the deferred pass that follows the reconcile, which registered it under a different parent from
   the one every later patch looks it up by, so the first patch failed to find it: the component was
@@ -207,12 +224,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   into the old one, instead of leaving them writing into an element the UI has replaced. A
   `"modal-root"` that a screen owns — torn down on navigation and re-registered from the rebuilt
   screen's `refCallback` — used to leave every live portal's children on the destroyed element, with
-  no warning and no way back short of changing the id or the key. The move is an unmount and a
-  remount, the same as a changed `createPortal` container, so state, refs and effects under the portal
-  do not survive it. Registering the same element again, and unregistering the id, still leave a live
-  portal exactly where it is. A portal declared before its id existed follows the same signal: its
-  children now appear on the first registration, where they used to wait for an unrelated re-render of
-  the declaring component and stay invisible until one happened.
+  no way back short of remounting the portal. `Register`'s overwrite warning fires only where the id
+  is still registered, and Velvet unregisters no portal target of its own; neither the warning nor
+  its absence reported the portals left behind on the element the id no longer named. The move is an
+  unmount and a remount, the same as a changed `createPortal` container, so state, refs and effects
+  under the portal do not survive it. Registering the same element again, and unregistering the id,
+  still leave a live portal exactly where it is. A portal declared before its id existed follows the
+  same signal: its children now appear on the first registration, where they used to wait for an
+  unrelated re-render of the declaring component and stay invisible until one happened.
 - A portal that resolved its id late no longer writes over the container's own first child. It
   recorded its range from slot 0 while the id was unregistered and never rebased it, so the healing
   patch reconciled its first child against whatever the container already held — an overlay root with

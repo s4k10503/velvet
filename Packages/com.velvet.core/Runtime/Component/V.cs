@@ -546,10 +546,6 @@ namespace Velvet
         /// <param name="name">Element name assigned to <see cref="VisualElement.name"/> for query/debug.</param>
         /// <param name="label">Label text shown next to the field.</param>
         /// <param name="isPasswordField">When true, masks the input as a password field.</param>
-        /// <param name="placeholder">A short hint shown in the empty field (HTML <c>placeholder</c>). An empty string declares an empty hint.</param>
-        /// <param name="maxLength">Maximum number of characters the field accepts, -1 for no limit (HTML <c>maxlength</c>).</param>
-        /// <param name="isReadOnly">When true, the field cannot be edited (HTML <c>readonly</c>).</param>
-        /// <param name="isDelayed">When true, the value is not updated per keystroke but on Enter, on the field losing focus, and on a later render taking the flag off.</param>
         /// <param name="enabled">When false, disables user input.</param>
         /// <param name="refCallback">Callback invoked on mount with the created VisualElement; returned Action runs on unmount.</param>
         /// <param name="whileHoverClass">USS class toggled while the pointer hovers the element.</param>
@@ -557,6 +553,10 @@ namespace Velvet
         /// <param name="whileFocusClass">USS class toggled while the element holds keyboard/UI focus.</param>
         /// <param name="data">data-* attribute map matched by <c>data-[...]</c> variants.</param>
         /// <param name="aria">aria-* attribute map matched by <c>aria-[...]</c> variants.</param>
+        /// <param name="placeholder">A short hint shown in the empty field (HTML <c>placeholder</c>). An empty string declares an empty hint.</param>
+        /// <param name="maxLength">Maximum number of characters the field accepts, -1 for no limit (HTML <c>maxlength</c>).</param>
+        /// <param name="isReadOnly">When true, the field cannot be edited (HTML <c>readonly</c>).</param>
+        /// <param name="isDelayed">When true, the value is not updated per keystroke but on Enter, on the field losing focus, and on a later render taking the flag off.</param>
         /// <returns>The created <see cref="ElementNode"/> representing this text field.</returns>
         public static ElementNode TextField(
             string? className = null,
@@ -566,17 +566,20 @@ namespace Velvet
             string? name = null,
             string? label = null,
             bool? isPasswordField = null,
-            string? placeholder = null,
-            int? maxLength = null,
-            bool? isReadOnly = null,
-            bool? isDelayed = null,
             bool? enabled = null,
             Func<VisualElement, Action>? refCallback = null,
             string? whileHoverClass = null,
             string? whileTapClass = null,
             string? whileFocusClass = null,
             IReadOnlyDictionary<string, string>? data = null,
-            IReadOnlyDictionary<string, string>? aria = null)
+            IReadOnlyDictionary<string, string>? aria = null,
+            // These sit after `aria` rather than beside `isPasswordField`, where they belong by subject,
+            // so a positional call written against 2.1.0 still binds as it did.
+            // TextFieldPositionalOrderTests holds the prefix that placement protects.
+            string? placeholder = null,
+            int? maxLength = null,
+            bool? isReadOnly = null,
+            bool? isDelayed = null)
         {
             var events = SingleEvent(onValueChanged != null ? new ChangeEventBinding<string> { Handler = onValueChanged } : null);
 

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using NUnit.Framework;
 using Velvet.TestUtilities;
 using UnityEngine.UIElements;
@@ -289,6 +290,112 @@ namespace Velvet.Tests
                 Events = Array.Empty<FiberEventBinding>(),
                 OnCreated = onCreated,
             };
+    }
+
+    /// <summary>
+    /// Specifies what a <c>refCallback</c> cleanup that throws does to the unmount it was invoked from.
+    /// The delegate is the user's, and <see cref="Reconciler"/> already contains the same one at
+    /// disposal; these read the unmount entrance, where the reach of an escape is wider.
+    /// <list type="bullet">
+    /// <item>The rest of the departing element's own teardown still runs, read on the ring band — it
+    /// lives in the element's PARENT rather than in its subtree, so removing the element does not take
+    /// it.</item>
+    /// <item>The removal batch continues, so the rows the walk had not reached yet leave too.</item>
+    /// <item>A <c>V.Portal</c> closing empties its whole range, the removal loop of its own that no
+    /// container's diff walks.</item>
+    /// </list>
+    /// Each reads whether the failure left the reconcile call beside the state it is named for, because a
+    /// tree where it escapes never reaches that state and a bare rethrow says nothing about which of the
+    /// two moved.
+    /// </summary>
+    [TestFixture]
+    internal sealed class RefCleanupFailureTests : ReconcilerTestFixture
+    {
+        private const string CleanupFailureMessage = "arranged failure out of a refCallback cleanup";
+
+        [Test]
+        public void Given_ARingedRowWhoseRefCleanupThrows_When_ItIsRemoved_Then_ItsBandLeavesWithIt()
+        {
+            // Arrange
+            var mounted = new VNode[]
+            {
+                V.Div(name: "ringed", className: "ring-2",
+                    refCallback: _ => () => throw new InvalidOperationException(CleanupFailureMessage)),
+            };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), mounted);
+            ContainedFailureLog.Expect<InvalidOperationException>("FiberElementCleaner", CleanupFailureMessage);
+
+            // Act
+            var escaped = EscapesFrom(() => Reconciler.Reconcile(Root, mounted, Array.Empty<VNode>()));
+
+            // Assert
+            Assert.That((escaped, NamesOf(Root)), Is.EqualTo((false, "")));
+        }
+
+        [Test]
+        public void Given_ARefCleanupThrowsOnTheRowRemovedFirst_When_TheBatchContinues_Then_TheRestOfTheRowsGoToo()
+        {
+            // Arrange — the walk removes from the tail, so the throwing row is the one it reaches first.
+            var mounted = new VNode[]
+            {
+                V.Div(name: "head"),
+                V.Div(name: "middle"),
+                ThrowingCleanupRow("tail"),
+            };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), mounted);
+            ContainedFailureLog.Expect<InvalidOperationException>("FiberElementCleaner", CleanupFailureMessage);
+
+            // Act
+            var escaped = EscapesFrom(() => Reconciler.Reconcile(Root, mounted, Array.Empty<VNode>()));
+
+            // Assert
+            Assert.That((escaped, NamesOf(Root)), Is.EqualTo((false, "")));
+        }
+
+        [Test]
+        public void Given_APortalChildsRefCleanupThrows_When_ThePortalCloses_Then_TheWholeRangeLeavesTheTarget()
+        {
+            // Arrange — CleanupPortal walks its range in reverse, so the throwing child is at the tail:
+            // at the head it would be the last removal and the case could not tell a continued loop from
+            // a finished one.
+            var target = new VisualElement();
+            var mounted = new VNode[]
+            {
+                V.Portal(target, children: new VNode?[] { V.Div(name: "first"), ThrowingCleanupRow("second") }),
+            };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), mounted);
+            ContainedFailureLog.Expect<InvalidOperationException>("FiberElementCleaner", CleanupFailureMessage);
+
+            // Act
+            var escaped = EscapesFrom(() => Reconciler.Reconcile(Root, mounted, Array.Empty<VNode>()));
+
+            // Assert
+            Assert.That((escaped, NamesOf(target)), Is.EqualTo((false, "")));
+        }
+
+        private static VNode ThrowingCleanupRow(string name)
+            => V.Div(name: name, refCallback: _ => () => throw new InvalidOperationException(CleanupFailureMessage));
+
+        // Filtered on the arranged message so any other InvalidOperationException still leaves the case.
+        private static bool EscapesFrom(Action reconcile)
+        {
+            try
+            {
+                reconcile();
+                return false;
+            }
+            catch (InvalidOperationException exception) when (exception.Message == CleanupFailureMessage)
+            {
+                return true;
+            }
+        }
+
+        private static string NamesOf(VisualElement parent)
+        {
+            var names = new List<string>();
+            for (var i = 0; i < parent.childCount; i++) names.Add(parent.ElementAt(i).name);
+            return string.Join(",", names);
+        }
     }
 
     /// <summary>
