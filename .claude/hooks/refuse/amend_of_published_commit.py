@@ -53,7 +53,7 @@ UNREADABLE = object()
 
 
 def amends(command):
-    """The directory of each `git commit --amend` in the command, in the order they run.
+    """The tree each `git commit --amend` in the command acts on, in the order they run.
 
     `--amend` is read as a flag rather than found in the text, so a message that spells it
     (`git commit -m --amend`) is the message and not an amend. Which options swallow the token
@@ -104,7 +104,11 @@ def git_location_arguments(context, cwd):
 
 
 def display_location(context, cwd):
-    return context.git_directory or context.working_directory or cwd
+    """The selectors the reading was taken with, spelled as they were handed to git.
+
+    A failed reading does not say which of the two git could not resolve, so neither is named alone.
+    """
+    return " ".join(git_location_arguments(context, cwd))
 
 
 def publishing_refs(context, cwd):

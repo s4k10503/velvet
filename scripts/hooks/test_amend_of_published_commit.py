@@ -204,6 +204,15 @@ class PublishedHeadTests(GuardCase):
         # Assert
         self.assertEqual(("origin/main" in text, "could not say" in text), (True, False))
 
+    def test_Given_AGitDirRelativeToDashC_When_ItIsPosed_Then_ItResolvesAgainstDashC(self):
+        # Arrange / Act — the git directory is relative, so it names the published repository only
+        # once `-C` has been replayed too. Both halves ride in the comparison for the reason the
+        # `-C` case above gives.
+        text = self.refusal(f"git -C {self.root} --git-dir=clone/.git commit --amend")
+
+        # Assert
+        self.assertEqual(("origin/main" in text, "could not say" in text), (True, False))
+
     def test_Given_AnAmendCarryingBothDashCAndGitDir_When_GitDirIsPublished_Then_ItIsRefused(self):
         # Arrange
         worktree = self.root / "worktree"
@@ -378,6 +387,15 @@ class CommandReadingTests(GuardCase):
         # Assert
         self.assertEqual(code, ALLOW)
 
+    def test_Given_ATokenPastTheAmendSpelling_When_ItIsPosed_Then_ItIsAllowed(self):
+        # Arrange / Act — the case above poses the floor and this one the ceiling: read as any token
+        # opening `--am`, both of these are amends, and the characterization below has git refusing
+        # to run either.
+        codes = tuple(self.verdict(f"git commit {flag}") for flag in ("--amendment", "--amend=1"))
+
+        # Assert
+        self.assertEqual(codes, (ALLOW,) * 2)
+
     def test_Given_ACommandThatIsNotACommit_When_ItIsPosed_Then_ItIsAllowed(self):
         # Arrange / Act
         code = self.verdict("git log --oneline --amend")
@@ -433,6 +451,21 @@ class UnreadableTreeTests(GuardCase):
 
         # Assert
         self.assertEqual(headline, UNREAD)
+
+    def test_Given_ADashCInNoRepositoryBesideAReadableGitDir_When_ItIsRefused_Then_BothAreNamed(self):
+        # Arrange — the git directory answers on its own, so naming it sends the reader to the tree
+        # that read fine. A term apiece rules out each of the two one-sided orderings; the headline
+        # is the third, since a reading that put the git directory in place of `-C` reaches the
+        # clone and calls it published.
+        missing = self.root / "nonexistent"
+
+        # Act
+        text = self.refusal(f"git -C {missing} --git-dir={self.clone}/.git commit --amend")
+
+        # Assert
+        self.assertEqual(
+            (str(missing) in text, f"--git-dir={self.clone}/.git" in text, "could not say" in text),
+            (True, True, True))
 
 
 class PredicateAgreementTests(GuardCase):
@@ -587,6 +620,19 @@ class GitOptionGrammarTests(unittest.TestCase):
         # Assert
         self.assertEqual((finished.returncode != 0, "ambiguous option" in finished.stderr),
                          (True, True))
+
+    # GREEN_ON_BASE(characterization): git rejects a token past the amend spelling on either tree.
+    # That is what lets the guard allow one. Same standing as the two above.
+    def test_Given_ATokenPastTheAmendSpelling_When_ItIsPosed_Then_GitRefusesToRun(self):
+        # Arrange / Act
+        rejected = tuple(
+            subprocess.run(["git", "commit", flag, "--allow-empty", "--no-edit"], cwd=self.root,
+                           capture_output=True, text=True, timeout=60,
+                           env={**os.environ, **GIT_ENVIRONMENT}).returncode != 0
+            for flag in ("--amendment", "--amend=1"))
+
+        # Assert
+        self.assertEqual(rejected, (True, True))
 
     # GREEN_ON_BASE(characterization): git takes `--amend` behind `-m` as the message on either tree.
     # Same standing as the two above.

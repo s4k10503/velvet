@@ -212,7 +212,7 @@ def git_invocation(tokens, git_directory=False):
 
 
 def git_invocations(command, subcommands, git_directory=False):
-    """Every (directory, subcommand, operands) in the command naming one of `subcommands`."""
+    """Every invocation in the command naming one of `subcommands`, shaped as `git_invocation`."""
     found = []
     for segment in command_segments(command):
         invocation = git_invocation(without_redirections(tokens_of(segment)), git_directory)
