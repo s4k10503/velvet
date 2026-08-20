@@ -72,7 +72,23 @@ namespace Velvet.Tests
         // one alternative compared case-insensitively covers both spellings.
         private static readonly Regex CharacterClassPattern = new(@"\[(\w)\w*\]", RegexOptions.Compiled);
 
-        private static HashSet<string> IgnoredRoots() =>
+        /// <summary>The leading path segment of every wildcard-free pattern in .gitignore.</summary>
+        /// <remarks>
+        /// Derived from .gitignore rather than listed, because the population that must be excluded is
+        /// exactly the one git already excludes — and a hand-written list would go red on a machine carrying
+        /// an artifact CI does not, the asymmetry UnwalkedMarkdownRoots names above.
+        /// <para>
+        /// A nested pattern contributes its first segment alone, so a pattern under a walked root puts that
+        /// root in here: docs and ProjectSettings are both in this set, and neither is ignored. A caller
+        /// asking about a top-level directory reads it as intended only because a walked root is answered
+        /// before this set is consulted; one matching whole paths has to account for the difference.
+        /// </para>
+        /// <para>
+        /// WorkflowTriggerCoverageTests reads this rather than deriving it again: two answers to one question
+        /// is the drift that fixture pair exists to report.
+        /// </para>
+        /// </remarks>
+        internal static HashSet<string> IgnoredRoots() =>
             File.ReadAllLines(Path.GetFullPath(".gitignore"))
                 .Select(line => line.Trim())
                 .Where(line => line.Length > 0 && !line.StartsWith("#", StringComparison.Ordinal)
@@ -85,21 +101,36 @@ namespace Velvet.Tests
         private static readonly string[] BaseWalkedRoots =
             { "Packages", "Assets", ".github", "scripts", "ProjectSettings", "docs" };
 
-        // Build output and generated documentation: nothing a document names lives there, DocFX's api/ and
-        // _site/ carry a stale copy of every runtime type name until docs/build.py is re-run, and Library
-        // alone would make the walk the slowest thing in this fixture.
+        // Build output, matched on the basename wherever it appears: nothing a document names lives there,
+        // and Library alone would make the walk the slowest thing in this fixture.
         // StrykerOutput is here for a different reason, and it is the reason to be strict about the rest:
         // a mutation report is a couple of megabytes of source excerpts, it is gitignored, and it survives
         // the run that made it. One left over from three days earlier put the word this fixture was asked
         // about into the corpus, so the check passed on the machine that had it and failed on CI.
         // .pytest_cache is the same shape, and it is in this list rather than left to .gitignore: Walk
         // below reads no ignore file, so an entry there cannot keep anything out of the corpus.
+        // obj and bin stay basenames rather than joining the path list below, because each occurs under
+        // docs/ and once per project under Generators~: a path list would need a new pair the day a project
+        // is added, and an entry nobody adds is a directory the walk starts reading as prose.
         private static readonly HashSet<string> BaseUnwalkedDirectories =
             new()
             {
                 ".git", "Library", "Temp", "Logs", "Build", "UserSettings",
-                "obj", "bin", "api", "_site", "StrykerOutput", ".pytest_cache",
+                "obj", "bin", "StrykerOutput", ".pytest_cache",
             };
+
+        // Build output under docs/, each a generated copy that outlives the sources it was made from: DocFX
+        // writes runtime type names into api/ and _site/, which hold that spelling until docs/build.py is
+        // re-run, and docs/build.py stages a copy of every guide into guides/ before invoking DocFX, so a
+        // walk reaching that one holds each guide twice and holds a copy staged before a rename until the
+        // next build.
+        // Matched on the repo-relative path rather than the basename, because `guides` and `api` are
+        // plausible names for prose elsewhere in the tree and a basename entry stops the walk at every
+        // directory carrying it: excluding `guides` that way would drop a Documentation~/guides/ in silence.
+        // Given_TheDocBuildStagedTheGuides_... in DocumentationDriftTests is what fails when the staging
+        // path moves out from under this list.
+        private static readonly HashSet<string> BaseUnwalkedPaths =
+            new(StringComparer.Ordinal) { "docs/guides", "docs/api", "docs/_site" };
 
         private static readonly Lazy<List<string>> DocumentationWalk = new(() => Walk(includeClaude: false));
         private static readonly Lazy<List<string>> ClaudeAwareWalk = new(() => Walk(includeClaude: true));
@@ -145,11 +176,12 @@ namespace Velvet.Tests
                 }
                 foreach (var entry in children)
                 {
-                    if (unwalked.Contains(Path.GetFileName(entry)))
+                    var relative = Path.GetRelativePath(root, entry).Replace('\\', '/');
+                    if (unwalked.Contains(Path.GetFileName(entry)) || BaseUnwalkedPaths.Contains(relative))
                     {
                         continue;
                     }
-                    entries.Add(Path.GetRelativePath(root, entry).Replace('\\', '/'));
+                    entries.Add(relative);
                     if (Directory.Exists(entry) && depth < maxDepth)
                     {
                         pending.Push((entry, depth + 1));

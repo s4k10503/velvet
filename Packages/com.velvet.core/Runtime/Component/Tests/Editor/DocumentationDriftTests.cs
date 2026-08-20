@@ -60,14 +60,13 @@ namespace Velvet.Tests
             "Foo", "SomeFixture", "MyRender", "MyStore", "Ndeg", "Npx", "ResolveDirection", "Inter", "CS",
             "AnimatedList", "PointerSensor", "KeyboardSensor", "MeasuringConfiguration", "Collision",
             "MultiColumnListView", "PopupWindow", "TreeView", "TabView", "ToggleButtonGroup", "Raycast",
-            "GetAllocatedBytesForCurrentThread", "FocusController", "ScaleWithScreenSize", "RoslynAnalyzer",
+            "GetAllocatedBytesForCurrentThread", "FocusController", "RoslynAnalyzer",
             "UnityUIEFilter", "FocusIn", "KeyDown", "PointerDown", "Move", "Leave", "Up", "Wheel", "Enter",
             "RoslynAdditionalFileImporter", "DOTNET_ROOT", "StrykerOutput", "MSB4006", "USS001", "USS011",
             "VEL", "VEL500", "VEL501", "VEL502", "ProjectReference", "VEL503",
             "Save", "ForTest",
             "NullReferenceException", "BringToFront", "SendToBack", "SetCursor", "AllocatingGCMemory",
             "UpdateForRepaint", "Alloc", "StandaloneOSX", "MacOS", "InitTestScene", "Unity_lic", "UE",
-            "SIGTERM",
             "VELVET_STORY_CAPTURE_DIR",
             "Unreleased", "Highlights", "Added", "Changed", "Breaking", "YYYY", "MM", "DD"
         };
@@ -860,6 +859,75 @@ namespace Velvet.Tests
                     Directory.Delete(cache, recursive: true);
                 }
             }
+        }
+
+        // GREEN_ON_BASE(characterization): the exclusion this pins lives in DocumentationCorpus, a
+        // test-assembly file the base run carries from the branch along with the case, so the base answers
+        // over the branch's own lists. What stands in for the base run is the entry removed and the case
+        // run, measured: it reported the staged directory and the markdown under it as walked.
+        [Test]
+        public void Given_TheDocBuildStagedTheGuides_When_TheWalkRuns_Then_TheStagedCopyStaysOutOfTheCorpus()
+        {
+            // Arrange — both cached corpora are forced before the directory exists, for the reason
+            // Given_APytestCacheUnderAWalkedRoot_When_TheWalkRuns_Then_ItsMarkdownStaysOutOfTheCorpus gives.
+            DocumentationCorpus.RepoEntries(includeClaude: true);
+            DocumentationCorpus.RepoEntries(includeClaude: false);
+            var staged = StagedGuidesDirectory();
+            var derivable = staged.Length > 0;
+            var full = derivable ? Path.GetFullPath(staged) : string.Empty;
+            var stagedExisted = derivable && Directory.Exists(full);
+            var probe = derivable ? Path.Combine(full, "doc-build-staging-probe.md") : string.Empty;
+            if (derivable)
+            {
+                Directory.CreateDirectory(full);
+                File.WriteAllText(probe, "# staged guide #\n");
+            }
+
+            try
+            {
+                // Act
+                var walked = (List<string>)typeof(DocumentationCorpus)
+                    .GetMethod("Walk", BindingFlags.NonPublic | BindingFlags.Static)!
+                    .Invoke(null, new object[] { false })!;
+                var reached = walked.Where(entry =>
+                    derivable && entry.StartsWith(staged + "/", StringComparison.Ordinal));
+
+                // Assert — that build.py still names a staging directory, and that the walk descended into
+                // docs/ at all, both ride along: either failing leaves this reporting nothing under the
+                // staged path either.
+                Assert.That(
+                    (derivable && walked.Any(entry => entry.StartsWith("docs/", StringComparison.Ordinal)),
+                        string.Join(", ", reached)),
+                    Is.EqualTo((true, string.Empty)),
+                    "the doc build stages a copy of every guide into a walked root, so the corpus holds each "
+                    + "of them twice and a copy staged before a rename outlives it");
+            }
+            finally
+            {
+                if (derivable)
+                {
+                    File.Delete(probe);
+                    if (!stagedExisted)
+                    {
+                        Directory.Delete(full, recursive: true);
+                    }
+                }
+            }
+        }
+
+        // docs/build.py stages a disposable copy of Documentation~ here before it invokes docfx, and docs is
+        // a walked root. Read off that script rather than written down a second time, so renaming its
+        // staging directory fails the case above instead of silently re-opening the leak.
+        private static string StagedGuidesDirectory()
+        {
+            var build = Path.GetFullPath(Path.Combine("docs", "build.py"));
+            if (!File.Exists(build))
+            {
+                return string.Empty;
+            }
+            var assignment = Regex.Match(
+                File.ReadAllText(build), @"^GUIDES\s*=\s*HERE\s*/\s*""([^""]+)""", RegexOptions.Multiline);
+            return assignment.Success ? "docs/" + assignment.Groups[1].Value : string.Empty;
         }
     }
 }
