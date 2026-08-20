@@ -91,6 +91,11 @@
           },
           {
             "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse/amend_of_published_commit.py\"",
+            "timeout": 15000
+          },
+          {
+            "type": "command",
             "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse/merge_unproven_head.py\"",
             "timeout": 25000
           },
@@ -147,6 +152,11 @@
           {
             "type": "command",
             "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse/changelog_into_closed_version.py\"",
+            "timeout": 10000
+          },
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse/declaration_first_line_fragment.py\"",
             "timeout": 10000
           }
         ]
