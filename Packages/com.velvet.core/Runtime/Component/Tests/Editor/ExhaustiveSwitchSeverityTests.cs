@@ -239,8 +239,8 @@ namespace Velvet.Tests
         /// <summary>
         /// The simple name of every enum the package's own assemblies declare. Read off the assemblies
         /// rather than off the sources because a name here has to be a type this repository can add a
-        /// member to: that is what makes CS8509 over it a signal, and what a UI Toolkit enum can never
-        /// give, since nothing here decides when it grows.
+        /// member to. CS8509 over one of those is a member somebody here forgot to answer; over a UI
+        /// Toolkit enum it is an editor upgrade, which no arm written here would have got ahead of.
         /// <para/>
         /// A simple name is the whole of the reading, so a UI Toolkit enum sharing one with a package enum
         /// is read as the package's. That is the direction to be wrong in — a switch reported and named by
@@ -498,13 +498,13 @@ internal static class Sample
         }
 
         // GREEN_ON_BASE(characterization): the boundary the branch draws, read off synthetic sources, so
-        // both sides answer alike. Without it the guard could be widened to every enum and stay green
-        // until a Unity upgrade grew one.
+        // both sides answer alike. It is what stops the reading being widened to every enum, which would
+        // report a switch whose arms no one here writes.
         [Test]
         public void Given_ASwitchOverAnEnumThePackageDoesNotDeclare_When_ItIsRead_Then_ItIsNotExamined()
         {
-            // Arrange — FilterFunctionType is UI Toolkit's, so nothing here decides when it grows and a
-            // catch-all over it is the only way to write the switch.
+            // Arrange — FilterFunctionType is UI Toolkit's. A member arrives there when UI Toolkit ships
+            // one, so an exhaustive switch over it is a build that breaks on an editor upgrade.
             var source = OneArmAndACatchAll
                 .Replace("UILayer.Background", "FilterFunctionType.Blur")
                 .Replace("UILayer layer", "FilterFunctionType type")
