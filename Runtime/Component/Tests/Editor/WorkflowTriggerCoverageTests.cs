@@ -70,9 +70,6 @@ namespace Velvet.Tests
         // A negation is a whole pattern, so a ! with anything before it is being used as something else.
         private static readonly Regex UnsupportedGlobPattern = new(@"[?+\[\]{}]|.!", RegexOptions.Compiled);
 
-        // A leading [Ll] in a .gitignore root, reduced to one of its alternatives.
-        private static readonly Regex CharacterClassPattern = new(@"\[(\w)\w*\]", RegexOptions.Compiled);
-
         [Test]
         public void Given_TheMarkdownThisSuiteScans_When_MatchedAgainstTheWorkflowPathFilter_Then_EveryFileStartsTheRun()
         {
@@ -347,30 +344,12 @@ namespace Velvet.Tests
                 ? new[] { $"no paths: filter could be read out of {workflow}" }
                 : Array.Empty<string>();
 
-        /// <summary>Top-level directories the repository ignores, so build output is not read as content.</summary>
-        /// <remarks>
-        /// Derived from .gitignore rather than listed, because the population that must be excluded is
-        /// exactly the one git already excludes — and a hand-written list would make this red on a machine
-        /// carrying an artifact CI does not, which is the asymmetry this whole fixture is about.
-        /// </remarks>
-        private static HashSet<string> IgnoredRoots() =>
-            File.ReadAllLines(Path.GetFullPath(".gitignore"))
-                .Select(line => line.Trim())
-                .Where(line => line.Length > 0 && !line.StartsWith("#", StringComparison.Ordinal)
-                               && !line.StartsWith("!", StringComparison.Ordinal))
-                .Select(line => line.Trim('/').Split('/')[0])
-                .Where(root => root.Length > 0 && !root.Contains('*'))
-                // Unity's own template writes /[Ll]ibrary/, so the first segment is a character class
-                // rather than a name. Taking one alternative and comparing case-insensitively covers both.
-                .Select(root => CharacterClassPattern.Replace(root, match => match.Groups[1].Value))
-                .ToHashSet(StringComparer.OrdinalIgnoreCase);
-
         // The one that matters here is scripts/test_quality/assert_no_inconclusive.py: no other file in the repository
         // invokes it, and its failure mode is passing a run it should have failed, which stays invisible
         // until a test starts skipping.
         private static List<string> NamedRepoFiles(string workflow)
         {
-            var ignored = IgnoredRoots();
+            var ignored = DocumentationCorpus.IgnoredRoots();
             return PathTokenPattern.Matches(File.ReadAllText(Path.GetFullPath(workflow)))
                 .Select(match => match.Value)
                 .Distinct(StringComparer.Ordinal)
