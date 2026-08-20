@@ -222,8 +222,8 @@ namespace Velvet.Tests
             mounted.GetSchedulerForTest().DrainDelayedForTest();
 
             // Assert
-            Assert.AreEqual((2, "b-transition"), (s_renderCountB, s_lastB),
-                "The delayed drain flushes the Transition-lane fiber and commits its value");
+            Assert.AreEqual((3, "b-transition"), (s_renderCountB, s_lastB),
+                "The delayed drain commits the Transition-lane value, then renders the cleared pending state");
         }
 
         [Test]
