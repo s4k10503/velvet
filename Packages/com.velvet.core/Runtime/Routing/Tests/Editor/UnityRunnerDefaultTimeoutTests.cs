@@ -15,6 +15,8 @@ namespace Velvet.Tests
     [TestFixture]
     internal sealed class UnityRunnerDefaultTimeoutTests
     {
+        // GREEN_ON_BASE(characterization): the runner applies this bound on the base tree as well.
+        // Pinning it is what keeps the reason the router fixtures carry from rotting in silence.
         [Test]
         public void Given_ACaseDeclaringNoTimeout_When_TheRunnerBoundsIt_Then_TheBoundIsThreeMinutes()
         {
