@@ -1480,6 +1480,68 @@ class PythonSurfaceReachTests(unittest.TestCase):
         # Assert
         self.assertFalse(found)
 
+    def test_Given_TheNameSpelledByAnInheritedSetUp_When_ACaseIsRead_Then_ThatIsEvidence(self):
+        # Arrange -- a base class is where unittest puts scaffolding two fixtures share, and its
+        # setUp runs for every case of every heir.
+        # Act
+        found = self.read("import unittest\n"
+                          "from notes import ADDED, OPEN\n\n\n"
+                          "class Shared(unittest.TestCase):\n"
+                          "    def setUp(self):\n"
+                          "        self.seen = ADDED\n\n\n"
+                          "class T(Shared):\n"
+                          "    def test_mine(self):\n"
+                          "        self.assertEqual(OPEN, 1)\n")
+
+        # Assert
+        self.assertTrue(found)
+
+    def test_Given_TheNameReachedThroughGetattr_When_ACaseIsRead_Then_ThatIsEvidence(self):
+        # Arrange -- the name is a string here, which is why a string is read for one at all; the
+        # docstring case below is what that costs and where the line is drawn instead.
+        # Act
+        found = self.read("import unittest\n"
+                          "import notes\n"
+                          "from notes import ADDED, OPEN\n\n\n"
+                          "class T(unittest.TestCase):\n"
+                          "    def test_mine(self):\n"
+                          "        self.assertEqual(getattr(notes, \"ADDED\"), 2)\n")
+
+        # Assert
+        self.assertTrue(found)
+
+    # GREEN_ON_BASE(characterization): a docstring looks up no name it spells.
+    # It is prose that happens to sit where code is read, and a string is read for a name because
+    # `getattr` reaches one that way, so this is where that reading stops.
+    def test_Given_TheNameSpelledOnlyInADocstring_When_ACaseIsRead_Then_ThatIsNotEvidence(self):
+        # Arrange -- the fixture's own docstring names it and nothing else outside the import does.
+        # Act
+        found = self.read('import unittest\n'
+                          'from notes import ADDED, OPEN\n\n\n'
+                          'class T(unittest.TestCase):\n'
+                          '    """What the module binds, ADDED among them."""\n\n'
+                          '    def test_mine(self):\n'
+                          '        self.assertEqual(OPEN, 1)\n')
+
+        # Assert
+        self.assertFalse(found)
+
+    # GREEN_ON_BASE(characterization): a comment looks up no name it spells either.
+    # The same sentence written as prose above the code rather than inside it, so the two spellings
+    # answer alike rather than by which quotation mark was used.
+    def test_Given_TheNameSpelledOnlyInAComment_When_ACaseIsRead_Then_ThatIsNotEvidence(self):
+        # Arrange -- the mention sits in a comment inside the case body itself.
+        # Act
+        found = self.read("import unittest\n"
+                          "from notes import ADDED, OPEN\n\n\n"
+                          "class T(unittest.TestCase):\n"
+                          "    def test_mine(self):\n"
+                          "        # ADDED is not used here\n"
+                          "        self.assertEqual(OPEN, 1)\n")
+
+        # Assert
+        self.assertFalse(found)
+
     # GREEN_ON_BASE(characterization): a case answers for its own reach and for no sibling's.
     # The base agrees by reading no ImportError at all, so the arrangement rather than the verdict is
     # what separates this from a run that credits the whole file.

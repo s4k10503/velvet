@@ -1173,23 +1173,49 @@ def added_keyword(output, base_tree, branch_tree, case):
     return found
 
 
+def fixture_classes(parsed, owner):
+    """`owner` and the classes it derives from, over the ones this file declares.
+
+    A shared base class is where unittest puts scaffolding two fixtures need, so its `setUp` runs for
+    every case of every heir and is as much their reach as one written in their own body.
+    """
+    declared = {node.name: node for node in ast.walk(parsed) if isinstance(node, ast.ClassDef)}
+    found, pending = set(), [owner]
+    while pending:
+        name = pending.pop()
+        if name in found or name not in declared:
+            continue
+        found.add(name)
+        for base in declared[name].bases:
+            if isinstance(base, ast.Name):
+                pending.append(base.id)
+            elif isinstance(base, ast.Attribute):
+                pending.append(base.attr)
+    return found
+
+
 def reaching_lines(text, case_name):
     """The lines of a test module whose text one case could have reached.
 
-    Module level, the case's own class outside its other cases, and the case itself. Import
-    statements are left out: `from module import name` is evaluated once for the file, so a name
-    spelled only there belongs to no case in particular.
+    Module level, the classes its fixture is built out of outside their other cases, and the case
+    itself. Import statements are left out: `from module import name` is evaluated once for the file,
+    so a name spelled only there belongs to no case in particular. A string constant standing alone
+    is left out too -- a docstring is that shape, and it looks up no name.
     """
     try:
         parsed = ast.parse(text)
     except SyntaxError:
         return set()
     owner, method = case_name.rsplit(".", 1) if "." in case_name else ("", case_name)
+    owners = fixture_classes(parsed, owner)
     reaching = set(range(1, len(text.splitlines()) + 1))
     for node in ast.walk(parsed):
         if isinstance(node, (ast.Import, ast.ImportFrom)):
             reaching -= set(range(node.lineno, (node.end_lineno or node.lineno) + 1))
-        elif isinstance(node, ast.ClassDef) and node.name != owner:
+        elif (isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant)
+                and isinstance(node.value.value, str)):
+            reaching -= set(range(node.lineno, (node.end_lineno or node.lineno) + 1))
+        elif isinstance(node, ast.ClassDef) and node.name not in owners:
             reaching -= set(range(node.lineno, node.end_lineno + 1))
         elif isinstance(node, ast.ClassDef):
             for member in node.body:
@@ -1673,9 +1699,8 @@ def report(cases, control, reported, canaries=None, wrote=True, unbuildable=None
         print("{:<32} {}  ({})".format(case.verdict, case.name, case.detail))
     # Three counts, never one. A case the base could not build names a symbol the branch adds, which
     # is the strongest pin this takes, and folding it into the readings nobody took would tell the
-    # author of a correct test that the run measured nothing. The third passes: a run where every
-    # changed case was tolerated exits zero, and without a line of its own it does so in silence,
-    # which reads exactly like a run that measured them.
+    # author of a correct test that the run measured nothing. A tolerated case is not a failure, so
+    # a run that tolerated all of them exits zero and says so in silence unless this count speaks.
     tolerated = [case for case in cases if case.verdict == COULD_NOT_LOAD]
     if tolerated:
         print("\n{} of {} case(s) reached a surface only the branch provides, so the base could not "
