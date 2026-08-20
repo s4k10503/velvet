@@ -381,6 +381,133 @@ class HeartbeatDuringAPollTests(unittest.TestCase):
         self.assertIn(f" {os.getpid()}", outcome.beat or "")
 
 
+class FakeClock:
+    """Time that moves only when the watcher sleeps, so a poll cycle costs no wall clock.
+
+    Bounded, because a watcher that fails to retire would hang the run rather than fail it, and a
+    hang reports nothing.
+    """
+
+    def __init__(self, limit, between_polls=None):
+        self.now = 1000.0
+        self.polls = 0
+        self.limit = limit
+        self.between_polls = between_polls
+
+    def time(self):
+        return self.now
+
+    def sleep(self, seconds):
+        self.polls += 1
+        if self.polls > self.limit:
+            raise Polled
+        self.now += seconds
+        if self.between_polls is not None:
+            self.between_polls(self.now)
+
+
+# How a run of `watch` ended: its exit code, or None where it was still polling when the clock gave
+# up, what it printed on the way out, and whether the lock was free by then.
+Watched = collections.namedtuple("Watched", "code output lock_released")
+
+
+def keeping_the_lock(handles):
+    """`hold_the_watch`, with the handle it opened kept where the run can be read after it ends."""
+    took_it = settle.hold_the_watch
+
+    def held():
+        handle, holder = took_it()
+        handles.append(handle)
+        return handle, holder
+    return held
+
+
+def watch_until(between_polls=None, asked=None):
+    """Run `watch` over one green pull request and a clock only its own sleep advances.
+
+    The clock's bound is three times the retirement interval, so it cannot be what a case reads as
+    retirement. `asked` sends the record somewhere else, for a case about it not being written.
+    """
+    clock = FakeClock(3 * settle.watcher_state.RETIRE_AFTER // settle.watcher_state.POLL_SECONDS,
+                      between_polls)
+    printed = io.StringIO()
+    handles = []
+    with tempfile.TemporaryDirectory(prefix="settle-retire-") as directory:
+        with fabricated_readings({1: fabricate(1)}) as stack:
+            for name in ("READY_STATE", "HEARTBEAT", "LOCK", "ASKED"):
+                stack.enter_context(mock.patch.object(settle.watcher_state, name,
+                                                      Path(directory) / name.lower()))
+            if asked is not None:
+                stack.enter_context(mock.patch.object(settle.watcher_state, "ASKED", asked))
+            stack.enter_context(mock.patch.object(settle, "hold_the_watch",
+                                                  keeping_the_lock(handles)))
+            stack.enter_context(mock.patch.object(settle.time, "sleep", clock.sleep))
+            stack.enter_context(mock.patch.object(settle.time, "time", clock.time))
+            stack.enter_context(contextlib.redirect_stdout(printed))
+            try:
+                code = settle.watch(Path("."), "main")
+            except Polled:
+                code = None
+            # Read before this closes it: what a case asks is whether the code let the lock go, so
+            # the handle is held until the reading rather than left to fall out of scope.
+            released = handles[0].closed
+            handles[0].close()
+    return Watched(code, printed.getvalue(), released)
+
+
+class RetirementTests(unittest.TestCase):
+    """When a watcher stops.
+
+    One polled for seven days past the session that started it, on the order of ten thousand polls
+    nobody read. `watcher_state.ASKED` owns what decides when one stops.
+    """
+
+    def test_Given_OneRunReadAndOneNot_When_BothPassTheRetirementInterval_Then_OnlyTheUnreadStops(self):
+        # Arrange — either arm alone settles nothing: a watcher retiring on its own elapsed time
+        # would pass the unread one, and one that never retires passes the read one.
+        ended = (watch_until().code,
+                 watch_until(between_polls=settle.watcher_state.alive).code)
+
+        # Act / Assert — None is what a watcher still polling at the clock's bound leaves.
+        self.assertEqual(ended, (0, None))
+
+    def test_Given_ARetiringWatcher_When_ItStops_Then_ItSaysWhyAndHowToStartAnother(self):
+        # Arrange — the guards start refusing the moment it goes, so a message carrying one of the
+        # two leaves whoever reads it to work out either the cause or the cure.
+        said = watch_until().output
+
+        # Act / Assert
+        self.assertEqual(("Retiring" in said, "python3 scripts/pr/settle.py watch" in said),
+                         (True, True))
+
+    def test_Given_ARetiringWatcher_When_ItStops_Then_ItLetsGoOfTheLock(self):
+        # Act
+        watched = watch_until()
+
+        # Assert
+        self.assertTrue(watched.lock_released)
+
+    def test_Given_AGuardAskingEachPoll_When_TheRecordCannotBeWritten_Then_ItStillGetsItsAnswer(self):
+        # Arrange — a directory the write cannot reach. The retirement is folded in beside the
+        # answers because with the record landing this watcher would still be polling, so the pair
+        # is what says the guard was answered while nothing was being written down.
+        answers = []
+        with tempfile.TemporaryDirectory(prefix="settle-nowrite-") as directory:
+            unwritable = Path(directory) / "home"
+            unwritable.mkdir()
+            os.chmod(unwritable, 0o500)
+            try:
+                # Act
+                watched = watch_until(
+                    between_polls=lambda now: answers.append(settle.watcher_state.alive(now)),
+                    asked=unwritable / "asked")
+            finally:
+                os.chmod(unwritable, 0o700)
+
+        # Assert
+        self.assertEqual((set(answers), watched.code), ({True}, 0))
+
+
 class ForkMergeTests(unittest.TestCase):
     """What `settle.py merge` does with a head this checkout has no ref for."""
 
@@ -515,7 +642,8 @@ class WatcherLockTests(unittest.TestCase):
 
 
 class HeartbeatTests(unittest.TestCase):
-    """What a reader may conclude from the file, which is what both guards conclude from it."""
+    """What a reader may conclude from the file, which is what both guards conclude from it, and
+    what the reading leaves behind for the watcher."""
 
     def test_Given_AHeartbeatFromALiveProcess_When_ItIsFresh_Then_TheWatcherReadsAsAlive(self):
         # Arrange
@@ -588,10 +716,14 @@ class HeartbeatTests(unittest.TestCase):
 
     @contextlib.contextmanager
     def heartbeat(self, text):
+        """Both files a read touches: reading the first is what writes the second."""
         with tempfile.TemporaryDirectory(prefix="settle-beat-") as directory:
             path = Path(directory) / "beat"
             path.write_text(text)
-            with mock.patch.object(settle.watcher_state, "HEARTBEAT", path):
+            with contextlib.ExitStack() as stack:
+                stack.enter_context(mock.patch.object(settle.watcher_state, "HEARTBEAT", path))
+                stack.enter_context(mock.patch.object(settle.watcher_state, "ASKED",
+                                                     Path(directory) / "asked"))
                 yield
 
 

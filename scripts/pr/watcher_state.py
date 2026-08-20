@@ -1,9 +1,12 @@
-"""The files `settle.py watch` writes, and what a reader may conclude from them.
+"""The files the watcher and its readers leave for each other, and what each may conclude.
 
 Three programs touch these. The watcher writes them; `.claude/hooks/stop/unsettled_pr.py` forgives a
 pending check while one is alive; `.claude/hooks/refuse/edit_while_a_ready_pr_sits.py` refuses a
 write while a ready pull request has sat. The format lives here because it was written in three
 places and read back in two, under two different comments for the same 180 seconds.
+
+One file runs the other way: a reader stamps `ASKED`, and the watcher reads it to find out whether
+anything is still reading what it writes.
 
 A heartbeat names the process that wrote it. Nothing stopped several watchers running at once, each
 on its own poll cycle against one shared API quota and all writing this one file, so a fresh stamp
@@ -30,6 +33,17 @@ POLL_SECONDS = 60
 # Three polls, so one slow `gh` call does not read as a dead watcher.
 STALE_AFTER = 3 * POLL_SECONDS
 
+# Written where a reader asks whether a watcher is alive, so the watcher can ask whether anything
+# still reads what it writes. Not whether it is still owned: a watcher is one per machine and any
+# session's guards may read it, so an orphan is unowned rather than unread.
+ASKED = Path.home() / ".velvet-pr-watch.asked"
+
+# The stamp above is a reader's cadence rather than the watcher's own poll, which is what makes this
+# a different quantity from STALE_AFTER. Thirty polls: long enough to cover a turn that spends its
+# whole length inside long-running commands, and short enough that an unattended watcher costs tens
+# of polls rather than the ten thousand a seven-day one reached.
+RETIRE_AFTER = 30 * POLL_SECONDS
+
 
 def beat(pid, now=None):
     """One heartbeat: when it was written, and by which process."""
@@ -55,21 +69,54 @@ def running(pid):
     return True
 
 
-def stamped(text, now):
-    """Seconds since a heartbeat was written, or None when it carries no usable stamp.
+def stamp_age(text, now):
+    """Seconds since the stamp in this text's first field, or None when it carries none.
 
-    Bounded below as well as above: a stamp in the future — a millisecond epoch, a typo, a backward
-    clock step — vouches for a watcher permanently.
+    Bounded below: a stamp in the future — a millisecond epoch, a typo, a backward clock step —
+    reads as the most recent one there could be, and so vouches for its writer permanently.
     """
     fields = text.split()
     if not fields or not fields[0].isdigit():
         return None
     age = now - int(fields[0])
-    return age if 0 <= age < STALE_AFTER else None
+    return age if age >= 0 else None
+
+
+def stamped(text, now):
+    """Seconds since a heartbeat was written, or None when it is not inside the poll window."""
+    age = stamp_age(text, now)
+    return None if age is None or age >= STALE_AFTER else age
+
+
+def note_asked(now=None):
+    """Record that something has just asked whether a watcher is alive.
+
+    A failed write is swallowed. A home that cannot be written leaves the watcher retiring on its
+    own clock, which it says out loud on the way, and a reader that failed to stamp still has its own
+    answer to give.
+    """
+    try:
+        ASKED.write_text(f"{int(time.time() if now is None else now)}\n", encoding="utf-8")
+    except OSError:
+        pass
+
+
+def asked_ago(now=None):
+    """Seconds since something last asked, or None when no stamp is readable."""
+    try:
+        text = ASKED.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    return stamp_age(text, time.time() if now is None else now)
 
 
 def alive(now=None):
-    """Whether the process that wrote the heartbeat is running and wrote it recently."""
+    """Whether the process that wrote the heartbeat is running and wrote it recently.
+
+    The asking is recorded here rather than in each reader, so a reader written later is counted
+    without being told to.
+    """
+    note_asked(now)
     try:
         text = HEARTBEAT.read_text(encoding="utf-8")
     except OSError:

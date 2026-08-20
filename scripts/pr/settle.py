@@ -453,8 +453,34 @@ def beat():
     watcher_state.HEARTBEAT.write_text(watcher_state.beat(os.getpid()))
 
 
+def unasked_for(started, now=None):
+    """Seconds since a reader last recorded asking, counted from this watcher's own start.
+
+    A stamp left before this watcher started says nothing about whether anything reads this one, so
+    the interval runs from the later of the two.
+    """
+    now = time.time() if now is None else now
+    ago = watcher_state.asked_ago(now)
+    return now - started if ago is None else min(ago, now - started)
+
+
+def retire(lock, unasked):
+    """The lock goes back here rather than at the exit: `watch` returns to a caller, and one that
+    went on to other work would hold it while nothing was watching.
+    """
+    lock.close()
+    print(f"Retiring after {int(unasked)}s in which nothing stamped {watcher_state.ASKED}, which is "
+          f"how a guard records reading the watcher's state.\n"
+          f"\nFrom here a pending check blocks a Stop again, and an edit is refused until something "
+          f"is watching. Both are what a live watcher was forgiving. Start another when that is what "
+          f"you want:\n"
+          f"\n  python3 scripts/pr/settle.py watch\n", flush=True)
+    return 0
+
+
 def watch(project, base):
-    """Emit each check that reaches a terminal state, once, and hold the heartbeat open meanwhile."""
+    """Emit each check that reaches a terminal state, once, and hold the heartbeat open until
+    nothing reads it."""
     lock, holder = hold_the_watch()
     if lock is None:
         print(f"Refusing to watch: process {holder or 'unknown'} already holds "
@@ -478,7 +504,13 @@ def watch(project, base):
 
     seen = set()
     ready_since = {}
+    started = time.time()
     while True:
+        # Before the readings, so the error path that sleeps and continues cannot skip it — a
+        # watcher whose calls all fail goes unread like any other.
+        unasked = unasked_for(started)
+        if unasked >= watcher_state.RETIRE_AFTER:
+            return retire(lock, unasked)
         try:
             pull_requests = open_pull_requests(project)
             state = project_state(project, base)
