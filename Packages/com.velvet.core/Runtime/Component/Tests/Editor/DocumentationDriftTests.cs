@@ -836,10 +836,10 @@ namespace Velvet.Tests
         // WorkflowTriggerCoverageTests still green. Both are the failure this fixture exists to report, one
         // level out.
         //
-        // The population is what git tracks, because that is what those lists claim to be free of: each
-        // entry names build output. Asking .gitignore instead would answer a different question — an entry
-        // here matches a basename at any depth while an ignore pattern is anchored, and the two disagree in
-        // both directions today.
+        // The population is what git tracks, because nothing those lists exclude is: measured, their
+        // entries cover zero tracked files between them. Asking .gitignore instead would answer a different
+        // question — an entry there is a path pattern, one here a basename at any depth, and the two sets
+        // disagree in both directions today.
         //
         // GREEN_ON_BASE(characterization): the lists this reads live in DocumentationCorpus, a test-assembly
         // file the base run carries from the branch along with the case, so the base answers over the
@@ -1091,9 +1091,9 @@ namespace Velvet.Tests
                 Assert.That(
                     (generated.Count, string.Join(", ", reached)),
                     Is.EqualTo((2, string.Empty)),
-                    "docfx writes a directory the corpus walks into, and both formats it writes are in "
-                    + "SourceExtensions — so every type name it copied there resolves, including one the "
-                    + "sources no longer declare");
+                    "docfx writes a directory the corpus walks into, in formats SourceExtensions carries — "
+                    + "so every type name it copied there resolves, including one the sources no longer "
+                    + "declare");
             }
             finally
             {
