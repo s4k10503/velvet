@@ -196,6 +196,9 @@ same way:
 | `Array.Empty<object>()` | an empty dependency set: run once and never again | `useEffect(fn, [])` |
 | one or more values | re-run when any of them changes, compared with `Object.is` semantics | `useEffect(fn, [a, b])` |
 
+That comparison reads each value's runtime type and branches on it; `MemoNode.Dependencies`' remarks
+state which branch each type takes.
+
 Three consequences worth knowing before writing one:
 
 - `null` never freezes a value. React has no equivalent spelling, so nothing forces the choice — Velvet
@@ -254,7 +257,7 @@ the flag off mid-edit receives the pending text rather than stranding it on scre
 | React | Velvet | Notes |
 |-------|--------|------|
 | `<MyComponent/>` | `V.Component(MyRender, key: "...")` | `MyRender` is a static method annotated with `[Component]`. Stores are distributed via `V.Provider` + `UseContext` |
-| `React.memo(Component)` | `[Component(Memoize = true)]` | An opt-in attribute that compares props one member at a time at the reconcile boundary and bails out of parent re-render if they are equal. Each member takes the branch [§1-4](#1-4-what-a-dependency-list-means) gives for a dependency |
+| `React.memo(Component)` | `[Component(Memoize = true)]` | An opt-in attribute that compares props one member at a time at the reconcile boundary and bails out of parent re-render if they are equal. The attribute's own remarks state the per-member rule, and which props values skip the member walk |
 | React Compiler (automatic memoization) | no annotation (all `[Component]`) | The ILPP `CompilerWeaver` weaves inner automatic memoization with default-on. Opt out with `[Component(Compiler = false)]` |
 | `useMemo(value, deps)` | `Hooks.UseMemo(() => value, deps)` | Value-memoization hook; recomputes only when a dep changes (use inside render) |
 | `useMemo(() => <X/>, deps)` | `Hooks.UseMemo(() => V.X(), deps)` or `V.Memoized(() => V.X(), deps)` | The hook returns a memoized VNode; `V.Memoized` is a node-level escape hatch usable outside render (e.g. expanded by `[MemoizeMethod]`), diff-skipping the subtree |

@@ -131,7 +131,8 @@ namespace Velvet.Tests
         // GREEN_ON_BASE(characterization): this branch changes no production code — it says which kind of
         // record the arrangement builds, where the bare word covered a struct it does not describe — so the
         // case is green on both sides. What shows it can fail is the reference fall-through of
-        // AreEqualObjects cut to return true, measured: this case reddens beside the fresh-list case.
+        // AreEqualObjects cut to return true, measured: this case reddens beside the fresh-list case in
+        // this fixture.
         [Test]
         public void Given_FreshRecordInstanceSameContent_When_AreEqualDeps_Then_AreNotEqual()
         {
@@ -239,7 +240,7 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(characterization): the same wording correction as the deps case above, on the
         // generic overload — green on both sides. What shows it can fail is AreEqual<T>'s reference branch
-        // cut to EqualityComparer<T>.Default, measured: this case reddens beside the overload-split case.
+        // cut to EqualityComparer<T>.Default, measured: this case reddens beside both overload-split cases.
         [Test]
         public void Given_FreshRecordInstanceSameContent_When_AreEqualGeneric_Then_AreNotEqual()
         {
@@ -359,7 +360,7 @@ namespace Velvet.Tests
         // GREEN_ON_BASE(characterization): this case adds no production change — it pins the same split on
         // the other operand class the base already splits, a string rather than a boxed value type — so it
         // is green on both sides. What shows it can fail is AreEqualObjects' string branch deleted,
-        // measured: this case reddens beside the string element cases, and the boxed-value-type case above
+        // measured: this case reddens beside the string element case, and the boxed-value-type case above
         // stays green under that cut.
         [Test]
         public void Given_StringErasedToObject_When_ComparedBothWays_Then_TheTwoOverloadsDisagree()

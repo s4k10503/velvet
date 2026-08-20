@@ -19,8 +19,8 @@ namespace Velvet.Tests
     /// member holds — a nested <c>record class</c> of equal content makes the props equal — and which
     /// answers for a nested <c>float</c> itself, so the <c>+0</c>/<c>-0</c> split above does not reach
     /// inside one.</item>
-    /// <item>A props value passed with no record wrapper — a bare string, a bare primitive — is compared as a
-    /// whole rather than through a member set.</item>
+    /// <item>A bare string or primitive props value is compared as a whole rather than through a member
+    /// set.</item>
     /// <item>Float members follow <c>Object.is</c> raw-bit equality: <c>NaN</c> equals itself and <c>+0</c>
     /// does not equal <c>-0</c>.</item>
     /// </list>
@@ -214,8 +214,7 @@ namespace Velvet.Tests
         // GREEN_ON_BASE(characterization): this branch changes no production code — it pins how far a
         // value-type member is read, which the base already decides this way — so the case is green on
         // both sides. What shows it can fail is AreEqual<T>'s value fall-through cut to return false,
-        // measured: this case reddens beside the int-member, struct-member and Nullable cases that share
-        // the branch.
+        // measured: six cases in this fixture redden under it, this one among them.
         [Test]
         public void Given_RecordStructMemberHoldingFreshEqualRecordClass_When_ShallowEquals_Then_IsEqual()
         {

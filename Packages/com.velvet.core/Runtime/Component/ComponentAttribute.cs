@@ -28,9 +28,9 @@ namespace Velvet
 
         /// <summary>
         /// Opt-in props-bail: skip a parent-driven re-render when this component's props are
-        /// shallow-equal to the previous render — its public instance properties and fields taken one
-        /// member at a time, each decided by the per-type rule <see cref="MemoNode.Dependencies"/>
-        /// states, and a props value passed with no record wrapper compared whole under that same rule.
+        /// shallow-equal to the previous render — compared one public instance member at a time, each
+        /// member decided by the per-type rule <see cref="MemoNode.Dependencies"/> states. A bare string or
+        /// primitive props value is compared whole under that same rule instead of through a member set.
         /// A value-type member is therefore decided by its own <c>Equals</c>, which reads what the member
         /// holds, so <c>+0</c> and <c>-0</c> inside one compare equal where two <c>float</c> members
         /// would not; <c>ComponentPropsComparerTests</c> is what fails if either half stops holding.

@@ -1263,12 +1263,12 @@ namespace Velvet
         /// identity, and child hooks (<c>UseCallback</c> / <c>UseMemo</c>) can declare
         /// <paramref name="props"/> fields as <c>deps</c> to stabilize callbacks across renders.
         /// <br/>
-        /// <typeparamref name="TProps"/> is stored as <see cref="object"/> on the fiber and compared
-        /// via <see cref="object.Equals(object, object)"/>. Prefer a reference type
-        /// (<c>sealed record</c>) to obtain value equality without boxing; a <c>record struct</c>
-        /// boxes on every <c>V.Component</c> call.
+        /// <typeparamref name="TProps"/> is stored as <see cref="object"/> on the fiber. Prefer a
+        /// reference type (<c>sealed record</c>): a <c>record struct</c> boxes on every
+        /// <c>V.Component</c> call. Whether that stored value is compared at all, and under which
+        /// rule, is what <see cref="ComponentAttribute.Memoize"/> states.
         /// </remarks>
-        /// <typeparam name="TProps">Props type. Use <c>sealed record</c> (reference type) for value equality without boxing.</typeparam>
+        /// <typeparam name="TProps">Props type. Use <c>sealed record</c> (reference type) to avoid boxing.</typeparam>
         /// <param name="body">Delegate of a static method annotated with <c>[Component]</c> taking a single <typeparamref name="TProps"/> parameter.</param>
         /// <param name="props">The props value to pass to <paramref name="body"/>.</param>
         /// <param name="key">Key used to disambiguate siblings at the same position.</param>
