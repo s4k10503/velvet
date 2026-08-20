@@ -40,6 +40,7 @@ already touching, and two of them reached a commit that way.
 """
 
 import argparse
+import bisect
 import hashlib
 import json
 import os
@@ -110,24 +111,84 @@ class Mutant:
         return "{}:{} {} -> {} ({})".format(where, self.line, self.before, self.after, self.operator)
 
 
+def folded_reason(tail, wrapped):
+    """(the marker line's own claim, that claim with the comment lines under it folded onto it).
+
+    The reason spans the block so that a branch which rewrote only its wrapped half wrote the
+    declaration. The floor is measured on the claim rather than on that span, over which a comment
+    line that is not the reason at all would count toward it.
+    """
+    folded = [tail] + [line.strip().lstrip("/#") for line in wrapped]
+    return " ".join(tail.split()), " ".join(" ".join(folded).split())
+
+
 class Declaration:
-    def __init__(self, category, reason, line, written_here=True):
+    def __init__(self, category, reason, line, claim=None, through=None, written_here=True):
         self.category = category
         self.reason = reason
+        self.claim = reason if claim is None else claim
         self.line = line
+        self.through = line if through is None else through
         # Whether the branch wrote it, for the reason base_red_check.py's own field carries.
         self.written_here = written_here
+
+    def written_in(self, lines):
+        """Whether the branch wrote any line of the span `folded_reason` reads the reason over."""
+        return any(number in lines for number in range(self.line, self.through + 1))
 
     @property
     def complaint(self):
         if self.category not in CATEGORIES:
             return "category {!r} is not one of {}".format(self.category, ", ".join(CATEGORIES))
-        if len(self.reason.split()) < MINIMUM_REASON_WORDS:
-            return "the reason is under {} words".format(MINIMUM_REASON_WORDS)
+        if len(self.claim.split()) < MINIMUM_REASON_WORDS:
+            return "the reason's first line is under {} words".format(MINIMUM_REASON_WORDS)
         return None
 
     def __repr__(self):
         return "Declaration({!r}, line {})".format(self.category, self.line)
+
+
+def comment_spans(text):
+    """(start, end) for each span `mask_spans` read as a comment."""
+    return [(start, end) for start, end, kind in mask_spans(text)
+            if kind in (LINE_COMMENT, BLOCK_COMMENT)]
+
+
+def declared_lines(text, marker, spans):
+    """1-based line -> the `marker` match that opens inside one of `spans`, for each line holding one.
+
+    A string literal is what this rules out. A marker there is the material of whatever asserts over
+    the declaration syntax, and adopting it as an answer for the statement beneath silences that
+    statement instead of reporting it.
+
+    Membership is the match's own offset rather than its line's, because one line can carry a literal
+    and a comment at once -- a verbatim string closing above a trailing remark is the shape in this
+    repository's own fixtures. Asked by the line, both the reading and the count that exists to catch
+    a lost declaration accept such a marker, so the file balances and nothing reports it.
+    """
+    starts = [start for start, _ in line_spans(text)]
+    found = {}
+    for match in marker.finditer(text):
+        if any(start <= match.start() < end for start, end in spans):
+            found.setdefault(bisect.bisect_right(starts, match.start()), match)
+    return found
+
+
+def comment_lines(text, spans):
+    """The 1-based lines whose first non-space character sits inside one of `spans`.
+
+    Which lines are prose rather than which hold a marker, so a block comment's continuation counts
+    and a remark trailing a statement does not.
+    """
+    found = set()
+    for number, (start, end) in enumerate(line_spans(text), start=1):
+        line = text[start:end]
+        if not line.strip():
+            continue
+        head = start + len(line) - len(line.lstrip())
+        if any(opened <= head < closed for opened, closed in spans):
+            found.add(number)
+    return found
 
 
 def declarations_in(text):
@@ -144,22 +205,25 @@ def declarations_in(text):
     lines = text.splitlines()
     mask = code_mask(text)
     spans = line_spans(text)
+    declared = declared_lines(text, DECLARATION, comment_spans(text))
 
     def seen(number):
         start, end = spans[number]
         return "".join(text[offset] for offset in range(start, end) if mask[offset])
 
     found = []
-    for index, line in enumerate(lines):
-        match = DECLARATION.search(line)
+    for index in range(len(lines)):
+        match = declared.get(index + 1)
         if not match:
             continue
         subject = index + 1
-        while subject < len(lines) and lines[subject].strip().startswith("//"):
+        while subject < len(lines) and lines[subject].strip() and not seen(subject).strip():
             subject += 1
         if subject >= len(lines) or not lines[subject].strip():
             continue
-        declaration = Declaration(match.group(1), match.group(2).strip(), line=index + 1)
+        claim, reason = folded_reason(match.group(2), lines[index + 1:subject])
+        declaration = Declaration(match.group(1), reason, line=index + 1, claim=claim,
+                                  through=subject)
         # Extends while the statement's own parentheses are still open, which is what a condition
         # broken across lines leaves and what a finished statement does not.
         depth = 0
@@ -912,7 +976,7 @@ def declarations_for(targets, changed):
     found = {}
     for path in targets:
         for subject, declaration in declarations_in(path.read_text()):
-            declaration.written_here = declaration.line in changed.get(path, set())
+            declaration.written_here = declaration.written_in(changed.get(path, set()))
             found[(path, subject)] = declaration
     return found
 

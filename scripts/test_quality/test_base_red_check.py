@@ -9,34 +9,64 @@ failures are silent -- the run comes back green having measured the wrong thing.
 Run: python3 scripts/test_quality/test_base_red_check.py
 """
 
+import contextlib
 import importlib.util
+import io
 import json
 import re
 import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
-# Split so the repository scan below, which reads this file among the rest, does not find the sample
-# declaration in the fixture text and report it as one nothing carries.
-MARKER = "GREEN_ON" "_BASE"
 
-
-def load_module():
-    """Imports base_red_check by path, since scripts/test_quality is not a package."""
+def load_module(name):
+    """Imports a sibling script by path, since scripts/test_quality is not a package."""
     spec = importlib.util.spec_from_file_location(
-        "base_red_check", Path(__file__).resolve().with_name("base_red_check.py")
+        name, Path(__file__).resolve().with_name(name + ".py")
     )
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 
 
-base_red_check = load_module()
+base_red_check = load_module("base_red_check")
+
+MARKER = "GREEN_ON_BASE"
+
+
+def two_commit_repo(test, base, branch):
+    """(a repository whose first commit is `base` and second is `branch`, the merge base's sha)."""
+    holder = tempfile.mkdtemp(prefix="base-red-tree-")
+    test.addCleanup(shutil.rmtree, holder, ignore_errors=True)
+    root = Path(holder)
+    run = lambda *arguments: subprocess.run(["git", "-C", holder, *arguments], check=True,
+                                            capture_output=True, text=True)
+    run("init", "-q")
+    run("config", "user.email", "probe@example.com")
+    run("config", "user.name", "probe")
+    for label, files in (("base", base), ("branch", branch)):
+        for relative, text in files.items():
+            path = root / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text)
+        run("add", "-A")
+        run("commit", "-qm", label)
+    return root, run("rev-parse", "HEAD^").stdout.strip()
+
+
+def worktree_beside(test, root):
+    """Where a base tree of `root` may be built, removed again however the test leaves."""
+    tree = Path(str(root) + "-tree")
+    test.addCleanup(subprocess.run, ["git", "-C", str(root), "worktree", "remove", "--force",
+                                     str(tree)], capture_output=True)
+    return tree
+
 
 FIXTURE_TEMPLATE = """using NUnit.Framework;
 
@@ -71,7 +101,6 @@ namespace Velvet.Tests
 }
 """
 
-
 FIXTURE = FIXTURE_TEMPLATE.replace("{marker}", MARKER)
 
 
@@ -101,6 +130,30 @@ def csharp_test_files():
     """Every tracked C# file that declares at least one test case."""
     return [(relative, text) for relative, text in tracked("csharp")
             if base_red_check.CSHARP_CASE_ATTRIBUTE.search(text)]
+
+
+def imported_csharp_fixtures():
+    """Every fixture file Unity compiles, found without asking `kind_of` which lane it is in.
+
+    `tracked` selects by lane, and a file the lane reader misses is exactly what nothing built on it
+    can report. The generator solution under `Generators~` builds and runs outside Unity, so its
+    fixtures are not ones a test platform reports and not ones to carry onto a base tree.
+
+    The attribute is looked for in the code rather than the raw text, since `[Test]` occurs in this
+    repository's prose about tests as well as in its declarations of them.
+    """
+    names = subprocess.run(["git", "-C", str(REPO_ROOT), "ls-files"],
+                           capture_output=True, text=True, check=True).stdout.splitlines()
+    found = []
+    for relative in names:
+        path = REPO_ROOT / relative
+        if not relative.endswith(".cs") or "~/" in relative or not path.exists():
+            continue
+        code = "\n".join(base_red_check.code_lines(
+            path.read_text(encoding="utf-8", errors="replace")))
+        if base_red_check.CSHARP_CASE_ATTRIBUTE.search(code):
+            found.append(relative)
+    return found
 
 
 def python_test_files():
@@ -189,6 +242,28 @@ def unanswered_names(corpus, heirs):
                 relative, case.name, produced.name.rsplit(".", 1)[0])
                 for produced in named if produced.name.rsplit(".", 1)[0] not in answerable]
     return unanswered
+
+
+class MaskedLineTests(unittest.TestCase):
+    """That a masked line is as long as the raw one, which two readers index against each other by.
+
+    A construct whose mask reaches the line terminator is where it stops being true, and the cost is
+    silent: `assume_gate_check.py` takes the expression an `Assume` gates off the masked body and
+    writes the raw text at those offsets into its record, so a line one character longer than its
+    raw twin misquotes every gate below it in the same case.
+    """
+
+    def test_Given_AMaskCrossingALineTerminator_When_TheLinesAreMasked_Then_EachKeepsItsRawLength(self):
+        # Arrange -- the three spellings that reach a terminator: a line comment before a CRLF, and a
+        # verbatim string and a block comment that carry on to the next line.
+        text = ("int a = 1; // note\r\nvar s = @\"one\ntwo\";\n/* three\nfour */\nint b = 2;\n")
+
+        # Act
+        masked = base_red_check.code_lines(text)
+
+        # Assert
+        self.assertEqual([len(line) for line in masked],
+                         [len(line) for line in text.splitlines()])
 
 
 class CSharpReadingTests(unittest.TestCase):
@@ -366,6 +441,215 @@ class DeclarationTests(unittest.TestCase):
         # Assert
         self.assertIsNone(case_named(cases, "Given_D_When_E_Then_F").declaration)
 
+    def test_Given_AReasonWrappedOntoASecondCommentLine_When_ItIsRead_Then_TheWrappedHalfIsPartOfIt(self):
+        # Arrange
+        text = ("class C\n{\n    // " + MARKER + "(characterization): the reordering\n"
+                "    // this rename keeps is the base's own.\n"
+                "    [Test]\n    public void Given_A_When_B_Then_C() => Assert.Pass();\n}\n")
+
+        # Act
+        case = base_red_check.csharp_cases(text)[0]
+
+        # Assert
+        self.assertEqual(case.declaration.reason,
+                         "the reordering this rename keeps is the base's own.")
+
+    def test_Given_APythonReasonWrappedOntoASecondLine_When_ItIsRead_Then_TheWrappedHalfIsPartOfIt(self):
+        # Arrange -- the other marker a comment block is written with. A fold that reaches only `//`
+        # leaves this lane reading first lines, and nothing else here would say so.
+        text = ("import unittest\n"
+                "class C(unittest.TestCase):\n"
+                "    # " + MARKER + "(refactor): the names\n"
+                "    # this rename preserves.\n"
+                "    def test_a(self):\n        pass\n")
+
+        # Act
+        case = base_red_check.python_cases(text)[0]
+
+        # Assert
+        self.assertEqual(case.declaration.reason, "the names this rename preserves.")
+
+    def test_Given_AShortClaimAboveAnUnrelatedRemark_When_ItIsRead_Then_TheFloorStillRefusesIt(self):
+        # Arrange
+        text = ("class C\n{\n    // " + MARKER + "(refactor): rename\n"
+                "    // This fixture needs a real panel and is guarded by TestGraphics.\n"
+                "    [Test]\n    public void Given_A_When_B_Then_C() => Assert.Pass();\n}\n")
+
+        # Act
+        declaration = base_red_check.csharp_cases(text)[0].declaration
+
+        # Assert -- one comparison over both: the reason is what a reader that never folds gets
+        # wrong, and the complaint is what one that measures the floor over the fold gets wrong.
+        self.assertEqual(
+            (declaration.reason, declaration.complaint is not None),
+            ("rename This fixture needs a real panel and is guarded by TestGraphics.", True))
+
+    def test_Given_ADeclarationCarriedByThePlan_When_TheSecondInvocationDecides_Then_ItJudgesTheSame(self):
+        # Arrange -- the C# lane reads the tree in one invocation and decides in another, so whatever
+        # the plan does not carry is a reading the deciding half takes differently from the reading
+        # half. Nothing else here goes through it.
+        text = ("class C\n{\n    // " + MARKER + "(refactor): rename\n"
+                "    // This fixture needs a real panel.\n"
+                "    [Test]\n    public void Given_A_When_B_Then_C() => Assert.Pass();\n}\n")
+        case = base_red_check.csharp_cases(text)[0]
+        case.declaration.written_here = False
+
+        # Act
+        restored = base_red_check.from_plan(
+            base_red_check.as_plan("sha", [case], [], {}, {})["cases"])[0].declaration
+
+        # Assert -- the three the plan is a transport for, in one comparison: the reason, the floor
+        # verdict the claim decides, and whose declaration it is.
+        self.assertEqual(
+            (restored.reason, restored.complaint is not None, restored.written_here),
+            ("rename This fixture needs a real panel.", True, False))
+
+    def test_Given_ACaseCarriedByThePlan_When_TheSecondInvocationDecides_Then_ItKeysAndMeasuresItAlike(self):
+        # Arrange -- the declaration is not the only thing the plan transports. `path` decides the
+        # lane, the key and the platform the soundness reading is taken on, and a plan carrying a
+        # wrong one turns a failing verdict into a plausible "could not compile there". That is the
+        # silent direction: a dropped field raises where a corrupt one reads.
+        case = base_red_check.Case("N.C.Given_A_When_B_Then_C",
+                                   "Packages/p/Runtime/A/Tests/Editor/CTests.cs", 1, 2)
+
+        # Act
+        restored = base_red_check.from_plan(
+            base_red_check.as_plan("sha", [case], [], {}, {})["cases"])[0]
+
+        # Assert
+        self.assertEqual((restored.key, base_red_check.measured_by(restored.path)),
+                         (case.key, base_red_check.measured_by(case.path)))
+
+    # A C# fixture as the modules here hold them, so the line below opens with `//` while being no
+    # part of any comment. A reader keyed on that opener counts it, and no case here carries it.
+    CSHARP_IN_A_PYTHON_STRING = '''
+// GREEN_ON_BASE(characterization): the keyed-reorder order this refactor must not change.
+'''
+
+    def test_Given_APythonStringHoldingAMarker_When_TheFileIsCounted_Then_OnlyTheCommentCounts(self):
+        # Arrange -- both halves in one module, since a reading that reaches neither is the other way
+        # of getting this wrong.
+        module = ('# GREEN_ON_BASE(refactor): the settle-path names this rename preserves.\n'
+                  'SNIPPET = """' + self.CSHARP_IN_A_PYTHON_STRING + '"""\n')
+
+        # Act
+        written, _ = base_red_check.orphaned_declarations(
+            "scripts/test_quality/test_probe.py", module)
+
+        # Assert
+        self.assertEqual(written, 1)
+
+    def test_Given_ACSharpStringHoldingAMarker_When_TheFileIsCounted_Then_OnlyTheCommentCounts(self):
+        # Arrange -- the other lane's spelling of the same thing: a fixture asserting over the
+        # declaration syntax carries it as data.
+        text = ('class C\n{\n'
+                '    // GREEN_ON_BASE(refactor): the reordering this rename preserves.\n'
+                '    const string Sample = @"// GREEN_ON_BASE(characterization): a sample of one.";\n'
+                '}\n')
+
+        # Act
+        written, _ = base_red_check.orphaned_declarations(
+            "Packages/p/Runtime/A/Tests/Editor/CTests.cs", text)
+
+        # Assert
+        self.assertEqual(written, 1)
+
+    # GREEN_ON_BASE(characterization): a marker anywhere inside a block comment counts as written.
+    # Moving the reading onto lines rather than onto whole comment texts had to keep that.
+    def test_Given_AMarkerOnTheSecondLineOfABlockComment_When_TheFileIsCounted_Then_ItIsWritten(self):
+        # Arrange -- the block spans two lines and only the first of them opens it, so a reading that
+        # covers the opener alone stops seeing the marker while still calling the file balanced.
+        text = ('class C\n{\n'
+                '    /* a note standing over the case below,\n'
+                '       GREEN_ON_BASE(refactor): the reordering this rename preserves. */\n'
+                '    [Test]\n    public void Given_A_When_B_Then_C() => Assert.Pass();\n}\n')
+
+        # Act
+        written, _ = base_red_check.orphaned_declarations(
+            "Packages/p/Runtime/A/Tests/Editor/CTests.cs", text)
+
+        # Assert
+        self.assertEqual(written, 1)
+
+    def test_Given_ACSharpStringMarkerAboveACase_When_TheFileIsRead_Then_NoCaseCarriesIt(self):
+        # Arrange -- the marker is a fixture's own material and the case sits directly under it, so a
+        # reading taken off the raw line carries it. That silences the case as declared instead of
+        # failing it, and the written side counts nothing to say so.
+        text = ('class C\n{\n'
+                '    const string Sample = @"\n'
+                '// GREEN_ON_BASE(characterization): the keyed-reorder order this preserves.";\n'
+                '    [Test]\n    public void Given_A_When_B_Then_C() => Assert.Pass();\n}\n')
+
+        # Act
+        carried = [case.declaration for case
+                   in base_red_check.cases_in("Packages/p/Runtime/A/Tests/Editor/CTests.cs", text)]
+
+        # Assert
+        self.assertEqual(carried, [None])
+
+    def test_Given_ACSharpStringMarkerOnALineThatAlsoComments_When_TheFileIsRead_Then_NoCaseCarriesIt(self):
+        # Arrange — the literal closes and a comment opens on the one line. Asking whether the line
+        # is commented accepts a marker that sits in neither, and the written count accepts it too,
+        # so the file balances and the case is silenced with nothing having written a declaration.
+        text = ('class C\n{\n'
+                '    const string Sample = @"\n'
+                '// GREEN_ON_BASE(characterization): the keyed-reorder order this preserves."; // note\n'
+                '    [Test]\n    public void Given_A_When_B_Then_C() => Assert.Pass();\n}\n')
+
+        # Act
+        carried = [case.declaration for case
+                   in base_red_check.cases_in("Packages/p/Runtime/A/Tests/Editor/CTests.cs", text)]
+
+        # Assert
+        self.assertEqual(carried, [None])
+
+    def test_Given_APythonStringMarkerOnALineThatAlsoComments_When_TheFileIsRead_Then_NoCaseCarriesIt(self):
+        # Arrange — the other lane's spelling of the same line, in the shape these modules hold: the
+        # triple quote closes the fixture text and a comment follows it.
+        module = ('import unittest\n\n\n'
+                  'class Fixture(unittest.TestCase):\n'
+                  '    SNIPPET = """\n'
+                  '# GREEN_ON_BASE(refactor): the settle-path names this rename preserves.""" # note\n'
+                  '    def test_something(self):\n        self.assertTrue(True)\n')
+
+        # Act
+        carried = [case.declaration for case
+                   in base_red_check.cases_in("scripts/test_quality/test_probe.py", module)]
+
+        # Assert
+        self.assertEqual(carried, [None])
+
+    def test_Given_APythonStringMarkerAboveACase_When_TheFileIsRead_Then_NoCaseCarriesIt(self):
+        # Arrange -- the other lane's spelling of it, in the shape these modules already hold: a
+        # marker inside the text a fixture asserts over, with a case directly beneath.
+        module = ('import unittest\n\n\n'
+                  'class Fixture(unittest.TestCase):\n'
+                  '    SNIPPET = """\n'
+                  '# GREEN_ON_BASE(refactor): the settle-path names this rename preserves."""\n'
+                  '    def test_something(self):\n        self.assertTrue(True)\n')
+
+        # Act
+        carried = [case.declaration for case
+                   in base_red_check.cases_in("scripts/test_quality/test_probe.py", module)]
+
+        # Assert
+        self.assertEqual(carried, [None])
+
+    def test_Given_ADeclarationWrittenOverAHelper_When_TheFileIsRead_Then_ItIsReportedAsOrphaned(self):
+        # Arrange -- it silences nothing and looks like it does, and the case it was meant for then
+        # fails as green on the base under advice to write what is already there.
+        text = ('class C\n{\n'
+                '    // GREEN_ON_BASE(refactor): the reordering this rename preserves.\n'
+                '    private void Helper() { }\n\n'
+                '    [Test]\n    public void Given_A_When_B_Then_C() => Assert.Pass();\n}\n')
+
+        # Act
+        written, carried = base_red_check.orphaned_declarations(
+            "Packages/p/Runtime/A/Tests/Editor/CTests.cs", text)
+
+        # Assert
+        self.assertEqual((written, carried), (1, 0))
+
     def test_Given_ACategoryNothingDefines_When_TheDeclarationIsChecked_Then_ItIsComplainedAbout(self):
         # Act
         complaint = base_red_check.Declaration("whatever", "a reason with enough words in it").complaint
@@ -421,6 +705,20 @@ class SelectionTests(unittest.TestCase):
 
         # Act / Assert
         self.assertEqual(base_red_check.outside(cases, {20}), set())
+
+    def test_Given_AStringLineOpeningLikeAComment_When_TheUnjudgedLinesAreCounted_Then_ItIsAmongThem(self):
+        # Arrange -- a field holding a C# fixture as data, whose last line opens with `//` and sits
+        # directly above a case. Walking the block up over it absorbs the field into that case, and
+        # what a case covers is what `outside` subtracts: the line stops being reported as shared,
+        # so a run stops saying the file's other cases are no longer the base's text.
+        text = ('class C\n{\n'
+                '    const string Sample = @"[Test]\n'
+                '// a line of the fixture this asserts over";\n'
+                '    [Test]\n    public void Given_A_When_B_Then_C() => Assert.Pass();\n}\n')
+        cases = base_red_check.csharp_cases(text)
+
+        # Act / Assert
+        self.assertEqual(base_red_check.outside(cases, {4}), {4})
 
     def test_Given_AFileTheBranchAddedWhole_When_ItIsSelected_Then_EveryCaseIsTaken(self):
         # Arrange
@@ -543,6 +841,95 @@ class VerdictTests(unittest.TestCase):
         # Assert
         self.assertEqual(verdict, base_red_check.RED_ON_BASE)
 
+    def test_Given_ACaseThatRaisedOnTheBase_When_ItIsDecided_Then_ItIsNotReadAsRed(self):
+        # Act
+        verdict, _ = base_red_check.decide(self.probe(), "Error", fixture_ran=True)
+
+        # Assert -- it stopped before it disagreed with anything, so it pins nothing either way.
+        self.assertEqual(verdict, base_red_check.COULD_NOT_ANSWER)
+
+    def test_Given_ACaseInconclusiveOnTheBase_When_ItIsDecided_Then_ItIsNotReadAsRed(self):
+        # Arrange -- an Assume of its own was false there, which is the C# spelling of the same thing.
+        # Act
+        verdict, _ = base_red_check.decide(self.probe(), "Inconclusive", fixture_ran=True)
+
+        # Assert
+        self.assertEqual(verdict, base_red_check.COULD_NOT_ANSWER)
+
+    def test_Given_ACaseSkippedOnTheBase_When_ItIsDecided_Then_ItIsNotReadAsRed(self):
+        # Act
+        verdict, _ = base_red_check.decide(self.probe(), "Skipped", fixture_ran=True)
+
+        # Assert
+        self.assertEqual(verdict, base_red_check.COULD_NOT_ANSWER)
+
+    def test_Given_ACaseTheBaseCouldNotAnswer_When_ItIsReported_Then_ItFailsTheGate(self):
+        # Arrange
+        case = self.probe()
+
+        # Act
+        offenders = base_red_check.report(
+            [case], [], {case.key: "Skipped", "N.CanaryTests.Given_X_When_Y_Then_Z": "Passed"},
+            {"EditMode": ["N.CanaryTests"]}, wrote=True)
+
+        # Assert
+        self.assertEqual([offender.verdict for offender in offenders],
+                         [base_red_check.COULD_NOT_ANSWER])
+
+    # GREEN_ON_BASE(characterization): the unknown-category refusal the new verdicts must leave alone.
+    def test_Given_AMalformedDeclarationOnACaseGreenOnTheBase_When_ItIsDecided_Then_ItFailsTheRun(self):
+        # Arrange -- a category the script does not know reads to everyone else as an approved
+        # exemption, and the case it sits on is one that passes there, which is the reading this
+        # whole check exists to refuse.
+        # Act
+        verdict, _ = base_red_check.decide(
+            self.probe(base_red_check.Declaration("invented", "the names this rename preserves")),
+            "Passed", fixture_ran=True)
+
+        # Assert
+        self.assertIn(verdict, base_red_check.FAILING_VERDICTS)
+
+    def test_Given_ACaseWhoseRunSaidSomethingUnreadable_When_ItIsDecided_Then_ItFailsTheRun(self):
+        # Arrange -- unlike the three above, nothing here says what the base did with the case, so
+        # the two directions it could be filed under are both a guess and one of them exits zero.
+        # Act
+        verdict, _ = base_red_check.decide(self.probe(), "Unreadable", fixture_ran=True)
+
+        # Assert
+        self.assertIn(verdict, base_red_check.FAILING_VERDICTS)
+
+    def test_Given_ADeclaredCaseTheBaseCouldNotAnswerFor_When_ItIsDecided_Then_TheDeclarationStands(self):
+        # Arrange -- an environment that skipped the case says nothing about whether it belongs on
+        # the base, and the branch cannot act on being told to delete a declaration that is right.
+        # Act
+        verdict, _ = base_red_check.decide(
+            self.probe(base_red_check.Declaration("refactor", "the names this rename preserves")),
+            "Skipped", fixture_ran=True)
+
+        # Assert
+        self.assertEqual(verdict, base_red_check.COULD_NOT_ANSWER)
+
+    def test_Given_ADeclaredCaseWhoseRunSaidSomethingUnreadable_When_ItIsDecided_Then_ItIsNotCalledStale(self):
+        # Arrange -- the third way the base can fail to reach a verdict, and the one that reads as a
+        # verdict to anything comparing against the two named readings rather than against the set.
+        # Act
+        verdict, _ = base_red_check.decide(
+            self.probe(base_red_check.Declaration("refactor", "the names this rename preserves")),
+            "Unreadable", fixture_ran=True)
+
+        # Assert
+        self.assertEqual(verdict, base_red_check.NOT_REPORTED)
+
+    def test_Given_ADeclaredCaseWhoseFixtureTheBaseNeverBuilt_When_ItIsDecided_Then_ItIsStillEvidence(self):
+        # Arrange -- the same reading in the C# lane's spelling, and the older of the two.
+        # Act
+        verdict, _ = base_red_check.decide(
+            self.probe(base_red_check.Declaration("refactor", "the names this rename preserves")),
+            None, fixture_ran=False)
+
+        # Assert
+        self.assertEqual(verdict, base_red_check.COULD_NOT_COMPILE)
+
     def test_Given_ACaseAbsentFromAFixtureThatRan_When_ItIsDecided_Then_ItFailsTheRun(self):
         # Act
         verdict, _ = base_red_check.decide(self.probe(), None, fixture_ran=True)
@@ -625,6 +1012,668 @@ class CanaryTests(unittest.TestCase):
         self.assertEqual(base_red_check.canary_fixtures(root, "EditMode", carry=[carried]), [])
 
 
+class PythonOutcomeTests(unittest.TestCase):
+    """What one unittest invocation is read to have said, over the four things it can say."""
+
+    TRAILER = "Ran 1 test in 0.001s\n\n{}\n"
+
+    def test_Given_ACaseThatDisagreed_When_ItsRunIsRead_Then_ItIsTheBaseAnswering(self):
+        # Act
+        outcome = base_red_check.python_outcome(self.TRAILER.format("FAILED (failures=1)"))
+
+        # Assert
+        self.assertEqual(outcome, "Failed")
+
+    def test_Given_ACaseThatRaised_When_ItsRunIsRead_Then_ItIsNotTheBaseAnswering(self):
+        # Arrange -- a name the base has not got dies here, and exits with the same status as a case
+        # that ran and disagreed.
+        # Act
+        outcome = base_red_check.python_outcome(self.TRAILER.format("FAILED (errors=1)"))
+
+        # Assert
+        self.assertEqual(outcome, "Error")
+
+    def test_Given_ACaseThatPassed_When_ItsRunIsRead_Then_ItIsAPass(self):
+        # Act
+        outcome = base_red_check.python_outcome(self.TRAILER.format("OK"))
+
+        # Assert
+        self.assertEqual(outcome, "Passed")
+
+    def test_Given_ACaseThatSkipped_When_ItsRunIsRead_Then_ItIsNotAPass(self):
+        # Arrange -- unittest exits zero for a skip, so the status alone reads it as agreement.
+        # Act
+        outcome = base_red_check.python_outcome(self.TRAILER.format("OK (skipped=1)"))
+
+        # Assert
+        self.assertEqual(outcome, "Skipped")
+
+    def test_Given_ATrailerNamingNeitherCount_When_ItIsRead_Then_NothingIsReadOffIt(self):
+        # Arrange -- unittest prints this for a case marked expectedFailure that passed. Reading it
+        # as an exception exits zero, and picking that side of the line is the fail-open this
+        # separation exists to close.
+        # Act
+        outcome = base_red_check.python_outcome(
+            self.TRAILER.format("FAILED (unexpected successes=1)"))
+
+        # Assert
+        self.assertEqual(outcome, "Unreadable")
+
+    def test_Given_ARunThatPrintedNoTrailer_When_ItIsRead_Then_ItIsNotTheBaseAnswering(self):
+        # Arrange -- a module whose top level reaches for a name the branch adds raises out of the
+        # loader, and the process prints a traceback where the trailer would be.
+        # Act
+        outcome = base_red_check.python_outcome("Traceback (most recent call last):\n")
+
+        # Assert
+        self.assertEqual(outcome, "Error")
+
+
+class SilenceTests(unittest.TestCase):
+    """Which of the two ways a case can be missing the run reports as having measured nothing."""
+
+    def summary_over(self, reported):
+        case = base_red_check.Case("N.C.Given_A_When_B_Then_C", "a/Tests/Editor/CTests.cs", 1, 2)
+        printed = io.StringIO()
+        with contextlib.redirect_stdout(printed):
+            base_red_check.report([case], [], reported)
+        return printed.getvalue()
+
+    def test_Given_TheTwoWaysACaseGoesMissing_When_TheRunIsSummarised_Then_OnlyTheRaisedOneCounts(self):
+        # Arrange -- one comparison over both, because either alone holds on a run that summarises
+        # nothing at all. A case the base could not build is the strongest pin this takes: it names
+        # a symbol the branch adds, and counting it among the readings nobody took tells the author
+        # of a correct test that the run measured nothing.
+        raised = self.summary_over({"N.C.Given_A_When_B_Then_C": "Error"})
+
+        # Act
+        uncompilable = self.summary_over({})
+
+        # Assert
+        self.assertEqual(("could not answer for" in raised, "could not answer for" in uncompilable),
+                         (True, False))
+
+    def test_Given_ACaseTheBaseBuiltNoneOfTheFixtureOf_When_TheRunIsSummarised_Then_ItIsCountedToo(self):
+        # Arrange -- the verdict is the fixture's, so a case in one that reported nothing carries it
+        # whether or not it is the case naming what the base has not got. Counting them is how a
+        # reviewer sees how much of the run that is without counting the per-case listing by hand.
+        uncompilable = self.summary_over({})
+
+        # Act
+        answered = self.summary_over({"N.C.Given_A_When_B_Then_C": "Failed"})
+
+        # Assert -- the answered run rides along because a line printed unconditionally satisfies
+        # the first half on its own.
+        self.assertEqual(("1 of 1 case(s) sit in a fixture" in uncompilable,
+                          "sit in a fixture" in answered), (True, False))
+
+
+class UnittestTrailerTests(unittest.TestCase):
+    """Which deaths at a module's own top level print a trailer, since `python_outcome` reads one.
+
+    The engine's behaviour rather than this repository's, so it is measured here rather than stated
+    beside the reader. The reader's no-trailer branch exists for the half that prints nothing, and
+    without this nothing says which half that is -- both halves reach the same verdict through it,
+    so its own end-to-end case cannot tell them apart.
+    """
+
+    MODULE = ("import unittest\n\n{top}\n\n\nclass T(unittest.TestCase):\n"
+              "    def test_Given_A_When_B_Then_C(self):\n        pass\n")
+
+    def printed(self, top):
+        holder = tempfile.mkdtemp(prefix="unittest-trailer-")
+        self.addCleanup(shutil.rmtree, holder, ignore_errors=True)
+        (Path(holder) / "test_probe.py").write_text(self.MODULE.format(top=top))
+        result = subprocess.run(
+            [sys.executable, "-m", "unittest", "-v", "test_probe.T.test_Given_A_When_B_Then_C"],
+            cwd=holder, capture_output=True, text=True)
+        return result.stdout + result.stderr
+
+    def test_Given_ATopLevelImportError_When_ACaseOfThatModuleIsRun_Then_ATrailerIsPrinted(self):
+        # Arrange -- the loader turns this one into a case that fails, so the run closes normally.
+        # Act
+        printed = self.printed("import no_module_of_this_name_at_all")
+
+        # Assert
+        self.assertIsNotNone(base_red_check.UNITTEST_SUMMARY.search(printed))
+
+    def test_Given_ATopLevelRaiseOfAnythingElse_When_ACaseOfThatModuleIsRun_Then_NoTrailerIsPrinted(self):
+        # Arrange -- an attribute the branch added and the base has not got raises exactly here.
+        # Act
+        printed = self.printed("raise AttributeError('the base has not got this')")
+
+        # Assert
+        self.assertIsNone(base_red_check.UNITTEST_SUMMARY.search(printed))
+
+
+class PythonCanaryTests(unittest.TestCase):
+    """The cases a base tree's Python lane is read by, chosen the way the C# lane chooses fixtures."""
+
+    MODULE = ("import unittest\n\n\nclass T(unittest.TestCase):\n"
+              "    def test_Given_A_When_B_Then_C(self):\n        pass\n")
+
+    def tree(self, *tracked):
+        holder = tempfile.mkdtemp(prefix="base-red-pycanary-")
+        self.addCleanup(shutil.rmtree, holder, ignore_errors=True)
+        root = Path(holder)
+        subprocess.run(["git", "-C", holder, "init", "-q"], check=True)
+        for relative in tracked:
+            path = root / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(self.MODULE)
+        subprocess.run(["git", "-C", holder, "add", *tracked], check=True)
+        return root
+
+    def test_Given_AModuleTheBranchDidNotCarry_When_TheCanariesAreChosen_Then_ACaseOfItIsTaken(self):
+        # Arrange
+        root = self.tree("scripts/x/test_theirs.py")
+
+        # Act
+        chosen = base_red_check.python_canaries(root, carry=[])
+
+        # Assert
+        self.assertEqual([case.key for case in chosen], ["scripts/x/test_theirs.py::T.test_Given_A_When_B_Then_C"])
+
+    def test_Given_TheOnlyModuleIsOneTheBranchCarries_When_TheCanariesAreChosen_Then_NoneIs(self):
+        # Arrange -- a module the branch replaced says nothing about the tree it was copied onto.
+        carried = "scripts/x/test_mine.py"
+        root = self.tree(carried)
+
+        # Act / Assert
+        self.assertEqual(base_red_check.python_canaries(root, carry=[carried]), [])
+
+
+class PythonSurfaceEvidenceTests(unittest.TestCase):
+    def test_Given_UnprovenMissingSurfaces_When_TheyAreCompared_Then_NeitherIsEvidence(self):
+        # Arrange -- one name is absent on both trees, and one path belongs to the environment rather
+        # than the repository. Neither absence demonstrates a dependency on what the branch changed.
+        holder = tempfile.mkdtemp(prefix="base-red-pysurface-")
+        self.addCleanup(shutil.rmtree, holder, ignore_errors=True)
+        root = Path(holder)
+        base = root / "base"
+        branch = root / "branch"
+        for tree in (base, branch):
+            module = tree / "scripts/helper.py"
+            module.parent.mkdir(parents=True)
+            module.write_text("def kept():\n    return 1\n")
+        case = base_red_check.Case("T.test_a", "scripts/test_mine.py", 1, 2)
+
+        # Act
+        misspelled = base_red_check.added_python_surface(
+            "AttributeError: module 'helper' has no attribute 'misspelled'", base, branch, case)
+        environment = base_red_check.added_python_surface(
+            "FileNotFoundError: [Errno 2] No such file or directory: '/tmp/not-provided'",
+            base, branch, case)
+
+        # Assert
+        self.assertEqual((misspelled, environment), (False, False))
+
+
+class CSharpSurfaceEvidenceTests(unittest.TestCase):
+    """The C# spelling of the same comparison, which no traceback carries.
+
+    A compile failure stops the editor before it writes a results file, so the reading a single round
+    can take of it is the empty directory a crash leaves as well. What separates them is this.
+    """
+
+    def surface(self, text, base=("Idle", "Blocked"), added=("Proceeding",)):
+        return base_red_check.added_csharp_surface(text, set(base), set(added))
+
+    def test_Given_ACarriedFileSpellingANameOnlyTheBranchAdds_When_ItIsRead_Then_ThatNameIsEvidence(self):
+        # Arrange -- the shape a fixture for a new enum member has: the branch declares it in the
+        # production file it changed, and the base resolves nothing by that name.
+        # Act
+        found = self.surface("class T { void M() { var x = Status.Proceeding; } }")
+
+        # Assert
+        self.assertEqual(found, "Proceeding")
+
+    def test_Given_ANameTheBaseSpellsToo_When_ItIsRead_Then_ItIsNotEvidence(self):
+        # Arrange -- the counterpart, so the reading above is not every name in the file: a name the
+        # base carries resolves there, and a file spelling only those compiles.
+        # Act
+        found = self.surface("class T { void M() { var x = Status.Blocked; } }",
+                             base=("Idle", "Blocked", "Proceeding"))
+
+        # Assert
+        self.assertIsNone(found)
+
+    def test_Given_ANameNeitherTreeDeclares_When_ItIsRead_Then_ItIsNotEvidence(self):
+        # Arrange -- the first use of a type that lives in an assembly rather than in this repository.
+        # It is absent from the base's sources for the same reason it is absent from the branch's, and
+        # reading absence alone would withdraw a file that builds there perfectly well.
+        # Act
+        found = self.surface("class T { void M() { var pool = ArrayPool<int>.Shared; } }")
+
+        # Assert
+        self.assertIsNone(found)
+
+    def test_Given_TheNameSpelledOnlyInAComment_When_ItIsRead_Then_ItIsNotEvidence(self):
+        # Arrange -- a comment naming what the branch adds is not a reference to it, and a file whose
+        # only mention is one compiles on the base.
+        # Act
+        found = self.surface("class T { /* Proceeding is next */ void M() { } }")
+
+        # Assert
+        self.assertIsNone(found)
+
+
+class UnbuildableOnBaseTests(unittest.TestCase):
+    """Which carried files the reading withdraws, over a real base tree rather than an invented one."""
+
+    ENUM = "Packages/p/Runtime/A/Status.cs"
+    HELPER = "Packages/p/TestUtilities/Probe.cs"
+    FIXTURE = "Packages/p/Runtime/A/Tests/Editor/ProbeTests.cs"
+    CASE = "scripts/test_probe.py"
+
+    def fixture(self, body):
+        return ("namespace N\n{\n    class ProbeTests\n    {\n        [Test]\n"
+                "        public void Given_A_When_B_Then_C() => " + body + ";\n    }\n}\n")
+
+    def trees(self, base, branch):
+        """(project, merge base, the base tree the branch's test files were carried onto)."""
+        root, since = two_commit_repo(self, base, branch)
+        carry = sorted(name for name in base_red_check.changed_lines_by_file(root, since)
+                       if base_red_check.is_test_side(name))
+        tree = worktree_beside(self, root)
+        base_red_check.build_base_tree(root, since, tree, carry, [])
+        return root, since, tree, carry
+
+    def read(self, base, branch):
+        root, since, tree, carry = self.trees(base, branch)
+        return base_red_check.unbuildable_on_base(root, since, tree, carry)
+
+    def test_Given_AFixtureNamingAMemberTheBranchAdds_When_TheTreeIsRead_Then_ItIsUnbuildable(self):
+        # Arrange -- the file compiles on the branch and cannot on the base, which is the strongest
+        # evidence this check takes and the one a silent round throws away.
+        # Act
+        found = self.read({self.ENUM: "enum Status { Idle }\n",
+                           self.FIXTURE: self.fixture("Assert.Pass()")},
+                          {self.ENUM: "enum Status { Idle, Proceeding }\n",
+                           self.FIXTURE: self.fixture("Assert.That(Status.Proceeding, Is.Not.Null)")})
+
+        # Assert
+        self.assertEqual(found, {self.FIXTURE: "Proceeding"})
+
+    def test_Given_AFixtureTheBaseCanBuild_When_TheTreeIsRead_Then_NothingIsWithdrawn(self):
+        # Arrange -- the counterpart, and the one that decides whether this is safe to act on before
+        # a run: withdrawing a file the base builds hands its cases a verdict nothing measured.
+        # Act
+        found = self.read({self.ENUM: "enum Status { Idle }\n",
+                           self.FIXTURE: self.fixture("Assert.Pass()")},
+                          {self.ENUM: "enum Status { Idle, Proceeding }\n",
+                           self.FIXTURE: self.fixture("Assert.That(Status.Idle, Is.Not.Null)")})
+
+        # Assert
+        self.assertEqual(found, {})
+
+    def test_Given_AMemberNoChangedProductionFileSpells_When_TheTreeIsRead_Then_ItIsNotWithdrawn(self):
+        # Arrange -- the base's copy of the helper has not got Reach either, so the base's own text
+        # is not what leaves this file in the run. `unbuildable_on_base` records what the reading
+        # costs where a production change does spell the member.
+        # Act
+        found = self.read({self.ENUM: "enum Status { Idle }\n",
+                           self.HELPER: "class Probe { public static int Ready; }\n",
+                           self.FIXTURE: self.fixture("Assert.That(Probe.Ready, Is.Zero)")},
+                          {self.ENUM: "enum Status { Idle, Proceeding }\n",
+                           self.HELPER: "class Probe { public static int Ready, Reach; }\n",
+                           self.FIXTURE: self.fixture("Assert.That(Probe.Reach, Is.Zero)")})
+
+        # Assert
+        self.assertEqual(found, {})
+
+    def test_Given_AProductionChangeSpellingTheFixturesOwnName_When_TheTreeIsRead_Then_ItIsNotWithdrawn(self):
+        # Arrange -- the fixture spelled Badge before this branch and the base builds it. Read over
+        # every base file but this one, its own declaration is thrown away and what is left is a
+        # collision with the production change rather than a name that cannot resolve.
+        # Act
+        found = self.read({self.ENUM: "enum Status { Idle }\n",
+                           self.FIXTURE: self.fixture("Assert.That(Badge(), Is.Not.Null)")},
+                          {self.ENUM: "enum Status { Idle, Badge }\n",
+                           self.FIXTURE: self.fixture("Assert.That(Badge(), Is.Null)")})
+
+        # Assert
+        self.assertEqual(found, {})
+
+    def test_Given_ANameOnlyAnotherCarriedFilesBaseCopySpells_When_TheTreeIsRead_Then_NothingIsWithdrawn(self):
+        # Arrange -- the same reading one file over, and the fixture's own base copy does not spell
+        # Reach: only the helper's does. Reading back just the file being judged would close the case
+        # above and leave this one withdrawing a fixture the base builds.
+        # Act
+        found = self.read({self.ENUM: "enum Status { Idle }\n",
+                           self.HELPER: "class Probe { public static int Reach; }\n",
+                           self.FIXTURE: self.fixture("Assert.Pass()")},
+                          {self.ENUM: "enum Status { Idle, Reach }\n",
+                           self.HELPER: "class Probe { public static int Reach, Extra; }\n",
+                           self.FIXTURE: self.fixture("Assert.That(Probe.Reach, Is.Not.Null)")})
+
+        # Assert
+        self.assertEqual(found, {})
+
+    def test_Given_TheAddedNameSpelledOnlyInAProductionComment_When_TheTreeIsRead_Then_NothingIsWithdrawn(self):
+        # Arrange -- the counterpart of the masked read taken over the carried file, on the side that
+        # supplies the names: a production file whose only mention of Proceeding is a comment adds
+        # nothing, and withdrawing on it is a fixture excused by prose.
+        # Act
+        found = self.read({self.ENUM: "enum Status { Idle }\n",
+                           self.FIXTURE: self.fixture("Assert.Pass()")},
+                          {self.ENUM: "enum Status { Idle } // Proceeding is next\n",
+                           self.FIXTURE: self.fixture("Assert.That(Status.Proceeding, Is.Not.Null)")})
+
+        # Assert
+        self.assertEqual(found, {})
+
+    def test_Given_ACarriedPythonCaseSpellingAnAddedName_When_TheTreeIsRead_Then_ItIsNotWithdrawn(self):
+        # Arrange -- the Python lane reports its own missing surface off a traceback, and reading a
+        # module as C# hands its cases a compile verdict no compiler took.
+        # Act
+        found = self.read({self.ENUM: "enum Status { Idle }\n", self.CASE: "Proceeding = 0\n"},
+                          {self.ENUM: "enum Status { Idle, Proceeding }\n",
+                           self.CASE: "Proceeding = 1\n\n\nclass T:\n"
+                                      "    def test_Given_A_When_B_Then_C(self):\n        pass\n"})
+
+        # Assert
+        self.assertEqual(found, {})
+
+
+class EmittedBaseTreeTests(unittest.TestCase):
+    """What `--emit` leaves behind for an editor it does not itself run.
+
+    The reading and the run are separate invocations with a base tree and one JSON file between them,
+    so a withdrawal decided here and not carried out changes nothing: the tree still holds the file
+    the module docstring says takes its whole assembly down with it, and the empty artifacts directory
+    that follows is the one an editor that never started leaves too.
+    """
+
+    ENUM = "Packages/p/Runtime/A/Status.cs"
+    UNBUILDABLE = "Packages/p/Runtime/A/Tests/Editor/ProbeTests.cs"
+    BESIDE = "Packages/p/Runtime/A/Tests/Editor/OtherTests.cs"
+
+    def fixture(self, name, body):
+        return ("namespace N\n{\n    class " + name + "\n    {\n        [Test]\n"
+                "        public void Given_A_When_B_Then_C() => " + body + ";\n    }\n}\n")
+
+    def emitted(self):
+        """(the base tree `--emit` built and read, everything that invocation printed)."""
+        base = {self.ENUM: "enum Status { Idle }\n",
+                self.UNBUILDABLE: self.fixture("ProbeTests", "Assert.Pass()"),
+                self.BESIDE: self.fixture("OtherTests", "Assert.Pass()")}
+        branch = {self.ENUM: "enum Status { Idle, Proceeding }\n",
+                  self.UNBUILDABLE: self.fixture(
+                      "ProbeTests", "Assert.That(Status.Proceeding, Is.Not.Null)"),
+                  self.BESIDE: self.fixture("OtherTests", "Assert.That(Status.Idle, Is.Not.Null)")}
+        root, since = two_commit_repo(self, base, branch)
+        tree = worktree_beside(self, root)
+        printed = subprocess.run(
+            [sys.executable, str(REPO_ROOT / "scripts/test_quality/base_red_check.py"),
+             "--project", str(root), "--base", since, "--lane", "csharp",
+             "--emit", str(root / "plan.json"), "--base-tree", str(tree)],
+            capture_output=True, text=True)
+        if printed.returncode != 0:
+            raise RuntimeError("--emit did not run:\n" + printed.stdout + printed.stderr)
+        return tree, printed.stdout
+
+    def test_Given_AFileTheReadingProvedUnbuildable_When_TheTreeIsEmitted_Then_ItHoldsTheBasesOwnText(self):
+        # Arrange -- the reading and the withdrawal are one step apart, and the second one is the
+        # whole layer: deciding a file cannot build there changes no verdict downstream, since every
+        # neighbour is already reading the silence the same unbuilt assembly leaves.
+        tree, _ = self.emitted()
+
+        # Act
+        carried = (tree / self.UNBUILDABLE).read_text()
+
+        # Assert
+        self.assertEqual(carried, self.fixture("ProbeTests", "Assert.Pass()"))
+
+    def test_Given_AFileTheReadingProvedUnbuildable_When_TheTreeIsEmitted_Then_ItsFixtureIsNotAsked(self):
+        # Arrange -- what stands in its place is the base's own text under the same fixture name, so
+        # the round would be spent on a result nothing consults. Both halves in one comparison, since
+        # a line naming no fixture at all satisfies the first on its own.
+        _, printed = self.emitted()
+        asked = next(line for line in printed.splitlines() if line.startswith("fixtures="))
+
+        # Act
+        named = ("N.ProbeTests" in asked, "N.OtherTests" in asked)
+
+        # Assert
+        self.assertEqual(named, (False, True))
+
+
+class AddedKeywordTests(unittest.TestCase):
+    """A parameter the branch added, which is a surface a name comparison cannot see.
+
+    Measured over one branch head before any of this existed: of the Python cases wrongly counted red
+    on the base, several died on an argument count rather than on a name.
+    """
+
+    HELPER = "scripts/helper.py"
+    CASE = "scripts/test_mine.py"
+
+    def trees(self, base, branch):
+        holder = tempfile.mkdtemp(prefix="base-red-keyword-")
+        self.addCleanup(shutil.rmtree, holder, ignore_errors=True)
+        root = Path(holder)
+        for name, text in (("base", base), ("branch", branch)):
+            path = root / name / self.HELPER
+            path.parent.mkdir(parents=True)
+            path.write_text(text)
+        return root / "base", root / "branch"
+
+    def read(self, base, branch, output):
+        return base_red_check.added_python_surface(
+            output, *self.trees(base, branch), base_red_check.Case("T.test_a", self.CASE, 1, 2))
+
+    def test_Given_AParameterOnlyTheBranchAccepts_When_TheTraceIsRead_Then_ItIsEvidence(self):
+        # Arrange -- the call names the parameter and Python names nothing else, so which module
+        # defines it is read by looking at the siblings the case resolves against.
+        # Act
+        found = self.read("def report(cases):\n    return cases\n",
+                          "def report(cases, unbuildable=None):\n    return cases\n",
+                          "TypeError: report() got an unexpected keyword argument 'unbuildable'")
+
+        # Assert
+        self.assertTrue(found)
+
+    def test_Given_AParameterTheBaseAcceptsToo_When_TheTraceIsRead_Then_ItIsNotEvidence(self):
+        # Arrange -- the counterpart, and the one that keeps a misspelling out: a base that takes the
+        # keyword raised for some other reason, and that reason is a non-answer.
+        # Act
+        found = self.read("def report(cases, unbuildable=None):\n    return cases\n",
+                          "def report(cases, unbuildable=None):\n    return cases\n",
+                          "TypeError: report() got an unexpected keyword argument 'unbuildable'")
+
+        # Assert
+        self.assertFalse(found)
+
+    def test_Given_ABaseDefinitionTakingACatchAll_When_TheTraceIsRead_Then_ItIsNotEvidence(self):
+        # Arrange -- `**kwargs` takes every keyword, so this base would have taken the call and the
+        # TypeError came from somewhere else. Recording the catch-all under its own name instead
+        # leaves a keyword nobody added reading as one the branch did.
+        # Act
+        found = self.read("def report(cases, **kwargs):\n    return cases\n",
+                          "def report(cases, unbuildable=None):\n    return cases\n",
+                          "TypeError: report() got an unexpected keyword argument 'unbuildable'")
+
+        # Assert
+        self.assertFalse(found)
+
+
+class PythonLaneRunTests(unittest.TestCase):
+    """The Python lane end to end, over trees arranged to answer in the ways it must separate.
+
+    A reading taken from `decide` alone cannot say whether the lane reaches it, and the lane reaching
+    it is half of what the fail-open was: the run exited zero having asked a tree that answered
+    nothing.
+    """
+
+    HELPER = "def kept():\n    return 1\n"
+
+    CASE = ("import unittest\n\nimport helper\n\n\nclass T(unittest.TestCase):\n"
+            "    def test_Given_A_When_B_Then_{name}(self):\n        {body}\n")
+
+    def run_lane(self, base, branch):
+        """(exit status, what it printed) for a lane over a tree holding `base`, changed to `branch`."""
+        holder = tempfile.mkdtemp(prefix="base-red-pylane-")
+        self.addCleanup(shutil.rmtree, holder, ignore_errors=True)
+        root = Path(holder)
+        subprocess.run(["git", "-C", holder, "init", "-q"], check=True)
+        for name, files in (("base", base), ("branch", branch)):
+            for relative, text in files.items():
+                path = root / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(text)
+            subprocess.run(["git", "-C", holder, "add", "-A"], check=True)
+            subprocess.run(["git", "-C", holder, "-c", "user.email=t@t", "-c", "user.name=t",
+                            "commit", "-q", "-m", name], check=True)
+        since = subprocess.run(["git", "-C", holder, "rev-parse", "HEAD^"],
+                               capture_output=True, text=True, check=True).stdout.strip()
+        result = subprocess.run(
+            [sys.executable, str(REPO_ROOT / "scripts/test_quality/base_red_check.py"),
+             "--project", holder, "--base", since, "--lane", "python",
+             "--output", str(root / "logs")],
+            capture_output=True, text=True)
+        self.addCleanup(subprocess.run, ["git", "-C", holder, "worktree", "prune"],
+                        capture_output=True)
+        return result.returncode, result.stdout + result.stderr
+
+    def test_Given_ACaseReachingForASymbolTheBranchAdds_When_TheLaneRuns_Then_ItIsLoadEvidence(self):
+        # Arrange -- the shape a branch produces for free: a helper it added, and a case that dies
+        # reaching for it on a base which has not got it.
+        base = {"scripts/helper.py": self.HELPER,
+                "scripts/test_mine.py": self.CASE.format(name="C", body="pass"),
+                "scripts/test_theirs.py": self.CASE.format(name="D", body="pass")}
+        branch = {"scripts/helper.py": self.HELPER + "\n\ndef added():\n    return 2\n",
+                  "scripts/test_mine.py": self.CASE.format(
+                      name="C", body="self.assertEqual(helper.added(), 2)")}
+
+        # Act
+        status, printed = self.run_lane(base, branch)
+
+        # Assert -- the base tree demonstrably lacks a symbol the branch defines, which is evidence
+        # only while it is separated from an arbitrary exception under the other verdict.
+        self.assertEqual((status, "could not load there" in printed), (0, True))
+
+    # GREEN_ON_BASE(characterization): the half of the separation the new verdict must leave alone.
+    def test_Given_ACaseTheBaseRanAndDisagreedWith_When_TheLaneRuns_Then_ItIsCountedRed(self):
+        # Arrange -- the same branch, asking for a value the base's own helper answers differently.
+        base = {"scripts/helper.py": self.HELPER,
+                "scripts/test_mine.py": self.CASE.format(name="C", body="pass"),
+                "scripts/test_theirs.py": self.CASE.format(name="D", body="pass")}
+        branch = {"scripts/helper.py": "def kept():\n    return 2\n",
+                  "scripts/test_mine.py": self.CASE.format(
+                      name="C", body="self.assertEqual(helper.kept(), 2)")}
+
+        # Act
+        status, printed = self.run_lane(base, branch)
+
+        # Assert
+        self.assertEqual((status, base_red_check.RED_ON_BASE in printed), (0, True))
+
+    def test_Given_AModuleWhoseTopLevelReachesForTheAddedSymbol_When_TheLaneRuns_Then_ItIsLoadEvidence(self):
+        # Arrange -- the case the trailer alone does not cover. A module raising anything but
+        # ImportError at its own top level takes the loader down with it, so the process prints a
+        # traceback where the summary would be and the exit status is the same one a disagreement has.
+        base = {"scripts/helper.py": self.HELPER,
+                "scripts/test_mine.py": self.CASE.format(name="C", body="pass"),
+                "scripts/test_theirs.py": self.CASE.format(name="D", body="pass")}
+        branch = {"scripts/helper.py": self.HELPER + "\n\nadded = 2\n",
+                  "scripts/test_mine.py": self.CASE.format(
+                      name="C", body="self.assertEqual(WANTED, 2)") + "\n\nWANTED = helper.added\n"}
+
+        # Act
+        status, printed = self.run_lane(base, branch)
+
+        # Assert
+        self.assertEqual((status, "could not load there" in printed), (0, True))
+
+    def test_Given_ACaseImportingAFileTheBranchAdds_When_TheLaneRuns_Then_ItIsLoadEvidence(self):
+        # Arrange -- the self-hosting shape: a changed test module imports a sibling implementation
+        # the same branch adds, so the carried test reaches a path the base tree demonstrably lacks.
+        base = {"scripts/test_mine.py": self.CASE.format(name="C", body="pass"),
+                "scripts/test_theirs.py": self.CASE.format(name="D", body="pass"),
+                "scripts/helper.py": self.HELPER}
+        branch = {"scripts/added.py": "VALUE = 2\n",
+                  "scripts/test_mine.py": self.CASE.replace("import helper", "import added").format(
+                      name="C", body="self.assertEqual(added.VALUE, 2)")}
+
+        # Act
+        status, printed = self.run_lane(base, branch)
+
+        # Assert
+        self.assertEqual((status, "could not load there" in printed), (0, True))
+
+    def test_Given_AModuleOpeningAFileTheBranchAdds_When_TheLaneRuns_Then_ItIsLoadEvidence(self):
+        # Arrange -- importlib-backed sibling loaders report a missing repository file rather than a
+        # missing module. Resolving the base worktree path must still reach the branch counterpart.
+        module = ("import unittest\nfrom pathlib import Path\n\n"
+                  "exec(Path(__file__).with_name('added.py').read_text())\n\n\n"
+                  "class T(unittest.TestCase):\n"
+                  "    def test_Given_A_When_B_Then_C(self):\n"
+                  "        self.assertEqual(VALUE, 2)\n")
+        base = {"scripts/test_mine.py": self.CASE.format(name="C", body="pass"),
+                "scripts/test_theirs.py": self.CASE.format(name="D", body="pass"),
+                "scripts/helper.py": self.HELPER}
+        branch = {"scripts/added.py": "VALUE = 2\n", "scripts/test_mine.py": module}
+
+        # Act
+        status, printed = self.run_lane(base, branch)
+
+        # Assert
+        self.assertEqual((status, "could not load there" in printed), (0, True))
+
+    def test_Given_ACaseRaisingForAnotherReason_When_TheLaneRuns_Then_ItStillFailsClosed(self):
+        # Arrange -- the branch passes this case, but the base takes an ordinary exception path. That
+        # says neither that the assertion disagreed nor that a branch-added surface was unavailable.
+        base = {"scripts/helper.py": self.HELPER,
+                "scripts/test_mine.py": self.CASE.format(name="C", body="pass"),
+                "scripts/test_theirs.py": self.CASE.format(name="D", body="pass")}
+        body = ("self.assertEqual(helper.kept(), 2) if helper.kept() != 1 "
+                "else (_ for _ in ()).throw(RuntimeError('not a surface gap'))")
+        branch = {"scripts/helper.py": "def kept():\n    return 2\n",
+                  "scripts/test_mine.py": self.CASE.format(name="C", body=body)}
+
+        # Act
+        status, printed = self.run_lane(base, branch)
+
+        # Assert
+        self.assertEqual((status, "could not answer there" in printed), (1, True))
+
+    # GREEN_ON_BASE(characterization): assertion messages do not replace unittest's failure result.
+    def test_Given_AFailedAssertionNamingAnAddedSurface_When_TheLaneRuns_Then_ItStaysRed(self):
+        # Arrange -- exception-shaped text is only the assertion's message. The unittest result says
+        # the case compared and disagreed, so the message must not replace that stronger reading.
+        base = {"scripts/helper.py": self.HELPER,
+                "scripts/test_mine.py": self.CASE.format(name="C", body="pass"),
+                "scripts/test_theirs.py": self.CASE.format(name="D", body="pass")}
+        message = "AttributeError: module 'helper' has no attribute 'added'"
+        body = "self.assertEqual(helper.kept(), 2, {!r})".format(message)
+        branch = {"scripts/helper.py": self.HELPER + "\n\ndef added():\n    return 2\n",
+                  "scripts/test_mine.py": self.CASE.format(name="C", body=body)}
+
+        # Act
+        status, printed = self.run_lane(base, branch)
+
+        # Assert
+        self.assertEqual((status, base_red_check.RED_ON_BASE in printed), (0, True))
+
+    def test_Given_ABaseTreeWhoseOwnCasesAllDie_When_TheLaneRuns_Then_ItRefusesToPass(self):
+        # Arrange -- nothing in the lane answers there, which is the reading a canary exists to take.
+        # Without one each case reads as one the base could not answer, and nothing says they all did.
+        broken = "import no_such_module_at_all\n\n\n" + self.CASE.format(name="D", body="pass")
+        base = {"scripts/helper.py": self.HELPER,
+                "scripts/test_mine.py": self.CASE.format(name="C", body="pass"),
+                "scripts/test_theirs.py": broken}
+        branch = {"scripts/test_mine.py": self.CASE.format(
+            name="C", body="self.assertEqual(helper.added(), 2)")}
+
+        # Act
+        status, printed = self.run_lane(base, branch)
+
+        # Assert -- the verdict rides with the status because the script exits 1 for an uncaught
+        # exception too, so the status alone does not say the canary is what refused the run.
+        self.assertEqual((status, base_red_check.BASE_UNSOUND in printed), (1, True))
+
+
 class InheritedCaseTests(unittest.TestCase):
     CORPUS = {
         "a/Tests/Editor/BaseTests.cs":
@@ -690,6 +1739,475 @@ class ResultsFileTests(unittest.TestCase):
                          ({"N.C.Given_A_When_B_Then_C": "Passed"}, True))
 
 
+class ResultLabelTests(unittest.TestCase):
+    """What the base said about a case that stopped on an exception, and which of those disagreed.
+
+    Read from the results file wherever the reading is what was wrong: a case that starts after it
+    would agree with the broken script as readily as the fixed one. The two `outcome_for` cases are
+    the exception, because how several argument lists collapse into one reading is a question about
+    readings rather than about the file they arrived in.
+    """
+
+    @staticmethod
+    def labelled(label, message, *frames):
+        """A reported case carrying `label`, over the frames given innermost first.
+
+        The frame list is the arrangement: which of them names a file of this tree first is the whole
+        question, so a shape written without one answers a different question from its name.
+        """
+        return ('<test-run>'
+                '<test-case fullname="N.ProbeTests.Given_A_When_B_Then_C" result="Failed" '
+                'label="{}"><failure><message>{}</message>{}</failure>'
+                '</test-case></test-run>'.format(
+                    label, message,
+                    '<stack-trace>{}</stack-trace>'.format("\n".join(frames)) if frames else ""))
+
+    @classmethod
+    def threw(cls, *frames):
+        """A reported case that stopped on an exception, over the frames given innermost first."""
+        return cls.labelled("Error", "System.NullReferenceException : Object reference not set to "
+                                     "an instance of an object", *frames)
+
+    # A frame naming no file of this tree, which `THREW_IN_PRODUCTION` puts in front of the deciding
+    # one so that arrangement reads past a frame rather than off the top of the trace.
+    ENGINE_FRAME = ("  at System.Reflection.MonoField.GetValue (System.Object obj) [0x00080] in "
+                    "&lt;c5eeda5e65d44b388e164c6c5cfe0702&gt;:0 ")
+    TEST_FRAME = ("  at N.ProbeTests.Given_A_When_B_Then_C () [0x00011] in "
+                  "./Packages/p/Runtime/A/Tests/Editor/ProbeTests.cs:41 ")
+    STATE_MACHINE_TEST_FRAME = (
+        "  at N.ProbeTests+&lt;Given_A_When_B_Then_C&gt;d__4.MoveNext () [0x00011] in "
+        "./Packages/p/Runtime/A/Tests/Editor/ProbeTests.cs:41 ")
+    SIMILAR_HELPER_FRAME = (
+        "  at N.ProbeTests.Given_A_When_B_Then_Cleanup () [0x00011] in "
+        "./Packages/p/Runtime/A/Tests/Editor/ProbeTests.cs:70 ")
+    PRODUCTION_FRAME = ("  at P.FiberElementPoolReset.Clear (P.Fiber fiber) [0x0000c] in "
+                        "./Packages/p/Runtime/A/FiberElementPoolReset.cs:120 ")
+    TEARDOWN_FRAME = ("  at N.ProbeTests.TearDown () [0x00001] in "
+                      "./Packages/p/Runtime/A/Tests/Editor/ProbeTests.cs:70 ")
+    SETUP_FRAME = ("  at N.ProbeTests.SetUp () [0x00001] in "
+                   "./Packages/p/Runtime/A/Tests/Editor/ProbeTests.cs:24 ")
+
+    @property
+    def THREW(self):
+        """The scaffolding shape: a fixture reflecting for state the base has not got, and throwing."""
+        return self.threw(self.ENGINE_FRAME, self.TEST_FRAME)
+
+    @property
+    def THREW_IN_PRODUCTION(self):
+        """The crash-regression shape: the base throwing where the branch's fix stops it."""
+        return self.threw(self.ENGINE_FRAME, self.PRODUCTION_FRAME, self.TEST_FRAME)
+
+    @classmethod
+    def threw_in_teardown(cls, body, teardown):
+        """A case whose teardown threw, over whatever frames its body left in front of the marker.
+
+        One element carries both traces in that order, because a runner records a teardown throw onto
+        the case's own result. `ScaffoldingSectionRecordingTests` pins that shape against the runner.
+        """
+        return cls.threw(*body, "--TearDown", *teardown)
+
+    @classmethod
+    def threw_in_setup(cls, setup):
+        """A case whose setup threw, which leaves the marker opening the element: no body ran.
+
+        A setup's section stands where the body's would, so a reading that does not cut at it takes
+        the setup's reach for the case's own.
+        """
+        return cls.threw("--SetUp", *setup)
+
+    @classmethod
+    def threw_in_action(cls, body, action):
+        """A case wrapped by a test action that threw after it. Same shape, one attribute over."""
+        return cls.threw(*body, "--AfterTest", *action)
+
+    @classmethod
+    def threw_before_the_body(cls, action):
+        """A case whose wrapping action threw ahead of it, which leaves the marker opening the trace.
+
+        An action's before half stands where a setup's does. Which sections a runner opens at all is
+        `ScaffoldingSectionRecordingTests`'s question rather than this module's.
+        """
+        return cls.threw("--BeforeTest", *action)
+
+    @staticmethod
+    def unlabelled(message, *frames):
+        """A reported case carrying no label at all, which is what a failed assertion arrives as.
+
+        The shape a `ResultStateException` out of a scaffold lands in too: its state carries an empty
+        label, so nothing is written beside the result, and the trace it replaced the case's own with
+        opens with no marker. `ScaffoldingSectionRecordingTests` pins both halves against the runner.
+        """
+        return ('<test-run>'
+                '<test-case fullname="N.ProbeTests.Given_A_When_B_Then_C" result="Failed">'
+                '<failure><message>{}</message>{}</failure>'
+                '</test-case></test-run>'.format(
+                    message,
+                    '<stack-trace>{}</stack-trace>'.format("\n".join(frames)) if frames else ""))
+
+    def refused(self, label, *frames):
+        """A reported case the runner stopped from outside its body, over `frames` if any."""
+        return self.labelled(label, "the runner gave a reason of its own", *frames)
+
+    def read(self, body):
+        holder = tempfile.mkdtemp(prefix="base-red-label-")
+        self.addCleanup(shutil.rmtree, holder, ignore_errors=True)
+        Path(holder, "r.xml").write_text(body)
+        return base_red_check.results_from(holder)[0]
+
+    def probe(self, declaration=None):
+        return base_red_check.Case("N.ProbeTests.Given_A_When_B_Then_C",
+                                   "Packages/p/Runtime/A/Tests/Editor/ProbeTests.cs", 1, 2,
+                                   declaration)
+
+    def verdict_for(self, body, declaration=None):
+        reported = self.read(body)
+        case = self.probe(declaration)
+        return base_red_check.decide(case, base_red_check.outcome_for(case.key, reported), True)[0]
+
+    def test_Given_ACaseThatThrewFromItsOwnBody_When_TheResultsAreRead_Then_ItIsNotADisagreement(self):
+        # Act
+        reported = self.read(self.THREW)
+
+        # Assert
+        self.assertEqual(reported["N.ProbeTests.Given_A_When_B_Then_C"], "Error")
+
+    def test_Given_AnUndeclaredCaseThatThrewFromItsOwnBody_When_ItIsDecided_Then_ItIsNotCountedRed(self):
+        # Act
+        verdict = self.verdict_for(self.THREW)
+
+        # Assert -- it stopped before it could disagree, so it is evidence of nothing either way.
+        self.assertEqual(verdict, base_red_check.COULD_NOT_ANSWER)
+
+    def test_Given_ADeclaredCaseThatThrewFromItsOwnBody_When_ItIsDecided_Then_ItIsNotCalledStale(self):
+        # Arrange -- the harm this whole reading exists to prevent: a correct declaration told to
+        # delete itself because the base tree could not answer for the case under it.
+        declared = base_red_check.Declaration(
+            "characterization", "the keyed-reorder order this refactor must not change")
+
+        # Act
+        verdict = self.verdict_for(self.THREW, declared)
+
+        # Assert
+        self.assertNotEqual(verdict, base_red_check.DECLARED_STALE)
+
+    # GREEN_ON_BASE(characterization): a crash the branch fixes, counted red before the label was
+    # read at all and having to stay red now that it is.
+    def test_Given_ACaseThatThrewInsideProductionCode_When_TheResultsAreRead_Then_ItIsADisagreement(self):
+        # Act
+        reported = self.read(self.THREW_IN_PRODUCTION)
+
+        # Assert
+        self.assertEqual(reported["N.ProbeTests.Given_A_When_B_Then_C"], "Failed")
+
+    # GREEN_ON_BASE(characterization): the verdict a crash regression carried before the label was
+    # read, which reading it must not take away.
+    def test_Given_AnUndeclaredCaseThatThrewInsideProductionCode_When_ItIsDecided_Then_ItIsCountedRed(self):
+        # Act
+        verdict = self.verdict_for(self.THREW_IN_PRODUCTION)
+
+        # Assert
+        self.assertEqual(verdict, base_red_check.RED_ON_BASE)
+
+    # GREEN_ON_BASE(characterization): the stale-declaration gate over a crash regression, which the
+    # base already applied and which reading every throw as a non-answer would have dropped.
+    def test_Given_ADeclaredCaseThatThrewInsideProductionCode_When_ItIsDecided_Then_ItIsCalledStale(self):
+        # Arrange -- the other direction of the same harm: a declaration is only correct while the
+        # base cannot answer, and here the base answered by crashing.
+        declared = base_red_check.Declaration(
+            "characterization", "the keyed-reorder order this refactor must not change")
+
+        # Act
+        verdict = self.verdict_for(self.THREW_IN_PRODUCTION, declared)
+
+        # Assert
+        self.assertEqual(verdict, base_red_check.DECLARED_STALE)
+
+    def test_Given_AThrowWhoseTestSideFrameComesFirst_When_ItIsDecided_Then_ItKeepsTheNonAnswer(self):
+        # Arrange -- production called back into the fixture and the fixture threw, so both sides
+        # are named and the innermost of them is the test side. The first such frame decides, not
+        # whichever side occurs anywhere in the trace.
+        # Act
+        verdict = self.verdict_for(
+            self.threw(self.ENGINE_FRAME, self.TEST_FRAME, self.PRODUCTION_FRAME))
+
+        # Assert
+        self.assertEqual(verdict, base_red_check.COULD_NOT_ANSWER)
+
+    def test_Given_ATeardownThrowAfterABodyThatPassed_When_ItIsDecided_Then_ItIsNotCountedRed(self):
+        # Arrange -- the body left no trace, so the marker opens the element and every frame under it
+        # is the teardown's own reach.
+        # Act
+        verdict = self.verdict_for(
+            self.threw_in_teardown((), (self.PRODUCTION_FRAME, self.TEARDOWN_FRAME)))
+
+        # Assert -- the base agreed with this case; crediting it red hands back the evidence the
+        # gate exists to demand.
+        self.assertEqual(verdict, base_red_check.COULD_NOT_ANSWER)
+
+    def test_Given_ADeclaredCaseWhoseTeardownThrew_When_ItIsDecided_Then_ItIsNotCalledStale(self):
+        # Arrange
+        declared = base_red_check.Declaration(
+            "characterization", "the keyed-reorder order this refactor must not change")
+
+        # Act
+        verdict = self.verdict_for(
+            self.threw_in_teardown((), (self.PRODUCTION_FRAME, self.TEARDOWN_FRAME)), declared)
+
+        # Assert
+        self.assertNotEqual(verdict, base_red_check.DECLARED_STALE)
+
+    # GREEN_ON_BASE(characterization): the red a body's own production throw already carries, which
+    # cutting the trace at the teardown must not take away.
+    def test_Given_ATeardownThrowAfterTheBodyThrewInProduction_When_ItIsDecided_Then_ItIsCountedRed(self):
+        # Arrange -- the body's own trace stands in front of the marker and answers for the case. The
+        # teardown threw in the teardown method itself, so the section after the marker is test-side
+        # first and a reading taken there returns the opposite verdict.
+        # Act
+        verdict = self.verdict_for(self.threw_in_teardown(
+            (self.PRODUCTION_FRAME, self.TEST_FRAME), (self.TEARDOWN_FRAME,)))
+
+        # Assert
+        self.assertEqual(verdict, base_red_check.RED_ON_BASE)
+
+    def test_Given_ASetupThrowThatReachedProduction_When_ItIsDecided_Then_ItIsNotCountedRed(self):
+        # Arrange -- a fixture that mounts in its setup, on a base whose production code crashes
+        # there. The marker opens the element because no body ran, so every frame under it is the
+        # setup's reach and the case itself never disagreed with anything.
+        # Act
+        verdict = self.verdict_for(
+            self.threw_in_setup((self.PRODUCTION_FRAME, self.SETUP_FRAME)))
+
+        # Assert
+        self.assertEqual(verdict, base_red_check.COULD_NOT_ANSWER)
+
+    def test_Given_ADeclaredCaseWhoseSetupThrew_When_ItIsDecided_Then_ItIsNotCalledStale(self):
+        # Arrange -- the harmful half: a correct declaration told to delete itself over a case the
+        # base never ran.
+        declared = base_red_check.Declaration(
+            "characterization", "the keyed-reorder order this refactor must not change")
+
+        # Act
+        verdict = self.verdict_for(
+            self.threw_in_setup((self.PRODUCTION_FRAME, self.SETUP_FRAME)), declared)
+
+        # Assert
+        self.assertNotEqual(verdict, base_red_check.DECLARED_STALE)
+
+    def test_Given_ATestActionThrowAfterABodyThatPassed_When_ItIsDecided_Then_ItIsNotCountedRed(self):
+        # Arrange -- an action wraps the case the way a teardown follows it, and its section is
+        # recorded onto the case just the same.
+        # Act
+        verdict = self.verdict_for(
+            self.threw_in_action((), (self.PRODUCTION_FRAME, self.TEARDOWN_FRAME)))
+
+        # Assert
+        self.assertEqual(verdict, base_red_check.COULD_NOT_ANSWER)
+
+    # GREEN_ON_BASE(characterization): a cut the script already made and this module measured nothing
+    # of, so the reading it pins is the base's as much as this branch's.
+    def test_Given_ATestActionThrowAheadOfTheBody_When_ItIsDecided_Then_ItIsNotCountedRed(self):
+        # Arrange -- the fourth section, and the only one this module measured nothing of: dropping
+        # its name from the script reddened no case here. A `[Test, Performance]` case is wrapped by
+        # one, `PerformanceAttribute` being an `IOuterUnityTestAction`, so four PlayMode fixtures in
+        # this repository carry the section.
+        # Act
+        verdict = self.verdict_for(
+            self.threw_before_the_body((self.PRODUCTION_FRAME, self.SETUP_FRAME)))
+
+        # Assert
+        self.assertEqual(verdict, base_red_check.COULD_NOT_ANSWER)
+
+    # GREEN_ON_BASE(characterization): a body's own production throw is red on the base already.
+    # Naming the scaffolding sections one by one, rather than matching every opener of their shape,
+    # must not take that away.
+    def test_Given_ABodyThrowWhoseInnerExceptionOpensASection_When_ItIsDecided_Then_ItStaysRed(self):
+        # Arrange -- an inner exception's frames are opened by a marker of a section's shape, and the
+        # outer throw names no file of this tree, so the only repository frame stands behind that
+        # opener. Cutting at any opener rather than at the named ones loses the case's whole reading.
+        # Act
+        verdict = self.verdict_for(self.threw(
+            self.ENGINE_FRAME, "--InvalidTimeZoneException", self.PRODUCTION_FRAME, self.TEST_FRAME))
+
+        # Assert
+        self.assertEqual(verdict, base_red_check.RED_ON_BASE)
+
+    def test_Given_ASetupThrowBeforeATeardownThrow_When_ItIsDecided_Then_TheFirstMarkerCuts(self):
+        # Arrange -- both scaffolds threw, so the element carries two sections and no body between
+        # them. Cutting at the teardown alone would read the setup's reach as the case's own.
+        # Act
+        verdict = self.verdict_for(self.threw(
+            "--SetUp", self.PRODUCTION_FRAME, self.SETUP_FRAME,
+            "--TearDown", self.TEARDOWN_FRAME))
+
+        # Assert
+        self.assertEqual(verdict, base_red_check.COULD_NOT_ANSWER)
+
+    def test_Given_AScaffoldThrowCarryingNoLabel_When_ItIsDecided_Then_ItIsNotCountedRed(self):
+        # Arrange -- Unity's end-of-scope log check raises a `ResultStateException` out of a teardown,
+        # which arrives as a plain failure: no label, and a trace the runner replaced whole, so the
+        # marker and the body's frames are both gone. The frames left behind name production code, so
+        # a reading taken over them credits the base with a disagreement the case never had.
+        # Act
+        verdict = self.verdict_for(self.unlabelled(
+            "TearDown : Unhandled log message: 'a cleanup threw'. Use UnityEngine.TestTools.LogAssert",
+            self.PRODUCTION_FRAME, self.TEARDOWN_FRAME))
+
+        # Assert -- the base agreed with this case, and its scaffolding is what failed it.
+        self.assertEqual(verdict, base_red_check.COULD_NOT_ANSWER)
+
+    def test_Given_ADeclaredCaseWhoseScaffoldFailedIt_When_ItIsDecided_Then_ItIsNotCalledStale(self):
+        # Arrange -- the harm this reading exists to prevent: a correct declaration told to delete
+        # itself over a case whose body the base never disagreed with.
+        declared = base_red_check.Declaration(
+            "characterization", "the keyed-reorder order this refactor must not change")
+
+        # Act
+        verdict = self.verdict_for(self.unlabelled(
+            "SetUp : Unhandled log message: 'a mount threw'. Use UnityEngine.TestTools.LogAssert",
+            self.SETUP_FRAME),
+            declared)
+
+        # Assert
+        self.assertNotEqual(verdict, base_red_check.DECLARED_STALE)
+
+    # GREEN_ON_BASE(characterization): the red a body's own disagreement already carries, which
+    # reading the message must not widen over.
+    def test_Given_AScaffoldThrowAfterTheBodyDisagreed_When_ItIsDecided_Then_ItIsStillCountedRed(self):
+        # Arrange -- the other half of the line. A body that disagreed leaves its own message, and
+        # the section is appended behind it, so the head of the message is what separates a case its
+        # scaffolding decided from one that disagreed and then had a scaffold throw as well.
+        # Act
+        verdict = self.verdict_for(self.unlabelled(
+            "Expected: (1, a)\nTearDown : Unhandled log message: 'and then a cleanup threw'"))
+
+        # Assert
+        self.assertEqual(verdict, base_red_check.RED_ON_BASE)
+
+    def test_Given_BodyAssertionsBeginningWithEachSectionName_When_Decided_Then_TheyStayRed(self):
+        # Arrange
+        sections = base_red_check.SCAFFOLD_SECTIONS
+
+        # Act
+        verdicts = [self.verdict_for(self.unlabelled(
+            "{} : the body expected this text".format(section), self.TEST_FRAME))
+                    for section in sections]
+
+        # Assert
+        self.assertEqual(verdicts, [base_red_check.RED_ON_BASE] * len(sections))
+
+    # GREEN_ON_BASE(characterization): a state-machine frame still identifies the body on the base.
+    def test_Given_AStateMachineBodyAssertionBeginningWithASectionName_When_Decided_Then_ItStaysRed(self):
+        # Arrange
+        message = "TearDown : the coroutine body expected this text"
+
+        # Act
+        verdict = self.verdict_for(self.unlabelled(message, self.STATE_MACHINE_TEST_FRAME))
+
+        # Assert
+        self.assertEqual(verdict, base_red_check.RED_ON_BASE)
+
+    def test_Given_AScaffoldTraceWhoseHelperExtendsTheCaseName_When_Decided_Then_ItStaysAScaffold(self):
+        # Arrange
+        message = "TearDown : the cleanup helper threw"
+
+        # Act
+        verdict = self.verdict_for(self.unlabelled(message, self.SIMILAR_HELPER_FRAME))
+
+        # Assert
+        self.assertEqual(verdict, base_red_check.COULD_NOT_ANSWER)
+
+    def test_Given_AThrowNamingNoFileOfThisTree_When_ItIsDecided_Then_ItKeepsTheNonAnswer(self):
+        # Arrange -- a throw whose trace places it on neither side. The reading falls to the side
+        # that fails no run, since a verdict that does is not one to take from silence.
+        # Act
+        verdict = self.verdict_for(self.threw(self.ENGINE_FRAME))
+
+        # Assert
+        self.assertEqual(verdict, base_red_check.COULD_NOT_ANSWER)
+
+    def test_Given_ACaseTheRunnerWouldNotRun_When_ItIsDecided_Then_ItIsNotCountedRed(self):
+        # Arrange -- a non-runnable case never reached its body, so nothing in it disagreed.
+        # Act
+        verdict = self.verdict_for(self.refused("Invalid"))
+
+        # Assert
+        self.assertEqual(verdict, base_red_check.COULD_NOT_ANSWER)
+
+    def test_Given_ADeclaredCaseTheRunnerWouldNotRun_When_ItIsDecided_Then_ItIsNotCalledStale(self):
+        # Arrange
+        declared = base_red_check.Declaration(
+            "characterization", "the keyed-reorder order this refactor must not change")
+
+        # Act
+        verdict = self.verdict_for(self.refused("Invalid"), declared)
+
+        # Assert
+        self.assertNotEqual(verdict, base_red_check.DECLARED_STALE)
+
+    def test_Given_ACaseWhoseRunWasCancelled_When_ItIsDecided_Then_ItIsNotCountedRed(self):
+        # Arrange -- a cancelled run stopped the case from outside it, which says nothing about the
+        # behaviour under it either.
+        # Act
+        verdict = self.verdict_for(self.refused("Cancelled"))
+
+        # Assert
+        self.assertEqual(verdict, base_red_check.COULD_NOT_ANSWER)
+
+    def test_Given_ANonRunnableCaseWhoseTraceNamesProduction_When_ItIsDecided_Then_ItIsNotCountedRed(self):
+        # Arrange -- only a throw is read by where it came from. A case the runner refused never
+        # entered its body, so a production frame in whatever trace it carries is not the base
+        # disagreeing, and the frames must not be consulted for it at all.
+        # Act
+        verdict = self.verdict_for(
+            self.refused("Invalid", self.ENGINE_FRAME, self.PRODUCTION_FRAME, self.TEST_FRAME))
+
+        # Assert
+        self.assertEqual(verdict, base_red_check.COULD_NOT_ANSWER)
+
+    # GREEN_ON_BASE(characterization): the reading a disagreement already had, which the label must
+    # not widen over.
+    def test_Given_ACaseWhoseAssertionDisagreed_When_ItIsDecided_Then_ItIsStillCountedRed(self):
+        # Arrange -- the other half of the line, kept beside it: reading the label must not turn
+        # every failure into a non-answer, which would leave nothing able to read as red at all.
+        # Act
+        verdict = self.verdict_for(
+            '<test-run><test-case fullname="N.ProbeTests.Given_A_When_B_Then_C" result="Failed">'
+            '<failure><message>Expected: (1, a)</message></failure></test-case></test-run>')
+
+        # Assert
+        self.assertEqual(verdict, base_red_check.RED_ON_BASE)
+
+    # GREEN_ON_BASE(characterization): a passing case's reading, which no label may take part in.
+    def test_Given_APassingCaseCarryingALabel_When_TheResultsAreRead_Then_TheLabelDoesNotDisplaceIt(self):
+        # Arrange -- `passed on the base` is the reading that fails a run, and no label names it, so
+        # a label read over a passing case could only ever lose that verdict.
+        # Act
+        reported = self.read(
+            '<test-run><test-case fullname="N.ProbeTests.Given_A_When_B_Then_C" result="Passed" '
+            'label="Error" /></test-run>')
+
+        # Assert
+        self.assertEqual(reported["N.ProbeTests.Given_A_When_B_Then_C"], "Passed")
+
+    def test_Given_OneArgumentListThatDisagreedAndOneThatThrew_When_ItIsLookedUp_Then_TheDisagreementWins(self):
+        # Arrange -- dict order decided this before, and the two sides are not symmetric: over a
+        # declared case one of them is a failing verdict and the other is not.
+        reported = {"N.C.Given_A_When_B_Then_C(1)": "Error", "N.C.Given_A_When_B_Then_C(2)": "Failed"}
+
+        # Act / Assert
+        self.assertEqual(base_red_check.outcome_for("N.C.Given_A_When_B_Then_C", reported), "Failed")
+
+    # GREEN_ON_BASE(characterization): the answer where no list reached a verdict, which the ranking
+    # beside it must leave alone.
+    def test_Given_EveryArgumentListStoppedBeforeItCould_When_ItIsLookedUp_Then_NoneIsCalledADisagreement(self):
+        # Arrange -- the fallback still has to answer when nothing among them ran to a verdict.
+        reported = {"N.C.Given_A_When_B_Then_C(1)": "Error",
+                    "N.C.Given_A_When_B_Then_C(2)": "Inconclusive"}
+
+        # Act / Assert
+        self.assertEqual(base_red_check.outcome_for("N.C.Given_A_When_B_Then_C", reported), "Error")
+
+
 class PlatformInstrumentTests(unittest.TestCase):
     def test_Given_ACanaryThatPassed_When_ThePlatformIsRead_Then_ItIsNotWithdrawn(self):
         # Arrange -- one passing case is the bar: the question is whether anything built and ran.
@@ -709,11 +2227,24 @@ class PlatformInstrumentTests(unittest.TestCase):
         # Assert
         self.assertIn("EditMode", withdrawn)
 
-    def test_Given_APlatformTheBaseTreeOffersNoCanary_When_ItIsRead_Then_ItIsNotWithdrawn(self):
-        # Arrange -- with nothing to read the tree by there is no reading, and inventing a verdict
-        # from its absence would refuse every branch on a tree that holds no other fixture.
+    def test_Given_APythonCanaryThatDidNotPass_When_TheLaneIsWithdrawn_Then_ItIsNamedReadably(self):
+        # Arrange -- a Python fixture key is a path and a class, and the C# spelling of this message
+        # cuts at the last dot, which lands inside the file extension.
+        reported = {"scripts/x/test_theirs.py::T.test_Given_A_When_B_Then_C": "Failed"}
+
+        # Act
+        withdrawn = base_red_check.unsound_platforms(
+            {base_red_check.PYTHON_LANE: ["scripts/x/test_theirs.py::T"]}, reported)
+
+        # Assert
+        self.assertEqual(withdrawn[base_red_check.PYTHON_LANE], "none of T passed there")
+
+    def test_Given_APlatformTheBaseTreeOffersNoCanary_When_ItIsRead_Then_ItIsWithdrawn(self):
+        # Arrange -- without a base-owned case, no result can distinguish a branch test that could not
+        # compile from a run that never built its fixture.
         # Act / Assert
-        self.assertEqual(base_red_check.unsound_platforms({"EditMode": []}, {}), {})
+        self.assertEqual(base_red_check.unsound_platforms({"EditMode": []}, {}),
+                         {"EditMode": "no base-tree canary was available there"})
 
 
 class InstrumentTests(unittest.TestCase):
@@ -775,21 +2306,24 @@ class UnmeasuredRunTests(unittest.TestCase):
         return [base_red_check.Case("N.C.Given_A_When_B_Then_C",
                                     "Packages/p/Runtime/A/Tests/Editor/CTests.cs", 1, 2)]
 
-    PLAN = {
-        "since": "0" * 40, "shared": {}, "canaries": {"EditMode": ["N.CanaryTests"]},
-        "cases": [{"name": "N.ProbeTests.Given_A_When_B_Then_C",
-                   "path": "Packages/p/Runtime/A/Tests/Editor/ProbeTests.cs",
-                   "key": "N.ProbeTests.Given_A_When_B_Then_C", "fixture": "N.ProbeTests",
-                   "declaration": None}],
-        "control": [],
-    }
+    def plan(self):
+        """What `--emit` writes, built by the script rather than transcribed beside it.
+
+        A literal here would be a second copy of the entry shape, free to go on carrying a field
+        `as_plan` had stopped writing -- which is this seam's own failure mode, and transcribing it
+        is why the round trip went uncovered. Built this way, a field the emitting half drops
+        reaches the deciding half's own tests.
+        """
+        probe = base_red_check.Case("N.ProbeTests.Given_A_When_B_Then_C",
+                                    "Packages/p/Runtime/A/Tests/Editor/ProbeTests.cs", 1, 2)
+        return base_red_check.as_plan("0" * 40, [probe], [], {}, {"EditMode": ["N.CanaryTests"]})
 
     def verdict_over(self, *results):
         """The exit status of the --verdict lane over a directory holding `results`."""
         holder = tempfile.mkdtemp(prefix="base-red-verdict-")
         self.addCleanup(shutil.rmtree, holder, ignore_errors=True)
         plan = Path(holder, "plan.json")
-        plan.write_text(json.dumps(self.PLAN))
+        plan.write_text(json.dumps(self.plan()))
         written = Path(holder, "results")
         written.mkdir()
         for index, body in enumerate(results):
@@ -831,6 +2365,26 @@ class UnmeasuredRunTests(unittest.TestCase):
         # Assert
         self.assertEqual([case.verdict for case in offenders], [base_red_check.BASE_UNSOUND])
 
+    def printed(self, reported, canaries, wrote):
+        held = io.StringIO()
+        with contextlib.redirect_stdout(held):
+            base_red_check.report(self.cases(), [], reported, canaries, wrote)
+        return held.getvalue()
+
+    def test_Given_BothKindsOfOffender_When_TheRemedyIsPrinted_Then_OnlyTheAnsweredOneIsOfferedIt(self):
+        # Arrange -- a declaration answers for a case the base measured. Over one it never measured
+        # it sends the author to sharpen a case that may be perfectly sharp, since a neighbour's own
+        # Assume is enough to withdraw the fixture. Both halves in one comparison, because printing
+        # it for neither is the other way of getting this wrong.
+        marker = "GREEN_ON_BASE"
+
+        # Act
+        unmeasured = self.printed({}, {"EditMode": []}, wrote=False)
+        answered = self.printed({"N.C.Given_A_When_B_Then_C": "Passed"}, {}, wrote=True)
+
+        # Assert
+        self.assertEqual((marker in unmeasured, marker in answered), (False, True))
+
     def test_Given_ARunThatWroteAnEmptyResultsFile_When_TheVerdictsAreTaken_Then_TheCanaryFailsIt(self):
         # Arrange -- the other half of the same bar, kept beside it: a file that parses to no case is
         # a run that happened and built nothing, and the canary is what reads that.
@@ -841,6 +2395,265 @@ class UnmeasuredRunTests(unittest.TestCase):
 
         # Assert
         self.assertEqual([case.verdict for case in offenders], [base_red_check.BASE_UNSOUND])
+
+    def test_Given_ARunWithNoAvailableCanary_When_TheVerdictsAreTaken_Then_TheLaneFailsClosed(self):
+        # Arrange
+        python_cases = [base_red_check.Case(
+            "test_probe.ProbeTests.test_Given_A_When_B_Then_C", "scripts/test_probe.py", 1, 2)]
+        csharp_cases = self.cases()
+
+        # Act
+        python_offenders = base_red_check.report(
+            python_cases, [], {}, {base_red_check.PYTHON_LANE: []}, wrote=True)
+        csharp_offenders = base_red_check.report(
+            csharp_cases, [], {}, {"EditMode": []}, wrote=True)
+
+        # Assert
+        self.assertEqual(([case.verdict for case in python_offenders],
+                          [case.verdict for case in csharp_offenders]),
+                         ([base_red_check.BASE_UNSOUND], [base_red_check.BASE_UNSOUND]))
+
+
+class WithdrawnFileVerdictTests(unittest.TestCase):
+    """What the deciding half does with the files the reading half took out before the run."""
+
+    UNBUILDABLE = "Packages/p/Runtime/A/Tests/Editor/NewTests.cs"
+    BESIDE = "Packages/p/Runtime/A/Tests/Editor/OldTests.cs"
+    PASSED_CANARY = {"N.CanaryTests.Given_X_When_Y_Then_Z": "Passed"}
+
+    def cases(self):
+        return [base_red_check.Case("N.NewTests.Given_A_When_B_Then_C", self.UNBUILDABLE, 1, 2),
+                base_red_check.Case("N.OldTests.Given_D_When_E_Then_F", self.BESIDE, 1, 2)]
+
+    def report_over(self, reported, wrote):
+        cases = self.cases()
+        with contextlib.redirect_stdout(io.StringIO()):
+            base_red_check.report(cases, [], reported, {"EditMode": ["N.CanaryTests"]}, wrote,
+                                  {self.UNBUILDABLE: "Proceeding"}, single_round="0" * 40)
+        return cases
+
+    def verdicts(self, reported, wrote):
+        return {case.path: case.verdict for case in self.report_over(reported, wrote)}
+
+    def test_Given_AWithdrawnFileBesideOneTheRunSimplyMissed_When_TheVerdictsAreTaken_Then_OnlyOneNamesASymbol(self):
+        # Arrange -- both come back COULD_NOT_COMPILE, so the verdict alone separates nothing and the
+        # detail is the whole difference: one names what proved it, the other is a fixture gone
+        # missing for a reason nobody wrote down and an author cannot act on. Its neighbour's detail
+        # is the comparison, since a passing canary is what leaves that one reading the run at all.
+        cases = self.report_over(self.PASSED_CANARY, wrote=True)
+
+        # Act
+        said = tuple(case.detail for case in
+                     sorted(cases, key=lambda case: case.path != self.UNBUILDABLE))
+
+        # Assert
+        self.assertEqual(said, ("the base has no Proceeding", "the base built none of this fixture"))
+
+    def test_Given_AWithdrawnFileWhoseFixtureAnsweredGreen_When_TheVerdictsAreTaken_Then_OnlyItsNeighbourIsCredited(self):
+        # Arrange -- the base's own text stands under the withdrawn file's fixture name, so a run
+        # asked for it answers green about a case whose body this branch wrote. Its neighbour is the
+        # same green off the base's own tree: one comparison over both is what says the withdrawal
+        # decided the first, since either verdict alone is reachable without it.
+        reported = dict(self.PASSED_CANARY,
+                        **{"N.NewTests.Given_A_When_B_Then_C": "Passed",
+                           "N.OldTests.Given_D_When_E_Then_F": "Passed"})
+
+        # Act
+        verdicts = self.verdicts(reported, wrote=True)
+
+        # Assert
+        self.assertEqual((verdicts[self.UNBUILDABLE], verdicts[self.BESIDE]),
+                         (base_red_check.COULD_NOT_COMPILE, base_red_check.PASSED_ON_BASE))
+
+    def test_Given_ACaseBesideAWithdrawnOne_When_ItPassedOnTheBase_Then_ItStillFails(self):
+        # Arrange -- what decides whether withdrawing one file credits the run: its neighbour was
+        # measured on a tree that built, and green there separates nothing.
+        reported = dict(self.PASSED_CANARY,
+                        **{"N.OldTests.Given_D_When_E_Then_F": "Passed"})
+
+        # Act
+        verdicts = self.verdicts(reported, wrote=True)
+
+        # Assert
+        self.assertEqual(verdicts[self.BESIDE], base_red_check.PASSED_ON_BASE)
+
+    def test_Given_AWithdrawnFileAndAnEditorThatWroteNothing_When_TheVerdictsAreTaken_Then_BothFail(self):
+        # Arrange -- the withdrawal is a static approximation of what a compiler would say, and the
+        # run beside it is what makes it safe to act on. A round that wrote nothing leaves it
+        # unaccompanied, so it stops outranking: a branch every changed case of which sits in a
+        # withdrawn file would otherwise pass on a crash, a timeout or a missing licence. Both
+        # verdicts in one comparison, since the neighbour already failed before this.
+        # Act
+        verdicts = self.verdicts({}, wrote=False)
+
+        # Assert
+        self.assertEqual((verdicts[self.UNBUILDABLE], verdicts[self.BESIDE]),
+                         (base_red_check.BASE_UNSOUND, base_red_check.BASE_UNSOUND))
+
+    def test_Given_AWithdrawalTheReadingTook_When_ADifferentProcessDecides_Then_ItStillReadsIt(self):
+        # Arrange -- the two halves are separate invocations with a JSON file between them, and a
+        # field the emitting half writes that the deciding half never asks for is a silent fail-closed
+        # on exactly the branches this exists to let through. Built by `as_plan` for the reason its
+        # own round trip is: a literal here would go on carrying what the emitter had stopped writing.
+        # The canary reports and fails, so the platform is withdrawn and only the plan's own field
+        # can leave the case anything but a failing verdict.
+        holder = tempfile.mkdtemp(prefix="base-red-roundtrip-")
+        self.addCleanup(shutil.rmtree, holder, ignore_errors=True)
+        case = base_red_check.Case("N.NewTests.Given_A_When_B_Then_C", self.UNBUILDABLE, 1, 2)
+        Path(holder, "plan.json").write_text(json.dumps(base_red_check.as_plan(
+            "0" * 40, [case], [], {}, {"EditMode": ["N.CanaryTests"]},
+            withdrawn={self.UNBUILDABLE: "Proceeding"})))
+        Path(holder, "results").mkdir()
+        Path(holder, "results", "r.xml").write_text(
+            '<test-run><test-case fullname="N.CanaryTests.Given_X_When_Y_Then_Z" result="Failed" />'
+            '</test-run>')
+
+        # Act
+        status = subprocess.run(
+            [sys.executable, str(REPO_ROOT / "scripts/test_quality/base_red_check.py"),
+             "--verdict", str(Path(holder, "plan.json")),
+             "--results", str(Path(holder, "results"))], capture_output=True, text=True).returncode
+
+        # Assert
+        self.assertEqual(status, 0)
+
+
+class RemedyTests(unittest.TestCase):
+    """What a refusal tells its author to do, which is the half a gate is useless without."""
+
+    def cases(self):
+        return [base_red_check.Case("N.C.Given_A_When_B_Then_C",
+                                    "Packages/p/Runtime/A/Tests/Editor/CTests.cs", 1, 2)]
+
+    def printed(self, single_round):
+        held = io.StringIO()
+        with contextlib.redirect_stdout(held):
+            base_red_check.report(self.cases(), [], {}, {"EditMode": ["N.CanaryTests"]},
+                                  wrote=False, single_round=single_round)
+        return held.getvalue()
+
+    def test_Given_ASilentRoundSomebodyElseRan_When_TheRefusalIsPrinted_Then_ItNamesTheLoop(self):
+        # Arrange -- one round cannot say which carried file silenced the platform, and the loop that
+        # can is a command. Without it the refusal names a state and no way out of it.
+        # Act
+        printed = self.printed("c0ffee")
+
+        # Assert
+        self.assertIn("--lane csharp --platform EditMode --base c0ffee", printed)
+
+    def test_Given_ARunThatLoopedHere_When_TheRefusalIsPrinted_Then_TheLoopIsNotOfferedAgain(self):
+        # Arrange -- the counterpart, so the line above is not printed unconditionally: this
+        # invocation ran the loop to its own limit, and sending its author back to it is advice to
+        # repeat what just failed.
+        # Act
+        printed = self.printed(None)
+
+        # Assert
+        self.assertNotIn("--warm-library", printed)
+
+
+class PipeOutputTests(unittest.TestCase):
+    """Whether the harness speaks while it is still working, which is only in question under a pipe.
+
+    Every phase this script runs takes minutes and prints nothing until it is over, so a reader with
+    a block-buffered stream cannot tell a run in progress from a wedged one. Both readings have been
+    acted on here.
+    """
+
+    PROBE = ("import importlib.util, sys, time\n"
+             "spec = importlib.util.spec_from_file_location('brc', {path!r})\n"
+             "module = importlib.util.module_from_spec(spec)\n"
+             "spec.loader.exec_module(module)\n"
+             "{prologue}\n"
+             "print('phase')\n"
+             "time.sleep(60)\n")
+
+    def first_line(self, prologue, seconds=8.0):
+        """The first line a child prints through a pipe before it is killed, or None."""
+        code = self.PROBE.format(
+            path=str(REPO_ROOT / "scripts/test_quality/base_red_check.py"), prologue=prologue)
+        child = subprocess.Popen([sys.executable, "-c", code], stdout=subprocess.PIPE, text=True)
+        self.addCleanup(child.stdout.close)
+        self.addCleanup(child.wait)
+        self.addCleanup(child.kill)
+        held = []
+        reader = threading.Thread(target=lambda: held.append(child.stdout.readline()))
+        reader.daemon = True
+        reader.start()
+        reader.join(seconds)
+        return held[0].rstrip("\n") if held else None
+
+    def test_Given_AHarnessThatPrintsAndKeepsWorking_When_ItsOutputIsAPipe_Then_TheLineArrivesFirst(self):
+        # Arrange -- the control is the reading, not decoration: a pipe that delivers the line anyway
+        # would pass the second half on its own, and this would report a flush nobody performed. Both
+        # halves in one comparison, since the instrument is what the first one measures.
+        # Act
+        buffered = self.first_line("")
+        flushed = self.first_line("module.speak_under_a_pipe()")
+
+        # Assert
+        self.assertEqual((buffered, flushed), (None, "phase"))
+
+
+class AuthorshipTests(unittest.TestCase):
+    """Which cases a branch wrote, where the diff's answer and the file's answer come apart.
+
+    Which lines a diff calls changed is git's choice: text that only moved is described as deleted
+    and re-added, and the cases in it then read as this branch's.
+    """
+
+    FIXTURE = "scripts/test_probe.py"
+
+    def block(self, name, body):
+        return ("class {name}Tests(unittest.TestCase):\n"
+                "    def test_Given_A_When_B_Then_{name}(self):\n"
+                "        # Arrange\n"
+                "        value = {body!r}\n"
+                "        # Act / Assert\n"
+                "        self.assertEqual(value, {body!r})\n\n\n").format(name=name, body=body)
+
+    def changed(self, before, after):
+        holder = tempfile.mkdtemp(prefix="base-red-authorship-")
+        self.addCleanup(shutil.rmtree, holder, ignore_errors=True)
+        root = Path(holder)
+        run = lambda *arguments: subprocess.run(["git", "-C", holder, *arguments], check=True,
+                                                capture_output=True, text=True)
+        run("init", "-q")
+        run("config", "user.email", "probe@example.com")
+        run("config", "user.name", "probe")
+        path = root / self.FIXTURE
+        path.parent.mkdir(parents=True, exist_ok=True)
+        for label, text in (("base", before), ("branch", after)):
+            path.write_text("import unittest\n\n\n" + text)
+            run("add", "-A")
+            run("commit", "-qm", label)
+        _, cases, _, _, _ = base_red_check.collect(root, "HEAD~1", "python")
+        return [case.name for case in cases]
+
+    def test_Given_ACaseTheBranchOnlyMoved_When_TheBranchIsRead_Then_ItIsNotOneOfItsOwn(self):
+        # Arrange -- git describes the swap as one class deleted and re-added, so a line reading calls
+        # the re-added one this branch's. Its text is the base's, and green on the base over it asks
+        # an author to sharpen a case they did not write.
+        kept, moved = self.block("Kept", "kept"), self.block("Moved", "moved")
+
+        # Act
+        changed = self.changed(kept + moved, moved + kept)
+
+        # Assert
+        self.assertEqual(changed, [])
+
+    # GREEN_ON_BASE(characterization): a case whose own body differs from the base's is this branch's,
+    # which is what the reading beside it narrows rather than replaces.
+    def test_Given_ACaseTheBranchRewrote_When_TheBranchIsRead_Then_ItIsOneOfItsOwn(self):
+        # Arrange -- the counterpart, so the reading above is not the reading refusing every case:
+        # a body that differs is this branch's whatever the diff made of the lines around it.
+        kept, moved = self.block("Kept", "kept"), self.block("Moved", "moved")
+
+        # Act
+        changed = self.changed(kept + moved, moved + self.block("Kept", "rewritten"))
+
+        # Assert
+        self.assertEqual(changed, ["KeptTests.test_Given_A_When_B_Then_Kept"])
 
 
 class BranchReadingTests(unittest.TestCase):
@@ -929,6 +2742,22 @@ class BranchReadingTests(unittest.TestCase):
         # Assert
         self.assertTrue(case_named(cases, "Given_A_When_B_Then_C").declaration.written_here)
 
+    def test_Given_ABranchThatRewroteTheWrappedHalfOfAReason_When_ItIsRead_Then_TheDeclarationIsIts(self):
+        # Arrange -- the reason spans both comment lines, and this branch rewrote the second. Asking
+        # only whether the marker's own line moved answers "the base's own" for a declaration this
+        # branch wrote half of, and the remedy it then prints is to restate what was just restated.
+        before = ("        // " + MARKER + "(refactor): a pure rename\n"
+                  "        // of the applier the base already carries.\n")
+        after = ("        // " + MARKER + "(refactor): a pure rename\n"
+                 "        // of the applier this branch performs.\n")
+        root = self.repository(self.source(before), self.source(after))
+
+        # Act
+        _, cases, _, _, _ = base_red_check.collect(root, "HEAD~1", "csharp")
+
+        # Assert
+        self.assertTrue(case_named(cases, "Given_A_When_B_Then_C").declaration.written_here)
+
     def test_Given_ARenamedAndEditedTestFile_When_TheDroppedFilesAreRead_Then_TheOldPathIsAmongThem(self):
         # Arrange -- git pairs the two halves and reports R, so neither the added nor the deleted
         # filter names anything and the base tree ends up holding both copies of one fixture class.
@@ -954,6 +2783,19 @@ class RepositoryTests(unittest.TestCase):
 
         # Assert -- the count rides along because an empty corpus reports nothing silent.
         self.assertEqual((len(files) > 100, silent), (True, []))
+
+    def test_Given_EveryFixtureUnityCompiles_When_ItIsClassified_Then_EachIsCarriedOntoTheBase(self):
+        # Arrange
+        fixtures = imported_csharp_fixtures()
+
+        # Act
+        production = [relative for relative in fixtures
+                      if not base_red_check.is_test_side(relative)]
+
+        # Assert -- a fixture read as production is carried onto no base tree and its cases are in
+        # scope of nothing, so a branch that rewrites one is measured against nothing and passes.
+        # The count rides along because an empty corpus reports nothing misread.
+        self.assertEqual((len(fixtures) > 100, production), (True, []))
 
     def test_Given_EveryCSharpFixtureHere_When_ItIsRead_Then_NoTwoCaseSpansOverlap(self):
         # Act
@@ -1017,15 +2859,14 @@ class RepositoryTests(unittest.TestCase):
 
     def test_Given_EveryDeclarationHere_When_ItIsCounted_Then_NoneIsOrphaned(self):
         # Arrange -- one written over a helper, or too far above a case, silences nothing and looks
-        # like it does.
-        written, carried = 0, 0
-        for relative, text in csharp_test_files() + python_test_files():
-            written += sum(1 for line in text.splitlines()
-                           if base_red_check.DECLARATION.search(line))
-            carried += sum(1 for case in base_red_check.cases_in(relative, text) if case.declaration)
+        # like it does. Per file rather than over the tree: a total cancels a file that writes one
+        # nothing carries against a file that carries one nothing wrote, and reports two as none.
+        # Act
+        uneven = [(relative, base_red_check.orphaned_declarations(relative, text))
+                  for relative, text in csharp_test_files() + python_test_files()]
 
-        # Act / Assert
-        self.assertEqual(written, carried)
+        # Assert
+        self.assertEqual([name for name, (wrote, carries) in uneven if wrote != carries], [])
 
 
 if __name__ == "__main__":
