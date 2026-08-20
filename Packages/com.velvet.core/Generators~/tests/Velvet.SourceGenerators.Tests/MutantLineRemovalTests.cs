@@ -15,10 +15,10 @@ namespace Velvet.SourceGenerators.Tests
     /// every mutant carrying it leaves its line running nothing.
     /// </summary>
     /// <remarks>
-    /// The verdict is what an author reasons about which mutants exist from, and the shape the generator
-    /// matches — an identifier, a parenthesised head, a semicolon-terminated tail — is a discarded call
-    /// and equally a single-line <c>if</c>, <c>foreach</c>, <c>while</c> or <c>else</c>. Beside one of
-    /// those, a verdict naming only the call reads as a harness that is confused.
+    /// The verdict is what an author reasons about which mutants exist from, and the generator reads
+    /// nothing into the word in front of the parenthesis — so a single-line <c>if</c> or <c>foreach</c>
+    /// is taken whole, exactly as a discarded call is. Beside one of those, a verdict naming only the
+    /// call reads as a harness that is confused.
     /// <para/>
     /// Tokens rather than statements: an <c>else</c> clause is not a statement, so a reading over statement
     /// nodes would report every removal this shape reaches through one, which the generator emits and

@@ -368,9 +368,9 @@ OPERATORS = [
 
 WORD_OPERATORS = [("true", "false", "literal"), ("false", "true", "literal")]
 
-# An identifier, a parenthesised head, a semicolon-terminated tail. That is a call whose value is
-# discarded, and equally a single-line `if`, `foreach`, `while` or `else`, so what the removal takes
-# is everything the line runs rather than one call -- which is what its verdict is named for.
+# An identifier, a parenthesised head, a semicolon-terminated tail. The word in front of the
+# parenthesis is no part of that, so what the removal takes is everything the line runs rather than
+# one call -- which is what its verdict is named for.
 REMOVABLE_LINE = re.compile(r"^[A-Za-z_][A-Za-z0-9_.]*(\.[A-Za-z_][A-Za-z0-9_]*)*\s*\([^;]*\)\s*;$")
 
 # `return (value, done);` has the shape above and is not a line whose code can go: what replaces it

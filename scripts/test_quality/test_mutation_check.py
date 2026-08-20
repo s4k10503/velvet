@@ -402,10 +402,10 @@ class LineRemovalReadingTests(unittest.TestCase):
     """
 
     def test_Given_ARemovalTheRepositoryGenerates_When_ACommentIsAppendedToIt_Then_ItStillGenerates(self):
-        # Arrange — the package's own removal lines rather than a list of spellings, each given a
-        # trailing comment. A line whose removal depends on nothing following the semicolon loses it.
-        sources = [path for path in RUNTIME.rglob("*.cs")
-                   if "/Tests/" not in path.as_posix() and "/Plugins/" not in path.as_posix()]
+        # Arrange — the corpus a campaign mutates rather than a list of spellings, since a list is
+        # only ever the shapes its author thought of.
+        sources = [path for path in (REPO_ROOT / "Packages/com.velvet.core").rglob("*.cs")
+                   if mutation_check.mutable(path, REPO_ROOT)]
 
         # Act
         kept, lost = 0, []
