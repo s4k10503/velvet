@@ -19,19 +19,13 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-from shell_commands import git_invocations, unexpanded
+from shell_commands import COMMIT_VALUE_FLAGS, git_invocations, unexpanded
 
 
 HOOK_TOOLS = {"Bash"}
 
 NEUTER_CUTS = "scripts/test_quality/neuter_cuts.json"
 
-# `git commit` options that take a value, so their argument is not mistaken for a pathspec.
-COMMIT_VALUE_FLAGS = {
-    "-m", "--message", "-F", "--file", "-c", "--reedit-message", "-C", "--reuse-message",
-    "--fixup", "--squash", "--author", "--date", "-t", "--template", "--cleanup",
-    "-S", "--gpg-sign", "--trailer", "--pathspec-from-file",
-}
 COMMIT_ALL_FLAGS = {"-a", "--all"}
 
 

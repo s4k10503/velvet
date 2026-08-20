@@ -184,6 +184,12 @@ merges through the REST merge endpoint besides, which no hook matcher sees. The 
 campaign at pull-request-open time, and a review round that changes production code after that is
 measured by nothing until the next `gh pr create`.
 
+**A round is answered by a layer on top, not by an amend.** A finding cites the commit it was taken
+on, so replacing that commit leaves the round and its answer inseparable, and the branch cannot land
+without a force-push. `.claude/hooks/refuse/amend_of_published_commit.py` refuses `git commit --amend`
+when a `refs/remotes/*` ref reaches HEAD, and when git could not say whether one does. Amending a
+commit git placed and found unpushed is the ordinary case, and is what the predicate leaves alone.
+
 **Nothing in CI runs the campaign, and at the measured cost nothing can.** A mutant is one editor launch.
 Over the twenty commits ending at `48057c8`, ten generated no mutant at all and the other ten ranged
 3 to 51 with a median of 22. A mutant's launch-compile-run measured 100–118 s here against a 94 s
@@ -337,6 +343,10 @@ lines under it: the declaration is read from its marker to the end of that block
 rewrote any of those lines wrote it. The word floor is measured on the marker's own line rather than
 over that span, so the first line has to be a claim in its own right — measured over the span, a
 comment line that is not the reason at all counts toward it.
+`.claude/hooks/refuse/declaration_first_line_fragment.py` refuses a first line that breaks off on a
+word that has to be followed by more of its own clause, on a comma or on a comma and a relativiser, or
+on a delimiter it opens and does not close. A first line none of those reach is left alone however the
+reason continues under it.
 
 Only the comment block directly above a case is read, so one written above a helper, or with a blank
 line between, or left over the case before, silences nothing while looking as though it does. The run
