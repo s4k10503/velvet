@@ -323,9 +323,12 @@ namespace Velvet.Tests
         private static readonly Regex QualifiedConstant = new(
             @"(?<![\w.])(?:[A-Za-z_]\w*\.)*([A-Za-z_]\w*)\.[A-Za-z_]\w*(?![\w.])", RegexOptions.Compiled);
 
-        // A relational pattern (`<= UILayer.Topmost`), which answers every member on its side of the split
-        // without naming one — the member added tomorrow is answered and the build stays green, which is
-        // what the discard does. KnownValueAnsweringSites says which switch reaches for the shape and why.
+        // A relational pattern (`<= UILayer.Topmost`), which answers a span of members without naming them.
+        // It is the discard's silence only where that span is open at the top: the member appended tomorrow
+        // falls into it and the build stays green. Where named arms hold the top instead, that member is
+        // uncovered and CS8509 fails the build. This reports the shape either way rather than telling the
+        // two apart, which is what scopes it to a range arm.
+        // KnownValueAnsweringSites says which switch reaches for the shape and why.
         private static readonly Regex RangeArmPattern = new(@"(?<![\w])[<>]=?", RegexOptions.Compiled);
 
         // The guard clause, matched on the word boundary rather than on a trailing space, so `_ when(x)`
@@ -406,7 +409,7 @@ namespace Velvet.Tests
 
         /// <summary>
         /// Every range arm answering with a value, counted the same way. Separate from the catch-alls
-        /// because it is a different spelling of the same silence — <see cref="RangeArmPattern"/> owns why.
+        /// because a range arm can carry the same silence — <see cref="RangeArmPattern"/> owns when.
         /// </summary>
         private static (List<(int Line, string Enum)> Ranges, int Examined) ValueAnsweringRangeArms(
             string redacted, ICollection<string> packageEnums)

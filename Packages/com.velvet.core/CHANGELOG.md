@@ -67,14 +67,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   compiles CS8509 as an error too, applying to Velvet's own sources only.
 - `V.Portal(layer:)` no longer mounts its children for a `UILayer` value naming no layer, where it
   hosted them at the `Overlay` offset before. Every named layer hosts as it did, and only a cast outside
-  the enum's range reaches this. What such a cast now produces: the rest of the tree renders and the
-  portal's children do not, and the exception is written to the console rather than raised out of the
-  mount — `UseFallback` does not catch it, and the message names the unmatched number rather than the
-  argument it came from. A silent `Overlay` was how such a cast survived to put a portal on a layer
-  nobody asked for. The switch it comes from now names every layer, for the reason the entry above
-  gives, and so do the ones behind `divide-*` colours, `clip-path` radius keywords, `animate-*`
-  transition slots and the structural variants — each already answered every named member as it does
-  now.
+  the enum's range reaches this. What such a cast now produces: that portal's children do not mount, and
+  the exception is reported to the console rather than raised out of the render — `UseFallback` does not
+  catch it, and the message names the unmatched number rather than the argument it came from. A silent
+  `Overlay` was how such a cast survived to put a portal on a layer nobody asked for.
+- A deferred host mount that cannot resolve where it goes is now reported and skipped rather than
+  escaping the render. `V.Portal`, `V.WorldSpace` and a `z-*` placement share one queue drained after
+  the pass, and an escape used to take everything still behind it: a portal on a named layer queued
+  behind the failing one never mounted and its later patches warned that the *named* layer's host was
+  missing, and a `z-*` element queued behind it never entered the tree at all. An escape also left the
+  committed tree of the component that queued it short of what the pass had already put in the DOM, so
+  each later render appended another copy of the difference. The cast above is what makes any of this
+  reachable from a plain call.
+- The switch behind the layer offset now names every layer, for the reason the `StyleVariantClass` entry
+  above gives, and so do the ones behind `divide-*` colours, `clip-path` radius keywords, `animate-*`
+  transition slots and the structural variants — each already answered every named member as it does now.
 
 ### Fixed
 

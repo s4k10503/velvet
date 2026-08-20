@@ -74,9 +74,7 @@ namespace Velvet
         public static PanelHostRecord CreateLayerHost(UILayer layer, IPanel? declaringPanel, ReconcilerContext ctx)
         {
             // Ahead of the parts it is applied to: a layer naming no offset throws here, and the caller
-            // puts the record in ReconcilerContext.LayerHosts only once this returns. Built first, the
-            // GameObject and the PanelSettings outlive the throw with no record in the table the destroy
-            // sweeps iterate.
+            // puts the record in ReconcilerContext.LayerHosts only once this returns.
             var offset = SortingOffset(layer);
             var (declaring, baseOrder) = ResolveDeclaring(declaringPanel, ctx);
             var (record, settings) = CreateHostParts($"VelvetLayer-{layer}", declaring);

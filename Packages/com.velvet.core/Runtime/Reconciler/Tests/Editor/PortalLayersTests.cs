@@ -18,6 +18,9 @@ namespace Velvet.Tests
     /// <item>A WorldSpace node creates a per-instance world-space host (render mode WorldSpace,
     /// transform-positioned, fixed virtual panel size), follows position patches, mounts children
     /// inside, and destroys the host on unmount.</item>
+    /// <item>A deferred mount that cannot resolve where it goes is reported on its own: the portals and
+    /// <c>z-*</c> placements queued behind it in the same pass still land, and the render that queued it
+    /// still commits.</item>
     /// </list>
     /// Host accounting reads through Resources.FindObjectsOfTypeAll, which sees hidden objects.
     /// </summary>
@@ -173,7 +176,7 @@ namespace Velvet.Tests
         {
             // Arrange — the throw is logged rather than raised out of V.Mount, so the mount completes and
             // the assertion below is reached.
-            LogAssert.Expect(LogType.Exception, new Regex("SwitchExpressionException"));
+            ExpectUnnamedLayerReport();
 
             // Act
             MountAndLayout(V.Div(children: new VNode[]
@@ -183,6 +186,103 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((NewDocs().Count, NewSettings().Count), Is.EqualTo((0, 0)));
+        }
+
+        // What a layer naming no offset reports: FiberLogger.LogException's tag line, then the throw.
+        private static void ExpectUnnamedLayerReport()
+        {
+            LogAssert.Expect(LogType.Error, new Regex(@"\[Portal\]"));
+            LogAssert.Expect(LogType.Exception, new Regex("SwitchExpressionException"));
+        }
+
+        // Anywhere this reconciler renders: the main panel, or any host it created.
+        private bool RenderedAnywhere(string elementName)
+        {
+            if (_host.Root.Q<VisualElement>(elementName) != null) return true;
+            foreach (var doc in NewDocs())
+            {
+                if (doc.rootVisualElement != null && doc.rootVisualElement.Q<VisualElement>(elementName) != null)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        [Test]
+        public void Given_APortalOnANamedLayerQueuedBehindOneNamingNoOffset_When_Mounted_Then_ItStillReachesItsHost()
+        {
+            // Arrange
+            ExpectUnnamedLayerReport();
+
+            // Act
+            MountAndLayout(V.Div(name: "queue-root", children: new VNode[]
+            {
+                V.Portal((UILayer)99, key: "unnamed", children: new VNode[] { V.Div(name: "unnamed-child") }),
+                V.Portal(UILayer.Overlay, key: "named", children: new VNode[] { V.Div(name: "named-child") }),
+            }));
+
+            // Assert — the offending portal holds its slot and is the only one that loses its children.
+            Assert.That((_host.Root.Q<VisualElement>("queue-root").childCount,
+                    RenderedAnywhere("unnamed-child"), RenderedAnywhere("named-child")),
+                Is.EqualTo((2, false, true)));
+        }
+
+        [Test]
+        public void Given_AZLayerPlacementQueuedBehindAPortalNamingNoOffset_When_Mounted_Then_ItStillLands()
+        {
+            // Arrange — a z-* placement shares the deferred-mount queue with every Portal of the pass.
+            ExpectUnnamedLayerReport();
+
+            // Act
+            MountAndLayout(V.Div(name: "queue-root", children: new VNode[]
+            {
+                V.Portal((UILayer)99, key: "unnamed", children: new VNode[] { V.Div(name: "unnamed-child") }),
+                V.Div(name: "stacked", className: "absolute z-10"),
+            }));
+
+            // Assert — the count carries the offending portal's own slot, so a case arranged without it fails
+            // here rather than only on the report expected above.
+            Assert.That((_host.Root.Q<VisualElement>("queue-root").childCount,
+                    RenderedAnywhere("stacked"), RenderedAnywhere("unnamed-child")),
+                Is.EqualTo((3, true, false)));
+        }
+
+        private static StateUpdater<int> s_bumpUnnamed;
+
+        [Component]
+        private static VNode UnnamedLayerHost()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_bumpUnnamed = setTick;
+            return V.Div(name: "unnamed-root", children: new VNode[]
+            {
+                V.Label(text: "tick=" + tick),
+                tick == 0
+                    ? null
+                    : V.Portal((UILayer)99, key: "unnamed", children: new VNode[] { V.Div(name: "unnamed-child") }),
+            });
+        }
+
+        [Test]
+        public void Given_APortalOnALayerNamingNoOffset_When_ItsDeclarerRendersAgain_Then_NoSecondPlaceholderIsAppended()
+        {
+            // Arrange — the portal has to arrive on an update, so the pass whose drain fails is the
+            // declaring fiber's own: that fiber's committed tree must carry the placeholder the failed
+            // mount left behind, or every later render diffs it as absent and appends another one.
+            MountAndLayout(V.Component(UnnamedLayerHost, key: "root"));
+            ExpectUnnamedLayerReport();
+
+            // Act
+            s_bumpUnnamed.Invoke(v => v + 1);
+            FlushAndLayout();
+            s_bumpUnnamed.Invoke(v => v + 1);
+            FlushAndLayout();
+
+            // Assert — the label carries the re-render the count is read after.
+            var root = _host.Root.Q<VisualElement>("unnamed-root");
+            Assert.That((root.childCount, ((Label)root[0]).text, RenderedAnywhere("unnamed-child")),
+                Is.EqualTo((2, "tick=2", false)));
         }
 
         [Test]

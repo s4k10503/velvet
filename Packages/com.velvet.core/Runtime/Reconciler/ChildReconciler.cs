@@ -266,36 +266,54 @@ namespace Velvet
                 // creates its per-instance host here — the placeholder is attached by now, so the
                 // declaring panel whose settings/theme the host copies is known.
                 VNode?[] children;
-                switch (node)
+                try
                 {
-                    case PortalNode { Layer: { } layer } layerPortal:
-                        (target, children) = ResolveLayerPortalTarget(placeholder, layerPortal, layer);
-                        break;
-                    case WorldSpaceNode worldSpaceNode:
-                        (target, children) = ResolveWorldSpacePortalTarget(placeholder, worldSpaceNode);
-                        break;
-                    case PortalNode samePanelPortal:
-                        (target, children) = ResolveSamePanelPortalTarget(target, samePanelPortal);
-                        break;
-                    case ZLayerMountNode zLayerMount:
-                        // Not a host mount: the real element is already fully built (CreateElement / a
-                        // patch-time none-to-z transition ran its whole child reconcile inline, under live
-                        // context, like any ordinary sibling) — only its CONTAINER placement was deferred,
-                        // because placeholder.parent (the stacking parent) is only knowable now. No target
-                        // resolution, no nested Reconcile, no PortalState entry: resolve the layer placement
-                        // and move on to the next queued entry. `this` is passed through so a first-of-its-
-                        // sign container creation can rebase a park THIS SAME instance's Reconcile() call just
-                        // captured (see RebasePendingSlotStartIfTargeting) — invisible to any other lookup
-                        // until this whole top-level call returns.
-                        FiberZLayerCoordinator.ResolveQueuedMount(_ctx, placeholder, zLayerMount);
-                        continue;
-                    default:
-                        // Only PortalNode / WorldSpaceNode enqueue deferred mounts; anything else is
-                        // a missing branch for a new node kind and must fail loudly rather than
-                        // mount nothing in silence.
-                        FiberLogger.LogWarning("Portal",
-                            $"Unsupported deferred host mount node: {node.GetType().Name}. Entry skipped.");
-                        continue;
+                    switch (node)
+                    {
+                        case PortalNode { Layer: { } layer } layerPortal:
+                            (target, children) = ResolveLayerPortalTarget(placeholder, layerPortal, layer);
+                            break;
+                        case WorldSpaceNode worldSpaceNode:
+                            (target, children) = ResolveWorldSpacePortalTarget(placeholder, worldSpaceNode);
+                            break;
+                        case PortalNode samePanelPortal:
+                            (target, children) = ResolveSamePanelPortalTarget(target, samePanelPortal);
+                            break;
+                        case ZLayerMountNode zLayerMount:
+                            // Not a host mount: the real element is already fully built (CreateElement / a
+                            // patch-time none-to-z transition ran its whole child reconcile inline, under live
+                            // context, like any ordinary sibling) — only its CONTAINER placement was deferred,
+                            // because placeholder.parent (the stacking parent) is only knowable now. No target
+                            // resolution, no nested Reconcile, no PortalState entry: resolve the layer placement
+                            // and move on to the next queued entry. `this` is passed through so a first-of-its-
+                            // sign container creation can rebase a park THIS SAME instance's Reconcile() call just
+                            // captured (see RebasePendingSlotStartIfTargeting) — invisible to any other lookup
+                            // until this whole top-level call returns.
+                            FiberZLayerCoordinator.ResolveQueuedMount(_ctx, placeholder, zLayerMount);
+                            continue;
+                        default:
+                            // Only PortalNode / WorldSpaceNode enqueue deferred mounts; anything else is
+                            // a missing branch for a new node kind and must fail loudly rather than
+                            // mount nothing in silence.
+                            FiberLogger.LogWarning("Portal",
+                                $"Unsupported deferred host mount node: {node.GetType().Name}. Entry skipped.");
+                            continue;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // Per-entry, for the same reason Reconciler.ReleaseRefCallbacks is. The queue is FIFO
+                    // and shared, so whatever this pass deferred after this entry — another Portal, a
+                    // WorldSpace host, a z-* placement — is still in it, and an escape loses every one of
+                    // them to the caller's own finally clear. Nor is an escape a clean abort of the render
+                    // that queued it: it unwinds the top-level Reconcile of whichever fiber began the pass,
+                    // discarding that fiber's newly rendered tree while the DOM keeps what the pass
+                    // already committed, so every later render diffs against a baseline short by all of
+                    // it and appends the difference again. Scoped to resolution, ahead of the nested
+                    // Reconcile below: that one mounts children through the fiber machinery, which
+                    // already routes a component's throw to its own Error Boundary.
+                    FiberLogger.LogException("Portal", ex);
+                    continue;
                 }
                 var resolvedTarget = target!;
                 // Append after the target's existing rendered children: LogicalChildSlots.Count is the
