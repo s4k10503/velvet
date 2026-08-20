@@ -187,7 +187,8 @@ def main():
               "A note is rebuilt from the first heading matching its version down to the next "
               "heading, so only one of the two sections is ever published and their order is what "
               "decides which.\n\n"
-              "One heading per version. Put the entry under `## [Unreleased]`.", file=sys.stderr)
+              "One heading per version. Put the entry under `## [Unreleased]` or "
+              "`## [Unreleased — breaking]`.", file=sys.stderr)
         return 2
 
     before, after = released(text), released(proposed)
@@ -202,7 +203,11 @@ def main():
               "A date on the heading is what says the entries under it shipped, and this check "
               "reads for it: whatever sits under an undated heading is not compared at all.\n\n"
               "Leave the heading and its date where they are, and put the change under "
-              "`## [Unreleased]`.", file=sys.stderr)
+              "`## [Unreleased]`, or `## [Unreleased — breaking]` where it has to wait for a "
+              "major.\n\n"
+              "Undoing a rename that closed a version too early arrives here as well, and nothing "
+              "in the file tells that date from a published one. Revert it with git, which this "
+              "check never reads.", file=sys.stderr)
         return 2
     if not versions:
         return 0
@@ -214,9 +219,16 @@ def main():
         "That section is the published release note. An entry there claims a version that shipped",
         "without it, and is missing from the version that will ship with it.",
         "",
-        "Put it under `## [Unreleased]` — opening one above the newest release if there is none.",
+        "Put it under `## [Unreleased]`, or `## [Unreleased — breaking]` where it has to wait for a",
+        "major — opening the one it belongs in above the newest release if there is none.",
         "A reword of what that section already says reads the same way here and is refused with it;",
         "it changes a published note, so ask for it rather than making it.",
+        "",
+        "Closing a release is the one case where the line does belong there, and then the rename ran",
+        "too early. Undoing it in the editor runs into this check again, because a heading that stops",
+        "being released is refused whatever route reaches it. Revert the rename with git, which this",
+        "check never reads, then close the version again in the order CONTRIBUTING.md's release",
+        "section gives: everything written into `## [Unreleased]` first, the rename last.",
     ]), file=sys.stderr)
     return 2
 
