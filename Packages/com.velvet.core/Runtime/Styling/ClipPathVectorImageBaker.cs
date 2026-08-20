@@ -166,6 +166,7 @@ namespace Velvet
         }
 
         // A circle is an ellipse with rx == ry; its single radius lives in the spec's X slot.
+#pragma warning disable CS8524 // no discard arm: a new extent has to name the basis it resolves against
         private static RadialGeometry ResolveRadialGeometry(ClipPathSpec spec, float width, float height)
         {
             var cx = spec.CenterX.Resolve(width);
@@ -181,7 +182,7 @@ namespace Velvet
                         Mathf.Min(cx, width - cx), Mathf.Min(cy, height - cy)),
                     ClipPathExtent.FarthestSide => Mathf.Max(
                         Mathf.Max(cx, width - cx), Mathf.Max(cy, height - cy)),
-                    _ => spec.RadiusX.IsPercent
+                    ClipPathExtent.Length => spec.RadiusX.IsPercent
                         ? spec.RadiusX.Resolve(Mathf.Sqrt((width * width) + (height * height)) / 1.4142135f)
                         : spec.RadiusX.Resolve(0f),
                 };
@@ -197,16 +198,17 @@ namespace Velvet
                 {
                     ClipPathExtent.ClosestSide => Mathf.Min(cx, width - cx),
                     ClipPathExtent.FarthestSide => Mathf.Max(cx, width - cx),
-                    _ => spec.RadiusX.Resolve(width),
+                    ClipPathExtent.Length => spec.RadiusX.Resolve(width),
                 },
                 RadiusY = spec.RadiusYExtent switch
                 {
                     ClipPathExtent.ClosestSide => Mathf.Min(cy, height - cy),
                     ClipPathExtent.FarthestSide => Mathf.Max(cy, height - cy),
-                    _ => spec.RadiusY.Resolve(height),
+                    ClipPathExtent.Length => spec.RadiusY.Resolve(height),
                 },
             };
         }
+#pragma warning restore CS8524
 
         private static InsetBox ResolveInsetBox(ClipPathSpec spec, float width, float height) => new()
         {

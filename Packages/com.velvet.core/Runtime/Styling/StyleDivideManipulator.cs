@@ -279,12 +279,13 @@ namespace Velvet
             return ResolvedColor(child, edge);
         }
 
+#pragma warning disable CS8524 // no discard arm: a new edge has to name the side it reads
         private static Color InlineColor(VisualElement child, DivideEdge edge) => edge switch
         {
             DivideEdge.Left => child.style.borderLeftColor.value,
             DivideEdge.Right => child.style.borderRightColor.value,
             DivideEdge.Top => child.style.borderTopColor.value,
-            _ => child.style.borderBottomColor.value,
+            DivideEdge.Bottom => child.style.borderBottomColor.value,
         };
 
         private static Color ResolvedColor(VisualElement child, DivideEdge edge) => edge switch
@@ -292,8 +293,9 @@ namespace Velvet
             DivideEdge.Left => child.resolvedStyle.borderLeftColor,
             DivideEdge.Right => child.resolvedStyle.borderRightColor,
             DivideEdge.Top => child.resolvedStyle.borderTopColor,
-            _ => child.resolvedStyle.borderBottomColor,
+            DivideEdge.Bottom => child.resolvedStyle.borderBottomColor,
         };
+#pragma warning restore CS8524
 
         private static void WriteEdge(VisualElement child, DivideEdge edge, StyleFloat width, StyleColor color)
         {
