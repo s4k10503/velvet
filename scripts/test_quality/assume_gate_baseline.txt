@@ -228,7 +228,6 @@ gates-in-assert	Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalL
 gates-in-assert	Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalLayersTests.cs	Velvet.Tests.PortalLayersTests.Given_AWorldSpaceNode_When_Mounted_Then_AWorldSpaceHostExistsAtThePosition	docs.Count
 gates-in-assert	Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalLayersTests.cs	Velvet.Tests.PortalLayersTests.Given_AWorldSpaceNode_When_Mounted_Then_ChildrenAttachInsideThePanel	docs.Count
 gates-in-assert	Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalLayersTests.cs	Velvet.Tests.PortalLayersTests.Given_AWorldSpaceNode_When_Mounted_Then_ThePanelSizeApplies	docs.Count
-gates-in-assert	Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalLayersTests.cs	Velvet.Tests.PortalLayersTests.Given_DifferentLayers_When_Mounted_Then_SortingOrdersThePanels	background.HasValue && topmost.HasValue
 gates-in-assert	Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalLayersTests.cs	Velvet.Tests.PortalLayersTests.Given_TwoPortalsOnOneLayer_When_Mounted_Then_TheyShareOneHost	docs.Count
 gates-in-assert	Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/PortalTests.cs	Velvet.Tests.PortalTests.Given_RegisteredTarget_When_PortalMounts_Then_TreePositionHoldsHiddenPlaceholder	_root.childCount
 gates-in-assert	Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/SceneViewTests.cs	Velvet.Tests.SceneViewTests.Given_AMountedSceneView_When_LayoutResolves_Then_TheBackgroundCarriesTheSameTexture	cam.targetTexture

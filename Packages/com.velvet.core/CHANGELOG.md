@@ -83,6 +83,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Runtime/csc.rsp` compiles CS8509 as an error, so a member added without an arm fails the build rather
   than warning into a log that nothing gates on. That response file ships with the package, so a project
   compiling `Velvet.asmdef` compiles CS8509 as an error too, applying to Velvet's own sources only.
+- `V.Portal(layer:)` no longer mounts its children for a `UILayer` value naming no layer, where it
+  hosted them at the `Overlay` offset before. Every named layer hosts as it did, and only a cast outside
+  the enum's range reaches this. What such a cast now produces: that portal's children do not mount, and
+  the exception is reported to the console rather than raised out of the render — `UseFallback` does not
+  catch it, and the message names the unmatched number rather than the argument it came from. A silent
+  `Overlay` was how such a cast survived to put a portal on a layer nobody asked for.
+- A deferred host mount that cannot resolve where it goes is now reported and skipped rather than
+  escaping the render. `V.Portal`, `V.WorldSpace` and a `z-*` placement share one queue drained after
+  the pass, and an escape used to take everything still behind it: a portal on a named layer queued
+  behind the failing one never mounted and its later patches warned that the *named* layer's host was
+  missing, and a `z-*` element queued behind it never entered the tree at all. An escape also left the
+  committed tree of the fiber that began the pass short of what the pass had already put in the DOM,
+  so each later render appended another copy of the difference. A `z-*` placement resolves no target
+  and stays outside that containment, unchanged: it performs its own insert, so a throw from the
+  panel-attach callbacks a `V.Custom<T>` subclass registered on the element being landed escapes the
+  render pass rather than being reported by the drain, and the entries queued behind it are still
+  lost.
+- The switch behind the layer offset now names every layer, for the reason the `StyleVariantKind` entry
+  above gives, and so do the ones behind `divide-*` colours, `clip-path` radius keywords, `animate-*`
+  transition slots and the structural variants — each already answered every named member as it does now.
 - `StyleVariantClass.BreakpointPx` and `StyleVariantClass.IsResponsive` throw for a `StyleVariantKind`
   value naming no member of the enum, where they returned `0f` and `false`. Both have done so since
   2.0.1.
