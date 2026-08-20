@@ -21,8 +21,8 @@ name: Source generators
 # Unity workflow excludes Generators~ outright.
 # A re-include must stay after '!**.md' — the last matching pattern is the one that decides.
 #
-# The list is the push trigger's alone. pull_request and merge_group carry no children at all and must not
-# gain any, and both triggers must stay present, for the reasons test.yml states over its own.
+# The list is the push trigger's alone. pull_request and merge_group carry no indented child and must not
+# gain one, and both triggers must stay present, for the reasons test.yml states over its own.
 on:
   push:
     branches: [main]

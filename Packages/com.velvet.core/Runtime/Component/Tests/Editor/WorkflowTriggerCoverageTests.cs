@@ -18,7 +18,7 @@ namespace Velvet.Tests
     /// <para>
     /// The trigger side is held by two rules, and the last two cases here are the whole of them: branch
     /// protection requires a check from each of these workflows, so each must subscribe to both events that
-    /// ask for one, and neither of those subscriptions may carry a child key.
+    /// ask for one, and neither of those subscriptions may carry an indented child key.
     /// </para>
     /// </summary>
     [TestFixture]
@@ -251,7 +251,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_TheWorkflowsBranchProtectionRequires_When_TheirTriggersAreRead_Then_OnlyPushCarriesAFilter()
+        public void Given_TheWorkflowsBranchProtectionRequires_When_TheirTriggersAreRead_Then_OnlyPushCarriesAChild()
         {
             // Arrange
             var filters = RequiredCheckWorkflows.SelectMany(TriggerFilters).ToList();
@@ -267,8 +267,9 @@ namespace Velvet.Tests
 
             // Assert — four on push is each workflow's branch list and its path list.
             Assert.That((onPush, string.Join(", ", onGated)), Is.EqualTo((4, string.Empty)),
-                "Filter the push trigger, never pull_request or merge_group: a required check that does "
-                + "not start has nothing able to clear it.");
+                "The gated triggers carry no indented child at all. That is a blanket rule rather than a "
+                + "judgement per key, because judging per key is what let a branch filter through while a "
+                + "path filter was the one being watched for.");
         }
 
         // Read separately from the filters below because their absence and a trigger's absence are
@@ -297,9 +298,9 @@ namespace Velvet.Tests
             }
         }
 
-        // Every child key is reported rather than a list of the filters named today. The rule over the
-        // gated triggers is that they carry no children, and a list has the wrong failure direction: one it
-        // has not got passes silently, where one it should not report fails and gets corrected.
+        // Every indented child key is reported rather than a list of the filters named today. The rule
+        // over the gated triggers is that they carry no child, and a list has the wrong failure direction:
+        // one it has not got passes silently, where one it should not report fails and gets corrected.
         private static IEnumerable<(string Workflow, string Trigger, string Key)> TriggerFilters(string workflow)
         {
             var lines = File.ReadAllLines(Path.GetFullPath(workflow));
