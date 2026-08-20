@@ -1464,6 +1464,9 @@ class PythonSurfaceReachTests(unittest.TestCase):
             self.RAISED, root / "base", root / "branch",
             base_red_check.Case(case, self.CASE, 1, 2))
 
+    # GREEN_ON_BASE(characterization): the base takes no reading off an ImportError at all.
+    # It answers no to this for want of the question, where the branch answers no because the case
+    # reached nothing -- and the second answer is the one a file-wide reading would lose.
     def test_Given_TheNameSpelledOnlyByTheImport_When_ACaseIsRead_Then_ThatIsNotEvidence(self):
         # Arrange -- the case reaches nothing the branch added; the import line above it does, and
         # that line is what the base died on.
@@ -1477,6 +1480,9 @@ class PythonSurfaceReachTests(unittest.TestCase):
         # Assert
         self.assertFalse(found)
 
+    # GREEN_ON_BASE(characterization): a case answers for its own reach and for no sibling's.
+    # The base agrees by reading no ImportError at all, so the arrangement rather than the verdict is
+    # what separates this from a run that credits the whole file.
     def test_Given_TheNameSpelledByAnotherCaseOfTheFile_When_ThisOneIsRead_Then_ThatIsNotEvidence(
             self):
         # Arrange -- one case of the file does depend on the branch, and the reading it earns is its
@@ -1493,9 +1499,6 @@ class PythonSurfaceReachTests(unittest.TestCase):
         # Assert
         self.assertFalse(found)
 
-    # GREEN_ON_BASE(characterization): scaffolding a fixture shares is reached by each of its cases.
-    # A setUp naming the surface fails for every case of that fixture, so those cases depend on the
-    # branch exactly as one spelling it in its own body does.
     def test_Given_TheNameSpelledByTheFixturesSetUp_When_ACaseIsRead_Then_ThatIsEvidence(self):
         # Arrange -- the case body reaches nothing the branch added, and its setUp reaches it for it.
         # Act
@@ -1511,9 +1514,6 @@ class PythonSurfaceReachTests(unittest.TestCase):
         # Assert
         self.assertTrue(found)
 
-    # GREEN_ON_BASE(characterization): a traceback names one missing name, not all of them.
-    # Which one it names decides nothing about the case, so the names beside it in the same statement
-    # are read off the import list and compared the same way.
     def test_Given_ASecondAddedNameTheRaiseDidNotName_When_ACaseReachesIt_Then_ThatIsEvidence(self):
         # Arrange -- the raise names ADDED and the case reaches ALSO, which the branch adds as well.
         # Act
