@@ -845,7 +845,7 @@ namespace Velvet.Tests
         // The population is what git tracks, because nothing those lists exclude is: measured, their
         // entries cover zero tracked files between them. Asking .gitignore instead would answer a different
         // question — an entry there is a path pattern, one in BaseUnwalkedDirectories a basename at any
-        // depth, and those two sets disagree in both directions today.
+        // depth — and measured, BaseUnwalkedDirectories and IgnoredRoots disagree in both directions today.
         //
         // GREEN_ON_BASE(characterization): the lists this reads live in DocumentationCorpus, a test-assembly
         // file the base run carries from the branch along with the case, so the base answers over the
