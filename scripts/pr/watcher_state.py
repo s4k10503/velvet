@@ -45,8 +45,8 @@ ASKED = Path.home() / ".velvet-pr-watch.asked"
 # stamps nothing, and that stretch is what this is sized against. Two hours, chosen past two
 # measurements rather than by judgement: the 1800s wait for a quiet machine all three suite
 # harnesses take, and the longest such stretch a week of sessions on this machine produced when this
-# was chosen. Neither bounds one, and what a session gets back past one is the command the guards
-# name.
+# was chosen. Neither bounds one, and what a session gets back past one is the command a guard
+# names.
 RETIRE_AFTER = 120 * POLL_SECONDS
 
 

@@ -391,7 +391,9 @@ CLOCK_START = 100000
 
 # The staleness window in seconds, written out rather than spelled from `watcher_state.STALE_AFTER`:
 # an arrangement naming the symbol moves with a change to it, and this branch made that width decide
-# a second file besides the heartbeat.
+# a second file besides the heartbeat. It reaches the heartbeat's own window only through the carry
+# that shares the width, so a later `read_ready_state` with a width of its own leaves that one
+# pinned by nothing.
 STALE_SECONDS = 180
 
 
@@ -514,7 +516,7 @@ class RetirementTests(unittest.TestCase):
         self.assertEqual(ended, (0, None))
 
     def test_Given_ARetiringWatcher_When_ItStops_Then_ItSaysTheCauseTheCostAndTheCure(self):
-        # Arrange — the guards start refusing the moment it goes, so a message carrying one of the
+        # Arrange — a guard starts refusing the moment it goes, so a message carrying one of the
         # three leaves whoever reads it to work out the rest.
         said = watch_until().output
 
@@ -540,7 +542,7 @@ class RetirementTests(unittest.TestCase):
         self.assertEqual(watched.polls, 120)
 
     def test_Given_ARecordFromLongBeforeThisWatcher_When_ItStarts_Then_ThatIsNotWhatRetiresIt(self):
-        # Arrange — the recovery the guards print is `settle.py watch`, and a Bash call that runs it
+        # Arrange — the recovery a guard prints is `settle.py watch`, and a Bash call that runs it
         # stamps nothing, so the record a replacement finds can be hours old.
         watched = watch_until(seed_asked=CLOCK_START - 14400)
 
@@ -597,9 +599,8 @@ class RetirementTests(unittest.TestCase):
         self.assertEqual(watched.code, 0)
 
     def test_Given_ARecordOfTheLastReadThatIsNotText_When_OneStarts_Then_ItStartsAnyway(self):
-        # Arrange — read at the top of every poll rather than once, so raising here ends a watcher
-        # at its first, and the command the guards name as the way out of a refusal is the one that
-        # would keep failing. The sibling case covers the ready record, one `try` block away.
+        # Arrange — a record the poll cannot decode; `watcher_state.asked_ago` owns why that must
+        # not raise. The sibling case covers the ready record, one `try` block away.
         watched = watch_until(seed_asked=b"\xff\xfe1787240000\n")
 
         # Act / Assert
