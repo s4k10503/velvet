@@ -18,7 +18,7 @@ namespace Velvet.Tests
     /// <para>
     /// The trigger side is held by two rules, and the last two cases here are the whole of them: branch
     /// protection requires a check from each of these workflows, so each must subscribe to both events that
-    /// ask for one, and neither of those subscriptions may carry a path filter.
+    /// ask for one, and neither of those subscriptions may carry a filter.
     /// </para>
     /// </summary>
     [TestFixture]
@@ -251,7 +251,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_TheWorkflowsBranchProtectionRequires_When_TheirTriggersAreRead_Then_OnlyPushFiltersByPath()
+        public void Given_TheWorkflowsBranchProtectionRequires_When_TheirTriggersAreRead_Then_OnlyPushCarriesAFilter()
         {
             // Arrange
             var filters = RequiredCheckWorkflows.SelectMany(TriggerFilters).ToList();
@@ -265,8 +265,8 @@ namespace Velvet.Tests
                 .Select(entry => $"{entry.Workflow}: {entry.Trigger}.{entry.Key}")
                 .ToList();
 
-            // Assert
-            Assert.That((onPush, string.Join(", ", onGated)), Is.EqualTo((2, string.Empty)),
+            // Assert — four on push is each workflow's branch list and its path list.
+            Assert.That((onPush, string.Join(", ", onGated)), Is.EqualTo((4, string.Empty)),
                 "Filter the push trigger, never pull_request or merge_group: a required check that does "
                 + "not start has nothing able to clear it.");
         }
@@ -297,8 +297,13 @@ namespace Velvet.Tests
             }
         }
 
-        // Both paths and paths-ignore stop a workflow from starting, so a guard naming one leaves the other
-        // free to reintroduce the block.
+        // The rule over the gated triggers is no filter, not no path filter — reading one key leaves the
+        // others free to reintroduce the block it exists to stop.
+        private static readonly string[] FilterKeys =
+        {
+            "paths", "paths-ignore", "branches", "branches-ignore", "types",
+        };
+
         private static IEnumerable<(string Workflow, string Trigger, string Key)> TriggerFilters(string workflow)
         {
             var lines = File.ReadAllLines(Path.GetFullPath(workflow));
@@ -326,7 +331,7 @@ namespace Velvet.Tests
                 {
                     trigger = name;
                 }
-                else if (name is "paths" or "paths-ignore")
+                else if (FilterKeys.Contains(name))
                 {
                     yield return (workflow, trigger, name);
                 }
