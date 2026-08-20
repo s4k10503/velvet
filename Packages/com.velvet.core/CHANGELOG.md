@@ -337,7 +337,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   kept rendering and the state was simply the wrong instance's. The dropped sibling now unmounts and
   the ones after it keep their slots, which is what React does with the same tree.
   Three neighbouring shapes moved with it, each a case of that same count standing in for a position:
-  two different components swapping places among siblings kept each other's state where React remounts
+  two different components swapping places among siblings kept their own state where React remounts
   both; a fragment gaining a child handed the newcomer the following sibling's instance and remounted
   that sibling; and a component inside a `V.Suspense`'s children collided with the one at the same
   index of the body around it, which the duplicate-key guard answered by warning and dropping one of

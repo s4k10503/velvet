@@ -243,7 +243,7 @@ the flag off mid-edit receives the pending text rather than stranding it on scre
 
 | React | Velvet | Notes |
 |-------|--------|------|
-| `{cond && <X/>}` | `V.When(cond, () => V.X())` | There is no JS truthy evaluation, so use an explicit factory function. The `null` it returns gives up the slot it held instead of shifting the siblings after it — [what a position is](#what-a-position-is) |
+| `{cond && <X/>}` | `V.When(cond, () => V.X())` | There is no JS truthy evaluation, so use an explicit factory function. For what the returned `null` costs the siblings after it, see [what a position is](#what-a-position-is) |
 | `items.map(x => <X key={k}/>)` | `V.List(items, keySelector, renderer)` | A dedicated API that enforces `key` |
 
 ### 2-3. Components
@@ -275,7 +275,7 @@ the flag off mid-edit receives the pending text rather than stranding it on scre
 >
 > Within one container the position is the slot a child is written at, and a child that renders nothing occupies its own: `cond ? V.Component(Row) : null` unmounts that one instance and leaves the components after it on the slots they already held. A slot whose component changes is a remount rather than a re-bind, so two unkeyed siblings swapping places both start over.
 >
-> Sibling **elements** are matched by position too, but a `null` among them does shift the ones after it. In `cond ? V.Div(V.Component(Row)) : null` beside a second such `V.Div`, the surviving wrapper is patched onto the element the departing one left, and the component inside it re-binds to that element's instance — the state of the pair's first `Row`, under the second one's props. A `key:` on those wrappers matches each with itself and keeps the pairing right.
+> Sibling **elements** are matched by position too, but a `null` among unkeyed ones does shift the ones after it. In `cond ? V.Div(V.Component(Row)) : null` beside a second such `V.Div`, the surviving wrapper is patched onto the element the departing one left, and the component inside it re-binds to that element's instance — the state of the pair's first `Row`, under the second one's props. A `key:` on those wrappers matches each with itself and keeps the pairing right.
 
 ### 2-4. Context
 

@@ -12,7 +12,7 @@ namespace Velvet.Tests
     /// which is what a sibling that renders <c>null</c> costing its slot is one case of
     /// (<see cref="ConditionalSiblingSlotKeyTests"/> holds that one). Keying the slot by how many
     /// components of one identity the walk had passed instead tied it to what the walk had already seen:
-    /// two different components swapping places kept each other's state rather than remounting, a fragment
+    /// two different components swapping places kept their own state rather than remounting, a fragment
     /// gaining a child handed the newcomer the next sibling's instance, and a component inside a
     /// <c>V.Suspense</c>'s children collided with the one at the same index of the body around it — which
     /// the duplicate-key guard answered by warning and dropping one of the two.

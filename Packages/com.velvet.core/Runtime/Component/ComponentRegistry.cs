@@ -22,11 +22,10 @@ namespace Velvet
         // own here, so two sibling containers under one declaring component can tie on every other
         // member, and then one instance would answer for both positions. The walk position the
         // expansion carries was tried for this and cannot serve — it restarts at FiberKeying.WalkRoot
-        // for each container, so it is equal at both call sites, and its Path differs between an outer
-        // walk and the enclosing component's own isolated re-render, so it cannot key anything that
-        // has to survive one. Being the same value as ComponentFiber.MountPoint is what keeps removal
-        // single: DisposeFibersUnder already selects a leaving subtree's fibers by that containment,
-        // so no second path has to learn about this member.
+        // for each container, so it is equal at both call sites. Being the same value as
+        // ComponentFiber.MountPoint is what keeps removal single: DisposeFibersUnder already selects
+        // a leaving subtree's fibers by that containment, so no second path has to learn about this
+        // member.
         // portalScope is the Portal placeholder a child level of that Portal's own children belongs to,
         // and null everywhere else. The declaring component's fiber is the parentFiber on both sides of
         // a Portal, so what it renders into the Portal and what it renders outside it agree on the rest
@@ -43,8 +42,8 @@ namespace Velvet
         // Interns the boxed position key that keys an unkeyed inline ComponentNode in _inlineInstances.
         // The walkers that derive these keys (ExpandInlineRecursive, the context spine-rewalk) reuse one
         // box per position instead of allocating a fresh box on every pass. Sharing is equality-safe
-        // because position keys are only ever compared by content, never by reference. Bounded by the
-        // tree positions the walk reaches; cleared in Dispose like the indexes.
+        // because position keys are only ever compared by content, never by reference. Cleared in
+        // Dispose like the indexes.
         internal Dictionary<(long slotPath, int nodeIndex), object> InlinePositionKeyBoxes { get; } = new();
 
         // Wrapper-mounted fibers (Velvet divergence: Outlet route mounts / V.List items own a dedicated
