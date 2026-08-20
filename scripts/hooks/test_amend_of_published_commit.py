@@ -35,6 +35,21 @@ ALLOW = 0
 PUBLISHED = "Refusing `git commit --amend`: this commit is already published."
 UNREAD = "Refusing `git commit --amend`: git could not say whether this commit is published."
 
+# The opening of the sentence `lib/repository.py` owns, spelled here so a guard that stops carrying
+# it is caught from outside rather than by reading the guard's own constant back to itself.
+SELF_REPORT = "That is a fact about this guard, not about"
+
+# What the refusal leaves the contributor to do, one cause each. Spelled here rather than imported
+# from the guard: a case comparing the guard's constant with itself passes whatever the constant
+# says.
+UNBORN_HEAD = "Commit first: that branch has nothing on it to amend."
+NO_REPOSITORY = "Name a repository the amend is for, or pose it from inside one."
+NOT_A_REPOSITORY = "Check the path: git found no repository where that selector points."
+NO_DIRECTORY = "Check the path: git could not enter that directory."
+UNEXPANDED_SELECTOR = ("Write the path out: a hook is handed the command before the shell expands "
+                       "it, so what git could not reach is the selector as spelled rather than the "
+                       "path it stands for.")
+
 MAIN = "main"
 
 # The machine's own default branch is forced to a name nothing here uses, so a `git init` whose
@@ -84,8 +99,6 @@ class GuardCase(unittest.TestCase):
         git(self.root, "clone", "-q", str(remote), "clone")
         # The guard is run from a directory that is not the event's, so a case posing a relative
         # selector measures the guard rather than wherever this file happened to be launched from.
-        # A hook process here was measured sitting in the session's own directory while the tool
-        # call it was handed ran in a worktree, which is the shape this reproduces.
         self.hook_home = self.root / "hookhome"
         self.hook_home.mkdir()
 
@@ -237,8 +250,9 @@ class PublishedHeadTests(GuardCase):
         code, text = self.answer("git -C ../decoy commit --amend", cwd=inner)
 
         # Assert — the SHA rides in the comparison because exit 2 is also what a reading that
-        # answered nothing exits, and what a `python3` that could not open the guard exits; only the
-        # SHA says the published tree is the one that was read.
+        # answered nothing exits, and what a `python3` that could not open the guard exits. It is
+        # the term that says which of the two repositories answered, where a headline says only
+        # that one did.
         published = git(self.root / "session" / "decoy", "rev-parse", "--short", "HEAD").strip()
         self.assertEqual((code, published in text), (REFUSE, True))
 
@@ -552,7 +566,52 @@ class UnreadableTreeTests(GuardCase):
         text = self.refusal("git commit --amend", cwd=unborn)
 
         # Assert
-        self.assertIn("Commit first: that branch has nothing on it to amend.", text)
+        self.assertIn(UNBORN_HEAD, text)
+
+    def test_Given_ADashCGitCannotEnter_When_ItIsRefused_Then_ItSaysToCheckThePath(self):
+        # Arrange — the directory is absent, so there is a path for the contributor to look at.
+        absent = self.root / "nonexistent"
+
+        # Act
+        text = self.refusal(f"git -C {absent} commit --amend")
+
+        # Assert
+        self.assertIn(NO_DIRECTORY, text)
+
+    def test_Given_ADirectoryInNoRepository_When_ItIsRefused_Then_ItSaysToNameOne(self):
+        # Arrange — the command names no selector at all, so what git could not find is a
+        # repository around the directory the reading ran in.
+        outside = self.root / "outside"
+        outside.mkdir()
+
+        # Act
+        text = self.refusal("git commit --amend", cwd=outside)
+
+        # Assert
+        self.assertIn(NO_REPOSITORY, text)
+
+    def test_Given_AGitDirNamingNoRepository_When_ItIsRefused_Then_ItSaysWhereToLook(self):
+        # Arrange — git says `not a git repository` here and for a reading from a directory in
+        # none, and the contributor is not in the same position: this one named a path.
+        absent = self.root / "nonexistent"
+
+        # Act
+        text = self.refusal(f"git --git-dir={absent} commit --amend")
+
+        # Assert
+        self.assertIn(NOT_A_REPOSITORY, text)
+
+    def test_Given_AnEventDirectoryThatIsGone_When_AnAmendIsRefused_Then_NoSelectorIsBlamed(self):
+        # Arrange — the reading never reached git, so nothing the command spelled is what failed,
+        # and naming a selector sends the contributor to a path with nothing wrong with it.
+        gone = self.root / "gone"
+
+        # Act
+        text = self.refusal(f"git -C {self.clone} commit --amend", cwd=gone)
+
+        # Assert — the headline rides along, since a run that refused for some other reason would
+        # name no `-C` either.
+        self.assertEqual((f"-C {self.clone}" in text, text.splitlines()[0]), (False, UNREAD))
 
     def test_Given_AnUnreadableTree_When_AnAmendIsRefused_Then_ItDoesNotSayAnAmendIsAllowed(self):
         # Arrange — this path refuses whatever the answer would have been, so a footer saying an
@@ -573,7 +632,80 @@ class UnreadableTreeTests(GuardCase):
         text = self.refusal("git -C $WORKTREE commit --amend")
 
         # Assert
-        self.assertIn("a selector spelled with a variable is not a path yet", text)
+        self.assertIn(UNEXPANDED_SELECTOR, text)
+
+    def test_Given_ATreeSpelledWithATilde_When_AnAmendIsRefused_Then_ItSaysTheShellHasNotRunYet(self):
+        # Arrange / Act — the reading `lib/shell_commands.py` states of a substitution, for a
+        # spelling that one does not carry. Sent to check the path instead, the contributor is sent
+        # to one that may have nothing wrong with it.
+        text = self.refusal("git -C ~/velvet commit --amend")
+
+        # Assert
+        self.assertIn(UNEXPANDED_SELECTOR, text)
+
+    def test_Given_ATreeSpelledWithAGlob_When_AnAmendIsRefused_Then_ItSaysTheShellHasNotRunYet(self):
+        # Arrange / Act
+        text = self.refusal(f"git -C {self.root}/clo* commit --amend")
+
+        # Assert
+        self.assertIn(UNEXPANDED_SELECTOR, text)
+
+
+class RefusalShapeTests(GuardCase):
+    """Which paragraphs the refusal carries, and which findings each of them sits against.
+
+    A command can carry two amends, so one refusal can hold a tree that was read and a tree that was
+    not. What a paragraph claims then depends on where it sits.
+    """
+
+    def mixed(self):
+        """A directory git cannot place, and the refusal for an amend of it beside a published one."""
+        absent = self.root / "nonexistent"
+        return absent, self.refusal(f"git commit --amend; git -C {absent} commit --amend")
+
+    def test_Given_ATreeReadBesideOneThatWasNot_When_ItIsRefused_Then_TheHeadlineSaysPublished(self):
+        # Arrange / Act — a headline picked by the failure would give up the claim the guard is
+        # entitled to make, which is that a tree was read and the commit in it is published.
+        absent, text = self.mixed()
+
+        # Assert — the failed reading rides in the comparison, since a command whose second amend
+        # was never posed at all carries this headline too.
+        self.assertEqual((text.splitlines()[0], str(absent) in text), (PUBLISHED, True))
+
+    def test_Given_ATreeReadBesideOneThatWasNot_When_ItIsRefused_Then_TheAnsweredReadingIsFirst(self):
+        # Arrange / Act
+        absent, text = self.mixed()
+
+        # Assert — where the answered reading sits rides with the order, since a refusal that
+        # dropped it would order the half it kept correctly.
+        found = (text.find("is reachable from"), text.find(str(absent)))
+        self.assertEqual((found[0] > 0, found[0] < found[1]), (True, True))
+
+    def test_Given_ATreeReadBesideOneThatWasNot_When_ItIsRefused_Then_TheSelfReportFollowsTheFailure(self):
+        # Arrange / Act — the sentence opens on a pronoun, so whatever stands above it is what it
+        # calls a fact about the guard rather than about the commit.
+        absent, text = self.mixed()
+
+        # Assert — what the paragraph is not rides with what it is, since a refusal that lost the
+        # sentence has nothing above it either.
+        paragraphs = text.split("\n\n")
+        above = next((paragraphs[index - 1] for index, paragraph in enumerate(paragraphs)
+                      if index and paragraph.startswith(SELF_REPORT)), "")
+        self.assertEqual((str(absent) in above, "is reachable from" in above), (True, False))
+
+    def test_Given_APublishedHead_When_AnAmendIsRefused_Then_ItSaysWhatAmendingCostsTheBranch(self):
+        # Arrange / Act
+        text = self.refusal("git commit --amend")
+
+        # Assert
+        self.assertIn("needs a force-push to land", text)
+
+    def test_Given_APublishedHead_When_AnAmendIsRefused_Then_ItSaysWhatToDoInstead(self):
+        # Arrange / Act
+        text = self.refusal("git commit --amend")
+
+        # Assert
+        self.assertIn("the answer is a commit of its own on top", text)
 
 
 class PredicateAgreementTests(GuardCase):
@@ -813,10 +945,11 @@ class GitOptionGrammarTests(unittest.TestCase):
 class UnreadableCauseTests(unittest.TestCase):
     """What git writes when the guard's reading fails, which is what the refusal reads a cause from.
 
-    Not about the guard: it matches git's own words rather than classifying the failure itself, so
-    the message it prints names the selector git refused instead of both of them. The alternative
-    was a sentence beside the matcher asserting that git says these things, and a sentence goes
-    stale the day git changes its mind.
+    Every case here poses a reading and compares what git wrote, which is git's to decide rather
+    than the guard's: the guard matches git's own words instead of classifying the failure itself,
+    and the alternative was a sentence beside the matcher asserting that git says these things,
+    which goes stale the day git changes its mind. The one that reads the guard's marker table as
+    well is, unlike the rest, red on a tree that has no guard to read.
     """
 
     def setUp(self):
@@ -887,9 +1020,10 @@ class UnreadableCauseTests(unittest.TestCase):
         self.assertEqual((placed, "not a git repository" in said), (False, True))
 
     def test_Given_TheMarkerTableAsItStands_When_EachIsPosed_Then_GitWritesThatMarker(self):
-        # Arrange — read from the guard rather than spelled, which is the one direction the cases
-        # above cannot cover: a marker added without a measurement is asked about by no list anybody
-        # wrote, and the action beside it is then printed for a cause git never reports.
+        # Arrange — read from the guard rather than spelled. Each pair the table holds is caught
+        # losing its marker by a refusal in `UnreadableTreeTests` that stops carrying its action;
+        # one the table gains is asked about by no list anybody wrote, and the action beside it is
+        # then printed for a cause git never reports. This is that second direction.
         #
         # Imported here rather than at module scope, for the reason `GitOptionGrammarTests` gives of
         # the option table: a tree without the guard would fail the import and take every case in

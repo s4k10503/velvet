@@ -20,6 +20,7 @@ Run: python3 scripts/hooks/test_amend_of_published_commit.py
 
 import collections
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -123,10 +124,10 @@ def publishing_refs(context, cwd):
     The namespace is written into the command rather than left to porcelain's idea of a remote
     branch, so what counts as published is readable here.
 
-    Taken from the event's directory, which is where the shell would resolve a relative selector
-    from. Taken from this process's own instead, `git -C ../x` answered about whichever repository
-    sat beside wherever the hook was started — measured allowing an amend of published history, and
-    `PublishedHeadTests` is what fails if that comes back.
+    Taken from the event's directory, which is where the tool call starts. Taken from this process's
+    own instead, `git -C ../x` answered about whichever repository sat beside wherever the hook was
+    started — measured allowing an amend of published history, and `PublishedHeadTests` is what
+    fails if that comes back.
     """
     answer = repository.git_answer(
         [*git_location_arguments(context), "for-each-ref", "--contains", "HEAD",
@@ -165,47 +166,79 @@ def head_sha(context, cwd):
     return answer.strip() if answer else "HEAD"
 
 
+def quoted_selectors(selectors, message):
+    """The selectors the failed reading named back: git quotes the path it could not resolve.
+
+    `UnreadableCauseTests` fails when it stops.
+    """
+    return [tokens for tokens, path in selectors if f"'{path}'" in message]
+
+
 def blamed(selectors, message, cwd):
-    """What to call the reading that failed: the selector git's message names, or where it ran.
+    """What to call the reading that failed: what its message names, or where it ran.
 
     Naming both selectors puts the one that resolved fine beside the one that did not, and a
-    contributor who mistyped a git directory is then shown a `-C` they never wrote. git quotes the
-    path it could not resolve, which is what picks it out; `UnreadableCauseTests` fails when it
-    stops. Where git names none of them there is nothing to pick, and the whole reading is named.
+    contributor who mistyped a git directory is then shown a `-C` they never wrote. Where the
+    message names the reading's own directory and none of the selectors, naming them would blame a
+    spelling nothing complained about.
     """
-    named_by_git = [tokens for tokens, path in selectors if f"'{path}'" in message]
-    spelled = named_by_git or [tokens for tokens, _ in selectors]
+    named = quoted_selectors(selectors, message)
+    if not named and f"'{cwd}'" in message:
+        return cwd
+    spelled = named or [tokens for tokens, _ in selectors]
     return " ".join(token for tokens in spelled for token in tokens) or cwd
+
+
+# What the shell rewrites besides the substitutions `unexpanded` recognises. Widening that reading
+# instead would make `shared_git_state.py` refuse `git checkout '*.cs'`, which is the over-refusal
+# its own `GLOB` and `sole_expansions` are there to avoid. What is asked here is narrower, and only
+# once a reading has already failed: whether git was handed the path the command names.
+SHELL_REWRITES = re.compile(r"^~|[*?\[]")
+
+
+def stands_for_a_path(path):
+    return unexpanded(path) or bool(SHELL_REWRITES.search(path))
 
 
 # What a failed reading leaves the contributor to do. The markers are git's own words rather than a
 # classification made here, and `UnreadableCauseTests` fails when git stops writing them.
 UNBORN_HEAD = "Commit first: that branch has nothing on it to amend."
 NO_REPOSITORY = "Name a repository the amend is for, or pose it from inside one."
+NOT_A_REPOSITORY = "Check the path: git found no repository where that selector points."
 NO_DIRECTORY = "Check the path: git could not enter that directory."
+
+# A selector that is not a repository and a reading from a directory in none arrive under the same
+# marker, and leave the contributor in different positions: one named a path to check and the other
+# named nothing. `quoted_selectors` is what separates them.
+NO_REPOSITORY_MARKER = "not a git repository"
+
 UNREADABLE_ACTIONS = (
     ("malformed object name HEAD", UNBORN_HEAD),
     ("cannot change to", NO_DIRECTORY),
-    ("not a git repository", NO_REPOSITORY),
+    (NO_REPOSITORY_MARKER, NO_REPOSITORY),
 )
 UNEXPANDED_SELECTOR = ("Write the path out: a hook is handed the command before the shell expands "
-                       "it, so a selector spelled with a variable is not a path yet.")
+                       "it, so what git could not reach is the selector as spelled rather than the "
+                       "path it stands for.")
 UNCLASSIFIED = "Establish by hand whether the commit is published, and say what you found."
 
 
 def unreadable_action(selectors, message):
     """What to do about a reading that failed.
 
-    The unexpanded spelling is answered ahead of the markers: git resolved the literal, so its
-    message is about a directory the command was never going to name, and a table read first
-    would send the contributor to check that one.
+    A selector the shell has yet to rewrite is answered ahead of the markers: git resolved the
+    literal, so its message is about a directory the command was never going to name, and a table
+    read first would send the contributor to check that one.
     """
     for _, path in selectors:
-        if unexpanded(path):
+        if stands_for_a_path(path):
             return UNEXPANDED_SELECTOR
     for marker, action in UNREADABLE_ACTIONS:
-        if marker in message:
-            return action
+        if marker not in message:
+            continue
+        if marker == NO_REPOSITORY_MARKER and quoted_selectors(selectors, message):
+            return NOT_A_REPOSITORY
+        return action
     return UNCLASSIFIED
 
 
