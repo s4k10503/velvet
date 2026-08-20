@@ -111,9 +111,11 @@ namespace Velvet.Tests
         /// </summary>
         /// <remarks>
         /// <c>Entered</c> is raised from inside the predicate, so a Blocker the router stops consulting
-        /// never raises it and the await never returns. A fixture awaiting it therefore carries a
-        /// <c>[Timeout]</c>: without one that change hangs the whole run instead of failing the tests
-        /// that await it, and a mutation of the consultation gate cannot be measured at all.
+        /// never raises it and the await never returns. Three router fixtures await this signal or
+        /// <see cref="MakeDeferredBlocker"/>'s, over sixteen cases between them, and carry a
+        /// <c>[Timeout]</c>: left to the runner's own bound those sixteen waits cost more than a mutation
+        /// campaign's default cap gives one mutant, which reports the consultation gate as not measured
+        /// rather than as killed. <see cref="UnityRunnerDefaultTimeoutTests"/> pins that bound.
         /// </remarks>
         public static (Func<NavigationAttempt, CancellationToken, UniTask<bool>> Check, UniTaskCompletionSource Entered) MakeOneShotBlocker()
         {
@@ -142,6 +144,9 @@ namespace Velvet.Tests
         /// The two resumes reach different rollbacks: throwing unwinds through the exception handlers,
         /// while returning falls into the blocker check's own cancellation branch.
         /// </summary>
+        /// <remarks>
+        /// Its <c>Entered</c> is bounded on the same terms as <see cref="MakeOneShotBlocker"/>'s.
+        /// </remarks>
         public static (Func<NavigationAttempt, CancellationToken, UniTask<bool>> Check,
             UniTaskCompletionSource Entered, Action ResumeCancelled, Action ResumeUnblocked) MakeDeferredBlocker()
         {
