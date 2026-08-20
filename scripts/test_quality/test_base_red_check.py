@@ -1308,13 +1308,15 @@ class UnbuildableOnBaseTests(unittest.TestCase):
         self.assertEqual(found, {})
 
     def test_Given_AMemberOnlyACarriedHelperDeclares_When_TheTreeIsRead_Then_ItIsNotWithdrawn(self):
-        # Arrange -- the helper is carried onto the base too, so what it declares resolves there. The
-        # base tree not holding the name is the one thing every reading here has in common, and it is
-        # not enough on its own.
+        # Arrange -- the base's copy of the helper has not got Reach either, so what leaves this file
+        # in the run is the production change spelling nothing of it. `unbuildable_on_base` records
+        # what the reading costs where a production change does spell one.
         # Act
-        found = self.read({self.HELPER: "class Probe { }\n",
-                           self.FIXTURE: self.fixture("Assert.Pass()")},
-                          {self.HELPER: "class Probe { public static int Reach; }\n",
+        found = self.read({self.ENUM: "enum Status { Idle }\n",
+                           self.HELPER: "class Probe { public static int Ready; }\n",
+                           self.FIXTURE: self.fixture("Assert.That(Probe.Ready, Is.Zero)")},
+                          {self.ENUM: "enum Status { Idle, Proceeding }\n",
+                           self.HELPER: "class Probe { public static int Ready, Reach; }\n",
                            self.FIXTURE: self.fixture("Assert.That(Probe.Reach, Is.Zero)")})
 
         # Assert

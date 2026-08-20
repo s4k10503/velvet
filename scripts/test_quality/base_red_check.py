@@ -1105,7 +1105,11 @@ def names_in(text):
 
 
 def csharp_names(tree, carried=()):
-    """Every identifier the C# files the base tree holds spell, each read as the base commit wrote it.
+    """Every identifier the base commit spelled, over the C# files the base tree still holds.
+
+    A file the branch deleted is not read: the base tree no longer holds it. Reading one back out of
+    the commit is what would leave a case naming a production surface the branch adds -- where the
+    base's only spelling of that name was the deleted file's -- in a run whose compile it takes down.
 
     `carried` names the files whose text on disk is the branch's, which is the text being judged:
     each is read back out of the commit instead. Leaving them out altogether asks a different
@@ -1138,8 +1142,9 @@ def added_csharp_surface(text, base_names, added_names):
     `added_python_surface` reads the same fact off a traceback, which C# leaves nowhere a single round
     can reach -- the module docstring owns why. What is left is the comparison itself, and
     `csharp_names` owns what "the base has not got" is read over. Requiring the branch to spell the
-    name too, in a file it changed and does not carry, is what keeps a name that lives in a binary
-    rather than in this repository from reading as one the branch added.
+    name too, in a file it changed and does not carry, is what keeps the names a carried file
+    resolves out of an assembly from reading as ones the branch added -- bar one the changed
+    production file spells as well, which is among the approximations `unbuildable_on_base` records.
     """
     return next((name for name in sorted(names_in("\n".join(code_lines(text))) & added_names)
                  if name not in base_names), None)
@@ -1149,6 +1154,13 @@ def unbuildable_on_base(project, since, base_tree, carry):
     """Carried C# test file -> the name it spells that the base tree has not got.
 
     Read before the run rather than after, because after is a silence that names nothing.
+
+    Both sides are spellings rather than what a compiler would resolve, and two of the ways they part
+    company withdraw a file the base builds. `added` is what a changed production file spells rather
+    than what it declares, so a type the branch first reaches for in production and in a carried case
+    at once reads as one the base has not got. `base_names` is the base commit's text rather than the
+    tree's -- which holds the branch's copy of every carried file -- so a name the branch's own test
+    side declares reads that way too. Measured: each withdraws a file that compiles there.
     """
     changed = [name for name in changed_lines_by_file(project, since)
                if name.endswith(".cs") and name not in carry]
@@ -1422,10 +1434,11 @@ def report(cases, control, reported, canaries=None, wrote=True, unbuildable=None
            single_round=None):
     """Prints each case's verdict and returns the ones that fail the run.
 
-    `wrote` is whether the run produced a results file at all, and it outranks everything below it,
-    `unbuildable` included. COULD_NOT_COMPILE off the run says the base built the rest and not this,
-    which takes a base that built something; COULD_NOT_COMPILE off `unbuildable` is a static
-    approximation of a compiler question, accepted only beside a round that got as far as writing.
+    `wrote` is whether the run produced a results file at all, and for a C# case it outranks
+    everything below it, `unbuildable` included. COULD_NOT_COMPILE off the run says the base built
+    the rest and not this, which takes a base that built something; COULD_NOT_COMPILE off
+    `unbuildable` is a static approximation of a compiler question, accepted only beside a round
+    that got as far as writing.
     A branch whose every changed case sits in a withdrawn file would otherwise pass on a licence
     failure, an editor crash or a timeout.
 
