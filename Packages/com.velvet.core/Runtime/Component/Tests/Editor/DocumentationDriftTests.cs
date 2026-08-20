@@ -887,9 +887,10 @@ namespace Velvet.Tests
             Assert.That(
                 (untrusted.Count, trusted.Count > 0),
                 Is.EqualTo((0, true)),
-                "the guard above reads git in the project directory, and over a checkout the process does "
-                + "not own git answers only where an argument trusts it — without that, the guard reports "
-                + "every tracked document as dropped");
+                "the guard above reads git in the project directory. A left side above zero means git no "
+                + "longer refuses a checkout the process does not own, leaving the safe.directory argument "
+                + "below inert; a false right side means the argument no longer lifts that refusal, and "
+                + "the guard above will report every tracked document as dropped");
         }
 
         /// <summary>Every path git tracks, repo-relative and slash-separated, or nothing if git did not answer.</summary>
