@@ -115,20 +115,34 @@ namespace Velvet
         public bool IsPending;
         // An awaiting async StartTransition may hold IsPending=true on a fiber with NO pending lane (its
         // setState calls come after the await), and a drain callback armed earlier can legitimately fire
-        // on that clean fiber — the settle-time sweep (ClearAllTransitionPending) must not read the empty
-        // lane queue as "the transition settled" and wipe the flag mid-flight. Only the async completion
+        // on that clean fiber — the settle-time sweep (SettleTransitionPending) must not read the absence of
+        // enrolled work as "the transition settled" and wipe the flag mid-flight. Only the async completion
         // path clears IsPending while this is set.
-        public bool IsAsyncInFlight;
-        // Set while a StartTransition call owns THIS slot's pending lifecycle, so a further call on the
-        // same slot joins it instead of opening a second scope whose exit would clear a flag the first
-        // call is still managing. Scoped to the slot, not the fiber: a call on a different slot is a
-        // concurrent transition, not a nested one, and owns its own pending flag.
-        public bool HasActiveOwner;
-        // Set when a write scheduled under THIS slot's open scope enrolls the Transition lane, so the
-        // pending flag answers "did my own callback queue anything" rather than "is the fiber busy". A
-        // lane is shared: another slot's transition, or a UseDeferredValue re-queue, puts the same lane in
-        // the same queue, and reading the queue reports both as this slot's work.
-        public bool HasQueuedWork;
+        public int AsyncOwnerDepth;
+        public bool IsAsyncInFlight => AsyncOwnerDepth > 0;
+        // Every StartTransition call sharing THIS slot contributes one level until its callback completes.
+        // A further call joins the pending lifecycle already open instead of clearing the flag when an outer
+        // callback returns first. Scoped to the slot, not the fiber: a call on a different slot is a concurrent
+        // transition, not a nested one, and owns its own pending flag.
+        public int OwnerDepth;
+        public bool HasActiveOwner => OwnerDepth > 0;
+        // The fibers a write scheduled under THIS slot's open scope enrolled the Transition lane on, each
+        // removed by the drain that commits it. Recorded per fiber rather than as a flag on this slot,
+        // because the component owning the state a callback writes need not be the one the hook was
+        // declared on, and the flag then has to answer "is the work my callback queued still queued", which
+        // no single fiber's lane queue can be read for: a lane is shared, so another slot's transition or a
+        // UseDeferredValue re-queue reports as this slot's work, and a write to another component leaves
+        // this one's queue empty. ComponentFiber.EnrolledTransitionSlots is the reverse of this list.
+        public List<ComponentFiber>? EnrolledFibers;
+        public bool HasQueuedWork => EnrolledFibers is { Count: > 0 };
+        // The component that declared this UseTransition and reads its isPending. Held because a settle
+        // driven by another fiber's drain has to reach it — see ComponentFiber.DischargeTransitionEnrolments.
+        public ComponentFiber DeclaringFiber = null!;
+        // The isPending the declaring component's last render read, recorded where UseTransition hands it
+        // back. An exit that clears this flag has no render behind it, so it owes that component a render
+        // exactly when its last render read the flag true; asking on every clear instead would charge a
+        // render to every startTransition whose flag no render had seen.
+        public bool LastRenderedPending;
         // Bumped whenever ownership changes hands, including the release an unmount forces on a slot whose
         // async action is still awaiting. An owner compares its own value before touching the flags above,
         // so a task settling after that release cannot clear a pending state a later owner is managing.

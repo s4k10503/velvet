@@ -136,6 +136,11 @@ namespace Velvet
             // unmount, a subsume) or when the write dedups onto a fiber already queued.
             if (_draining) _immediateWorkArrivedMidDrain = true;
             if (_immediateSet.Add(fiber)) _immediateOrder.Add(fiber);
+            ArmImmediateDrain();
+        }
+
+        private void ArmImmediateDrain()
+        {
             if (_immediateScheduled || _anchor == null) return;
             _immediateScheduled = true;
             ScheduledCallbackCount++;
@@ -214,7 +219,8 @@ namespace Velvet
                         if (dropped.LaneQueue.Count == 0)
                         {
                             dropped.IsDirty = false;
-                            dropped.ClearAllTransitionPending();
+                            // MUTANT_SURVIVES(unreachable): the one fixture that reaches the cap declares no UseTransition, so this call finds no slot and no enrolment to settle.
+                            dropped.SettleTransitionPending();
                         }
                         // else: a delayed-tier lane survives — the fiber stays dirty and enrolled on
                         // that tier, so its pending Transition/Deferred work still commits there.
@@ -227,6 +233,10 @@ namespace Velvet
                 Drain(_immediateOrder, _immediateSet, resetWave: true);
             }
             _immediateScheduled = false;
+            // Only the drop path can leave the loop above with intake queued, and a settle it runs can request
+            // a render — the loop that would otherwise consume that request being the one it abandons.
+            // MUTANT_SURVIVES(unreachable): the guard is true only after that drop path re-queues, and the one fixture reaching the cap asserts that queue empty instead.
+            if (_immediateOrder.Count > 0) ArmImmediateDrain();
             // A delayed drain already pending after this immediate drain CONTINUES this wave (it should reuse the
             // pins this drain just established). A delayed drain that arrives later, with no immediate drain to pin
             // first, is a separate wave and must open fresh. Only hand off when this drain actually opened a wave —
