@@ -236,9 +236,9 @@ class PublishedHeadTests(GuardCase):
         # Act
         code, text = self.answer("git -C ../decoy commit --amend", cwd=inner)
 
-        # Assert — the SHA rides in the comparison, since the other repository is refusable too and
-        # a code alone would not say which of the two was read. It is also what a `python3` that
-        # could not open the guard cannot produce, which is the reason `refused` compares a headline.
+        # Assert — the SHA rides in the comparison because exit 2 is also what a reading that
+        # answered nothing exits, and what a `python3` that could not open the guard exits; only the
+        # SHA says the published tree is the one that was read.
         published = git(self.root / "session" / "decoy", "rev-parse", "--short", "HEAD").strip()
         self.assertEqual((code, published in text), (REFUSE, True))
 
@@ -517,9 +517,9 @@ class UnreadableTreeTests(GuardCase):
             (True, False, True))
 
     def test_Given_AGitDirNamingNoRepository_When_ItIsRefused_Then_GitsOwnMessageIsShown(self):
-        # Arrange — the typo a contributor makes, from a directory with nothing wrong with it. What
-        # the reader has to be told is which of the two selectors git refused, and git said so in a
-        # message this guard used to discard.
+        # Arrange — the typo a contributor makes, from a directory with nothing wrong with it. git
+        # says which selector it refused and why; the guard discarded that and printed a `-C` of
+        # its own beside the one that was written.
         absent = self.root / "nonexistent"
 
         # Act
@@ -563,7 +563,8 @@ class UnreadableTreeTests(GuardCase):
         # Act
         text = self.refusal("git commit --amend", cwd=outside)
 
-        # Assert — the headline rides along, since the sentence is true under the other one.
+        # Assert — the headline rides along, since a refusal that read the tree carries no such
+        # sentence either and would otherwise pass this.
         self.assertEqual(("is not refused" in text, text.splitlines()[0]), (False, UNREAD))
 
     def test_Given_AnUnexpandedTree_When_AnAmendIsRefused_Then_ItSaysTheShellHasNotRunYet(self):
