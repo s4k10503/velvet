@@ -384,6 +384,11 @@ class HeartbeatDuringAPollTests(unittest.TestCase):
         self.assertIn(f" {os.getpid()}", outcome.beat or "")
 
 
+# Far enough from the epoch that a case can date a record hours before a run starts and still write
+# a positive stamp, which is the only kind `watcher_state.stamp_age` reads.
+CLOCK_START = 100000
+
+
 class FakeClock:
     """Time that moves only when the watcher sleeps, so a poll cycle costs no wall clock.
 
@@ -392,7 +397,7 @@ class FakeClock:
     """
 
     def __init__(self, limit, between_polls=None):
-        self.now = 1000.0
+        self.now = float(CLOCK_START)
         self.polls = 0
         self.limit = limit
         self.between_polls = between_polls
@@ -401,18 +406,18 @@ class FakeClock:
         return self.now
 
     def sleep(self, seconds):
-        self.polls += 1
-        if self.polls > self.limit:
+        if self.polls >= self.limit:
             raise Polled
+        self.polls += 1
         self.now += seconds
         if self.between_polls is not None:
             self.between_polls(self.now)
 
 
 # How a run of `watch` ended: its exit code, or None where it was still polling when the clock gave
-# up, what it printed on the way out, whether the lock was free by then, and the ready record it
-# left.
-Watched = collections.namedtuple("Watched", "code output lock_released ready")
+# up, how many polls it took, what it printed on the way out, whether the lock was free by then, and
+# the ready record it left.
+Watched = collections.namedtuple("Watched", "code polls output lock_released ready")
 
 
 def keeping_the_lock(handles):
@@ -426,30 +431,34 @@ def keeping_the_lock(handles):
     return held
 
 
-# The clock's two bounds, one either side of the sixty polls the interval takes: at ninety a watcher
-# that retires has already stopped, and at thirty one that has not retired is still going. Written
-# out rather than derived from that interval, because a derived bound moves with it — measured, a
-# bound of three times RETIRE_AFTER left every case here green at an interval of a hundred polls, and
-# one of half it leaves the case below green at ten.
-CLOCK_BOUND = 90
-EARLY_BOUND = 30
+# Where the clock gives up, past the hundred and twenty polls the interval takes, so a watcher that
+# retires has stopped before it.
+CLOCK_BOUND = 180
 
 
 def watch_until(between_polls=None, asked=None, listing_answers=True, seed_ready=None,
-                states=None, bound=CLOCK_BOUND):
+                states=None, bound=CLOCK_BOUND, seed_beat=None, seed_asked=None):
     """Run `watch` over green pull requests and a clock only its own sleep advances.
 
-    `asked` sends the record somewhere else, for a case about it not being written; `seed_ready`
-    writes a ready file for the run to find, the way a watcher that has already stopped leaves one;
-    `bound` is how many polls the clock allows before it gives up on the run.
+    `asked` sends the record somewhere else, for a case about it not being written; `bound` is how
+    many polls the clock allows before it gives up. The three `seed_` arguments write what a watcher
+    that has already stopped leaves behind: its ready record, the heartbeat that dates it, and the
+    record of the last read.
     """
     clock = FakeClock(bound, between_polls)
     printed = io.StringIO()
     handles = []
     with tempfile.TemporaryDirectory(prefix="settle-retire-") as directory:
         ready_state = Path(directory) / "ready_state"
-        if seed_ready is not None:
+        if isinstance(seed_ready, bytes):
+            ready_state.write_bytes(seed_ready)
+        elif seed_ready is not None:
             ready_state.write_text(seed_ready, encoding="utf-8")
+        if seed_beat is not None:
+            (Path(directory) / "heartbeat").write_text(
+                settle.watcher_state.beat(os.getpid(), now=seed_beat), encoding="utf-8")
+        if seed_asked is not None:
+            (Path(directory) / "asked").write_text(f"{int(seed_asked)}\n", encoding="utf-8")
         with fabricated_readings({1: fabricate(1)} if states is None else states) as stack:
             for name in ("READY_STATE", "HEARTBEAT", "LOCK", "ASKED"):
                 # `create` for the reason `poll` gives over the same redirect.
@@ -474,8 +483,9 @@ def watch_until(between_polls=None, asked=None, listing_answers=True, seed_ready
             # the handle is held until the reading rather than left to fall out of scope.
             released = handles[0].closed
             handles[0].close()
-        recorded = ready_state.read_text(encoding="utf-8") if ready_state.exists() else ""
-    return Watched(code, printed.getvalue(), released, recorded)
+        recorded = (ready_state.read_text(encoding="utf-8", errors="replace")
+                    if ready_state.exists() else "")
+    return Watched(code, clock.polls, printed.getvalue(), released, recorded)
 
 
 class RetirementTests(unittest.TestCase):
@@ -510,16 +520,22 @@ class RetirementTests(unittest.TestCase):
         # Assert
         self.assertTrue(watched.lock_released)
 
-    # GREEN_ON_BASE(characterization): a base with no retirement is still polling in any window.
-    # What this pins is the interval's other side, which had no case at all: lowering the interval
-    # shipped green, and that cut is what reddens this.
-    def test_Given_NothingReadingItsState_When_FewerPollsPassThanTheInterval_Then_ItIsStillWatching(self):
-        # Arrange — retiring early is this branch's own harm one step earlier: the watcher goes
-        # while a session is still working, and the next edit is refused for it.
-        watched = watch_until(bound=EARLY_BOUND)
+    def test_Given_NothingReadingItsState_When_ItRetires_Then_ItPolledTheIntervalOutFirst(self):
+        # Arrange — the count rather than the fact of stopping, because both directions are defects:
+        # too late is the seven days this branch is about, and too early takes the watcher out from
+        # under a session that is still working and hard-refuses its next edit.
+        watched = watch_until()
 
-        # Act / Assert — None is a run the clock gave up on, which is a watcher that had not retired.
-        self.assertIsNone(watched.code)
+        # Act / Assert
+        self.assertEqual(watched.polls, 120)
+
+    def test_Given_ARecordFromLongBeforeThisWatcher_When_ItStarts_Then_ThatIsNotWhatRetiresIt(self):
+        # Arrange — the recovery the guards print is `settle.py watch`, and a Bash call that runs it
+        # stamps nothing, so the record a replacement finds can be hours old.
+        watched = watch_until(seed_asked=CLOCK_START - 14400)
+
+        # Act / Assert
+        self.assertEqual(watched.polls, 120)
 
     def test_Given_ReadingsThatNeverAnswer_When_TheIntervalPasses_Then_ItStillRetires(self):
         # Arrange — the wedge that reads to a guard as nothing watching: each poll fails, prints,
@@ -535,11 +551,36 @@ class RetirementTests(unittest.TestCase):
         # empty would date every green pull request to its own start, which is the age
         # `refuse/edit_while_a_ready_pr_sits.py` refuses on; carrying the second forward would date
         # one of them permanently ahead of that age instead.
-        watched = watch_until(seed_ready="1 900\n2 9999999999\n",
-                              states={1: fabricate(1), 2: fabricate(2)})
+        watched = watch_until(
+            seed_ready=f"1 {CLOCK_START - 900}\n2 {CLOCK_START + 9000}\n", seed_beat=CLOCK_START,
+            states={1: fabricate(1), 2: fabricate(2)})
 
-        # Act / Assert — the clock's start is 1000, so the second is redated and the first is not.
-        self.assertEqual(watched.ready.split(), ["1", "900", "2", "1000"])
+        # Act / Assert — a dropped age is redated to the run's own start, and a carried one is not.
+        self.assertEqual(watched.ready.split(),
+                         ["1", str(CLOCK_START - 900), "2", str(CLOCK_START)])
+
+    def test_Given_AReadyRecordAndTheBeatBesideIt_When_OneIsStale_Then_ThatAgeIsNotCarried(self):
+        # Arrange — a gap wider than the staleness window is one no watcher was polling through, so
+        # the pull request may have left the ready set and returned inside it. Both arms, because
+        # the fresh one alone would pass on a watcher that carried nothing at all.
+        carried = (watch_until(seed_ready=f"1 {CLOCK_START - 900}\n",
+                               seed_beat=CLOCK_START).ready.split(),
+                   watch_until(seed_ready=f"1 {CLOCK_START - 900}\n",
+                               seed_beat=CLOCK_START - settle.watcher_state.STALE_AFTER).ready.split())
+
+        # Act / Assert — a dropped age is redated to the run's own start.
+        self.assertEqual(carried,
+                         (["1", str(CLOCK_START - 900)], ["1", str(CLOCK_START)]))
+
+    def test_Given_AReadyRecordThatIsNotText_When_OneStarts_Then_ItStartsAnyway(self):
+        # Arrange — until the record was read back at all, a file like this was simply overwritten on
+        # the first poll. Reading it must not be what stops a watcher starting, every time, until
+        # somebody deletes the file.
+        watched = watch_until(seed_ready=b"\xff\xfe700 1\n", seed_beat=CLOCK_START)
+
+        # Act / Assert — that it reached its own ending rather than the clock's is the whole claim,
+        # so this reads the exit and leaves the interval to the case that pins it.
+        self.assertEqual(watched.code, 0)
 
     def test_Given_AGuardAskingEachPoll_When_TheRecordCannotBeWritten_Then_ItStillGetsItsAnswer(self):
         # Arrange — a directory the write cannot reach. The retirement is folded in beside the

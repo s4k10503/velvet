@@ -39,12 +39,15 @@ STALE_AFTER = 3 * POLL_SECONDS
 ASKED = Path.home() / ".velvet-pr-watch.asked"
 
 # A reader's cadence rather than the watcher's own poll, which is what makes this a different
-# quantity from STALE_AFTER. Nothing here stamps during a stretch of Bash alone, so this caps such a
-# stretch rather than clearing it: sixty polls is twice the 1800s wait for a quiet machine that all
-# three of this repository's suite harnesses take, so that wait sits inside the interval rather than
-# on its edge. Longer stretches exist — a campaign takes that wait once per mutant — and no interval
-# covers those; what a session gets back there is the command the guards name.
-RETIRE_AFTER = 60 * POLL_SECONDS
+# quantity from STALE_AFTER. An editing tool stamps; the turn boundary stamps only while some open
+# pull request has a check still pending, since that is the branch of `stop/unsettled_pr.py` that
+# asks whether a watcher is alive. So a session running commands with every pull request green
+# stamps nothing, and that stretch is what this is sized against. Two measurements rather than a
+# judgement: past the 1800s wait for a quiet machine all three suite harnesses take, and past the
+# longest run without an editing tool a week of sessions here produced — 1567 runs, the longest 84
+# minutes, two over an hour and none over two. Neither bounds such a stretch, and what a session
+# gets back past one is the command the guards name.
+RETIRE_AFTER = 120 * POLL_SECONDS
 
 
 def beat(pid, now=None):

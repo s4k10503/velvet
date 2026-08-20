@@ -421,15 +421,24 @@ def read_ready_state():
 
     Retirement makes a restart ordinary rather than a machine reboot, and a `since` that began
     empty would hand every green pull request a new clock — the one
-    `refuse/edit_while_a_ready_pr_sits.py` reads to decide that a pull request has sat. A stamp in
-    the future is dropped rather than carried, for the reason `watcher_state.stamp_age` gives about
-    the one in the heartbeat.
+    `refuse/edit_while_a_ready_pr_sits.py` reads to decide that a pull request has sat.
+
+    Carried only while the heartbeat says the watcher that wrote it was polling inside the staleness
+    window, because a wider gap is one this watcher cannot answer for: the record's own rule is to
+    drop an entry the moment its pull request stops being ready, and a pull request that left the
+    ready set and returned unseen would be carried here as having sat throughout. Read before this
+    watcher's first beat, which is what leaves that heartbeat naming the watcher that wrote the
+    record. A stamp in the future is dropped for the reason `watcher_state.stamp_age` gives about the
+    one in the heartbeat.
     """
     try:
+        beat = watcher_state.HEARTBEAT.read_text(encoding="utf-8")
         text = watcher_state.READY_STATE.read_text(encoding="utf-8")
-    except OSError:
+    except (OSError, UnicodeDecodeError):
         return {}
     now = int(time.time())
+    if watcher_state.stamped(beat, now) is None:
+        return {}
     carried = {}
     for line in text.splitlines():
         fields = line.split()
