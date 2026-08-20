@@ -26,9 +26,10 @@ No issue: found while reading the pool reset helpers.
 
 Either answer is fine; the silence is not, and it is the one that happened: a change that came
 straight out of an issue was merged without linking it, so the issue stayed open with its work
-already shipped. `refuse/pr_body_of_another_branch.py` declines a `gh pr create` whose body carries
-neither. An answer is a closing or referring keyword — Closes, Fixes, Resolves, Refs — against the
-number right after it, or the issue's own URL. A number on its own is not one: a colour is six digits
+already shipped. `refuse/pr_body_of_another_branch.py` declines a body that carries neither. An
+answer is a closing or referring keyword — Closes, Fixes, Resolves, Refs — against the number right
+after it, or the issue's own URL. Closes part of #123 answers as well, for a change that takes half
+an issue and leaves the rest of it open. A number on its own is not one: a colour is six digits
 behind a `#`, and a number mentioned in passing closes nothing on merge.
 
 The guard reads the description that will be posted, so the body has to exist before the command
@@ -41,10 +42,16 @@ meet:
 - the command changes directory and the body path is relative, so `gh` would open a different file
   than this one reads — give the body an absolute path.
 
+A command passing both `--body` and `--body-file` is declined when only one of the two answers:
+which of them `gh` posts is not something the guard holds, so pass the one you mean. Where both
+answer, or neither does, the pair is judged as one body.
+
 A command carrying no body operand at all — `--fill` and its relatives, `--template`, `--editor`, the
 interactive form — holds no text here, so the question goes unasked, and `--dry-run` or `--help`
-opens nothing to ask about. Only `gh pr create` is asked: `gh pr edit --body-file` is how an answer
-gets added after the fact.
+opens nothing to ask about. `gh pr create` is asked, and so are the `new` alias it also answers to
+and `gh pr edit`, whose description reaches the squash message the same way a created one does.
+Adding the answer after the fact is still `gh pr edit --body-file`, and a body carrying one passes —
+what the guard declines is an edit that leaves the description silent.
 
 It does not judge what the body is about, and no longer tries to. An earlier version dated the body
 file against the branch's first commit. Posed the leftover it existed for — a body stamped when one
@@ -258,15 +265,58 @@ python3 scripts/test_quality/base_red_check.py --base origin/main --warm-library
 
 **It passes only where every changed case was measured on a base tree that demonstrably answers.** Most
 of what goes wrong with a run like this ends in a reading nobody took, and a reading nobody took is never
-a pass. So a case that passes on the base fails the check, and a case that could not compile there does
-not — it names something the branch adds, which is a pin doing its job — but that second reading is only
-believed on a tree the run proved can build and answer at all. Two things prove it. Fixtures of the
-base's own that the branch did not carry run alongside, and at least one has to pass; a run that wrote no
-results file at all fails outright rather than reading as a base that built none of the branch's tests.
-Alongside that, the cases the branch left alone in a file it changed nothing shared in are the base's own
+a pass. So a case that passes on the base fails the check, while a surface that only the branch
+provides is evidence that the case depends on the change. C# reports that as a compile failure, which
+takes its whole assembly down and, where no second round is available, leaves no error list to read:
+so a carried C# file is also compared statically, and one spelling a name the base has not got and a
+production file the branch changed does have is withdrawn before the run. That reading is a static
+approximation of a compile failure, so it does not survive a run that wrote nothing — the platform
+goes down with the round, withdrawals included.
+Python reports it while loading or running, so the gate accepts it only when static comparison proves
+that the named repository file, sibling module, top-level name or callee's keyword parameter is absent
+on the base and present on the branch. An argument *count* is not among them: a call the base refuses
+on arity alone reads as a case that could not answer.
+
+Either reading is only believed on a tree the run proved can build and answer at all, and two things
+prove it. Cases of the base's own that the branch did not carry run alongside — C# fixtures for a
+platform, Python cases for that lane — and at least one has to pass. A lane with no eligible canary fails closed, as does a run
+that wrote no results file at all, rather than reading either as a base that built none of the branch's
+tests.
+
+Which cases are the branch's own is decided by comparing each case's text with the base's, since a diff
+over a large rewrite describes untouched text as re-added and a case nobody here wrote then arrives at
+the gate. Alongside that, the cases the branch left alone in a file it changed nothing shared in are the base's own
 text, so one of those going red means the tree is answering about itself and that fixture's verdicts are
 withdrawn. Change a `[SetUp]`, a field, a private helper or anything under `TestUtilities/`, and those
 cases stop being the base's text and stop being read as the instrument — the run says which and why.
+
+Red on the base means the base ran the case and the case said no, and only that. Except for a
+statically proven branch-only Python surface or a C# compile failure, a case that dies before it
+compares and a case the base reported Inconclusive, Skipped, non-runnable or cancelled are reported
+as cases **the base could not answer**: no evidence either way, not part of the red count, and a
+failed gate. This includes a misspelled Python member, a missing environment file, and a C# fixture
+that compiles there but throws while reflecting for private production state the base has not got.
+
+An exception is not that reading on its own. A branch that fixes a crash leaves the base throwing inside
+the production code the fix repairs, which is the base disagreeing and stays **red on the base**. The two
+are told apart by the first frame of the throw that names a file of this repository — production code, or
+the test side — read over the throw the case's own body left. A case carries what its scaffolding threw
+as well, so the reading stops at the first section a runner opened: a `[TearDown]`, a `[UnityTearDown]`
+or the after half of a test action reaches past what the case asked about, and a `[SetUp]`, a
+`[UnitySetUp]` or a before half that threw means the body never ran at all — so a fixture that mounts in
+its setup, against a base that crashes there, is not the base disagreeing with the case. A throw that
+names no file of this repository keeps the non-answer, so what a crash regression is read as is bounded
+by the stack trace its results file carries.
+
+Not every scaffolding throw opens a section in the trace. One carrying a result state of its own replaces
+the trace outright — the section marker and the body's own frames together — and arrives under the status
+a failed assertion carries with no label beside it. That is the shape a failing log inside a teardown's
+scope produces, which is how a fixture whose `[TearDown]` disposes a mount the base crashes in gets here:
+Velvet logs a cleanup-path throw rather than rethrowing it, and the runner turns an unexpected error log
+into exactly that exception. The section survives at the head of the **message**, which the runner builds
+after the replacement. The check reads it only where the trace does not lead back to the case method;
+the same words at the head of a body's assertion remain that body's disagreement. Behind a body's own
+message it is not read, because a case that disagreed did so whatever its scaffolding went on to do.
 
 Two kinds of case belong on the base, and say so above themselves with a reason a reviewer can weigh:
 
@@ -282,15 +332,28 @@ Two kinds of case belong on the base, and say so above themselves with a reason 
 it. A declaration answers for the change written under it, and it is read three ways so it cannot outlive
 what it describes: one over a case that turns out red on the base fails the check, one whose category or
 reason the script refuses fails it, and one the branch did not itself write is a declaration for a change
-the base already carries and does not cover this one — restate it. The base tree is a checkout the
-machine has never imported, and that import is most of what a base run costs; `--warm-library` copies an
-existing `Library` into it, sharing blocks where the filesystem will.
+the base already carries and does not cover this one — restate it. A reason may wrap onto the comment
+lines under it: the declaration is read from its marker to the end of that block, and a branch that
+rewrote any of those lines wrote it. The word floor is measured on the marker's own line rather than
+over that span, so the first line has to be a claim in its own right — measured over the span, a
+comment line that is not the reason at all counts toward it.
+
+Only the comment block directly above a case is read, so one written above a helper, or with a blank
+line between, or left over the case before, silences nothing while looking as though it does. The run
+says so on a line of its own — `orphaned: 1 of 3 declaration(s) in <file> sit above no case, so
+nothing reads them` — because the alternative is that case failing as green on the base under advice
+to write the declaration already above it.
+
+The base tree is a checkout the machine has never imported, and that import is most of what a base run
+costs; `--warm-library` copies an existing `Library` into it, sharing blocks where the filesystem will.
 
 `Test ▸ base-red-python` runs the Python lane on every pull request and needs no licence.
 `Test ▸ base-red` runs the C# lane where one is configured, but only one round of it: a base that
 cannot build one carried file writes no results for anything, and separating that file from the ones
 standing next to it takes withdrawing it and asking again, which is what the local run does and a
-workflow does not. Run it locally on a branch whose tests are the point.
+workflow does not. What the workflow withdraws instead is what the static comparison above proves —
+before its round, since after it there is nothing to read. A round that still writes nothing measured
+nothing, fails, and prints the local command. Run it locally on a branch whose tests are the point.
 `scripts/test_quality/test_base_red_check.py` holds the reader against every test file in this
 repository and runs in `Test ▸ test-quality`.
 
@@ -311,6 +374,43 @@ Each Unity job in CI runs it after the suite, and CLAUDE.md's headless recipe ru
 `assert_no_inconclusive.py`. `scripts/test_quality/test_assert_results_from_this_tree.py` holds it,
 its type reader against every fixture this repository's case reader finds, and its log reading
 against every diagnostic identifier the analyzer sources declare, in `Test ▸ test-quality`.
+
+### Checking that a case can report its own failure
+
+An `Assume` that turns out false reports Inconclusive, which the runner does not count as a failure.
+Where it gates what the case exists to pin, the day the behaviour breaks is the day the case stops
+saying so. `assert_no_inconclusive.py` reddens on one that has fired, which is that day and no
+earlier; `scripts/test_quality/assume_gate_check.py` looks for the shape instead:
+
+```bash
+python3 scripts/test_quality/assume_gate_check.py
+python3 scripts/test_quality/assume_gate_check.py --write-baseline scripts/test_quality/assume_gate_baseline.txt
+```
+
+Whether an `Assume` is somebody else's business or a gate on the behaviour turns on whether a
+regression can falsify it, which the text does not say. Two sub-shapes fall out of the
+`// Arrange` / `// Act` / `// Assert` sections, because those are a statement about which lines are
+the behaviour: a gate over a local the Act declared, and a gate sitting in the Assert section. A
+comment line names as many sections as it chains, since `// Arrange / Act` and `// Act + Assert` are
+how a case says one stretch of code is both. Each reading needs the marker that delimits it, so a
+case carrying an `Assume` and missing one is recorded as unreadable — one entry per reading that
+could not be taken — rather than passed.
+`scripts/test_quality/assume_gate_baseline.txt` carries what is here now, for the reason
+`neuter_holes.txt` does — a total nets a fix off against a new one — and both a new entry and one the
+scan no longer finds fail the check. It runs in `Test ▸ test-quality` and needs no licence. What to do
+about an entry is the fold the fixture conventions above prescribe, and the check prints it. Not every
+entry is a defect: the reading is a shape, so an environment precondition reached through a local the
+Act declared is in the record too — the panel root's resolved width, read through the element the Act
+mounted. Where inspection says an entry is that, fold the other new ones first — `--write-baseline`
+rewrites the whole record from the tree and cannot take one entry — then regenerate it, check the lines
+it added are the ones being answered for, and say so in the pull request.
+
+**What it does not reach** is a gate above the `// Assert` marker over state the Act changes without
+declaring it — a field, or a member of something the Arrange built. That is the shape the rule itself
+was written from. Separating it from a legitimate precondition needs to know whether a regression can
+falsify the assumption, which the text does not say, and the filters tried instead select so much of
+the suite that the record would stop being a list anybody reads. A case carrying only that shape is
+not in the record; what still reaches it is `assert_no_inconclusive.py`, on the day it fires.
 
 ### Repository scripts
 
