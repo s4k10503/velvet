@@ -33,18 +33,9 @@ namespace Velvet
 
             var element = parent.ElementAt(index);
             var poolable = PoolableOccupantOf(element);
-            // A teardown failure still completes the unmount, but a partially cleaned occupant cannot be pooled.
-            var cleanupCompleted = false;
-            try
-            {
-                CleanupElement(element);
-                cleanupCompleted = true;
-            }
-            finally
-            {
-                parent.RemoveAt(index);
-                if (cleanupCompleted) ReturnOccupantToPool(element, poolable);
-            }
+            CleanupElement(element);
+            parent.RemoveAt(index);
+            ReturnOccupantToPool(element, poolable);
         }
 
         // Removes an element from its parent directly (by element reference, not index).
@@ -217,7 +208,18 @@ namespace Velvet
             if (_ctx.RefCallbacks.TryGetValue(element, out var installedRef))
             {
                 _ctx.RefCallbacks.Remove(element);
-                installedRef.Cleanup?.Invoke();
+                // Contained the way Reconciler.ReleaseRefCallbacks contains the same user delegate. A throw
+                // escaping here skips the rest of this element's teardown — including the ring detach whose
+                // own note says skipping it strands a live band — and unwinds whichever removal loop called
+                // in, so the rows it had not reached yet stay in the tree.
+                try
+                {
+                    installedRef.Cleanup?.Invoke();
+                }
+                catch (System.Exception exception)
+                {
+                    FiberLogger.LogException("FiberElementCleaner", exception);
+                }
             }
             _ctx.StyleAnimationScheduler.CancelEnter(element);
             // Teardown-flavored: this element is being released for good (pool return / disposal), not merely

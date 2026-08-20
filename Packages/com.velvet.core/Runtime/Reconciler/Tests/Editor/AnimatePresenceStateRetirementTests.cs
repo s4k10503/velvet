@@ -54,8 +54,9 @@ namespace Velvet.Tests
     /// <item>A pass that walks neither side of a presence retires nothing of it — the last case holds
     /// that to what it already did, since retiring a live entry strands its leaf where the next old side
     /// can no longer name it.</item>
-    /// <item>A cleanup failure after the presence leaf was removed does not keep its committed state alive;
-    /// the failure still leaves the reconcile call.</item>
+    /// <item>A <c>refCallback</c> cleanup throwing while the presence's leaf is removed does not stop the
+    /// container's removals, so the entry retires with them. Read on the fast path, where the removals are
+    /// the time-sliced diff's own and the cleanup runs inside that walk.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -103,7 +104,7 @@ namespace Velvet.Tests
         // Distinguishes the arranged throw from any other InvalidOperationException the pass could raise,
         // so the case cannot record an unwind it did not cause.
         private const string ResumeUnwindMessage = "arranged unwind out of a resumed diff";
-        private const string CleanupUnwindMessage = "arranged unwind out of cleanup";
+        private const string CleanupFailureMessage = "arranged failure out of a refCallback cleanup";
 
         private VisualElement _root;
 
@@ -318,7 +319,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_APresenceCleanupThrowsDuringRemoval_When_ItIsRenderedAgain_Then_TheDepartedChildIsNotResurrected()
+        public void Given_APresenceLeafsRefCleanupThrows_When_ThePresenceIsRenderedAgain_Then_TheDepartedChildIsNotResurrected()
         {
             // Arrange
             using var reconciler = new Reconciler();
@@ -329,22 +330,28 @@ namespace Velvet.Tests
                 ThrowingCleanupPresence("a"),
             };
             reconciler.Reconcile(root, Array.Empty<VNode>(), committed);
-            var empty = new VNode[] { V.Fragment(Array.Empty<VNode>()) };
-            var unwound = false;
+            ExpectCleanupFailureLog();
+            // A bare empty array carries nothing the inline walk has to expand, so this container takes the
+            // fast path. V.Fragment(Array.Empty<VNode>()) in its place routes to the general walk instead and
+            // reads a different removal pass.
+            var empty = Array.Empty<VNode>();
+            var escaped = false;
             try
             {
                 reconciler.Reconcile(root, committed, empty);
             }
-            catch (InvalidOperationException e) when (e.Message == CleanupUnwindMessage)
+            catch (InvalidOperationException e) when (e.Message == CleanupFailureMessage)
             {
-                unwound = true;
+                // Folded into the assertion below: where the failure escapes, the removals it interrupted
+                // never finished, so the names alone cannot say whether the entry or the batch moved.
+                escaped = true;
             }
 
             // Act
             reconciler.Reconcile(root, empty, new VNode[] { Presence("b") });
 
             // Assert
-            Assert.That((unwound, PresenceNamesOf(root)), Is.EqualTo((true, "item-b")));
+            Assert.That((escaped, NamesOf(root)), Is.EqualTo((false, "item-b")));
         }
 
         [Test]
@@ -830,7 +837,7 @@ namespace Velvet.Tests
             => V.AnimatePresence(key: "presence", children: new VNode[]
             {
                 V.Motion(name: "item-" + childKey, key: childKey,
-                    refCallback: _ => () => throw new InvalidOperationException(CleanupUnwindMessage),
+                    refCallback: _ => () => throw new InvalidOperationException(CleanupFailureMessage),
                     variants: s_fade, animate: "visible", exit: "hidden",
                     transition: new StyleTransitionConfig { DurationSec = 0.3f }),
             });
@@ -866,17 +873,6 @@ namespace Velvet.Tests
             return string.Join(",", names);
         }
 
-        private static string PresenceNamesOf(VisualElement parent)
-        {
-            var names = new List<string>();
-            for (var i = 0; i < parent.childCount; i++)
-            {
-                var name = parent.ElementAt(i).name;
-                if (name.StartsWith("item-", StringComparison.Ordinal)) names.Add(name);
-            }
-            return string.Join(",", names);
-        }
-
         // The last few names, for the arrangements whose hundred leading rows are scaffolding rather than
         // what is read.
         private static string TailNamesOf(VisualElement parent, int count)
@@ -891,6 +887,14 @@ namespace Velvet.Tests
 
         private static void ExpectOverwriteWarning() => LogAssert.Expect(LogType.Warning,
             $"[FiberPortalRegistry] Id \"{RetargetId}\" is already registered. Overwriting.");
+
+        // FiberLogger.LogException reports on two lines; both are expected or the runner fails the case on
+        // an unexpected error.
+        private static void ExpectCleanupFailureLog()
+        {
+            LogAssert.Expect(LogType.Error, "[FiberElementCleaner] An exception occurred. See the next line for details.");
+            LogAssert.Expect(LogType.Exception, $"InvalidOperationException: {CleanupFailureMessage}");
+        }
 
         private static VNode[] Rows(string prefix)
         {

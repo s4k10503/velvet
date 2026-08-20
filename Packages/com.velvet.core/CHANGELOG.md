@@ -83,9 +83,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   written inside a `V.Portal`'s own children was the same defect reached a third way, since its
   bookkeeping is keyed by the container the portal renders into and that container belongs to the
   caller: closing the portal resurrected the children the presence had already let go, as did
-  registering its `targetId` to a different element and back. The same stale set survived when a
-  `refCallback` cleanup threw while the removal batch was taking out the presence's leaf;
-  the cleanup exception still leaves the reconcile call, but the removed child no longer returns.
+  registering its `targetId` to a different element and back.
+- A `refCallback` cleanup that throws while its element is being unmounted is reported and the unmount
+  carries on, instead of the exception leaving the reconcile call. It used to escape from the middle of
+  the teardown, so the rest of that element's release never ran and the element itself was never taken
+  out of the tree — leaving a `ring-*` band beside it, since a band lives in the element's parent rather
+  than in its subtree — and the removal batch it interrupted left every row it had not reached yet
+  standing too. An `AnimatePresence` whose own leaf the batch had already removed then kept committed
+  state naming a child that was gone, and the next render at that position spliced it back as an exiting
+  ghost. The delegate is the caller's, and it was already contained this way at reconciler disposal; the
+  unmount entrance is what was missing.
 - A child that moves from one `gap-*`, `divide-*` or `grid-cols-*` container to another keeps the
   spacing, divider or column sizing the container it joined wrote. Each of the three tracked the children
   it had written to by raw reference and reset the value on one no longer in the container, and the
