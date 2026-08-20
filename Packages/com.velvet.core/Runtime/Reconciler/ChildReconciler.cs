@@ -374,11 +374,7 @@ namespace Velvet
                 // restore unconditionally: the call below never carries a frameBudgetMs argument (defaults to 0),
                 // and at budget 0 ReconcileIndexedFrom's `budgeted` gate is false while ReconcileKeyed routes to
                 // the fully synchronous ReconcileKeyedSync — neither can ever set new pending state of its own, so
-                // there is nothing legitimate from the nested call itself to preserve instead. Scoped to just this
-                // call (not the whole drain loop) so FiberZLayerCoordinator's own rebase of a self-caused park
-                // (RebaseParkedSlotsForContainerChange, triggered only between loop iterations or after the loop
-                // via DrainTeardowns, never while this call is on the stack) still sees the real parked state
-                // everywhere else in the drain.
+                // there is nothing legitimate from the nested call itself to preserve instead.
                 var parkedIndexed = PendingIndexedState;
                 var parkedKeyed = PendingKeyedState;
                 PendingIndexedState = null;
