@@ -37,7 +37,10 @@ namespace Velvet.Tests
         private static readonly Regex ScenePathAssignment =
             new(@"InitTestScenePath\s*=(?!=)([^;]*);", RegexOptions.Compiled);
 
-        private static readonly Regex StringLiteral = new("\"([^\"]*)\"", RegexOptions.Compiled);
+        // Matched whole rather than scanned for literals: the scan reported them without the terms
+        // standing between them, and WrittenByARun's join assumes those terms are guids.
+        private static readonly Regex GuidSeparatedLiterals =
+            new(@"^\s*(?:""([^""]*)""(?:\s*\+\s*Guid\.NewGuid\(\)\s*\+\s*)?)+\s*$", RegexOptions.Compiled);
 
         [Test]
         public void Given_TheBootstrapScenePathTheTestFrameworkWrites_When_PutToTheIgnoreFile_Then_TheSceneAndItsMetaAreHidden()
@@ -105,11 +108,11 @@ namespace Velvet.Tests
             var assignments =
                 (from file in Directory.EnumerateFiles(package.resolvedPath, "*.cs", SearchOption.AllDirectories)
                  from Match assignment in ScenePathAssignment.Matches(File.ReadAllText(file))
-                 select StringLiteral.Matches(assignment.Groups[1].Value)
-                     .Select(literal => literal.Groups[1].Value)
-                     .ToList()).ToList();
+                 select GuidSeparatedLiterals.Match(assignment.Groups[1].Value)).ToList();
 
-            return assignments.Count == 1 ? assignments[0] : Array.Empty<string>();
+            return assignments.Count == 1 && assignments[0].Success
+                ? assignments[0].Groups[1].Captures.Select(capture => capture.Value).ToList()
+                : Array.Empty<string>();
         }
 
         /// <summary>What is left under <c>Assets/</c> once the OS's files and a run's are set aside.</summary>
