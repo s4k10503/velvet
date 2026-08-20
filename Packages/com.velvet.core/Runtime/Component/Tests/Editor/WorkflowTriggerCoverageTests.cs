@@ -18,7 +18,7 @@ namespace Velvet.Tests
     /// <para>
     /// The trigger side is held by two rules, and the last two cases here are the whole of them: branch
     /// protection requires a check from each of these workflows, so each must subscribe to both events that
-    /// ask for one, and neither of those subscriptions may carry a filter.
+    /// ask for one, and neither of those subscriptions may carry a child key.
     /// </para>
     /// </summary>
     [TestFixture]
@@ -233,9 +233,9 @@ namespace Velvet.Tests
         public void Given_TheWorkflowsBranchProtectionRequires_When_TheirTriggersAreRead_Then_EachSubscribesToBoth()
         {
             // Arrange — a required check reports nothing for a pull request or a queue entry unless its
-            // workflow subscribes to the event, and the thing waiting on it then waits forever. merge_group
-            // subscribes through a key with no children, which is the shape an edit removes without leaving
-            // a gap; pull_request has children and was held by nothing at all.
+            // workflow subscribes to the event, and the thing waiting on it then waits forever. Both
+            // subscribe through a key with no children, which is the shape an edit removes without leaving
+            // a gap.
             var workflows = RequiredCheckWorkflows;
 
             // Act
@@ -297,13 +297,9 @@ namespace Velvet.Tests
             }
         }
 
-        // The rule over the gated triggers is no filter, not no path filter — reading one key leaves the
-        // others free to reintroduce the block it exists to stop.
-        private static readonly string[] FilterKeys =
-        {
-            "paths", "paths-ignore", "branches", "branches-ignore", "types",
-        };
-
+        // Every child key is reported rather than a list of the filters named today. The rule over the
+        // gated triggers is that they carry no children, and a list has the wrong failure direction: one it
+        // has not got passes silently, where one it should not report fails and gets corrected.
         private static IEnumerable<(string Workflow, string Trigger, string Key)> TriggerFilters(string workflow)
         {
             var lines = File.ReadAllLines(Path.GetFullPath(workflow));
@@ -331,7 +327,7 @@ namespace Velvet.Tests
                 {
                     trigger = name;
                 }
-                else if (FilterKeys.Contains(name))
+                else
                 {
                     yield return (workflow, trigger, name);
                 }

@@ -4,9 +4,9 @@ name: Test
 # reports Pending forever when a filter stops its workflow from starting, and nothing can clear it; whether
 # GitHub honours the filter on a given trigger today is not something to bet the merge path on. The push
 # filter is a different question — a push to main has already passed the pull request — so it keeps the
-# list. WorkflowTriggerCoverageTests owns which keys may not appear under the gated triggers, and holds
-# the presence of both triggers besides, the latter because merge_group subscribes through a key with no
-# children and pull_request was held by nothing at all.
+# list. WorkflowTriggerCoverageTests holds that the gated triggers carry no children at all, and the
+# presence of both triggers besides — each subscribes through a key with no children, which is the shape
+# an edit removes without leaving a gap.
 #
 # Generators~ sources stay out of the push list: the Unity side consumes their committed DLLs under
 # Runtime/Plugins, so a generator change reaches this workflow when the redeployed DLLs are committed.

@@ -177,7 +177,7 @@ fork with no `UNITY_LICENSE` merge, since `unity-tests` is skipped in exactly th
 Filtering therefore applies to `push` only, by branch as much as by path — so a pull request runs both
 workflows whether it is based on `main` or on a maintenance branch, and so does every merge-group entry
 once a queue is turned on. The `merge_group:` keys are there for that, and `WorkflowTriggerCoverageTests`
-fails if either of the two gated triggers goes missing from either workflow, or gains a filter. Skipping
+fails if either of the two gated triggers goes missing from either workflow, or gains a child key. Skipping
 work per queue entry is a job-level condition, not a trigger filter: a required check that does not start
 has nothing able to clear it.
 
