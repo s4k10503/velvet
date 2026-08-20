@@ -130,6 +130,9 @@ jobs:
       - name: Declaration first-line tests
         run: python3 scripts/hooks/test_declaration_first_line_fragment.py
 
+      - name: Hand-rolled poller guard tests
+        run: python3 scripts/hooks/test_hand_rolled_pr_poller.py
+
   # ---------------------------------------------------------------------------
   # Repository settings live only in GitHub's own state; nothing in this
   # repository reads them back. contents:read is enough for the rulesets
