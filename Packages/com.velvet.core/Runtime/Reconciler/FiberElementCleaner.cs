@@ -493,8 +493,17 @@ namespace Velvet
             }
             if (_ctx.OutletScopes.TryGetValue(element, out var routeScope))
             {
-                routeScope.Dispose();
+                // The scope comes from the application's IRouteScopeFactory — user code, contained for
+                // the reason CleanupEffectAndStyleBindingResources gives for the refCallback cleanup.
                 _ctx.OutletScopes.Remove(element);
+                try
+                {
+                    routeScope.Dispose();
+                }
+                catch (System.Exception exception)
+                {
+                    FiberLogger.LogException("FiberElementCleaner", exception);
+                }
             }
             // Identity-side registration added on every Outlet mount; without this per-element
             // removal the set would pin every unmounted Outlet's dead container element until the

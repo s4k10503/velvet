@@ -774,9 +774,17 @@ namespace Velvet
             // Outlet route scopes are user-supplied DI scopes (IRouteScope extends IDisposable):
             // dispose each so an Outlet still mounted at whole-reconciler teardown does not leak the
             // scope's resources, mirroring FiberElementCleaner's per-element Outlet-scope-dispose.
+            // Best-effort per entry for the reason ReleaseRefCallbacks gives.
             foreach (var scope in _ctx.OutletScopes.Values)
             {
-                scope.Dispose();
+                try
+                {
+                    scope.Dispose();
+                }
+                catch (System.Exception ex)
+                {
+                    FiberLogger.LogException("Reconciler", ex);
+                }
             }
 
             _ctx.OutletScopes.Clear();

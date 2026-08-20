@@ -2,8 +2,6 @@ using System;
 using System.Collections.Generic;
 using NUnit.Framework;
 using Velvet.TestUtilities;
-using UnityEngine;
-using UnityEngine.TestTools;
 using UnityEngine.UIElements;
 
 namespace Velvet.Tests
@@ -325,7 +323,7 @@ namespace Velvet.Tests
                     refCallback: _ => () => throw new InvalidOperationException(CleanupFailureMessage)),
             };
             Reconciler.Reconcile(Root, Array.Empty<VNode>(), mounted);
-            ExpectCleanupFailureLog();
+            ContainedFailureLog.Expect<InvalidOperationException>("FiberElementCleaner", CleanupFailureMessage);
 
             // Act
             var escaped = EscapesFrom(() => Reconciler.Reconcile(Root, mounted, Array.Empty<VNode>()));
@@ -345,7 +343,7 @@ namespace Velvet.Tests
                 ThrowingCleanupRow("tail"),
             };
             Reconciler.Reconcile(Root, Array.Empty<VNode>(), mounted);
-            ExpectCleanupFailureLog();
+            ContainedFailureLog.Expect<InvalidOperationException>("FiberElementCleaner", CleanupFailureMessage);
 
             // Act
             var escaped = EscapesFrom(() => Reconciler.Reconcile(Root, mounted, Array.Empty<VNode>()));
@@ -357,14 +355,16 @@ namespace Velvet.Tests
         [Test]
         public void Given_APortalChildsRefCleanupThrows_When_ThePortalCloses_Then_TheWholeRangeLeavesTheTarget()
         {
-            // Arrange
+            // Arrange — CleanupPortal walks its range in reverse, so the throwing child is at the tail:
+            // at the head it would be the last removal and the case could not tell a continued loop from
+            // a finished one.
             var target = new VisualElement();
             var mounted = new VNode[]
             {
-                V.Portal(target, children: new VNode?[] { ThrowingCleanupRow("first"), V.Div(name: "second") }),
+                V.Portal(target, children: new VNode?[] { V.Div(name: "first"), ThrowingCleanupRow("second") }),
             };
             Reconciler.Reconcile(Root, Array.Empty<VNode>(), mounted);
-            ExpectCleanupFailureLog();
+            ContainedFailureLog.Expect<InvalidOperationException>("FiberElementCleaner", CleanupFailureMessage);
 
             // Act
             var escaped = EscapesFrom(() => Reconciler.Reconcile(Root, mounted, Array.Empty<VNode>()));
@@ -388,14 +388,6 @@ namespace Velvet.Tests
             {
                 return true;
             }
-        }
-
-        // FiberLogger.LogException reports on two lines; both are expected or the runner fails the case on
-        // an unexpected error.
-        private static void ExpectCleanupFailureLog()
-        {
-            LogAssert.Expect(LogType.Error, "[FiberElementCleaner] An exception occurred. See the next line for details.");
-            LogAssert.Expect(LogType.Exception, $"InvalidOperationException: {CleanupFailureMessage}");
         }
 
         private static string NamesOf(VisualElement parent)

@@ -87,12 +87,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A `refCallback` cleanup that throws while its element is being unmounted is reported and the unmount
   carries on, instead of the exception leaving the reconcile call. It used to escape from the middle of
   the teardown, so the rest of that element's release never ran and the element itself was never taken
-  out of the tree — leaving a `ring-*` band beside it, since a band lives in the element's parent rather
-  than in its subtree — and the removal batch it interrupted left every row it had not reached yet
-  standing too. An `AnimatePresence` whose own leaf the batch had already removed then kept committed
-  state naming a child that was gone, and the next render at that position spliced it back as an exiting
-  ghost. The delegate is the caller's, and it was already contained this way at reconciler disposal; the
-  unmount entrance is what was missing.
+  out of the tree, and the removal batch it interrupted left every row it had not reached yet standing
+  too. An `AnimatePresence` whose own leaf the batch had already removed then kept committed state
+  naming a child that was gone, and the next render at that position spliced it back as an exiting
+  ghost. The delegate is the caller's, and reconciler disposal already contained it this way.
+- An `IRouteScope.Dispose` that throws is reported the same way, both where an unmounting `V.Outlet`
+  disposes its scope and where whole-reconciler teardown sweeps the scopes still registered. The scope
+  is the application's, built by the `IRouteScopeFactory` handed to `Router`. From the unmount the
+  escape reached the same interrupted removal batch and the same resurrected `AnimatePresence` child as
+  above, and left the scope registered for the teardown sweep to dispose a second time; from the sweep
+  it left the rest of that sweep unrun, including every scope it had not reached yet.
 - A child that moves from one `gap-*`, `divide-*` or `grid-cols-*` container to another keeps the
   spacing, divider or column sizing the container it joined wrote. Each of the three tracked the children
   it had written to by raw reference and reset the value on one no longer in the container, and the
@@ -2021,3 +2025,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Preserve `StyleAttributeVariantClass` presence matching for `data-[key]:` variants (do not coerce
   to empty-string equality).
 - `V.When` throws `ArgumentNullException` when the condition is true but the factory is null.
+

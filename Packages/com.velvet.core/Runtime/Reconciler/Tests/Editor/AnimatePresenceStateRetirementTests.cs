@@ -330,7 +330,7 @@ namespace Velvet.Tests
                 ThrowingCleanupPresence("a"),
             };
             reconciler.Reconcile(root, Array.Empty<VNode>(), committed);
-            ExpectCleanupFailureLog();
+            ContainedFailureLog.Expect<InvalidOperationException>("FiberElementCleaner", CleanupFailureMessage);
             // A bare empty array carries nothing the inline walk has to expand, so this container takes the
             // fast path. V.Fragment(Array.Empty<VNode>()) in its place routes to the general walk instead and
             // reads a different removal pass.
@@ -887,14 +887,6 @@ namespace Velvet.Tests
 
         private static void ExpectOverwriteWarning() => LogAssert.Expect(LogType.Warning,
             $"[FiberPortalRegistry] Id \"{RetargetId}\" is already registered. Overwriting.");
-
-        // FiberLogger.LogException reports on two lines; both are expected or the runner fails the case on
-        // an unexpected error.
-        private static void ExpectCleanupFailureLog()
-        {
-            LogAssert.Expect(LogType.Error, "[FiberElementCleaner] An exception occurred. See the next line for details.");
-            LogAssert.Expect(LogType.Exception, $"InvalidOperationException: {CleanupFailureMessage}");
-        }
 
         private static VNode[] Rows(string prefix)
         {
