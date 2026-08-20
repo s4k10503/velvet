@@ -228,8 +228,7 @@ namespace Velvet.Tests
             // Act
             mounted.FlushStateForTest();
 
-            // Assert — the render count is folded in because the committed value alone reads the same
-            // without this branch, which is the case `base_red_check.py` refuses
+            // Assert
             Assert.That((s_transitionLastValue, s_transitionRenderCount), Is.EqualTo((5, 3)),
                 "The nested transition's update commits on flush, for the render count a single transition costs");
         }
