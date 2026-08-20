@@ -157,8 +157,20 @@ namespace Velvet
             {
                 element.Clear();
 
-                oldOutlet.Scope?.Dispose();
+                // The departing route's scope is the application's, built by the IRouteScopeFactory
+                // handed to Router, so its Dispose is a call out into the caller's code — contained the
+                // way FiberElementCleaner contains the same Dispose on the unmount path. element.Clear()
+                // has already run by the time it is called, so a throw leaving instead would strand the
+                // Outlet holding neither the route it left nor the route being patched in.
                 _ctx.OutletScopes.Remove(element);
+                try
+                {
+                    oldOutlet.Scope?.Dispose();
+                }
+                catch (System.Exception exception)
+                {
+                    FiberLogger.LogException("FiberNodePatcher", exception);
+                }
                 var scopeFactory = Router.Current?.ScopeFactory;
                 if (scopeFactory != null)
                 {

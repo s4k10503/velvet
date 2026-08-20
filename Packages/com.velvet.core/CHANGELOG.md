@@ -43,6 +43,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   portal's boundary, which holds even where the two sides share a container, so neither rule subsumes
   the other. Keeping state across such a move means lifting it above both containers, to a `Store` or
   to a `UseState` in the component that declares them. The migration guide states what a position is.
+- A `UseTransition` transition now covers what its callback runs before that callback first suspends,
+  rather than being inferred from the action still being in flight on the calling component. An update
+  made after an `await` that suspended the action takes the lane it would have taken outside a
+  transition, and an action that wants it deferred wraps it in the starter again, which joins the
+  transition already running and keeps `isPending` lit. React's `startTransition` reference asks for the
+  same wrapping, calling the restriction a known limitation it means to fix rather than the shape it is
+  aiming for. That inference had no way to tell the action's own continuation from a timer tick, a
+  `UseStore` notification or a `UseMutation` callback landing in the same window, so those took the
+  Transition lane too and waited out the delayed tier's 100 ms instead of committing at the next frame
+  boundary. `isPending` itself is unchanged: it
+  stays true across the awaits until the task completes. One consequence to expect where the await does
+  suspend: an action writing both before and after it now leaves two lanes rather than one, so those
+  writes commit in two renders instead of coalescing into a single transition render.
+  Which of the two an `await` is, C# decides at run time. An `await` of a task that had **already
+  completed** does not suspend — the continuation runs inline — so the callback carries on inside the
+  scope and the write after that `await` is a transition too, `isPending` staying lit until it commits on
+  the delayed tier. `await UniTask.CompletedTask` reaches it, as does any `async UniTask` the action
+  awaits that returns without suspending — a cache answering from memory being the shape to expect. One
+  source line therefore takes either schedule depending on the data, and the counter-intuitive way round:
+  the cache hit that answered instantly is the one whose write waits out the delayed tier, where the miss
+  commits at the next frame boundary. Wrapping the post-`await` update in the starter makes the two paths
+  agree, since a joined call is a transition on both. The migration guide's `useTransition` row states the
+  rule and where React's behaviour stops being a guide to it.
 - Moving a component across a `V.Portal`'s boundary is an unmount and a remount in every case now, so
   its state, refs and effects do not survive the move and the departing instance's cleanups run. A
   component written into a live portal's children that a previous render had outside them — and the same
@@ -53,18 +76,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   guide nor `createPortal` promised the surviving half. The portals guide states the contract that now
   holds in both directions. Keeping state across such a move means lifting it above the portal — to a
   `Store`, or to a `UseState` in the component that declares the portal.
-- `V.TextField`'s four new parameters sit between `isPasswordField:` and `enabled:`, so a call passing
-  arguments positionally past `isPasswordField` now binds them to different parameters. Every argument
-  there but a `null` literal changes type across the shift, so such a call fails to compile rather than
-  rebinding silently; pass them by name.
-- `StyleVariantClass.BreakpointPx` and `IsResponsive` throw for a value naming no `StyleVariantKind`,
-  where they answered `0f` and `false` before 2.0.1. Every named kind is answered as it was; only a cast
-  outside the enum's range reaches the throw, and a silent `0f` there is how such a cast survives to
-  produce a wrong layout instead of a stack trace. The classification switches this comes from are now
-  exhaustive by compilation rather than by review — `Runtime/csc.rsp` compiles CS8509 as an error — so a
-  `StyleVariantKind` member added without an arm fails the build rather than warning into a log that
-  nothing gates on. That response file ships with the package, so a project compiling `Velvet.asmdef`
-  compiles CS8509 as an error too, applying to Velvet's own sources only.
+- The switches that classify a `StyleVariantKind` are exhaustive by compilation rather than by review:
+  `Runtime/csc.rsp` compiles CS8509 as an error, so a member added without an arm fails the build rather
+  than warning into a log that nothing gates on. That response file ships with the package, so a project
+  compiling `Velvet.asmdef` compiles CS8509 as an error too, applying to Velvet's own sources only.
 - `V.Portal(layer:)` no longer mounts its children for a `UILayer` value naming no layer, where it
   hosted them at the `Overlay` offset before. Every named layer hosts as it did, and only a cast outside
   the enum's range reaches this. What such a cast now produces: that portal's children do not mount, and
@@ -82,11 +97,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   panel-attach callbacks a `V.Custom<T>` subclass registered on the element being landed escapes the
   render pass rather than being reported by the drain, and the entries queued behind it are still
   lost.
-- The switch behind the layer offset now names every layer, for the reason the `StyleVariantClass` entry
+- The switch behind the layer offset now names every layer, for the reason the `StyleVariantKind` entry
   above gives, and so do the ones behind `divide-*` colours, `clip-path` radius keywords, `animate-*`
   transition slots and the structural variants — each already answered every named member as it does now.
 
 ### Fixed
+
+- A `V.AnimatePresence` that stops being rendered takes its bookkeeping with it. That bookkeeping is
+  keyed by the component the presence renders in, the parent element its children expand into, and the
+  presence's position — and only the component being disposed, or the whole tree being unmounted,
+  retired it. So a `cond ? V.AnimatePresence(…) : null` flipping to `null` left an entry holding the
+  committed children plus each key's exit anchor and Motion element, well after the removal had taken
+  those elements out of the tree. Rendering the presence again at that position then started from
+  that stale set: children that had left were spliced back into the DOM as exiting ghosts, and
+  `initial: false` no longer suppressed the enter, since the second mount was not taken for a first
+  render. The entry also survived its parent element being torn down — once per removal, so a panel
+  mounted and unmounted repeatedly accumulated one per cycle — and a poolable parent (a `V.Button`)
+  rented back for a fresh presence at the same position picked the stale entry up again. A presence
+  written inside a `V.Portal`'s own children was the same defect reached a third way, since its
+  bookkeeping is keyed by the container the portal renders into and that container belongs to the
+  caller: closing the portal resurrected the children the presence had already let go, as did
+  registering its `targetId` to a different element and back.
+- A `refCallback` cleanup that throws while its element is being unmounted is reported and the unmount
+  carries on, instead of the exception leaving the reconcile call. It used to escape from the middle of
+  the teardown, so the rest of that element's release never ran and the element itself was never taken
+  out of the tree, and the removal batch it interrupted left every row it had not reached yet standing
+  too. An `AnimatePresence` whose own leaf the batch had already removed then kept committed state
+  naming a child that was gone, and the next render at that position spliced it back as an exiting
+  ghost. The delegate is the caller's, and reconciler disposal already contained it this way.
+- An `IRouteScope.Dispose` that throws is reported the same way, at each of the three places a route
+  scope is disposed: the patch that swaps in a newly matched route, an unmounting `V.Outlet`, and the
+  whole-reconciler teardown sweep. The scope is the application's, built by the `IRouteScopeFactory`
+  handed to `Router`. From the route change the escape left the `V.Outlet` blank — the route navigated
+  away from torn down, the route navigated to never mounted — and a later render at that position
+  mounted the new route on the already-disposed scope. From the unmount it reached the same interrupted
+  removal batch and the same resurrected `AnimatePresence` child as above. Both also left the scope
+  registered for the teardown sweep to dispose a second time; from the sweep itself the escape left the
+  rest of that sweep unrun, including every scope it had not reached yet.
+- `UseTransition` no longer clears `isPending` when the first slice of a time-sliced transition commit
+  parks. The flag now spans every parked slice and clears after the terminal commit; that commit asks for
+  the render that takes an observed indicator down.
+- A same-starter async `startTransition` call keeps the joined transition owned until its own task
+  completes. If an outer action started that call without awaiting it and then completed first, its exit
+  used to release the shared slot and clear `isPending` while the joined action was still awaiting.
 
 - A child that moves from one `gap-*`, `divide-*` or `grid-cols-*` container to another keeps the
   spacing, divider or column sizing the container it joined wrote. Each of the three tracked the children
@@ -107,6 +160,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   removal, not an edge case. A removed element is either discarded with its subtree or scrubbed on its
   way into the element pool, so what this changes is the inline state of an element an application has
   kept a reference to and re-parented itself.
+- `startTransition` defers the updates its callback schedules on other components' state, not only
+  the calling component's own. A child deferring an expensive list update through a setter it
+  received as a prop — one of the canonical React uses — had that update classified against the
+  component that owns the state, which was in no transition: it took the Normal lane, or the Urgent
+  lane inside a click, and so drained at the next frame boundary with the interaction the user was
+  waiting on, instead of on the delayed lane the call asked for — where an update arriving in the
+  meantime would have gone ahead of it. The same held for a `Store` write made inside the
+  callback. The flag is now ambient for the callback's synchronous run, as React's is. `isPending`
+  follows those updates wherever they landed: it stays lit until every component the callback
+  scheduled an update on has discharged it — committed it, gone away, or had the scheduler drop it at
+  the update-depth cap — and the declaring component re-renders on the commit that
+  finishes them, so an indicator it renders comes down there. Where the callback wrote to two
+  components, what finishes them is the last commit rather than the first. What the flag does not do is force a
+  render of its own when the transition *starts* — nothing renders purely because `isPending` went
+  true, in this case or in the local-state one, so a component that shows a pending branch needs a
+  render from the same interaction (the urgent update a click also makes, or an ancestor's) to
+  observe it.
+- An `async` `startTransition` action takes its own pending indicator down when it finishes. Its
+  `isPending` correctly outlasts the commit of whatever the callback queued before it first suspended
+  — the action is still running — but the clear at the far end scheduled nothing, so the flag went
+  false while the component carried on rendering its pending branch until some unrelated interaction
+  re-rendered it. An action that writes before its `await` and then outlasts the transition tier's
+  100 ms delay is where a user meets it, since that commit is the render that puts the indicator up.
+  The completion now asks the declaring component for the render that observes the cleared flag: one
+  render, or none of its own where that component was already being re-rendered. An action that never
+  suspended is held to what the synchronous form does, so an `async` callback that only awaits an
+  already-completed task costs what the synchronous form costs — see the entry below for what that is.
+- A synchronous `startTransition` whose callback renders the declaring component now keeps its pending
+  indicator up for as long as the transition runs, and takes it down when it ends. A callback that
+  commits work of its own — driving a handler the component bound, a click or a value change or a
+  focus, whose exit flushes the updates queued before the call — has that flush render the component
+  while the transition is open.
+  The settle that flush ran used to clear `isPending` first, and only the entry to `startTransition`
+  ever sets it, so a callback that then deferred a write ran its whole transition with the indicator
+  never lit. A settle now leaves a slot alone while a call still owns it. The other half of the same
+  route follows from that: where such a callback defers nothing, the flag it raised is cleared at its
+  own exit, and nothing renders because a flag moved — so the exit asks the declaring component for the
+  render that takes the indicator down. That exit asks only where the declaring component's last render
+  read the flag as true, so it costs nothing where that component was not showing the transition — and
+  it settles only a transition with nothing outstanding. Where the callback's work is still queued
+  somewhere, what ends the transition is the commit of that work, and the settle there asks for its
+  render without that term, so a transition whose work commits on another component costs the declaring
+  one a render whether or not it was showing anything.
+- Two `UseTransition` slots whose transitions are open at once, but not nested one inside the other, no
+  longer credit each other's writes. One slot's update was attributed to every slot on that component
+  that still had a transition open, so a slot whose own callback had queued nothing kept `isPending`
+  lit until the other's work committed — including an `async` action parked on an await, which had
+  queued nothing yet by construction. An enrolment is now credited to the calls whose callback is
+  running when it is made, and recorded against the component it enrolled.
+- A `startTransition` whose own component has unmounted still marks what its callback writes on the
+  components that have not. Both overloads short-circuited on a disposed declaring component and ran
+  the callback with no transition open at all, so those updates took the Normal lane — or the Urgent
+  lane inside a click — and the deferral the call asked for was gone. An `async` action that outlives
+  the component that started it is where this is met, since wrapping its post-`await` write in the
+  starter again is what the migration guide asks callers to write, and by then the component may have
+  gone. The pending flag is still left alone on that path: it is read during a render, and a disposed
+  component has none left.
 - A component the reconciler carries to a different container now re-renders itself into the container
   it is in. Its slot index and the stamp a portal teardown disposes by both followed the move and its
   container did not, so its own `setState` reconciled its new output into the container it had left,
@@ -2016,4 +2126,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Preserve `StyleAttributeVariantClass` presence matching for `data-[key]:` variants (do not coerce
   to empty-string equality).
 - `V.When` throws `ArgumentNullException` when the condition is true but the factory is null.
-
