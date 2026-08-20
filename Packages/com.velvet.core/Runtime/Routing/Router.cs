@@ -175,6 +175,10 @@ namespace Velvet
         // cancelled out from under its caller, and no Status transition left to put back. It is also where
         // the Back/Forward branch of the loader phase, which indexes the history directly, gets its
         // assurance that the slot it reads existed when the attempt started.
+        // The discard is what carries a mode outside the enum through to the commit, whose own switch
+        // answers it with ArgumentOutOfRangeException — the router's one report of such a cast, and the
+        // one RouterUnfinishedNavigationTests reaches the commit's unwind through. Naming these four arms
+        // would raise the cast here instead, before Status has anything to put back.
         private bool StepHasNoEntryToLandOn(NavigationMode mode) => mode switch
         {
             NavigationMode.Back => !CanGoBack,
@@ -460,6 +464,8 @@ namespace Velvet
             }
         }
 
+        // Same reason for the discard as StepHasNoEntryToLandOn: this runs before the commit, and the
+        // commit is where a mode outside the enum is reported.
         private int CommitIndexFor(NavigationMode mode) => mode switch
         {
             NavigationMode.Back => _historyIndex - 1,
