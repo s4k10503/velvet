@@ -1307,10 +1307,10 @@ class UnbuildableOnBaseTests(unittest.TestCase):
         # Assert
         self.assertEqual(found, {})
 
-    def test_Given_AMemberOnlyACarriedHelperDeclares_When_TheTreeIsRead_Then_ItIsNotWithdrawn(self):
-        # Arrange -- the base's copy of the helper has not got Reach either, so what leaves this file
-        # in the run is the production change spelling nothing of it. `unbuildable_on_base` records
-        # what the reading costs where a production change does spell one.
+    def test_Given_AMemberNoChangedProductionFileSpells_When_TheTreeIsRead_Then_ItIsNotWithdrawn(self):
+        # Arrange -- the base's copy of the helper has not got Reach either, so the base's own text
+        # is not what leaves this file in the run. `unbuildable_on_base` records what the reading
+        # costs where a production change does spell the member.
         # Act
         found = self.read({self.ENUM: "enum Status { Idle }\n",
                            self.HELPER: "class Probe { public static int Ready; }\n",

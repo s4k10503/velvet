@@ -1107,8 +1107,8 @@ def names_in(text):
 def csharp_names(tree, carried=()):
     """Every identifier the base commit spelled, over the C# files the base tree still holds.
 
-    A file the branch deleted is not read: the base tree no longer holds it. Reading one back out of
-    the commit is what would leave a case naming a production surface the branch adds -- where the
+    A test file the branch deleted is one the base tree stops holding, and reading that one back out
+    of the commit is what would leave a case naming a production surface the branch adds -- where the
     base's only spelling of that name was the deleted file's -- in a run whose compile it takes down.
 
     `carried` names the files whose text on disk is the branch's, which is the text being judged:
