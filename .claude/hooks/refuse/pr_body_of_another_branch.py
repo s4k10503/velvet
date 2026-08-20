@@ -80,8 +80,11 @@ UNREADABLE_PROBE = {"command": "gh pr create --title t --body-file velvet-no-suc
 # A keyword against a number, or the issue's own URL. The keyword is what distinguishes a statement
 # of origin from a number that happens to appear: the bare form was satisfied by a six-digit colour,
 # and it counted a cross-reference in prose, which leaves the issue open exactly as before.
+# `part of` is spelled out rather than reached by loosening the gap to any short run of words: the
+# looser form takes `Closes the gap ...; see #123` back, which is the prose cross-reference above.
 ISSUE_REFERENCE = re.compile(
-    r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?|refs?)\b[^\S\n]*:?[^\S\n]*#\d+"
+    r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?|refs?)\b(?:[^\S\n]+part[^\S\n]+of)?"
+    r"[^\S\n]*:?[^\S\n]*#\d+"
     r"|github\.com/[\w.-]+/[\w.-]+/issues/\d+",
     re.IGNORECASE)
 # A line rather than a flag, so the answer lands in the published body where a reader looking for
@@ -97,6 +100,12 @@ NO_ANSWER = (
     "If it closes nothing — a tooling change, a release — say that instead, so a reader\n"
     "who wonders where it came from finds an answer rather than a silence:\n\n"
     "  No issue: <where this came from>")
+
+TWO_BODIES = (
+    "the command carries two bodies and only one of them names an issue.\n"
+    "Which of the two reaches the description is not settled by the command, so\n"
+    "whether the answer gets posted is not something this can report on.\n\n"
+    "Pass the one you mean.")
 
 
 def refuse(message):
@@ -165,12 +174,12 @@ def check(operands, cwd, after_a_move, command="gh pr create"):
         return 0
     if path is None:
         return judge_inline(text, command)
-    if not answered(text):
-        return refuse_command(command, NO_ANSWER)
-    # Both are judged when both are given: which one gh posts is not something this holds, so an
-    # answer carried only by the one it does not post would be an answer nobody reads.
+    # Which of two bodies reaches the description is not settled by the command, so a disagreement
+    # between them is refused with a remedy rather than settled by picking one.
     inline = valued(operands, BODY_FLAGS)
-    return 0 if inline is None else judge_inline(inline, command)
+    if inline is not None and answered(inline) != answered(text):
+        return refuse_command(command, TWO_BODIES)
+    return 0 if answered(text) else refuse_command(command, NO_ANSWER)
 
 
 def main():

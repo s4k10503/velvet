@@ -145,10 +145,10 @@ namespace Velvet.Tests
         // file|inline|moved. Kept apart because the guard treats each differently — it opens the file
         // and searches its text, it searches an inline body as it stands, and it recognises a
         // directory move, which decides elsewhere whether a relative path names the file gh opens.
-        // Recognition is all these columns hold — the lambda re-derives the ordering rather than
-        // calling the guard, so where a move sits relative to the call is not pinned here. A merged
-        // column agreed with a version that had the file and inline families swapped, and with one
-        // whose move recognition was broken.
+        // Recognition is all these columns hold — where a move sits relative to the call is not
+        // pinned here, since every row keeps its move in a segment of its own. A merged column
+        // agreed with a version that had the file and inline families swapped, and with one whose
+        // move recognition was broken.
         private static readonly (string Command, string Expected)[] Bodies =
         {
             ("gh pr create --title x --body-file b.md", "b.md||no"),

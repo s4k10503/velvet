@@ -33,6 +33,7 @@ namespace Velvet.Tests
             ("unexpanded-path", "still unexpanded"),
             ("moved", "changes directory"),
             ("assembled", "assembled by the shell"),
+            ("two-bodies", "carries two bodies"),
             ("no-origin", "names no issue"),
             ("unreadable", "cannot be read"),
             ("crashed", "failed to reach a verdict"),
@@ -56,6 +57,9 @@ namespace Velvet.Tests
             ("gh pr create --title x --body-file {DIR}/resolved.md", "allow"),
             ("gh pr create --title x --body-file {DIR}/refs.md", "allow"),
             ("gh pr create --title x --body-file {DIR}/ref.md", "allow"),
+            // A keyword against the number of an issue this answers only half of, which is a form
+            // merged pull requests here already use and which was refused before the phrase was read.
+            ("gh pr create --title x --body-file {DIR}/closes-part.md", "allow"),
             ("gh pr create --title x --body-file {DIR}/url.md", "allow"),
             ("gh pr create --title x --body-file {DIR}/no-issue.md", "allow"),
             ("gh pr create --title x --body-file {DIR}/no-issue-indented.md", "allow"),
@@ -67,6 +71,9 @@ namespace Velvet.Tests
             ("gh pr new --title x --body-file {DIR}/closes.md", "allow"),
             // Backticks and a `$` in an inline body are the description rather than a name for it.
             ("gh pr create --title x --body 'Closes #7. `Foo.Bar` now reads $HOME.'", "allow"),
+            // Two bodies both naming an origin: whichever of them reaches the description, the
+            // answer is in it, so no verdict on which is needed.
+            ("gh pr create --title x --body 'Closes #7.' --body-file {DIR}/closes.md", "allow"),
             ("gh pr create --fill", "allow"),
             // A body flag given last has no value to read, which is a different way through the
             // reader than a command with no body flag at all.
@@ -81,6 +88,8 @@ namespace Velvet.Tests
             ("gh pr create --title x --help --body-file {DIR}/silent.md", "allow"),
             ("gh pr create --title x --help=true --body-file {DIR}/silent.md", "allow"),
             ("gh pr create --title x --dry-run=true --body-file {DIR}/silent.md", "allow"),
+            // A repeat settles on its last value, which is what turns the exemption back on here.
+            ("gh pr create --title x --help=false --help --body-file {DIR}/silent.md", "allow"),
             ("gh pr new --fill", "allow"),
             // `gh pr edit` posts into the same squash message a created description lands in, so it
             // is asked the same question. An earlier version left it unasked, on the ground that a
@@ -112,15 +121,33 @@ namespace Velvet.Tests
             ("gh pr create --title x --body 'A change to the pooled reset helper.'", "no-origin"),
             ("gh pr create --title x -b 'A change to the pooled reset helper.'", "no-origin"),
             ("gh pr create --title x --web --body-file {DIR}/silent.md", "no-origin"),
-            // Either order: which of the two gh posts is not something the guard holds, so an answer
-            // carried only by the one it does not post would be an answer nobody reads.
-            ("gh pr create --title x --body 'Closes #7.' --body-file {DIR}/silent.md", "no-origin"),
+            // Either order, and its own refusal rather than the silent body's: naming one of the
+            // two as the body that says nothing is a verdict on which of them reaches the
+            // description, and that is the thing the command does not settle.
+            ("gh pr create --title x --body 'Closes #7.' --body-file {DIR}/silent.md", "two-bodies"),
             ("gh pr create --title x --body-file {DIR}/closes.md "
-             + "--body 'A change to the pooled reset helper.'", "no-origin"),
+             + "--body 'A change to the pooled reset helper.'", "two-bodies"),
+            ("gh pr edit 1 --body-file {DIR}/closes.md "
+             + "--body 'A change to the pooled reset helper.'", "two-bodies"),
+            // A shell-assembled inline body beside a file that answers is two bodies before it is
+            // an assembly, and the assembly refusal would ask for a file that is already passed.
+            ("gh pr create --title x --body \"$(cat {DIR}/closes.md)\" "
+             + "--body-file {DIR}/closes.md", "two-bodies"),
+            // Two bodies agreeing is one answer, so it is judged as one.
+            ("gh pr create --title x --body 'A note.' --body-file {DIR}/silent.md", "no-origin"),
             ("gh pr create --title -h --body-file {DIR}/silent.md", "no-origin"),
             ("gh pr create -t -h --body-file {DIR}/silent.md", "no-origin"),
             ("gh pr create --help=false --body-file {DIR}/silent.md", "no-origin"),
             ("gh pr create --dry-run=false --body-file {DIR}/silent.md", "no-origin"),
+            // A repeat that turns the exemption off again. Reading any occurrence rather than the
+            // last one exempted all three, and an exemption is decided before the body is opened,
+            // so no rule below it looked at these files at all.
+            ("gh pr create --title x --help --help=false --body-file {DIR}/silent.md", "no-origin"),
+            ("gh pr create --title x --dry-run --dry-run=false --body-file {DIR}/silent.md", "no-origin"),
+            // `-h` and `--help` are read as one flag, so the last value is the last of both rather
+            // than the last of each: keyed per token, the bare `--help` here stays an exemption of
+            // its own.
+            ("gh pr create --title x --help -h=false --body-file {DIR}/silent.md", "no-origin"),
             ("gh pr new --body-file {DIR}/silent.md", "no-origin"),
             ("gh pr edit 1 --body-file {DIR}/silent.md", "no-origin"),
             ("gh pr edit 1 --body 'A change to the pooled reset helper.'", "no-origin"),
@@ -282,6 +309,7 @@ namespace Velvet.Tests
             Write(root, "resolved.md", "Resolved #12, measured against the pooled reset helper.\n");
             Write(root, "refs.md", "Refs #12 — the other half of that one.\n");
             Write(root, "ref.md", "Ref #12 — the other half of that one.\n");
+            Write(root, "closes-part.md", "Closes part of #12 — the half the pool reset left.\n");
             Write(root, "url.md", "From https://github.com/s4k10503/velvet/issues/44, the second half.\n");
             Write(root, "no-issue.md", "No issue: found while reading the pool reset helpers.\n");
             // Four spellings of the same line, each free of the last: indented, ended with a full

@@ -3,8 +3,9 @@
 The reading is not the obvious one. gh takes a body under four flags, lets a short flag carry its
 value attached, permits boolean shorthand ahead of it in the same token, and gives many another
 option a value of its own that a body flag standing in that place would be mistaken for. Held apart
-from the rule that judges the body so the parse can be posed on its own, which is what
-`scripts/hooks/test_pr_body_flags.py` does.
+from the rule that judges the body so the parse can be posed on its own: `GuardCommandCoverageTests`
+poses it a command and reads back the body it found, and `scripts/hooks/test_pr_body_flags.py` holds
+the option table below against gh's.
 
 What is not held here is what to do about a body that cannot be read: `read_body_file` names the
 obstruction and stops, and the remedy for each belongs to the guard that refuses it.
@@ -19,14 +20,13 @@ from shell_commands import command_segments, leading_program, program_invocation
 
 BODY_FILE_FLAGS = ("--body-file", "-F")
 BODY_FLAGS = ("--body", "-b")
-# None of these opens or updates a pull request, so none of them posts a description.
-EXEMPT_FLAGS = ("--dry-run", "--help", "-h")
+# None of these opens or updates a pull request, so none of them posts a description. A mapping
+# rather than a set, so `-h` and `--help` resolve a repeat as one flag rather than one each.
+EXEMPT_FLAGS = {"--dry-run": "--dry-run", "--help": "--help", "-h": "--help"}
+TRUE_SPELLINGS = {"1", "t", "true"}
 
-# Mirrored from gh's own option table and held against it by `scripts/hooks/test_pr_body_flags.py`,
-# which reads the value-taking set and the boolean shorthands. An earlier revision declined to build
-# the mirror at all, on the ground that an unpinned one drifts — and a drift in either direction
-# ends with no body found, which a guard reports by exiting 0, exactly as it reports a body it read
-# and was satisfied by.
+# Mirrored from gh's own option table. `scripts/hooks/test_pr_body_flags.py` is what holds it there,
+# and owns what each direction of a disagreement costs.
 VALUE_FLAGS = {
     "--add-assignee", "--add-label", "--add-project", "--add-reviewer", "--assignee", "-a",
     "--base", "-B", "--body", "-b", "--body-file", "-F", "--head", "-H", "--label", "-l",
@@ -118,9 +118,17 @@ def valued(operands, flags):
 
 
 def exempted(operands):
-    """Whether the invocation carries an exemption as an option rather than another option's value."""
-    return any(name in EXEMPT_FLAGS and (value is None or value.casefold() in {"1", "t", "true"})
-               for name, value in options(operands))
+    """Whether the invocation carries an exemption as an option rather than another option's value.
+
+    A repeat is read the way `valued` reads one, by the last value given. Taking any occurrence
+    instead left the two readings of one token stream disagreeing over `--help --help=false`: the
+    exemption held while the body flag beside it was still resolved to a file.
+    """
+    last = {}
+    for name, value in options(operands):
+        if name in EXEMPT_FLAGS:
+            last[EXEMPT_FLAGS[name]] = value
+    return any(value is None or value.casefold() in TRUE_SPELLINGS for value in last.values())
 
 
 def effective_body(operands, cwd, after_a_move):

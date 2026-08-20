@@ -28,8 +28,9 @@ Either answer is fine; the silence is not, and it is the one that happened: a ch
 straight out of an issue was merged without linking it, so the issue stayed open with its work
 already shipped. `refuse/pr_body_of_another_branch.py` declines a body that carries neither. An
 answer is a closing or referring keyword — Closes, Fixes, Resolves, Refs — against the number right
-after it, or the issue's own URL. A number on its own is not one: a colour is six digits behind a
-`#`, and a number mentioned in passing closes nothing on merge.
+after it, or the issue's own URL. Closes part of #123 answers as well, for a change that takes half
+an issue and leaves the rest of it open. A number on its own is not one: a colour is six digits
+behind a `#`, and a number mentioned in passing closes nothing on merge.
 
 The guard reads the description that will be posted, so the body has to exist before the command
 runs. What it cannot read it declines rather than skips, and that is the part you are most likely to
@@ -40,6 +41,10 @@ meet:
 - the path is still unexpanded, or the body comes from stdin;
 - the command changes directory and the body path is relative, so `gh` would open a different file
   than this one reads — give the body an absolute path.
+
+A command passing both `--body` and `--body-file` is declined when only one of the two answers:
+which of them reaches the description is not settled by the command, so pass the one you mean. Where
+both answer, or neither does, the pair is judged as one body.
 
 A command carrying no body operand at all — `--fill` and its relatives, `--template`, `--editor`, the
 interactive form — holds no text here, so the question goes unasked, and `--dry-run` or `--help`

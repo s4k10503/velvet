@@ -7,12 +7,15 @@ of `x`, and the file asked about is not the one gh will post. That record is a m
 else's table, and an earlier revision of the guard rejected building one for exactly that reason.
 This is what makes it not drift.
 
-Both directions of a disagreement end with a body going unread, and a guard that read no body exits
-0 — the same thing it exits having read one and been satisfied:
+Both directions end with the posted description unexamined, and only one of them reaches that by
+leaving a body unfound. Measured on `--assignee`, for which the table read below declares a value:
 
-- an option gh takes a value for that the mirror calls boolean consumes the flag after it, so
-  `--unlisted --body-file b.md` swallows `--body-file` and no body is found;
-- an option the mirror calls value-taking that gh treats as boolean shifts the parse the other way.
+- deleted from the mirror, `gh pr create --title x --assignee --body-file b.md` still resolves a
+  body file of `b.md`. The guard opens that file and answers about it — either way round — while
+  it is `--body-file` that stands where `--assignee`'s value goes;
+- added to the mirror where gh prints a boolean, `gh pr create --title x --draft --body-file b.md`
+  resolves no body file at all: the parse spends `--body-file` as `--draft`'s value, and a guard
+  that found no body exits 0, which is what it exits having read one and been satisfied.
 
 gh is asked rather than snapshotted, so the answer is the one on the machine the guard will run on.
 `--help` reaches neither the network nor a credential, so this needs no token.

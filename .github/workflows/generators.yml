@@ -114,10 +114,9 @@ jobs:
       - name: Hook repository-reading tests
         run: python3 scripts/hooks/test_hook_repository.py
 
-      # The body guards tell a body flag from another option's value by a record of which gh options
-      # take one, and both directions of a disagreement end with a body going unread — which a guard
-      # reports by exiting 0, the same way it reports a body it read and was satisfied by. Asks the
-      # gh on the runner, so it needs no licence and no token, only `--help`.
+      # Holds the body guards' record of which gh options take a value against the gh on the runner,
+      # which needs no licence and no token, only `--help`. The script owns what a disagreement
+      # costs in either direction.
       - name: Pull-request body option-table tests
         run: python3 scripts/hooks/test_pr_body_flags.py
 
