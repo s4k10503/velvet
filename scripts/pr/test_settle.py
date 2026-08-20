@@ -426,20 +426,24 @@ def keeping_the_lock(handles):
     return held
 
 
-# Half again the sixty polls the interval takes, written out rather than derived from it: with a
-# bound of three times RETIRE_AFTER, raising that interval to a hundred polls left every case here
-# green, because the bound moved with it.
+# The clock's two bounds, one either side of the sixty polls the interval takes: at ninety a watcher
+# that retires has already stopped, and at thirty one that has not retired is still going. Written
+# out rather than derived from that interval, because a derived bound moves with it — measured, a
+# bound of three times RETIRE_AFTER left every case here green at an interval of a hundred polls, and
+# one of half it leaves the case below green at ten.
 CLOCK_BOUND = 90
+EARLY_BOUND = 30
 
 
 def watch_until(between_polls=None, asked=None, listing_answers=True, seed_ready=None,
-                states=None):
+                states=None, bound=CLOCK_BOUND):
     """Run `watch` over green pull requests and a clock only its own sleep advances.
 
     `asked` sends the record somewhere else, for a case about it not being written; `seed_ready`
-    writes a ready file for the run to find, the way a watcher that has already stopped leaves one.
+    writes a ready file for the run to find, the way a watcher that has already stopped leaves one;
+    `bound` is how many polls the clock allows before it gives up on the run.
     """
-    clock = FakeClock(CLOCK_BOUND, between_polls)
+    clock = FakeClock(bound, between_polls)
     printed = io.StringIO()
     handles = []
     with tempfile.TemporaryDirectory(prefix="settle-retire-") as directory:
@@ -505,6 +509,17 @@ class RetirementTests(unittest.TestCase):
 
         # Assert
         self.assertTrue(watched.lock_released)
+
+    # GREEN_ON_BASE(characterization): a base with no retirement is still polling in any window.
+    # What this pins is the interval's other side, which had no case at all: lowering the interval
+    # shipped green, and that cut is what reddens this.
+    def test_Given_NothingReadingItsState_When_FewerPollsPassThanTheInterval_Then_ItIsStillWatching(self):
+        # Arrange — retiring early is this branch's own harm one step earlier: the watcher goes
+        # while a session is still working, and the next edit is refused for it.
+        watched = watch_until(bound=EARLY_BOUND)
+
+        # Act / Assert — None is a run the clock gave up on, which is a watcher that had not retired.
+        self.assertIsNone(watched.code)
 
     def test_Given_ReadingsThatNeverAnswer_When_TheIntervalPasses_Then_ItStillRetires(self):
         # Arrange — the wedge that reads to a guard as nothing watching: each poll fails, prints,
