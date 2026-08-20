@@ -26,9 +26,10 @@ No issue: found while reading the pool reset helpers.
 
 Either answer is fine; the silence is not, and it is the one that happened: a change that came
 straight out of an issue was merged without linking it, so the issue stayed open with its work
-already shipped. `refuse/pr_body_of_another_branch.py` declines a `gh pr create` whose body carries
-neither. An answer is a closing or referring keyword — Closes, Fixes, Resolves, Refs — against the
-number right after it, or the issue's own URL. A number on its own is not one: a colour is six digits
+already shipped. `refuse/pr_body_of_another_branch.py` declines a body that carries neither. An
+answer is a closing or referring keyword — Closes, Fixes, Resolves, Refs — against the number right
+after it, or the issue's own URL. Closes part of #123 answers as well, for a change that takes half
+an issue and leaves the rest of it open. A number on its own is not one: a colour is six digits
 behind a `#`, and a number mentioned in passing closes nothing on merge.
 
 The guard reads the description that will be posted, so the body has to exist before the command
@@ -41,10 +42,16 @@ meet:
 - the command changes directory and the body path is relative, so `gh` would open a different file
   than this one reads — give the body an absolute path.
 
+A command passing both `--body` and `--body-file` is declined when only one of the two answers:
+which of them `gh` posts is not something the guard holds, so pass the one you mean. Where both
+answer, or neither does, the pair is judged as one body.
+
 A command carrying no body operand at all — `--fill` and its relatives, `--template`, `--editor`, the
 interactive form — holds no text here, so the question goes unasked, and `--dry-run` or `--help`
-opens nothing to ask about. Only `gh pr create` is asked: `gh pr edit --body-file` is how an answer
-gets added after the fact.
+opens nothing to ask about. `gh pr create` is asked, and so are the `new` alias it also answers to
+and `gh pr edit`, whose description reaches the squash message the same way a created one does.
+Adding the answer after the fact is still `gh pr edit --body-file`, and a body carrying one passes —
+what the guard declines is an edit that leaves the description silent.
 
 It does not judge what the body is about, and no longer tries to. An earlier version dated the body
 file against the branch's first commit. Posed the leftover it existed for — a body stamped when one

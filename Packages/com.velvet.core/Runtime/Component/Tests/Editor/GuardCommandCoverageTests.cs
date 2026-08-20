@@ -145,10 +145,8 @@ namespace Velvet.Tests
         // file|inline|moved. Kept apart because the guard treats each differently — it opens the file
         // and searches its text, it searches an inline body as it stands, and it recognises a
         // directory move, which decides elsewhere whether a relative path names the file gh opens.
-        // Recognition is all these columns hold — the lambda re-derives the ordering rather than
-        // calling the guard, so where a move sits relative to the call is not pinned here. A merged
-        // column agreed with a version that had the file and inline families swapped, and with one
-        // whose move recognition was broken.
+        // A merged column agreed with a version that had the file and inline families swapped,
+        // and with one whose move recognition was broken.
         private static readonly (string Command, string Expected)[] Bodies =
         {
             ("gh pr create --title x --body-file b.md", "b.md||no"),
@@ -156,14 +154,35 @@ namespace Velvet.Tests
             ("gh issue create --label pr --title x", ""),
             ("gh pr create --title x -F b.md", "b.md||no"),
             ("gh pr create --title x -Fb.md", "b.md||no"),
+            ("gh pr create --title x -dFb.md", "b.md||no"),
+            ("gh pr create --title x -dF=b.md", "b.md||no"),
+            // The value in the token after the cluster rather than behind the letter, which is the
+            // one spelling of the three where the walk has to consume an operand it has not reached.
+            ("gh pr create --title x -dF b.md", "b.md||no"),
             ("gh pr create --title x -bhello", "|hello|no"),
+            ("gh pr create --title x -dfbhello", "|hello|no"),
+            ("gh pr create --title x -dfb=hello", "|hello|no"),
+            ("gh pr create --title x -dfb hello", "|hello|no"),
             ("gh pr create --title x --body-file=b.md", "b.md||no"),
             ("gh pr create --title x --body text", "|text|no"),
+            ("gh pr new --title x --body-file b.md", "b.md||no"),
+            ("gh pr edit 7 --body text", "|text|no"),
+            ("gh pr edit 7 --title x", "||no"),
+            ("gh pr edit 7", "||no"),
+            // A body flag standing where another option's value goes belongs to that option. Reading
+            // a name off any token instead found `b.md` here and asked about a file the command
+            // never names. `scripts/hooks/test_pr_body_flags.py` holds the record of which options
+            // take a value against gh's own table.
+            ("gh pr create --title -F b.md", "||no"),
+            ("gh pr create -t -F b.md", "||no"),
             // A head naming a fork is not read at all, so it neither answers nor disturbs the body.
             ("gh pr create --title x --body-file b.md --head someone:feat/x", "b.md||no"),
             ("cd d && gh pr create --title x --body-file b.md", "b.md||yes"),
             ("builtin cd d && gh pr create --title x --body-file b.md", "b.md||yes"),
             ("if true; then cd d; fi && gh pr create --title x --body-file b.md", "b.md||yes"),
+            // A move after the call. Computing the flag once for the whole command instead of
+            // accumulating it segment by segment reddens this row and no other, here or in
+            // PrBodyProvenanceGuardTests, so deleting it leaves the ordering held by nothing.
             ("gh pr create --title x --body-file b.md && cd d", "b.md||no"),
             ("gh pr create --fill", "||no"),
             ("gh pr comment 5 --body \"run gh pr create --body-file b.md\"", ""),
@@ -270,12 +289,11 @@ namespace Velvet.Tests
 
             // Act
             const string expression =
-                "lambda g,c: ','.join([r for s in g.command_segments(c) "
-                + "for o in g.program_invocations(s, 'gh', ('pr', 'create')) "
+                "lambda g,c: ','.join([r for _,o,m in g.invocations(c, ('pr', 'create'), "
+                + "('pr', 'new'), ('pr', 'edit')) "
                 + "for r in ['|'.join([str(g.valued(o, f) or '') "
                 + "for f in (g.BODY_FILE_FLAGS, g.BODY_FLAGS)]) "
-                + "+ ('|yes' if any(g.moves_directory(p) for p in g.command_segments(c[:c.index(s)])) "
-                + "else '|no')]])";
+                + "+ ('|yes' if m else '|no')]])";
             var answers = Ask(hook, expression, Bodies.Select(row => row.Command));
 
             var disagreements = Disagreements(Bodies, answers);
