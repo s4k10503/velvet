@@ -11,7 +11,7 @@ namespace Velvet.Tests
     /// <list type="bullet">
     /// <item>The effect is asynchronous: it does not run during Mount and runs only when effects are flushed.</item>
     /// <item>It runs once on mount, and on a deps change it runs the previous cleanup and then the new setup.</item>
-    /// <item>Deps are compared element-wise under Object.is: a fresh deps array with equal element values does not re-run, while a reconstructed content-equal reference-type dep does re-run.</item>
+    /// <item>Deps are compared element-wise under Object.is: a fresh deps array with equal element values does not re-run, while a reconstructed content-equal <c>record class</c> dep does re-run.</item>
     /// <item>Omitting deps re-runs (cleanup then setup) on every render; empty deps stays mount-only.</item>
     /// <item>Cleanup runs on unmount; a pending effect of an already-unmounted component is dropped.</item>
     /// <item>Initial mount runs setup exactly once with no setup→cleanup→setup double-invoke.</item>
@@ -261,12 +261,17 @@ namespace Velvet.Tests
                 "Fresh deps arrays carrying equal element values keep the effect run count at one");
         }
 
+        // GREEN_ON_BASE(characterization): this branch changes no production code — it corrects the
+        // arrangement comment and the failure message, both of which named the comparison in a form that
+        // is false for a string dep — so the case is green on both sides. What shows it can fail is the
+        // reference fall-through of ObjectIs.AreEqualObjects perturbed to return true, measured: the
+        // fresh dep then compares equal and the effect does not re-run.
         [Test]
         public void Given_FreshRecordDepWithEqualContent_When_Rerendered_Then_RerunsEffect()
         {
-            // Arrange — under Object.is, a reference-type dep (record) reconstructed with identical content
-            // each render is a changed dep (compared by reference, not by value), so the effect re-runs. A
-            // structural comparer would wrongly freeze the effect. Contrast with the string-value case above.
+            // Arrange — under Object.is, a record class dep reconstructed with identical content each render
+            // is a changed dep (compared by instance, not by content), so the effect re-runs. A structural
+            // comparer would wrongly freeze the effect. Contrast with the string-value case above.
             s_effectRecorderDeps = new object[] { new EffectDepRecord("x") };
             using var mounted = V.Mount(_root, V.Component(EffectRecorderRender, key: "effect"));
             mounted.FlushEffectsForTest();
@@ -279,7 +284,7 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(s_effectRecorderRunLog, Is.EqualTo(new[] { "effect", "cleanup", "effect" }),
-                "A fresh content-equal record dep re-runs the effect under Object.is reference comparison");
+                "A fresh content-equal record class dep re-runs the effect: Object.is compares it by instance");
         }
 
         [Test]

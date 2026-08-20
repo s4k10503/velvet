@@ -12,7 +12,12 @@ namespace Velvet
     /// <remarks>
     /// A struct (no allocation) wrapping the two cached closures built once at slot creation. The wrapped
     /// closures are reference-stable across renders, so a captured <see cref="StateUpdater{T}"/> stays valid.
-    /// Equal-value updates do not request a re-render (identity-based bailout).
+    /// An update equal to the current value does not request a re-render. Equality is <c>Object.is</c>-style:
+    /// <c>float</c> and <c>double</c> by raw bit pattern, so <c>NaN</c> equals itself and <c>+0</c> does not
+    /// equal <c>-0</c>; <c>string</c> by ordinal content, so a rebuilt-but-equal string bails; every other
+    /// value type through <c>EqualityComparer&lt;T&gt;.Default</c> — a <c>record struct</c> included, where
+    /// that is the synthesized field-wise equality, so a fresh one of equal content bails; and every other
+    /// reference type by instance, so a fresh <c>record class</c> instance of identical content re-renders.
     /// </remarks>
     /// <typeparam name="T">State type.</typeparam>
     public readonly struct StateUpdater<T> : IEquatable<StateUpdater<T>>

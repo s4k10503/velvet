@@ -165,10 +165,9 @@ namespace Velvet
             bool propsChanged;
             if (isMemoized)
             {
-                // Bail key: shallow per-property identity comparison of props (or a
-                // custom areEqual predicate supplied via V.Memo). Record value-equality (Equals) is
-                // intentionally NOT used — props are records whose deep structural equality is a
-                // different memoization axis than the shallow per-key identity comparison.
+                // Bail key: ComponentPropsComparer's shallow per-member comparison, or a custom
+                // areEqual predicate supplied via V.Memo. That comparer owns why a record's own
+                // Equals is the wrong key here.
                 propsChanged = !PropsEqual(existingFiber.Props, node.Props, node.AreEqual);
             }
             else
@@ -247,7 +246,7 @@ namespace Velvet
 
         // Props-bail comparison, reached only for memoized nodes (see ReconcileExistingFiber's isMemoized gate).
         // With a custom areEqual predicate (V.Memo(component, props, areEqual)) the predicate decides equality;
-        // otherwise props are compared by shallow per-property identity. Both-null props (a memoized props-less
+        // otherwise ComponentPropsComparer decides. Both-null props (a memoized props-less
         // overload) are trivially equal, so such a component bails unless dirty. Non-memo components never reach
         // here: their props are unconditionally treated as changed so a parent re-render re-renders the child.
         private static bool PropsEqual(object? prev, object? next, Func<object?, object?, bool>? areEqual)
