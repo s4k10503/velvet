@@ -6,15 +6,17 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies how a Provider decides whether a new value is a change, over the
+    /// Specifies whether a new value handed to a Provider reaches its consumers, over the
     /// <see cref="ObjectIs"/> branches these cases reach.
     /// <list type="bullet">
-    /// <item>A Provider notifies its consumers when the new value is not equal to the previous one under
-    /// <see cref="ObjectIs"/> and skips the notification when it is equal: a fresh <c>record class</c>
-    /// instance with identical content counts as a change, while reapplying the exact same reference is a
-    /// no-op.</item>
+    /// <item>A host holding the value in <c>UseState</c> propagates it to the consumer when the new value is
+    /// not equal to the previous one under <see cref="ObjectIs"/>, and propagates nothing when it is equal:
+    /// a fresh <c>record class</c> instance with identical content counts as a change, while reapplying the
+    /// exact same reference is a no-op. It is the setter's bail that decides this, not
+    /// <c>ContextProviderNode.HasValueChanged</c> — perturbing that to report no change leaves every case
+    /// here green, and <c>ProviderPositionPairingTests</c> is what pins the notification it gates.</item>
     /// <item>A <c>record class</c> value's own structural equality does not make two distinct instances
-    /// equal for Provider change detection — the comparison is by instance. A <c>record struct</c> takes the
+    /// equal for that decision — the comparison is by instance. A <c>record struct</c> takes the
     /// value-type branch instead and compares through <c>EqualityComparer&lt;T&gt;.Default</c>, which is why
     /// the word <c>record</c> alone does not decide the outcome.</item>
     /// <item>Floating-point values compare by raw bit pattern: <c>NaN</c> equals itself (replacing NaN with
@@ -57,8 +59,9 @@ namespace Velvet.Tests
         // GREEN_ON_BASE(characterization): this branch changes no production code — it corrects the
         // failure message, which called the fresh instance a reference type where string takes another
         // branch — so the case is green on both sides. What shows it can fail is the reference branch of
-        // ObjectIs.AreEqual perturbed to EqualityComparer<T>.Default, measured: the fresh instance then
-        // compares equal and the consumer is not notified.
+        // ObjectIs.AreEqual perturbed to EqualityComparer<T>.Default, measured: the UseState setter holding
+        // the value then bails on the fresh instance, the host does not re-render, and the consumer stays
+        // at one render.
         [Test]
         public void Given_RecordProvider_When_NewInstanceWithSameContent_Then_ConsumerReRenders()
         {

@@ -187,15 +187,15 @@ namespace Velvet
 
         /// <summary>
         /// Props value captured by the props-receiving <c>V.Component&lt;TProps&gt;</c> overload.
-        /// Stored on the fiber and compared with the previous render's props (shallow per-property identity
-        /// comparison) to decide whether to bail the re-render. Null for the refless / ref-forwarding
-        /// overloads (props-less Render).
+        /// Stored on the fiber and compared with the previous render's props to decide whether to bail the
+        /// re-render, under the shallow per-member rule <see cref="ComponentAttribute.Memoize"/> states.
+        /// Null for the refless / ref-forwarding overloads (props-less Render).
         /// </summary>
         public object? Props { get; init; }
 
         /// <summary>
         /// Optional custom <c>areEqual(prevProps, nextProps)</c> predicate supplied at the call site.
-        /// When non-null it overrides the default shallow per-property identity comparison: returning
+        /// When non-null it replaces that default comparison: returning
         /// <c>true</c> bails the re-render, <c>false</c> forces it. Supplied via <c>V.Memo(component, props, areEqual)</c>.
         /// Null means the default shallow comparison is used.
         /// </summary>
@@ -245,9 +245,11 @@ namespace Velvet
         public required Func<VNode> Factory { get; init; }
 
         /// <summary>
-        /// Dependency array. Compared element-wise with identity-equality semantics
-        /// (<see cref="ObjectIs.AreEqualDeps"/>): reference-type elements by identity (a fresh-but-equal record
-        /// counts as changed), strings/primitives by value, floats by raw bit pattern. NOT a structural
+        /// Dependency array. Compared element-wise (<see cref="ObjectIs.AreEqualDeps"/>) under
+        /// <c>Object.is</c> on each element's runtime type: <c>float</c> and <c>double</c> by raw bit
+        /// pattern, <c>string</c> by ordinal content, any other value type by its own equality — so a
+        /// <c>record struct</c> of equal content is unchanged — and any other reference type by instance,
+        /// so a fresh <c>record class</c> instance of equal content is a change. NOT a structural
         /// <c>SequenceEqual</c> — there is no recursion into element contents. An empty array declares no
         /// dependencies and caches for the node's whole life; null declares no dependency array, which no
         /// newly built node's comparison can satisfy.

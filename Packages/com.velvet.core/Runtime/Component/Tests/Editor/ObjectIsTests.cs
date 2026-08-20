@@ -18,7 +18,12 @@ namespace Velvet.Tests
     /// without the string special case, a dynamically-built but content-equal string would never bail and would
     /// force a re-render every time.</item>
     /// <item>Reference-type elements other than string compare by identity: a fresh-but-content-equal
-    /// <c>record class</c> or list counts as changed, while the same instance counts as unchanged.</item>
+    /// <c>record class</c> or list counts as changed, while the same instance counts as unchanged. A
+    /// <c>record struct</c> element takes the value branch instead, so a fresh one of equal content counts
+    /// as unchanged.</item>
+    /// <item>The two overloads read the branch from different places — <see cref="ObjectIs.AreEqual{T}"/>
+    /// from the static <c>T</c>, <see cref="ObjectIs.AreEqualObjects"/> from the runtime type — and a value
+    /// type erased to <c>object</c> is where that separates their answers.</item>
     /// <item>Float elements follow raw-bit equality: <c>NaN</c> equals itself and <c>+0</c> does not equal
     /// <c>-0</c>.</item>
     /// <item>Nullable value types compare by value: a lifted <c>default(T) == null</c> check would otherwise
@@ -33,6 +38,8 @@ namespace Velvet.Tests
         #region AreEqualDeps
 
         private sealed record DepRec(string Value);
+
+        private readonly record struct DepRecStruct(int Value);
 
         private enum Color { Red, Green }
 
@@ -116,13 +123,33 @@ namespace Velvet.Tests
                 "Strings compare by value");
         }
 
+        // GREEN_ON_BASE(characterization): this branch changes no production code — it says which kind of
+        // record the arrangement builds, where the bare word covered a struct it does not describe — so the
+        // case is green on both sides. What shows it can fail is the reference fall-through of
+        // AreEqualObjects cut to return true, measured: this case reddens beside the fresh-list case.
         [Test]
         public void Given_FreshRecordInstanceSameContent_When_AreEqualDeps_Then_AreNotEqual()
         {
-            // Act + Assert — a record reconstructed with identical content is a changed dep (by-reference)
+            // Act + Assert — a record class reconstructed with identical content is a changed dep
             Assert.That(
                 ObjectIs.AreEqualDeps(new object[] { new DepRec("x") }, new object[] { new DepRec("x") }),
                 Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): this case adds no production change — it pins the value branch a
+        // boxed element takes, which the base already has — so it is green on both sides. What shows it can
+        // fail is that branch of AreEqualObjects cut to return false, measured: this case reddens beside the
+        // int and enum element cases and the overload-split case below, which share the branch.
+        [Test]
+        public void Given_FreshRecordStructElementSameContent_When_AreEqualDeps_Then_AreEqual()
+        {
+            // Act + Assert — a record struct element boxes into the array, so the value branch decides it
+            // through the record's synthesized field-wise equality
+            Assert.That(
+                ObjectIs.AreEqualDeps(
+                    new object[] { new DepRecStruct(1) },
+                    new object[] { new DepRecStruct(1) }),
+                Is.True);
         }
 
         [Test]
@@ -186,11 +213,14 @@ namespace Velvet.Tests
             Assert.That(ObjectIs.AreEqual("a", "b"), Is.False);
         }
 
+        // GREEN_ON_BASE(characterization): the same wording correction as the deps case above, on the
+        // generic overload — green on both sides. What shows it can fail is AreEqual<T>'s reference branch
+        // cut to EqualityComparer<T>.Default, measured: this case reddens beside the overload-split case.
         [Test]
         public void Given_FreshRecordInstanceSameContent_When_AreEqualGeneric_Then_AreNotEqual()
         {
             // Act + Assert — non-string reference types still compare by reference identity (a fresh-but-equal
-            // record is a change), unchanged by the string special case.
+            // record class is a change), unchanged by the string special case.
             Assert.That(ObjectIs.AreEqual(new Rec("x"), new Rec("x")), Is.False);
         }
 
@@ -278,6 +308,28 @@ namespace Velvet.Tests
 
             public int X { get; }
             public int Y { get; }
+        }
+
+        #endregion
+
+        #region AreEqual<T> versus AreEqualObjects
+
+        // GREEN_ON_BASE(characterization): this case adds no production change — it pins the split the base
+        // already has between the two overloads — so it is green on both sides. What shows it can fail is
+        // AreEqual<T>'s reference guard narrowed to exclude object, measured: this is then the only case in
+        // the fixture that reddens.
+        [Test]
+        public void Given_ValueTypeErasedToObject_When_ComparedBothWays_Then_TheTwoOverloadsDisagree()
+        {
+            // Arrange — one value in two boxes, so the static type is object where the runtime type is not
+            object a = new DepRecStruct(1);
+            object b = new DepRecStruct(1);
+
+            // Act + Assert — the generic overload branches on the static type and the boxed one on the
+            // runtime type, which is why rerouting AreEqualObjects through AreEqual<T> would change answers
+            Assert.That(
+                (ObjectIs.AreEqual(a, b), ObjectIs.AreEqualObjects(a, b)),
+                Is.EqualTo((false, true)));
         }
 
         #endregion

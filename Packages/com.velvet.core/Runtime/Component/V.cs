@@ -1292,7 +1292,7 @@ namespace Velvet
         /// <remarks>
         /// <paramref name="areEqual"/> receives the previous and next props and returns <c>true</c> to
         /// <b>bail</b> (skip re-render). When the
-        /// default shallow per-property identity comparison is sufficient, prefer plain
+        /// default shallow comparison <see cref="ComponentAttribute.Memoize"/> states is sufficient, prefer plain
         /// <c>V.Component(body, props)</c> with <c>[Component(Memoize = true)]</c>; this overload is for
         /// the cases where shallow equality is too coarse or too fine (e.g. comparing only a subset of
         /// props, or deep-comparing one field).<br/>
@@ -1419,7 +1419,7 @@ namespace Velvet
         /// memoizes a function-style component by props equality.
         /// </summary>
         /// <param name="factory">Factory invoked to produce the cached VNode when <paramref name="deps"/> change.</param>
-        /// <param name="deps">Dependency values. When equal to the previous render (each dependency compared via <see cref="ObjectIs.AreEqualDeps"/> — reference-type elements by identity, strings and primitives by value, floats by raw bit pattern), the cached VNode is reused. Pass an empty array to declare no dependencies and cache the subtree for the node's whole life; null declares no dependency array, which no newly built node's comparison can satisfy.</param>
+        /// <param name="deps">Dependency values. When equal to the previous render, the cached VNode is reused; <see cref="MemoNode.Dependencies"/> states the branch each element type takes. Pass an empty array to declare no dependencies and cache the subtree for the node's whole life; null declares no dependency array, which no newly built node's comparison can satisfy.</param>
         /// <returns>The created <see cref="MemoNode"/>.</returns>
         public static MemoNode Memoized(Func<VNode> factory, params object?[]? deps)
         {

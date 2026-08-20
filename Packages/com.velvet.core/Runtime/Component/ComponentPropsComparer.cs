@@ -72,8 +72,10 @@ namespace Velvet
                 return false;
             }
 
-            // Primitive / string / enum props passed directly (no record wrapper) have no members to
-            // reflect, so the whole value is compared as one.
+            // Load-bearing, not a shortcut. Removing it makes ShallowEquals("ab", "cd") answer true —
+            // measured on the compiled arm and on the reflection arm alike — so a memoized component
+            // taking a bare string prop would bail on a real change. ComponentPropsComparerTests pins
+            // the string and the primitive.
             if (type.IsPrimitive || type == typeof(string) || type.IsEnum)
             {
                 return ObjectIs.AreEqualObjects(prev, next);

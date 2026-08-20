@@ -107,9 +107,10 @@ namespace Velvet
         // component is treated as a no-op, so a setState after disposal is silently ignored rather than
         // throwing.
         //
-        // Object.is equality is used deliberately: where the snapshot is a record, a value-equal but distinct
-        // instance must still notify subscribers, and EqualityComparer<T>.Default would invoke the record's
-        // value-equality and suppress the notification.
+        // ObjectIs.AreEqual rather than EqualityComparer<TState>.Default, chosen for the case where the
+        // two differ: a record CLASS snapshot rebuilt with equal content is a fresh instance and must
+        // still notify. Where the snapshot is a record STRUCT the two are the same call, so an
+        // equal-content one is suppressed instead — StoreTests pins both.
         private bool TryApply(Func<TState, TState> updater, bool force)
         {
             if (_disposed) return false;

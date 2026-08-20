@@ -235,8 +235,8 @@ namespace Velvet.Tests
         public void Given_FreshPropInstanceWithEqualValues_When_ParentReRenders_Then_ChildRebuilds()
         {
             // Arrange — a fresh record class instance with identical members on every render. The inner memo
-            // keys such an input on instance, so a fresh-but-equal one is a miss (sound: the framework reconciles
-            // the child on each parent re-render and reuses a VNode only when the captured instance is the same).
+            // keys such an input on instance, so a fresh-but-equal one is a miss (sound: the framework
+            // reconciles the child on each parent re-render, so a miss costs a rebuild and never a stale tree).
             s_childProps = _ => new ChildProps("a");
             using var mounted = V.Mount(_root, V.Component(PropsParent, key: "parent"));
             Assume.That(s_propsChildRebuildCount, Is.EqualTo(1), "Precondition: mount misses once and builds the child");

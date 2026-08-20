@@ -124,6 +124,11 @@ namespace Velvet.Tests
                 "A null deps argument is no dependency array, so the callback is never frozen to an earlier closure");
         }
 
+        // GREEN_ON_BASE(characterization): this branch changes no production code — it corrects the failure
+        // message, which named the comparison in a form that is false for a string dep — so the case is
+        // green on both sides. What shows it can fail is the reference fall-through of
+        // ObjectIs.AreEqualObjects cut to return true, measured: the fresh dep then compares equal and the
+        // committed delegate is handed back.
         [Test]
         public void Given_RecordDep_When_FreshButContentEqualInstance_Then_ReturnsNewDelegate()
         {
@@ -138,7 +143,7 @@ namespace Velvet.Tests
 
             // Assert
             Assert.AreNotSame(first, s_recordDepLastCallback,
-                "A fresh-but-content-equal reference-type dep counts as changed (identity compare), so the delegate is new");
+                "A fresh-but-content-equal record class dep counts as changed, so the delegate is new");
         }
 
         [Test]
@@ -294,8 +299,8 @@ namespace Velvet.Tests
         {
             var (tick, setTick) = Hooks.UseState(0);
             s_recordDepSetTick = setTick;
-            // A fresh-but-content-equal record instance every render. Under reference-identity deps semantics this is
-            // a CHANGED dep (the reference differs), so the callback must be a fresh reference.
+            // A fresh-but-content-equal record class instance every render. That dep is compared by instance,
+            // so it is CHANGED and the callback must be a fresh reference.
             var dep = new DepRecord("constant");
             s_recordDepLastCallback = Hooks.UseCallback<Func<string>>(() => dep.Value, dep);
             return V.Label(text: $"{tick}:{dep.Value}");

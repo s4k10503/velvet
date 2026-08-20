@@ -13,8 +13,10 @@ namespace Velvet.Tests
     /// <item>Any single member that differs makes the props not equal.</item>
     /// <item>String members compare by value, so content-equal strings built at runtime are equal regardless
     /// of instance identity.</item>
-    /// <item>Reference-type members compare by identity and the comparison never recurses: distinct
-    /// instances with equal content are not equal, the same instance is equal.</item>
+    /// <item>Reference-type members other than string compare by identity and the comparison never recurses:
+    /// distinct instances with equal content are not equal, the same instance is equal.</item>
+    /// <item>A props value passed with no record wrapper — a bare string, a bare primitive — is compared as a
+    /// whole rather than through a member set.</item>
     /// <item>Float members follow <c>Object.is</c> raw-bit equality: <c>NaN</c> equals itself and <c>+0</c>
     /// does not equal <c>-0</c>.</item>
     /// </list>
@@ -111,6 +113,28 @@ namespace Velvet.Tests
 
             // Act + Assert
             Assert.That(ComponentPropsComparer.ShallowEquals(a, b), Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): this case adds no production change — it pins the guard that
+        // routes an unwrapped props value away from the member-set comparison, which the base already
+        // has — so it is green on both sides. What shows it can fail is that guard deleted, measured:
+        // this case and the primitive one below are the only two in the fixture that redden.
+        [Test]
+        public void Given_BareStringProps_When_ContentDiffersAtEqualLength_Then_IsNotEqual()
+        {
+            // Act + Assert — the lengths match, which is what made this pair compare equal with the guard removed
+            Assert.That(ComponentPropsComparer.ShallowEquals("ab", "cd"), Is.False,
+                "A bare string props value is compared as a whole rather than through a member set");
+        }
+
+        // GREEN_ON_BASE(characterization): the other half of the guard above, on a primitive rather than a
+        // string; green on both sides for the same reason, and red under the same deletion.
+        [Test]
+        public void Given_BarePrimitiveProps_When_ValuesDiffer_Then_IsNotEqual()
+        {
+            // Act + Assert
+            Assert.That(ComponentPropsComparer.ShallowEquals(1, 2), Is.False,
+                "A bare primitive props value is compared as a whole rather than through a member set");
         }
 
         [Test]

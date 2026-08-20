@@ -28,7 +28,8 @@ namespace Velvet
 
         /// <summary>
         /// Opt-in props-bail: skip a parent-driven re-render when this component's props are
-        /// shallow-equal to the previous render (each property compared by reference/value identity). Default is <c>false</c>.
+        /// shallow-equal to the previous render — compared member by member under <c>Object.is</c>,
+        /// with no recursion into a member's own contents. Default is <c>false</c>.
         /// <para>
         /// This is a true opt-in gate: only a component with <c>Memoize = true</c> (or one created via
         /// <c>V.Memo</c> with a custom comparator) bails on shallow-equal props. A component without it
@@ -47,8 +48,9 @@ namespace Velvet
         /// Whether the build-time compiler transform — inner auto-memoization — is woven into this
         /// component. Default is <c>true</c>: the transform caches the component's VNode construction keyed on the
         /// values flowing out of its hook calls (and its props), rebuilding only when one of those inputs changes
-        /// by reference/value identity. Every component is auto-memoized with no opt-in, so this is on by
-        /// default for all components.
+        /// under <c>Object.is</c> — <see cref="MemoNode.Dependencies"/> states the branch each type takes, since
+        /// the weaver keys on the same dependency comparison. Auto-memoization needs no opt-in, so a component
+        /// is woven unless it sets this to <c>false</c> or the weaver finds a hook it cannot memoize safely.
         /// <para>
         /// Set to <c>false</c> to opt this component out of the transform, so its body then runs in full on
         /// every render. This is an escape hatch for

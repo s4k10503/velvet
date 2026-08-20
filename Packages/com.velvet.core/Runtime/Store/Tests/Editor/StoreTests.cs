@@ -12,8 +12,10 @@ namespace Velvet.Tests.Editor
     /// <item>A new store exposes its construction value through both <c>Current</c> and <c>InitialState</c>, and
     /// a fresh subscription created with <c>fireImmediately</c> receives that value immediately.</item>
     /// <item><c>InitialState</c> is fixed at construction time and never changes, even after the state is updated.</item>
-    /// <item><c>SetState</c> updates the state and returns whether it actually changed; it bails out only when the
-    /// updater returns the identical instance, so a distinct-but-value-equal record still updates and notifies.</item>
+    /// <item><c>SetState</c> updates the state and returns whether it actually changed. For a <c>record class</c>
+    /// snapshot it bails only on the identical instance, so a distinct-but-value-equal one still updates and
+    /// notifies; for a <c>record struct</c> snapshot the comparison is the record's own field-wise equality, so
+    /// an equal-content one bails.</item>
     /// <item><c>Mutate</c> updates the state and notifies unconditionally, even when the new value equals the old one.</item>
     /// <item>A selected slice notifies only when the slice changes under the chosen comparer; without a comparer it
     /// uses <c>Object.is</c>, which compares an array slice by instance, and a sequence comparer bails when a
@@ -186,6 +188,26 @@ namespace Velvet.Tests.Editor
 
             // Assert
             Assert.That(notifications, Is.EqualTo(1));
+        }
+
+        // GREEN_ON_BASE(characterization): this case adds no production change — it pins the value branch a
+        // value-type snapshot takes in the SetState bail, which the base already has — so it is green on
+        // both sides. What shows it can fail is that branch of ObjectIs.AreEqual cut to return false,
+        // measured: this case reddens beside the int-slice duplicate-skip case, which shares the branch.
+        [Test]
+        public void Given_RecordStructState_When_SetStateReturnsFieldEqualInstance_Then_NoNotification()
+        {
+            // Arrange — a value-type snapshot, moved once so a store that notifies nothing at all is ruled out
+            using var store = new StructStateStore();
+            var notifications = 0;
+            using var sub = store.Subscribe(_ => notifications++);
+            store.PublicSetState(_ => new StructState(7));
+
+            // Act
+            store.PublicSetState(_ => new StructState(7));
+
+            // Assert — the committed value separates a bail from a store that never applied the first write
+            Assert.That((store.Current.N, notifications), Is.EqualTo((7, 1)));
         }
 
         #endregion
@@ -598,6 +620,27 @@ namespace Velvet.Tests.Editor
         }
 
         public sealed record Item(int Id);
+
+        public readonly record struct StructState(int N);
+
+        /// <summary>
+        /// Test Store over a value-type snapshot, the <c>SetState</c> bail branch <see cref="TestStore"/>
+        /// does not reach.
+        /// </summary>
+        public sealed class StructStateStore : Store<StructState>
+        {
+            public StructStateStore() : base(new StructState(0))
+            {
+            }
+
+            public bool PublicSetState(Func<StructState, StructState> updater)
+                => SetState(updater);
+
+            protected override void ResetCore()
+            {
+                Mutate(_ => new StructState(0));
+            }
+        }
 
         /// <summary>
         /// Test Store implementation.
