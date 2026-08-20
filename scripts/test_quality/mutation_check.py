@@ -386,6 +386,29 @@ STATEMENT_BOUNDARY = (";", "{", "}", ":")
 LOGIC_JOINS = (" && ", " || ")
 GUARD_STATEMENT = re.compile(r"^if \(.+\)\s*(?:return[^;]*|continue|break);$")
 
+# A removal that carries off a declaration leaves the reads of that name unresolved, so the mutant
+# compiles nowhere and the campaign scores it unmeasured and fails. `var (state, setState) =
+# UseState(...)` is the shape VOID_CALL reads as a discarded call: `var` satisfies its leading
+# identifier, and the argument list the pattern looks for runs from the deconstruction's `(` to the
+# initializer's last `)`.
+# Three spellings of C# rather than a reading of it -- a deconstruction, an `out` argument, a pattern
+# variable. The `out` arm refuses the argument that declares nothing along with the one that does,
+# because what a removal carries off at `out existingField` is the assignment rather than the
+# declaration: the name survives the cut, and whether anything still writes it on the paths that read
+# it is definite assignment, which a pattern over the text cannot decide. A discard and a member
+# access are the two exemptions.
+# The pattern arm reads the name directly behind `var`, behind one type token, or behind one closed
+# brace or bracket group; a designation standing behind a type and a group both, or behind a
+# parenthesised pattern, is not read as one.
+# `MutantDeclarationRemovalTests` is the reading -- of the declaration and of the `out` assignment
+# both -- so a spelling missing from here is one red line there, and so is any narrowing that lets a
+# removal carry off an `out` argument spelled as a bare name.
+DECLARES_A_NAME = re.compile(
+    r"\bvar\s*\("
+    r"|\bout\b(?!\s*(?:_|[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+)\s*[,)])"
+    r"|\bis\s+(?:not\s+)?(?!not\b)"
+    r"(?:var\s+|[A-Za-z_][\w.<>\[\]?]*\s+|[{\[][^;]*[}\]]\s+)[A-Za-z_]")
+
 
 # Braces and brackets count towards depth as well as parentheses. A property pattern puts a colon
 # inside braces at the enclosing parenthesis depth -- `is { Count: > 0 }` -- so a model that reads
@@ -490,11 +513,15 @@ def clause_cuts(line, start, mask, limit):
     return cuts
 
 
+def code_only(text, mask, start, end):
+    """What the compiler sees between two offsets, with the comments and the literals taken out."""
+    return "".join(text[offset] for offset in range(start, end) if mask[offset])
+
+
 def code_above(text, mask, spans, number):
     """The nearest code the mask leaves above line `number`, or "" at the top of the file."""
     for above in range(number - 2, -1, -1):
-        start, end = spans[above]
-        seen = "".join(text[offset] for offset in range(start, end) if mask[offset]).strip()
+        seen = code_only(text, mask, *spans[above]).strip()
         if seen:
             return seen
     return ""
@@ -503,8 +530,7 @@ def code_above(text, mask, spans, number):
 def code_below(text, mask, spans, number):
     """The nearest code the mask leaves below line `number`, or "" at the end of the file."""
     for below in range(number, len(spans)):
-        start, end = spans[below]
-        seen = "".join(text[offset] for offset in range(start, end) if mask[offset]).strip()
+        seen = code_only(text, mask, *spans[below]).strip()
         if seen:
             return seen
     return ""
@@ -553,15 +579,19 @@ def mutations_for(path, text, target_lines):
                 if all(mask[start + match.start():start + match.end()]):
                     found.append(Mutant(path, number, match.start(), before, after, operator))
         stripped = line.strip()
+        limit = len(line.rstrip())
         if (VOID_CALL.match(stripped) and not stripped.startswith(("return", "throw", "yield"))
+                and not DECLARES_A_NAME.search(code_only(text, mask, start, end))
                 and deletable_statement(text, mask, spans, number)):
             found.append(Mutant(path, number, 0, stripped, ";", "void call removed"))
-        limit = len(line.rstrip())
         # `cut`, not `text`: binding the file's source here left every line processed after the
         # first cut read out of a clause string, so one `||` early in a range silenced the rest.
         for column, cut in clause_cuts(line, start, mask, limit):
+            if DECLARES_A_NAME.search(code_only(text, mask, start + column, start + column + len(cut))):
+                continue
             found.append(Mutant(path, number, column, cut, "", "clause removed"))
-        if GUARD_STATEMENT.match(stripped) and all(mask[start:start + limit]):
+        if (GUARD_STATEMENT.match(stripped) and all(mask[start:start + limit])
+                and not DECLARES_A_NAME.search(code_only(text, mask, start, start + limit))):
             found.append(Mutant(path, number, line.index(stripped), stripped, "", "guard removed"))
     return found
 
@@ -1095,7 +1125,10 @@ def main():
             "Wait for it if one is running; otherwise put it back with\n"
             "  python3 scripts/test_quality/mutation_check.py --restore".format(*names))
 
-    if args.emit_lines:
+    # Presence, not truth, the same as --carried above: the flag selects a mode, and an empty operand
+    # read as absence falls through to the campaign -- which mutates a source, under a flag whose whole
+    # contract is that it writes none.
+    if args.emit_lines is not None:
         # The applied line only, not the applied file: 11301 whole files is gigabytes, and the reader
         # holds the originals anyway. What it gets from here is this script's edit, not its opinion
         # of whether the edit parses -- that is the half it exists to answer independently.

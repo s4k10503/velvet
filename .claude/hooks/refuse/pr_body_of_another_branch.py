@@ -49,13 +49,16 @@ subcommand and match nothing — in six guards, not one. What is left is what ha
 """
 
 import json
-import os
 import re
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-from shell_commands import command_segments, leading_program, program_invocations, tokens_of, unexpanded
+# GuardCommandCoverageTests poses its table to this module rather than to the lib, so
+# `BODY_FILE_FLAGS` stays bound here although nothing below reads it.
+from pr_body import (BODY_FILE_FLAGS, BODY_FLAGS, MISSING, RELATIVE_AFTER_MOVE, STDIN,
+                     UNEXPANDED_PATH, UNREADABLE, effective_body, invocations, valued)
+from shell_commands import unexpanded
 
 # Registered on the event in .claude/settings.json rather than narrowed to the agents expected to
 # open pull requests, which would leave every other session unguarded. `HookWiringCoverageTests`
@@ -74,16 +77,14 @@ UNEXPANDED_PROBE = 'gh pr create --title t --body-file $BODY'
 UNREADABLE_POLICY = "none"
 UNREADABLE_PROBE = {"command": "gh pr create --title t --body-file velvet-no-such-body.md"}
 
-BODY_FILE_FLAGS = ("--body-file", "-F")
-BODY_FLAGS = ("--body", "-b")
-# Neither opens a pull request, so neither posts a description.
-EXEMPT_FLAGS = ("--dry-run", "--help", "-h")
-
 # A keyword against a number, or the issue's own URL. The keyword is what distinguishes a statement
 # of origin from a number that happens to appear: the bare form was satisfied by a six-digit colour,
 # and it counted a cross-reference in prose, which leaves the issue open exactly as before.
+# `part of` is spelled out rather than reached by loosening the gap to any short run of words: the
+# looser form takes `Closes the gap ...; see #123` back, which is the prose cross-reference above.
 ISSUE_REFERENCE = re.compile(
-    r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?|refs?)\b[^\S\n]*:?[^\S\n]*#\d+"
+    r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?|refs?)\b(?:[^\S\n]+part[^\S\n]+of)?"
+    r"[^\S\n]*:?[^\S\n]*#\d+"
     r"|github\.com/[\w.-]+/[\w.-]+/issues/\d+",
     re.IGNORECASE)
 # A line rather than a flag, so the answer lands in the published body where a reader looking for
@@ -92,7 +93,7 @@ ISSUE_REFERENCE = re.compile(
 NO_ISSUE_LINE = re.compile(r"^[^\S\n]*No issue[:.][^\S\n]*\S", re.MULTILINE | re.IGNORECASE)
 
 NO_ANSWER = (
-    "Refusing `gh pr create`: the body names no issue.\n\n"
+    "the body names no issue.\n\n"
     "CONTRIBUTING.md asks every pull request to say where it came from. If it closes an\n"
     "issue, the first line closes it on merge:\n\n"
     "  Closes #<n>.\n\n"
@@ -100,50 +101,11 @@ NO_ANSWER = (
     "who wonders where it came from finds an answer rather than a silence:\n\n"
     "  No issue: <where this came from>")
 
-
-def valued(operands, flags):
-    """The value given to one of `flags`, or None.
-
-    Three spellings, because gh takes all three: `--flag v`, `--flag=v`, and `-Fv` — a short flag
-    carrying its value attached. The last was missed, so `-F/tmp/pr-body.md` reached none of the
-    checks below: the invocation was claimed, no body was found, and it took the exemption meant for
-    a body this cannot read. That is the accident this guard exists for, one character apart.
-
-    A name is read off any token, including one that is another option's value, so `-t -Fx` gives a
-    body file of `x` and the file asked about is not the one gh will post. Separating the two needs a
-    mirror of which of gh's options take a value, and an unpinned mirror drifts.
-    """
-    short = tuple(flag for flag in flags if len(flag) == 2 and flag.startswith("-") and flag[1] != "-")
-    for index, token in enumerate(operands):
-        name, sep, inline = token.partition("=")
-        if name in flags:
-            if sep:
-                return inline
-            if index + 1 < len(operands):
-                return operands[index + 1]
-            return None
-        for flag in short:
-            if len(token) > 2 and token.startswith(flag):
-                return token[2:]
-    return None
-
-
-MOVERS = {"cd", "pushd", "popd"}
-
-
-def moves_directory(segment):
-    """Whether this segment changes the directory a later segment runs in.
-
-    The command word is read the way shell_commands reads one, past `then`/`do`, `builtin` and an
-    environment assignment: reading tokens[0] instead missed `if true; then cd /tmp; fi`, which is
-    the lib's own documented reason for having leading_program at all.
-    """
-    tokens = tokens_of(segment)
-    index = leading_program(tokens)
-    if index >= len(tokens):
-        return False
-    word = os.path.basename(tokens[index])
-    return word in MOVERS
+TWO_BODIES = (
+    "the command carries two bodies and only one of them says\n"
+    "where the change came from. Which one gh posts is not something this holds, so an\n"
+    "answer carried only by the body it does not post would be an answer nobody reads.\n\n"
+    "Pass the one you mean.")
 
 
 def refuse(message):
@@ -151,76 +113,71 @@ def refuse(message):
     return 2
 
 
+def refuse_command(command, message):
+    return refuse(f"Refusing `{command}`: {message}")
+
+
 def answered(text):
     """Whether the body says where the change came from, either way round."""
     return bool(ISSUE_REFERENCE.search(text) or NO_ISSUE_LINE.search(text))
 
 
-def judge_inline(text):
+def judge_inline(text, command):
     """0, or 2 with the reason written to stderr."""
     if answered(text):
         return 0
     if unexpanded(text):
-        return refuse(
-            "Refusing `gh pr create`: the body is assembled by the shell, so the description this\n"
+        return refuse_command(
+            command,
+            "the body is assembled by the shell, so the description this\n"
             "can read is not the one that will be posted.\n\n"
             "Write it to a file in a step of its own and pass `--body-file <path>`.")
-    return refuse(NO_ANSWER)
+    return refuse_command(command, NO_ANSWER)
 
 
-def judge_file(path, cwd, after_a_move):
+# One remedy per obstruction, because a body this cannot read is refused rather than skipped and a
+# reader given the wrong remedy tries the wrong thing. `pr_body.read_body_file` names them; what to
+# say about each is here.
+UNREADABLE_BODY = {
+    UNEXPANDED_PATH: (
+        "the body file's path is still unexpanded, so this cannot open\n"
+        "the description that will be posted.\n\n"
+        "Run it with the path spelled out."),
+    STDIN: (
+        "the body comes from stdin, which this cannot read.\n\n"
+        "Write it to a file and pass that, so the description that will be posted is one this\n"
+        "can read too."),
+    RELATIVE_AFTER_MOVE: (
+        "the command changes directory, so a relative body path\n"
+        "names one file here and another one to `gh`.\n\n"
+        "Give the body an absolute path."),
+    MISSING: (
+        "{path} does not exist.\n\n"
+        "The body has to be there before this command runs, so a body written by this same\n"
+        "command is too late — write it in a step of its own and create the pull request in\n"
+        "the next. A path that is missing for any other reason is usually one whose write did\n"
+        "not run: a refused hook stops the whole `&&` chain it was in, including the write."),
+    UNREADABLE: "{path} cannot be read.",
+}
+
+
+def check(operands, cwd, after_a_move, command="gh pr create"):
     """0, or 2 with the reason written to stderr."""
-    if unexpanded(path):
-        return refuse(
-            "Refusing `gh pr create`: the body file's path is still unexpanded, so this cannot open\n"
-            "the description that will be posted.\n\n"
-            "Run it with the path spelled out.")
-    if path == "-":
-        return refuse(
-            "Refusing `gh pr create`: the body comes from stdin, which this cannot read.\n\n"
-            "Write it to a file and pass that, so the description that will be posted is one this\n"
-            "can read too.")
-    if after_a_move and not os.path.isabs(path):
-        return refuse(
-            "Refusing `gh pr create`: the command changes directory, so a relative body path\n"
-            "names one file here and another one to `gh`.\n\n"
-            "Give the body an absolute path.")
-    resolved = Path(path) if os.path.isabs(path) else Path(cwd) / path
-    if not resolved.exists():
-        return refuse(
-            f"Refusing `gh pr create`: {path} does not exist.\n\n"
-            "The body has to be there before this command runs, so a body written by this same\n"
-            "command is too late — write it in a step of its own and create the pull request in\n"
-            "the next. A path that is missing for any other reason is usually one whose write did\n"
-            "not run: a refused hook stops the whole `&&` chain it was in, including the write.")
-    try:
-        text = resolved.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return refuse(f"Refusing `gh pr create`: {path} cannot be read.")
-    return 0 if answered(text) else refuse(NO_ANSWER)
-
-
-def check(operands, cwd, after_a_move):
-    """0, or 2 with the reason written to stderr."""
-    if any(token in EXEMPT_FLAGS for token in operands):
-        return 0
-    path = valued(operands, BODY_FILE_FLAGS)
-    text = valued(operands, BODY_FLAGS)
-    if path is None and text is None:
+    text, obstruction, path = effective_body(operands, cwd, after_a_move)
+    if obstruction is not None:
+        return refuse_command(command, UNREADABLE_BODY[obstruction].replace("{path}", path))
+    if text is None:
         # No body operand at all: --fill and its relatives, --template, --recover, --editor, and the
         # interactive form. The description comes from commits, from a file every branch reuses, or
         # from a prompt after this has run, and none of those is text held here to search — so the
         # question goes unasked, which CONTRIBUTING states without this exception.
         return 0
-    # Both are judged when both are given: which one gh posts is not something this holds, so an
-    # answer carried only by the one it does not post would be an answer nobody reads.
-    if text is not None:
-        verdict = judge_inline(text)
-        if verdict:
-            return verdict
-    if path is not None:
-        return judge_file(path, cwd, after_a_move)
-    return 0
+    if path is None:
+        return judge_inline(text, command)
+    inline = valued(operands, BODY_FLAGS)
+    if inline is not None and answered(inline) != answered(text):
+        return refuse_command(command, TWO_BODIES)
+    return 0 if answered(text) else refuse_command(command, NO_ANSWER)
 
 
 def main():
@@ -235,18 +192,16 @@ def main():
         cwd = event.get("cwd") or "."
         if not isinstance(command, str):
             return 0
-        moved = False
-        for segment in command_segments(command):
-            for operands in program_invocations(segment, "gh", ("pr", "create")):
-                verdict = check(operands, cwd, moved)
-                if verdict:
-                    return verdict
-            moved = moved or moves_directory(segment)
+        for words, operands, moved in invocations(
+                command, ("pr", "create"), ("pr", "new"), ("pr", "edit")):
+            verdict = check(operands, cwd, moved, "gh pr " + words[1])
+            if verdict:
+                return verdict
         return 0
     except Exception as err:
         # Exit 1 is not a refusal — PreToolUse runs the tool anyway — so an unforeseen shape here
         # would let through exactly what this exists to stop.
-        print(f"Refusing `gh pr create`: this guard failed to reach a verdict ({err!r}).",
+        print(f"Refusing a pull-request body update: this guard failed to reach a verdict ({err!r}).",
               file=sys.stderr)
         return 2
 

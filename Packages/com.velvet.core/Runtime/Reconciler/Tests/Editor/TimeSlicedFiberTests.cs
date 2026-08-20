@@ -51,6 +51,7 @@ namespace Velvet.Tests
             ResetRefOrdering();
             ResetSiblingShift();
             ResetRotation();
+            ResetTransitionList();
         }
 
         [TearDown]
@@ -200,6 +201,27 @@ namespace Velvet.Tests
             Assert.That((parkedMidCommit, fiber.HasPendingReconcileWorkForTest(), _root.childCount),
                 Is.EqualTo((true, false, 40)),
                 "The flush parks mid-commit and the resume drains the remaining work, committing the full new list");
+        }
+
+        [Test]
+        public void Given_UseTransitionWorkParksMidCommit_When_TheTerminalSliceCompletes_Then_IsPendingSpansTheWholeCommit()
+        {
+            // Arrange
+            s_transitionListCount = 3;
+            using var mounted = V.Mount(_root, V.Component(TransitionListRender, key: "transition-list"));
+            s_transitionListStart.Invoke(() => s_transitionListSetCount.Invoke(40));
+
+            // Act
+            s_transitionListFiber.FlushStateWithTinyBudgetForTest();
+            var parked = s_transitionListFiber.HasPendingReconcileWorkForTest();
+            var pendingWhileParked = s_transitionListFiber.IsTransitionPending;
+            s_transitionListFiber.DrainTimeSlicedReconcileForTest();
+
+            // Assert
+            Assert.That(
+                (parked, pendingWhileParked, s_transitionListFiber.IsTransitionPending, _root.childCount),
+                Is.EqualTo((true, true, false, 40)),
+                "isPending stays lit through every parked slice and clears only after the terminal commit");
         }
 
         #endregion
@@ -756,6 +778,39 @@ namespace Velvet.Tests
         {
             s_nestedInnerFiber = FiberAmbientStack.Current;
             return FlatLeafFragment("inner", s_nestedInnerCount);
+        }
+
+        #endregion
+
+        #region UseTransition list component
+
+        private static int s_transitionListCount;
+        private static ComponentFiber s_transitionListFiber;
+        private static StateUpdater<int> s_transitionListSetCount;
+        private static TransitionStarter s_transitionListStart;
+
+        private static void ResetTransitionList()
+        {
+            s_transitionListCount = 0;
+            s_transitionListFiber = null;
+            s_transitionListSetCount = default;
+            s_transitionListStart = default;
+        }
+
+        [Component]
+        private static VNode TransitionListRender()
+        {
+            s_transitionListFiber = FiberAmbientStack.Current;
+            var (count, setCount) = Hooks.UseState(s_transitionListCount);
+            var (_, start) = Hooks.UseTransition();
+            s_transitionListSetCount = setCount;
+            s_transitionListStart = start;
+            var children = new VNode[count];
+            for (var i = 0; i < count; i++)
+            {
+                children[i] = V.Label(text: $"transition-{i}");
+            }
+            return V.Fragment(children: children);
         }
 
         #endregion

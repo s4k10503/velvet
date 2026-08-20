@@ -90,9 +90,17 @@ Four ways a green test has lied here:
 
 ## Comments
 
+### Not at all, first
+
+The cheapest comment is the one the code makes unnecessary, and that question comes before every rule below it: can this be carried by the code instead — a name, a type split, a method that serves one caller rather than three? A comment that is hard to write is evidence about the code, not about the comment.
+
+The most expensive comments here have been the ones covering for a shape. A method reached from three paths with different meanings needed a sentence saying which one it was written for, and that sentence was false at two of them — and at one, the behaviour was wrong too, which the comment's confidence hid. A three-valued reading whose members are reachable under different conditions per call site took three corrections, each moving the falsity rather than removing it. In both the sentence sat where the code had stopped explaining itself, and rewriting it was never going to work.
+
+So the first move is to try the code. The three kinds under *Then short* are what survives that attempt, not a licence to skip it.
+
 ### True first
 
-A comment states why — never what, and once. Before any question of economy, it has to be **true**. The commonest failure is a comment naming a *mechanism* the author never verified, in the shape "X because Y" with X observed and Y assumed; a second one is rarer and worse, calling a true statement false because it named a term that was not the operative one. Five of the six that shipped in one session are below. The sixth is not, and its absence is the entry: a single sentence about which transform a reading carries was corrected four times, each correction wrong in a new way, and the fifth attempt is this paragraph declining to make it. **When a sentence has been corrected twice and is still wrong, delete it.** Nothing in the code needed it; four rounds of review went into prose that was load-bearing for nobody.
+A comment states why — never what, and once. Before any question of economy, it has to be **true**. The commonest failure is a comment naming a *mechanism* the author never verified, in the shape "X because Y" with X observed and Y assumed; a second one is rarer and worse, calling a true statement false because it named a term that was not the operative one. Five of the six that shipped in one session are below. The sixth is not, and its absence is the entry: a single sentence about which transform a reading carries was corrected four times, each correction wrong in a new way, and the fifth attempt is this paragraph declining to make it. **When a sentence has been corrected twice and is still wrong, delete it — and ask what about the code made it hard to state.** Twice is where the evidence stops being about the sentence: a third attempt has never worked here, and the two that took four rounds each were describing a method or a reading that meant different things to different callers. Nothing in the code needed the sentence; four rounds of review went into prose that was load-bearing for nobody.
 
 - "the uniform-frame check catches an unstyled capture" — it does not; a backdrop and a font leave the frame varied
 - "without the stylesheet this class is inert, so the control holds" — that class has no USS rule at all and is written from C#
