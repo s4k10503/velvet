@@ -830,11 +830,12 @@ namespace Velvet.Tests
         }
 
         // The case above enumerates top-level directories, so it answers only for a root nobody walks. The
-        // exclusion lists cut at every depth, and an entry added to either quietly takes content out of the
-        // corpus with nothing left to report it: measured before this case existed, adding Samples~ to
+        // exclusion lists cut at every depth, and an entry added to either takes content out of the corpus
+        // with nothing here to report it: measured before this case existed, adding Samples~ to
         // BaseUnwalkedDirectories dropped a README with every case in this fixture and in
-        // WorkflowTriggerCoverageTests still green. Both are the failure this fixture exists to report, one
-        // level out.
+        // WorkflowTriggerCoverageTests green. One fixture did go red over it — AssemblyGraphTests, on the
+        // asmdef that happens to sit beside that README rather than on the README — so a directory holding
+        // documents and no asmdef had nothing looking at it.
         //
         // The population is what git tracks, because nothing those lists exclude is: measured, their
         // entries cover zero tracked files between them. Asking .gitignore instead would answer a different
