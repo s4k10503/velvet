@@ -194,10 +194,8 @@ namespace Velvet
         /// margin, an offset past its edge, tightened tracking). Every other length is a non-negative extent, so
         /// a driver overshooting below zero has to saturate rather than emit a value nothing can render.
         /// </summary>
-        // The discard stays because the arms that would replace it cannot be written: covering a member
-        // costs one branching decision, VEL501 caps a member at 20, and ArbitraryProperty is several
-        // times that. ExhaustiveSwitchSeverityTests names this among the switches still answering a
-        // catch-all with a value, with what stands in the way of each.
+        // Why the discard stays is in ExhaustiveSwitchSeverityTests' KnownValueAnsweringSites, with the
+        // two Router.cs switches it lists beside this one.
         internal static bool AllowsNegativeLength(ArbitraryProperty property) => property switch
         {
             ArbitraryProperty.MarginTop or ArbitraryProperty.MarginRight or ArbitraryProperty.MarginBottom

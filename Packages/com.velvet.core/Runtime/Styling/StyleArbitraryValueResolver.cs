@@ -1314,11 +1314,10 @@ namespace Velvet
                 return saturate;
             }
 
-            // The discard throws rather than answering. This method's domain is s_filterOrder, which
-            // ApplyCombinedFilter — its only caller — iterates, so naming the ArbitraryProperty members
-            // outside that array would map each to a filter type it is not. What the throw buys over the
-            // Sepia it replaces: a filter added to s_filterOrder with no arm here reports, rather than
-            // rendering as sepia.
+            // This method's domain is s_filterOrder, which ApplyCombinedFilter — its only caller —
+            // iterates, so naming the ArbitraryProperty members outside that array would map each to a
+            // filter type it is not. What the throw buys over the Sepia it replaces: a filter added to
+            // s_filterOrder with no arm here reports, rather than rendering as sepia.
             var type = prop switch
             {
                 ArbitraryProperty.FilterBlur => FilterFunctionType.Blur,

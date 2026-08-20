@@ -237,11 +237,17 @@ namespace Velvet.Tests
         }
 
         /// <summary>
-        /// The simple name of every enum the package's own assemblies declare. Read off the assemblies
-        /// rather than off the sources because a name here has to be a type this repository can add a
-        /// member to. CS8509 over one of those is a member somebody here forgot to answer; over a UI
-        /// Toolkit enum it is an editor upgrade, which no arm written here would have got ahead of.
-        /// <para/>
+        /// The simple name of every enum declared by a loaded assembly whose name starts with
+        /// <c>Velvet</c> and carries no <c>Test</c>. Read off the assemblies rather than off the sources
+        /// because a name here has to be a type this repository can add a member to. CS8509 over one of
+        /// those is a member somebody here forgot to answer; over a UI Toolkit enum it is an editor
+        /// upgrade, which no arm written here would have got ahead of.
+        /// <para>
+        /// <c>Unity.Velvet.CodeGen</c> does not start with <c>Velvet</c>, so the enums it declares sit
+        /// outside this set; its own <c>csc.rsp</c> raises no CS8509, so no switch of its is examined
+        /// either. Moving an enum into an assembly named that way takes it out of both readings.
+        /// </para>
+        /// <para>
         /// A simple name is the whole of the reading, so a UI Toolkit enum sharing one with a package enum
         /// is read as the package's. That is the direction to be wrong in — a switch reported and named by
         /// hand costs a review, and one not reported costs the guard.
@@ -317,6 +323,17 @@ namespace Velvet.Tests
         private static readonly Regex QualifiedConstant = new(
             @"(?<![\w.])(?:[A-Za-z_]\w*\.)*([A-Za-z_]\w*)\.[A-Za-z_]\w*(?![\w.])", RegexOptions.Compiled);
 
+        // A relational pattern (`<= UILayer.Topmost`), which answers every member on its side of the split
+        // without naming one — the member added tomorrow is answered and the build stays green, which is
+        // what the discard does. KnownValueAnsweringSites says which switch reaches for the shape and why.
+        private static readonly Regex RangeArmPattern = new(@"(?<![\w])[<>]=?", RegexOptions.Compiled);
+
+        // The guard clause, matched on the word boundary rather than on a trailing space, so `_ when(x)`
+        // splits the same way `_ when x` does. Read as pattern text instead, it matches no catch-all form,
+        // and the switch it sits in still counts as examined — an offender dropped, which is the direction
+        // that costs the guard.
+        private static readonly Regex WhenClause = new(@"\swhen\b", RegexOptions.Compiled);
+
         private static bool Throws(string body)
         {
             var trimmed = body.TrimStart();
@@ -325,27 +342,27 @@ namespace Velvet.Tests
         }
 
         /// <summary>
-        /// Every catch-all arm answering with a value, in each switch expression of
-        /// <paramref name="redacted"/> whose other arms name a member of one of
-        /// <paramref name="packageEnums"/>. <c>Examined</c> counts the switches those arms identified, so a
-        /// reading that resolved no governing type at all is visible rather than agreeable.
+        /// Each switch expression of <paramref name="redacted"/> whose arms name a member of one of
+        /// <paramref name="packageEnums"/>, as (that enum's name, its catch-all arms, its range arms).
+        /// An arm is (index, body), so a caller can place it and read what it answers with.
         /// </summary>
         // A pattern holding a brace or a colon is a property or positional pattern, and the constant
         // inside it belongs to a member rather than to the switch's own type — reading it would put a
         // switch over some other type in scope on the strength of one subpattern.
-        private static (List<(int Line, string Enum)> Offenders, int Examined) ValueAnsweringCatchAlls(
+        private static IEnumerable<(string Enum, List<(int Index, string Body)> CatchAlls,
+            List<(int Index, string Body)> Ranges)> SwitchesOverAPackageEnum(
             string redacted, ICollection<string> packageEnums)
         {
-            var offenders = new List<(int, string)>();
-            var examined = 0;
             foreach (var (start, end) in SwitchArmLists(redacted))
             {
                 string? governing = null;
                 var catchAlls = new List<(int Index, string Body)>();
+                var ranges = new List<(int Index, string Body)>();
                 foreach (var (pattern, body, index) in Arms(redacted, start, end))
                 {
-                    var clause = pattern.IndexOf(" when ", StringComparison.Ordinal);
-                    var bare = string.Join(" ", (clause < 0 ? pattern : pattern.Substring(0, clause))
+                    var clause = WhenClause.Match(pattern);
+                    var bare = string.Join(" ",
+                        (clause.Success ? pattern.Substring(0, clause.Index) : pattern)
                         .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
                     if (WholeCatchAllPattern.IsMatch(bare))
                     {
@@ -353,6 +370,7 @@ namespace Velvet.Tests
                         continue;
                     }
                     if (bare.IndexOf('{') >= 0 || bare.IndexOf(':') >= 0) { continue; }
+                    if (RangeArmPattern.IsMatch(bare)) { ranges.Add((index, body)); }
                     foreach (Match constant in QualifiedConstant.Matches(bare))
                     {
                         if (packageEnums.Contains(constant.Groups[1].Value))
@@ -362,8 +380,21 @@ namespace Velvet.Tests
                     }
                 }
 
-                if (governing == null) { continue; }
+                if (governing != null) { yield return (governing, catchAlls, ranges); }
+            }
+        }
 
+        /// <summary>
+        /// Every catch-all arm answering with a value, and the number of switches the reading resolved a
+        /// governing enum for — so a reading that resolved none is visible rather than agreeable.
+        /// </summary>
+        private static (List<(int Line, string Enum)> Offenders, int Examined) ValueAnsweringCatchAlls(
+            string redacted, ICollection<string> packageEnums)
+        {
+            var offenders = new List<(int, string)>();
+            var examined = 0;
+            foreach (var (governing, catchAlls, _) in SwitchesOverAPackageEnum(redacted, packageEnums))
+            {
                 examined++;
                 offenders.AddRange(catchAlls
                     .Where(arm => !Throws(arm.Body))
@@ -374,12 +405,33 @@ namespace Velvet.Tests
         }
 
         /// <summary>
-        /// Every catch-all answering with a value across the sources of an assembly whose <c>csc.rsp</c>
-        /// raises CS8509, and the number of switch expressions the reading resolved a governing enum for.
+        /// Every range arm answering with a value, counted the same way. Separate from the catch-alls
+        /// because it is a different spelling of the same silence — <see cref="RangeArmPattern"/> owns why.
+        /// </summary>
+        private static (List<(int Line, string Enum)> Ranges, int Examined) ValueAnsweringRangeArms(
+            string redacted, ICollection<string> packageEnums)
+        {
+            var ranges = new List<(int, string)>();
+            var examined = 0;
+            foreach (var (governing, _, overARange) in SwitchesOverAPackageEnum(redacted, packageEnums))
+            {
+                examined++;
+                ranges.AddRange(overARange
+                    .Where(arm => !Throws(arm.Body))
+                    .Select(arm => (LineOf(redacted, arm.Index), governing)));
+            }
+
+            return (ranges, examined);
+        }
+
+        /// <summary>
+        /// What <paramref name="read"/> reports across the sources of an assembly whose <c>csc.rsp</c>
+        /// raises CS8509, and the number of switch expressions it resolved a governing enum for.
         /// </summary>
         // Held to the assemblies that raise CS8509 because naming the arms of a switch the compiler
         // reports nothing about buys nothing there — the catch-all silences no error.
-        private static (List<string> Sites, int Examined) ValueAnsweringSites()
+        private static (List<string> Sites, int Examined) SitesAcrossGuardedAssemblies(
+            Func<string, ICollection<string>, (List<(int Line, string Enum)> Found, int Seen)> read)
         {
             var enums = PackageEnumNames();
             var sites = new List<string>();
@@ -394,7 +446,7 @@ namespace Velvet.Tests
                     continue;
                 }
 
-                var (found, seen) = ValueAnsweringCatchAlls(Redacted(File.ReadAllText(file)), enums);
+                var (found, seen) = read(Redacted(File.ReadAllText(file)), enums);
                 examined += seen;
                 sites.AddRange(found.Select(site => $"{Path.GetFileName(file)} ({site.Enum})"));
             }
@@ -402,15 +454,22 @@ namespace Velvet.Tests
             return (sites, examined);
         }
 
+        private static (List<string> Sites, int Examined) ValueAnsweringSites() =>
+            SitesAcrossGuardedAssemblies(ValueAnsweringCatchAlls);
+
+        private static (List<string> Sites, int Examined) RangeAnsweringSites() =>
+            SitesAcrossGuardedAssemblies(ValueAnsweringRangeArms);
+
         /// <summary>
-        /// The three switches whose catch-all still answers with a value, each for a reason naming the arms
-        /// would not remove. The list is a floor to work down, not a budget: an entry leaving it is a
+        /// The three switches whose catch-all still answers with a value, each for a reason this branch
+        /// could not remove. The list is a floor to work down, not a budget: an entry leaving it is a
         /// tightening, and one arriving is the failure this case exists for.
         /// <para>
-        /// <c>AllowsNegativeLength</c> cannot be written exhaustively at all. Covering an enum of M members
-        /// costs M branching decisions whatever the grouping — VEL501 charges one per arm and one per
-        /// <c>or</c> — and <c>ArbitraryProperty</c> is several times the cap, so the compiler this guard
-        /// speaks for refuses the arms before CS8509 could ask for them.
+        /// <c>AllowsNegativeLength</c> keeps its discard because neither rewrite is worth making. Naming
+        /// <c>ArbitraryProperty</c>'s members costs one branching decision each, which VEL501 refuses at
+        /// its cap of 20. Grouping the unnamed ones behind a range arm fits under the cap and answers the
+        /// member added tomorrow exactly as the discard does, so the silence would outlive the rewrite —
+        /// <c>Then_NoneAnswersARangeOfMembers</c> is what keeps that one from arriving unnoticed.
         /// </para>
         /// <para>
         /// The two <c>Router</c> switches could be named, and naming them would move a public failure. A
@@ -439,6 +498,19 @@ namespace Velvet.Tests
                 Is.EqualTo((true, string.Join("\n", KnownValueAnsweringSites))));
         }
 
+        // GREEN_ON_BASE(characterization): no switch on either side rests on a range arm, so the case is a
+        // ratchet against the rewrite KnownValueAnsweringSites declines rather than a report on this branch.
+        [Test]
+        public void Given_EveryProductionSwitchOverAPackageEnum_When_ItsArmsAreRead_Then_NoneAnswersARangeOfMembers()
+        {
+            // Arrange / Act
+            var (sites, examined) = RangeAnsweringSites();
+
+            // Assert — the floor rides along for the reason its sibling above gives.
+            Assert.That((examined >= 12, string.Join("\n", sites.OrderBy(site => site, StringComparer.Ordinal))),
+                Is.EqualTo((true, string.Empty)));
+        }
+
         // A switch expression over a package enum, one arm named and a catch-all under it. `{0}` takes the
         // catch-all's body, so each case below differs from the guard's subject in one term.
         private const string OneArmAndACatchAll = @"
@@ -453,6 +525,10 @@ internal static class Sample
 
         private static (List<(int Line, string Enum)> Offenders, int Examined) Scan(string body) =>
             ValueAnsweringCatchAlls(
+                Redacted(OneArmAndACatchAll.Replace("{0}", body)), PackageEnumNames());
+
+        private static (List<(int Line, string Enum)> Ranges, int Examined) ScanRanges(string body) =>
+            ValueAnsweringRangeArms(
                 Redacted(OneArmAndACatchAll.Replace("{0}", body)), PackageEnumNames());
 
         // GREEN_ON_BASE(characterization): the reading is the branch's and travels with this file, so it
@@ -471,7 +547,7 @@ internal static class Sample
         }
 
         // GREEN_ON_BASE(characterization): the exemption is the branch's own and reads the same on either
-        // side; it is here so the guard cannot be widened into the two throwing sites without a red.
+        // side; it is here so the guard cannot be widened into the throwing sites without a red.
         [Test]
         public void Given_ACatchAllThatThrows_When_TheSwitchIsRead_Then_ItIsNotReported()
         {
@@ -495,6 +571,45 @@ internal static class Sample
             // Assert
             Assert.That((examined, string.Join("\n", offenders.Select(o => o.Enum))),
                 Is.EqualTo((1, "UILayer")));
+        }
+
+        // GREEN_ON_BASE(characterization): the same statement about the reading as the case above, at the
+        // spelling a split on a trailing space drops.
+        [Test]
+        public void Given_ACatchAllWhoseWhenClauseTakesAParenthesis_When_TheSwitchIsRead_Then_ItIsReported()
+        {
+            // Arrange / Act
+            var (offenders, examined) = Scan("_ when(layer != UILayer.Topmost) => 1");
+
+            // Assert
+            Assert.That((examined, string.Join("\n", offenders.Select(o => o.Enum))),
+                Is.EqualTo((1, "UILayer")));
+        }
+
+        // GREEN_ON_BASE(characterization): the reading the ratchet's range case rests on, read off a
+        // synthetic source, so both sides answer alike.
+        [Test]
+        public void Given_AnArmAnsweringARangeOfMembers_When_TheSwitchIsRead_Then_ItIsReported()
+        {
+            // Arrange / Act
+            var (ranges, examined) = ScanRanges("<= UILayer.Topmost => 1");
+
+            // Assert — the count rides along for the reason the first control gives.
+            Assert.That((examined, string.Join("\n", ranges.Select(r => r.Enum))),
+                Is.EqualTo((1, "UILayer")));
+        }
+
+        // GREEN_ON_BASE(characterization): the range reading's exemption, matching the catch-all one, so a
+        // range that reports rather than answering is not a site to work down.
+        [Test]
+        public void Given_ARangeOfMembersThatThrows_When_TheSwitchIsRead_Then_ItIsNotReported()
+        {
+            // Arrange / Act
+            var (ranges, examined) = ScanRanges("> UILayer.Topmost => throw new InvalidOperationException()");
+
+            // Assert
+            Assert.That((examined, string.Join("\n", ranges.Select(r => r.Enum))),
+                Is.EqualTo((1, string.Empty)));
         }
 
         // GREEN_ON_BASE(characterization): the boundary the branch draws, read off synthetic sources, so

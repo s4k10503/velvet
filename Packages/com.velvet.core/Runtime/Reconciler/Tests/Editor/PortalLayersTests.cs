@@ -26,6 +26,7 @@ namespace Velvet.Tests
         private HeadlessEditorPanelHost _host;
         private MountedTree _mounted;
         private HashSet<int> _baselineDocs;
+        private HashSet<int> _baselineSettings;
 
         private static StateUpdater<bool> s_setFlag;
         private static string s_observedContext;
@@ -35,6 +36,7 @@ namespace Velvet.Tests
         {
             _host = new HeadlessEditorPanelHost();
             _baselineDocs = DocIds();
+            _baselineSettings = SettingsIds();
         }
 
         [TearDown]
@@ -57,6 +59,16 @@ namespace Velvet.Tests
             return ids;
         }
 
+        private static HashSet<int> SettingsIds()
+        {
+            var ids = new HashSet<int>();
+            foreach (var settings in Resources.FindObjectsOfTypeAll<PanelSettings>())
+            {
+                ids.Add(settings.GetInstanceID());
+            }
+            return ids;
+        }
+
         // The framework-created hosts are the UIDocuments that did not exist at fixture setup.
         private List<UIDocument> NewDocs()
         {
@@ -66,6 +78,21 @@ namespace Velvet.Tests
                 if (!_baselineDocs.Contains(doc.GetInstanceID()))
                 {
                     created.Add(doc);
+                }
+            }
+            return created;
+        }
+
+        // The settings are created unattached and assigned to the document only later, so a host abandoned
+        // before that assignment leaves settings no document reaches.
+        private List<PanelSettings> NewSettings()
+        {
+            var created = new List<PanelSettings>();
+            foreach (var settings in Resources.FindObjectsOfTypeAll<PanelSettings>())
+            {
+                if (!_baselineSettings.Contains(settings.GetInstanceID()))
+                {
+                    created.Add(settings);
                 }
             }
             return created;
@@ -137,6 +164,25 @@ namespace Velvet.Tests
             var root = docs[0].rootVisualElement;
             Assert.That((root.Q<VisualElement>("a1") != null, root.Q<VisualElement>("b1") != null),
                 Is.EqualTo((true, true)));
+        }
+
+        // CreateLayerHost's ordering constraint, from the far side: a host whose record never reached
+        // ReconcilerContext.LayerHosts is one no destroy sweep iterates to.
+        [Test]
+        public void Given_APortalOnALayerNamingNoOffset_When_ItsHostIsAttempted_Then_NoHostPartsAreLeftBehind()
+        {
+            // Arrange — the throw is logged rather than raised out of V.Mount, so the mount completes and
+            // the assertion below is reached.
+            LogAssert.Expect(LogType.Exception, new Regex("SwitchExpressionException"));
+
+            // Act
+            MountAndLayout(V.Div(children: new VNode[]
+            {
+                V.Portal((UILayer)99, children: new VNode[] { V.Div(name: "inside") }),
+            }));
+
+            // Assert
+            Assert.That((NewDocs().Count, NewSettings().Count), Is.EqualTo((0, 0)));
         }
 
         [Test]

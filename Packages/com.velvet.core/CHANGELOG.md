@@ -65,13 +65,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `StyleVariantKind` member added without an arm fails the build rather than warning into a log that
   nothing gates on. That response file ships with the package, so a project compiling `Velvet.asmdef`
   compiles CS8509 as an error too, applying to Velvet's own sources only.
-- `V.Portal(layer:)` throws for a `UILayer` value naming no layer, where it sorted the host panel at the
-  `Overlay` offset before. Every named layer sorts as it did; only a cast outside the enum's range
-  reaches the throw, and a silent `Overlay` there is how such a cast survives to put a portal on a layer
-  nobody asked for instead of reporting. The switch it comes from now names every layer, for the reason
-  the entry above gives, and so do the ones behind `divide-*` colours, `clip-path` radius keywords,
-  `animate-*` transition slots and the structural variants — each already answered every named member as
-  it does now.
+- `V.Portal(layer:)` no longer mounts its children for a `UILayer` value naming no layer, where it
+  hosted them at the `Overlay` offset before. Every named layer hosts as it did, and only a cast outside
+  the enum's range reaches this. What such a cast now produces: the rest of the tree renders and the
+  portal's children do not, and the exception is written to the console rather than raised out of the
+  mount — `UseFallback` does not catch it, and the message names the unmatched number rather than the
+  argument it came from. A silent `Overlay` was how such a cast survived to put a portal on a layer
+  nobody asked for. The switch it comes from now names every layer, for the reason the entry above
+  gives, and so do the ones behind `divide-*` colours, `clip-path` radius keywords, `animate-*`
+  transition slots and the structural variants — each already answered every named member as it does
+  now.
 
 ### Fixed
 
