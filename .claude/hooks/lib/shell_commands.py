@@ -212,7 +212,11 @@ def git_invocation(tokens, git_directory=False):
 
 
 def git_invocations(command, subcommands, git_directory=False):
-    """Every invocation in the command naming one of `subcommands`, shaped as `git_invocation`."""
+    """Each segment that runs git with one of `subcommands`, shaped as `git_invocation`.
+
+    A segment is what `command_segments` splits out, so a git call reached some other way — inside a
+    substitution, or behind a keyword `LEADING_WORDS` does not carry — is not among these.
+    """
     found = []
     for segment in command_segments(command):
         invocation = git_invocation(without_redirections(tokens_of(segment)), git_directory)

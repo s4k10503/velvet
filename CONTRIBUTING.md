@@ -181,7 +181,7 @@ measured by nothing until the next `gh pr create`.
 on, so replacing that commit leaves the round and its answer inseparable, and the branch cannot land
 without a force-push. `.claude/hooks/refuse/amend_of_published_commit.py` refuses `git commit --amend`
 when a `refs/remotes/*` ref reaches HEAD, and when git could not say whether one does. Amending a
-commit nobody has pushed is the ordinary case, and is what the predicate leaves alone.
+commit git placed and found unpushed is the ordinary case, and is what the predicate leaves alone.
 
 **Nothing in CI runs the campaign, and at the measured cost nothing can.** A mutant is one editor launch.
 Over the twenty commits ending at `48057c8`, ten generated no mutant at all and the other ten ranged

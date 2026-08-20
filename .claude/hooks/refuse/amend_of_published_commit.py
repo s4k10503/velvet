@@ -6,9 +6,10 @@ round and the layer that answered it stop being separable, and the branch cannot
 force-push. It happened twice in one session, and both times what caught it was somebody checking
 the parent and the file set by hand before rewriting the remote.
 
-An amend of an unpushed commit is the ordinary case and stays allowed. That is what decides the
-predicate: refusing every amend would cost more than the defect, so the question asked is whether
-some `refs/remotes/*` reaches HEAD, and nothing else decides it.
+An amend of an unpushed commit is the ordinary case and stays allowed, since refusing every amend
+would cost more than the defect. What is asked of git is whether some `refs/remotes/*` reaches HEAD;
+a reading that came back with no answer at all is the separate case `UNREADABLE_POLICY` below
+decides, and it decides it the other way.
 
 `git for-each-ref --contains` and `git branch -r --contains` were measured against each other before
 this picked one, since either would serve. `test_amend_of_published_commit.py` holds them to the
@@ -17,12 +18,13 @@ agreement that made the choice free.
 Run: python3 scripts/hooks/test_amend_of_published_commit.py
 """
 
+import collections
 import json
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-from shell_commands import COMMIT_VALUE_FLAGS, git_invocations
+from shell_commands import COMMIT_VALUE_FLAGS, git_invocations, unexpanded
 import repository
 
 
@@ -37,8 +39,9 @@ SHORTEST_AMEND = "--am"
 
 # The repository selectors are replayed together; `PublishedHeadTests` holds the cases where `-C`
 # and `--git-dir` disagree. What refuses one the shell has yet to rewrite is the unreadable answer
-# below rather than a check of its own, which is a spelling `test_amend_of_published_commit.py`
-# poses rather than a claim about what git does with a literal.
+# below rather than a check of its own — the spelling is recognised only to say what to do about it,
+# which `test_amend_of_published_commit.py` poses rather than a claim about what git does with a
+# literal.
 UNEXPANDED_POLICY = "refuse"
 UNEXPANDED_PROBE = 'git -C $WORKTREE commit --amend'
 
@@ -48,8 +51,8 @@ UNREADABLE_POLICY = "refuse"
 UNREADABLE_PROBE = {"command": "git commit --amend"}
 
 # What a reading that did not answer resolves to, kept apart from "no remote ref reaches HEAD" —
-# which is the pass.
-UNREADABLE = object()
+# which is the pass. It carries git's own message, which is what names the selector that failed.
+Unreadable = collections.namedtuple("Unreadable", "message")
 
 
 def amends(command):
@@ -96,34 +99,42 @@ def amends(command):
     return found
 
 
-def git_location_arguments(context, cwd):
-    arguments = ["-C", context.working_directory or cwd]
-    if context.git_directory:
-        arguments.append(f"--git-dir={context.git_directory}")
-    return arguments
+def repository_selectors(context):
+    """Each selector the command spelled: the tokens git receives, and the path inside them.
 
-
-def display_location(context, cwd):
-    """The selectors the reading was taken with, spelled as they were handed to git.
-
-    A failed reading does not say which of the two git could not resolve, so neither is named alone.
+    The event's own directory is not one of them. Every reading below runs there, so adding a `-C`
+    for it would put a selector in the refusal that the contributor did not write.
     """
-    return " ".join(git_location_arguments(context, cwd))
+    selectors = []
+    if context.working_directory:
+        selectors.append((["-C", context.working_directory], context.working_directory))
+    if context.git_directory:
+        selectors.append(([f"--git-dir={context.git_directory}"], context.git_directory))
+    return selectors
+
+
+def git_location_arguments(context):
+    return [token for tokens, _ in repository_selectors(context) for token in tokens]
 
 
 def publishing_refs(context, cwd):
-    """The remote-tracking refs that reach HEAD, or UNREADABLE when git did not answer.
+    """The remote-tracking refs that reach HEAD, or `Unreadable` when git did not answer.
 
     The namespace is written into the command rather than left to porcelain's idea of a remote
     branch, so what counts as published is readable here.
+
+    Taken from the event's directory, which is where the shell would resolve a relative selector
+    from. Taken from this process's own instead, `git -C ../x` answered about whichever repository
+    sat beside wherever the hook was started — measured allowing an amend of published history, and
+    `PublishedHeadTests` is what fails if that comes back.
     """
-    answer = repository.git(
-        [*git_location_arguments(context, cwd), "for-each-ref", "--contains", "HEAD",
+    answer = repository.git_answer(
+        [*git_location_arguments(context), "for-each-ref", "--contains", "HEAD",
          "--format=%(refname)", "refs/remotes/"],
-        cwd=None, timeout=15)
-    if answer is None:
-        return UNREADABLE
-    return [line.strip() for line in answer.splitlines() if line.strip()]
+        cwd=cwd, timeout=15)
+    if answer.code != 0:
+        return Unreadable(answer.stderr)
+    return [line.strip() for line in answer.stdout.splitlines() if line.strip()]
 
 
 def named(refs, context, cwd):
@@ -135,9 +146,9 @@ def named(refs, context, cwd):
     from, so which one is named is not a detail.
     """
     upstream = repository.git(
-        [*git_location_arguments(context, cwd), "rev-parse", "--abbrev-ref",
+        [*git_location_arguments(context), "rev-parse", "--abbrev-ref",
          "--symbolic-full-name", "@{upstream}"],
-        cwd=None, timeout=15)
+        cwd=cwd, timeout=15)
     tracked = "refs/remotes/" + upstream.strip() if upstream and upstream.strip() else None
     # `origin/HEAD` is the default branch under another name, so naming it says less than naming
     # what it points at, which is in this list whenever it is.
@@ -149,9 +160,53 @@ def named(refs, context, cwd):
 
 
 def head_sha(context, cwd):
-    answer = repository.git([*git_location_arguments(context, cwd), "rev-parse", "--short", "HEAD"],
-                            cwd=None, timeout=15)
+    answer = repository.git([*git_location_arguments(context), "rev-parse", "--short", "HEAD"],
+                            cwd=cwd, timeout=15)
     return answer.strip() if answer else "HEAD"
+
+
+def blamed(selectors, message, cwd):
+    """What to call the reading that failed: the selector git's message names, or where it ran.
+
+    Naming both selectors puts the one that resolved fine beside the one that did not, and a
+    contributor who mistyped a git directory is then shown a `-C` they never wrote. git quotes the
+    path it could not resolve, which is what picks it out; `UnreadableCauseTests` fails when it
+    stops. Where git names none of them there is nothing to pick, and the whole reading is named.
+    """
+    named_by_git = [tokens for tokens, path in selectors if f"'{path}'" in message]
+    spelled = named_by_git or [tokens for tokens, _ in selectors]
+    return " ".join(token for tokens in spelled for token in tokens) or cwd
+
+
+# What a failed reading leaves the contributor to do. The markers are git's own words rather than a
+# classification made here, and `UnreadableCauseTests` fails when git stops writing them.
+UNBORN_HEAD = "Commit first: that branch has nothing on it to amend."
+NO_REPOSITORY = "Name a repository the amend is for, or pose it from inside one."
+NO_DIRECTORY = "Check the path: git could not enter that directory."
+UNREADABLE_ACTIONS = (
+    ("malformed object name HEAD", UNBORN_HEAD),
+    ("cannot change to", NO_DIRECTORY),
+    ("not a git repository", NO_REPOSITORY),
+)
+UNEXPANDED_SELECTOR = ("Write the path out: a hook is handed the command before the shell expands "
+                       "it, so a selector spelled with a variable is not a path yet.")
+UNCLASSIFIED = "Establish by hand whether the commit is published, and say what you found."
+
+
+def unreadable_action(selectors, message):
+    """What to do about a reading that failed.
+
+    The unexpanded spelling is answered ahead of the markers: git resolved the literal, so its
+    message is about a directory the command was never going to name, and a table read first
+    would send the contributor to check that one.
+    """
+    for _, path in selectors:
+        if unexpanded(path):
+            return UNEXPANDED_SELECTOR
+    for marker, action in UNREADABLE_ACTIONS:
+        if marker in message:
+            return action
+    return UNCLASSIFIED
 
 
 PUBLISHED = "Refusing `git commit --amend`: this commit is already published."
@@ -160,20 +215,52 @@ PUBLISHED = "Refusing `git commit --amend`: this commit is already published."
 # looking for a push nobody made.
 UNREAD = "Refusing `git commit --amend`: git could not say whether this commit is published."
 
+REWRITES_THE_ROUND = (
+    "A review round's findings cite the SHA they were taken on. Amending replaces it, so the round "
+    "and the layer that answered it stop being separable, and the branch needs a force-push to "
+    "land.")
+ANSWER_ON_TOP = ("Where this is a review round being answered, the answer is a commit of its own "
+                 "on top.")
+# The sentence `lib/repository.py` owns, so that a guard reporting its own blindness cannot drift
+# into a second way of saying it.
+NOTHING_READ = f"{repository.SELF_REPORT} the commit. What failed is the reading:"
+
 
 def findings(command, cwd):
-    """(headline, what to say about each tree) for the amends refused, or None when none is."""
-    read, blind = [], []
+    """(headline, the trees read, the trees that did not, what to do about those), or None."""
+    read, blind, actions = [], [], []
     for context in amends(command):
         refs = publishing_refs(context, cwd)
-        if refs is UNREADABLE:
-            blind.append(f"{display_location(context, cwd)}: git did not answer")
+        if isinstance(refs, Unreadable):
+            selectors = repository_selectors(context)
+            said = next((line for line in refs.message.splitlines() if line.strip()),
+                        "git did not answer")
+            blind.append(f"{blamed(selectors, refs.message, cwd)}: {said}")
+            action = unreadable_action(selectors, refs.message)
+            if action not in actions:
+                actions.append(action)
         elif refs:
             read.append(f"{head_sha(context, cwd)} is reachable from "
                         f"{named(refs, context, cwd)}")
     if not read and not blind:
         return None
-    return (PUBLISHED if read else UNREAD), read + blind
+    return (PUBLISHED if read else UNREAD), read, blind, actions
+
+
+def refusal(headline, read, blind, actions):
+    """The whole refusal, in the order that keeps each paragraph next to what it is about.
+
+    A command carrying two amends can read one tree and fail on the other, so both halves can be
+    here at once, and `NOTHING_READ` opens on a pronoun: it has to sit against the readings that
+    failed rather than against the ones that answered.
+    """
+    listed = lambda entries: "\n".join(f"  {entry}" for entry in entries)
+    paragraphs = [headline]
+    if read:
+        paragraphs += [listed(read), REWRITES_THE_ROUND, ANSWER_ON_TOP]
+    if blind:
+        paragraphs += [listed(blind), NOTHING_READ, listed(actions)]
+    return "\n\n".join(paragraphs) + "\n"
 
 
 def main():
@@ -191,17 +278,7 @@ def main():
     if found is None:
         return 0
 
-    headline, details = found
-    lines = "\n".join(f"  {detail}" for detail in details)
-    sys.stderr.write(
-        f"{headline}\n\n"
-        f"{lines}\n\n"
-        "A review round's findings cite the SHA they were taken on. Amending replaces it, so the "
-        "round and the layer that answered it stop being separable, and the branch needs a "
-        "force-push to land.\n\n"
-        "Where this is a review round being answered, the answer is a commit of its own on top. "
-        "Amending an unpushed commit is not refused, so if this one is genuinely unpublished, say "
-        "what git is reporting and stop.\n")
+    sys.stderr.write(refusal(*found))
     return 2
 
 
