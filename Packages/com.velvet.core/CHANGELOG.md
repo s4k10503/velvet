@@ -76,10 +76,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   guide nor `createPortal` promised the surviving half. The portals guide states the contract that now
   holds in both directions. Keeping state across such a move means lifting it above the portal — to a
   `Store`, or to a `UseState` in the component that declares the portal.
+- `V.Portal(null)` no longer compiles: a bare `null` first argument is ambiguous between
+  `Portal(string, …)` and the `Portal(VisualElement, …)` overload this version adds. Naming the
+  parameter — `V.Portal(targetId: null)` — or casting the literal says which was meant.
 - The switches that classify a `StyleVariantKind` are exhaustive by compilation rather than by review:
   `Runtime/csc.rsp` compiles CS8509 as an error, so a member added without an arm fails the build rather
   than warning into a log that nothing gates on. That response file ships with the package, so a project
   compiling `Velvet.asmdef` compiles CS8509 as an error too, applying to Velvet's own sources only.
+- `StyleVariantClass.BreakpointPx` and `StyleVariantClass.IsResponsive` throw for a `StyleVariantKind`
+  value naming no member of the enum, where they returned `0f` and `false`. Both have done so since
+  2.0.1.
 
 ### Fixed
 
