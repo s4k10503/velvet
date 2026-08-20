@@ -79,8 +79,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The switches that classify a `StyleVariantKind` are exhaustive by compilation rather than by review:
   `Runtime/csc.rsp` compiles CS8509 as an error, so a member added without an arm fails the build rather
   than warning into a log that nothing gates on. That response file ships with the package, so a project
-  compiling `Velvet.asmdef` compiles CS8509 as an error too; it applies to Velvet's own sources only, and
-  none of the switches it reaches is over an engine-owned enum.
+  compiling `Velvet.asmdef` compiles CS8509 as an error too, applying to Velvet's own sources only.
 
 ### Fixed
 

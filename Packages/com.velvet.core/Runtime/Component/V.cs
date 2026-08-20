@@ -574,7 +574,7 @@ namespace Velvet
             IReadOnlyDictionary<string, string>? data = null,
             IReadOnlyDictionary<string, string>? aria = null,
             // These sit after `aria` rather than beside `isPasswordField`, where they belong by subject,
-            // so a positional call written against an earlier version still binds as it did.
+            // so a positional call written against 2.1.0 still binds as it did.
             // TextFieldPositionalOrderTests holds the prefix that placement protects.
             string? placeholder = null,
             int? maxLength = null,
