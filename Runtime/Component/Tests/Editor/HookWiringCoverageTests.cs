@@ -596,7 +596,33 @@ namespace Velvet.Tests
              "\"cwd\":\"%SCRATCH%\",\"tool_input\":{\"file_path\":\"%SCRATCH%/CHANGELOG.md\","
              + "\"old_string\":\"- As shipped.\","
              + "\"new_string\":\"- As shipped.\\n\\n- Smuggled in.\"}"),
+            ("an amend of a commit git cannot place",
+             "\"cwd\":\"%SCRATCH%\",\"tool_input\":{\"command\":\"git commit --amend --no-edit\"}"),
+            // Both spellings of the edit in one payload, because the guard that answers it is routed
+            // two tools and each is posed separately: the content is what a Write reads, and the
+            // pair beneath it is what an Edit reads.
+            ("a declaration whose first line breaks off",
+             "\"cwd\":\"%SCRATCH%\",\"tool_input\":{\"file_path\":\"%SCRATCH%/DeclaringTests.cs\","
+             + "\"content\":" + Quoted(DeclaringFixture + FragmentaryDeclaration) + ","
+             + "\"old_string\":" + Quoted(SettledDeclaration) + ","
+             + "\"new_string\":" + Quoted(FragmentaryDeclaration) + "}"),
         };
+
+        // A declaration reading as a claim on its own line, and one the reader would take
+        // mid-clause. The second ends on a word no English clause ends on, which is the half of
+        // "does not stand alone" a script can decide.
+        //
+        // The marker is assembled rather than spelled, because base_red_check.py counts one per
+        // line it occurs on and would read these two as declarations this fixture wrote over no
+        // case at all.
+        private const string Marker = "GREEN_ON" + "_BASE(characterization)";
+        private const string SettledDeclaration =
+            "        // " + Marker + ": the base already separates these two.\n";
+        private const string FragmentaryDeclaration =
+            "        // " + Marker + ": the base already separates these two and\n"
+            + "        // the branch does not change that.\n";
+        private const string DeclaringFixture =
+            "namespace Velvet.Tests\n{\n    internal sealed class DeclaringTests\n    {\n";
 
         // No matcher in the settings routes this, so a guard that answers under it has a gate that is
         // reading something other than the event's tool name.
@@ -705,6 +731,8 @@ namespace Velvet.Tests
             ScratchDirectory = Directory.CreateDirectory(Path.Combine(
                 Path.GetTempPath(), "velvet-hook-gate-" + Guid.NewGuid().ToString("N"))).FullName;
             WriteReleasedChangelog(ScratchDirectory);
+            File.WriteAllText(Path.Combine(ScratchDirectory, "DeclaringTests.cs"),
+                              DeclaringFixture + SettledDeclaration);
             // A baseline is comparable only with answers measured under the same HOME, and the
             // directory HOME is pointed at is replaced here.
             LoadingOutput.Clear();
