@@ -8,8 +8,9 @@ namespace Velvet.Tests
     /// spine-rewalk must derive identically for the same committed node, so a registry lookup never
     /// misses.
     /// <list type="bullet">
-    /// <item>An unkeyed inline ComponentNode's position key is the n-th occurrence of its identity
-    /// within one reconcile scope, counted independently per identity.</item>
+    /// <item>An unkeyed inline ComponentNode's position key is the slot it occupies in the child array it
+    /// sits in, under that array's own SlotPath — so a sibling that renders null costs its slot rather
+    /// than shifting the ones after it, and a ComponentNode boundary restarts SlotPath.</item>
     /// <item>Scope segments are joined by the NUL (U+0000) delimiter; a null parent scope means the
     /// outermost keyed boundary, so the contribution becomes the entire scope.</item>
     /// <item>A keyed Fragment / Provider / Component extends the enclosing scope with its own key; an
@@ -50,43 +51,51 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_RepeatedIdentity_When_ResolveInlinePositionKey_Then_CountsPerIdentityIndependently()
+        public void Given_OneNodeIndexUnderTwoChildArrays_When_ResolveInlinePositionKey_Then_TheKeysDiffer()
         {
-            // Arrange
-            var counters = new Dictionary<object, int>();
-            var boxes = new Dictionary<(object identity, int index), object>();
-            var idA = new object();
-            var idB = new object();
+            // Arrange — index 0 of an unkeyed fragment's children, and index 0 of the array holding it.
+            var boxes = new Dictionary<(long slotPath, int nodeIndex), object>();
+            var fragmentChildren = FiberKeying.FragmentChild(FiberKeying.WalkRoot, null, 0);
 
             // Act
-            var firstA = FiberKeying.ResolveInlinePositionKey(counters, idA, boxes);
-            var secondA = FiberKeying.ResolveInlinePositionKey(counters, idA, boxes);
-            var firstB = FiberKeying.ResolveInlinePositionKey(counters, idB, boxes);
-            var thirdA = FiberKeying.ResolveInlinePositionKey(counters, idA, boxes);
+            var outer = FiberKeying.ResolveInlinePositionKey(FiberKeying.WalkRoot, 0, boxes);
+            var inner = FiberKeying.ResolveInlinePositionKey(fragmentChildren, 0, boxes);
 
-            // Assert — counting advances per identity and is tracked independently for idA versus idB
-            Assert.That(firstA, Is.EqualTo((idA, 0)));
-            Assert.That(secondA, Is.EqualTo((idA, 1)));
-            Assert.That(firstB, Is.EqualTo((idB, 0)));
-            Assert.That(thirdA, Is.EqualTo((idA, 2)));
+            // Assert — which array a slot belongs to is part of its key, so nesting does not collapse.
+            Assert.That(inner, Is.Not.EqualTo(outer));
         }
 
         [Test]
-        public void Given_SameIdentityAndIndexAcrossPasses_When_ResolveInlinePositionKey_Then_ReturnsInternedBox()
+        public void Given_ANestedPosition_When_ComponentChild_Then_SlotPathRestartsAtTheWalkRoots()
         {
-            // Arrange — two independent reconcile passes (fresh per-pass counters) share one box cache
-            var boxes = new Dictionary<(object identity, int index), object>();
-            var identity = new object();
-            var firstPassCounters = new Dictionary<object, int>();
-            var secondPassCounters = new Dictionary<object, int>();
-            var first = FiberKeying.ResolveInlinePositionKey(firstPassCounters, identity, boxes);
+            // Arrange — a Component found one level down an outer walk, so the position it sits at has
+            // already moved off the walk root.
+            var nested = FiberKeying.FragmentChild(FiberKeying.WalkRoot, null, 2);
 
-            // Act — a later pass resolves the same (identity, index) position
-            var second = FiberKeying.ResolveInlinePositionKey(secondPassCounters, identity, boxes);
+            // Act
+            var body = FiberKeying.ComponentChild(nested, null, 4);
+
+            // Assert — the body output keys as though the walk had started there, which is what that
+            // component's own isolated re-render does; the position it was found at does not.
+            Assert.That(
+                (body.SlotPath == FiberKeying.WalkRoot.SlotPath,
+                    nested.SlotPath == FiberKeying.WalkRoot.SlotPath),
+                Is.EqualTo((true, false)));
+        }
+
+        [Test]
+        public void Given_SamePositionAcrossPasses_When_ResolveInlinePositionKey_Then_ReturnsInternedBox()
+        {
+            // Arrange — two independent reconcile passes share one box cache
+            var boxes = new Dictionary<(long slotPath, int nodeIndex), object>();
+            var first = FiberKeying.ResolveInlinePositionKey(FiberKeying.WalkRoot, 1, boxes);
+
+            // Act — a later pass resolves the same position
+            var second = FiberKeying.ResolveInlinePositionKey(FiberKeying.WalkRoot, 1, boxes);
 
             // Assert
             Assert.That(second, Is.SameAs(first),
-                "The boxed position key is interned per (identity, index), so a later pass reuses the same box");
+                "The boxed position key is interned per position, so a later pass reuses the same box");
         }
 
         [Test]

@@ -27,12 +27,13 @@ namespace Velvet.Tests
     /// fresh instance behind there and runs the departing instance's cleanup.</item>
     /// <item>A container returned to the primitive-element pool and rented again carries no registry entry
     /// into its next use.</item>
-    /// <item>What the separation does NOT reach: an instance's own isolated re-render reads the Providers
-    /// of whichever container the committed tree reaches first, because the spine that rebuilds its
-    /// context cannot tell the containers apart. That is a value from elsewhere where the first container
-    /// carries a Provider and the context default where it carries none — so an instance can lose the
-    /// Provider it is written inside. A <c>V.Motion</c>'s active label travels the same path and reads
-    /// the same way. All three are pinned here.</item>
+    /// <item>What the separation does NOT reach: where two instances also share a position key, an
+    /// instance's own isolated re-render reads the Providers of whichever container the committed tree
+    /// reaches first, because the spine that rebuilds its context cannot tell the containers apart. That
+    /// is a value from elsewhere where the two Providers carry the same context, and the context default
+    /// where the other container's carries a different one — so an instance can lose the Provider it is
+    /// written inside. A <c>V.Motion</c>'s active label travels the same path and reads the same way. All
+    /// three are pinned here.</item>
     /// </list>
     /// <see cref="PortalChildFiberContinuityTests"/> owns the portal-scope member of the same key, and
     /// holds the shape where a shared container leaves that member the only thing separating two
@@ -67,6 +68,9 @@ namespace Velvet.Tests
         private static StateUpdater<int> s_setPhase;
         private static StateUpdater<bool> s_setShown;
         private static readonly ComponentContext<string> Theme = ComponentContext<string>.Create("default");
+        // A second context, so the two containers can hold Providers at one position while only one of
+        // them supplies what Badge reads.
+        private static readonly ComponentContext<string> Accent = ComponentContext<string>.Create("accent");
 
         private static string Names(VisualElement? element) =>
             element == null ? "<absent>" : string.Join("|", element.Children().Select(c => c.name));
@@ -343,26 +347,35 @@ namespace Velvet.Tests
                 Is.EqualTo(("L:0", "R:0", "L:5", "L:7")));
         }
 
-        // The mirror of the case above: only the SECOND container carries a Provider. Its instance is
-        // inside that Provider and reads it at mount, and reads the context default once it re-renders
-        // alone — the first container establishing no Provider at all is what the spine finds instead.
+        // The mirror of the case above: the two Providers carry DIFFERENT contexts, so the first
+        // container's supplies nothing the second container's instance reads. That instance is inside the
+        // Theme Provider and reads it at mount, and reads the context default once it re-renders alone.
+        // Both Providers sit at one position, which is what leaves the first container's instance
+        // answering to the second's key; a Provider only one of them carried would put the two instances
+        // at positions that no longer collide, and the spine would reach the right one.
         [Component]
-        private static VNode ProviderOnTheSecondContainerHost()
+        private static VNode ProvidersOfTwoContextsPerContainerHost()
             => V.Div(name: "shell", children: new VNode?[]
             {
-                V.Div(name: "left", children: new VNode?[] { V.Component(Badge) }),
+                V.Div(name: "left", children: new VNode?[]
+                {
+                    V.Provider(Accent, "A", new VNode[] { V.Component(Badge) }),
+                }),
                 V.Div(name: "right", children: new VNode?[]
                 {
                     V.Provider(Theme, "R", new VNode[] { V.Component(Badge) }),
                 }),
             });
 
+        // GREEN_ON_BASE(characterization): the base reads the same here, since its position key collides
+        // for two components at one index of two containers whether or not a Provider encloses them. This
+        // shape is what keeps the reading once the key stops colliding on the Provider level alone.
         [Test]
-        public void Given_OnlyTheSecondContainerCarriesAProvider_When_ItsInstanceReRendersAlone_Then_ItReadsTheContextDefault()
+        public void Given_TwoContainersWhoseProvidersCarryDifferentContexts_When_TheSecondInstanceReRendersAlone_Then_ItReadsTheContextDefault()
         {
             // Arrange
             var container = new VisualElement();
-            _mounted = V.Mount(container, V.Component(ProviderOnTheSecondContainerHost, key: "host"));
+            _mounted = V.Mount(container, V.Component(ProvidersOfTwoContextsPerContainerHost, key: "host"));
             _mounted.FlushEffectsForTest();
             var left = container.Q<VisualElement>("left");
             var right = container.Q<VisualElement>("right");

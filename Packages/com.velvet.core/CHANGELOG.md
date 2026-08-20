@@ -76,6 +76,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   guide nor `createPortal` promised the surviving half. The portals guide states the contract that now
   holds in both directions. Keeping state across such a move means lifting it above the portal — to a
   `Store`, or to a `UseState` in the component that declares the portal.
+- `V.Portal(null)` no longer compiles: a bare `null` first argument is ambiguous between
+  `Portal(string, …)` and the `Portal(VisualElement, …)` overload this version adds. Naming the
+  parameter — `V.Portal(targetId: null)` — or casting the literal says which was meant.
 - The switches that classify a `StyleVariantKind` are exhaustive by compilation rather than by review:
   `Runtime/csc.rsp` compiles CS8509 as an error, so a member added without an arm fails the build rather
   than warning into a log that nothing gates on. That response file ships with the package, so a project
@@ -100,6 +103,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The switch behind the layer offset now names every layer, for the reason the `StyleVariantKind` entry
   above gives, and so do the ones behind `divide-*` colours, `clip-path` radius keywords, `animate-*`
   transition slots and the structural variants — each already answered every named member as it does now.
+- `StyleVariantClass.BreakpointPx` and `StyleVariantClass.IsResponsive` throw for a `StyleVariantKind`
+  value naming no member of the enum, where they returned `0f` and `false`. Both have done so since
+  2.0.1.
 
 ### Fixed
 
@@ -347,6 +353,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Status` first showed it. The outcome is now committed after the handlers on both paths, which is
   where v5 dispatches it, so a handler no longer reads its own call's outcome and `Data` stands only
   under `Status == Success`.
+
+- A component keeps its own state when a sibling written as `cond ? node : null` stops rendering. An
+  unkeyed component written inline among siblings was keyed by how many components of its identity the
+  walk had passed rather than by the slot it sat in, so a sibling turning to `null` shifted the
+  components of that identity after it onto the slot keys their predecessors held: the second instance
+  re-bound onto the first one's fiber and rendered the first one's state under its own props, while the
+  fiber it should have kept was disposed in its place. No remount marked the change — the component
+  kept rendering and the state was simply the wrong instance's. The dropped sibling now unmounts and
+  the ones after it keep their slots, which is what React does with the same tree.
+  Three neighbouring shapes moved with it, each a case of that same count standing in for a position:
+  two different components swapping places among siblings kept their own state where React remounts
+  both; a fragment gaining a child handed the newcomer the following sibling's instance and remounted
+  that sibling; and a component inside a `V.Suspense`'s children collided with the one at the same
+  index of the body around it, which the duplicate-key guard answered by warning and dropping one of
+  the two. What still does not follow React is a conditional wrapped in an element of its own —
+  `cond ? V.Div(V.Component(Row)) : null` beside a second such `V.Div` — where the element diff patches
+  the surviving wrapper onto the leaving one's element and the component inside it re-binds along with
+  it. A `key:` on those wrappers matches each with itself; the migration guide says so.
 
 ## [2.1.0] - 2026-08-09
 
