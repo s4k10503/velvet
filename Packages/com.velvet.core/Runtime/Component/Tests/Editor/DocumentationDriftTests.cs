@@ -892,10 +892,9 @@ namespace Velvet.Tests
         [Test]
         public void Given_ACheckoutTheProcessDoesNotOwn_When_TheTrackedListingIsRead_Then_SafeDirectoryCarriesIt()
         {
-            // Arrange — a checkout this fixture builds rather than the project directory: in the base-red
-            // lane that directory has the shape
-            // Given_AWorktreeWhoseRecordedGitDirectoryIsGone_When_TheTrackedListingIsRead_Then_TheOneUnderTheCheckoutAnswers
-            // arranges, and this comparison does not hold there.
+            // Arrange — the left term below turns on which setup path the read takes, and that is decided
+            // by the directory. The project directory arrives in whatever shape the run was reached under,
+            // so this case arranges its own.
             var checkout = Scratch("-ownership");
             try
             {
@@ -930,11 +929,8 @@ namespace Velvet.Tests
         [Test]
         public void Given_AWorktreeWhoseRecordedGitDirectoryIsGone_When_TheTrackedListingIsRead_Then_TheOneUnderTheCheckoutAnswers()
         {
-            // Arrange — a linked worktree records its git directory as an absolute path, and this
-            // repository's base-red lane hands one to a container that mounts the checkout under a
-            // different prefix, so the recorded path names nothing while the directory it names sits
-            // under the checkout unmoved. The gitfile is rewritten to a path that was never there rather
-            // than a mount arranged, which would need a container.
+            // Arrange — the resolution below re-roots the recorded tail at an enclosing directory, so the
+            // worktree goes under the checkout.
             var checkout = Scratch("-relocated");
             var worktree = Path.Combine(checkout, "base-tree");
             try
