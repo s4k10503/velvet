@@ -183,8 +183,11 @@ class GuardTests(unittest.TestCase):
         # Arrange / Act
         found = self.faults(stale=STALE_FIRST_ONLY, unpublished=UNPUBLISHED_FIRST_ONLY)
 
-        # Assert
-        self.assertEqual([fault.split(":")[0] for fault in found], ["stale.py", "unpublished.py"])
+        # Assert — the whole text, not the names in front of it: a cut that reports every guard from
+        # the first world names these two as well, and a comparison over names alone passes on it.
+        compound = ("refuses that merge on its own and allows a command carrying it second, so it "
+                    "reads an operand rather than the command")
+        self.assertEqual(found, [f"stale.py: {compound}", f"unpublished.py: {compound}"])
 
     def test_Given_AGuardRefusingByDecisionRatherThanExitCode_When_TheCheckRuns_Then_ItIsReported(self):
         # Arrange / Act

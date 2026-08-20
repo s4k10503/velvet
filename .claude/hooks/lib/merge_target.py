@@ -30,9 +30,9 @@ MergeTarget = collections.namedtuple("MergeTarget", "head base")
 def merge_targets(command):
     """The pull requests a merge in this command would land, "" meaning the current branch's.
 
-    Read off tokens. The pattern this replaces required the number to sit immediately after the
-    subcommand, so putting a flag first — this repository's own squash convention does — matched
-    nothing and the guard returned 0 without spawning anything. It also carried no command-position
+    Read off tokens rather than by position. The pattern this replaces required the number to sit
+    immediately after the subcommand, so putting a flag first matched nothing and the guard returned
+    0 without spawning anything. It also carried no command-position
     anchor, so naming the command inside an argument spent a `gh pr view` and a `git fetch` on a
     refusal; that happened while this fix was being tested.
     """

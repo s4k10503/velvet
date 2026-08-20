@@ -23,15 +23,17 @@ from repository import git, project_tree  # noqa: E402
 
 # The hook is registered for 15 s, and a report the harness kills prints nothing at all — including
 # the local-main half, which no base takes part in. So the pull-request read and both fetches sum
-# inside that, and what is left is git plumbing against refs already on disk. A fetch that runs out
-# of its bound still reports, through FETCH_NOTE; being killed does not.
+# inside that, and what is left is git plumbing against refs already on disk.
 FETCH_TIMEOUT = 5
-BASE_TIMEOUT = 4
+BASE_TIMEOUT = 3
 
 DEFAULT_BASE = "main"
 
+# Every ref a fetch failed to bring, named. A fetch that ran out of its bound leaves the ref that was
+# already on disk, and that ref can read as up to date — which takes the whole report for that branch
+# with it, so the fetch is the only thing left worth saying.
 FETCH_NOTE = """
-origin/main could not be fetched, so the counts above are against the ref already on disk and the
+Not fetched: {}. Anything measured against those refs here used the copy already on disk, so the
 real distance may be greater."""
 
 # What goes where a remedy would, when nothing here said what the branch is based on. The remedy is
@@ -63,8 +65,8 @@ def base_of(tree):
     """The branch this checkout's pull request targets, or None when nothing here named one.
 
     Read from the pull request because git can say what a branch contains and not what it was cut
-    from. None is not a synonym for main: it is every state in which the remedy below must not be
-    printed, and a failed reading and a branch nothing targets are both of them.
+    from. None is not a synonym for main: a failed reading and a branch no pull request of its own
+    names a base for both arrive here, and neither is a branch to print a rebase against.
     """
     target = refs_of(tree, "", timeout=BASE_TIMEOUT)
     return target.base if target else None
@@ -94,9 +96,9 @@ def main():
     # A failed fetch is not a reason to say nothing. main only ever advances here, so the ref already
     # on disk is a lower bound on how far behind the checkout is — the answer it gives is incomplete
     # in one direction only, and reporting it beats reporting silence over an unreachable remote.
-    fetch_failed = not fetch(tree, DEFAULT_BASE)
-    if base and base != DEFAULT_BASE:
-        fetch(tree, base)
+    stale = [] if fetch(tree, DEFAULT_BASE) else [DEFAULT_BASE]
+    if base and base != DEFAULT_BASE and not fetch(tree, base):
+        stale.append(base)
     if git(["rev-parse", "--verify", "refs/remotes/origin/main"], tree) is None:
         return 0
 
@@ -143,10 +145,10 @@ def main():
                     "git merge --ff-only origin/main"
                 )
 
-    if not main_report and not branch_report:
+    note = FETCH_NOTE.format(", ".join("origin/" + ref for ref in stale)) if stale else ""
+    if not main_report and not branch_report and not note:
         return 0
 
-    note = FETCH_NOTE if fetch_failed else ""
     if main_report and branch_report:
         print(f"This checkout may not match what it is based on.\n\n{main_report}\n")
         print(f"{branch_report}\n{note}")

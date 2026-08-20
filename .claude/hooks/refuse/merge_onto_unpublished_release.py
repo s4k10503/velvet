@@ -40,9 +40,15 @@ UNREADABLE_PROBE = {"command": "gh pr merge 1 --squash --delete-branch"}
 # Repository state any session can move — the scope rule shared_git_state.py states.
 HOOK_SCOPE = "session"
 
-# What `published_check.unpublished_reason`'s own four calls leave of this hook's registered 25 s.
-# That module sizes them against the same 25, and this read goes ahead of them.
-BASE_TIMEOUT = 5
+# The hook's registration, and how it is spent. Every merge in the command costs a pull-request read
+# and every distinct base among them costs `published_check`'s own four calls, so both are shares of
+# the 25 rather than constants: one merge leaves the 5 and 5-per-call this used to spell literally,
+# and a command carrying more divides the same 25 further. A killed PreToolUse renders no verdict, so
+# a sequence sized per reading is one that lands the merge with this check never having run. The
+# budget is under the registration rather than equal to it, because every reading is also a process.
+BUDGET = 24
+READ_SHARE = 4
+PUBLICATION_CALLS = 4
 
 
 def main():
@@ -70,13 +76,16 @@ def main():
     # release state is a fact about a base rather than about a pull request, so two merges onto one
     # base cost one reading.
     bases = []
+    per_read = max(1, READ_SHARE // len(targets))
     for pr in targets:
-        target = refs_of(cwd, pr, timeout=BASE_TIMEOUT)
+        target = refs_of(cwd, pr, timeout=per_read)
         if target is not None and target.base not in bases:
             bases.append(target.base)
 
+    per_call = max(1, (BUDGET - READ_SHARE) // (max(1, len(bases)) * PUBLICATION_CALLS))
     for base in bases:
-        reason = published_check.unpublished_reason(cwd, f"origin/{base}", fetch=True)
+        reason = published_check.unpublished_reason(cwd, f"origin/{base}", fetch=True,
+                                                    timeout=per_call)
         if not reason:
             continue
         sys.stderr.write(

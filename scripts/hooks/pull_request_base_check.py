@@ -11,7 +11,8 @@ So the subject here is the directory rather than those two guards. A guard added
 for `main` instead of for the pull request's own base fails this without anybody remembering to
 write a case for it.
 
-Three worlds, each a real repository with a real `origin`:
+Three worlds over two repositories, each with a real `origin` — the first two differ only in which
+branch the head was cut from, so one repository carries both:
 
 - `maintenance-current` — the pull request targets `2.x`, its head contains `origin/2.x`, and `2.x`
   has published everything its CHANGELOG closed. `main` is meanwhile ahead and holds a closed
@@ -46,9 +47,11 @@ REFUSE_DIRECTORY = ".claude/hooks/refuse"
 # nothing and would otherwise pass every world below.
 GUARD_FLOOR = 16
 
-# The command posed to every guard. It carries the deletion flag because a merge without one is
-# refused for a reason that has nothing to do with the base, and this asks about the base alone.
-COMMAND = "gh pr merge 1 --squash --delete-branch"
+# The command posed to every guard, written with its flags first — the shape a reader taking the
+# leading operand gets wrong, and the one no probe in this directory poses. It carries the deletion
+# flag because a merge without one is refused for a reason that has nothing to do with the base, and
+# this asks about the base alone.
+COMMAND = "gh pr merge --squash --delete-branch 1"
 
 # Two merges in one command, the second onto a base the first does not name. A guard that reads one
 # operand covers one of the merges it was posed, and the command lands both.

@@ -47,12 +47,12 @@ def commit(project, message):
 class BranchBaseTests(unittest.TestCase):
     def setUp(self):
         self.root = Path(tempfile.mkdtemp(prefix="velvet-stale-main-"))
-        origin = self.root / "origin.git"
+        self.origin = self.root / "origin.git"
         self.project = self.root / "project"
-        subprocess.run(["git", "init", "-q", "--bare", str(origin)], check=True, timeout=60)
+        subprocess.run(["git", "init", "-q", "--bare", str(self.origin)], check=True, timeout=60)
         subprocess.run(["git", "init", "-q", "-b", "main", str(self.project)], check=True,
                        timeout=60)
-        git(self.project, "remote", "add", "origin", str(origin))
+        git(self.project, "remote", "add", "origin", str(self.origin))
         commit(self.project, "initial")
         git(self.project, "branch", "2.x")
         commit(self.project, "main moves on")
@@ -118,12 +118,39 @@ class BranchBaseTests(unittest.TestCase):
         self.assertEqual(("Branch 2.x is" in printed, "--force-with-lease" in printed),
                          (True, False))
 
-    def test_Given_ABaseWhoseRefIsNotHere_When_TheReportIsTaken_Then_TheBranchIsNotReportedOn(self):
+    def test_Given_ABaseFetchThatFailed_When_TheReportIsTaken_Then_ItNamesTheRefItLeftStale(self):
+        # Arrange — the ref the fetch failed to bring is still on disk, so the branch reads as up to
+        # date against it and neither arm has anything to say. What the fetch could not bring is
+        # then the only thing left worth reporting, and passing over it is silence.
+        git(self.project, "fetch", "-q", "origin", "2.x")
+        git(self.project, "push", "-q", "origin", "--delete", "2.x")
+
+        # Act
+        printed = self.report(view=self.named("2.x"))
+
+        # Assert
+        self.assertIn("Not fetched: origin/2.x", printed)
+
+    def test_Given_TheMainFetchThatFailed_When_TheReportIsTaken_Then_ItNamesThatRefAsWell(self):
+        # Arrange — every ref already on disk and the remote then unreachable, so both fetches fail
+        # and neither is passed over for the other having answered.
+        git(self.project, "fetch", "-q", "origin", "main", "2.x")
+        git(self.project, "remote", "set-url", "origin", str(self.root / "gone.git"))
+
+        # Act
+        printed = self.report(view=self.named("2.x"))
+
+        # Assert
+        self.assertIn("Not fetched: origin/main, origin/2.x", printed)
+
+    def test_Given_ABaseWhoseRefIsNotHere_When_TheReportIsTaken_Then_TheBranchIsNotMeasuredAgainstMain(self):
         # Arrange / Act
         printed = self.report(view=self.named("3.x"))
 
-        # Assert
-        self.assertEqual(printed, "")
+        # Assert — the ref that answers nothing is named, and the branch is not quietly measured
+        # against the one ref that does.
+        self.assertEqual(("Branch release/2.1.1" in printed, "Not fetched: origin/3.x" in printed),
+                         (False, True))
 
 
 if __name__ == "__main__":

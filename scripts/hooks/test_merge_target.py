@@ -42,6 +42,19 @@ exit "$VELVET_MERGE_TARGET_VIEW_CODE"
 '''
 
 
+class TargetTests(unittest.TestCase):
+    def test_Given_AMergeCarryingItsFlagsFirst_When_TheTargetsAreRead_Then_TheNumberIsTheTarget(self):
+        # Arrange — a reader taking the leading operand takes `--squash` here, which is not a pull
+        # request and never becomes one, so the merge is judged against a reading nobody could take.
+        command = "gh pr " + "merge --squash --delete-branch 736"
+
+        # Act
+        targets = merge_target.merge_targets(command)
+
+        # Assert
+        self.assertEqual(targets, ["736"])
+
+
 class RefsTests(unittest.TestCase):
     def setUp(self):
         self.workspace = Path(tempfile.mkdtemp(prefix="velvet-merge-target-"))

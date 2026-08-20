@@ -116,37 +116,45 @@ def publication_reason(changelog_text, package_json_text, tags):
             f"locally answers 422.")
 
 
-def git(project, *args, timeout=5):
+# What one call gets when nothing says otherwise: a quarter of the 20 s left of a refuse hook's 25 s
+# registration once its own pull-request read has had a share.
+GIT_TIMEOUT = 5
+
+
+def git(project, *args, timeout=GIT_TIMEOUT):
     """Run git, raising on failure and on a read that never returns.
 
     Two of these reach the network, and unpublished_reason makes four calls in a row, so the bound is
-    the caller's budget divided by the sequence rather than by one call — the refuse hook's is the
-    tightest at 25 s. A caller that kills this instead cannot report anything: a killed hook exits
-    neither 0 nor 2, and the stderr note unpublished_reason promises is never written. The workflow pays
-    the same bound although nothing there is waiting on it, which is the trade: a slow ls-remote reddens
-    a required check rather than passing an unread answer along.
+    the caller's budget divided by the sequence rather than by one call. A caller asking about several
+    bases divides it again, and passes what it arrived at — a hook that reads one constant per call
+    spends the constant once per base and is killed rendering no verdict. A caller that kills this
+    instead cannot report anything either: a killed hook exits neither 0 nor 2, and the stderr note
+    unpublished_reason promises is never written. The workflow pays the default although nothing there
+    is waiting on it, which is the trade: a slow ls-remote reddens a required check rather than
+    passing an unread answer along.
     """
     result = subprocess.run(["git", "-C", str(project), *args],
                             capture_output=True, text=True, check=True, timeout=timeout)
     return result.stdout
 
 
-def remote_tags(project, remote="origin"):
+def remote_tags(project, remote="origin", timeout=GIT_TIMEOUT):
     """Tag names on the remote.
 
     Asked of the remote so a stale local tag list cannot report an unpublished version as published,
     and so the reading needs neither a tag fetch nor a checkout deep enough to carry one.
     """
-    lines = git(project, "ls-remote", "--tags", remote).splitlines()
+    lines = git(project, "ls-remote", "--tags", remote, timeout=timeout).splitlines()
     return {line.split("refs/tags/", 1)[1].removesuffix("^{}")
             for line in lines if "refs/tags/" in line}
 
 
-def read_at(project, rev, path):
-    return git(project, "show", f"{rev}:{path}")
+def read_at(project, rev, path, timeout=GIT_TIMEOUT):
+    return git(project, "show", f"{rev}:{path}", timeout=timeout)
 
 
-def unpublished_reason(project, rev="origin/main", remote="origin", fetch=False):
+def unpublished_reason(project, rev="origin/main", remote="origin", fetch=False,
+                      timeout=GIT_TIMEOUT):
     """publication_reason for one revision of a repository, or None when it reads clean.
 
     A git failure answers None rather than refusing: an absent revision, an absent remote and an
@@ -157,10 +165,10 @@ def unpublished_reason(project, rev="origin/main", remote="origin", fetch=False)
     """
     try:
         if fetch:
-            git(project, "fetch", remote, rev.split("/", 1)[-1], "--quiet")
-        return publication_reason(read_at(project, rev, CHANGELOG_PATH),
-                                  read_at(project, rev, PACKAGE_JSON_PATH),
-                                  remote_tags(project, remote))
+            git(project, "fetch", remote, rev.split("/", 1)[-1], "--quiet", timeout=timeout)
+        return publication_reason(read_at(project, rev, CHANGELOG_PATH, timeout),
+                                  read_at(project, rev, PACKAGE_JSON_PATH, timeout),
+                                  remote_tags(project, remote, timeout))
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired,
             json.JSONDecodeError, OSError) as failure:
         print(f"could not read {rev} to check it against the published releases: {failure}",
