@@ -217,6 +217,11 @@ def main():
         "",
         "Put it under `## [Unreleased]`, or `## [Unreleased — breaking]` where it has to wait for a",
         "major — opening the one it belongs in above the newest release if there is none.",
+        "",
+        "Closing a release is the one case where the line does belong there, and then the rename ran",
+        "too early: name the section `## [Unreleased]` again, write the Highlights block and any",
+        "entries a major drains out of `## [Unreleased — breaking]`, and rename it last.",
+        "CONTRIBUTING.md's release section owns that order.",
         "A reword of what that section already says reads the same way here and is refused with it;",
         "it changes a published note, so ask for it rather than making it.",
     ]), file=sys.stderr)

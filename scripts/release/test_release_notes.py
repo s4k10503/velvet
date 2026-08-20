@@ -353,8 +353,7 @@ class ThisRepositorysChangelog(unittest.TestCase):
     def test_Given_the_shipped_changelog_When_reading_Then_the_breaking_section_is_open(self):
         # Arrange — dating this heading makes it a released section of its own; deleting it
         # merges what it holds into the section above, which at a release is the version being
-        # closed. Moving entries out changes no heading: the not-empty case below sees that only
-        # where every entry goes at once.
+        # closed. Moving entries out changes no heading, and nothing here reports that.
         # Act
         open_breaking = [version for version, line in self.headings
                          if version == "Unreleased — breaking" and not RELEASE_DATE.search(line)]
@@ -388,31 +387,39 @@ class ThisRepositorysChangelog(unittest.TestCase):
         # Assert
         self.assertEqual(copied, [])
 
-    def test_Given_the_breaking_section_When_reading_Then_it_is_not_empty(self):
-        # Arrange — every entry moved out at once, heading left standing, is how what waits for a
-        # major reaches a minor's note with no heading changed. It empties what the case above
-        # compares against too, so that one falls silent on the same edit. Draining at a major
-        # leaves the standing line CONTRIBUTING.md's release section describes.
-        # Act
-        waiting = self.entries_waiting_for_a_major()
+    def major_bumps(self):
+        """Versions whose major differs from the release below them, which `self.versions` orders
+        newest first. The oldest release has nothing below it and is nobody's bump."""
+        return [version for version, previous in zip(self.versions, self.versions[1:])
+                if version.split(".")[0] != previous.split(".")[0]]
 
-        # Assert
-        self.assertGreater(len(waiting), 0)
+    def breaking_highlight(self, version):
+        return "**Breaking:**" in "\n".join(
+            split_highlights(extract_version_section(self.text, version), version)[0])
 
     # GREEN_ON_BASE(characterization): the only major bump here already names its breaks.
     def test_Given_a_major_release_When_reading_its_highlights_Then_they_name_what_breaks(self):
         # Arrange — draining the breaking section into the major that ships it is a manual step, and
         # a major whose note names no break is what skipping it looks like from the published side.
-        majors = [version for version, previous in zip(self.versions, self.versions[1:])
-                  if version.split(".")[0] != previous.split(".")[0]]
-
         # Act
-        silent = [version for version in majors
-                  if "**Breaking:**" not in "\n".join(
-                      split_highlights(extract_version_section(self.text, version), version)[0])]
+        silent = [version for version in self.major_bumps() if not self.breaking_highlight(version)]
 
         # Assert
         self.assertEqual(silent, [])
+
+    # GREEN_ON_BASE(characterization): no release here other than the major claims a break.
+    def test_Given_a_release_that_is_not_a_major_When_reading_its_highlights_Then_none_claims_a_break(self):
+        # Arrange — the other half of the same rule. A releaser who spots a waiting break and closes
+        # it as a minor writes the bullet anyway, which is a trace the file still carries once the
+        # entry itself has moved.
+        bumps = set(self.major_bumps())
+
+        # Act
+        claimed = [version for version in self.versions
+                   if version not in bumps and self.breaking_highlight(version)]
+
+        # Assert
+        self.assertEqual(claimed, [])
 
 
 if __name__ == "__main__":

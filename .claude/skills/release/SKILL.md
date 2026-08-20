@@ -16,22 +16,23 @@ twice, and nothing is written straight into the GitHub release.
 
 ## 1. Close the version in the CHANGELOG
 
-Rename `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD` and give it a `### Highlights` block above
-its `### Added` / `### Changed` / `### Fixed` headings.
+Write everything into `## [Unreleased]` while it still carries that name: the `### Highlights`
+block above its `### Added` / `### Changed` / `### Fixed` headings, and, for a major, the entries
+drained out of `## [Unreleased — breaking]`. Rename it to `## [X.Y.Z] - YYYY-MM-DD` last. The order
+is not a preference — `changelog_into_closed_version.py` refuses a write into a dated section, and
+the rename is what dates it.
 
 `## [Unreleased — breaking]` decides the version rather than following it: what sits there is to
-ship in a major and nowhere else. Closing a major moves those entries up into the version's own
-subsections and leaves one line under the heading saying nothing is waiting; closing a minor or a
-patch leaves them alone. That heading is never dated, never deleted and never left empty;
-`scripts/release/test_release_notes.py` refuses all three. CONTRIBUTING.md's release section owns
-which entry goes where.
+ship in a major and nowhere else. A major drains it as above and leaves the heading standing with
+none; a minor or a patch leaves it alone. That heading is never dated and never deleted;
+`scripts/release/test_release_notes.py` refuses both. CONTRIBUTING.md's release section owns which entry goes where.
 
 **Highlights is what the release note leads with, and the release fails without it.** Five to nine
 bullets, one short paragraph each, ordered by what a user notices first — a fix for something that
 was silently broken outranks a new utility. A major leads its last bullet with `**Breaking:**` and
 lists every breaking change in it — what the drain has just moved into this version's own
-subsections — and `scripts/release/test_release_notes.py` refuses a major without that bullet. A
-minor or a patch carries no such bullet. Write them fresh: a bullet copied verbatim from a
+subsections — and `scripts/release/test_release_notes.py` refuses a major without that bullet and
+any other release that carries one. Write them fresh: a bullet copied verbatim from a
 long-form entry below fails the same script, because the note would then say the same thing twice.
 
 Bump `version` in `Packages/com.velvet.core/package.json` to match. SemVer against the previous

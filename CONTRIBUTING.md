@@ -586,12 +586,14 @@ written rather than when the version closes. `## [Unreleased]` is what a minor o
 `## [Unreleased — breaking]` is what has to wait for a major: an API a caller has to edit around, and
 behaviour a working application would notice changing.
 
-1. Close the version in `Packages/com.velvet.core/CHANGELOG.md` — rename `## [Unreleased]` to
-   `## [X.Y.Z] - YYYY-MM-DD` — and bump `version` in `package.json` to match. A major moves the
-   breaking entries up into that section first and leaves one line under the heading saying nothing
-   is waiting; a minor or a patch leaves them where they are. The heading itself is never dated,
-   never deleted and never left empty, and a major's `### Highlights` carries a `**Breaking:**`
-   bullet; `test_release_notes.py` refuses each of those.
+1. Close the version in `Packages/com.velvet.core/CHANGELOG.md` and bump `version` in
+   `package.json` to match. A major moves the breaking entries up into `## [Unreleased]` and leaves
+   their heading standing with none; a minor or a patch leaves them where they are. Rename
+   `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD` **last**, once nothing further is going into it:
+   `changelog_into_closed_version.py` refuses a write into a dated section, and the rename is what
+   dates it. The breaking heading itself is never dated and never deleted, and a `**Breaking:**`
+   bullet in `### Highlights` belongs to a major and to no other release; `test_release_notes.py`
+   refuses each of those.
 2. Merge to `main` (the `upm` branch is updated automatically).
 3. Run the **UPM** workflow via *Actions ▸ UPM ▸ Run workflow*, entering the same version.
    This tags `vX.Y.Z` on the `upm` (package-at-root) commit and publishes a GitHub release.

@@ -63,7 +63,7 @@ Never put an issue or PR number in a comment. Everything in this repository is w
 
 A change to behaviour a guide describes updates that guide in the same change. Documentation is single-source-of-truth: a fact lives in exactly one document and the others link to it. The same applies to comments — name a sibling's mechanism rather than re-explaining it.
 
-Judge whether `Packages/com.velvet.core/CHANGELOG.md` needs an entry and state your judgement either way. User-visible behaviour belongs there; pure refactors and contributor tooling do not. Two open sections take one: `[Unreleased]` for what a minor or a patch may ship, `[Unreleased — breaking]` for an API a caller has to edit around or behaviour a working application would notice changing. CONTRIBUTING.md's release section owns the split; filing a break in the first ships it a release early and no guard sees it.
+Judge whether `Packages/com.velvet.core/CHANGELOG.md` needs an entry and state your judgement either way. User-visible behaviour belongs there; pure refactors and contributor tooling do not. Two open sections take one: `[Unreleased]` for what a minor or a patch may ship, `[Unreleased — breaking]` for an API a caller has to edit around or behaviour a working application would notice changing. CONTRIBUTING.md's release section owns the split; filing a break in the first ships it a release early, and nothing checks that at the time you write it.
 
 ## Reporting
 
