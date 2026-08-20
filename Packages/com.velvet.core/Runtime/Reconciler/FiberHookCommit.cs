@@ -124,8 +124,13 @@ namespace Velvet
                 var slot = slots[i];
                 if (slot.NextNeedsReregister)
                 {
-                    slot.Registration?.Dispose();
+                    // Register before releasing the previous registration: RouteBlockerManager.SettleProceeding
+                    // reads whether a registered entry is still Blocked, and a swap that releases first takes
+                    // this Blocker out of that reading for the width of the swap — arming the Blockers that
+                    // released their navigation while this one is still Blocked.
+                    var released = slot.Registration;
                     slot.Registration = slot.NextRegister?.Invoke();
+                    released?.Dispose();
                 }
                 slot.LastDeps = slot.NextDeps;
                 slot.NextRegister = null;

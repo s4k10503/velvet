@@ -37,6 +37,9 @@ namespace Velvet.Tests
     /// attempt token is already cancelled flips no state at all.</item>
     /// <item><c>Reset</c> clears the state it is called on rather than relying on the manager-wide release,
     /// so a Blocker blocked before its registration was disposed still returns to Idle.</item>
+    /// <item>A re-render re-registers a <c>UseBlocker</c> without the departure it is holding going unheld
+    /// in between, so a second Blocker that released the same departure stays out of its way and the
+    /// departure lands once both have answered.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -692,6 +695,62 @@ namespace Velvet.Tests
                 Is.EqualTo((NavigationResult.Success, NavigationResult.Blocked)),
                 "The async overload stages the same null deps as the synchronous one, so the two must not "
                 + "drift apart under an edit to either");
+        }
+
+        #endregion
+
+        #region UseBlocker re-registration beside a proceeding Blocker
+
+        private static RouteBlockerState s_answeredFormBlocker;
+        private static RouteBlockerState s_holdingFormBlocker;
+        private static StateUpdater<int> s_holdingFormRevise;
+
+        [Component]
+        private static VNode AnsweredFormRender()
+        {
+            s_answeredFormBlocker = Hooks.UseBlocker(_ => true);
+            return V.Label(text: "answered");
+        }
+
+        [Component]
+        private static VNode HoldingFormRender()
+        {
+            var (revision, revise) = Hooks.UseState(0);
+            s_holdingFormRevise = revise;
+            s_holdingFormBlocker = Hooks.UseBlocker(_ => true);
+            return V.Label(text: revision.ToString());
+        }
+
+        [Component]
+        private static VNode TwoBlockingFormsRender() =>
+            V.Div(
+                "forms",
+                V.Component(AnsweredFormRender, key: "answered"),
+                V.Component(HoldingFormRender, key: "holding"));
+
+        [Test]
+        public void Given_ABlockerReRegisteringWhileAnotherProceeds_When_ItProceedsToo_Then_TheDepartureLands()
+        {
+            // Arrange — the second form re-renders while it is the one still holding the departure, and a
+            // UseBlocker written without a deps argument swaps its registration on every render.
+            var router = BuildRouter("/home", Route("home"), Route("other"));
+            s_answeredFormBlocker = null;
+            s_holdingFormBlocker = null;
+            s_holdingFormRevise = default;
+            using var mounted = V.Mount(new VisualElement(), V.Component(TwoBlockingFormsRender, key: "forms"));
+            var blockedResult = router.NavigateSync("/other");
+            s_answeredFormBlocker.Proceed();
+            s_holdingFormRevise.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Act
+            s_holdingFormBlocker.Proceed();
+
+            // Assert — the first result rides along because a page whose forms never blocked reaches "/other"
+            // on the navigation itself, with neither Proceed() having anything to resume.
+            Assert.That(
+                (blockedResult, router.CurrentLocation.Path),
+                Is.EqualTo((NavigationResult.Blocked, "/other")));
         }
 
         #endregion
