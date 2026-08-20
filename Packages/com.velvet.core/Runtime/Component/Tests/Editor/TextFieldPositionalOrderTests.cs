@@ -14,8 +14,8 @@ namespace Velvet.Tests
     /// it belongs with by subject, and the four text-input parameters already are.
     /// <para/>
     /// A prefix rather than the whole list, because appending is the move that keeps those bindings. Both the
-    /// name and the type at each position, because a positional argument rebinds on either moving, and a
-    /// rename alone leaves it bound to the same value.
+    /// name and the type at each position, because a positional argument rebinds on either moving, and
+    /// swapping two positions of the same type changes the names while leaving the type list identical.
     /// <para/>
     /// One factory, hence <c>Single</c>: a second overload would decide by argument type which one a
     /// positional call reaches, and this prefix would no longer be the whole answer.
