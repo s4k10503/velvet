@@ -73,9 +73,8 @@ namespace Velvet.Tests
         private static readonly Regex CharacterClassPattern = new(@"\[(\w)\w*\]", RegexOptions.Compiled);
 
         /// <remarks>
-        /// Derived from .gitignore rather than listed, because the population that must be excluded is
-        /// exactly the one git already excludes — and a hand-written list would go red on a machine carrying
-        /// an artifact CI does not, the asymmetry UnwalkedMarkdownRoots names above.
+        /// Derived from .gitignore rather than listed, because a hand-written list would go red on a
+        /// machine carrying an artifact CI does not — the asymmetry UnwalkedMarkdownRoots names above.
         /// <para>
         /// A nested pattern contributes its first segment alone, so a pattern under a walked root puts that
         /// root in here: docs and ProjectSettings are both in this set, and neither is ignored. A caller
@@ -110,8 +109,7 @@ namespace Velvet.Tests
         internal static IReadOnlyList<string> WalkedRoots(bool includeClaude) =>
             includeClaude ? ClaudeAwareRoots : BaseWalkedRoots;
 
-        // Build output, matched on the basename wherever it appears: nothing a document names lives there,
-        // and Library alone would make the walk the slowest thing in this fixture.
+        // Build output, matched on the basename wherever it appears: nothing a document names lives there.
         // StrykerOutput is here for a different reason, and it is the reason to be strict about the rest:
         // a mutation report is a couple of megabytes of source excerpts, it is gitignored, and it survives
         // the run that made it. One left over from three days earlier put the word this fixture was asked

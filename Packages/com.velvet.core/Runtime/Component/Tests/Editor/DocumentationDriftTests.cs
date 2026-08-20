@@ -878,9 +878,11 @@ namespace Velvet.Tests
                 Is.EqualTo((true, true, string.Empty)),
                 "a false first term is git declining to list this checkout, so nothing after it was "
                 + "measured; a false second is git listing no markdown under a walked root, so there was "
-                + "nothing to check; a non-empty third is an exclusion in DocumentationCorpus taking "
-                + "markdown the repository tracks out of the corpus, so nothing scans it — narrow the entry "
-                + "to the path the build writes, or drop it");
+                + "nothing to check; a non-empty third is markdown the repository tracks that the walk "
+                + "did not produce, so nothing scans it — an exclusion in DocumentationCorpus took it out "
+                + "of the corpus, and narrowing that entry to the path the build writes or dropping it is "
+                + "the fix; or the walk read another spelling of the path off the filesystem, or none at "
+                + "all, as a case-only rename and a tracked file deleted without git rm each leave it");
         }
 
         // GREEN_ON_BASE(characterization): the helper this drives is declared below, in a test-assembly
@@ -890,11 +892,10 @@ namespace Velvet.Tests
         [Test]
         public void Given_ACheckoutTheProcessDoesNotOwn_When_TheTrackedListingIsRead_Then_SafeDirectoryCarriesIt()
         {
-            // Arrange — a checkout this fixture builds rather than the project directory, so the question
-            // is posed the same way in every lane. Posed on the project directory it was not: the base-red
-            // lane hands the suite a checkout of the shape the case below is named for, and measured
-            // there, both arms came back as nothing — which this comparison can only read as the argument
-            // having stopped lifting the refusal.
+            // Arrange — a checkout this fixture builds rather than the project directory: measured, the
+            // base-red lane hands the suite a project directory of the shape the case below is named for,
+            // and both arms came back as nothing there, which this comparison can only read as the
+            // argument having stopped lifting the refusal.
             var checkout = Scratch("-ownership");
             try
             {
@@ -911,8 +912,10 @@ namespace Velvet.Tests
                     Is.EqualTo((true, true)),
                     "TrackedFiles reads git in a directory the process may not own. A false left side "
                     + "means git no longer refuses such a checkout, leaving the safe.directory argument "
-                    + "inert; a false right side means the argument no longer lifts that refusal, and the "
-                    + "tracked-document guard above gets nothing and reports that git did not answer");
+                    + "inert; a false right side is the trusted read coming back with nothing, which is "
+                    + "the argument no longer lifting that refusal or git not being readable in this "
+                    + "checkout at all — a refusal and an unreadable git both leave the left side null, "
+                    + "so it does not separate them");
             }
             finally
             {
@@ -931,8 +934,7 @@ namespace Velvet.Tests
             // repository's base-red lane hands one to a container that mounts the checkout under a
             // different prefix, so the recorded path names nothing while the directory it names sits
             // under the checkout unmoved. The gitfile is rewritten to a path that was never there rather
-            // than a mount arranged: the recorded path not resolving is the term the resolution below
-            // keys on, and it is the one this reproduces.
+            // than a mount arranged, which would need a container.
             var checkout = Scratch("-relocated");
             var worktree = Path.Combine(checkout, "base-tree");
             try
@@ -941,21 +943,73 @@ namespace Velvet.Tests
                 Git(checkout, "worktree", "add", "-q", "--detach", worktree);
                 var gitfile = Path.Combine(worktree, ".git");
                 var recorded = File.Exists(gitfile) ? File.ReadAllText(gitfile) : string.Empty;
-                File.WriteAllText(
-                    gitfile,
-                    "gitdir: " + Path.Combine(checkout + "-gone", ".git", "worktrees", "base-tree") + "\n");
+                if (recorded.StartsWith("gitdir:", StringComparison.Ordinal))
+                {
+                    File.WriteAllText(
+                        gitfile,
+                        "gitdir: "
+                        + Path.Combine(checkout + "-gone", ".git", "worktrees", "base-tree") + "\n");
+                }
 
                 // Act
                 var listing = TrackedFiles(worktree);
 
-                // Assert — that git linked the worktree at all rides in the comparison: one it never
-                // registered carries no gitfile, and the resolution would have nothing to look for.
+                // Assert — that git linked the worktree at all rides in the comparison, and the rewrite
+                // above is skipped where it did not, so a checkout git could not be read in reaches this
+                // comparison rather than dying on the directory git never created.
                 Assert.That(
                     (recorded.StartsWith("gitdir:", StringComparison.Ordinal), listing?.Count > 0),
                     Is.EqualTo((true, true)),
-                    "a checkout reached under a prefix its recorded git directory does not know leaves "
-                    + "the tracked-document guard above with no population, and no way to tell that from "
-                    + "a repository that tracks nothing");
+                    "a false left side is no linked worktree in this checkout, so the resolution below "
+                    + "had nothing to look for and nothing was posed; a false right side leaves "
+                    + "the tracked-document guard above with no population for a checkout reached under "
+                    + "a prefix its recorded git directory does not know, and no way to tell that from a "
+                    + "repository that tracks nothing");
+            }
+            finally
+            {
+                Remove(checkout);
+            }
+        }
+
+        // GREEN_ON_BASE(characterization): the resolution this drives is declared below, in a
+        // test-assembly file the base run carries from the branch along with the case. What stands in
+        // for the base run is the reachability branch removed and the case run, measured: the listing
+        // came back holding the checkout's one tracked file.
+        [Test]
+        public void Given_ALinkedWorktreeGitCanFindOnItsOwn_When_TheTrackedListingIsRead_Then_TheOwnershipRefusalStillFires()
+        {
+            // Arrange — a linked worktree nested inside its own host repository: git sets this checkout
+            // up on its own, and the re-rooting below would answer for it as well, since the recorded
+            // git directory is there and an enclosing directory holds the tail from the .git segment on.
+            // The reachability branch is what decides which one runs.
+            var checkout = Scratch("-reachable");
+            var worktree = Path.Combine(checkout, "nested", "tree");
+            try
+            {
+                Repository(checkout);
+                Git(checkout, "worktree", "add", "-q", "--detach", worktree);
+                var gitfile = Path.Combine(worktree, ".git");
+                var line = File.Exists(gitfile) ? File.ReadAllText(gitfile).Trim() : string.Empty;
+                var recorded = line.StartsWith("gitdir:", StringComparison.Ordinal)
+                    ? line["gitdir:".Length..].Trim()
+                    : string.Empty;
+
+                // Act — the arm without the safe.directory argument, since the dubious-ownership
+                // refusal is what tells the two setup paths apart and the argument would lift it.
+                var untrusted = TrackedFiles(worktree, trustDirectory: false, assumeForeignOwner: true);
+
+                // Assert — that the recorded directory is there rides in the comparison, since it is the
+                // state the branch under test reads, and a checkout where git linked no worktree reaches
+                // the same verdict having posed nothing.
+                Assert.That(
+                    (recorded.Length > 0 && Directory.Exists(recorded), untrusted == null),
+                    Is.EqualTo((true, true)),
+                    "a false left side is no linked worktree here with its recorded git directory "
+                    + "present, so nothing was posed; a false right side is this read having taken an "
+                    + "explicit git-dir instead of the setup path git chooses for itself, which skips "
+                    + "the dubious-ownership refusal and leaves the safe.directory argument in "
+                    + "TrackedFiles inert");
             }
             finally
             {
@@ -1006,11 +1060,12 @@ namespace Velvet.Tests
         /// it names sits under the checkout unmoved. Only the prefix moved, so the tail from the .git
         /// segment on is re-rooted at the nearest enclosing directory holding it.
         /// <para>
-        /// Answering null wherever the recorded directory is there keeps the ordinary read on the setup
-        /// path git chooses for itself, which is the one
-        /// Given_ACheckoutTheProcessDoesNotOwn_When_TheTrackedListingIsRead_Then_SafeDirectoryCarriesIt
-        /// poses its question on — measured, that case goes red when this answers for a checkout git can
-        /// find on its own.
+        /// Answering null wherever the recorded directory is there leaves the read on the setup path git
+        /// chooses for itself, which is the path the safe.directory argument above is added for. Dropped as
+        /// redundant, this branch stops separating a checkout git cannot set up on its own from one it can,
+        /// sending both down the explicit git-dir path wherever the re-rooting finds a directory, and
+        /// Given_ALinkedWorktreeGitCanFindOnItsOwn_When_TheTrackedListingIsRead_Then_TheOwnershipRefusalStillFires
+        /// is what goes red when it does.
         /// </para>
         /// </remarks>
         private static string ReachableGitDirectory(string directory)
@@ -1052,7 +1107,7 @@ namespace Velvet.Tests
             return null;
         }
 
-        /// <summary>Runs git in a directory, handing back its exit code and stdout, or -1 if it never answered.</summary>
+        /// <summary>Exit code and stdout from git, or -1 where it never answered.</summary>
         private static (int Exit, string Output) RunGit(
             string directory, IEnumerable<string> arguments, bool assumeForeignOwner = false)
         {
