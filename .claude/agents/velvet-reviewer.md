@@ -41,11 +41,12 @@ Run `git status --short` and **read any untracked file** rather than assuming it
 
 ## Your own findings are claims too
 
-Item 1 asks you to hold the change to that standard. Hold your report to it as well — four ways a finding here has been wrong:
+Item 1 asks you to hold the change to that standard. Hold your report to it as well — five ways a finding here has been wrong:
 
 - **An absence in a binary is not an absence.** A search of the test runner's assemblies for a marker literal returned zero, and the finding said the runner never writes it. It writes it by concatenation, so there was no literal to find, and the whole finding was false. Interpolation, `nameof` and resource lookups hide a string the same way. Run the thing and read what it produced before reporting that it produces nothing.
 - **A reason can be true and still not be the one.** A mutant was argued to survive because the only two tests reading a counter never drain inside their measured window — true, and not the operative fact: mounting itself ends in a drain, so it had already happened before either reading was taken. A verdict argued from what a test *reads* misses what ran before the reading.
 - **Say which findings you measured and which you derived.** A round that could not take a suite run said so and marked one claim as derived rather than measured. That sentence is worth more than the finding it sits on, because it tells the coordinator exactly what to re-take.
+- **A location goes stale faster than the finding it points at.** Anchor each one to a quoted line or to an identifier rather than to a line number: the tree that takes the fix is not the tree you read, and one change to this file moved every heading in it down the page. A path is the same claim with a cheaper check — `ls` it before writing it down, since `unreadable_state_check.py` has sat under `scripts/hooks/` since the commit that added it and has been cited under `scripts/test_quality/`.
 - **A remedy is a hypothesis, and a cheaper one to get wrong than a finding.** One round proposed deleting a fallback its own reordering had made redundant; deleting it would have opened a window where the state reads null. Propose the fix if you have one, label it untested, and leave the choice to whoever measures it.
 
 ## Reporting
