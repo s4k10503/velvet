@@ -77,9 +77,7 @@ namespace Velvet.Tests
         /// machine carrying an artifact CI does not — the asymmetry UnwalkedMarkdownRoots names above.
         /// <para>
         /// A nested pattern contributes its first segment alone, so a pattern under a walked root puts that
-        /// root in here: docs and ProjectSettings are both in this set, and neither is ignored. A caller
-        /// asking about a top-level directory reads it as intended only because a walked root is answered
-        /// before this set is consulted; one matching whole paths has to account for the difference.
+        /// root in here: docs and ProjectSettings are both in this set, and neither is ignored.
         /// </para>
         /// <para>
         /// WorkflowTriggerCoverageTests reads this rather than deriving it again: two answers to one question
@@ -110,10 +108,10 @@ namespace Velvet.Tests
             includeClaude ? ClaudeAwareRoots : BaseWalkedRoots;
 
         // Tool-written directories, matched on the basename wherever it appears.
-        // StrykerOutput is here for a different reason, and it is the reason to be strict about the rest:
-        // a mutation report is a couple of megabytes of source excerpts, it is gitignored, and it survives
-        // the run that made it. One left over from three days earlier put the word this fixture was asked
-        // about into the corpus, so the check passed on the machine that had it and failed on CI.
+        // StrykerOutput is in this list because a mutation report is a couple of megabytes of source
+        // excerpts, it is gitignored, and it survives the run that made it. One left over from three days
+        // earlier put the word this fixture was asked about into the corpus, so the check passed on the
+        // machine that had it and failed on CI.
         // .pytest_cache is the same shape, and it is in this list rather than left to .gitignore: Walk
         // below reads no ignore file, so an entry there cannot keep anything out of the corpus.
         // obj and bin stay basenames rather than joining the path list below, because each occurs under

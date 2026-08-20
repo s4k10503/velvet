@@ -892,11 +892,10 @@ namespace Velvet.Tests
         [Test]
         public void Given_ACheckoutTheProcessDoesNotOwn_When_TheTrackedListingIsRead_Then_SafeDirectoryCarriesIt()
         {
-            // Arrange — a checkout this fixture builds rather than the project directory: measured, the
-            // base-red lane hands the suite a project directory of the shape
+            // Arrange — a checkout this fixture builds rather than the project directory: in the base-red
+            // lane that directory has the shape
             // Given_AWorktreeWhoseRecordedGitDirectoryIsGone_When_TheTrackedListingIsRead_Then_TheOneUnderTheCheckoutAnswers
-            // is named for, and both arms came back as nothing there, so this comparison fails in that
-            // lane whatever the argument does.
+            // arranges, and this comparison does not hold there.
             var checkout = Scratch("-ownership");
             try
             {
