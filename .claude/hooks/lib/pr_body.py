@@ -53,8 +53,8 @@ def options(operands):
     gh takes a value in more spellings than the obvious one: after the flag, after an `=`, attached
     to a short flag (`-Fv`), and any of those with boolean shorthand ahead of it in the same token
     (`-dF v`, `-dFv`, `-dF=v`). A body passed the last way reached none of the checks that read
-    this: the invocation was claimed, no body was found, and the command took the exemption meant
-    for a body that cannot be read. That is the accident these guards exist for, one letter apart.
+    this: the invocation was claimed, no body was found, and the command took the exemption for
+    carrying no body operand at all. That is the accident these guards exist for, one letter apart.
     """
     found = []
     index = 0

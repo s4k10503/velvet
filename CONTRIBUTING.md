@@ -43,8 +43,8 @@ meet:
   than this one reads — give the body an absolute path.
 
 A command passing both `--body` and `--body-file` is declined when only one of the two answers:
-which of them reaches the description is not settled by the command, so pass the one you mean. Where
-both answer, or neither does, the pair is judged as one body.
+which of them `gh` posts is not something the guard holds, so pass the one you mean. Where both
+answer, or neither does, the pair is judged as one body.
 
 A command carrying no body operand at all — `--fill` and its relatives, `--template`, `--editor`, the
 interactive form — holds no text here, so the question goes unasked, and `--dry-run` or `--help`

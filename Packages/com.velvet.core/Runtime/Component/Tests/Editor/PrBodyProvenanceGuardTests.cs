@@ -71,8 +71,8 @@ namespace Velvet.Tests
             ("gh pr new --title x --body-file {DIR}/closes.md", "allow"),
             // Backticks and a `$` in an inline body are the description rather than a name for it.
             ("gh pr create --title x --body 'Closes #7. `Foo.Bar` now reads $HOME.'", "allow"),
-            // Two bodies both naming an origin: whichever of them reaches the description, the
-            // answer is in it, so no verdict on which is needed.
+            // Two bodies both naming an origin: whichever of them gh posts, the answer is in it,
+            // so no verdict on which is needed.
             ("gh pr create --title x --body 'Closes #7.' --body-file {DIR}/closes.md", "allow"),
             ("gh pr create --fill", "allow"),
             // A body flag given last has no value to read, which is a different way through the
@@ -122,10 +122,18 @@ namespace Velvet.Tests
             ("gh pr create --title x -b 'A change to the pooled reset helper.'", "no-origin"),
             ("gh pr create --title x --web --body-file {DIR}/silent.md", "no-origin"),
             // Either order, and its own refusal rather than the silent body's: naming one of the
-            // two as the body that says nothing is a verdict on which of them reaches the
-            // description, and that is the thing the command does not settle.
+            // two as the body that says nothing is a verdict on which of them gh posts, which the
+            // guard does not hold.
             ("gh pr create --title x --body 'Closes #7.' --body-file {DIR}/silent.md", "two-bodies"),
             ("gh pr create --title x --body-file {DIR}/closes.md "
+             + "--body 'A change to the pooled reset helper.'", "two-bodies"),
+            // The answer in these two is a `No issue:` line rather than a keyword, so neither body
+            // names an issue and the refusal cannot say that one of them does. Both sides, because
+            // the comparison reads each with its own call: with only the first, the second call
+            // could take the keyword alone and every row in this fixture still passed.
+            ("gh pr create --title x --body 'No issue: a release chore, it closes nothing.' "
+             + "--body-file {DIR}/silent.md", "two-bodies"),
+            ("gh pr create --title x --body-file {DIR}/no-issue.md "
              + "--body 'A change to the pooled reset helper.'", "two-bodies"),
             ("gh pr edit 1 --body-file {DIR}/closes.md "
              + "--body 'A change to the pooled reset helper.'", "two-bodies"),

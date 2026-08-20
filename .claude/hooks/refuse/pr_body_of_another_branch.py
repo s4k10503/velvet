@@ -102,9 +102,9 @@ NO_ANSWER = (
     "  No issue: <where this came from>")
 
 TWO_BODIES = (
-    "the command carries two bodies and only one of them names an issue.\n"
-    "Which of the two reaches the description is not settled by the command, so\n"
-    "whether the answer gets posted is not something this can report on.\n\n"
+    "the command carries two bodies and only one of them says\n"
+    "where the change came from. Which one gh posts is not something this holds, so an\n"
+    "answer carried only by the body it does not post would be an answer nobody reads.\n\n"
     "Pass the one you mean.")
 
 
@@ -174,8 +174,6 @@ def check(operands, cwd, after_a_move, command="gh pr create"):
         return 0
     if path is None:
         return judge_inline(text, command)
-    # Which of two bodies reaches the description is not settled by the command, so a disagreement
-    # between them is refused with a remedy rather than settled by picking one.
     inline = valued(operands, BODY_FLAGS)
     if inline is not None and answered(inline) != answered(text):
         return refuse_command(command, TWO_BODIES)
