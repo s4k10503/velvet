@@ -250,13 +250,15 @@ class StatementChainCutTests(unittest.TestCase):
     own rather than a kill.
     """
 
+    # GREEN_ON_BASE(refactor): the verdict this filters on is spelled differently on the base, which
+    # selects nothing there, and an absence is what the case asserts. The case below is its control.
     def test_Given_AnExpressionBodyAfterAnArrow_When_MutantsAreGenerated_Then_ItIsNotDeleted(self):
-        # Arrange — the line matches the discarded-call shape and is the tail of a declaration, so
+        # Arrange — the line matches the removal shape and is the tail of a declaration, so
         # deleting it leaves a member with no body. Measured at 77 mutants across this package.
         text = "internal VNode Wrap(IEnumerable<T> items) =>\n    Fragment(List(items), key);\n"
 
         # Act
-        deletions = mutants_of(text, "void call removed")
+        deletions = mutants_of(text, "line removed")
 
         # Assert
         self.assertEqual(deletions, [])
@@ -268,7 +270,7 @@ class StatementChainCutTests(unittest.TestCase):
         text = "var live = Track();\nowners.Remove(child);\n"
 
         # Act
-        deletions = [mutant.line for mutant in mutants_of(text, "void call removed")]
+        deletions = [mutant.line for mutant in mutants_of(text, "line removed")]
 
         # Assert
         self.assertEqual(deletions, [2])
@@ -283,7 +285,7 @@ class StatementChainCutTests(unittest.TestCase):
                 "else result.Add(node);\n")
 
         # Act
-        deletions = [mutant.line for mutant in mutants_of(text, "void call removed")]
+        deletions = [mutant.line for mutant in mutants_of(text, "line removed")]
 
         # Assert — line 2 stays deletable, so the `else` on line 4 is what decides line 3. A file's
         # first line has no statement above it and is never deletable, which is why line 1 is absent.
@@ -390,6 +392,83 @@ class StatementChainCutTests(unittest.TestCase):
         self.assertEqual((len(sources) > 200, dropped), (True, []))
 
 
+class LineRemovalReadingTests(unittest.TestCase):
+    """What the removal reads a line as, and what it puts back in place of it.
+
+    The pattern is anchored at a semicolon that ends the line, so read off the raw text it stops at
+    anything trailing it — and both a comment and a semicolon inside a literal are things the
+    compiler sees no statement boundary in. Read off the mask instead, the shape is the same one
+    either way.
+    """
+
+    def test_Given_ARemovalTheRepositoryGenerates_When_ACommentIsAppendedToIt_Then_ItStillGenerates(self):
+        # Arrange — the corpus a campaign mutates rather than a list of spellings, since a list is
+        # only ever the shapes its author thought of.
+        sources = [path for path in (REPO_ROOT / "Packages/com.velvet.core").rglob("*.cs")
+                   if mutation_check.mutable(path, REPO_ROOT)]
+
+        # Act
+        kept, lost = 0, []
+        for path in sources:
+            text = path.read_text()
+            numbers = set(range(1, len(text.splitlines()) + 1))
+            before = {mutant.line for mutant in mutation_check.mutations_for(path, text, numbers)
+                      if mutant.operator == "line removed"}
+            if not before:
+                continue
+            lines = text.splitlines(keepends=True)
+            for number in before:
+                lines[number - 1] = lines[number - 1].rstrip("\r\n") + "  // a trailing note\n"
+            after = {mutant.line for mutant
+                     in mutation_check.mutations_for(path, "".join(lines), numbers)
+                     if mutant.operator == "line removed"}
+            kept += len(before & after)
+            lost += ["{}:{}".format(path.name, number) for number in sorted(before - after)]
+
+        # Assert — the surviving count rides along, because a scan that found no removal to perturb
+        # loses none of them by arithmetic.
+        self.assertEqual((kept > 500, lost), (True, []))
+
+    def test_Given_ASemicolonInsideALiteral_When_MutantsAreGenerated_Then_TheLineIsStillRemovable(self):
+        # Arrange — the two spellings the package puts one in are the interpolated string and the
+        # character literal, with the plain string beside them.
+        text = ("var live = Track();\n"
+                'log.Warning("stopped; nothing to flush");\n'
+                'log.Warning($"{name} stopped; nothing to flush");\n'
+                "builder.Append(name).Append(';');\n")
+
+        # Act
+        deletions = [mutant.line for mutant in mutants_of(text, "line removed")]
+
+        # Assert
+        self.assertEqual(deletions, [2, 3, 4])
+
+    def test_Given_ACallWhoseNameStartsWithAKeyword_When_MutantsAreGenerated_Then_OnlyTheKeywordIsSkipped(self):
+        # Arrange — line 3 has the removal shape and is refused for the reason `CONTROL_KEYWORD`
+        # carries; line 2 is a call the same skip read as one of them.
+        text = "var live = Track();\nreturns.Add(instr);\nreturn (live, instr);\n"
+
+        # Act
+        deletions = [mutant.line for mutant in mutants_of(text, "line removed")]
+
+        # Assert — one comparison over both, so neither direction can be met by an operator that
+        # stopped generating and neither by one that skips nothing.
+        self.assertEqual(deletions, [2])
+
+    def test_Given_ABlockCommentSpanningTheRemovedLine_When_ItIsApplied_Then_BothHalvesOfItStay(self):
+        # Arrange — one comment opening on the first removable line and closing on the second, so both
+        # directions are read: the line carrying its opening, and the line carrying its closing.
+        text = ("var live = Track();\n"
+                "owners.Remove(child); /* the reason\n"
+                "   it runs first */ tracker.Flush();\n")
+
+        # Act
+        removals = [applied(text, mutant) for mutant in mutants_of(text, "line removed")]
+
+        # Assert
+        self.assertEqual(removals, ["; /* the reason", "it runs first */ ;"])
+
+
 class GuardRemovalTests(unittest.TestCase):
     def test_Given_ASingleLineReturnGuard_When_ItIsRemoved_Then_OnlyTheGuardGoes(self):
         # Arrange
@@ -437,13 +516,13 @@ class DeclarationRemovalTests(unittest.TestCase):
     """
 
     def test_Given_ADeconstructingDeclaration_When_MutantsAreGenerated_Then_ItIsNotDeleted(self):
-        # Arrange — `var` satisfies the discarded-call pattern's leading identifier, and the argument
+        # Arrange — `var` satisfies the removal pattern's leading identifier, and the argument
         # list that pattern looks for runs to the initializer's last `)`, so the whole declaration
         # read as a call whose value was thrown away.
         text = "Track();\nvar (state, setState) = UseState(0);\nsetState.Invoke(1);\n"
 
         # Act
-        deletions = [mutant.line for mutant in mutants_of(text, "void call removed")]
+        deletions = [mutant.line for mutant in mutants_of(text, "line removed")]
 
         # Assert — line 1 is absent for the reason `StatementChainCutTests` gives, and line 3 is what
         # says the operator still deletes.
@@ -454,7 +533,7 @@ class DeclarationRemovalTests(unittest.TestCase):
         text = "Track();\nStyle.TryExtract(names, out var spec);\nApply(spec);\n"
 
         # Act
-        deletions = [mutant.line for mutant in mutants_of(text, "void call removed")]
+        deletions = [mutant.line for mutant in mutants_of(text, "line removed")]
 
         # Assert
         self.assertEqual(deletions, [3])
@@ -510,7 +589,7 @@ class DeclarationRemovalTests(unittest.TestCase):
         text = "Track();\nforeach (var f in drop) owners.Remove(f);\n"
 
         # Act
-        deletions = [mutant.line for mutant in mutants_of(text, "void call removed")]
+        deletions = [mutant.line for mutant in mutants_of(text, "line removed")]
 
         # Assert
         self.assertEqual(deletions, [2])
@@ -524,7 +603,7 @@ class DeclarationRemovalTests(unittest.TestCase):
                 "Apply(binding, found);\n")
 
         # Act
-        deletions = [mutant.line for mutant in mutants_of(text, "void call removed")]
+        deletions = [mutant.line for mutant in mutants_of(text, "line removed")]
 
         # Assert
         self.assertEqual(deletions, [2, 4])
