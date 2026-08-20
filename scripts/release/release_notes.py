@@ -20,14 +20,6 @@ SUBSECTION_HEADING = re.compile(r"^### +(?P<title>.+?)\s*$")
 
 HIGHLIGHTS_TITLE = "Highlights"
 
-# The two sections an entry is written into before a version closes: one for what may ship in a
-# minor or a patch, one for what has to wait for a major. Neither is ever built into a note. A note
-# assembled from a section still open would change under every entry written into it afterwards,
-# and test_release_notes.py rebuilds every listed version's note on each pull request.
-UNRELEASED = "Unreleased"
-UNRELEASED_BREAKING = "Unreleased — breaking"
-OPEN_VERSIONS = (UNRELEASED, UNRELEASED_BREAKING)
-
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 DEFAULT_CHANGELOG = REPO_ROOT / "Packages" / "com.velvet.core" / "CHANGELOG.md"
 DEFAULT_PACKAGE_JSON = REPO_ROOT / "Packages" / "com.velvet.core" / "package.json"

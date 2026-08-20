@@ -588,9 +588,10 @@ behaviour a working application would notice changing.
 
 1. Close the version in `Packages/com.velvet.core/CHANGELOG.md` — rename `## [Unreleased]` to
    `## [X.Y.Z] - YYYY-MM-DD` — and bump `version` in `package.json` to match. A major moves the
-   breaking entries up into that section first and leaves their heading standing with none; a minor
-   or a patch leaves them where they are. The heading itself is never dated and never deleted;
-   `test_release_notes.py` refuses both.
+   breaking entries up into that section first and leaves one line under the heading saying nothing
+   is waiting; a minor or a patch leaves them where they are. The heading itself is never dated,
+   never deleted and never left empty, and a major's `### Highlights` carries a `**Breaking:**`
+   bullet; `test_release_notes.py` refuses each of those.
 2. Merge to `main` (the `upm` branch is updated automatically).
 3. Run the **UPM** workflow via *Actions ▸ UPM ▸ Run workflow*, entering the same version.
    This tags `vX.Y.Z` on the `upm` (package-at-root) commit and publishes a GitHub release.

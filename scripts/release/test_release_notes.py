@@ -13,10 +13,7 @@ from published_check import RELEASE_DATE
 from release_notes import (
     DEFAULT_CHANGELOG,
     DEFAULT_PACKAGE_JSON,
-    OPEN_VERSIONS,
     ReleaseNotesError,
-    UNRELEASED,
-    UNRELEASED_BREAKING,
     VERSION_HEADING,
     build_notes,
     extract_version_section,
@@ -107,9 +104,10 @@ class ExtractVersionSection(unittest.TestCase):
         # Assert
         self.assertIn("Everything.", section)
 
+    # GREEN_ON_BASE(characterization): the base already ends a section at an undated heading.
     def test_Given_two_open_sections_When_extracting_the_first_Then_the_second_is_excluded(self):
         # Arrange / Act
-        section = extract_version_section(TWO_OPEN, UNRELEASED)
+        section = extract_version_section(TWO_OPEN, "Unreleased")
 
         # Assert
         self.assertEqual(section, ["", "### Added", "", "- Something a minor may ship.", ""])
@@ -306,7 +304,8 @@ class ThisRepositorysChangelog(unittest.TestCase):
         # Highlights of it would demand a rewritten summary on every merge. Renaming it to a
         # version is what brings it under these guards, on the pull request that renames it. Both
         # open sections are in-progress, so both stand outside them until one is renamed.
-        cls.versions = [version for version, _ in cls.headings if version not in OPEN_VERSIONS]
+        cls.versions = [version for version, _ in cls.headings
+                        if version not in ("Unreleased", "Unreleased — breaking")]
 
     def test_Given_the_shipped_changelog_When_reading_Then_it_lists_versions(self):
         # Arrange / Act / Assert — every case below is vacuous on an empty list.
@@ -352,31 +351,33 @@ class ThisRepositorysChangelog(unittest.TestCase):
         self.assertEqual(copied, [])
 
     def test_Given_the_shipped_changelog_When_reading_Then_the_breaking_section_is_open(self):
-        # Arrange — the two routes by which what waits for a major ships inside a minor: this
-        # heading given a version and a date, or deleted so its entries merge into the section
-        # above it, which at a release is the version being closed. Closing a major moves the
-        # entries up instead and leaves the heading carrying none, so no version is an exception.
+        # Arrange — dating this heading makes it a released section of its own; deleting it
+        # merges what it holds into the section above, which at a release is the version being
+        # closed. Moving entries out changes no heading: the not-empty case below sees that only
+        # where every entry goes at once.
         # Act
         open_breaking = [version for version, line in self.headings
-                         if version == UNRELEASED_BREAKING and not RELEASE_DATE.search(line)]
+                         if version == "Unreleased — breaking" and not RELEASE_DATE.search(line)]
 
         # Assert
-        self.assertEqual(open_breaking, [UNRELEASED_BREAKING])
+        self.assertEqual(open_breaking, ["Unreleased — breaking"])
 
     def entries_waiting_for_a_major(self):
         """What the breaking section lists, or nothing where the section itself has gone missing —
         which the case above reports, so reading it here would name one defect twice."""
-        if not any(version == UNRELEASED_BREAKING for version, _ in self.headings):
+        if not any(version == "Unreleased — breaking" for version, _ in self.headings):
             return set()
-        return {normalize(bullet)
-                for bullet in bullets(extract_version_section(self.text, UNRELEASED_BREAKING))}
+        return {normalize(bullet) for bullet in
+                bullets(extract_version_section(self.text, "Unreleased — breaking"))}
 
+    # GREEN_ON_BASE(characterization): the base names nothing as waiting for a major.
     def test_Given_the_breaking_section_When_reading_every_other_section_Then_none_repeats_it(self):
         # Arrange — closing a major moves entries out of this section. One copied rather than moved
         # both ships and goes on waiting, and reads as true in each place; copied into the open
         # minor section instead, it is the same defect one release earlier.
         waiting = self.entries_waiting_for_a_major()
-        elsewhere = [version for version, _ in self.headings if version != UNRELEASED_BREAKING]
+        elsewhere = [version for version, _ in self.headings
+                     if version != "Unreleased — breaking"]
 
         # Act
         copied = [f"{version}: {bullet.splitlines()[0][:60]}…"
@@ -386,6 +387,32 @@ class ThisRepositorysChangelog(unittest.TestCase):
 
         # Assert
         self.assertEqual(copied, [])
+
+    def test_Given_the_breaking_section_When_reading_Then_it_is_not_empty(self):
+        # Arrange — every entry moved out at once, heading left standing, is how what waits for a
+        # major reaches a minor's note with no heading changed. It empties what the case above
+        # compares against too, so that one falls silent on the same edit. Draining at a major
+        # leaves the standing line CONTRIBUTING.md's release section describes.
+        # Act
+        waiting = self.entries_waiting_for_a_major()
+
+        # Assert
+        self.assertGreater(len(waiting), 0)
+
+    # GREEN_ON_BASE(characterization): the only major bump here already names its breaks.
+    def test_Given_a_major_release_When_reading_its_highlights_Then_they_name_what_breaks(self):
+        # Arrange — draining the breaking section into the major that ships it is a manual step, and
+        # a major whose note names no break is what skipping it looks like from the published side.
+        majors = [version for version, previous in zip(self.versions, self.versions[1:])
+                  if version.split(".")[0] != previous.split(".")[0]]
+
+        # Act
+        silent = [version for version in majors
+                  if "**Breaking:**" not in "\n".join(
+                      split_highlights(extract_version_section(self.text, version), version)[0])]
+
+        # Assert
+        self.assertEqual(silent, [])
 
 
 if __name__ == "__main__":
