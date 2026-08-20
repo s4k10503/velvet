@@ -346,6 +346,9 @@ namespace Velvet.Tests
                 Is.EqualTo((1, true, true)));
         }
 
+        // GREEN_ON_BASE(characterization): the base sorts these two layers the same way, so the case
+        // answers alike on either side. What this commit changes is the verdict a missing host draws,
+        // not the order the base already produces.
         [Test]
         public void Given_DifferentLayers_When_Mounted_Then_SortingOrdersThePanels()
         {
@@ -356,15 +359,15 @@ namespace Velvet.Tests
                 V.Portal(UILayer.Topmost, key: "top", children: new VNode[] { V.Div(name: "top1") }),
             }));
 
-            // Assert — the background layer's panel sorts below the topmost layer's.
+            // Assert — both hosts exist, and the background layer's panel sorts below the topmost layer's.
             float? background = null, topmost = null;
             foreach (var doc in NewDocs())
             {
                 if (doc.rootVisualElement.Q<VisualElement>("bg1") != null) background = doc.panelSettings.sortingOrder;
                 if (doc.rootVisualElement.Q<VisualElement>("top1") != null) topmost = doc.panelSettings.sortingOrder;
             }
-            Assume.That(background.HasValue && topmost.HasValue, Is.True, "Precondition: both hosts exist");
-            Assert.That(background.Value, Is.LessThan(topmost.Value));
+            Assert.That((background.HasValue && topmost.HasValue, background < topmost),
+                Is.EqualTo((true, true)));
         }
 
         private static readonly ComponentContext<string> s_stringContext = ComponentContext<string>.Create();
