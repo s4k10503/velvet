@@ -12,9 +12,11 @@ namespace Velvet.Tests
     /// Machine-checks every markdown file the repository walk reaches against the actual runtime API
     /// surface, so a doc referencing a renamed/removed <c>V.*</c> factory or <c>Hooks.*</c> hook,
     /// a path or a type that no longer exists, or an index that has drifted from the files on disk, fails a
-    /// test instead of shipping silently wrong. Each check pins a failure mode that has actually shipped: a
-    /// guide referencing a never-implemented factory, a hook table drifting from the real hook surface, an
-    /// index missing real guide files, and a type name written for a file that holds differently-named types.
+    /// test instead of shipping silently wrong. The failure modes below have actually shipped: a guide
+    /// referencing a never-implemented factory, a hook table drifting from the real hook surface, an index
+    /// missing real guide files, and a type name written for a file that holds differently-named types.
+    /// One more is pinned as a shape rather than as a shipped instance: a markdown span naming one of the
+    /// repository's scripts and a symbol that script does not define.
     /// </summary>
     [TestFixture]
     internal sealed class DocumentationDriftTests
@@ -71,9 +73,10 @@ namespace Velvet.Tests
             "Unreleased", "Highlights", "Added", "Changed", "Breaking", "YYYY", "MM", "DD"
         };
 
-        // A path the tree is right not to hold: the capture harness creates it at run time, inside a
-        // git-ignored directory.
-        private static readonly HashSet<string> PathAllowlist = new() { "Logs/story-captures/" };
+        // Paths the tree is right not to hold: each is written at run time inside a git-ignored
+        // directory — a capture harness's output, and a mutation campaign's receipt store.
+        private static readonly HashSet<string> PathAllowlist =
+            new() { "Logs/story-captures/", "Logs/mutation_check/" };
 
         private static readonly string[] SourceExtensions = { ".cs", ".uss", ".yml", ".json", ".asmdef", ".py" };
 
@@ -140,6 +143,10 @@ namespace Velvet.Tests
         // past a paragraph break would be a mis-paired backtick rather than a reference.
         private static readonly Regex BacktickSpanPattern =
             new(@"`((?:[^`\n]|\n(?!\s*\n))*)`", RegexOptions.Compiled);
+
+        // A whole span reading as one attribute of one module.
+        private static readonly Regex DottedSymbolPattern =
+            new(@"^([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)(\(\))?$", RegexOptions.Compiled);
 
         // Comments and string literals are stripped from C# before it is tokenised. A rename tool rewrites
         // declarations and call sites; it does not rewrite the prose around them, so an old name lingering in
@@ -454,12 +461,178 @@ namespace Velvet.Tests
                 "Documentation names identifiers that appear in no source file:\n" + string.Join("\n", unresolved));
         }
 
-        // Runs `extract` over every backticked span of every target file. A path on the reader's own machine
-        // is skipped outright: it names nothing in the repo, so neither check that reads this has anything
-        // to say about it.
-        private static List<string> ScanBacktickSpans(Func<string, string, IEnumerable<string>> extract)
+        // GREEN_ON_BASE(characterization): the base's own markdown names no wrong symbol, so it is green there.
+        // Not a behaviour the base has — the case is new — but a property of content the base already
+        // holds on both sides of the comparison. What shows it can fail is a reference perturbed to a name
+        // no script defines, measured, rather than the base run.
+        [Test]
+        public void Given_MarkdownNamingAScriptSymbol_When_TheSymbolIsSoughtInThatScript_Then_ItIsDefinedThere()
         {
-            var unresolved = new List<string>();
+            // Arrange / Act
+            var unresolved = ScriptSymbolSpans()
+                .Where(span => !span.Defined)
+                .Select(span => $"{span.Path}: {span.Reference} — {span.Module}.py defines no {span.Symbol}")
+                .ToList();
+
+            // Assert
+            Assert.That(unresolved, Is.Empty,
+                "Documentation names symbols the script it names does not define:\n"
+                + string.Join("\n", unresolved));
+        }
+
+        // What the check above runs on, and the reason it needs a floor: the population is prose. Every
+        // span in it is a sentence somebody may reword, and an empty population satisfies "nothing
+        // unresolved" exactly as a healthy one does — so the check would pass having asked nothing, with
+        // the drift it exists for unguarded. Two rather than one, so that a population thinned to a
+        // single sentence is read while there is still something left to read. A red here is the spans
+        // going or the walk stopping short of them, and either wants reading before the number moves.
+        private const int ScriptSymbolSpanFloor = 2;
+
+        [Test]
+        public void Given_TheScriptSymbolCheck_When_ItsLiveSpansAreCounted_Then_SomeMarkdownStillReachesIt()
+        {
+            // Arrange / Act
+            var spans = ScriptSymbolSpans();
+
+            // Assert
+            Assert.That(spans.Count, Is.GreaterThanOrEqualTo(ScriptSymbolSpanFloor),
+                "Too few documented module.symbol spans reach the check for it to answer for anything. "
+                + "What still reaches it:\n"
+                + string.Join("\n", spans.Select(span => $"{span.Path}: {span.Reference}")));
+        }
+
+        // Every span that reaches the resolution, with the answer beside it, so the check and its floor
+        // read one derivation: a floor over a population derived separately stops answering for the check
+        // the day either moves. A file name is the path check's, which resolves it against the filesystem;
+        // without that, `mutation_check.py` reads here as a module and an extension.
+        private static List<(string Path, string Reference, string Module, string Symbol, bool Defined)>
+            ScriptSymbolSpans()
+        {
+            var spans = new List<(string Path, string Reference, string Module, string Symbol, bool Defined)>();
+            foreach (var (path, reference) in BacktickSpans())
+            {
+                var dotted = DottedSymbolPattern.Match(reference);
+                if (PathReferencePattern.IsMatch(reference) || !dotted.Success
+                    || !ScriptSources.Value.TryGetValue(dotted.Groups[1].Value, out var source))
+                {
+                    continue;
+                }
+                var symbol = dotted.Groups[2].Value;
+                spans.Add((path, reference, dotted.Groups[1].Value, symbol, DefinesSymbol(source, symbol)));
+            }
+            return spans.Distinct().ToList();
+        }
+
+        // GREEN_ON_BASE(characterization): what this asks about is a helper in this file, and the base
+        // tree carries the file, so the case reads the branch's own arm there whatever the base holds.
+        // The evidence that stands in for the base run is the import arm removed and the case run.
+        //
+        // An import binds into the module, so the check above has to resolve an imported name rather than
+        // report it. Which name a statement binds differs by spelling, and a statement can write a name it
+        // does not bind — `import a.b` writes b and binds a — so both directions are asked here.
+        [Test]
+        public void Given_TheImportSpellings_When_EachNameIsSoughtInTheModule_Then_OnlyABoundOneResolves()
+        {
+            // Arrange
+            const string module = "import time\n"
+                                  + "import importlib.util\n"
+                                  + "import xml.etree.ElementTree as ET\n"
+                                  + "from deferrals import DEFERRALS, deferred\n"
+                                  + "from published_check import (\n    unpublished_reason,\n)\n";
+            var source = StripProse("module.py", module);
+            var bound = new[] { "time", "importlib", "ET", "DEFERRALS", "deferred", "unpublished_reason" };
+            var mentioned = new[] { "util", "xml", "etree", "ElementTree", "deferrals", "published_check" };
+
+            // Act
+            var wrong = bound.Where(name => !DefinesSymbol(source, name))
+                .Select(name => $"{name} is bound here and resolves to nothing")
+                .Concat(mentioned.Where(name => DefinesSymbol(source, name))
+                    .Select(name => $"{name} is named here but bound by nothing"))
+                .ToList();
+
+            // Assert
+            Assert.That(wrong, Is.Empty, string.Join("\n", wrong));
+        }
+
+        // What the module itself exposes, which is what `module.symbol` claims: a def or a class at column
+        // zero rather than at any indentation, since a method's name is the class's rather than the
+        // module's. A binding counts alongside them, because a document naming a harness constant makes
+        // the same claim as one naming a function, and the target may be a tuple — one hook here binds
+        // three of its policy names in a single one, and an arm reading only `NAME =` reports a document
+        // that names them correctly. An import counts too: it binds into the module the same as the other
+        // two, so `module.imported` reaches a value.
+        private static bool DefinesSymbol(string source, string symbol) =>
+            Regex.IsMatch(source,
+                $@"^(?:async[^\S\n]+)?(?:def|class)[^\S\n]+{Regex.Escape(symbol)}\b",
+                RegexOptions.Multiline)
+            || Regex.IsMatch(source,
+                $@"^(?:[A-Za-z_]\w*[^\S\n]*,[^\S\n]*)*{Regex.Escape(symbol)}"
+                + @"(?:[^\S\n]*,[^\S\n]*[A-Za-z_]\w*)*[^\S\n]*(?::[^=\n]+)?=",
+                RegexOptions.Multiline)
+            || ImportsSymbol(source, symbol);
+
+        // Which name an import binds is a property of its spelling rather than of the text after
+        // `import`, so the clause is split and each part read on its own: an alias binds only itself, a
+        // dotted module binds its first segment, and everything else binds what is written. Reading the
+        // clause whole would answer `util` for `import importlib.util` and `xml` for
+        // `import xml.etree.ElementTree as ET`, and the walk's own scripts write both. Column zero for
+        // the same reason the arms above use it — an import indented into a function binds nothing on
+        // the module.
+        private static readonly Regex ImportStatementPattern = new(
+            @"^import[^\S\n]+(?<names>[^\n]+)"
+            + @"|^from[^\S\n]+[.\w]+[^\S\n]+import[^\S\n]+(?<names>\([^)]*\)|[^\n]+)",
+            RegexOptions.Compiled | RegexOptions.Multiline);
+
+        private static readonly Regex ImportAliasPattern =
+            new(@"[^\S\n]+as[^\S\n]+([A-Za-z_]\w*)$", RegexOptions.Compiled);
+
+        private static bool ImportsSymbol(string source, string symbol) =>
+            ImportStatementPattern.Matches(source).Any(statement =>
+                statement.Groups["names"].Value.Trim('(', ')').Split(',')
+                    .Select(part => part.Trim())
+                    .Where(part => part.Length > 0)
+                    .Any(part =>
+                    {
+                        var alias = ImportAliasPattern.Match(part);
+                        return alias.Success
+                            ? alias.Groups[1].Value == symbol
+                            : part.Split('.')[0] == symbol;
+                    }));
+
+        // Every Python source in the walk, keyed on its stem, with prose taken out the way StripProse takes
+        // it: a def or a binding inside a string literal is not a definition, and several harness tests
+        // hold a whole synthetic script that way. Stems are not unique across the tree, and a document
+        // naming one means the name rather than a path, so the value joins every file that carries the stem
+        // and a symbol in any of them answers for it.
+        private static readonly Lazy<Dictionary<string, string>> ScriptSources = new(() =>
+        {
+            var texts = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+            foreach (var entry in DocumentationCorpus.RepoEntries(includeClaude: true))
+            {
+                if (!entry.EndsWith(".py", StringComparison.Ordinal) || !File.Exists(entry))
+                {
+                    continue;
+                }
+                var stem = Path.GetFileNameWithoutExtension(entry);
+                if (!texts.TryGetValue(stem, out var held))
+                {
+                    held = new List<string>();
+                    texts[stem] = held;
+                }
+                held.Add(StripProse(entry, File.ReadAllText(entry)));
+            }
+            return texts.ToDictionary(pair => pair.Key, pair => string.Join("\n", pair.Value),
+                                      StringComparer.Ordinal);
+        });
+
+        private static List<string> ScanBacktickSpans(Func<string, string, IEnumerable<string>> extract) =>
+            BacktickSpans().SelectMany(span => extract(span.Path, span.Reference)).Distinct().ToList();
+
+        // The walk itself, separate from reporting over it, so a caller that wants the spans rather than a
+        // report reads the same one. A path on the reader's own machine is skipped outright: it names
+        // nothing in the repo, so no check that reads this has anything to say about it.
+        private static IEnumerable<(string Path, string Reference)> BacktickSpans()
+        {
             foreach (var path in DocumentationCorpus.Files())
             {
                 var prose = FencedBlockPattern.Replace(File.ReadAllText(path), "\n");
@@ -471,10 +644,9 @@ namespace Velvet.Tests
                     {
                         continue;
                     }
-                    unresolved.AddRange(extract(path, reference));
+                    yield return (path, reference);
                 }
             }
-            return unresolved.Distinct().ToList();
         }
 
         // Every identifier-shaped word in the repo's own CODE. A name surviving nowhere in it was renamed or
