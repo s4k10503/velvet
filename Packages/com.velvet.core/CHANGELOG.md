@@ -66,6 +66,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   nothing gates on. That response file ships with the package, so a project compiling `Velvet.asmdef`
   compiles CS8509 as an error too; it applies to Velvet's own sources only, and none of the switches it
   reaches is over an engine-owned enum.
+- `V.Portal(layer:)` throws for a `UILayer` value naming no layer, where it sorted the host panel at the
+  `Overlay` offset before. Every named layer sorts as it did; only a cast outside the enum's range
+  reaches the throw, and a silent `Overlay` there is how such a cast survives to put a portal on a layer
+  nobody asked for instead of reporting. The switch it comes from now names every layer, for the reason
+  the entry above gives, and so do the ones behind `divide-*` colours, `clip-path` radius keywords,
+  `animate-*` transition slots and the structural variants — each already answered every named member as
+  it does now.
 
 ### Fixed
 
