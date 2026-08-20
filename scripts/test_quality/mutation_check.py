@@ -368,12 +368,18 @@ OPERATORS = [
 
 WORD_OPERATORS = [("true", "false", "literal"), ("false", "true", "literal")]
 
-# A call whose value is discarded is there for its side effect, so deleting the statement removes
-# exactly one behaviour and leaves the rest of the method intact.
-VOID_CALL = re.compile(r"^[A-Za-z_][A-Za-z0-9_.]*(\.[A-Za-z_][A-Za-z0-9_]*)*\s*\([^;]*\)\s*;$")
+# An identifier, a parenthesised head, a semicolon-terminated tail. The word in front of the
+# parenthesis is no part of that, so what the removal takes is everything the line runs rather than
+# one call -- which is what its verdict is named for.
+REMOVABLE_LINE = re.compile(r"^[A-Za-z_][A-Za-z0-9_.]*(\.[A-Za-z_][A-Za-z0-9_]*)*\s*\([^;]*\)\s*;$")
 
-# Where a statement may begin. A line matching VOID_CALL is only a whole statement when the code
-# before it finished one: `=> Fragment(...)` and `= new(...)` both match the pattern and are the tail
+# `return (value, done);` has the shape above and is not a line whose code can go: what replaces it
+# is an empty statement, so what the line returns goes with it. A word rather than a prefix, because
+# `returns.Add(instr);` is a call whose name starts with one.
+CONTROL_KEYWORD = re.compile(r"^(?:return|throw|yield)\b")
+
+# Where a statement may begin. A line matching REMOVABLE_LINE is only removable when the code before
+# it finished a statement: `=> Fragment(...)` and `= new(...)` both match the pattern and are the tail
 # of a declaration, so deleting them leaves a member with no body. Measured with the C# parser over
 # every mutant this package generates, that was 77 of them.
 STATEMENT_BOUNDARY = (";", "{", "}", ":")
@@ -388,7 +394,7 @@ GUARD_STATEMENT = re.compile(r"^if \(.+\)\s*(?:return[^;]*|continue|break);$")
 
 # A removal that carries off a declaration leaves the reads of that name unresolved, so the mutant
 # compiles nowhere and the campaign scores it unmeasured and fails. `var (state, setState) =
-# UseState(...)` is the shape VOID_CALL reads as a discarded call: `var` satisfies its leading
+# UseState(...)` is the shape REMOVABLE_LINE reads as a removable line: `var` satisfies its leading
 # identifier, and the argument list the pattern looks for runs from the deconstruction's `(` to the
 # initializer's last `)`.
 # Three spellings of C# rather than a reading of it -- a deconstruction, an `out` argument, a pattern
@@ -536,12 +542,12 @@ def code_below(text, mask, spans, number):
     return ""
 
 
-def deletable_statement(text, mask, spans, number):
-    """Whether line `number` is a whole statement whose removal leaves what surrounds it standing.
+def deletable_line(text, mask, spans, number):
+    """Whether removing line `number`'s code leaves what surrounds it standing.
 
     Two ways it is not, both measured with the C# parser over every mutant this package generates.
     The code above has to have ended a statement -- `=> Fragment(...)` and `= new(...)` both match
-    the call pattern and are the tail of a declaration, so deleting them leaves a member with no
+    the removal pattern and are the tail of a declaration, so deleting them leaves a member with no
     body, which was 77 mutants. And an `if (...) Call();` whose next line is an `else` takes the
     `if` with it and strands the `else`, which was six more.
     """
@@ -580,10 +586,21 @@ def mutations_for(path, text, target_lines):
                     found.append(Mutant(path, number, match.start(), before, after, operator))
         stripped = line.strip()
         limit = len(line.rstrip())
-        if (VOID_CALL.match(stripped) and not stripped.startswith(("return", "throw", "yield"))
-                and not DECLARES_A_NAME.search(code_only(text, mask, start, end))
-                and deletable_statement(text, mask, spans, number)):
-            found.append(Mutant(path, number, 0, stripped, ";", "void call removed"))
+        # The masked code rather than the raw line: `;$` fails wherever anything follows the
+        # semicolon, and a trailing comment or a semicolon inside a literal is not something the
+        # compiler sees a difference in.
+        code = code_only(text, mask, start, end)
+        statement = code.strip()
+        if (REMOVABLE_LINE.match(statement) and not CONTROL_KEYWORD.match(statement)
+                and not DECLARES_A_NAME.search(code)
+                and deletable_line(text, mask, spans, number)):
+            # Spliced over the code the mask leaves rather than over the raw line: taking the line
+            # whole carries off a block comment's opening, or its closing, when only one of the two
+            # is on this line.
+            columns = [index for index in range(limit)
+                       if mask[start + index] and not line[index].isspace()]
+            found.append(Mutant(path, number, columns[0],
+                                line[columns[0]:columns[-1] + 1], ";", "line removed"))
         # `cut`, not `text`: binding the file's source here left every line processed after the
         # first cut read out of a clause string, so one `||` early in a range silenced the rest.
         for column, cut in clause_cuts(line, start, mask, limit):
@@ -621,10 +638,8 @@ def apply_mutation(text, mutant):
     spans = line_spans(text)
     start, end = spans[mutant.line - 1]
     line = text[start:end]
-    if mutant.operator in ("clause removed", "guard removed"):
-        mutated = line[:mutant.column] + line[mutant.column + len(mutant.before):]
-    elif mutant.operator == "void call removed":
-        mutated = line.replace(mutant.before, ";", 1)
+    if mutant.operator in ("clause removed", "guard removed", "line removed"):
+        mutated = line[:mutant.column] + mutant.after + line[mutant.column + len(mutant.before):]
     elif mutant.operator == "literal":
         mutated = (
             line[:mutant.column]
