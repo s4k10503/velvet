@@ -100,7 +100,7 @@ def amends(command):
 
 
 def repository_selectors(context):
-    """Each selector the command spelled: the tokens git receives, and the path inside them.
+    """Each repository selector to replay: the tokens git receives, and the path inside them.
 
     The event's own directory is not one of them. Every reading below runs there, so adding a `-C`
     for it would put a selector in the refusal that the contributor did not write.

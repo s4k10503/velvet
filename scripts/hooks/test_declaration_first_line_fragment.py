@@ -530,7 +530,7 @@ class ReaderFloorTests(unittest.TestCase):
 
     # Spelled rather than read from either reader, which would agree with itself whatever the floor
     # became. Four is the number the guard's own docstring declines to reimplement.
-    UNDER_THE_FLOOR = "the reason is under 4 words"
+    UNDER_THE_FLOOR = "the reason's first line is under 4 words"
 
     def test_Given_AReasonUnderFourWords_When_EachReaderReadsIt_Then_EachRefusesItByTheFloor(self):
         # Arrange — each reader's own first category, so what the complaint answers is the word

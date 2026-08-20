@@ -118,6 +118,16 @@ class GuardCase(unittest.TestCase):
     def refusal(self, command, cwd=None):
         return self.answer(command, cwd)[1]
 
+    def refusal_line(self, command, index, cwd=None):
+        """The refusal's nth line, or the empty string where it wrote fewer.
+
+        Subscripted straight, a tree carrying no guard raises `IndexError` off an empty refusal
+        instead of failing the comparison, and a case that raises yields no base-red verdict at all
+        rather than the red it is entitled to.
+        """
+        lines = self.refusal(command, cwd).splitlines()
+        return lines[index] if index < len(lines) else ""
+
     def refused(self, command, cwd=None):
         """(exit code, the first line of what was written) for a command expected to be refused.
 
@@ -258,6 +268,26 @@ class PublishedHeadTests(GuardCase):
         published = git(self.root / "session" / "decoy", "rev-parse", "--short", "HEAD").strip()
         self.assertEqual((code, published in text), (REFUSE, True))
 
+    def test_Given_TwoDashCsComposingOntoAPublishedTree_When_AnAmendIsPosed_Then_ItIsRefused(self):
+        # Arrange — `outer/inner` is the published clone and `inner` an unpublished repository of
+        # the same basename, so reading only the last `-C` answers about a tree the command never
+        # touches and lets the amend through.
+        outer = self.root / "outer"
+        outer.mkdir()
+        git(outer, "clone", "-q", str(self.root / "remote.git"), "inner")
+        decoy = self.root / "inner"
+        decoy.mkdir()
+        git(decoy, "init", "-q", "-b", MAIN, ".")
+        commit(decoy, "decoy")
+
+        # Act
+        code, text = self.answer("git -C outer -C inner commit --amend", cwd=self.root)
+
+        # Assert — the SHA says which of the two repositories answered, where a headline says only
+        # that one did.
+        published = git(outer / "inner", "rev-parse", "--short", "HEAD").strip()
+        self.assertEqual((code, published in text), (REFUSE, True))
+
     def test_Given_AnAmendCarryingBothDashCAndGitDir_When_GitDirIsPublished_Then_ItIsRefused(self):
         # Arrange
         worktree = self.root / "worktree"
@@ -309,7 +339,7 @@ class PublishedHeadTests(GuardCase):
         git(self.clone, "fetch", "-q", "origin")
 
         # Act — the abbreviated SHA is dropped, since which commit it is is another case's subject.
-        named = self.refusal("git commit --amend").splitlines()[2].partition(" is reachable from ")[2]
+        named = self.refusal_line("git commit --amend", 2).partition(" is reachable from ")[2]
 
         # Assert — the other branch rides in the comparison, since a reading that found only
         # origin/main would name it too and pin nothing about the choice.
@@ -387,6 +417,26 @@ class UnpublishedHeadTests(GuardCase):
         self.assertEqual(
             (git(published_elsewhere, "branch", "-r", "--contains", "HEAD").strip() != "", code),
             (True, ALLOW))
+
+    def test_Given_TwoDashCsComposingOntoAnUnpublishedTree_When_AnAmendIsPosed_Then_ItIsAllowed(self):
+        # Arrange — the published clone is what the last `-C` names on its own, so a guard reading
+        # that one refuses an amend of a commit nobody pushed and prints a SHA out of a repository
+        # the command never enters.
+        outer = self.root / "outer"
+        outer.mkdir()
+        unpublished = outer / "inner"
+        unpublished.mkdir()
+        git(unpublished, "init", "-q", "-b", MAIN, ".")
+        commit(unpublished, "two")
+        git(self.root, "clone", "-q", str(self.root / "remote.git"), "inner")
+
+        # Act
+        composed = self.verdict("git -C outer -C inner commit --amend", cwd=self.root)
+        alone = self.verdict("git -C inner commit --amend", cwd=self.root)
+
+        # Assert — the single-`-C` spelling rides in the comparison because a guard that stopped
+        # reading amends at all would allow the composed one too.
+        self.assertEqual((composed, alone), (ALLOW, REFUSE))
 
     def test_Given_ARemoteThatMovedUnderAnUnpushedCommit_When_AnAmendIsPosed_Then_ItIsAllowed(self):
         # Arrange — a fetch that advanced origin/main past this branch. Nothing reaches HEAD, and
@@ -539,7 +589,7 @@ class UnreadableTreeTests(GuardCase):
         absent = self.root / "nonexistent"
 
         # Act
-        detail = self.refusal(f"git --git-dir={absent} commit --amend").splitlines()[2]
+        detail = self.refusal_line(f"git --git-dir={absent} commit --amend", 2)
 
         # Assert
         self.assertEqual(detail, f"  --git-dir={absent}: "
@@ -656,6 +706,15 @@ class UnreadableTreeTests(GuardCase):
         # spelling that one does not carry. Sent to check the path instead, the contributor is sent
         # to one that may have nothing wrong with it.
         text = self.refusal("git -C ~/velvet commit --amend")
+
+        # Assert
+        self.assertIn(UNEXPANDED_SELECTOR, text)
+
+    def test_Given_ATildeBehindAnotherDashC_When_AnAmendIsRefused_Then_ItSaysTheShellHasNotRunYet(self):
+        # Arrange / Act — folding the `-C` operands is what could lose this advisory: composed onto
+        # what came before, the tilde stops opening the path and the contributor is sent to check a
+        # directory git was never going to be handed.
+        text = self.refusal("git -C outer -C ~/velvet commit --amend")
 
         # Assert
         self.assertIn(UNEXPANDED_SELECTOR, text)
@@ -949,8 +1008,8 @@ class GitOptionGrammarTests(unittest.TestCase):
         # table would fail the import and take every case in this file down with it, and the base is
         # such a tree.
         sys.path.insert(0, str(HOOK_LIBRARY))
-        from shell_commands import COMMIT_VALUE_FLAGS
-        held = sorted(COMMIT_VALUE_FLAGS)
+        import shell_commands
+        held = sorted(getattr(shell_commands, "COMMIT_VALUE_FLAGS", ()))
 
         # Act
         amended = sorted(flag for flag in held if self.amends_behind(flag))
@@ -1025,16 +1084,12 @@ class UnreadableCauseTests(unittest.TestCase):
     # GREEN_ON_BASE(characterization): git says a directory in no repository is not one, on either tree.
     # It is the reading behind the refusal that says to pose the amend from inside one.
     def test_Given_ADirectoryInNoRepository_When_TheReadingIsTaken_Then_GitSaysItIsNotOne(self):
-        # Arrange — whether git placed the directory rides in the comparison, since a temporary path
-        # that turned out to sit inside some repository would answer and pin nothing.
-        placed = subprocess.run(["git", "rev-parse", "--git-common-dir"], cwd=self.plain,
-                                capture_output=True, text=True, timeout=60).returncode == 0
-
-        # Act
+        # Arrange / Act
         said = self.read(cwd=self.plain)
 
-        # Assert
-        self.assertEqual((placed, "not a git repository" in said), (False, True))
+        # Assert — a temporary path that turned out to sit inside some repository takes this red on
+        # its own, git having answered instead of saying that.
+        self.assertIn("not a git repository", said)
 
     # GREEN_ON_BASE(characterization): git quotes no path when a `-C` it entered is in no repository.
     # It is why what git quoted back cannot tell that cause from a reading taken where the command
@@ -1070,6 +1125,74 @@ class UnreadableCauseTests(unittest.TestCase):
         # Assert — the table being non-empty rides along, since an empty one leaves nothing
         # unmeasured either.
         self.assertEqual((len(markers) > 0, unmeasured), (True, []))
+
+
+class RepeatedDirectoryTests(unittest.TestCase):
+    """`composed_directory` held to what git and the shell do with a repeated `-C`.
+
+    Not about the guard: it reads what `composed_directory` folded. How the operands fold is git's
+    to decide, and `--git-dir` beside them folds the other way, so a sentence asserting either goes
+    stale the day one of them changes. This is where that fails instead.
+
+    A repository sits at the root with both `outer/inner` and `inner` under it, so the composed
+    reading and the last-operand reading resolve to different places rather than to the same one.
+    """
+
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp(prefix="velvet-repeated-"))
+        self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
+        git(self.root, "init", "-q", "-b", MAIN, ".")
+        commit(self.root, "one")
+        (self.root / "outer" / "inner").mkdir(parents=True)
+        (self.root / "inner").mkdir()
+
+    def prefix(self, *selectors):
+        """Where inside the repository git arrived, as a path from its root."""
+        return git(self.root, *selectors, "rev-parse", "--show-prefix").strip()
+
+    # GREEN_ON_BASE(characterization): git composes repeated `-C` on either tree. The branch
+    # changes what the reader folds them into, never git, so this answers the same on the base —
+    # which is the point of it: what the reader got wrong was the fold, not the behaviour.
+    def test_Given_TwoRelativeDashCs_When_GitIsAsked_Then_TheSecondMovesFromTheFirst(self):
+        # Arrange / Act — kept as the last operand instead, git would arrive at `inner/`.
+        arrived = self.prefix("-C", "outer", "-C", "inner")
+
+        # Assert
+        self.assertEqual(arrived, "outer/inner/")
+
+    # GREEN_ON_BASE(characterization): the absolute case is git's on either tree.
+    def test_Given_AnAbsoluteDashCAfterARelativeOne_When_GitIsAsked_Then_ItStartsOver(self):
+        # Arrange / Act
+        arrived = self.prefix("-C", "outer", "-C", str(self.root / "inner"))
+
+        # Assert
+        self.assertEqual(arrived, "inner/")
+
+    # GREEN_ON_BASE(characterization): git keeps the last `--git-dir` on either tree. This is the
+    # half `composed_directory` must leave alone, and a fold applied to both would break it.
+    def test_Given_TwoGitDirs_When_GitIsAsked_Then_TheLastOneWins(self):
+        # Arrange
+        elsewhere = self.root / "outer"
+        git(elsewhere, "init", "-q", "-b", MAIN, ".")
+
+        # Act
+        chosen = git(self.root, f"--git-dir={self.root}/.git",
+                     f"--git-dir={elsewhere}/.git", "rev-parse", "--absolute-git-dir").strip()
+
+        # Assert
+        self.assertEqual(chosen, os.path.realpath(elsewhere / ".git"))
+
+    # GREEN_ON_BASE(characterization): the shell roots a `~` operand on either tree. That is why
+    # one starts the fold over rather than composing onto what came before it.
+    def test_Given_ATildeOperandThatIsNotTheFirstWord_When_TheShellRunsIt_Then_ItIsRooted(self):
+        # Arrange / Act
+        written = subprocess.run(["/bin/sh", "-c", 'printf "%s\\n" -C outer -C ~/velvet'],
+                                 capture_output=True, text=True, timeout=60)
+        words = written.stdout.split()
+
+        # Assert — the word count rides along, since a shell that wrote nothing would otherwise
+        # index out of range and raise here rather than fail the comparison.
+        self.assertEqual((len(words), os.path.isabs(words[-1] if words else "")), (4, True))
 
 
 if __name__ == "__main__":

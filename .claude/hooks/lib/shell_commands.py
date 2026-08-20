@@ -168,12 +168,27 @@ def without_redirections(tokens):
     return kept
 
 
+def composed_directory(accumulated, value):
+    """Where a `-C` lands given the ones before it.
+
+    A second `-C` moves again from where the first arrived, so keeping only the last one names a
+    different tree than the command acts on; one that reaches git already rooted starts over
+    instead. `RepeatedDirectoryTests` is what fails if git stops reading them that way, and
+    `--git-dir` is not folded here because git keeps the last of those.
+    """
+    if accumulated is None or value is None:
+        return value
+    if value.startswith("~"):
+        return value
+    return os.path.join(accumulated, value)
+
+
 def git_invocation(tokens, git_directory=False):
     """(directory, subcommand, operands) when the segment runs git, else None.
 
-    The directory is the `-C` operand. With `git_directory`, the first value is a `GitContext` that
-    keeps it alongside either spelling of the git directory. A caller needs both to replay the
-    repository selectors rather than replace one with the other.
+    The directory is what the `-C` operands compose to. With `git_directory`, the first value is a
+    `GitContext` that keeps it alongside either spelling of the git directory. A caller needs both
+    to replay the repository selectors rather than replace one with the other.
     """
     index = 0
     named = None
@@ -199,7 +214,7 @@ def git_invocation(tokens, git_directory=False):
                 value = tokens[index + 1] if index + 1 < len(tokens) else None
                 index += 2
             if flag == "-C":
-                directory = value
+                directory = composed_directory(directory, value)
             elif git_directory and flag == GIT_DIRECTORY_FLAG:
                 named = value
             continue
