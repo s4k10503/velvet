@@ -135,10 +135,14 @@ namespace Velvet
         /// <param name="store">Store instance to subscribe to. Must not be null.</param>
         /// <param name="selector">Pure projection from the store snapshot to the value the component cares about. Must not be null.</param>
         /// <param name="comparer">
-        /// Equality comparer used to detect changes. Defaults to <see cref="ObjectIsEqualityComparer{TSel}"/>
-        /// (reference equality for objects, NaN-aware for float/double).
-        /// Pass <see cref="EqualityComparer{TSel}.Default"/> explicitly
-        /// when value-equality skip is desired (e.g. record selectors with stable content).
+        /// Equality comparer used to detect changes. The default applies the same <c>Object.is</c> rule as
+        /// the <c>UseState</c> setter, branch for branch — see the remarks on <see cref="StateUpdater{T}"/>.
+        /// Passing <see cref="EqualityComparer{TSel}.Default"/> therefore changes a non-string
+        /// reference-type selector, where it swaps instance identity for the type's own <c>Equals</c> so
+        /// that a selector returning a fresh <c>record class</c> instance of stable content skips the
+        /// re-render instead of triggering one. For a string selector, or a value-type selector other than
+        /// <c>float</c>/<c>double</c> — a <c>record struct</c> included — the default already gives the same
+        /// answer as that comparer, so passing it changes nothing.
         /// </param>
         /// <returns>The selected value at the current store snapshot.</returns>
         public static TSel UseStore<TStore, TSel>(
@@ -1899,8 +1903,8 @@ namespace Velvet
         /// Use this to deprioritize heavy re-render inputs such as search queries.
         /// </summary>
         /// <remarks>
-        /// Change detection matches <see cref="UseStore{TStore,TSel}"/>:
-        /// reference equality for objects, NaN-aware for float/double. There is no comparer argument.
+        /// Change detection matches the default comparer of <see cref="UseStore{TStore,TSel}"/>. There is
+        /// no comparer argument.
         /// </remarks>
         /// <typeparam name="T">Type of the value being deferred.</typeparam>
         /// <param name="value">Latest value (provided by the caller).</param>
@@ -2101,11 +2105,9 @@ namespace Velvet
                 fiber.MemoSlots.Add(new HookMemoSlot());
             }
             var slot = fiber.MemoSlots[slotIndex];
-            // Compare by identity (reference identity for reference types, raw bits for float/double),
-            // matching the strictness the reconciler and Provider use to decide a re-render. Structural value
-            // equality would treat a fresh-but-equal record prop or context value as unchanged and return a
-            // stale cached VNode, suppressing a re-render the framework actually committed. Identity comparison keeps the
-            // memo sound for props- and context-driven inputs that the weaver captures in the deps array.
+            // Structural value equality would call a fresh-but-content-equal record class prop or context
+            // value unchanged and hand back the cached VNode, so the render the reconciler had already
+            // decided to make would produce the committed tree instead of the new one.
             if (slot.LastDeps != null && ObjectIs.AreEqualDeps(slot.LastDeps, deps))
             {
                 // Hit against the committed deps: reuse the committed VNode and stage the committed values so the

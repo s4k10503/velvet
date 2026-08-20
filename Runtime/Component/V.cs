@@ -1266,12 +1266,12 @@ namespace Velvet
         /// identity, and child hooks (<c>UseCallback</c> / <c>UseMemo</c>) can declare
         /// <paramref name="props"/> fields as <c>deps</c> to stabilize callbacks across renders.
         /// <br/>
-        /// <typeparamref name="TProps"/> is stored as <see cref="object"/> on the fiber and compared
-        /// via <see cref="object.Equals(object, object)"/>. Prefer a reference type
-        /// (<c>sealed record</c>) to obtain value equality without boxing; a <c>record struct</c>
-        /// boxes on every <c>V.Component</c> call.
+        /// <typeparamref name="TProps"/> is stored as <see cref="object"/> on the fiber. Prefer a
+        /// reference type (<c>sealed record</c>): a <c>record struct</c> boxes on every
+        /// <c>V.Component</c> call. Whether that stored value is compared at all, and under which
+        /// rule, is what <see cref="ComponentAttribute.Memoize"/> states.
         /// </remarks>
-        /// <typeparam name="TProps">Props type. Use <c>sealed record</c> (reference type) for value equality without boxing.</typeparam>
+        /// <typeparam name="TProps">Props type. Use <c>sealed record</c> (reference type) to avoid boxing.</typeparam>
         /// <param name="body">Delegate of a static method annotated with <c>[Component]</c> taking a single <typeparamref name="TProps"/> parameter.</param>
         /// <param name="props">The props value to pass to <paramref name="body"/>.</param>
         /// <param name="key">Key used to disambiguate siblings at the same position.</param>
@@ -1295,7 +1295,7 @@ namespace Velvet
         /// <remarks>
         /// <paramref name="areEqual"/> receives the previous and next props and returns <c>true</c> to
         /// <b>bail</b> (skip re-render). When the
-        /// default shallow per-property identity comparison is sufficient, prefer plain
+        /// default shallow comparison <see cref="ComponentAttribute.Memoize"/> states is sufficient, prefer plain
         /// <c>V.Component(body, props)</c> with <c>[Component(Memoize = true)]</c>; this overload is for
         /// the cases where shallow equality is too coarse or too fine (e.g. comparing only a subset of
         /// props, or deep-comparing one field).<br/>
@@ -1422,7 +1422,7 @@ namespace Velvet
         /// memoizes a function-style component by props equality.
         /// </summary>
         /// <param name="factory">Factory invoked to produce the cached VNode when <paramref name="deps"/> change.</param>
-        /// <param name="deps">Dependency values. When equal to the previous render (each dependency compared via <see cref="ObjectIs.AreEqualDeps"/> — reference-type elements by identity, strings and primitives by value, floats by raw bit pattern), the cached VNode is reused. Pass an empty array to declare no dependencies and cache the subtree for the node's whole life; null declares no dependency array, which no newly built node's comparison can satisfy.</param>
+        /// <param name="deps">Dependency values. When equal to the previous render, the cached VNode is reused; <see cref="MemoNode.Dependencies"/> states the branch each element type takes. Pass an empty array to declare no dependencies and cache the subtree for the node's whole life; null declares no dependency array, which no newly built node's comparison can satisfy.</param>
         /// <returns>The created <see cref="MemoNode"/>.</returns>
         public static MemoNode Memoized(Func<VNode> factory, params object?[]? deps)
         {
