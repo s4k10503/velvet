@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Refuse a backgrounded loop over the watcher's state while a watcher is live.
+"""Refuse a backgrounded loop over the watcher's state while the heartbeat says one is watching.
 
 `scripts/pr/settle.py watch` refuses a second `watch`, and that refusal reaches only a process that
 spells itself `watch`. A loop doing the same job is not one, so nothing stopped several running at
@@ -12,12 +12,17 @@ The subject is the watcher's state rather than the programs that touch it. A loo
 second calls nothing, so a sweep of the process table for `settle.py` leaves it running.
 `scripts/pr/watcher_state.py` owns those file names.
 
+Where the subject is looked for is the masked command, so a name a program is handed as data is not
+one. What the shell will itself run is followed rather than left behind: a substitution's body, a
+`sh -c` operand, an `eval` operand and `watch`'s command are all shell text, and each is taken apart
+the same way. A poller written in another language is not shell text and is not followed.
+
 Three narrowings beside that subject, and the refusal is wrong without any one of them:
 
 - **backgrounded**, since a foreground loop blocks the caller and ends when the call does;
 - **repeating**, since a one-shot `settle.py merge <n>` is the sanctioned way to merge, and a `for`
   over a list of pull requests terminates on its own — what is duplicative is the waiting;
-- **a live heartbeat**, since with nothing watching there is no second poller for this to be.
+- **a watcher**, since with nothing watching there is no second poller for this to be.
 """
 
 import json
@@ -31,8 +36,8 @@ sys.path.insert(0, str(HOOK_DIRECTORY / "lib"))
 sys.path.insert(0, str(HOOK_DIRECTORY.parent.parent / "scripts" / "pr"))
 
 from shell_commands import command_segments, leading_program, mask_shell_literals  # noqa: E402
-from shell_commands import tokens_of  # noqa: E402
-from watcher_state import HEARTBEAT, LOCK, READY_STATE, alive  # noqa: E402
+from shell_commands import tokens_of, without_redirections  # noqa: E402
+from watcher_state import HEARTBEAT, LOCK, READY_STATE, alive, unreadable_beat  # noqa: E402
 
 HOOK_TOOLS = {"Bash"}
 
@@ -52,15 +57,25 @@ WATCHER_FILES = {path.name for path in (HEARTBEAT, LOCK, READY_STATE)}
 
 SUBJECTS = {"gh", "settle.py"} | WATCHER_FILES
 
-# Read off the command as written rather than off its segments' tokens. A `"$( ... )"` arrives as a
-# single token carrying a whole pipeline, so a name compared per token never matches the program the
-# shell will run inside it.
+# Read off text rather than off a segment's tokens. A `"$( ... )"` arrives as a single token carrying
+# a whole pipeline, so a name compared per token never matches the program the shell runs inside it.
 SUBJECT_PATTERN = re.compile(
     r"(?<![\w.~-])(" + "|".join(re.escape(name) for name in sorted(SUBJECTS)) + r")(?![\w.-])")
 
-# A loop whose end is a condition rather than a list. `for` is left out because it walks a list and
-# stops; `read` is left out of these for the same reason, since it ends with its input.
+# Programs whose operand is a command they hand back to a shell.
+SHELLS = {"bash", "dash", "ksh", "sh", "zsh"}
+SHELL_COMMAND_FLAG = re.compile(r"^-[A-Za-z]*c$")
+EVAL = "eval"
+
+# A loop spelled as a program: what ends it is outside the command, the same as a condition is.
+RE_RUNS = "watch"
+
+# A loop whose end is a condition rather than a list. `for` is here for the header carrying no list,
+# which is how an endless loop is spelled without a condition; `read` is what ends a `while` with its
+# input rather than with a condition.
 LOOP_HEADS = {"while", "until"}
+LIST_LOOP = "for"
+LIST_WORD = "in"
 WALKS_INPUT = "read"
 
 # Grouping that carries no program name. A segment keeps the ones inside it, and a command word
@@ -68,9 +83,8 @@ WALKS_INPUT = "read"
 GROUPING = {"(", ")", "{", "}"}
 
 
-def detached(command):
-    """Whether the shell backgrounds any part of this, so it outlives the call that started it."""
-    masked = mask_shell_literals(command)
+def backgrounds(masked):
+    """Whether an `&` in this text is the shell's own, rather than an `&&` or a redirection's."""
     index = 0
     while True:
         index = masked.find("&", index)
@@ -85,23 +99,107 @@ def detached(command):
             return True
 
 
-def repeats(command):
-    """Whether the command comes back rather than running once."""
-    for segment in command_segments(command):
-        tokens = [token for token in tokens_of(segment) if token not in GROUPING]
-        head = leading_program(tokens)
-        if head >= len(tokens):
+def substituted(text):
+    """The outermost `$( … )` and backtick bodies, which the shell runs as commands of their own."""
+    found = []
+    index = 0
+    while index < len(text):
+        if text.startswith("$(", index):
+            depth, scan = 1, index + 2
+            while scan < len(text) and depth:
+                depth += {"(": 1, ")": -1}.get(text[scan], 0)
+                scan += 1
+            found.append(text[index + 2:scan - 1 if depth == 0 else scan])
+            index = scan
+        elif text[index] == "`":
+            end = text.find("`", index + 1)
+            if end < 0:
+                break
+            found.append(text[index + 1:end])
+            index = end + 1
+        else:
+            index += 1
+    return found
+
+
+def segment_tokens(segment):
+    return without_redirections([token for token in tokens_of(segment) if token not in GROUPING])
+
+
+def command_word(tokens):
+    """Where the program a segment runs sits, past a loop head and what `leading_program` skips.
+
+    `while` and `until` are not in `shell_commands.LEADING_WORDS`, so a command word behind one reads
+    as the keyword.
+    """
+    index = leading_program(tokens)
+    if index < len(tokens) and tokens[index] in LOOP_HEADS:
+        index += 1 + leading_program(tokens[index + 1:])
+    return index
+
+
+def handed_to_a_shell(text):
+    """Operands this hands to a shell to run, which are shell text rather than data."""
+    found = []
+    for segment in command_segments(text):
+        tokens = segment_tokens(segment)
+        index = command_word(tokens)
+        if index >= len(tokens):
             continue
-        if os.path.basename(tokens[head]) == "sleep":
-            return True
-        if tokens[head] in LOOP_HEADS and tokens[head + 1:head + 2] != [WALKS_INPUT]:
-            return True
+        program = os.path.basename(tokens[index])
+        operands = tokens[index + 1:]
+        if program in SHELLS:
+            for position, token in enumerate(operands):
+                if SHELL_COMMAND_FLAG.match(token):
+                    found.extend(operands[position + 1:position + 2])
+                    break
+        elif program in (EVAL, RE_RUNS):
+            found.append(" ".join(operands))
+    return found
+
+
+def shell_texts(command):
+    """This command, then the shell text found inside it, a nesting level at a time.
+
+    Every nested text is strictly shorter than the one it came out of — a substitution loses its
+    delimiters, an operand loses the program that carries it — which is what ends the recursion.
+    """
+    yield command
+    for nested in substituted(command) + handed_to_a_shell(command):
+        if nested:
+            yield from shell_texts(nested)
+
+
+def detached(command):
+    """Whether the shell backgrounds any part of this, so it outlives the call that started it."""
+    return any(backgrounds(mask_shell_literals(text)) for text in shell_texts(command))
+
+
+def repeats(command):
+    for text in shell_texts(command):
+        for segment in command_segments(text):
+            tokens = segment_tokens(segment)
+            head = leading_program(tokens)
+            if head >= len(tokens):
+                continue
+            if tokens[head] in LOOP_HEADS:
+                word = command_word(tokens)
+                if word >= len(tokens) or tokens[word] != WALKS_INPUT:
+                    return True
+            elif tokens[head] == LIST_LOOP and LIST_WORD not in tokens[head + 1:head + 3]:
+                return True
+            elif os.path.basename(tokens[head]) == RE_RUNS:
+                return True
     return False
 
 
 def subjects(command):
     """The watcher's programs and files this command names."""
-    return sorted({found.group(1) for found in SUBJECT_PATTERN.finditer(command)})
+    found = set()
+    for text in shell_texts(command):
+        masked = mask_shell_literals(text)
+        found.update(match.group(1) for match in SUBJECT_PATTERN.finditer(masked))
+    return sorted(found)
 
 
 def main():
@@ -119,14 +217,21 @@ def main():
     if not repeats(command):
         return 0
     found = subjects(command)
-    if not found or not alive():
+    # A heartbeat this cannot read is not an absent one. `watcher_state.unreadable_beat` separates
+    # the two, and reading only `alive` here would let the poller through in that state.
+    live = alive()
+    if not found or not (live or unreadable_beat()):
         return 0
 
     sys.stderr.write(
         "Refusing a backgrounded loop over what the committed watcher already polls:\n\n"
         + "".join(f"  {name}\n" for name in found)
-        + "\nA watcher is live and polling this on its own cycle, against the same rate limit.\n\n"
-        "Do nothing and let the turn end: `.claude/hooks/stop/unsettled_pr.py` is what reports an "
+        + "\n"
+        + ("A watcher is live and polling this on its own cycle, against the same rate limit.\n\n"
+           if live else
+           "A watcher is writing the heartbeat in a form this cannot read, and polling this on its "
+           "own cycle against the same rate limit.\n\n")
+        + "Do nothing and let the turn end: `.claude/hooks/stop/unsettled_pr.py` is what reports an "
         "open pull request that has not settled. Which ones the watcher has recorded ready is in:\n\n"
         f"  {READY_STATE}\n\n"
         "Merge one with:\n\n"

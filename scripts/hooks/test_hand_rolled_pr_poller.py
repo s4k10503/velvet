@@ -3,9 +3,10 @@
 
 A refusing guard fails silently in two directions. Refusing nothing looks like a session that wrote
 no poller; refusing everything looks like a guard working, until a legitimate wait becomes
-impossible. So the allowances below are cases rather than commentary: the
-one-shot merge the guard must not touch, a wait on a file the watcher does not write, and the same
-poller under every way `watcher_state.alive` says nothing is watching.
+impossible. So the allowances below are cases rather than commentary: the one-shot merge the guard
+must not touch, a wait on a file the watcher does not write, a subject named in text a program is
+handed rather than runs, and the same poller under each reading of the heartbeat
+`HeartbeatReadingTests` poses.
 
 The guard is run rather than imported. Its verdict is an exit code a `PreToolUse` event reads, and
 the two readings that decide it — the heartbeat under `HOME`, and the backgrounding flag on the tool
@@ -167,17 +168,59 @@ class BackgroundedPollerTests(unittest.TestCase):
         # Assert
         self.assertEqual(verdict, REFUSED, "a quoted substitution still runs the program inside it")
 
-    def test_Given_ALiveWatcher_When_AWaitSleepsWithoutALoopKeyword_Then_ItIsRefused(self):
-        # Arrange — the mirror of the case above: a wait spelled without while or until.
-        spaced = f"( {SETTLE} merge 702 --dry-run; sleep 60; {SETTLE} merge 702 ) &"
+    def test_Given_ALiveWatcher_When_APollIsHandedToAnotherShell_Then_ItIsRefused(self):
+        # Arrange — the whole poller is one operand, so its loop and its subject are inside a token
+        # rather than words of this command.
+        handed = f"nohup bash -c '{POLL}' &"
 
         with HookRun(watching()) as run:
             # Act
-            verdict = run.verdict(spaced)
+            verdict = run.verdict(handed)
 
         # Assert
-        self.assertEqual(verdict, REFUSED, "a sleep between two asks is the poll interval")
+        self.assertEqual(verdict, REFUSED, "a shell started here runs what it is handed")
 
+    def test_Given_ALiveWatcher_When_TheAmpersandIsInsideTheOperand_Then_ItIsRefused(self):
+        # Arrange — the backgrounding is the started shell's rather than this one's, so the three
+        # readings have to reach the same text or the poller falls between them.
+        inside = f"bash -c '{POLL} &'"
+
+        with HookRun(watching()) as run:
+            # Act
+            verdict = run.verdict(inside)
+
+        # Assert
+        self.assertEqual(verdict, REFUSED, "a shell that backgrounds its own work still detaches it")
+
+    def test_Given_ALiveWatcher_When_APollsConditionIsHandedToEval_Then_ItIsRefused(self):
+        # Arrange — quoted and never substituted, so the quotes are all that hide the program.
+        with HookRun(watching()) as run:
+            # Act
+            verdict = run.verdict('until eval "gh pr checks 702"; do sleep 60; done &')
+
+        # Assert
+        self.assertEqual(verdict, REFUSED, "eval runs its operand rather than passing it on")
+
+    def test_Given_ALiveWatcher_When_APollIsSpelledAsWatch_Then_ItIsRefused(self):
+        # Arrange — no loop keyword and no sleep: the interval and the repeating are both the
+        # program's.
+        with HookRun(watching()) as run:
+            # Act
+            verdict = run.verdict("watch -n 60 'gh pr checks 702' &")
+
+        # Assert
+        self.assertEqual(verdict, REFUSED, "a repeat somebody else counts is still a repeat")
+
+    def test_Given_ALiveWatcher_When_APollLoopsOverNoListAtAll_Then_ItIsRefused(self):
+        # Arrange — a `for` header carrying no list, which ends the way a condition loop does.
+        endless = "for ((;;)); do gh pr checks 702; sleep 60; done &"
+
+        with HookRun(watching()) as run:
+            # Act
+            verdict = run.verdict(endless)
+
+        # Assert
+        self.assertEqual(verdict, REFUSED, "what bounds a for is the list, and this one has none")
 
 class WatcherFileWaitTests(unittest.TestCase):
     """Waits on the files the watcher writes rather than on the programs that write them."""
@@ -283,8 +326,64 @@ class SanctionedCommandTests(unittest.TestCase):
         self.assertEqual(verdict, ALLOWED, "waiting on a suite is the ordinary shape of a long run")
 
 
-class NoWatcherTests(unittest.TestCase):
-    """Three ways the heartbeat says nothing is watching, where nothing is being duplicated."""
+    def test_Given_ALiveWatcher_When_ASubjectIsNamedInsideAQuotedArgument_Then_ItIsAllowed(self):
+        # Arrange — the wait allowed above with a search appended. `gh` is what the search looks for
+        # rather than what the command runs.
+        searched = ("until [ -s Logs/results.xml ]; do sleep 45; done; "
+                    "grep -n 'gh pr' scripts/*.py")
+
+        with HookRun(watching()) as run:
+            # Act
+            verdict = run.verdict(searched, background=True)
+
+        # Assert
+        self.assertEqual(verdict, ALLOWED, "a name a program is handed is not a program that runs")
+
+    def test_Given_ALiveWatcher_When_AWalkOverInputAssignsAVariableFirst_Then_ItIsAllowed(self):
+        # Arrange — the canonical spelling of the batch edit above, which keeps the field splitting
+        # off the lines it reads.
+        batch = 'while IFS= read -r n; do gh pr edit "$n" --add-label ready; done < prs.txt &'
+
+        with HookRun(watching()) as run:
+            # Act
+            verdict = run.verdict(batch)
+
+        # Assert
+        self.assertEqual(verdict, ALLOWED, "an assignment before read does not turn the walk into a wait")
+
+    def test_Given_ALiveWatcher_When_ABoundedFanOutSleepsBetweenAsks_Then_ItIsAllowed(self):
+        # Arrange — the fan-out above, slowed down so it spends the shared rate limit more gently.
+        courteous = "for n in 700 701 702; do gh pr view $n; sleep 1; done &"
+
+        with HookRun(watching()) as run:
+            # Act
+            verdict = run.verdict(courteous)
+
+        # Assert
+        self.assertEqual(verdict, ALLOWED, "refusing this would refuse the mitigation for the limit")
+
+    def test_Given_ALiveWatcher_When_TwoAsksAreSpacedByASleep_Then_ItIsAllowed(self):
+        # Arrange — asks written out one after another end with the text. What has to be retired
+        # from outside is a loop, and a sleep is how long this one takes rather than how often it
+        # comes back.
+        spaced = f"( {SETTLE} merge 702 --dry-run; sleep 60; {SETTLE} merge 702 ) &"
+
+        with HookRun(watching()) as run:
+            # Act
+            verdict = run.verdict(spaced)
+
+        # Assert
+        self.assertEqual(verdict, ALLOWED, "two asks and a pause is a bounded command")
+
+
+class HeartbeatReadingTests(unittest.TestCase):
+    """What the heartbeat says about a watcher, and which readings leave nothing to be duplicated.
+
+    Four of the five posed here allow. The one that refuses is a fresh stamp this cannot read as a
+    pair, which is a watcher rather than the absence of one. The millisecond epoch beside it cannot
+    be read as a pair either and allows, so what the refusal turns on is the stamp being recent
+    rather than the reading having failed.
+    """
 
     def test_Given_NoHeartbeatAtAll_When_ThePollIsPosed_Then_ItIsAllowed(self):
         # Arrange
@@ -312,6 +411,24 @@ class NoWatcherTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(verdict, ALLOWED, "the stamp outlives the process that vouched for it")
+
+    def test_Given_AHeartbeatStampedInMilliseconds_When_ThePollIsPosed_Then_ItIsAllowed(self):
+        # Arrange — read as seconds it lands in the future, which vouches for a watcher forever.
+        with HookRun(f"{int(time.time() * 1000)}\n") as run:
+            # Act
+            verdict = run.verdict(POLL, background=True)
+
+        # Assert
+        self.assertEqual(verdict, ALLOWED, "a stamp ahead of the clock is not a recent one")
+
+    def test_Given_AHeartbeatCarryingNoProcessId_When_ThePollIsPosed_Then_ItIsRefused(self):
+        # Arrange — the form a watcher started from a checkout older than the pid field writes.
+        with HookRun(f"{int(time.time())}\n") as run:
+            # Act
+            verdict = run.verdict(POLL, background=True)
+
+        # Assert
+        self.assertEqual(verdict, REFUSED, "a heartbeat this cannot read is not an absent one")
 
 
 class ToolGateTests(unittest.TestCase):

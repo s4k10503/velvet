@@ -753,12 +753,16 @@ namespace Velvet.Tests
         private static void WriteWatcherState(string home)
         {
             // Two guards read these, and the heartbeat alone leaves one of them silent: the poller
-            // guard answers only while a watcher is live, and the sitting-pull-request guard, once
-            // one is, stops refusing over the watcher and needs a pull request past its grace
-            // period instead. That is what the ready record is for — measured, without it that
-            // guard answers none of the payloads below. Written names rather than derived ones,
-            // pinned by having to match: renamed in `scripts/pr/watcher_state.py`, these are files
-            // neither guard reads, both fall silent, and the gate check below fails.
+            // guard answers only while the heartbeat says something is watching, and the
+            // sitting-pull-request guard, once it does, stops refusing over the watcher and needs a
+            // pull request past its grace period instead. That is what the ready record is for —
+            // measured, without it that guard answers none of the payloads below.
+            //
+            // The names are written rather than derived, and what pins them is the poller guard
+            // alone: renamed in `scripts/pr/watcher_state.py`, it reads a heartbeat that is not
+            // there and answers none of the payloads, so the gate check fails. Measured at the same
+            // rename, the sitting-pull-request guard keeps answering — over nothing watching rather
+            // than over a pull request — so it holds nothing here.
             var seconds = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             var pid = System.Diagnostics.Process.GetCurrentProcess().Id;
             File.WriteAllText(Path.Combine(home, ".velvet-pr-watch.heartbeat"), $"{seconds} {pid}\n");
