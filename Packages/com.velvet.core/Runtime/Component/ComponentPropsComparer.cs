@@ -7,16 +7,15 @@ using System.Linq.Expressions;
 
 namespace Velvet
 {
-    // Props-bail predicate: shallow per-property comparison of two props values using
-    // identity equality (ObjectIs.AreEqualObjects) on each public member.
+    // Props-bail predicate: shallow per-property comparison of two props values under Object.is.
     // Velvet props are record types whose synthesized object.Equals is
     // deep structural equality. This comparer instead compares props shallowly — each top-level
-    // member by identity, never recursing — so a record's value equality is the wrong key:
+    // member on its own, never recursing — so a record's value equality is the wrong key:
     // it would over-bail when a nested reference changes content in place and is generally a
     // different memoization axis.
     // The member set (public instance properties + fields) is reflected once per props type and
     // cached. Equality protocol: same reference is equal; null vs non-null is not equal; differing
-    // runtime types are not equal; otherwise every member is compared by identity equality.
+    // runtime types are not equal; otherwise every member is compared under Object.is.
     //
     // This predicate runs on every parent-driven re-render attempt of a Memoize=true component, so
     // per-call PropertyInfo/FieldInfo.GetValue reflection — and the boxing it does for each
@@ -73,7 +72,8 @@ namespace Velvet
                 return false;
             }
 
-            // Primitive / string / enum props passed directly (no record wrapper) compare by identity equality.
+            // Primitive / string / enum props passed directly (no record wrapper) have no members to
+            // reflect, so the whole value is compared as one.
             if (type.IsPrimitive || type == typeof(string) || type.IsEnum)
             {
                 return ObjectIs.AreEqualObjects(prev, next);

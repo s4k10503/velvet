@@ -10,8 +10,8 @@ namespace Velvet.Tests
     /// <list type="bullet">
     /// <item>The deps overload returns the same delegate reference across renders while the dependency array stays
     /// equal, and a new delegate when any dependency changes.</item>
-    /// <item>Dependencies are compared by reference identity: a fresh-but-content-equal reference-type dependency
-    /// counts as changed and yields a new delegate.</item>
+    /// <item>Dependencies are compared under <c>Object.is</c>: a fresh-but-content-equal <c>record class</c>
+    /// dependency counts as changed and yields a new delegate.</item>
     /// <item>The no-deps overload (<c>UseCallback&lt;T&gt;(T)</c>) is unmemoized: it returns a fresh closure on
     /// every render.</item>
     /// <item>An explicit null dependency array declares no dependency list at all, so it is unmemoized too.</item>

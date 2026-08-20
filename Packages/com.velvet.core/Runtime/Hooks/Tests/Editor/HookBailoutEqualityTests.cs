@@ -7,19 +7,21 @@ namespace Velvet.Tests
     /// <summary>
     /// Pins, at the public hook surface, the equality branches that <see cref="StateUpdater{T}"/>'s remarks spell
     /// out to callers and that the <c>comparer</c> parameter of <see cref="Hooks.UseStore{TStore,TSel}"/> points
-    /// at. They have to be spelled out because the comparer implementing them is internal, so neither doc can send
-    /// a caller to it, and a spelled-out rule drifts unless something fails when it changes. <c>ObjectIsTests</c>
+    /// at. A rule spelled out in prose drifts unless something fails when it changes. <c>ObjectIsTests</c>
     /// and <c>ContextProviderObjectIsTests</c> call that comparer directly, so what these cases add is the
     /// routing: they also fail when a hook stops reaching it, which a direct call cannot see.
     /// <list type="bullet">
     /// <item>A <c>UseState</c> setter handed a freshly concatenated string of equal content bails: strings compare
     /// by ordinal content, not by instance.</item>
     /// <item>A <c>UseState</c> setter handed a distinct struct instance with equal fields bails: a value type that
-    /// is not float or double compares through <c>EqualityComparer&lt;T&gt;.Default</c>.</item>
-    /// <item>A <c>UseState</c> setter handed a fresh record instance of equal content re-renders, even though the
-    /// record's own <c>Equals</c> calls the two instances equal: reference types compare by instance.</item>
+    /// is not float or double compares through <c>EqualityComparer&lt;T&gt;.Default</c>, which is the branch a
+    /// <c>record struct</c> takes too.</item>
+    /// <item>A <c>UseState</c> setter handed a fresh <c>record class</c> instance of equal content re-renders,
+    /// even though the record's own <c>Equals</c> calls the two instances equal: a reference type other than
+    /// string compares by instance.</item>
     /// <item><c>UseStore</c>'s default comparer follows the same rule rather than
-    /// <c>EqualityComparer&lt;TSel&gt;.Default</c>, which is what separates the two on a record selector.</item>
+    /// <c>EqualityComparer&lt;TSel&gt;.Default</c>, which is what separates the two on a <c>record class</c>
+    /// selector.</item>
     /// </list>
     /// </summary>
     /// <remarks>

@@ -6,19 +6,23 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies how a Provider decides whether a new value is a change, and the underlying
-    /// <see cref="ObjectIs"/> equality predicate it relies on.
+    /// Specifies how a Provider decides whether a new value is a change, over the
+    /// <see cref="ObjectIs"/> branches these cases reach.
     /// <list type="bullet">
-    /// <item>A Provider notifies its consumers only when the new value is not equal to the previous one
-    /// under <see cref="ObjectIs"/>: a fresh reference-type instance with identical content counts as a
-    /// change, while reapplying the exact same reference is a no-op.</item>
-    /// <item>Equality is identity-based, not structural — a record's value semantics do not make two
-    /// distinct instances equal for Provider change detection.</item>
+    /// <item>A Provider notifies its consumers when the new value is not equal to the previous one under
+    /// <see cref="ObjectIs"/> and skips the notification when it is equal: a fresh <c>record class</c>
+    /// instance with identical content counts as a change, while reapplying the exact same reference is a
+    /// no-op.</item>
+    /// <item>A <c>record class</c> value's own structural equality does not make two distinct instances
+    /// equal for Provider change detection — the comparison is by instance. A <c>record struct</c> takes the
+    /// value-type branch instead and compares through <c>EqualityComparer&lt;T&gt;.Default</c>, which is why
+    /// the word <c>record</c> alone does not decide the outcome.</item>
     /// <item>Floating-point values compare by raw bit pattern: <c>NaN</c> equals itself (replacing NaN with
     /// NaN is a no-op) and <c>+0</c> does not equal <c>-0</c> (a sign flip of zero is a change).</item>
-    /// <item><see cref="ObjectIs.AreEqual{T}"/> compares reference types (and null) by reference, float and
-    /// double by raw bits, and other value types by their default equality so a boxed primitive is not
-    /// treated as a fresh identity on every call.</item>
+    /// <item>The <see cref="ObjectIs.AreEqual{T}"/> branches these cases reach: a non-string reference type
+    /// (and null) by instance, float and double by raw bits, and a non-floating-point value type by its
+    /// default equality, so a boxed primitive is not treated as a fresh identity on every call. The string
+    /// branch is pinned in <c>ObjectIsTests</c> instead.</item>
     /// </list>
     /// </summary>
     /// <remarks>
@@ -50,6 +54,11 @@ namespace Velvet.Tests
 
         #region Provider change detection
 
+        // GREEN_ON_BASE(characterization): this branch changes no production code — it corrects the
+        // failure message, which called the fresh instance a reference type where string takes another
+        // branch — so the case is green on both sides. What shows it can fail is the reference branch of
+        // ObjectIs.AreEqual perturbed to EqualityComparer<T>.Default, measured: the fresh instance then
+        // compares equal and the consumer is not notified.
         [Test]
         public void Given_RecordProvider_When_NewInstanceWithSameContent_Then_ConsumerReRenders()
         {
@@ -64,7 +73,7 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(s_recordRenderCount, Is.EqualTo(2),
-                "A new reference-type instance with identical content propagates as a change (identity, not structure)");
+                "A new record class instance with identical content propagates as a change (instance, not structure)");
         }
 
         [Test]
@@ -132,13 +141,13 @@ namespace Velvet.Tests
                 .SetDescription("A reference equals itself");
             yield return new TestCaseData(new ThemeRecord("x"), new ThemeRecord("x"), false)
                 .SetName("Given_ReferenceTypes_When_DistinctInstancesWithSameContent_Then_NotEqual")
-                .SetDescription("Distinct reference instances are not equal even when their content matches");
+                .SetDescription("Distinct record class instances are not equal even when their content matches");
             yield return new TestCaseData(null, null, true)
                 .SetName("Given_ReferenceTypes_When_BothNull_Then_Equal")
                 .SetDescription("Two nulls are equal");
             yield return new TestCaseData(new ThemeRecord("x"), null, false)
                 .SetName("Given_ReferenceTypes_When_OneIsNull_Then_NotEqual")
-                .SetDescription("A reference and null are not equal");
+                .SetDescription("A record class instance and null are not equal");
         }
 
         [TestCaseSource(nameof(ReferenceEqualityCases))]

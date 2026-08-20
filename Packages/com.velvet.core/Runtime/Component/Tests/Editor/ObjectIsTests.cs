@@ -17,8 +17,8 @@ namespace Velvet.Tests
     /// <item>Value-type elements (int, enum) and strings compare by value, matching JS <c>Object.is("a","a")</c>;
     /// without the string special case, a dynamically-built but content-equal string would never bail and would
     /// force a re-render every time.</item>
-    /// <item>Reference-type elements compare by identity: a fresh-but-content-equal record or list counts as
-    /// changed, while the same instance counts as unchanged.</item>
+    /// <item>Reference-type elements other than string compare by identity: a fresh-but-content-equal
+    /// <c>record class</c> or list counts as changed, while the same instance counts as unchanged.</item>
     /// <item>Float elements follow raw-bit equality: <c>NaN</c> equals itself and <c>+0</c> does not equal
     /// <c>-0</c>.</item>
     /// <item>Nullable value types compare by value: a lifted <c>default(T) == null</c> check would otherwise

@@ -16,7 +16,8 @@ namespace Velvet.Tests.Editor
     /// updater returns the identical instance, so a distinct-but-value-equal record still updates and notifies.</item>
     /// <item><c>Mutate</c> updates the state and notifies unconditionally, even when the new value equals the old one.</item>
     /// <item>A selected slice notifies only when the slice changes under the chosen comparer; without a comparer it
-    /// uses identity equality, and a sequence comparer bails when a fresh list holds identity-equal elements.</item>
+    /// uses <c>Object.is</c>, which compares an array slice by instance, and a sequence comparer bails when a
+    /// fresh list holds the same element instances.</item>
     /// <item><c>Subscribe</c> delivers each subsequent state, optionally firing immediately with the current value;
     /// its (current, previous) overload pairs each state with the one before it. A null listener is rejected.</item>
     /// <item>Disposing runs subclass dispose logic exactly once and cancels the store's cancellation token.</item>

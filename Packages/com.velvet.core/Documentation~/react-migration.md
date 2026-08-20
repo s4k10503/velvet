@@ -177,10 +177,11 @@ V.Provider(CounterStoreContext, _counterStore,
 ```
 
 If the selector's return value equals the previous one, no re-render occurs. The default comparer is
-`Object.is` rather than value equality, so a selector returning a fresh record of equal content
-re-renders. Passing `EqualityComparer<TSel>.Default` as the third argument is what skips that; for a
-string selector, or a value-type selector other than `float`/`double`, it changes nothing. The
-`comparer` parameter's own documentation states each branch.
+`Object.is` rather than value equality, so a selector returning a fresh `record class` instance of
+equal content re-renders. Passing `EqualityComparer<TSel>.Default` as the third argument is what skips
+that; for a string selector, or a value-type selector other than `float`/`double` — a `record struct`
+included — it changes nothing: `Object.is` already gives the same answer as that comparer for both. The
+`comparer` parameter points at `StateUpdater<T>`'s remarks, which state each branch.
 
 ### 1-4. What a dependency list means
 
