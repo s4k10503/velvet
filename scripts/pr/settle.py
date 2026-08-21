@@ -416,6 +416,39 @@ def write_ready_state(ready, since):
         "".join(f"{number} {since[number]}\n" for number in sorted(since)))
 
 
+def read_ready_state():
+    """When each recorded pull request first read as ready, out of the file a watcher left behind.
+
+    Retirement makes a restart ordinary rather than a machine reboot, and a `since` that began
+    empty would hand every green pull request a new clock — the one
+    `refuse/edit_while_a_ready_pr_sits.py` reads to decide that a pull request has sat.
+
+    Carried only while the record was itself written inside the staleness window, because a wider
+    gap is one nothing polled through: the record's own rule is to drop an entry the moment its pull
+    request stops being ready, so a pull request that left the ready set and returned unseen would
+    be carried here as having sat throughout. Dated by the file rather than by the heartbeat beside
+    it, which a watcher that beat and then died before its first record would leave fresh over
+    somebody else's. The window runs from the last poll rather than from the retirement, which
+    leaves a replacement about two of its three polls — one started later carries nothing. A stamp
+    in the future is dropped, and the window is bounded below as well as above, for the reason
+    `watcher_state.stamp_age` gives about the one in the heartbeat.
+    """
+    try:
+        text = watcher_state.READY_STATE.read_text(encoding="utf-8")
+        written = watcher_state.READY_STATE.stat().st_mtime
+    except (OSError, UnicodeDecodeError):
+        return {}
+    now = int(time.time())
+    if not 0 <= now - written < watcher_state.STALE_AFTER:
+        return {}
+    carried = {}
+    for line in text.splitlines():
+        fields = line.split()
+        if len(fields) == 2 and all(field.isdigit() for field in fields) and int(fields[1]) <= now:
+            carried[int(fields[0])] = int(fields[1])
+    return carried
+
+
 def hold_the_watch():
     """(the open lock, the pid holding it). No lock means another watcher already has it.
 
@@ -453,8 +486,34 @@ def beat():
     watcher_state.HEARTBEAT.write_text(watcher_state.beat(os.getpid()))
 
 
+def unasked_for(started, now=None):
+    """Seconds since a reader last recorded asking, counted from this watcher's own start.
+
+    A stamp left before this watcher started says nothing about whether anything reads this one, so
+    the interval runs from the later of the two.
+    """
+    now = time.time() if now is None else now
+    ago = watcher_state.asked_ago(now)
+    return now - started if ago is None else min(ago, now - started)
+
+
+def retire(lock, unasked):
+    """The lock goes back here rather than at the exit: `watch` returns to a caller, and one that
+    went on to other work would hold it while nothing was watching.
+    """
+    lock.close()
+    print(f"Retiring after {int(unasked)}s in which nothing stamped {watcher_state.ASKED}, which is "
+          f"how a guard records reading the watcher's state.\n"
+          f"\nFrom here a pending check blocks a Stop again, and an edit is refused until something "
+          f"is watching. Both are what a live watcher was forgiving. Start another when that is what "
+          f"you want:\n"
+          f"\n  python3 scripts/pr/settle.py watch\n", flush=True)
+    return 0
+
+
 def watch(project, base):
-    """Emit each check that reaches a terminal state, once, and hold the heartbeat open meanwhile."""
+    """Emit each check that reaches a terminal state, once, and hold the heartbeat open until
+    nothing reads it."""
     lock, holder = hold_the_watch()
     if lock is None:
         print(f"Refusing to watch: process {holder or 'unknown'} already holds "
@@ -477,8 +536,14 @@ def watch(project, base):
         return 1
 
     seen = set()
-    ready_since = {}
+    ready_since = read_ready_state()
+    started = time.time()
     while True:
+        # Before the readings, so the error path that sleeps and continues cannot skip it — a
+        # watcher whose calls all fail goes unread like any other.
+        unasked = unasked_for(started)
+        if unasked >= watcher_state.RETIRE_AFTER:
+            return retire(lock, unasked)
         try:
             pull_requests = open_pull_requests(project)
             state = project_state(project, base)

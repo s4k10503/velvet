@@ -12,8 +12,8 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Pins the shipped assemblies' public and protected member surface to a checked-in file so every
-    /// addition, removal and nullability change is a reviewable diff. The CHANGELOG's [Unreleased] breaking
-    /// entries are written down by hand; nothing else compares two commits.
+    /// addition, removal and nullability change is a reviewable diff. The CHANGELOG's
+    /// [Unreleased — breaking] section is written down by hand; nothing else compares two commits.
     /// </summary>
     [TestFixture]
     internal sealed class PublicApiSurfaceTests
