@@ -185,12 +185,15 @@ namespace Velvet
         public bool IsSuspenseBoundary { get; internal set; }
 
         /// <summary>
-        /// True while this fiber is a primary (hidden) child of a wrapper-less Suspense boundary that
-        /// is currently showing its fallback. Set by <c>GeneralPathReconciler.ExpandSuspenseInline</c> when
-        /// the boundary suspends and cleared when it reveals. <see cref="FiberWorkLoop.FlushState"/>'s
+        /// True while this fiber is a primary (hidden) child of a wrapper-less Suspense that is currently
+        /// showing its fallback. Written by <c>GeneralPathReconciler.ExpandSuspenseInline</c> over the
+        /// fibers that expansion created, less the ones a nested Suspense that suspended created: that
+        /// boundary owns its own primary subtree, so an enclosing one resolving leaves it
+        /// hidden. <see cref="FiberWorkLoop.FlushState"/>'s
         /// offscreen guard defers a lane flush for offscreen fibers (their slot is occupied by the
-        /// fallback) while still allowing the visible fallback subtree to flush (the
-        /// fallback renders normally; only the primary subtree is offscreen).
+        /// fallback). It is per-fiber rather than per-boundary because one component fiber can render
+        /// several Suspense nodes: that Suspense's own visible fallback subtree, and a sibling Suspense's
+        /// children, sit under the same boundary and must still flush.
         /// </summary>
         internal bool IsOffscreen { get; set; }
 

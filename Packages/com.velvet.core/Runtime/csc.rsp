@@ -1,2 +1,3 @@
 -langversion:preview
 -nullable:enable
+-warnaserror:CS8509
