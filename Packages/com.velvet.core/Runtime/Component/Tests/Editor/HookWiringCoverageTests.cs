@@ -589,6 +589,13 @@ namespace Velvet.Tests
             ("a background command naming a repository path relatively",
              "\"cwd\":\"%PROJECT%\",\"tool_input\":{\"command\":\"python3 scripts/release/release_notes.py\","
              + "\"run_in_background\":true}"),
+            // Backgrounded, repeating, and over a file the watcher writes — the three the poller
+            // guard needs together. It runs no program of the watcher's, so the file name is the
+            // whole subject.
+            ("a backgrounded wait on the watcher's ready file",
+             "\"cwd\":\"%SCRATCH%\",\"tool_input\":"
+             + "{\"command\":\"until [ -s ~/.velvet-pr-ready ]; do sleep 60; done\","
+             + "\"run_in_background\":true}"),
             ("a pull request created from a body file that is not there",
              "\"cwd\":\"%SCRATCH%\",\"tool_input\":"
              + "{\"command\":\"gh pr create --title x --body-file velvet-no-such-body.md\"}"),
@@ -733,6 +740,7 @@ namespace Velvet.Tests
             WriteReleasedChangelog(ScratchDirectory);
             File.WriteAllText(Path.Combine(ScratchDirectory, "DeclaringTests.cs"),
                               DeclaringFixture + SettledDeclaration);
+            WriteWatcherState(ScratchDirectory);
             // A baseline is comparable only with answers measured under the same HOME, and the
             // directory HOME is pointed at is replaced here.
             LoadingOutput.Clear();
@@ -740,6 +748,26 @@ namespace Velvet.Tests
 
         [OneTimeTearDown]
         public void RemoveScratchDirectory() => Directory.Delete(ScratchDirectory, true);
+
+        /// <summary>The watcher's files under the HOME the probes run against: alive, one sitting.</summary>
+        private static void WriteWatcherState(string home)
+        {
+            // Two guards read these, and the heartbeat alone leaves one of them silent: the poller
+            // guard answers only while the heartbeat says something is watching, and the
+            // sitting-pull-request guard, once it does, stops refusing over the watcher and needs a
+            // pull request past its grace period instead. That is what the ready record is for —
+            // measured, without it that guard answers none of the payloads below.
+            //
+            // The names are written rather than derived, and what pins them is the poller guard
+            // alone: renamed in `scripts/pr/watcher_state.py`, it reads a heartbeat that is not
+            // there and answers none of the payloads, so the gate check fails. Measured at the same
+            // rename, the sitting-pull-request guard keeps answering — over nothing watching rather
+            // than over a pull request — so it holds nothing here.
+            var seconds = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            var pid = System.Diagnostics.Process.GetCurrentProcess().Id;
+            File.WriteAllText(Path.Combine(home, ".velvet-pr-watch.heartbeat"), $"{seconds} {pid}\n");
+            File.WriteAllText(Path.Combine(home, ".velvet-pr-ready"), $"1 {seconds - 3600}\n");
+        }
 
         private static string Resolved(string payload) =>
             payload
