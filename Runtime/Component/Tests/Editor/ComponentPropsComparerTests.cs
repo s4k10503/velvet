@@ -1,3 +1,8 @@
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
 using NUnit.Framework;
 
 namespace Velvet.Tests
@@ -16,11 +21,11 @@ namespace Velvet.Tests
     /// <item>Reference-type members other than string compare by identity and the comparison stops there:
     /// distinct instances with equal content are not equal, the same instance is equal.</item>
     /// <item>A value-type member is decided by its own <c>Equals</c> instead, which reads on into what the
-    /// member holds — a nested <c>record class</c> of equal content makes the props equal — and which
-    /// answers for a nested <c>float</c> itself, so the <c>+0</c>/<c>-0</c> split above does not reach
-    /// inside one.</item>
-    /// <item>A bare string or primitive props value is compared as a whole rather than through a member
-    /// set.</item>
+    /// member holds — a nested <c>record class</c> of equal content makes the props equal — and the
+    /// <c>float</c> and <c>double</c> fields it carries, directly or inside a value type it holds, are
+    /// compared by raw bit pattern on top of that.</item>
+    /// <item>A props value that is not a props bag — a value type, a string, a collection — is compared as
+    /// a whole rather than through a member set.</item>
     /// <item>Float members follow <c>Object.is</c> raw-bit equality: <c>NaN</c> equals itself and <c>+0</c>
     /// does not equal <c>-0</c>.</item>
     /// </list>
@@ -37,6 +42,17 @@ namespace Velvet.Tests
         private sealed record NestedRefProps(Wrapper W);
         private readonly record struct FloatBox(float F);
         private sealed record NestedFloatProps(FloatBox B);
+        private readonly record struct MixedBox(float F, Inner Held);
+        private sealed record MixedProps(MixedBox M);
+        private readonly record struct DoubleBox(double D);
+        private readonly record struct OuterBox(FloatBox Inner, int N);
+        private sealed record NestedTwiceProps(OuterBox O);
+        private sealed record NestedDoubleProps(DoubleBox B);
+        private sealed record FloatHolder(float F);
+        private readonly record struct HolderBox(float F, FloatHolder Held);
+        private sealed record HolderProps(HolderBox B);
+        private sealed record NullableRefProps(object? Handle);
+        private sealed record ClassMemberProps(FloatHolder? Held);
 
         private readonly struct Point
         {
@@ -124,10 +140,11 @@ namespace Velvet.Tests
             Assert.That(ComponentPropsComparer.ShallowEquals(a, b), Is.False);
         }
 
-        // GREEN_ON_BASE(characterization): this case adds no production change — it pins the guard that
-        // routes an unwrapped props value away from the member-set comparison, which the base already
-        // has — so it is green on both sides. What shows it can fail is that guard deleted, measured:
-        // this case and the primitive one below are the only two in the fixture that redden.
+        // GREEN_ON_BASE(characterization): the answer a bare string props value already gives.
+        // The base routed it past the member walk on a type test and this change routes it there on
+        // IsPropsBag, so the case is green on both sides. What shows it can fail is that route deleted
+        // so every props value takes the member walk, measured on this branch: six cases in this
+        // fixture redden under it, this one among them.
         [Test]
         public void Given_BareStringProps_When_ContentDiffersAtEqualLength_Then_IsNotEqual()
         {
@@ -136,8 +153,8 @@ namespace Velvet.Tests
                 "A bare string props value is compared as a whole rather than through a member set");
         }
 
-        // GREEN_ON_BASE(characterization): the other half of the guard above, on a primitive rather than a
-        // string; green on both sides for the same reason, and red under the same deletion.
+        // GREEN_ON_BASE(characterization): the other half of the route above, on a primitive rather than
+        // a string; green on both sides for the same reason, and red under the same deletion.
         [Test]
         public void Given_BarePrimitiveProps_When_ValuesDiffer_Then_IsNotEqual()
         {
@@ -160,10 +177,12 @@ namespace Velvet.Tests
                 "String members compare by value, not by instance identity");
         }
 
-        // GREEN_ON_BASE(characterization): this branch changes no production code — it corrects the failure
-        // message, which claimed for the whole comparison what holds of a reference-type member — so the
-        // case is green on both sides. What shows it can fail is the reference fall-through of
-        // ObjectIs.AreEqualObjects cut to return true, measured: the two distinct arrays then compare equal.
+        // GREEN_ON_BASE(characterization): the identity a reference-type member is decided by.
+        // This change routes an object-declared member through ValueEquals rather than straight to
+        // ObjectIs.AreEqualObjects, and a reference reaches the same fall-through either way, so the case
+        // is green on both sides. What shows it can fail is that fall-through cut to return true,
+        // measured on this branch: the two distinct arrays then compare equal, and the bare-list case
+        // below with them.
         [Test]
         public void Given_ReferenceTypeMemberWithEqualContent_When_ShallowEquals_Then_IsNotEqual()
         {
@@ -211,10 +230,11 @@ namespace Velvet.Tests
             Assert.That(ComponentPropsComparer.ShallowEquals(a, b), Is.False);
         }
 
-        // GREEN_ON_BASE(characterization): this branch changes no production code — it pins how far a
-        // value-type member is read, which the base already decides this way — so the case is green on
-        // both sides. What shows it can fail is AreEqual<T>'s value fall-through cut to return false,
-        // measured: six cases in this fixture redden under it, this one among them.
+        // GREEN_ON_BASE(characterization): how far a value-type member is read, unchanged here.
+        // The member holds no floating-point leaf, so the comparison this change adds does not reach it
+        // and the member's own Equals still decides it. What shows the case can fail is AreEqual<T>'s
+        // value fall-through cut to return false, measured on this branch: seven cases in this fixture
+        // redden under it, this one among them.
         [Test]
         public void Given_RecordStructMemberHoldingFreshEqualRecordClass_When_ShallowEquals_Then_IsEqual()
         {
@@ -228,12 +248,8 @@ namespace Velvet.Tests
                 "A value-type member is decided by its own Equals, which reads on into what it holds");
         }
 
-        // GREEN_ON_BASE(characterization): this branch changes no production code — it pins that the
-        // float rule stops at the member boundary, which the base already does — so the case is green on
-        // both sides. What shows it can fail is the same cut as the case above, measured: it reddens with
-        // it, while the bare-float +0/-0 case above stays green — which is the boundary this case pins.
         [Test]
-        public void Given_RecordStructMemberDifferingOnlyInZeroSign_When_ShallowEquals_Then_IsEqual()
+        public void Given_RecordStructMemberDifferingOnlyInZeroSign_When_ShallowEquals_Then_IsNotEqual()
         {
             // Arrange — the same +0/-0 pair the bare float member above distinguishes, one level inside a
             // value-type member
@@ -241,8 +257,226 @@ namespace Velvet.Tests
             var b = new NestedFloatProps(new FloatBox(-0f));
 
             // Act + Assert
+            Assert.That(ComponentPropsComparer.ShallowEquals(a, b), Is.False,
+                "Object.is raw-bit equality reaches a float inside a value-type member");
+        }
+
+        // GREEN_ON_BASE(characterization): the answer a bare record struct props value already gives.
+        // The base reached it through the member walk and this change reaches it through the leaf
+        // comparison a value type holding a float takes, so the case is green on both sides. What shows
+        // it can fail is that leaf comparison deleted, measured on this branch: this case is the only one
+        // in the fixture that reddens under it.
+        [Test]
+        public void Given_BareRecordStructProps_When_AFloatDiffersOnlyInZeroSign_Then_IsNotEqual()
+        {
+            // Arrange — the pair the wrapped case above uses, passed as the props value itself
+            var a = new FloatBox(0f);
+            var b = new FloatBox(-0f);
+
+            // Act + Assert
+            Assert.That(ComponentPropsComparer.ShallowEquals(a, b), Is.False,
+                "A bare record struct props value answers a sign flip the way a wrapped one does");
+        }
+
+        // GREEN_ON_BASE(characterization): the content a value-type member holding a record class is
+        // decided by, which the float leaves this change compares must not displace. The member holds a
+        // float as well, so it takes the added comparison and still answers on its own equality first.
+        // What shows the case can fail is AreEqual<T>'s value fall-through cut to return false, measured
+        // on this branch: seven cases in this fixture redden under it, this one among them.
+        [Test]
+        public void Given_FloatBearingStructMemberHoldingFreshEqualRecordClass_When_ShallowEquals_Then_IsEqual()
+        {
+            // Arrange — the nested record class instances are distinct, and the floats agree
+            var a = new MixedProps(new MixedBox(1f, new Inner("x")));
+            var b = new MixedProps(new MixedBox(1f, new Inner("x")));
+
+            // Act + Assert
             Assert.That(ComponentPropsComparer.ShallowEquals(a, b), Is.True,
-                "Object.is raw-bit equality applies to a float member, not inside a value-type member");
+                "A value-type member holding a float is still decided by its own Equals for what else it holds");
+        }
+
+        [Test]
+        public void Given_FloatBearingStructMemberDifferingOnlyInZeroSign_When_ShallowEquals_Then_IsNotEqual()
+        {
+            // Arrange — one shared record class instance, so the sign of the float is the only difference
+            var held = new Inner("x");
+            var a = new MixedProps(new MixedBox(0f, held));
+            var b = new MixedProps(new MixedBox(-0f, held));
+
+            // Act + Assert
+            Assert.That(ComponentPropsComparer.ShallowEquals(a, b), Is.False,
+                "A float leaf beside a reference field still follows Object.is raw-bit equality");
+        }
+
+        [Test]
+        public void Given_AFloatTwoValueTypesDeepDifferingOnlyInZeroSign_When_ShallowEquals_Then_IsNotEqual()
+        {
+            // Arrange — the float sits inside a struct inside the struct the member declares, which is
+            // what makes the leaf collector descend from one value type into another; where a member's
+            // own struct carries the float, the float branch answers it and that descent never runs
+            var a = new NestedTwiceProps(new OuterBox(new FloatBox(0f), 1));
+            var b = new NestedTwiceProps(new OuterBox(new FloatBox(-0f), 1));
+
+            // Act + Assert
+            Assert.That(ComponentPropsComparer.ShallowEquals(a, b), Is.False,
+                "The raw-bit rule descends through a value type into a value type it holds");
+        }
+
+        [Test]
+        public void Given_DoubleInsideAValueTypeMemberDifferingOnlyInZeroSign_When_ShallowEquals_Then_IsNotEqual()
+        {
+            // Arrange — the float case one type wider, so the double half of the leaf test is exercised
+            var a = new NestedDoubleProps(new DoubleBox(0d));
+            var b = new NestedDoubleProps(new DoubleBox(-0d));
+
+            // Act + Assert
+            Assert.That(ComponentPropsComparer.ShallowEquals(a, b), Is.False,
+                "A double leaf follows Object.is raw-bit equality as a float leaf does");
+        }
+
+        // GREEN_ON_BASE(characterization): where the raw-bit rule stops, which this change must not move.
+        // A reference held inside a value-type member is decided by its own Equals, and a record class's
+        // Equals answers for a float the way IEEE does rather than the way Object.is does, so the pair
+        // below is equal through it. What shows the case can fail is the descent's stop at a reference
+        // deleted, measured on this branch: this case is the only one in the fixture that reddens.
+        [Test]
+        public void Given_RecordClassInsideAFloatBearingStructMemberDifferingOnlyInZeroSign_When_ShallowEquals_Then_IsEqual()
+        {
+            // Arrange — the sign flip sits one reference deeper than the struct's own float
+            var a = new HolderProps(new HolderBox(1f, new FloatHolder(0f)));
+            var b = new HolderProps(new HolderBox(1f, new FloatHolder(-0f)));
+
+            // Act + Assert
+            Assert.That(ComponentPropsComparer.ShallowEquals(a, b), Is.True,
+                "The raw-bit rule reaches a float inside a value type, and stops at a reference it holds");
+        }
+
+        // GREEN_ON_BASE(characterization): the answer two absent object members already give, which the
+        // value route this change adds has to keep giving before it reads a runtime type off one. What
+        // shows the case can fail is that route's null return cut to false, measured on this branch: this
+        // case is the only one in the fixture that reddens.
+        [Test]
+        public void Given_ObjectMemberAbsentOnBothSides_When_ShallowEquals_Then_IsEqual()
+        {
+            // Arrange
+            var a = new NullableRefProps(null);
+            var b = new NullableRefProps(null);
+
+            // Act + Assert
+            Assert.That(ComponentPropsComparer.ShallowEquals(a, b), Is.True,
+                "Two absent object members are equal");
+        }
+
+        // GREEN_ON_BASE(characterization): the answer two absent class-typed members already give. The
+        // member's type holds a float, so it is the shape a leaf comparison would descend into, and the
+        // case is what fails if one ever descends into an absent reference.
+        [Test]
+        public void Given_ClassMemberHoldingAFloatAbsentOnBothSides_When_ShallowEquals_Then_IsEqual()
+        {
+            // Arrange
+            var a = new ClassMemberProps(null);
+            var b = new ClassMemberProps(null);
+
+            // Act + Assert
+            Assert.That(ComponentPropsComparer.ShallowEquals(a, b), Is.True,
+                "Two absent class-typed members are equal");
+        }
+
+        // GREEN_ON_BASE(characterization): the reflected shape of a primitive, which the leaf collector's
+        // stop at one rests on rather than on a rule of its own. A descent that read this field would
+        // arrive back at the same type, and the case is what fails if the runtime stops declaring it.
+        [Test]
+        public void Given_APrimitiveType_When_ItsInstanceFieldsAreReflected_Then_OneCarriesItsOwnType()
+        {
+            // Arrange
+            const BindingFlags instanceFields =
+                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
+
+            // Act
+            var carriers = typeof(int).GetFields(instanceFields).Count(f => f.FieldType == typeof(int));
+
+            // Assert
+            Assert.That(carriers, Is.GreaterThan(0),
+                "A primitive declares a backing field of its own type, so a descent into one would not end");
+        }
+
+        // GREEN_ON_BASE(characterization): the editor reset emptying what the comparer caches, which the
+        // base already does for the caches it holds. The case reads the set reflectively, so a cache
+        // added later comes under it without being named. What shows it can fail is any one Clear
+        // dropped, measured on this branch: this case is the only one in the fixture that reddens.
+        [Test]
+        public void Given_TheTypeKeyedCachesHoldEntries_When_TheEditorResetRuns_Then_NoneStillDoes()
+        {
+            // Arrange — one comparison of each shape the comparer caches for
+            ComponentPropsComparer.ShallowEquals(new SimpleProps("a", 1), new SimpleProps("a", 1));
+            ComponentPropsComparer.ShallowEquals(new NestedFloatProps(new FloatBox(1f)), new NestedFloatProps(new FloatBox(1f)));
+            var caches = TypeKeyedCaches();
+            var filled = caches.Select(c => c.Value.Count > 0).ToArray();
+
+            // Act
+            typeof(ComponentPropsComparer)
+                .GetMethod("ResetCache", BindingFlags.NonPublic | BindingFlags.Static)!
+                .Invoke(null, null);
+
+            // Assert — the filled state before and the count after, so an empty cache cannot pass for a cleared one
+            Assert.That(
+                string.Join(",", caches.Select((c, i) => $"{c.Key}:filled={filled[i]},after={c.Value.Count}")),
+                Is.EqualTo(string.Join(",", caches.Select(c => $"{c.Key}:filled=True,after=0"))));
+        }
+
+        private static KeyValuePair<string, IDictionary>[] TypeKeyedCaches()
+            => typeof(ComponentPropsComparer)
+                .GetFields(BindingFlags.NonPublic | BindingFlags.Static)
+                .Where(f => typeof(IDictionary).IsAssignableFrom(f.FieldType)
+                    && f.FieldType.IsGenericType
+                    && f.FieldType.GetGenericArguments()[0] == typeof(Type))
+                .OrderBy(f => f.Name, StringComparer.Ordinal)
+                .Select(f => new KeyValuePair<string, IDictionary>(f.Name, (IDictionary)f.GetValue(null)!))
+                .ToArray();
+
+        [Test]
+        public void Given_BareStructPropsHoldingFreshEqualRecordClass_When_ShallowEquals_Then_IsEqual()
+        {
+            // Arrange — the struct a wrapped member of the same type is decided by its own Equals for,
+            // passed as the props value itself
+            var a = new Wrapper(new Inner("x"));
+            var b = new Wrapper(new Inner("x"));
+
+            // Act + Assert
+            Assert.That(ComponentPropsComparer.ShallowEquals(a, b), Is.True,
+                "A bare struct props value is decided by its own Equals, as a struct member is");
+        }
+
+        [Test]
+        public void Given_BareDecimalProps_When_ValuesDiffer_Then_IsNotEqual()
+        {
+            // Act + Assert
+            Assert.That(ComponentPropsComparer.ShallowEquals(1.0m, 2.0m), Is.False,
+                "A bare decimal props value is decided whole rather than through a member set");
+        }
+
+        [Test]
+        public void Given_BareGuidProps_When_ValuesDiffer_Then_IsNotEqual()
+        {
+            // Arrange
+            var a = new Guid("00000000-0000-0000-0000-000000000001");
+            var b = new Guid("00000000-0000-0000-0000-000000000002");
+
+            // Act + Assert
+            Assert.That(ComponentPropsComparer.ShallowEquals(a, b), Is.False,
+                "A bare Guid props value is decided whole rather than through a member set");
+        }
+
+        [Test]
+        public void Given_BareListProps_When_ElementsDifferAtEqualLength_Then_IsNotEqual()
+        {
+            // Arrange — lists of equal length holding different elements
+            var a = new List<int> { 1, 2 };
+            var b = new List<int> { 3, 4 };
+
+            // Act + Assert
+            Assert.That(ComponentPropsComparer.ShallowEquals(a, b), Is.False,
+                "A collection props value is decided by its instance rather than through a member set");
         }
 
         [Test]

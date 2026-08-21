@@ -28,12 +28,15 @@ namespace Velvet
 
         /// <summary>
         /// Opt-in props-bail: skip a parent-driven re-render when this component's props are
-        /// shallow-equal to the previous render — compared member by member, each member decided by the
-        /// per-type rule <see cref="MemoNode.Dependencies"/> states. A bare string or primitive props
-        /// value is compared whole under that same rule instead of through a member set.
-        /// A value-type member is therefore decided by its own <c>Equals</c>, which reads what the member
-        /// holds, so <c>+0</c> and <c>-0</c> inside one compare equal where two <c>float</c> members
-        /// would not; <c>ComponentPropsComparerTests</c> is what fails if either half stops holding.
+        /// shallow-equal to the previous render — the props bag compared member by member, each member
+        /// decided by the per-type rule <see cref="MemoNode.Dependencies"/> states. A props value that is
+        /// not a props bag — a value type, a string, a collection — is compared whole under that same rule
+        /// instead of through a member set, so two distinct collections of equal content are a change.
+        /// A value type is decided by its own <c>Equals</c>, which reads what it holds, and
+        /// the <c>float</c> and <c>double</c> fields it carries — directly, or inside a value type it
+        /// holds — are compared by raw bit pattern on top of that, so <c>+0</c> and <c>-0</c> in one of
+        /// those are a change as two <c>float</c> members are. <c>ComponentPropsComparerTests</c> is what
+        /// fails if either half stops holding.
         /// Default is <c>false</c>.
         /// <para>
         /// This is a true opt-in gate: only a component with <c>Memoize = true</c> (or one created via
