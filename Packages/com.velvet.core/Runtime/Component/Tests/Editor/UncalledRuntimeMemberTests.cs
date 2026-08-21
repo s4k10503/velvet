@@ -109,7 +109,10 @@ namespace Velvet.Tests
             // and from nothing else outside the package.
             method.IsAssembly
             && !method.IsConstructor
-            && !method.IsGetter && !method.IsSetter && !method.IsAddOn && !method.IsRemoveOn
+            // An assembly-visible setter nothing calls is a seam nobody wired up: the property reads back
+            // whatever the declaration left there, so the call sites reading it are not evidence that
+            // anything ever writes it.
+            && !method.IsGetter && !method.IsAddOn && !method.IsRemoveOn
             // An override or an implementation is reached through the declaration it satisfies, and the
             // call site names that one.
             && !method.IsVirtual && !method.IsAbstract
