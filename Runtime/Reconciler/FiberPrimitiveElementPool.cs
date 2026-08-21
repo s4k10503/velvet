@@ -1,15 +1,16 @@
+using System;
+using UnityEngine;
 using UnityEngine.UIElements;
 
 namespace Velvet
 {
-    // Resets a Button to a clean state so it can be reused from VNodePool.
-    // Delegates the shared class-list restoration + UIToolkit-side reset to
-    // FiberElementPoolReset.ResetClassListAndCommon and only handles Button-specific
-    // state (text / iconImage clear) here.
+    // The shared class-list restoration and UIToolkit-side reset live in
+    // FiberElementPoolReset.ResetClassListAndCommon; what is left here is what only a Button has.
+    // PooledElementSurfaceResetTests compares the pair's result against a freshly constructed instance,
+    // property by property; what it cannot see is stated in FiberElementPoolReset's limitations.
     // button.clicked event handlers are registered by FiberEventBindingManager with a
     // closure-based unregister (actions.Add(() => button.clicked -= handler)); these are
     // released by FiberElementCleaner.CleanupElementResources before the Button reaches the pool.
-    // The Button.clickable instance itself is retained by Unity and not touched here.
     internal static class FiberButtonPoolHelper
     {
         public static void ResetButtonForReuse(Button button)
@@ -35,8 +36,17 @@ namespace Velvet
             if (button.childCount > 0) button.Clear();
 
             FiberElementPoolReset.ResetClassListAndCommon(button, TextElement.ussClassName, Button.ussClassName);
+            FiberElementPoolReset.ResetTextElementState(button);
             button.text = string.Empty;
             button.iconImage = default;
+            // Replacing the manipulator is the only way to drop handlers a consumer subscribed to the
+            // Clickable itself: `clicked` is an event, so nothing outside can clear it without holding every
+            // delegate that was added. Leaving the instance in place, as this did, carries a consumer's own
+            // click action into whatever mounts next. This is the one place the pool return buys correctness
+            // with allocation unconditionally — a fresh manipulator, and the callback re-registration the
+            // swap performs — against the stance the class-list overloads in FiberElementPoolReset are
+            // shaped by. The other such trade, in FiberTextFieldPoolHelper, is guarded; this one cannot be.
+            button.clickable = new Clickable((Action)null);
             // The common reset scrubs focusable to the plain-VisualElement default (false), but a Button's
             // OWN constructor default is focusable — without restoring it, a recycled button silently drops
             // out of Tab/gamepad navigation, diverging from the freshly-constructed instance this reset
@@ -45,10 +55,7 @@ namespace Velvet
         }
     }
 
-    // Resets a Label to a clean state so it can be reused from VNodePool.
-    // Delegates the shared class-list restoration + UIToolkit-side reset to
-    // FiberElementPoolReset.ResetClassListAndCommon and only handles Label-specific
-    // state (text clear) here.
+    // Same split between the shared reset and the widget's own as FiberButtonPoolHelper.
     internal static class FiberLabelPoolHelper
     {
         public static void ResetLabelForReuse(Label label)
@@ -61,14 +68,16 @@ namespace Velvet
             if (label.childCount > 0) label.Clear();
 
             FiberElementPoolReset.ResetClassListAndCommon(label, TextElement.ussClassName, Label.ussClassName);
+            FiberElementPoolReset.ResetTextElementState(label);
             label.text = string.Empty;
+            // The common reset writes the plain-VisualElement 0 over the -1 a Label's own constructor sets.
+            // It shows once a consumer declares the label focusable, which is what puts tabIndex in front of
+            // the focus ring at all.
+            label.tabIndex = -1;
         }
     }
 
-    // Resets a Slider to a clean state so it can be reused from VNodePool.
-    // Delegates the shared class-list restoration + UIToolkit-side reset to
-    // FiberElementPoolReset.ResetClassListAndCommon and handles Slider-specific state
-    // (value / lowValue / highValue / label) here.
+    // Same split as FiberButtonPoolHelper.
     // Slider inherits from BaseSlider<float> which inherits from BaseField<float>.
     // The constructor chain adds three USS classes in order:
     //   BaseField.ussClassName = "unity-base-field" (BaseField.cs:354)
@@ -83,6 +92,27 @@ namespace Velvet
     {
         private const float DefaultLowValue = 0f;
         private const float DefaultHighValue = 10f;
+
+        // A slider that carries its numeric input field cannot be made to give it up. The teardown behind
+        // showInputField only runs while that field is on a panel, and every pool return detaches first, so
+        // writing the flag false here would strand the sub-element AND consume the one write that removes
+        // it — leaving no state from which any later write can. Such a slider is dropped rather than pooled;
+        // VNodePool asks before returning one. SliderPoolAdmissionTests pins both directions.
+        public static bool CanReuse(Slider slider)
+        {
+            if (slider == null) return false;
+
+            for (var i = 0; i < slider.childCount; i++)
+            {
+                var input = slider.ElementAt(i);
+                if (!input.ClassListContains(BaseField<float>.inputUssClassName)) continue;
+                for (var j = 0; j < input.childCount; j++)
+                {
+                    if (input.ElementAt(j).ClassListContains(Slider.textFieldClassName)) return false;
+                }
+            }
+            return true;
+        }
 
         public static void ResetSliderForReuse(Slider slider)
         {
@@ -100,8 +130,18 @@ namespace Velvet
             slider.highValue = DefaultHighValue;
             slider.SetValueWithoutNotify(DefaultLowValue);
             slider.label = string.Empty;
+            // ClearClassList drops the variant a label-less constructor added, and the label write
+            // above cannot put it back: its setter compares against the empty text already there.
+            slider.EnableInClassList(BaseField<float>.noLabelVariantUssClassName, true);
             slider.direction = SliderDirection.Horizontal;
             slider.pageSize = 0f;
+            slider.inverted = false;
+            slider.fill = false;
+            slider.showMixedValue = false;
+            slider.generateVisualContent = null;
+            // Both are constructor values the common reset writes a plain-VisualElement default over.
+            slider.delegatesFocus = true;
+            slider.pickingMode = PickingMode.Ignore;
             // See FiberButtonPoolHelper: the common reset's focusable=false is the plain-VisualElement
             // default; a Slider's own constructor default is focusable, and dropping it would remove a
             // recycled slider from Tab/gamepad navigation.
@@ -109,10 +149,7 @@ namespace Velvet
         }
     }
 
-    // Resets a TextField to a clean state so it can be reused from VNodePool.
-    // Delegates the shared class-list restoration + UIToolkit-side reset to
-    // FiberElementPoolReset.ResetClassListAndCommon and handles TextField-specific
-    // state (security-critical input clearing) here.
+    // Same split as FiberButtonPoolHelper, with a security contract stated below.
     // TextField inherits from TextInputBaseField<string> which inherits from
     // BaseField<string>. The constructor chain adds three USS classes in order:
     //   BaseField.ussClassName = "unity-base-field" (BaseField.cs:354)
@@ -141,6 +178,16 @@ namespace Velvet
     internal static class FiberTextFieldPoolHelper
     {
         private const int DefaultMaxLength = -1;
+        private const char DefaultMaskChar = '*';
+
+        // The caret and selection colours behind textSelection are Unity's own initialisers, and restating
+        // them here would be a mirror that drifts silently. They are read off one probe instance instead —
+        // the same freshly constructed instance the pool's contract is stated against, so the two cannot
+        // disagree. Built on first use rather than at type initialisation, which puts it on the reconciler's
+        // thread during a pool return.
+        private static TextField s_freshDefaults;
+
+        private static TextField Defaults => s_freshDefaults ??= new TextField();
 
         public static void ResetTextFieldForReuse(TextField textField)
         {
@@ -158,17 +205,55 @@ namespace Velvet
             textField.textEdition.isPassword = false;
             textField.maxLength = DefaultMaxLength;
             textField.textSelection.SelectNone();
+            // Reached through get-only handles, which is why nothing above finds them: a placeholder the
+            // previous consumer set is text the next one shows, and an unselectable field or a recoloured
+            // caret is state the security contract above promises the next consumer cannot observe.
+            var defaults = Defaults;
+            textField.textEdition.placeholder = defaults.textEdition.placeholder;
+            textField.textEdition.hidePlaceholderOnFocus = defaults.textEdition.hidePlaceholderOnFocus;
+            textField.textSelection.isSelectable = defaults.textSelection.isSelectable;
+            textField.textSelection.cursorColor = defaults.textSelection.cursorColor;
+            textField.textSelection.selectionColor = defaults.textSelection.selectionColor;
             textField.label = string.Empty;
+            // Same variant, and the same reason, as FiberSliderPoolHelper.
+            textField.EnableInClassList(BaseField<string>.noLabelVariantUssClassName, true);
+            textField.showMixedValue = false;
+            textField.emojiFallbackSupport = true;
+            textField.isDelayed = false;
+            textField.isReadOnly = false;
+            textField.autoCorrection = false;
+            textField.hideMobileInput = false;
+            textField.hideSoftKeyboard = false;
+            textField.keyboardType = TouchScreenKeyboardType.Default;
+            textField.maskChar = DefaultMaskChar;
+            textField.selectAllOnFocus = true;
+            textField.selectAllOnMouseUp = true;
+            textField.doubleClickSelectsWord = true;
+            textField.tripleClickSelectsLine = true;
+            // The scroller visibility only stores while multiline is on, and a field reaches the pool with
+            // multiline either way — a consumer that turned it on, set the visibility and turned it off
+            // again leaves a stored setting no write can reach. So multiline is turned on for the write and
+            // back off after, and neither half is redundant: PooledScrollerVisibilityResetTests fails on
+            // the first being dropped, PooledElementSurfaceResetTests on the last. Under the guard because
+            // turning multiline on builds a container and, on a non-default visibility, a whole scroll view
+            // for the line after to tear down again — on every recycle, for a field that stored nothing.
+            if (textField.verticalScrollerVisibility != ScrollerVisibility.Hidden)
+            {
+                textField.multiline = true;
+                textField.verticalScrollerVisibility = ScrollerVisibility.Hidden;
+            }
+            textField.multiline = false;
+            textField.generateVisualContent = null;
+            // Same pair, and the same reason, as FiberSliderPoolHelper.
+            textField.delegatesFocus = true;
+            textField.pickingMode = PickingMode.Ignore;
             // See FiberButtonPoolHelper: restore the type's own constructor default after the common
             // reset's focusable=false, or a recycled field cannot be tabbed into.
             textField.focusable = true;
         }
     }
 
-    // Resets a Toggle to a clean state so it can be reused from VNodePool.
-    // Delegates the shared class-list restoration + UIToolkit-side reset to
-    // FiberElementPoolReset.ResetClassListAndCommon and handles Toggle-specific
-    // state (value reset via SetValueWithoutNotify) here.
+    // Same split as FiberButtonPoolHelper.
     // Toggle inherits from BaseBoolField (which has no USS class of its own) which inherits
     // from BaseField<bool>. The constructor chain adds BaseField.ussClassName
     // ("unity-base-field", BaseField.cs:354) and Toggle.ussClassName
@@ -190,6 +275,15 @@ namespace Velvet
             FiberElementPoolReset.ResetClassListAndCommon(toggle, BaseField<bool>.ussClassName, Toggle.ussClassName);
             toggle.SetValueWithoutNotify(false);
             toggle.label = string.Empty;
+            // Same variant, and the same reason, as FiberSliderPoolHelper.
+            toggle.EnableInClassList(BaseField<bool>.noLabelVariantUssClassName, true);
+            toggle.text = string.Empty;
+            toggle.showMixedValue = false;
+            toggle.toggleOnLabelClick = true;
+            toggle.generateVisualContent = null;
+            // A composite field's constructor delegates focus; the common reset writes the
+            // plain-VisualElement false over it.
+            toggle.delegatesFocus = true;
             // See FiberButtonPoolHelper: restore the type's own constructor default after the common
             // reset's focusable=false, or a recycled toggle drops out of Tab/gamepad navigation.
             toggle.focusable = true;

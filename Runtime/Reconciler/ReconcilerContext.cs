@@ -401,15 +401,24 @@ namespace Velvet
         // (CaptureRaw) deliberately does not share.
         public Dictionary<VisualElement, bool> TextNodeElements { get; } = new();
 
-        // Which container's [&>*]: walk last wrote a payload to a child. A child pooled out of one container
-        // and re-rented under another is in both walks' tracked lists, and without this the one it left would
-        // turn the payload off on an element the other had just turned it on for. An arbitrary
-        // payload does not need the two containers to carry the same token: an inline layer is keyed by
-        // property and priority, so [&>*]:w-[8px] takes [&>*]:w-[12px]'s layer away.
+        // The three per-child claim tables — StyleChildOwnership owns why they exist and why they are split by
+        // property domain rather than by manipulator. Each is enrolled below because its value is a claim
+        // marker: the manipulators' own lifetimes are held by the tables further down, so dropping the entry
+        // is the whole of a claim's teardown.
         //
-        // Enrolled below because the value is a claim marker: the manipulator's own lifetime is held by
-        // ChildVariantManipulators, so dropping the entry is the whole of this table's teardown.
-        public Dictionary<VisualElement, StyleChildVariantManipulator> ChildVariantOwners { get; } = new();
+        // The [&>*]: walk's payload. An arbitrary payload does not need the two containers to carry the same
+        // token: an inline layer is keyed by property and priority, so [&>*]:w-[8px] takes [&>*]:w-[12px]'s
+        // layer away.
+        public Dictionary<VisualElement, Manipulator> ChildVariantOwners { get; } = new();
+
+        // The child's own box — the margins StyleGapManipulator writes, and the width plus four margins
+        // StyleGridManipulator writes. Shared by those two because a grid container and a gap container
+        // write the same margin slots on whichever child they hold.
+        public Dictionary<VisualElement, Manipulator> ChildBoxOwners { get; } = new();
+
+        // The divider border StyleDivideManipulator writes on a child, along with the dashed-stroke paint
+        // binding that rides on the same edge.
+        public Dictionary<VisualElement, Manipulator> ChildDividerOwners { get; } = new();
 
         // The one table for this subsystem that is NOT pure, backing the Decoration axis's Overline value
         // specifically:
@@ -572,9 +581,9 @@ namespace Velvet
 
         // Per-divided-child dashed / dotted divider paint (divide-dashed / divide-dotted), keyed by the CHILD
         // element (not the container) — the divider is painted on the child's own generateVisualContent, since
-        // a container paints BEHIND its children. Attached / updated by StyleDivideManipulator; the callback is
-        // not a style property, so the pool reset cannot scrub it: FiberElementCleaner detaches it per child
-        // (so a keyed-list reorder recycling one child is still caught) and Reconciler.Dispose sweeps the rest.
+        // a container paints BEHIND its children. Attached / updated by StyleDivideManipulator;
+        // FiberElementCleaner detaches it per child (so a keyed-list reorder recycling one child is still
+        // caught) and Reconciler.Dispose sweeps the rest.
         public Dictionary<VisualElement, DivideDashChildBinding> DivideDashBindings { get; } = new();
         // [&>*]:<utility> child-combinator variant — a manipulator on the CONTAINER that applies the wrapped
         // payload to each direct child. Mirrors GapManipulators / DivideManipulators; removed on cleanup /
@@ -1005,45 +1014,74 @@ namespace Velvet
             RefCallbacks[element] = (refCallback, cleanup);
         }
 
-        // Wrapper-less Suspense fallback state, keyed by (boundary fiber, the Suspense's scoped position
-        // key). True while that Suspense is showing its fallback subtree instead of its children. The
-        // new-side walk sets it after attempting the children expansion (suspended ⇒ true); the old-side
-        // structural walk reads it to reproduce whichever subtree (children vs fallback) was committed
-        // last render, so the diff's old leaves match the DOM. Entries are pruned when the boundary fiber
-        // is disposed (registry teardown).
-        internal Dictionary<(ComponentFiber? boundary, string positionKey), bool> SuspenseFallbackShown { get; } = new();
+        // Wrapper-less Suspense fallback state: per boundary fiber, the scoped position keys of the
+        // Suspense nodes that are currently showing their fallback subtree instead of their children. The
+        // new-side walk records the decision after attempting the children expansion (suspended ⇒ the key
+        // is present); the old-side structural walk reads it to reproduce whichever subtree (children vs
+        // fallback) was committed last render, so the diff's old leaves match the DOM.
+        //
+        // Only keys showing the fallback are stored, and a boundary with none holds no entry, so both
+        // readings FlushState needs — "this boundary has a fallback up" and "any boundary does" — are
+        // derived from this table rather than tracked beside it. One component fiber can render several
+        // Suspense nodes and each is keyed by its own position, so a boundary-level flag cannot express
+        // them: whichever node expanded last would decide for all of them, and a resolved one expanded
+        // after a suspended one would clear the guard that keeps the suspended one's offscreen primary
+        // from committing into the slot its fallback occupies.
+        //
+        // A Suspense rendered with no enclosing component fiber has no boundary to key on and is held
+        // separately, so the dictionary's emptiness stays equivalent to "no boundary has a fallback up".
+        private readonly Dictionary<ComponentFiber, HashSet<string>> _suspenseFallbackKeys = new();
+        private readonly HashSet<string> _rootlessSuspenseFallbackKeys = new();
 
-        // Boundary fibers that currently have a wrapper-less Suspense showing its fallback. A dirty fiber
-        // whose nearest Suspense boundary is in this set is "offscreen": its own lane flush is deferred to
-        // the boundary's re-render, which re-attempts the primary subtree and commits the reveal in one pass
-        // (a resolved resource schedules the boundary itself, not the suspended child — committing
-        // the child independently would write into the slot range the fallback occupies). Maintained by
-        // GeneralPathReconciler.ExpandSuspenseInline; read by FiberWorkLoop.FlushState.
-        internal HashSet<ComponentFiber> SuspendedBoundaries { get; } = new();
+        // A dirty fiber whose nearest Suspense boundary has a fallback up is a candidate for the offscreen
+        // deferral in FiberWorkLoop.FlushState; this is the cheap pre-check that skips the ancestor walk.
+        internal bool AnyBoundaryShowingFallback => _suspenseFallbackKeys.Count > 0;
 
-        // Removes all wrapper-less Suspense boundary state keyed by boundary.
-        // Invoked from ComponentRegistry when the boundary fiber is unregistered, so a
-        // boundary that unmounts while suspended leaves no dangling fiber reference in
-        // SuspendedBoundaries / SuspenseFallbackShown.
-        internal void PruneSuspenseBoundaryState(ComponentFiber boundary)
+        internal bool IsBoundaryShowingFallback(ComponentFiber boundary)
+            => _suspenseFallbackKeys.ContainsKey(boundary);
+
+        internal bool IsSuspenseFallbackShown(ComponentFiber? boundary, string positionKey)
+            => boundary == null
+                ? _rootlessSuspenseFallbackKeys.Contains(positionKey)
+                : _suspenseFallbackKeys.TryGetValue(boundary, out var keys) && keys.Contains(positionKey);
+
+        internal void SetSuspenseFallbackShown(ComponentFiber? boundary, string positionKey, bool shown)
         {
-            SuspendedBoundaries.Remove(boundary);
-            if (SuspenseFallbackShown.Count == 0) return;
-            List<(ComponentFiber? boundary, string positionKey)>? stale = null;
-            foreach (var key in SuspenseFallbackShown.Keys)
+            if (boundary == null)
             {
-                if (key.boundary == boundary) (stale ??= new()).Add(key);
+                if (shown) _rootlessSuspenseFallbackKeys.Add(positionKey);
+                else _rootlessSuspenseFallbackKeys.Remove(positionKey);
+                return;
             }
-            if (stale != null)
+            if (shown)
             {
-                foreach (var key in stale) SuspenseFallbackShown.Remove(key);
+                if (!_suspenseFallbackKeys.TryGetValue(boundary, out var keys))
+                {
+                    keys = new HashSet<string>();
+                    _suspenseFallbackKeys[boundary] = keys;
+                }
+                keys.Add(positionKey);
+                return;
+            }
+            if (_suspenseFallbackKeys.TryGetValue(boundary, out var existing)
+                && existing.Remove(positionKey) && existing.Count == 0)
+            {
+                _suspenseFallbackKeys.Remove(boundary);
             }
         }
 
+        // Removes all wrapper-less Suspense boundary state keyed by boundary.
+        // Invoked from ComponentRegistry when the boundary fiber is unregistered, so a
+        // boundary that unmounts while suspended leaves no dangling fiber reference behind.
+        internal void PruneSuspenseBoundaryState(ComponentFiber boundary)
+        {
+            _suspenseFallbackKeys.Remove(boundary);
+        }
+
         // Per-AnimatePresence state for the DOM-less (wrapper-less) expansion, keyed by
-        // (boundary fiber, the AnimatePresence's scoped position key) — mirroring
-        // SuspenseFallbackShown's keying. The keyed children are expanded directly into the
-        // parent's slot range (no wrapper element); this state records, per AnimatePresence, the leaf
+        // (boundary fiber, the AnimatePresence's scoped position key). The keyed children are expanded
+        // directly into the parent's slot range (no wrapper element); this state records, per
+        // AnimatePresence, the leaf
         // composition currently committed to the DOM so the old-side structural walk can reproduce it for
         // the diff, plus which keys are mid-exit (kept mounted as ghosts) and which have finished exiting
         // (dropped on the next render). Pruned when the boundary fiber is disposed.
@@ -1257,6 +1295,8 @@ namespace Velvet
                 TextWhitespaceOwned,
                 TextNodeElements,
                 ChildVariantOwners,
+                ChildBoxOwners,
+                ChildDividerOwners,
                 VariantGateClasses,
                 ZLayerHosts,
                 ZLayerMembers,
