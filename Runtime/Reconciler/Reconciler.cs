@@ -541,15 +541,13 @@ namespace Velvet
                 BorderStyleSilhouette.Detach(element, binding);
             }
             _ctx.BorderStyleBindings.Clear();
-            // Dashed / dotted divider children hold a paint callback (not a style property, so unscrubbed by
-            // the pool reset): detach each so a still-mounted divider at root disposal leaves no live delegate.
+            // Detach each so a still-mounted divider at root disposal leaves no live delegate.
             foreach (var (element, binding) in _ctx.DivideDashBindings)
             {
                 DivideDashPainter.Detach(element, binding);
             }
             _ctx.DivideDashBindings.Clear();
-            // Overline rules are a generateVisualContent delegate (not a style property, so unscrubbed by the
-            // pool reset): detach each so a still-mounted text leaf at root disposal leaves no live delegate.
+            // Detach each so a still-mounted text leaf at root disposal leaves no live delegate.
             foreach (var (element, binding) in _ctx.TextOverlineBindings)
             {
                 TextOverlineSilhouette.Detach(element, binding);
@@ -680,18 +678,12 @@ namespace Velvet
             }
 
             _ctx.HasVariantManipulators.Clear();
-            // Before ClearAllSideTables, and after the gate table above: a walk turns its payload off only
-            // on a child whose claim in ChildVariantOwners is still its own, and emptying that table first
-            // makes every release a no-op.
             foreach (var (element, manipulator) in _ctx.ChildVariantManipulators)
             {
                 element.RemoveManipulator(manipulator);
             }
 
             _ctx.ChildVariantManipulators.Clear();
-            // Empty every pure side-table (structural / has-[.class]: / data-/aria- rules + store / supports-)
-            // in one call, mirroring the per-element ClearElementSideTables used on cleanup.
-            _ctx.ClearAllSideTables();
             foreach (var kv in _ctx.StackedVariantManipulators)
             {
                 kv.Key.target.RemoveManipulator(kv.Value);
@@ -722,6 +714,15 @@ namespace Velvet
             }
 
             _ctx.TextBalanceManipulators.Clear();
+            // Empties every pure side-table in one call, mirroring the per-element ClearElementSideTables
+            // used on cleanup: the structural / has-[.class]: / data- / aria- rules and their attribute
+            // store, supports-, the Motion applied-classes and child label, the layout-id map, the four
+            // text tables, the per-child claims, the variant gate classes, and the z-layer host and member
+            // maps — ReconcilerContext's own enrolment list is the set, and this reaches all of it.
+            // It runs last, after every loop above, for the claims specifically: the child-variant, gap,
+            // divide and grid manipulators each turn a value off only on a child whose claim is still
+            // their own, so emptying those tables ahead of a loop would make every release in it a no-op.
+            _ctx.ClearAllSideTables();
         }
 
         private void ReleaseHostsAndScopes()
