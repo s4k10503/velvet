@@ -167,6 +167,11 @@
           {
             "type": "command",
             "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse/background_relative_path.py\""
+          },
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse/hand_rolled_pr_poller.py\"",
+            "timeout": 10000
           }
         ]
       }
