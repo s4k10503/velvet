@@ -9,6 +9,12 @@ namespace Velvet
         Idle,
         /// <summary>Currently blocking a navigation. <see cref="RouteBlockerState.Attempt"/> holds the attempt details.</summary>
         Blocked,
+        /// <summary>
+        /// <see cref="RouteBlockerState.Proceed"/> has released the block and the navigation it held is on
+        /// its way. <see cref="RouteBlockerState.Attempt"/> still reports that navigation, and this Blocker
+        /// is consulted about no navigation at all until that one settles.
+        /// </summary>
+        Proceeding,
     }
 
     /// <summary>
@@ -19,49 +25,72 @@ namespace Velvet
     {
         /// <summary>Current block state.</summary>
         public RouteBlockerStatus Status { get; internal set; } = RouteBlockerStatus.Idle;
-        /// <summary>Information about the navigation attempt being blocked. null when <see cref="RouteBlockerStatus.Idle"/>.</summary>
+        /// <summary>
+        /// Where the navigation this Blocker holds was heading when the predicate saw it, which is what a
+        /// dialog names the destination from. Not what <see cref="Proceed"/> re-issues — that is the request
+        /// the caller made, and a Guard redirect makes the two differ. null when
+        /// <see cref="RouteBlockerStatus.Idle"/>.
+        /// </summary>
         public NavigationAttempt? Attempt { get; internal set; }
 
-        /// <summary>Callback invoked when <see cref="Proceed"/> is called.</summary>
-        internal Action? OnProceed { get; set; }
-
-        /// <summary>Callback invoked when <see cref="Reset"/> is called.</summary>
-        internal Action? OnReset { get; set; }
+        private Action? _resume;
+        private Action? _abandon;
 
         /// <summary>
-        /// Releases the block and signals intent to allow the transition.
-        /// After calling Proceed() you must invoke NavigateAsync manually again.
+        /// Releases the block and re-issues the request the caller made — the whole navigation runs again,
+        /// without consulting this Blocker — so a Guard that rewrote the destination rewrites it again, and
+        /// a blocked Back or Forward lands on the slot that step resolves. Does nothing unless
+        /// <see cref="Status"/> is <see cref="RouteBlockerStatus.Blocked"/>.
         /// </summary>
-        public void Proceed() => Release(OnProceed);
-
-        /// <summary>Releases the block and signals intent to cancel the transition.</summary>
-        public void Reset() => Release(OnReset);
-
-        private void Release(Action? callback)
+        public void Proceed()
         {
             if (Status != RouteBlockerStatus.Blocked)
             {
                 return;
             }
 
-            Status = RouteBlockerStatus.Idle;
-            Attempt = null;
-            callback?.Invoke();
+            // Set before the re-issue rather than after: the navigation it starts consults the Blockers, and
+            // this status is what tells that pass to leave this one alone.
+            Status = RouteBlockerStatus.Proceeding;
+            var resume = _resume;
+            _resume = null;
+            resume?.Invoke();
         }
 
         /// <summary>
-        /// Resets the state without invoking callbacks (internal use before a navigation starts).
+        /// Releases the block and abandons the navigation this Blocker held, leaving the router where it is.
+        /// Every Blocker is released with it — this one, the others still blocking, and the ones that had
+        /// already proceeded alike. Does nothing unless <see cref="Status"/> is
+        /// <see cref="RouteBlockerStatus.Blocked"/>.
+        /// </summary>
+        public void Reset()
+        {
+            if (Status != RouteBlockerStatus.Blocked)
+            {
+                return;
+            }
+
+            _abandon?.Invoke();
+        }
+
+        /// <summary>
+        /// Resets the state without re-issuing or abandoning anything (internal use before a navigation
+        /// starts, and once the navigation this Blocker released has settled).
         /// </summary>
         internal void InternalReset()
         {
             Status = RouteBlockerStatus.Idle;
             Attempt = null;
+            _resume = null;
+            _abandon = null;
         }
 
-        internal void Block(NavigationAttempt attempt)
+        internal void Block(NavigationAttempt attempt, Action resume, Action abandon)
         {
             Status = RouteBlockerStatus.Blocked;
             Attempt = attempt;
+            _resume = resume;
+            _abandon = abandon;
         }
     }
 }
