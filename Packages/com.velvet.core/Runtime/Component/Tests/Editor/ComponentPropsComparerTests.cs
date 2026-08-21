@@ -21,7 +21,9 @@ namespace Velvet.Tests
     /// <item>Reference-type members other than string compare by identity and the comparison stops there:
     /// distinct instances with equal content are not equal, the same instance is equal.</item>
     /// <item>A value-type member is decided by its own <c>Equals</c> instead, which reads on into what the
-    /// member holds — a nested <c>record class</c> of equal content makes the props equal.</item>
+    /// member holds — a nested <c>record class</c> of equal content makes the props equal — and the
+    /// <c>float</c> and <c>double</c> fields it carries, directly or inside a value type it holds, are
+    /// compared by raw bit pattern on top of that.</item>
     /// <item>A props value that is not a props bag — a value type, a string, a collection — is compared as
     /// a whole rather than through a member set.</item>
     /// <item>Float members follow <c>Object.is</c> raw-bit equality: <c>NaN</c> equals itself and <c>+0</c>
