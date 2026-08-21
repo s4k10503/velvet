@@ -119,12 +119,10 @@ def publication_reason(changelog_text, package_json_text, tags):
 def git(project, *args, timeout=5):
     """Run git, raising on failure and on a read that never returns.
 
-    Two of these reach the network, and unpublished_reason makes four calls in a row, so the bound is
-    the caller's budget divided by the sequence rather than by one call — the refuse hook's is the
-    tightest at 25 s. A caller that kills this instead cannot report anything: a killed hook exits
-    neither 0 nor 2, and the stderr note unpublished_reason promises is never written. The workflow pays
-    the same bound although nothing there is waiting on it, which is the trade: a slow ls-remote reddens
-    a required check rather than passing an unread answer along.
+    A caller that kills this instead cannot report anything: a killed hook exits neither 0 nor 2, and
+    the stderr note unpublished_reason promises is never written. The workflow pays the same bound
+    although nothing there is waiting on it, which is the trade: a slow ls-remote reddens a required
+    check rather than passing an unread answer along.
     """
     result = subprocess.run(["git", "-C", str(project), *args],
                             capture_output=True, text=True, check=True, timeout=timeout)

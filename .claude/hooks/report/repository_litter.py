@@ -35,7 +35,10 @@ two look identical from here. Ask the pull requests, then delete only what they 
   done
 
 For each branch that survives that, `git rev-list --count origin/main..<branch>` says whether it
-holds anything. A verification branch counts as spent once its finding is pinned by a guard on main.
+holds anything main does not — which is 0 for a maintenance line cut from main as much as for a
+spent branch. `gh pr list --base <branch> --state all` separates them: a branch other pull requests
+target is somebody's base, and the default open-only listing empties the moment the last of them
+merges. A verification branch counts as spent once its finding is pinned by a guard on main.
 
   git worktree prune
   git for-each-ref --format='%(refname)' 'refs/remotes/pr/*' | xargs -n1 git update-ref -d

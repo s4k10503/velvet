@@ -69,4 +69,6 @@ Judge whether `Packages/com.velvet.core/CHANGELOG.md` needs an entry and state y
 
 Say what you changed, the RED evidence with its failure text, the suite counts, your documentation and CHANGELOG judgements, and — separately — **anything you found but did not fix**. That last section is often the most valuable thing in the report; do not omit a defect because it was out of scope.
 
+For each comment the change adds, alters or removes, say which of those it was, and for anything that is not a removal, what removing it would have lost.
+
 If a claim in your instructions turned out to be wrong, say so plainly and show what you measured instead. That has happened repeatedly and is always worth more than politely working around it.

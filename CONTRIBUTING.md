@@ -279,9 +279,25 @@ production file the branch changed does have is withdrawn before the run. That r
 approximation of a compile failure, so it does not survive a run that wrote nothing — the platform
 goes down with the round, withdrawals included.
 Python reports it while loading or running, so the gate accepts it only when static comparison proves
-that the named repository file, sibling module, top-level name or callee's keyword parameter is absent
-on the base and present on the branch. An argument *count* is not among them: a call the base refuses
-on arity alone reads as a case that could not answer.
+that the named repository file, module, top-level name or callee's keyword parameter is absent on the
+base and present on the branch. A module is looked for under the case's own directory and under the
+directories that file itself puts on `sys.path` — an insert performed by something it imports is out
+of reach, since only the case's own file is read; a top-level name is read off three exceptions rather
+than one — the AttributeError of an attribute read, the ImportError of `from module import name`, and
+what `mock.patch` raises for a patch by name. An argument *count* is not among them: a call the base
+refuses on arity alone reads as a case that could not answer.
+
+A module-level import is answered for case by case, not file by file. `from module import name` is
+evaluated once, so a branch-only name in one takes every case of that file down on the base together
+— and only the cases that reach the name are read as depending on the branch. A case reaches it in
+its own body or its own decorators, at module level, or in the scaffolding of the classes its fixture
+is built out of — which includes a shared base class, so long as the file declares it: a base
+imported from elsewhere is out of reach, and so are another case's body and another case's
+decorators, wherever they sit. Prose does not reach it: a comment
+and a docstring are both left out, while an ordinary string is not, because `getattr` names a
+surface that way. The rest count against it, because a reading nobody took is never a pass. Every
+tolerated case is counted on a line of its own, so a run that measured none of them cannot say so in
+silence.
 
 Either reading is only believed on a tree the run proved can build and answer at all, and two things
 prove it. Cases of the base's own that the branch did not carry run alongside — C# fixtures for a
@@ -492,6 +508,16 @@ directory refuses the same probe — otherwise the tool call is guarded by nothi
 the licence-free `source-generators` job rather than beside the fixtures above, which are skipped
 entirely on a checkout with no `UNITY_LICENSE` secret.
 
+A third way is being right about the wrong branch. Two of the preconditions over a merge are asked
+of a base — whether the head contains it, and whether it holds an unpublished release — and both
+named `main` for as long as `main` was the only branch taking pull requests. So the day a
+maintenance line was cut, both refused its release outright and no case disagreed: nothing in the
+repository named a second branch at all. The base is the pull request's own field, read through
+`.claude/hooks/lib/merge_target.py`, and `scripts/hooks/pull_request_base_check.py` poses every
+guard in the directory a pull request based on a branch that is not `main`, in a repository where
+`main` holds both of those things and the named base holds neither. A guard that judges either of
+them against `main` fails it without anybody having remembered to write a case.
+
 The `Stop` guards declare the same policy and are held to one thing more, because blocking was never
 what they got wrong. They blocked, and described the pull requests rather than the reading — so the
 deferral the message invited named the API error instead of whatever the work was waiting on.
@@ -604,8 +630,8 @@ of it — so those commits ship inside the release, undescribed. v2.0.1 spent a 
 merges, and publishing it meant tagging the release commit by hand and dispatching from the tag, since
 dispatching from the branch would have shipped all twelve.
 
-So the window is guarded: `settle.py merge` and `gh pr merge` refuse while it is open, and
-`Test ▸ publication` fails for a pull request whose checks run in it.
+So the window is guarded: `settle.py merge` and `gh pr merge` refuse a pull request based on the
+branch whose window is open, and `Test ▸ publication` fails for one whose checks run in it.
 `scripts/release/published_check.py` decides it and states the repair in its own message.
 
 **A pull request that went green *before* the release landed keeps that result.** This repository sets
