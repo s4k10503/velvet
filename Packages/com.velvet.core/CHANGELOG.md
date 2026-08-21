@@ -257,6 +257,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Status` first showed it. The outcome is now committed after the handlers on both paths, which is
   where v5 dispatches it, so a handler no longer reads its own call's outcome and `Data` stands only
   under `Status == Success`.
+- `Hooks.Use(factory, resourceKey)` compares the resource key by value, so a key a render builds names
+  the resource the previous render named instead of starting a new one. The comparison closed over the
+  parameter's own `object` type and took the reference branch for every key whatever it held, so a
+  string built at run time — the query id the parameter's documentation recommends — and an id boxed at
+  the call boundary each tore the resource down and restarted it on every render. Under a `V.Suspense`
+  that cost the boundary its resolve, since the render a landing loader asks for restarted the loader
+  and suspended again. Nothing said so either: the warning about a resource restarting every render is
+  emitted only when the key is omitted, which is the one case this never happened in. A key of any
+  other reference type is still compared by instance, so an omitted key, which falls back to the
+  factory delegate, behaves as before.
 
 ## [Unreleased — breaking]
 
