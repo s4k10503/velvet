@@ -264,9 +264,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the call boundary each tore the resource down and restarted it on every render. Under a `V.Suspense`
   that cost the boundary its resolve, since the render a landing loader asks for restarted the loader
   and suspended again. Nothing said so either: the warning about a resource restarting every render is
-  emitted only when the key is omitted, which is the one case this never happened in. A key of any
-  other reference type is still compared by instance, so an omitted key, which falls back to the
-  factory delegate, behaves as before.
+  gated on the key being omitted, and an omitted key is the factory delegate, which a delegate's own
+  identity comparison covers either way. A key of any other reference type is still compared by
+  instance, so that omitted-key behaviour is unchanged.
 
 ## [Unreleased — breaking]
 
