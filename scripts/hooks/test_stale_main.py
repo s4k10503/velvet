@@ -6,10 +6,6 @@ branch it names is a destructive instruction rather than a wrong number. It name
 checkout until a maintenance branch was cut, at which point the 2.1.1 release branch was reported as
 fifty commits behind main and told to rebase onto it.
 
-The base comes off the branch's pull request, and the cases below are the four states that reading
-leaves: a base that names a maintenance line, a base that names main, a base nothing named, and a
-base naming a ref this checkout has no way to reach. Only the first two carry a remedy.
-
 Every remote-tracking ref is dropped before each run, so a fetch that stops happening takes the
 reading with it rather than answering from what an earlier push left behind.
 
@@ -115,8 +111,8 @@ class BranchBaseTests(unittest.TestCase):
         printed = self.report(view="no pull requests found", view_code=1)
 
         # Assert — the distance is still reported; the remedy is what is withheld.
-        self.assertEqual(("Branch 2.x is" in printed, "--force-with-lease" in printed),
-                         (True, False))
+        self.assertEqual(("Branch 2.x is" in printed, "--force-with-lease" in printed,
+                          "Nothing here named a base" in printed), (True, False, True))
 
     def test_Given_ABaseFetchThatFailed_When_TheReportIsTaken_Then_ItNamesTheRefItLeftStale(self):
         # Arrange — the ref the fetch failed to bring is still on disk, so the branch reads as up to

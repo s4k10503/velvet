@@ -33,8 +33,7 @@ DEFAULT_BASE = "main"
 # already on disk, and that ref can read as up to date — which takes the whole report for that branch
 # with it, so the fetch is the only thing left worth saying.
 FETCH_NOTE = """
-Not fetched: {}. Anything measured against those refs here used the copy already on disk, so the
-real distance may be greater."""
+Not fetched: {}."""
 
 # What goes where a remedy would, when nothing here said what the branch is based on. The remedy is
 # a rebase and a force-push, and against the wrong branch it rewrites the commits other work sits
