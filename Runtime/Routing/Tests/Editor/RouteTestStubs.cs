@@ -86,6 +86,13 @@ namespace Velvet.Tests
             => new NavigationAttempt { CurrentPath = from, NextPath = to };
 
         /// <summary>
+        /// Stands in for the re-issue <c>RouteBlockerManager.CheckAsync</c> hands to a Blocker it blocks,
+        /// for a manager-level test asserting on the block decision rather than on what
+        /// <c>RouteBlockerState.Proceed</c> does with it.
+        /// </summary>
+        public static readonly Action NoResume = () => { };
+
+        /// <summary>
         /// Creates a toggleable Guard: returns null until <paramref name="enable"/> is invoked,
         /// then returns <paramref name="redirectTo"/>.
         /// </summary>
@@ -102,6 +109,14 @@ namespace Velvet.Tests
         /// invocations pass through without blocking. Await the returned <c>Entered</c> to be sure the
         /// navigation has reached the blocker await before cancelling it.
         /// </summary>
+        /// <remarks>
+        /// <c>Entered</c> is raised from inside the predicate, so a Blocker the router stops consulting
+        /// never raises it and the await never returns. Three router fixtures await this signal or
+        /// <see cref="MakeDeferredBlocker"/>'s, over sixteen cases between them, and carry a
+        /// <c>[Timeout]</c>: left to the runner's own bound those sixteen waits cost more than a mutation
+        /// campaign's default cap gives one mutant, which reports the consultation gate as not measured
+        /// rather than as killed. <see cref="UnityRunnerDefaultTimeoutTests"/> pins that bound.
+        /// </remarks>
         public static (Func<NavigationAttempt, CancellationToken, UniTask<bool>> Check, UniTaskCompletionSource Entered) MakeOneShotBlocker()
         {
             var entered = new UniTaskCompletionSource();
@@ -129,6 +144,9 @@ namespace Velvet.Tests
         /// The two resumes reach different rollbacks: throwing unwinds through the exception handlers,
         /// while returning falls into the blocker check's own cancellation branch.
         /// </summary>
+        /// <remarks>
+        /// Its <c>Entered</c> is bounded on the same terms as <see cref="MakeOneShotBlocker"/>'s.
+        /// </remarks>
         public static (Func<NavigationAttempt, CancellationToken, UniTask<bool>> Check,
             UniTaskCompletionSource Entered, Action ResumeCancelled, Action ResumeUnblocked) MakeDeferredBlocker()
         {

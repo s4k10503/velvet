@@ -44,6 +44,9 @@ namespace Velvet.Tests
     /// during that window also maps to Cancelled rather than throwing.</item>
     /// </list>
     /// </summary>
+    // Bounded for the cases here that await a blocker stub's Entered signal;
+    // RouteTestStubs.MakeOneShotBlocker states what an unbounded fixture costs.
+    [Timeout(30000)]
     [TestFixture]
     internal sealed class RouterTests
     {
