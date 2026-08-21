@@ -145,7 +145,8 @@ namespace Velvet
         /// <summary>
         /// Returns each <see cref="RouteBlockerStatus.Proceeding"/> Blocker to Idle, which is what arms it
         /// for the next navigation. Reached when a navigation commits, when a re-issued one ends without
-        /// committing, and when an attempt is abandoned.
+        /// committing, when an attempt is abandoned, and from <see cref="Unregister"/> when the
+        /// registration of a Blocker that was holding one is disposed.
         /// </summary>
         /// <remarks>
         /// A registered Blocker still Blocked is a confirm nobody has answered yet, over an attempt that

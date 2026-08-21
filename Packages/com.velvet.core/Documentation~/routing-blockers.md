@@ -88,9 +88,10 @@ come back into the way. React Router does not settle this: it consults one block
 
 ## Where the router puts Blockers in the sequence
 
-Route Guards run before Blockers, so a route a Guard redirects away from is never put to a Blocker.
-That is deliberate: an auth redirect should not raise an unsaved-changes prompt at a user who is not
-signed in.
+Route Guards run before Blockers, so the attempt a Guard redirects away from is not put to a Blocker.
+The redirect is: it goes out as a navigation of its own, and the Blockers are put an attempt naming
+its target. An auth redirect off a dirty form is therefore vetoed like any other departure, and the
+dialog names the route the Guard redirected to rather than the one it rejected.
 
 Matching runs before both, where React Router consults its blocker before it matches: a path no route
 matches is put to a Blocker there and not here.

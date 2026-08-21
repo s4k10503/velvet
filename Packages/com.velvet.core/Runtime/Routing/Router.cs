@@ -507,10 +507,10 @@ namespace Velvet
 
         #region Guard check (after Match, before Loader)
 
-        // NOTE: design choice - Guard runs before the Blocker check.
-        // Routes rejected by a Guard are not subject to Blocker evaluation.
-        // This lets auth redirects bypass Blockers (such as unsaved-changes prompts), satisfying
-        // the UX requirement of "do not show a leave-confirmation to unauthenticated users".
+        // Guard runs before the Blocker check, so an attempt naming a path a Guard rejected is not put
+        // to a Blocker. That is not a way past Blockers: the redirect goes out through
+        // NavigateInternalAsync, which puts its target to them on the same terms as any other
+        // navigation. The navigation-blocking guide says what that leaves a dirty form doing.
         // Returns null when no match redirected, so the caller falls through to the Blocker check.
         private async UniTask<NavigationResult?> RunGuardChecks(
             IReadOnlyList<RouteMatch> matches,
