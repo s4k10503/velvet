@@ -565,7 +565,6 @@ def deletable_line(text, mask, spans, number):
 
 
 def groups_left_open(code):
-    """How many more groups a run of code opens than it closes."""
     return sum(code.count(mark) for mark in OPENING) - sum(code.count(mark) for mark in CLOSING)
 
 
