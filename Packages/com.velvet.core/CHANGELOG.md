@@ -47,6 +47,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `StyleVariantClass.BreakpointPx` and `StyleVariantClass.IsResponsive` throw for a `StyleVariantKind`
   value naming no member of the enum, where they returned `0f` and `false`. Both have done so since
   2.0.1.
+
 ### Fixed
 
 - A `V.AnimatePresence` that stops being rendered takes its bookkeeping with it. That bookkeeping is
@@ -327,11 +328,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A `[Component(Memoize = true)]` component's props bail decides a props value whole, the way React's
   shallow-equal comparison decides each key of a props object with `Object.is`. The member walk runs on
   the props bag and on nothing it finds: a props value that is not a bag — a value type, a string, a
-  collection — is decided whole rather than through a member set, and a value type transitively holding
-  a `float` or a `double` has those compared by raw bit pattern, as a `float` member already was.
-  Four shapes skipped every parent-driven re-render before, because the member walk answered equal for
-  them. A bare `decimal` props value compared equal to a different one — `1.0m` against `2.0m` — and so
-  did two distinct `Guid`s, so a price or an identifier driven by that prop alone never changed. A bare
+  collection — is decided whole rather than through a member set, and a value type has the `float` and
+  `double` fields it carries — directly, or inside a value type it holds — compared by raw bit pattern,
+  as a `float` member already was.
+  Before, a bare `decimal` props value compared equal to a different one — `1.0m` against `2.0m` — and
+  so did two distinct `Guid`s, so a price or an identifier driven by that prop alone never changed. A bare
   `new List<int> { 1, 2 }` compared equal to a bare `new List<int> { 3, 4 }`, both holding two elements.
   And a `float` or a `double` inside a record struct prop bailed on a sign flip, `0f` becoming `-0f`,
   where the same flip in a bare `float` member re-renders.
@@ -344,6 +345,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   A bare value type is now decided the way a value-type member already was, which runs the other way
   where a bare struct holds a record class: one of equal content bails where it used to re-render, the
   member walk having read that record by its instance.
+
 ### Fixed
 
 - Registering a portal target id again with a different element now moves the portals already mounted

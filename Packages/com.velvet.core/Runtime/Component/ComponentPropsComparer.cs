@@ -97,9 +97,8 @@ namespace Velvet
 
         // Object.is on a props value. The member walk decides what it finds with this, and this reads no
         // member set, so a props bag is walked once whatever its members hold.
-        // A value type transitively holding a float or a double is decided by its own equality and then
-        // by those leaves again, bitwise. Strengthening the type's equality rather than replacing it with
-        // a field walk is what leaves a struct holding a record class decided by that record's content.
+        // Strengthening the type's equality rather than replacing it with a field walk is what leaves a
+        // struct holding a record class decided by that record's content.
         private static bool ValueEquals(object? prev, object? next)
         {
             if (!ObjectIs.AreEqualObjects(prev, next))
@@ -121,9 +120,6 @@ namespace Velvet
             return FloatLeavesAgree(type, prev, next!);
         }
 
-        // Reached only behind an equality the value's own type already granted, so a leaf passed over here
-        // is one that equality answered for — which is why a leaf empty on either side is passed over
-        // rather than reported as a difference.
         private static bool FloatLeavesAgree(Type type, object prev, object next)
         {
             var leaves = LeafFields(type);
