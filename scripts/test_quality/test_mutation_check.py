@@ -632,6 +632,119 @@ class DeclarationRemovalTests(unittest.TestCase):
         self.assertEqual(removals, [1])
 
 
+class LogicFlipTests(unittest.TestCase):
+    """Which joins the logic operator may flip: not one whose statement binds a name on only some paths.
+
+    A flip there can leave a read of that name unassigned, which the campaign scores unmeasured and fails
+    on -- the outcome `DeclarationRemovalTests` holds for a removal, reached by a rewrite. Compiled
+    against the reference set Unity's own build uses per assembly, 113 of this package's logic mutants
+    failed exactly that way; none does now, at a cost of 58 that compiled.
+
+    The two declared green on the base are the boundary the refusal must not cross, and each goes red
+    under a different widening of it. Between them they are also what says the operator still fires, so
+    a refusal that swallowed it whole would not pass here either.
+    """
+
+    def test_Given_APatternVariableTheRightOperandReads_When_MutantsAreGenerated_Then_TheJoinIsNotFlipped(self):
+        # Arrange -- the shape a branch's own campaign stopped on: under `||` the right operand runs
+        # where the pattern did not match.
+        text = ("if (existing is Resource typed && ObjectIs.AreEqual(typed.Key, key))\n"
+                "{\n"
+                "    return typed;\n"
+                "}\n")
+
+        # Act
+        flips = [applied(text, mutant) for mutant in mutants_of(text, "logic")]
+
+        # Assert
+        self.assertEqual(flips, [])
+
+    # GREEN_ON_BASE(characterization): the `out var` a first clause evaluates whichever way its join goes.
+    # Refusing this one too would cost mutants nothing has shown to be broken.
+    def test_Given_AnOutVariableInTheFirstClause_When_MutantsAreGenerated_Then_TheJoinIsStillFlipped(self):
+        # Arrange
+        text = ("if (Map.TryGetValue(key, out var rules) && rules.Count > 0)\n"
+                "{\n"
+                "    Apply(rules);\n"
+                "}\n")
+
+        # Act
+        flips = [applied(text, mutant) for mutant in mutants_of(text, "logic")]
+
+        # Assert
+        self.assertEqual(flips, ["if (Map.TryGetValue(key, out var rules) || rules.Count > 0)"])
+
+    def test_Given_AnOutVariablePastTheFirstClause_When_MutantsAreGenerated_Then_TheJoinIsNotFlipped(self):
+        # Arrange -- the same `out var`, one clause along: `||` reaches the block without the call
+        # having run, so the read there is of a local nothing assigned.
+        text = ("if (routeId != null && errors.TryGetValue(routeId, out var ex))\n"
+                "{\n"
+                "    Report(ex);\n"
+                "}\n")
+
+        # Act
+        flips = [applied(text, mutant) for mutant in mutants_of(text, "logic")]
+
+        # Assert
+        self.assertEqual(flips, [])
+
+    def test_Given_AChainWhoseFirstClauseBinds_When_MutantsAreGenerated_Then_NeitherJoinIsFlipped(self):
+        # Arrange -- the first join's flip strands the read standing next to it and the second join's
+        # strands the block's, which is why the answer is the statement's rather than each join's.
+        text = ("if (a is Style style && style.Ready && Live(b))\n"
+                "{\n"
+                "    Apply(style);\n"
+                "}\n")
+
+        # Act
+        flips = [applied(text, mutant) for mutant in mutants_of(text, "logic")]
+
+        # Assert
+        self.assertEqual(flips, [])
+
+    def test_Given_AnIsNotGuardJoinedByOr_When_MutantsAreGenerated_Then_TheJoinIsNotFlipped(self):
+        # Arrange -- the other join spelling, where what the flip strands is the code after the guard.
+        text = ("if (node is not Fiber fiber || fiber.IsDisposed) return;\n"
+                "fiber.Dispose();\n")
+
+        # Act
+        flips = [applied(text, mutant) for mutant in mutants_of(text, "logic")]
+
+        # Assert
+        self.assertEqual(flips, [])
+
+    def test_Given_ABindingOnAnEarlierLineOfTheCondition_When_MutantsAreGenerated_Then_TheJoinIsNotFlipped(self):
+        # Arrange -- the join and the binding it strands are on different lines, so a reading of the
+        # line the flip lands on finds nothing to refuse.
+        text = ("if (next.Operand is not FieldReference field\n"
+                "    || next.Next is null)\n"
+                "{\n"
+                "    return NotMatched;\n"
+                "}\n"
+                "Use(field);\n")
+
+        # Act
+        flips = [applied(text, mutant) for mutant in mutants_of(text, "logic")]
+
+        # Assert
+        self.assertEqual(flips, [])
+
+    # GREEN_ON_BASE(characterization): a discarded argument, which binds no name for a flip to strand.
+    # It is what separates the `out` arm the refusal reads from the bare token.
+    def test_Given_ADiscardedOutArgumentPastTheFirstClause_When_MutantsAreGenerated_Then_TheJoinIsStillFlipped(self):
+        # Arrange
+        text = ("if (ready && Map.TryGetValue(key, out _))\n"
+                "{\n"
+                "    Apply(key);\n"
+                "}\n")
+
+        # Act
+        flips = [applied(text, mutant) for mutant in mutants_of(text, "logic")]
+
+        # Assert
+        self.assertEqual(flips, ["if (ready || Map.TryGetValue(key, out _))"])
+
+
 class RepositoryReachTests(unittest.TestCase):
     """The operators exist because two real defects survived every other one. Pin that they reach them."""
 

@@ -409,11 +409,15 @@ GUARD_STATEMENT = re.compile(r"^if \(.+\)\s*(?:return[^;]*|continue|break);$")
 # `MutantDeclarationRemovalTests` is the reading -- of the declaration and of the `out` assignment
 # both -- so a spelling missing from here is one red line there, and so is any narrowing that lets a
 # removal carry off an `out` argument spelled as a bare name.
-DECLARES_A_NAME = re.compile(
-    r"\bvar\s*\("
-    r"|\bout\b(?!\s*(?:_|[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+)\s*[,)])"
-    r"|\bis\s+(?:not\s+)?(?!not\b)"
+# The last two arms are read on their own by `binds_a_name_conditionally`, which asks which paths
+# reach a binding rather than whether a removal carries one off.
+DECONSTRUCTION = re.compile(r"\bvar\s*\(")
+OUT_ARGUMENT = re.compile(r"\bout\b(?!\s*(?:_|[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+)\s*[,)])")
+PATTERN_DESIGNATION = re.compile(
+    r"\bis\s+(?:not\s+)?(?!not\b)"
     r"(?:var\s+|[A-Za-z_][\w.<>\[\]?]*\s+|[{\[][^;]*[}\]]\s+)[A-Za-z_]")
+DECLARES_A_NAME = re.compile("|".join(
+    (DECONSTRUCTION.pattern, OUT_ARGUMENT.pattern, PATTERN_DESIGNATION.pattern)))
 
 
 # Braces and brackets count towards depth as well as parentheses. A property pattern puts a colon
@@ -556,6 +560,49 @@ def deletable_line(text, mask, spans, number):
     return not code_below(text, mask, spans, number).startswith("else")
 
 
+def statement_span(text, mask, spans, number):
+    """The first and last line of the statement holding line `number`, one-based and inclusive.
+
+    Bounded by the code the mask leaves rather than by the raw lines, in both directions, so a comment
+    between two continuation lines does not end a statement.
+    """
+    first = number
+    while first > 1:
+        if code_only(text, mask, *spans[first - 2]).strip().endswith(STATEMENT_BOUNDARY):
+            break
+        first -= 1
+    last = number
+    while last < len(spans):
+        if code_only(text, mask, *spans[last - 1]).strip().endswith(STATEMENT_BOUNDARY):
+            break
+        last += 1
+    return first, last
+
+
+def binds_a_name_conditionally(text, mask, spans, number):
+    """Whether the statement holding line `number` binds a name on only some of the paths through it.
+
+    Flipping a join there can leave a read of that name unassigned, and the mutant then compiles
+    nowhere -- the outcome DECLARES_A_NAME refuses for a removal, reached by a rewrite. Whether such a
+    read exists is definite assignment, which a pattern over the text cannot decide, so what is refused
+    is the statement that could strand one rather than the statement that does. The answer is the
+    statement's rather than one join's, because a join in front of the binding strands it as surely as
+    one behind, and because the read left unassigned can sit in the block the condition guards, which
+    no reading of the condition alone reaches.
+
+    A pattern designation binds only where the pattern matched, so each one this reads counts. An `out`
+    argument binds whenever its call is evaluated, and a condition's first clause is evaluated whichever
+    way its joins go, so the refusal starts at the first join -- which is what keeps `out var` mutable.
+    """
+    first, last = statement_span(text, mask, spans, number)
+    statement = " ".join(code_only(text, mask, *spans[line - 1]).strip()
+                         for line in range(first, last + 1))
+    if PATTERN_DESIGNATION.search(statement):
+        return True
+    return any(any(statement.find(join, 0, found.start()) >= 0 for join in LOGIC_JOINS)
+               for found in OUT_ARGUMENT.finditer(statement))
+
+
 def line_spans(text):
     spans = []
     offset = 0
@@ -574,7 +621,13 @@ def mutations_for(path, text, target_lines):
             continue
         start, end = spans[number - 1]
         line = text[start:end]
+        # Asked of the raw line first, so the statement walk is not taken on a line holding no join
+        # for it to answer about.
+        flippable = not (any(join in line for join in LOGIC_JOINS)
+                         and binds_a_name_conditionally(text, mask, spans, number))
         for before, after, operator in OPERATORS:
+            if operator == "logic" and not flippable:
+                continue
             index = line.find(before)
             while index >= 0:
                 if all(mask[start + index:start + index + len(before)]):
