@@ -636,7 +636,7 @@ def binds_a_name_conditionally(text, mask, spans, number):
     argument is refused from the first join along, since flipping a join cannot stop a condition's first
     clause from running -- a reading of the clauses rather than of what runs inside one, and
     `Generators~/README.md` is where that gap is measured. An `out` naming a variable rather than
-    declaring one is exempt wherever something above the statement already wrote that name, because no
+    declaring one is exempt where the block above the statement already writes that name, because no
     ordering of the clauses can then leave it unwritten.
     """
     first, last = statement_span(text, mask, spans, number)

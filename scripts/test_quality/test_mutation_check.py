@@ -805,8 +805,8 @@ class LogicFlipTests(unittest.TestCase):
         self.assertEqual(flips, [])
 
     def test_Given_APatternWhoseOpeningLineEndsWithABrace_When_MutantsAreGenerated_Then_TheJoinIsNotFlipped(self):
-        # Arrange -- that brace ends a statement everywhere else, so a reading that stopped at it would
-        # start this statement below the `is` and find no designation on it.
+        # Arrange -- that brace is what ends a statement in the removal's reading, so a walk stopping
+        # at it starts this statement below the `is` and finds no designation on it.
         text = ("if (fiber is {\n"
                 "        IsDisposed: false\n"
                 "    } live && live.Ready)\n"
