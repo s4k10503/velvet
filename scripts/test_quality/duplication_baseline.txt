@@ -1,7 +1,7 @@
 01e1bbb1900b	Runtime/Styling/BorderStyleSilhouette.cs,Runtime/Styling/SkewSilhouette.cs
 023c497d58e8	Runtime/Styling/StyleDivideManipulator.cs,Runtime/Styling/StyleGapManipulator.cs
 025c33624e3f	Runtime/Styling/StyleDivideManipulator.cs,Runtime/Styling/StyleGridManipulator.cs
-035c4cad19e4	Runtime/Component/ObjectIs.cs,Runtime/Reconciler/FiberEventBindingManager.cs,Runtime/Reconciler/FiberNodePatcher.cs,Runtime/Reconciler/ReconcilerContext.cs,Runtime/Styling/SilhouetteBoundsSpacer.cs,Runtime/Styling/StyleArbitraryValueResolver.cs,Runtime/Styling/StyleChildVariantManipulator.cs,Runtime/Styling/StyleCompoundVariantMatcher.cs,Runtime/Styling/StyleFilterTransitionDriver.cs,Runtime/Styling/VelvetFilters.cs
+035c4cad19e4	Runtime/Component/ComponentPropsComparer.cs,Runtime/Component/ObjectIs.cs,Runtime/Reconciler/FiberEventBindingManager.cs,Runtime/Reconciler/FiberNodePatcher.cs,Runtime/Reconciler/ReconcilerContext.cs,Runtime/Styling/SilhouetteBoundsSpacer.cs,Runtime/Styling/StyleArbitraryValueResolver.cs,Runtime/Styling/StyleChildVariantManipulator.cs,Runtime/Styling/StyleCompoundVariantMatcher.cs,Runtime/Styling/StyleFilterTransitionDriver.cs,Runtime/Styling/VelvetFilters.cs
 03a68c44d3a7	Runtime/Styling/StyleDivideManipulator.cs,Runtime/Styling/StyleGapManipulator.cs
 03b91cdc184d	Runtime/Reconciler/FiberErrorBoundary.cs,Runtime/Styling/StyleFilterValueParser.cs,Runtime/Styling/StyleGradientClass.cs
 050c40b08924	Runtime/Styling/StyleChildVariantManipulator.cs,Runtime/Styling/StyleGridManipulator.cs,Runtime/Styling/StyleSkewChildTranslateManipulator.cs
