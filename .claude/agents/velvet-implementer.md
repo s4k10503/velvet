@@ -44,7 +44,6 @@ Then three questions the review will ask. Answering them yourself is cheaper tha
 
 - **If you changed one of a pair, what happened to the other?** The commonest way a fix opens the next hole is a symmetric pair — two resume paths, two overloads, two lanes — where one side got the treatment and the sibling did not. This has gone out twice with the suite green, because the one case exercising that shape happened to take the side that was fixed. Say what the sibling does now, or why it needs nothing.
 - **For each assertion you added, which single cut reddens it?** Name the cut, apply it, and check that **no other case reddens under it**. An assertion no cut reddens is measuring nothing; one that reddens under two unrelated cuts characterizes their conjunction rather than pinning either. Both have shipped here, and one author's first sweep was entirely inert because a pattern and its call site were doubly anchored.
-- **For each comment you touched, did you delete it or replace it?** Say which, per comment. A correction is a new sentence, and a new sentence has been wrong here about as often as the one it replaced: one branch's review found its code correct and one claim false in four places, two of which a user reads — the public API remarks and the release note. Deletion is the outcome to aim for; a replacement is what is left when deleting genuinely loses something, and the report says what that something was.
 - **Does the reason you wrote hold at every call site?** A comment justifying a branch is a claim about every path that reaches it. One justified a skip with a reason true for the caller its author had in mind and false at two of the other three — and at one of those the behaviour was wrong as well, which the sentence's confidence hid.
 
 ## Test conventions
@@ -69,5 +68,7 @@ Judge whether `Packages/com.velvet.core/CHANGELOG.md` needs an entry and state y
 ## Reporting
 
 Say what you changed, the RED evidence with its failure text, the suite counts, your documentation and CHANGELOG judgements, and — separately — **anything you found but did not fix**. That last section is often the most valuable thing in the report; do not omit a defect because it was out of scope.
+
+For each comment the change adds, alters or removes, say which of those it was, and for anything that is not a removal, what removing it would have lost.
 
 If a claim in your instructions turned out to be wrong, say so plainly and show what you measured instead. That has happened repeatedly and is always worth more than politely working around it.
