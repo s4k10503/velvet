@@ -23,6 +23,8 @@
       href: guides/focus.md
     - name: Scene view
       href: guides/scene-view.md
+    - name: Navigation blocking
+      href: guides/routing-blockers.md
     - name: Portals
       href: guides/portals.md
     - name: Particles

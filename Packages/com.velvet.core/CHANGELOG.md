@@ -371,6 +371,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   consumer declares it focusable; a `TextField`, `Toggle` or `Slider` is built delegating focus to
   the input beneath it, so dropping that prop stranded focus on the field's own root. `Focusable` already restored its
   constructed value; all three do now.
+- `RouteBlockerState.Proceed()` now runs the blocked navigation again, from the request the caller made,
+  so the confirm-dialog flow it exists for reaches the destination: the user clicks "Leave" and the
+  router goes there. It used to clear the state and invoke a callback nothing assigned, leaving the
+  dialog closed and the navigation gone — reaching the destination meant copying `Attempt.NextPath` and
+  `Attempt.NavigationMode` out before calling `Proceed()`, re-issuing them by hand, and arranging for the
+  predicate to stop blocking, because a re-issued attempt was put to that predicate again. Code written
+  around that is what makes this a break: the hand-rolled re-issue now runs on top of the one `Proceed()`
+  performs. What is re-issued is the navigation the caller asked for, so a blocked Back or Forward
+  resumes as the same history step, and one a Guard redirected takes the redirect again from that step
+  rather than committing the redirect target over the entry the user was standing on.
+  `RouteBlockerStatus` has a third member, `Proceeding`, for the span between `Proceed()` and the
+  re-issued navigation settling: over it the Blocker still reports its `Attempt` and is consulted about
+  nothing, and it returns to `Idle` — which is what arms it for the next navigation — once that
+  navigation has committed, ended without committing or been abandoned, and no Blocker is left blocking.
+  A second Blocker vetoing the re-issue is what leaves one, and the first waits on that one being
+  answered.
+  Disposing a registration stops its predicate immediately without stranding a Blocker already holding
+  or releasing that attempt; a saved dialog's `Proceed()` still settles back to `Idle`. A disposed
+  Blocker holding the re-issued attempt also no longer keeps the registered Blockers that already
+  consented in `Proceeding`; they are armed for the next navigation while its saved handler stays
+  usable. `Reset()` still abandons the attempt and leaves the router where it is, and now ends it for
+  the Blockers holding it alongside: their dialogs close too, and a `Proceed()` on one of them no longer
+  sends the router at a destination the user declined. An exhaustive `switch` expression over
+  `RouteBlockerStatus` needs an arm for the new member. The navigation-blocking guide covers the whole
+  flow, including what changes with more than one Blocker registered, where React Router supports a
+  single one.
 
 ## [2.1.0] - 2026-08-09
 
