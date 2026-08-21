@@ -279,9 +279,25 @@ production file the branch changed does have is withdrawn before the run. That r
 approximation of a compile failure, so it does not survive a run that wrote nothing — the platform
 goes down with the round, withdrawals included.
 Python reports it while loading or running, so the gate accepts it only when static comparison proves
-that the named repository file, sibling module, top-level name or callee's keyword parameter is absent
-on the base and present on the branch. An argument *count* is not among them: a call the base refuses
-on arity alone reads as a case that could not answer.
+that the named repository file, module, top-level name or callee's keyword parameter is absent on the
+base and present on the branch. A module is looked for under the case's own directory and under the
+directories that file itself puts on `sys.path` — an insert performed by something it imports is out
+of reach, since only the case's own file is read; a top-level name is read off three exceptions rather
+than one — the AttributeError of an attribute read, the ImportError of `from module import name`, and
+what `mock.patch` raises for a patch by name. An argument *count* is not among them: a call the base
+refuses on arity alone reads as a case that could not answer.
+
+A module-level import is answered for case by case, not file by file. `from module import name` is
+evaluated once, so a branch-only name in one takes every case of that file down on the base together
+— and only the cases that reach the name are read as depending on the branch. A case reaches it in
+its own body or its own decorators, at module level, or in the scaffolding of the classes its fixture
+is built out of — which includes a shared base class, so long as the file declares it: a base
+imported from elsewhere is out of reach, and so are another case's body and another case's
+decorators, wherever they sit. Prose does not reach it: a comment
+and a docstring are both left out, while an ordinary string is not, because `getattr` names a
+surface that way. The rest count against it, because a reading nobody took is never a pass. Every
+tolerated case is counted on a line of its own, so a run that measured none of them cannot say so in
+silence.
 
 Either reading is only believed on a tree the run proved can build and answer at all, and two things
 prove it. Cases of the base's own that the branch did not carry run alongside — C# fixtures for a

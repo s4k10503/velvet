@@ -524,6 +524,15 @@ def csharp_cases(text, path="?"):
     return cases
 
 
+def opens_at(node):
+    """Where a definition starts, which is its first decorator where it carries one.
+
+    An argument written in a decorator is code of the definition it sits on, so a range over that
+    definition opens there rather than at the keyword below it.
+    """
+    return min([node.lineno] + [one.lineno for one in getattr(node, "decorator_list", ())])
+
+
 def python_cases(text, path="?"):
     """Every unittest case in a Python test module, named as `python3 -m unittest` takes it."""
     try:
@@ -543,7 +552,7 @@ def python_cases(text, path="?"):
                 continue
             if not member.name.startswith("test"):
                 continue
-            opens = min([member.lineno] + [decorator.lineno for decorator in member.decorator_list])
+            opens = opens_at(member)
             cases.append(Case("{}.{}".format(node.name, member.name), path,
                               comment_block_start(lines, opens - 1, prose) + 1, member.end_lineno,
                               leading_declaration(lines, opens - 1, declared, prose)))
@@ -979,6 +988,16 @@ MISSING_FILE = re.compile(
     r"FileNotFoundError: \[Errno 2\] No such file or directory: ['\"]([^'\"]+)['\"]")
 MISSING_ATTRIBUTE = re.compile(
     r"AttributeError: module ['\"]([^'\"]+)['\"] has no attribute ['\"]([^'\"]+)['\"]")
+# The quote has to follow `from` directly, which is what leaves a circular import out of this
+# reading. `PythonNamedSurfaceTests` pins that against the message Python prints for one.
+MISSING_MEMBER = re.compile(
+    r"ImportError: cannot import name ['\"]([^'\"]+)['\"] from ['\"]([^'\"]+)['\"]")
+# What `mock.patch` raises for a name it was asked to replace and did not find. It writes the module
+# as a repr rather than as a bare name, which is why this is a pattern of its own rather than a
+# widening of the one above.
+MISSING_PATCH_TARGET = re.compile(
+    r"AttributeError: <module ['\"]([^'\"]+)['\"][^>]*> does not have the attribute "
+    r"['\"]([^'\"]+)['\"]")
 MISSING_KEYWORD = re.compile(
     r"TypeError: (\w+)\(\) got an unexpected keyword argument ['\"]([^'\"]+)['\"]")
 
@@ -1011,9 +1030,109 @@ def top_level_names(text):
     return names
 
 
-def module_relative(case, module):
-    """The sibling module spelling Python resolves for the test modules this repository carries."""
-    return Path(case.path).parent.joinpath(*module.split(".")).with_suffix(".py")
+def climbed(path, levels):
+    """A climb past the repository root is a fold that failed, rather than the root itself."""
+    for _ in range(levels):
+        if path == Path("."):
+            return None
+        path = path.parent
+    return path
+
+
+def path_bindings(parsed):
+    """Name -> the expressions a module assigns to it, over the whole file rather than its top level.
+
+    An insert can sit inside a case body, and the path it hands over can be bound there or above it,
+    so neither the statement nor its name is reliably at the top level.
+    """
+    found = {}
+    for node in ast.walk(parsed):
+        if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(
+                node.targets[0], ast.Name):
+            found.setdefault(node.targets[0].id, []).append(node.value)
+    return found
+
+
+def folded_path(node, home, bound, seen=frozenset()):
+    """The repository-relative paths an expression rooted at `Path(__file__)` folds to.
+
+    `home` is the file the expression was read out of, so `__file__` is that path and each `.parent`
+    or `.parents[n]` climbs from it. Anything the fold does not recognise contributes nothing, so an
+    insert it cannot read leaves that directory out rather than guessing at one.
+    """
+    if isinstance(node, ast.Name):
+        if node.id == "__file__":
+            return {home}
+        if node.id in seen:
+            return set()
+        return set().union(*(folded_path(value, home, bound, seen | {node.id})
+                             for value in bound.get(node.id, ())))
+    if isinstance(node, ast.Call):
+        if isinstance(node.func, ast.Name) and node.func.id in ("str", "Path", "PurePosixPath"):
+            return folded_path(node.args[0], home, bound, seen) if node.args else set()
+        if isinstance(node.func, ast.Attribute) and node.func.attr == "resolve":
+            return folded_path(node.func.value, home, bound, seen)
+        return set()
+    if isinstance(node, ast.Attribute) and node.attr == "parent":
+        return {up for up in (climbed(path, 1)
+                              for path in folded_path(node.value, home, bound, seen)) if up}
+    if isinstance(node, ast.Subscript):
+        owner, index = node.value, node.slice
+        if (isinstance(owner, ast.Attribute) and owner.attr == "parents"
+                and isinstance(index, ast.Constant) and isinstance(index.value, int)):
+            return {up for up in (climbed(path, index.value + 1)
+                                  for path in folded_path(owner.value, home, bound, seen)) if up}
+        return set()
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div):
+        if not (isinstance(node.right, ast.Constant) and isinstance(node.right.value, str)):
+            return set()
+        return {path / node.right.value
+                for path in folded_path(node.left, home, bound, seen)}
+    return set()
+
+
+def import_directories(case, tree):
+    """The repository directories an import in the case is looked for under, its own first.
+
+    Only the case's own file is read, so an insert a module it imports performs reaches nothing here.
+    `scripts/hooks/test_amend_of_published_commit.py` is the file this is written for: it puts
+    `.claude/hooks/lib` on the path itself, and a module named through that sits beside no case.
+    """
+    home = Path(case.path)
+    found = [home.parent]
+    source = tree / case.path
+    try:
+        parsed = ast.parse(source.read_text(encoding="utf-8", errors="replace")
+                           if source.is_file() else "")
+    except SyntaxError:
+        return found
+    bound = path_bindings(parsed)
+    for node in ast.walk(parsed):
+        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                and node.func.attr in ("insert", "append") and node.args):
+            continue
+        owner = node.func.value
+        if not (isinstance(owner, ast.Attribute) and owner.attr == "path"
+                and isinstance(owner.value, ast.Name) and owner.value.id == "sys"):
+            continue
+        for directory in sorted(folded_path(node.args[-1], home, bound)):
+            if directory not in found:
+                found.append(directory)
+    return found
+
+
+def module_relatives(case, module, tree):
+    """The files the module named in a traceback could be, one per directory the run searches."""
+    parts = module.split(".")
+    return [directory.joinpath(*parts).with_suffix(".py")
+            for directory in import_directories(case, tree)]
+
+
+def added_top_level_name(base, branch, name):
+    if not base.is_file() or not branch.is_file():
+        return False
+    return (name not in top_level_names(base.read_text(encoding="utf-8", errors="replace"))
+            and name in top_level_names(branch.read_text(encoding="utf-8", errors="replace")))
 
 
 def takes_keyword(text, function, keyword):
@@ -1038,29 +1157,144 @@ def takes_keyword(text, function, keyword):
 
 
 def added_keyword(output, base_tree, branch_tree, case):
-    """Whether the call that raised named a parameter the branch added to a sibling of the case.
+    """Whether the call that raised named a parameter the branch added to a module the case can reach.
 
     A parameter is a surface the same way a name is, and the exception is the only place Python says
     so -- the trace names the caller, never the callee's module, so which one holds the definition is
-    read by looking, over the case's own directory. One base-side definition accepting the keyword is
-    enough to refuse: the reading has to be that the base could not have taken this call, not that
-    some module somewhere could not.
+    read by looking, over the directories the run imports from. One base-side definition accepting the
+    keyword is enough to refuse: the reading has to be that the base could not have taken this call,
+    not that some module somewhere could not.
+
+    The name readings are gated on `reaches_surface` and this one is not, deliberately. A keyword is
+    a single token: each of those compares a set of spellings that includes the module's own name, so
+    a case naming the module qualifies however it spells the member, while a keyword appears at the
+    call site and nowhere else. Cases here drive their subject through a
+    helper class the fixture does not derive from -- `Polled`, `Workspace`, `StubbedCampaign` -- so
+    the call site sits outside every line the case reaches, and gating this would refuse those cases
+    with no declaration able to clear the verdict. What it costs is a call made at class scope
+    answering for the whole file, which `KeywordAtClassScopeTests` records.
     """
     missing = MISSING_KEYWORD.search(output)
     if not missing:
         return False
     function, keyword = missing.group(1), missing.group(2)
-    directory = Path(case.path).parent
     found = False
-    for module in sorted((branch_tree / directory).glob("*.py")) if (
-            branch_tree / directory).is_dir() else []:
-        base = base_tree / directory / module.name
-        if takes_keyword(base.read_text(encoding="utf-8", errors="replace") if base.is_file()
-                         else "", function, keyword):
-            return False
-        found = found or takes_keyword(
-            module.read_text(encoding="utf-8", errors="replace"), function, keyword)
+    for directory in import_directories(case, base_tree):
+        for module in sorted((branch_tree / directory).glob("*.py")) if (
+                branch_tree / directory).is_dir() else []:
+            base = base_tree / directory / module.name
+            if takes_keyword(base.read_text(encoding="utf-8", errors="replace") if base.is_file()
+                             else "", function, keyword):
+                return False
+            found = found or takes_keyword(
+                module.read_text(encoding="utf-8", errors="replace"), function, keyword)
     return found
+
+
+def fixture_classes(parsed, owner):
+    """`owner` and the classes it derives from, over the ones this file declares by bare name.
+
+    A shared base class is where unittest puts scaffolding two fixtures need, so a `setUp` there is
+    as much an heir's reach as one written in its own body. A dotted base is left alone because its
+    last segment is not a spelling this file binds: resolving `helpers.Shared` to a `Shared` declared
+    here picks a class the fixture never derived from.
+    """
+    declared = {node.name: node for node in ast.walk(parsed) if isinstance(node, ast.ClassDef)}
+    found, pending = set(), [owner]
+    while pending:
+        name = pending.pop()
+        if name in found or name not in declared:
+            continue
+        found.add(name)
+        pending.extend(base.id for base in declared[name].bases if isinstance(base, ast.Name))
+    return found
+
+
+def reaching_lines(text, case_name):
+    """The lines of a test module whose text one case could have reached.
+
+    Module level, the classes its fixture is built out of outside their other cases, and the case
+    itself. Import statements are left out: `from module import name` is evaluated once for the file,
+    so a name spelled only there belongs to no case in particular. A string constant standing alone
+    is left out too -- a docstring is that shape, and it looks up no name.
+    """
+    try:
+        parsed = ast.parse(text)
+    except SyntaxError:
+        return set()
+    owner, method = case_name.rsplit(".", 1) if "." in case_name else ("", case_name)
+    owners = fixture_classes(parsed, owner)
+    reaching = set(range(1, len(text.splitlines()) + 1))
+    for node in ast.walk(parsed):
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            reaching -= set(range(node.lineno, (node.end_lineno or node.lineno) + 1))
+        elif (isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant)
+                and isinstance(node.value.value, str)):
+            reaching -= set(range(node.lineno, (node.end_lineno or node.lineno) + 1))
+        elif isinstance(node, ast.ClassDef) and node.name not in owners:
+            reaching -= set(range(opens_at(node), node.end_lineno + 1))
+        elif isinstance(node, ast.ClassDef):
+            for member in node.body:
+                if (isinstance(member, (ast.FunctionDef, ast.AsyncFunctionDef))
+                        and member.name.startswith("test") and member.name != method):
+                    reaching -= set(range(opens_at(member), member.end_lineno + 1))
+    return reaching - comment_lines(text, python_comment_spans(text))
+
+
+def imported_from(text, module):
+    """Every alias the file binds out of `module`, as (the name the case spells, the module's own)."""
+    try:
+        parsed = ast.parse(text)
+    except SyntaxError:
+        return []
+    bound = []
+    for node in ast.walk(parsed):
+        if isinstance(node, ast.ImportFrom) and node.module == module and not node.level:
+            bound.extend((alias.asname or alias.name, alias.name) for alias in node.names)
+        elif isinstance(node, ast.Import):
+            bound.extend((alias.asname or alias.name.split(".")[0], alias.name)
+                         for alias in node.names if alias.name == module)
+    return bound
+
+
+def surface_spellings(case, base_tree, branch_tree, module, name=None):
+    """How the case's own file could be spelling the branch-only surface, not just how Python named it.
+
+    A traceback names one missing name however many of them an import list holds, so a case reaching
+    another of them would read as reaching nothing at all. `name` is the one it named; the rest are
+    read off the import list and kept only where the same comparison holds. A module the base has not
+    got is every name its imports bind, since none of them resolves there.
+    """
+    spellings = {name} if name else set()
+    source = base_tree / case.path
+    if not source.is_file():
+        return spellings
+    bound = imported_from(source.read_text(encoding="utf-8", errors="replace"), module)
+    if name is None:
+        return spellings | {spelled for spelled, _ in bound} | {module.split(".")[0]}
+    for relative in module_relatives(case, module, base_tree):
+        base, branch = base_tree / relative, branch_tree / relative
+        spellings |= {spelled for spelled, attribute in bound
+                      if added_top_level_name(base, branch, attribute)}
+    return spellings
+
+
+def reaches_surface(case, tree, name):
+    """Whether this case, rather than the file it sits in, is the one that reached `name`.
+
+    A module that will not load takes every case in it down together, so without this the tolerance
+    below answers for cases that never touched the branch's surface -- and each of those is a reading
+    nobody took being recorded as a pass, which is what this whole check exists to refuse.
+    Scaffolding counts as the case's own reach: a `setUpClass` naming the surface fails for each case
+    of its fixture, which is that dependence written once.
+    """
+    source = tree / case.path
+    if not source.is_file():
+        return False
+    text = source.read_text(encoding="utf-8", errors="replace")
+    lines = text.splitlines()
+    return any(name in names_in(lines[number - 1])
+               for number in reaching_lines(text, case.name) if number <= len(lines))
 
 
 def added_python_surface(output, base_tree, branch_tree, case):
@@ -1081,20 +1315,24 @@ def added_python_surface(output, base_tree, branch_tree, case):
 
     missing = MISSING_MODULE.search(output)
     if missing:
-        relative = module_relative(case, missing.group(1))
-        return not (base_tree / relative).exists() and (branch_tree / relative).is_file()
+        module = missing.group(1)
+        return any(reaches_surface(case, base_tree, spelled) for spelled in
+                   surface_spellings(case, base_tree, branch_tree, module)) and any(
+            not (base_tree / relative).exists() and (branch_tree / relative).is_file()
+            for relative in module_relatives(case, module, base_tree))
 
-    missing = MISSING_ATTRIBUTE.search(output)
-    if not missing:
-        return added_keyword(output, base_tree, branch_tree, case)
-    relative = module_relative(case, missing.group(1))
-    base = base_tree / relative
-    branch = branch_tree / relative
-    if not base.is_file() or not branch.is_file():
-        return False
-    name = missing.group(2)
-    return (name not in top_level_names(base.read_text(encoding="utf-8", errors="replace"))
-            and name in top_level_names(branch.read_text(encoding="utf-8", errors="replace")))
+    missing = MISSING_ATTRIBUTE.search(output) or MISSING_PATCH_TARGET.search(output)
+    if missing:
+        module, name = missing.group(1), missing.group(2)
+    else:
+        missing = MISSING_MEMBER.search(output)
+        if not missing:
+            return added_keyword(output, base_tree, branch_tree, case)
+        module, name = missing.group(2), missing.group(1)
+    return any(reaches_surface(case, base_tree, spelled) for spelled in
+               surface_spellings(case, base_tree, branch_tree, module, name)) and any(
+        added_top_level_name(base_tree / relative, branch_tree / relative, name)
+        for relative in module_relatives(case, module, base_tree))
 
 
 IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
@@ -1475,9 +1713,15 @@ def report(cases, control, reported, canaries=None, wrote=True, unbuildable=None
     print("\n--- what the base said ---")
     for case in cases:
         print("{:<32} {}  ({})".format(case.verdict, case.name, case.detail))
-    # Two counts, never one. A case the base could not build names a symbol the branch adds, which is
-    # the strongest pin this takes, and folding it into the readings nobody took would tell the author
-    # of a correct test that the run measured nothing.
+    # Three counts, never one. A case the base could not build names a symbol the branch adds, which
+    # is the strongest pin this takes, and folding it into the readings nobody took would tell the
+    # author of a correct test that the run measured nothing. A tolerated case is not a failure, so
+    # a run that tolerated all of them exits zero and says so in silence unless this count speaks.
+    tolerated = [case for case in cases if case.verdict == COULD_NOT_LOAD]
+    if tolerated:
+        print("\n{} of {} case(s) reached a surface only the branch provides, so the base could not "
+              "load them\nand each is counted as depending on this change".format(
+                  len(tolerated), len(cases)))
     silent = [case for case in cases if case.verdict == COULD_NOT_ANSWER]
     if silent:
         print("\nthe base could not answer for {} of {} case(s), so they carry no reading either "
