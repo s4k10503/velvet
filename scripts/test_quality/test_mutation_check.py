@@ -638,11 +638,11 @@ class LogicFlipTests(unittest.TestCase):
     A flip there can leave a read of that name unassigned, which the campaign scores unmeasured and fails
     on -- the outcome `DeclarationRemovalTests` holds for a removal, reached by a rewrite. Compiled
     against the reference set Unity's own build uses per assembly, 113 of this package's logic mutants
-    failed exactly that way; none does now, at a cost of 58 that compiled.
+    failed exactly that way; none does now, at a cost of 38 that compiled.
 
-    The two declared green on the base are the boundary the refusal must not cross, and each goes red
-    under a different widening of it. Between them they are also what says the operator still fires, so
-    a refusal that swallowed it whole would not pass here either.
+    Each case declared green on the base is a boundary the refusal must not cross, and each goes red
+    under its own widening of one. Between them they are also what says the operator still fires, so a
+    refusal that swallowed it whole would not pass here either.
     """
 
     def test_Given_APatternVariableTheRightOperandReads_When_MutantsAreGenerated_Then_TheJoinIsNotFlipped(self):
@@ -744,6 +744,114 @@ class LogicFlipTests(unittest.TestCase):
         # Assert
         self.assertEqual(flips, ["if (ready || Map.TryGetValue(key, out _))"])
 
+    # GREEN_ON_BASE(characterization): an `out` naming a variable the statement did not declare, past
+    # a join and written above it. No ordering of the clauses leaves it unwritten, so the question the
+    # flip asks -- here, whether anything notices the clip stop suppressing the shadow -- is a real one.
+    def test_Given_ABareOutTheLineAboveWrites_When_MutantsAreGenerated_Then_TheJoinIsStillFlipped(self):
+        # Arrange
+        text = ("var spec = default(ShadowSpec);\n"
+                "var want = !clipActive && StyleShadowClass.TryExtract(classNames, out spec);\n")
+
+        # Act
+        flips = [applied(text, mutant) for mutant in mutants_of(text, "logic")]
+
+        # Assert
+        self.assertEqual(
+            flips, ["var want = !clipActive || StyleShadowClass.TryExtract(classNames, out spec);"])
+
+    def test_Given_ABareOutNothingAboveWrites_When_MutantsAreGenerated_Then_TheJoinIsNotFlipped(self):
+        # Arrange -- an `out` parameter of the enclosing method: the flip leaves a path returning
+        # without having written it, which is `CS0177` rather than the `CS0165` a local gives.
+        text = ("private static bool TryParseAngle(string cls, out float angleDeg)\n"
+                "{\n"
+                "    return !negative && TryDirectionAngle(cls, out angleDeg);\n"
+                "}\n")
+
+        # Act
+        flips = [applied(text, mutant) for mutant in mutants_of(text, "logic")]
+
+        # Assert
+        self.assertEqual(flips, [])
+
+    def test_Given_ABareOutWrittenOnlyInsideABlockAbove_When_MutantsAreGenerated_Then_TheJoinIsNotFlipped(self):
+        # Arrange -- the write runs on some of the paths reaching the statement and not others, so it
+        # says nothing about what is written where the flip lands.
+        text = ("Rect bounds;\n"
+                "if (fallback)\n"
+                "{\n"
+                "    bounds = Rect.zero;\n"
+                "}\n"
+                "var want = ready && TryComputeBounds(spec, out bounds);\n")
+
+        # Act
+        flips = [applied(text, mutant) for mutant in mutants_of(text, "logic")]
+
+        # Assert
+        self.assertEqual(flips, [])
+
+    def test_Given_ABareOutWrittenOutsideTheBlockHoldingIt_When_MutantsAreGenerated_Then_TheJoinIsNotFlipped(self):
+        # Arrange -- this write does run on every path reaching the statement, and the reading stops at
+        # the block anyway rather than deciding where the member it is walking starts.
+        text = ("angleDeg = 0f;\n"
+                "if (body.StartsWith(DirActivator))\n"
+                "{\n"
+                "    return !negative && TryDirectionAngle(body, out angleDeg);\n"
+                "}\n")
+
+        # Act
+        flips = [applied(text, mutant) for mutant in mutants_of(text, "logic")]
+
+        # Assert
+        self.assertEqual(flips, [])
+
+    def test_Given_APatternWhoseOpeningLineEndsWithABrace_When_MutantsAreGenerated_Then_TheJoinIsNotFlipped(self):
+        # Arrange -- that brace ends a statement everywhere else, so a reading that stopped at it would
+        # start this statement below the `is` and find no designation on it.
+        text = ("if (fiber is {\n"
+                "        IsDisposed: false\n"
+                "    } live && live.Ready)\n"
+                "{\n"
+                "    Use(live);\n"
+                "}\n")
+
+        # Act
+        flips = [applied(text, mutant) for mutant in mutants_of(text, "logic")]
+
+        # Assert
+        self.assertEqual(flips, [])
+
+    def test_Given_ALambdaBlockBetweenTheBindingAndTheJoin_When_MutantsAreGenerated_Then_TheJoinIsNotFlipped(self):
+        # Arrange -- the same reading, reached across a lambda body rather than a pattern's braces.
+        text = ("if (node is Fiber fiber && children.All(child =>\n"
+                "    {\n"
+                "        return child.Ready;\n"
+                "    }) && fiber.Ready)\n"
+                "{\n"
+                "    Use(fiber);\n"
+                "}\n")
+
+        # Act
+        flips = [applied(text, mutant) for mutant in mutants_of(text, "logic")]
+
+        # Assert
+        self.assertEqual(flips, [])
+
+    def test_Given_AJoinInFrontOfAMultiLinePattern_When_MutantsAreGenerated_Then_TheJoinIsNotFlipped(self):
+        # Arrange -- the mirror of the two above, with the designation below the join rather than above
+        # it, which is the other half of the walk.
+        text = ("if (ready && fiber is {\n"
+                "        IsDisposed: false\n"
+                "    } live)\n"
+                "{\n"
+                "    Use(live);\n"
+                "}\n")
+
+        # Act
+        flips = [applied(text, mutant) for mutant in mutants_of(text, "logic")]
+
+        # Assert
+        self.assertEqual(flips, [])
+
 
 class RepositoryReachTests(unittest.TestCase):
     """The operators exist because two real defects survived every other one. Pin that they reach them."""
@@ -807,6 +915,22 @@ class GenerationHealthTests(unittest.TestCase):
 
         # Assert
         self.assertEqual((len(sources) > 200, dangling), (True, []))
+
+    # GREEN_ON_BASE(characterization): the base generates more of these flips than the floor asks for.
+    # What the floor answers for is the join operator's repository-wide output, which nothing else in
+    # this file reads: measured, a widening that reads the statement off the raw lines rather than the
+    # mask costs 154 of these flips and leaves every other case in this file green.
+    def test_Given_EveryRuntimeSource_When_MutantsAreGenerated_Then_TheFlipCountHoldsAFloor(self):
+        # Arrange — the floor sits twice the band the last eighty commits moved this count through
+        # below it (1190 to 1231, no single commit falling more than five), and above the two widenings
+        # measured against it, at 1077 and 1108.
+        sources = [path for path in RUNTIME.rglob("*.cs") if "/Tests/" not in path.as_posix()]
+
+        # Act
+        flips = sum(len(mutants_of(path.read_text(), "logic")) for path in sources)
+
+        # Assert — the source count rides along because an empty scan clears any floor by arithmetic.
+        self.assertEqual((len(sources) > 200, flips > 1150), (True, True))
 
 
 class MaskDefectTests(unittest.TestCase):

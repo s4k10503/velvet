@@ -419,6 +419,10 @@ PATTERN_DESIGNATION = re.compile(
 DECLARES_A_NAME = re.compile("|".join(
     (DECONSTRUCTION.pattern, OUT_ARGUMENT.pattern, PATTERN_DESIGNATION.pattern)))
 
+# `out spec` naming a variable rather than declaring one, which is the spelling a flip need not
+# strand: unlike a declaration, the name can have been written before the statement runs.
+OUT_BARE_NAME = re.compile(r"\bout\s+([A-Za-z_]\w*)\s*[,)]")
+
 
 # Braces and brackets count towards depth as well as parentheses. A property pattern puts a colon
 # inside braces at the enclosing parenthesis depth -- `is { Count: > 0 }` -- so a model that reads
@@ -560,23 +564,61 @@ def deletable_line(text, mask, spans, number):
     return not code_below(text, mask, spans, number).startswith("else")
 
 
+def groups_left_open(code):
+    """How many more groups a run of code opens than it closes."""
+    return sum(code.count(mark) for mark in OPENING) - sum(code.count(mark) for mark in CLOSING)
+
+
 def statement_span(text, mask, spans, number):
     """The first and last line of the statement holding line `number`, one-based and inclusive.
 
     Bounded by the code the mask leaves rather than by the raw lines, in both directions, so a comment
     between two continuation lines does not end a statement.
+
+    A brace the statement itself holds -- a list or property pattern, a lambda body -- is in
+    STATEMENT_BOUNDARY, so a walk stopping at every boundary reads one statement as two. The group
+    count is what carries the span past it. Downwards it stops counting once the groups balance,
+    because the brace after a balanced condition opens the block it guards rather than continuing it.
     """
     first = number
+    open_groups = groups_left_open(code_only(text, mask, *spans[number - 1]))
     while first > 1:
-        if code_only(text, mask, *spans[first - 2]).strip().endswith(STATEMENT_BOUNDARY):
+        if (open_groups >= 0
+                and code_only(text, mask, *spans[first - 2]).strip().endswith(STATEMENT_BOUNDARY)):
             break
         first -= 1
+        open_groups += groups_left_open(code_only(text, mask, *spans[first - 1]))
     last = number
     while last < len(spans):
-        if code_only(text, mask, *spans[last - 1]).strip().endswith(STATEMENT_BOUNDARY):
+        if (open_groups <= 0
+                and code_only(text, mask, *spans[last - 1]).strip().endswith(STATEMENT_BOUNDARY)):
             break
+        carrying = open_groups > 0
         last += 1
+        if carrying:
+            open_groups += groups_left_open(code_only(text, mask, *spans[last - 1]))
     return first, last
+
+
+def assigned_above(text, mask, spans, number, name):
+    """Whether a statement above line `number`, in the block holding it, writes `name`.
+
+    Only that block. A write nested inside one above runs on some of the paths reaching line `number`
+    and not others. A write in an enclosing block runs on all of them and is passed over anyway, since
+    a walk that left the block would have to tell a member's own writes from a field initialiser, which
+    a local of the same name shadows.
+    """
+    written = re.compile(r"^(?:[\w.<>\[\]?]+\s+)?" + re.escape(name)
+                         + r"\s*(?<![-+*/%&|^!<>=])=(?![=>])")
+    depth = 0
+    for above in range(number - 1, 0, -1):
+        code = code_only(text, mask, *spans[above - 1]).strip()
+        depth += code.count("}") - code.count("{")
+        if depth < 0:
+            return False
+        if depth == 0 and written.match(code):
+            return True
+    return False
 
 
 def binds_a_name_conditionally(text, mask, spans, number):
@@ -591,16 +633,24 @@ def binds_a_name_conditionally(text, mask, spans, number):
     no reading of the condition alone reaches.
 
     A pattern designation binds only where the pattern matched, so each one this reads counts. An `out`
-    argument binds whenever its call is evaluated, and a condition's first clause is evaluated whichever
-    way its joins go, so the refusal starts at the first join -- which is what keeps `out var` mutable.
+    argument is refused from the first join along, since flipping a join cannot stop a condition's first
+    clause from running -- a reading of the clauses rather than of what runs inside one, and
+    `Generators~/README.md` is where that gap is measured. An `out` naming a variable rather than
+    declaring one is exempt wherever something above the statement already wrote that name, because no
+    ordering of the clauses can then leave it unwritten.
     """
     first, last = statement_span(text, mask, spans, number)
     statement = " ".join(code_only(text, mask, *spans[line - 1]).strip()
                          for line in range(first, last + 1))
     if PATTERN_DESIGNATION.search(statement):
         return True
-    return any(any(statement.find(join, 0, found.start()) >= 0 for join in LOGIC_JOINS)
-               for found in OUT_ARGUMENT.finditer(statement))
+    for found in OUT_ARGUMENT.finditer(statement):
+        named = OUT_BARE_NAME.match(statement, found.start())
+        if named and assigned_above(text, mask, spans, first, named.group(1)):
+            continue
+        if any(statement.find(join, 0, found.start()) >= 0 for join in LOGIC_JOINS):
+            return True
+    return False
 
 
 def line_spans(text):
