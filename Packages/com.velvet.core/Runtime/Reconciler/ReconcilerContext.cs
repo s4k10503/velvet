@@ -1051,22 +1051,31 @@ namespace Velvet
         public Dictionary<VisualElement, (System.Func<VisualElement, System.Action> Callback, System.Action? Cleanup)>
             RefCallbacks { get; } = new();
 
-        // Ref setups this pass owes, in the order the walk reached them, keyed for replacement so one
-        // element contributes one setup however many times a pass syncs it. Drained by
-        // Reconciler.FinishTopLevelPass; a hole (a default entry) is one DropPendingRefAttach cancelled,
-        // left in place so the indices either side of it stay addressable.
-        private readonly List<(VisualElement? Element, System.Func<VisualElement, System.Action>? Callback, ComponentFiber? Owner)>
-            _pendingRefAttaches = new();
+        // Ref setups queued and not yet run, in the order the walks reached them, keyed for replacement
+        // so one element contributes one setup however many times a pass syncs it. Drained by
+        // DrainRefAttaches, which both entrances go through; a hole (a default entry) is one an element's
+        // departure cancelled or one already run, left in place so the indices either side of it stay
+        // addressable until the compaction that ends the drain.
+        private readonly List<(VisualElement? Element, System.Func<VisualElement, System.Action>? Callback,
+            ComponentFiber? Owner, Reconciler? Pass)> _pendingRefAttaches = new();
 
         private readonly Dictionary<VisualElement, int> _pendingRefAttachIndex = new();
 
         private bool _drainingRefAttaches;
 
-        // Where a user callback the reconciler invokes goes when it throws. Two shapes are in use and this
-        // is the rule that picks between them, so a site does not pick its own: the teardown funnels —
+        // The Reconciler whose Reconcile / ContinueReconcile bracket is innermost on the stack, and null
+        // outside every pass — the VirtualList controller's scroll-driven item loop reaches the queue
+        // below from there. Stamped onto each setup it queues so the drain asks the pass that created the
+        // element, rather than the context, whether the removals that setup has to follow have run.
+        internal Reconciler? CurrentPass { get; set; }
+
+        // Where a user callback the reconciler invokes goes when it throws. Two shapes are picked between
+        // here, so a site does not pick its own: the teardown funnels —
         // FiberElementCleaner, Reconciler's disposal sweeps, and the route-scope release at
         // FiberNodePatcher that mirrors them — report to the console; a callback the reconciler makes for
-        // an owner that is still live comes here instead, to the nearest error boundary. Reporting was
+        // an owner that is still live comes here instead, to the nearest error boundary. A third shape is
+        // chosen against this rule rather than by it: ChildReconciler.DrainPendingPortalMounts leaves its
+        // ZLayerMountNode arm's throw on the render's own escape path, and argues that there. Reporting was
         // rejected for the live case because a boundary is the mechanism a component has for its own
         // failures, and an effect cleanup — the same kind of callback — already reaches one
         // (HookEffectExecutor.RunCleanups).
@@ -1094,7 +1103,8 @@ namespace Velvet
                 DropPendingRefAttach(element);
                 return;
             }
-            var entry = (Element: (VisualElement?)element, Callback: refCallback, Owner: FiberStack.Current);
+            var entry = (Element: (VisualElement?)element, Callback: refCallback,
+                Owner: FiberStack.Current, Pass: CurrentPass);
             if (_pendingRefAttachIndex.TryGetValue(element, out var queued))
             {
                 _pendingRefAttaches[queued] = entry;
@@ -1143,20 +1153,22 @@ namespace Velvet
             // A setup that re-enters a top-level pass leaves its own entries to the loop below, which
             // re-reads the count; draining them from inside would run the ones already run a second time.
             if (_drainingRefAttaches) return;
-            // The queue is the context's while a pass belongs to one Reconciler, so the pass that reaches
-            // this boundary is not necessarily the one that queued the entries. That question is asked here
-            // rather than at either call site, where only the calling pass's own answer is in hand.
-            if (AnyPassParked()) return;
             _drainingRefAttaches = true;
             try
             {
                 for (var i = 0; i < _pendingRefAttaches.Count; i++)
                 {
-                    var (element, callback, owner) = _pendingRefAttaches[i];
+                    var (element, callback, owner, pass) = _pendingRefAttaches[i];
                     if (element == null || callback == null) continue;
+                    // The queue is the context's while a pass belongs to one Reconciler, so the pass that
+                    // reached this boundary is not necessarily the one that queued this entry. A parked
+                    // pass holds back the entries it queued and no others — Reconciler.FinishTopLevelPass
+                    // owns why it has to hold those.
+                    if (pass is { HasPendingWork: true }) continue;
                     // Ahead of the setup, so a setup that re-queues this same element appends a fresh
                     // entry instead of overwriting the one being run.
                     _pendingRefAttachIndex.Remove(element);
+                    _pendingRefAttaches[i] = default;
                     // Ahead of the setup too, so an element the setup itself takes out of the tree is one
                     // FiberElementCleaner finds an entry for and removes. A setup CAN reach that: it runs
                     // at depth zero now, where a discrete event it dispatches commits synchronously instead
@@ -1180,10 +1192,8 @@ namespace Velvet
                     }
                     else if (cleanup != null)
                     {
-                        // The setup took its own element out of the tree, so the entry that would have
-                        // fired this cleanup on the element's removal is already gone and no later removal
-                        // will find one. Firing it here is what keeps a setup that acquires a resource from
-                        // leaking it.
+                        // Its entry is gone, so nothing is left holding this cleanup. Firing it here is
+                        // what keeps a setup that acquires a resource from leaking it.
                         try
                         {
                             cleanup();
@@ -1198,13 +1208,32 @@ namespace Velvet
             }
             finally
             {
-                _pendingRefAttaches.Clear();
-                _pendingRefAttachIndex.Clear();
+                CompactPendingRefAttaches();
                 _drainingRefAttaches = false;
                 // Repeated from the catch above so this loop leaves the flag clear whichever entrance ran
                 // it. Dropping it would rest on that catch being the only raise a setup can reach, which
                 // nothing here establishes.
                 IsAborted = false;
+            }
+        }
+
+        // Clearing the list outright is no longer available: the entries a parked pass queued have to
+        // survive the drain that skipped them. What is left is compacted instead, so the list does not
+        // keep a slot per entry already run.
+        private void CompactPendingRefAttaches()
+        {
+            var kept = 0;
+            for (var i = 0; i < _pendingRefAttaches.Count; i++)
+            {
+                var entry = _pendingRefAttaches[i];
+                if (entry.Element == null || entry.Callback == null) continue;
+                _pendingRefAttaches[kept++] = entry;
+            }
+            _pendingRefAttaches.RemoveRange(kept, _pendingRefAttaches.Count - kept);
+            _pendingRefAttachIndex.Clear();
+            for (var i = 0; i < _pendingRefAttaches.Count; i++)
+            {
+                _pendingRefAttachIndex[_pendingRefAttaches[i].Element!] = i;
             }
         }
 
@@ -1216,29 +1245,6 @@ namespace Velvet
         // ContainUserCallbackFailure, which the create-path callbacks and DetachRefCallback reach as
         // well: an abort raised through one of those is not this loop's to consume.
         private void ConsumeAbortRaisedByASetup() => IsAborted = false;
-
-        // The passes a frame budget suspended mid-flight. The setup queue above belongs to this context
-        // while a pass belongs to one Reconciler, so a fiber that finishes its own pass while a sibling's
-        // is parked would otherwise run the sibling's setups between the arrivals that queued them and the
-        // departures still ahead of them — the create-before-remove order the drain's position exists to
-        // undo. Confirmed against HasPendingWork before it is read rather than trusted, so a stale entry
-        // cannot suspend the drain for good.
-        private readonly HashSet<Reconciler> _parkedPasses = new();
-
-        private static readonly System.Predicate<Reconciler> s_passCompleted = reconciler => !reconciler.HasPendingWork;
-
-        internal void NoteParkedPass(Reconciler reconciler, bool parked)
-        {
-            if (parked) _parkedPasses.Add(reconciler);
-            else _parkedPasses.Remove(reconciler);
-        }
-
-        internal bool AnyPassParked()
-        {
-            if (_parkedPasses.Count == 0) return false;
-            _parkedPasses.RemoveWhere(s_passCompleted);
-            return _parkedPasses.Count > 0;
-        }
 
         // Wrapper-less Suspense fallback state: per boundary fiber, the scoped position keys of the
         // Suspense nodes that are currently showing their fallback subtree instead of their children. The

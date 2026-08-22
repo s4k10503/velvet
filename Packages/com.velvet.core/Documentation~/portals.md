@@ -46,8 +46,7 @@ to.
 **A screen that registers an id from its `refCallback` and unregisters it from that callback's cleanup
 hands the id to its replacement.** The reconcile path that replaces one screen with another creates
 the arriving element before it removes the departing one, so what keeps the departing `Unregister`
-from taking the arriving registration with it is the ref timing above: every cleanup a pass owes runs
-before any setup it owes.
+from taking the arriving registration with it is the ref timing above.
 
 Moving the portal is an unmount and a remount, so child state, refs and effects do not survive it.
 

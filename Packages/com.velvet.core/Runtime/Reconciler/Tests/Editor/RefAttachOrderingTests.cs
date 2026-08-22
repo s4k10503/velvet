@@ -20,6 +20,9 @@ namespace Velvet.Tests
     /// <item>That order survives a pass split across slices, where the arrival is processed in one and
     /// the departure removed in a later one — including when an unrelated pass on the same context runs
     /// to completion in between, since the queue belongs to the context rather than to one pass.</item>
+    /// <item>What a parked pass holds back is its own entries. An unrelated pass ending on that same
+    /// context attaches the ref it created itself — early enough that the layout effect committed after
+    /// it reads that ref — and so does a virtual list rendering a range from a scroll.</item>
     /// <item>What a setup reads of an earlier setup's writes is this pass's, not the previous pass's:
     /// the queued setups run as one sequence, so nothing separates a pair of them.</item>
     /// <item>A setup whose own element leaves while it runs leaves no ref entry behind for it, and the
@@ -107,6 +110,44 @@ namespace Velvet.Tests
                 });
         }
 
+        private static VisualElement s_seenByLayoutEffect;
+
+        private static int s_layoutEffectRuns;
+
+        // Renders the measured element only after the click, so the layout effect that reads it commits
+        // in the same flush the element was created in — where the ref has to be attached already.
+        [Component]
+        private static VNode MeasuringHost()
+        {
+            var (measured, setMeasured) = Hooks.UseState(false);
+            var target = Hooks.UseRef<VisualElement>();
+            Hooks.UseLayoutEffect(() =>
+            {
+                if (measured)
+                {
+                    s_layoutEffectRuns++;
+                    s_seenByLayoutEffect = target.Current;
+                }
+                return (Action)null;
+            }, new object[] { measured });
+            return V.Div(children: new VNode[]
+            {
+                V.Button(name: "trigger", onClick: () => setMeasured.Invoke(true)),
+                measured ? V.Div(name: "measured", refCallback: target.SetElement) : null,
+            });
+        }
+
+        // Parks a pass on a Reconciler of the caller's choosing and reports whether it parked, for the
+        // caller to fold into its own assertion.
+        private static bool ParkAPassOn(Velvet.Reconciler reconciler)
+        {
+            var parkedRoot = new VisualElement();
+            var departing = TrackedListOf("departing");
+            reconciler.Reconcile(parkedRoot, Array.Empty<VNode>(), departing);
+            reconciler.Reconcile(parkedRoot, departing, TrackedListOf("arriving"), frameBudgetMs: 0.001);
+            return reconciler.HasPendingWork;
+        }
+
         private void DrainPendingWork(int maxIterations = 500)
         {
             var iterations = 0;
@@ -126,6 +167,8 @@ namespace Velvet.Tests
             s_log.Clear();
             s_selfRemoved = null;
             s_selfRemovedCleanups = 0;
+            s_seenByLayoutEffect = null;
+            s_layoutEffectRuns = 0;
         }
 
         public override void TearDown()
@@ -185,12 +228,12 @@ namespace Velvet.Tests
                 Is.EqualTo((true, false)));
         }
 
-        [Test]
-        public void Given_APassParkedWithASetupQueued_When_AnUnrelatedPassEndsOnTheSameContext_Then_TheDepartingCleanupStillRunsFirst()
+        // Resumes a slice at a time up to the boundary where the arrival's setup is queued and its
+        // departure is still in the tree, which is the window a shared queue opens. The first budgeted
+        // call alone does not reach it. Returns whether the window was reached, for the caller to fold
+        // into its own assertion.
+        private bool ParkAPassWithASetupQueued()
         {
-            // Arrange — resumed a slice at a time up to the boundary where the arrival's setup is queued
-            // and its departure is still in the tree, which is the window the queue's context-wide
-            // ownership opens. The first budgeted call alone does not reach it.
             var departing = TrackedListOf("departing");
             Reconciler.Reconcile(Root, Array.Empty<VNode>(), departing);
             s_log.Clear();
@@ -201,7 +244,14 @@ namespace Velvet.Tests
                 if (slices++ >= 500) Assert.Fail("no slice boundary left the arrival's setup queued");
                 Reconciler.ContinueReconcile(frameBudgetMs: 0.001);
             }
-            var parkedWithASetupQueued = Reconciler.HasPendingWork && QueuedRefSetupCount() == 1;
+            return Reconciler.HasPendingWork && QueuedRefSetupCount() == 1;
+        }
+
+        [Test]
+        public void Given_APassParkedWithASetupQueued_When_AnUnrelatedPassEndsOnTheSameContext_Then_TheDepartingCleanupStillRunsFirst()
+        {
+            // Arrange
+            var parkedWithASetupQueued = ParkAPassWithASetupQueued();
 
             // Act — a sibling fiber's Reconciler runs a pass of its own to completion on the shared context.
             using (var sibling = new Velvet.Reconciler(Reconciler.Context))
@@ -215,6 +265,85 @@ namespace Velvet.Tests
             // reaches the same order with nothing about the sibling measured.
             Assert.That((parkedWithASetupQueued, string.Join(",", s_log)),
                 Is.EqualTo((true, "detach:departing,attach:arriving")));
+        }
+
+        [Test]
+        public void Given_APassParkedWithASetupQueued_When_AnUnrelatedPassCarriesARefOfItsOwn_Then_ItIsAttachedByTheTimeThatPassEnds()
+        {
+            // Arrange
+            var parkedWithASetupQueued = ParkAPassWithASetupQueued();
+            var siblingRoot = new VisualElement();
+            VisualElement attached = null;
+
+            // Act
+            using (var sibling = new Velvet.Reconciler(Reconciler.Context))
+            {
+                sibling.Reconcile(siblingRoot, Array.Empty<VNode>(), new VNode[]
+                {
+                    V.Label(name: "unrelated", refCallback: element => { attached = element; return null; }),
+                });
+            }
+
+            // Assert — read beside the window, because a context holding no parked pass reaches the same
+            // attach with nothing this case is about measured. Taken before the parked pass is drained,
+            // which is the point the sibling's own effects would commit against.
+            Assert.That((parkedWithASetupQueued, ReferenceEquals(attached, siblingRoot.ElementAt(0))),
+                Is.EqualTo((true, true)));
+        }
+
+        // GREEN_ON_BASE(characterization): a layout effect reads the ref its own flush created.
+        // The base attaches that ref as the walk reaches the element, so the reading holds there without
+        // this branch's queue in the way. Moving the setup to the pass boundary has to keep it, and a
+        // pass parked on a Reconciler this flush does not own is what nearly took it away.
+        [Test]
+        public void Given_APassParkedOnTheSameContext_When_AnUnrelatedFlushCommitsALayoutEffect_Then_ItReadsTheRefThatFlushCreated()
+        {
+            // Arrange — the mounted tree and the parked pass share one context and hold a Reconciler each,
+            // which is what puts one pass's park in front of the other pass's boundary.
+            using var mounted = V.Mount(Root, V.Component(MeasuringHost, key: "host"));
+            using var parkedPass = new Velvet.Reconciler(mounted.Root.Reconciler.Context);
+            var parked = ParkAPassOn(parkedPass);
+
+            // Act
+            Root.Q<UnityEngine.UIElements.Button>("trigger").SimulateClick();
+
+            // Assert — the run count is read beside the reading, because an effect that never committed
+            // holds null for a reason this case is not about.
+            Assert.That((parked, s_layoutEffectRuns, s_seenByLayoutEffect != null),
+                Is.EqualTo((true, 1, true)));
+        }
+
+        // GREEN_ON_BASE(characterization): an item's ref is attached once the range update returns.
+        // The base attaches it as the item is created, with no queue for a parked pass to sit in front
+        // of. What this adds to the range-update case in VirtualListTests is the parked pass beside it,
+        // which is what the refusal this round replaced was keyed on.
+        [Test]
+        public void Given_APassParkedOnTheSameContext_When_AVirtualListRendersARangeFromAScroll_Then_TheItemRefIsAttached()
+        {
+            // Arrange — the park sits on a Reconciler of its own, so the range update below is driven from
+            // a scroll with no pass of its own on the stack, which is the controller drain's own entrance.
+            using var parkedPass = new Velvet.Reconciler(Reconciler!.Context);
+            var parked = ParkAPassOn(parkedPass);
+            VisualElement attached = null;
+            var node = V.VirtualList(
+                items: new[] { "a", "b", "c" },
+                keySelector: item => item,
+                itemHeight: 50f,
+                renderer: item => V.Label(text: item, key: item,
+                    refCallback: element => { attached = element; return null; }),
+                overscan: 0);
+            var scrollView = new ScrollView(ScrollViewMode.Vertical);
+            using var controller = new FiberVirtualListController(scrollView, node, Reconciler);
+            var visibleContainer = scrollView.contentContainer.ElementAt(1);
+
+            // Act
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 50f);
+
+            // Assert — read beside the park, because a context holding no parked pass reaches the same
+            // attach with nothing this case is about measured.
+            Assert.That(
+                (parked, ReferenceEquals(attached, visibleContainer.ElementAt(visibleContainer.childCount - 1))),
+                Is.EqualTo((true, true)));
         }
 
         // -1 where the context holds no such queue, so a tree that never had one disagrees with the
