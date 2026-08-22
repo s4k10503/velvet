@@ -67,7 +67,7 @@ namespace Velvet.Tests
             "RoslynAdditionalFileImporter", "DOTNET_ROOT", "StrykerOutput", "MSB4006", "USS001", "USS011",
             "VEL", "VEL500", "VEL501", "VEL502", "ProjectReference", "VEL503",
             "Save", "ForTest",
-            "NullReferenceException", "BringToFront", "SendToBack", "SetCursor", "AllocatingGCMemory",
+            "BringToFront", "SendToBack", "SetCursor", "AllocatingGCMemory",
             "UpdateForRepaint", "Alloc", "StandaloneOSX", "MacOS", "InitTestScene", "Unity_lic", "UE",
             "VELVET_STORY_CAPTURE_DIR",
             "Unreleased", "Highlights", "Added", "Changed", "Breaking", "YYYY", "MM", "DD"

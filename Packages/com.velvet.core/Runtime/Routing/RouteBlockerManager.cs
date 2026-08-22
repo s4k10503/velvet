@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
-using Cysharp.Threading.Tasks;
 
 namespace Velvet
 {
@@ -32,7 +31,7 @@ namespace Velvet
         /// </summary>
         /// <param name="shouldBlock">Async function that receives a navigation attempt and returns true to block.</param>
         /// <param name="state">State object for this blocker. <see cref="RouteBlockerState.Block"/> is invoked when blocking.</param>
-        public IDisposable Register(Func<NavigationAttempt, CancellationToken, UniTask<bool>> shouldBlock, RouteBlockerState state)
+        public IDisposable Register(Func<NavigationAttempt, CancellationToken, VelvetTask<bool>> shouldBlock, RouteBlockerState state)
         {
             var entry = new BlockerEntry { AsyncCheck = shouldBlock, State = state };
             _blockers.Add(entry);
@@ -53,7 +52,7 @@ namespace Velvet
         /// <param name="attempt">The navigation attempt being decided.</param>
         /// <param name="resume">Re-issues <paramref name="attempt"/>; invoked by <see cref="RouteBlockerState.Proceed"/>.</param>
         /// <param name="cancellationToken">Token forwarded to an asynchronous Blocker's predicate.</param>
-        internal async UniTask<bool> CheckAsync(NavigationAttempt attempt, Action resume,
+        internal async VelvetTask<bool> CheckAsync(NavigationAttempt attempt, Action resume,
             CancellationToken cancellationToken = default)
         {
             var anyBlocked = false;
@@ -199,7 +198,7 @@ namespace Velvet
         private sealed class BlockerEntry
         {
             public Func<NavigationAttempt, bool>? SyncCheck;
-            public Func<NavigationAttempt, CancellationToken, UniTask<bool>>? AsyncCheck;
+            public Func<NavigationAttempt, CancellationToken, VelvetTask<bool>>? AsyncCheck;
             public RouteBlockerState State = null!;
             public bool IsRegistered = true;
         }

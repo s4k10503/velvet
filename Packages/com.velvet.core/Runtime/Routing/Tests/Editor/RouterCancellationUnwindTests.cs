@@ -1,6 +1,5 @@
 using System.Collections;
 using System.Threading;
-using Cysharp.Threading.Tasks;
 using NUnit.Framework;
 using UnityEngine.TestTools;
 using Velvet;
@@ -52,7 +51,7 @@ namespace Velvet.Tests
 
         [UnityTest]
         public IEnumerator Given_BlockerHonorsToken_When_CancelledDuringBackAwait_Then_HistoryIndexIsUnchanged()
-            => UniTask.ToCoroutine(async () =>
+            => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
             var router = new Router(_routes);
@@ -77,7 +76,7 @@ namespace Velvet.Tests
 
         [UnityTest]
         public IEnumerator Given_GuardRedirect_When_CancelledDuringRedirectBlockerAwait_Then_NothingIsRecorded()
-            => UniTask.ToCoroutine(async () =>
+            => VelvetTask.ToCoroutine(async () =>
         {
             // The redirect target's own navigation is what parks on the blocker, so the cancellation surfaces
             // inside the await that RunGuardChecks wraps around it, with the whole redirect pair still
@@ -108,7 +107,7 @@ namespace Velvet.Tests
 
         [UnityTest]
         public IEnumerator Given_BlockerHonorsToken_When_CancelledWithNoFollowUpNavigation_Then_StatusReturnsToIdle()
-            => UniTask.ToCoroutine(async () =>
+            => VelvetTask.ToCoroutine(async () =>
         {
             // A caller-supplied token rather than a second navigation taking over: the newer navigation
             // would commit and set Status itself, masking whether this one cleaned up after itself.
@@ -134,7 +133,7 @@ namespace Velvet.Tests
 
         [UnityTest]
         public IEnumerator Given_SupersededBackUnwindsLate_When_NewerBackHasCommitted_Then_TheCommittedStateSurvives()
-            => UniTask.ToCoroutine(async () =>
+            => VelvetTask.ToCoroutine(async () =>
         {
             // The superseded attempt was parked while the newer Back committed, so the Idle status it would
             // put back describes a router that no longer exists — one with nothing in flight, where the newer
@@ -164,7 +163,7 @@ namespace Velvet.Tests
 
         [UnityTest]
         public IEnumerator Given_SupersededRedirectUnwindsLate_When_NewerNavigationHasPushed_Then_ItsHistorySurvives()
-            => UniTask.ToCoroutine(async () =>
+            => VelvetTask.ToCoroutine(async () =>
         {
             // The abandoned redirect wrote nothing, so the stack holds exactly what the newer navigation put
             // there: /home and the /x it pushed onto it.
@@ -198,7 +197,7 @@ namespace Velvet.Tests
 
         [UnityTest]
         public IEnumerator Given_SupersededBlockerReturnsLate_When_NewerBackHasCommitted_Then_IndexAndStatusSurvive()
-            => UniTask.ToCoroutine(async () =>
+            => VelvetTask.ToCoroutine(async () =>
         {
             // A blocker that awaits without forwarding the token returns "not blocked" instead of throwing,
             // so the abandoned attempt reaches the blocker check's own rollback rather than the exception
@@ -228,7 +227,7 @@ namespace Velvet.Tests
 
         [UnityTest]
         public IEnumerator Given_SupersededByAnUnmatchedPath_When_ItResumes_Then_TheStatusIsStillRestored()
-            => UniTask.ToCoroutine(async () =>
+            => VelvetTask.ToCoroutine(async () =>
         {
             // A navigation that matches no route returns before the claim is taken, so the parked attempt is
             // still the only holder and must put the status back — leaving it as the unmatched attempt did
@@ -257,7 +256,7 @@ namespace Velvet.Tests
 
         [UnityTest]
         public IEnumerator Given_SupersededRedirectReturnsLate_When_NewerNavigationHasPushed_Then_ItsHistorySurvives()
-            => UniTask.ToCoroutine(async () =>
+            => VelvetTask.ToCoroutine(async () =>
         {
             // The inner redirect returns Cancelled from its own blocker check instead of throwing, so it
             // reaches the returned-result exit rather than the exception one. That exit is the one that must
@@ -290,7 +289,7 @@ namespace Velvet.Tests
 
         [UnityTest]
         public IEnumerator Given_BlockerParkedAcrossDispose_When_DisposeCancelsIt_Then_TheDeadRouterIsNotWritten()
-            => UniTask.ToCoroutine(async () =>
+            => VelvetTask.ToCoroutine(async () =>
         {
             // Dispose retires the claim before cancelling, the opposite order to a navigation taking one.
             // A blocker of this shape unwinds synchronously inside that Cancel, so with the navigation

@@ -3,7 +3,6 @@ using System;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Threading;
-using Cysharp.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -2303,7 +2302,7 @@ namespace Velvet
             string? path,
             ComponentNode? element = null,
             string? scopeId = null,
-            Func<RouteLoaderContext, CancellationToken, UniTask<object>>? loader = null,
+            Func<RouteLoaderContext, CancellationToken, VelvetTask<object>>? loader = null,
             LoaderMode loaderMode = LoaderMode.Await,
             ComponentNode? errorElement = null,
             RouteDefinition[]? children = null,

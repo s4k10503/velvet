@@ -32,8 +32,8 @@ namespace Velvet.CodeGen
     // so a fresh record prop or a changed context value is treated as a miss rather than a stale hit.
     // Any shape the weaver cannot prove correct — a discarded hook result, a deconstruction that drops the
     // value element, a body that reaches a non-allow-listed hook, a call whose hook safety cannot be confirmed
-    // (Resolve() fails, or the call is an open virtual / interface dispatch outside the known BCL / Unity /
-    // UniTask carve-out — an override composing a hook can live in an assembly this scan never sees, regardless
+    // (Resolve() fails, or the call is an open virtual / interface dispatch outside the known BCL / Unity
+    // carve-out — an override composing a hook can live in an assembly this scan never sees, regardless
     // of whether the statically declared base/interface's own assembly references Velvet), a return before the
     // hook section, a hook skipped or repeated by a branch, a hook return consumed by an unsupported pattern, or
     // a protected region overlapping the hook section — is left byte-for-byte unchanged
@@ -619,7 +619,7 @@ namespace Velvet.CodeGen
         // fully populated by the recursive descent, so the second visit returns in O(1).
         private static bool CallsHookTransitively(MethodReference method, Dictionary<string, bool> cache)
         {
-            // A call into a well-known framework namespace (BCL / Unity / UniTask) cannot reach a Velvet hook,
+            // A call into a well-known framework namespace (BCL / Unity) cannot reach a Velvet hook,
             // so it calls no hook and needs neither Resolve() nor a body walk. This mirrors the namespace
             // short-circuit ReachesNonSafeHook already relies on, scoping the Resolve()/descent below to calls
             // that could plausibly compose a Velvet hook (Velvet DSL / app-defined custom hooks).
@@ -654,7 +654,7 @@ namespace Velvet.CodeGen
                 // assembly that references Velvet even when the statically declared base/interface's own
                 // assembly does not — checking the DECLARING assembly for a Velvet reference proves nothing
                 // about where an override can live. The CannotReachVelvetHook check above already excluded the
-                // only case this method can rule out (a BCL / Unity / UniTask namespace root); every other
+                // only case this method can rule out (a BCL / Unity namespace root); every other
                 // open dispatch reached this far is treated as reaching a hook, consistent with the safety
                 // gate below, which applies the identical rule.
                 cache[key] = true;
@@ -693,7 +693,7 @@ namespace Velvet.CodeGen
                 && PositionalHookMethodNames.Contains(method.Name)
                 && !IsDirectSafeHookCall(method);
 
-        // Namespace roots whose members cannot transitively reach a Velvet hook: the runtime / Unity / UniTask
+        // Namespace roots whose members cannot transitively reach a Velvet hook: the runtime / Unity
         // surfaces a component body calls for non-hook work (ToString, string.Concat, V is excluded as it lives
         // under Velvet). A call into one of these is a SAFE leaf, so the weaver neither resolves nor descends it.
         private static readonly string[] NonVelvetNamespaceRoots =
@@ -702,12 +702,11 @@ namespace Velvet.CodeGen
             "Unity.",
             "UnityEngine.",
             "UnityEditor.",
-            "Cysharp.",
             "Mono.",
         };
 
         // Returns true when method's declaring type lives in a framework namespace that
-        // cannot reach a Velvet hook. The check is conservative: only well-known runtime / Unity / UniTask
+        // cannot reach a Velvet hook. The check is conservative: only well-known runtime / Unity
         // roots short-circuit. Anything outside them (Velvet types, app-defined custom hooks, unknown
         // third-party code) is resolved and descended so a transitively composed hook is never missed.
         private static bool CannotReachVelvetHook(MethodReference method)
@@ -751,7 +750,7 @@ namespace Velvet.CodeGen
                 return IsDirectNonSafeHookCall(method);
             }
 
-            // A call into a well-known framework namespace (BCL / Unity / UniTask) cannot reach a Velvet hook,
+            // A call into a well-known framework namespace (BCL / Unity) cannot reach a Velvet hook,
             // so it is SAFE without resolving. This scopes the conservative Resolve-failure bail below to calls
             // that could plausibly compose a Velvet hook (Velvet DSL / app-defined custom hooks), instead of
             // bailing every component on an unresolvable BCL call like object.ToString or string.Concat.
@@ -790,7 +789,7 @@ namespace Velvet.CodeGen
                 // when the statically declared base/interface's own assembly does not — checking the
                 // DECLARING assembly for a Velvet reference proves nothing about where an override can live.
                 // The only case this weaver can rule out is the CannotReachVelvetHook namespace carve-out
-                // checked above (a BCL / Unity / UniTask virtual signature — e.g. ToString — cannot itself
+                // checked above (a BCL / Unity virtual signature — e.g. ToString — cannot itself
                 // declare a hook call, though a user override of one still could, which stays outside this
                 // static model and is a rules-of-hooks violation the analyzer layer reports). Every other
                 // open dispatch reached this far is unverifiable and folds into the non-SAFE bucket like a

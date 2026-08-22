@@ -72,6 +72,9 @@ namespace Velvet
     public sealed class NavigationAttempt { }
     public sealed class RouteBlockerState { }
 
+    public readonly struct VelvetTask<T> { }
+    public readonly struct VelvetTask { }
+
     public static partial class V
     {
         public static MemoNode Memoized(global::System.Func<VNode> factory) =>
@@ -122,10 +125,10 @@ namespace Velvet
             global::System.Func<global::Velvet.NavigationAttempt, bool> shouldBlock, params object[] deps) => null;
         public static global::Velvet.RouteBlockerState UseBlocker(
             global::System.Func<global::Velvet.NavigationAttempt, global::System.Threading.CancellationToken,
-                global::Cysharp.Threading.Tasks.UniTask<bool>> shouldBlock) => null;
+                global::Velvet.VelvetTask<bool>> shouldBlock) => null;
         public static global::Velvet.RouteBlockerState UseBlocker(
             global::System.Func<global::Velvet.NavigationAttempt, global::System.Threading.CancellationToken,
-                global::Cysharp.Threading.Tasks.UniTask<bool>> shouldBlock, params object[] deps) => null;
+                global::Velvet.VelvetTask<bool>> shouldBlock, params object[] deps) => null;
         public static (T value, global::Velvet.StateUpdater<T> setValue) UseState<T>(T initial) =>
             (initial, default);
         public static (T value, global::Velvet.StateUpdater<T> setValue) UseState<T>(global::System.Func<T> initialFactory) =>
@@ -170,28 +173,19 @@ namespace Velvet
     public sealed class MutationResult<TVariables, TData> { }
     public sealed record MutationOptions<TVariables, TData>(
         global::System.Func<TVariables, global::System.Threading.CancellationToken,
-            global::Cysharp.Threading.Tasks.UniTask<TData>> MutationFn,
+            global::Velvet.VelvetTask<TData>> MutationFn,
         global::System.Action<TData, TVariables>? OnSuccess = null,
         global::System.Action<global::System.Exception, TVariables>? OnError = null);
     public sealed record MutationOptions<TVariables>(
         global::System.Func<TVariables, global::System.Threading.CancellationToken,
-            global::Cysharp.Threading.Tasks.UniTask> MutationFn,
+            global::Velvet.VelvetTask> MutationFn,
         global::System.Action<TVariables>? OnSuccess = null,
         global::System.Action<global::System.Exception, TVariables>? OnError = null);
     public sealed record MutationOptions(
         global::System.Func<global::System.Threading.CancellationToken,
-            global::Cysharp.Threading.Tasks.UniTask> MutationFn,
+            global::Velvet.VelvetTask> MutationFn,
         global::System.Action? OnSuccess = null,
         global::System.Action<global::System.Exception>? OnError = null);
-}
-
-namespace Cysharp.Threading.Tasks
-{
-    // Stands in for the real UniTask<T> so UseBlocker's async overload keeps its true arity here.
-    public struct UniTask<T> { }
-
-    // The void mutations' MutationFn returns the non-generic form.
-    public struct UniTask { }
 }
 ";
 

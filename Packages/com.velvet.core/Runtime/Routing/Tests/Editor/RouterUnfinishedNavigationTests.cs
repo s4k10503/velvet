@@ -1,7 +1,6 @@
 using System;
 using System.Collections;
 using System.Threading;
-using Cysharp.Threading.Tasks;
 using NUnit.Framework;
 using UnityEngine.TestTools;
 using Velvet.TestUtilities;
@@ -46,7 +45,7 @@ namespace Velvet.Tests
 
         [UnityTest]
         public IEnumerator Given_ABackParkedInABlocker_When_APushCommitsMeanwhile_Then_TheEntryTheUserIsOnSurvives()
-            => UniTask.ToCoroutine(async () =>
+            => VelvetTask.ToCoroutine(async () =>
         {
             // The parked Back is the one navigation that could have removed /settings: a Push truncates the
             // forward entries above the index it reads, and the entry the user is on sits above the parked
@@ -76,7 +75,7 @@ namespace Velvet.Tests
 
         [UnityTest]
         public IEnumerator Given_AForwardParkedInABlocker_When_APushTakesOverItsSlot_Then_ItCommitsNothing()
-            => UniTask.ToCoroutine(async () =>
+            => VelvetTask.ToCoroutine(async () =>
         {
             // The Push truncates the forward entries, so the slot the parked Forward resolved onto holds the
             // pushed entry by the time the blocker releases.
@@ -111,7 +110,7 @@ namespace Velvet.Tests
 
         [UnityTest]
         public IEnumerator Given_ARedirectParkedInABlocker_When_ANewerNavigationCommits_Then_NoEntryForTheRedirectingPathRemains()
-            => UniTask.ToCoroutine(async () =>
+            => VelvetTask.ToCoroutine(async () =>
         {
             // The redirect's own target parks, so the originating path is as far as the attempt ever got. An
             // entry for it would sit in the stack for the rest of the session, and a Back onto it would re-run
@@ -140,7 +139,7 @@ namespace Velvet.Tests
 
         [UnityTest]
         public IEnumerator Given_AGuardThatThrows_When_TheExceptionReachesTheCaller_Then_TheRouterIsNoLongerInFlight()
-            => UniTask.ToCoroutine(async () =>
+            => VelvetTask.ToCoroutine(async () =>
         {
             // A Guard is an application delegate invoked with nothing between it and the caller. Leaving the
             // in-flight Status behind would make every UseNavigation consumer render its pending branch for
@@ -171,7 +170,7 @@ namespace Velvet.Tests
 
         [UnityTest]
         public IEnumerator Given_ARedirectTargetDeclaringBothRedirectToAndGuard_When_ItThrows_Then_TheOriginatingPathIsNotRecorded()
-            => UniTask.ToCoroutine(async () =>
+            => VelvetTask.ToCoroutine(async () =>
         {
             // The mutual-exclusion throw comes from inside the redirect target's own navigation, so the
             // originating path is the one an aborted attempt could leave on the stack.
@@ -200,7 +199,7 @@ namespace Velvet.Tests
 
         [UnityTest]
         public IEnumerator Given_ACommitThatThrows_When_TheExceptionReachesTheCaller_Then_TheRouterIsNoLongerInFlight()
-            => UniTask.ToCoroutine(async () =>
+            => VelvetTask.ToCoroutine(async () =>
         {
             // The commit is the last thing a navigation does and the only step after the phases, so an
             // exception raised there is the one an unwind handler placed around the phases alone would miss.
@@ -226,22 +225,23 @@ namespace Velvet.Tests
 
         [UnityTest]
         public IEnumerator Given_AnEntryCommittedWhileItsSuspendLoaderRuns_When_GoingBackToIt_Then_TheLoaderRunsAgain()
-            => UniTask.ToCoroutine(async () =>
+            => VelvetTask.ToCoroutine(async () =>
         {
             // The entry's snapshot is empty because the loader never resolved, which is indistinguishable by
             // content from a route whose loaders legitimately produced nothing.
             // Arrange
-            var unresolved = new UniTaskCompletionSource<object>();
             var loaderCalls = 0;
             var router = new Router(new[]
             {
                 Route("/", children: new[]
                 {
+                    // A source per call, not one shared: a VelvetTask carries a single awaiter, so handing
+                    // the same one back on the re-run throws where the first run is still parked on it.
                     Route("users/:id", loaderMode: LoaderMode.Suspend,
                         loader: (ctx, ct) =>
                         {
                             Interlocked.Increment(ref loaderCalls);
-                            return unresolved.Task;
+                            return new VelvetTaskCompletionSource<object>().Task;
                         }),
                     Route("other"),
                 }),
@@ -260,13 +260,13 @@ namespace Velvet.Tests
 
         [UnityTest]
         public IEnumerator Given_AStepOntoAnUnsettledEntryWhoseSuspendLoaderAnswersImmediately_When_TheEntryIsSteppedOntoAgain_Then_ItIsServedFromTheCache()
-            => UniTask.ToCoroutine(async () =>
+            => VelvetTask.ToCoroutine(async () =>
         {
             // A loader handed an already-complete task resolves inside the run that launched it, so its
             // completion reaches the router before this step has a location to write it under and is refused.
             // The commit is then the only thing left that can mark the entry finished.
             // Arrange
-            var unresolved = new UniTaskCompletionSource<object>();
+            var unresolved = new VelvetTaskCompletionSource<object>();
             var loaderCalls = 0;
             var router = new Router(new[]
             {
@@ -275,7 +275,7 @@ namespace Velvet.Tests
                     Route("users/:id", loaderMode: LoaderMode.Suspend,
                         loader: (ctx, ct) => Interlocked.Increment(ref loaderCalls) == 1
                             ? unresolved.Task
-                            : UniTask.FromResult((object)"user-data")),
+                            : VelvetTask.FromResult((object)"user-data")),
                     Route("other"),
                 }),
             });
@@ -309,9 +309,9 @@ namespace Velvet.Tests
                 Route("trigger", loader: (ctx, ct) =>
                 {
                     router.NavigateAsync("/target").Forget();
-                    return UniTask.FromResult<object>("trigger-data");
+                    return VelvetTask.FromResult<object>("trigger-data");
                 }),
-                Route("target", loader: (ctx, ct) => UniTask.FromResult<object>("target-data")));
+                Route("target", loader: (ctx, ct) => VelvetTask.FromResult<object>("target-data")));
 
             // Act
             var result = router.NavigateAsync("/trigger").GetAwaiter().GetResult();
@@ -335,7 +335,7 @@ namespace Velvet.Tests
                 Route("trigger", loader: (ctx, ct) =>
                 {
                     router.NavigateAsync("/target").Forget();
-                    return UniTask.FromResult<object>("trigger-data");
+                    return VelvetTask.FromResult<object>("trigger-data");
                 }),
                 Route("target"));
 

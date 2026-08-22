@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
-using Cysharp.Threading.Tasks;
 
 namespace Velvet
 {
@@ -77,7 +76,7 @@ namespace Velvet
             var round = new LoaderRound();
             _currentRound = round;
 
-            var awaitTasks = new List<(string? routeId, UniTask<object> task)>();
+            var awaitTasks = new List<(string? routeId, VelvetTask<object> task)>();
 
             foreach (var match in matches)
             {
@@ -96,7 +95,7 @@ namespace Velvet
 
                 var key = match.RouteId;
 
-                UniTask<object> task;
+                VelvetTask<object> task;
                 try
                 {
                     task = route.Loader(loaderContext, roundToken);
@@ -147,7 +146,7 @@ namespace Velvet
             return round;
         }
 
-        private async UniTask RunSuspendLoader(string? routeId, UniTask<object> task, CancellationTokenSource ownCts,
+        private async VelvetTask RunSuspendLoader(string? routeId, VelvetTask<object> task, CancellationTokenSource ownCts,
             LoaderRound round)
         {
             try
