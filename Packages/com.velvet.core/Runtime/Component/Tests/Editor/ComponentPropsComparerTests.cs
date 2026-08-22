@@ -144,8 +144,7 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(characterization): the answer a bare string props value already gives.
         // What shows it can fail is IsPropsBag's route past the member walk deleted, so a props value
-        // that is not a bag takes that walk too, measured on this branch: eight cases in this fixture
-        // redden under it, this one among them.
+        // that is not a bag takes that walk too: measured, this case reddens.
         [Test]
         public void Given_BareStringProps_When_ContentDiffersAtEqualLength_Then_IsNotEqual()
         {
@@ -167,8 +166,8 @@ namespace Velvet.Tests
         // GREEN_ON_BASE(characterization): the raw-bit answer a bare float props value already gives.
         // The fixture reached that answer through a member and through a value type's leaf, and never
         // with the float as the props value itself. What shows the case can fail is AreEqualObjects'
-        // raw-bit float branch deleted so a boxed float falls to its own Equals, measured on this
-        // branch: two cases in this fixture redden under it, this one among them.
+        // raw-bit float branch deleted so a boxed float falls to its own Equals: measured, this case
+        // reddens.
         [Test]
         public void Given_BareFloatProps_When_OnlyTheZeroSignDiffers_Then_IsNotEqual()
         {
@@ -180,8 +179,7 @@ namespace Velvet.Tests
         // GREEN_ON_BASE(characterization): the raw-bit answer a bare double props value already gives.
         // A double is decided on a branch of its own, so the float case above does not stand in for it:
         // deleting the raw-bit float branch leaves this pair unequal. What shows this case can fail is
-        // the raw-bit double branch deleted, measured on this branch: this case is the only one in this
-        // fixture that reddens under it.
+        // the raw-bit double branch deleted: measured, this case reddens.
         [Test]
         public void Given_BareDoubleProps_When_OnlyTheZeroSignDiffers_Then_IsNotEqual()
         {
