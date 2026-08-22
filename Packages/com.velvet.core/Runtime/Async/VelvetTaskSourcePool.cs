@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using UnityEngine;
 
 namespace Velvet
 {
@@ -110,84 +109,6 @@ namespace Velvet
             if (source.IsPooled)
             {
                 throw new InvalidOperationException("The YieldVelvetTaskSource has already been returned to the pool.");
-            }
-
-            source.MarkPooled();
-            if (Sources.Count < MaxPoolSize)
-            {
-                Sources.Push(source);
-            }
-        }
-    }
-
-    internal static class AwaitableVelvetTaskSourcePool
-    {
-        const int MaxPoolSize = 64;
-
-        static readonly Stack<AwaitableVelvetTaskSource> Sources = new();
-
-        internal static AwaitableVelvetTaskSource Rent(Awaitable awaitable)
-        {
-            AwaitableVelvetTaskSource source;
-            if (Sources.Count == 0)
-            {
-                source = new AwaitableVelvetTaskSource();
-            }
-            else
-            {
-                source = Sources.Pop();
-                source.ClearPooled();
-                source.ResetForPool();
-            }
-
-            source.Initialize(awaitable);
-            return source;
-        }
-
-        internal static void Return(AwaitableVelvetTaskSource source)
-        {
-            if (source.IsPooled)
-            {
-                throw new InvalidOperationException("The AwaitableVelvetTaskSource has already been returned to the pool.");
-            }
-
-            source.MarkPooled();
-            if (Sources.Count < MaxPoolSize)
-            {
-                Sources.Push(source);
-            }
-        }
-    }
-
-    internal static class AwaitableVelvetTaskSourcePool<T>
-    {
-        const int MaxPoolSize = 64;
-
-        static readonly Stack<AwaitableVelvetTaskSource<T>> Sources = new();
-
-        internal static AwaitableVelvetTaskSource<T> Rent(Awaitable<T> awaitable)
-        {
-            AwaitableVelvetTaskSource<T> source;
-            if (Sources.Count == 0)
-            {
-                source = new AwaitableVelvetTaskSource<T>();
-            }
-            else
-            {
-                source = Sources.Pop();
-                source.ClearPooled();
-                source.ResetForPool();
-            }
-
-            source.Initialize(awaitable);
-            return source;
-        }
-
-        internal static void Return(AwaitableVelvetTaskSource<T> source)
-        {
-            if (source.IsPooled)
-            {
-                throw new InvalidOperationException("The AwaitableVelvetTaskSource has already been returned to the pool.");
             }
 
             source.MarkPooled();

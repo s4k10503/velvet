@@ -345,14 +345,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   A bare value type is now decided the way a value-type member is, which runs the other way
   where a bare struct holds a record class: one of equal content bails where it used to re-render, the
   member walk having read that record by its instance.
-- Async APIs return `VelvetTask` / `VelvetTask<T>` where they returned UniTask's types: `Router.NavigateAsync`,
-  `Router.GoBack`, `Router.GoForward`, `Hooks.UseNavigate`, `Hooks.Use`, the asynchronous `Hooks.UseBlocker`
-  overloads, `RouteDefinition.Loader` and every `MutationOptions.MutationFn`. Velvet ships the awaitable
+- Every public signature that named a UniTask type now names `VelvetTask` / `VelvetTask<T>`, and they do
+  not all name it in the same position. Returning one: `Router.NavigateAsync`, `Router.GoBack`,
+  `Router.GoForward`, `MutationResult.MutateAsync` and the no-argument `MutationResultExtensions`
+  shorthand beside it. Returning a delegate that returns one: `Hooks.UseNavigate`. Taking a delegate that
+  returns one: the asynchronous `Hooks.UseBlocker` overloads, both `Hooks.Use` overloads,
+  `V.Route(loader:)`, `RouteBlockerManager.Register`, each `MutationOptions` constructor, and
+  `TransitionStarter.Invoke` — the async form of the starter `Hooks.UseTransition` hands back, which takes
+  a `Func<VelvetTask>` and returns `void`, so it changes type without returning a task at all. Holding one:
+  `RouteDefinition.Loader` and each `MutationOptions.MutationFn`. Velvet ships the awaitable
   itself under `Velvet`, so UniTask is no longer a package dependency and installing Velvet is a single
-  package add. A caller's own loaders, blockers and mutation functions change type with them: a declaration
-  becomes `async VelvetTask<T>`, a value already to hand comes from `VelvetTask.FromResult`, a source the
-  caller completes by hand is a `VelvetTaskCompletionSource<T>`, and `VelvetTask.FromAwaitable` turns a
-  `UnityEngine.Awaitable` into one. Reading a suspended task's result a second
+  package add. A caller's own loaders, blockers, mutation functions and transition actions change type with
+  them: a declaration becomes `async VelvetTask<T>`, a value already to hand comes from
+  `VelvetTask.FromResult`, and a source the caller completes by hand is a `VelvetTaskCompletionSource<T>`.
+  Inside an `async VelvetTask` body a `UnityEngine.Awaitable` and a `System.Threading.Tasks.Task` are
+  awaited as they stand, with no conversion. Reading a suspended task's result a second
   time throws `InvalidOperationException`, where UniTask returned reset state; a task completed inline —
   `VelvetTask.FromResult`, and an `async` method that returned without suspending — may be read more than
   once, as UniTask allowed. A suspended task also carries one awaiter, so any delegate Velvet invokes more

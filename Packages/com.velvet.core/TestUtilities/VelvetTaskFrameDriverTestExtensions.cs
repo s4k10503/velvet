@@ -4,10 +4,6 @@ using System.Reflection;
 
 namespace Velvet.TestUtilities
 {
-    /// <summary>
-    /// Drains one <c>VelvetTaskFrameDriver</c> editor-update pass synchronously, standing in for
-    /// <c>EditorApplication.update</c> ticks that EditMode batchmode does not schedule on its own.
-    /// </summary>
     internal static class VelvetTaskFrameDriverTestExtensions
     {
         const string DriverTypeName = "Velvet.VelvetTaskFrameDriver";
