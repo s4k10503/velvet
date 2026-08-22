@@ -267,6 +267,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   gated on the key being omitted, and an omitted key is the factory delegate, which a delegate's own
   identity comparison covers either way. A key of any other reference type is still compared by
   instance, so that omitted-key behaviour is unchanged.
+- A subscriber that throws while a `LoaderMode.Suspend` loader is resolving no longer corrupts the
+  round that loader belonged to. The router answers a resolution by re-emitting the location, so a
+  `Router.OnLocationChanged` subscriber can run behind that announcement — and a throw from one was
+  caught by the clauses that exist for the loader itself. That counted the round's outstanding loader
+  off a second time, to a pending count of −1 which nothing afterwards raises back to zero, and
+  recorded the throw as that route's loader error. So a caller reading the route's loader error saw a
+  load failure that had not happened, the console carried the subscriber's exception under the name of
+  that failure, and the history entry stayed unsettled — a Back or Forward to it re-ran the loader
+  instead of being served from the cache. The throw is now reported as the subscriber's own and the
+  round stands as the loader left it, with its result recorded and no error. A subscriber throwing out
+  of the failure announcement is reported the same way, where it used to be left to whatever observes a
+  forgotten task.
 
 ## [Unreleased — breaking]
 

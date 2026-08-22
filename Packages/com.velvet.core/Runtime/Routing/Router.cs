@@ -72,7 +72,9 @@ namespace Velvet
 
         /// <summary>
         /// Raised after each successful navigation with the new location. Also re-emitted (with a fresh
-        /// location identity) when a Suspend-mode loader resolves within the current location.
+        /// location identity) when a Suspend-mode loader resolves within the current location. A subscriber
+        /// that throws out of that re-emit is reported to the console and the resolution stands: the loader's
+        /// round settles and the route keeps the result the loader produced.
         /// </summary>
         public event Action<RouterLocation> OnLocationChanged = null!;
 
