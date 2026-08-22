@@ -46,6 +46,8 @@ namespace Velvet.Tests
 
         private readonly record struct NestingStruct(DepRec Held);
 
+        private readonly record struct DepFloatStruct(float Value);
+
         private enum Color { Red, Green }
 
         [Test]
@@ -157,6 +159,21 @@ namespace Velvet.Tests
                     new object[] { new DepRecStruct(1) },
                     new object[] { new DepRecStruct(1) }),
                 Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): this case adds no production change — it pins where the value
+        // branch stops, which the base already decides this way — so it is green on both sides. What shows
+        // it can fail is a float-leaf reading added to that branch, the one the props bail carries: this
+        // case is the only one in the fixture that reddens under it.
+        [Test]
+        public void Given_FloatBearingRecordStructElement_When_OnlyTheZeroSignDiffers_Then_AreEqual()
+        {
+            // Arrange — the same pair compared as props members is not equal, and this is where the two part
+            var a = new object[] { new DepFloatStruct(0f) };
+            var b = new object[] { new DepFloatStruct(-0f) };
+
+            // Act + Assert
+            Assert.That(ObjectIs.AreEqualDeps(a, b), Is.True);
         }
 
         // GREEN_ON_BASE(characterization): this case adds no production change — it pins how far the value
