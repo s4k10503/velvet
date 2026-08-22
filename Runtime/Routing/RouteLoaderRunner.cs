@@ -153,7 +153,33 @@ namespace Velvet
             try
             {
                 _activeSuspendTaskCount++;
-                var result = await task;
+                object result;
+                // Only the await is inside: an announcement made from within it is taken for the loader by
+                // the clauses that follow — the round's pending loader counted off a second time, and the
+                // general clause filing the throw as the route's load error besides. What the second count
+                // costs depends on how many loaders the round holds: one leaves it at -1 and permanently
+                // unsettled, two leave it at 0 and settled while the second loader is still outstanding.
+                try
+                {
+                    result = await task;
+                }
+                catch (OperationCanceledException)
+                {
+                    round.Pending--;
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    round.Pending--;
+                    // Recorded ahead of the supersession guard, as the success path records its result: Pending
+                    // is counted off whatever the round's currency, so a round that recorded nothing for a route
+                    // it counted off would report itself settled holding neither a result nor a failure for it.
+                    round.Errors[routeId] = ex;
+                    if (ownCts != _cts) return;
+                    Announce(OnSuspendLoaderFailed, routeId, ex);
+                    return;
+                }
+
                 // Counted off before the supersession check and before the event, not in the finally below: a
                 // superseded round is still owed this task's departure, and a subscriber reading the round
                 // from inside the callback — the router's history write-back does — must see it already gone.
@@ -166,25 +192,25 @@ namespace Velvet
                 // That makes this a superseded round: its own record above stands, and what must not happen
                 // is announcing it into the live state of an unrelated current location.
                 if (ownCts != _cts) return;
-                OnSuspendLoaderCompleted?.Invoke(routeId, result);
-            }
-            catch (OperationCanceledException)
-            {
-                round.Pending--;
-            }
-            catch (Exception ex)
-            {
-                round.Pending--;
-                // Recorded ahead of the supersession guard, as the success path records its result: Pending is
-                // counted off whatever the round's currency, so a round that recorded nothing for a route it
-                // counted off would report itself settled holding neither a result nor a failure for it.
-                round.Errors[routeId] = ex;
-                if (ownCts != _cts) return;
-                OnSuspendLoaderFailed?.Invoke(routeId, ex);
+                Announce(OnSuspendLoaderCompleted, routeId, result);
             }
             finally
             {
                 _activeSuspendTaskCount--;
+            }
+        }
+
+        // Reported rather than left to escape, because RunLoadersSync forgets this task: escaping hands the
+        // report to whoever observes a forgotten one instead of to the runner that made the call.
+        private static void Announce<T>(Action<string?, T>? subscribers, string? routeId, T payload)
+        {
+            try
+            {
+                subscribers?.Invoke(routeId, payload);
+            }
+            catch (Exception announcementFailure)
+            {
+                FiberLogger.LogException(nameof(RouteLoaderRunner), announcementFailure);
             }
         }
 
