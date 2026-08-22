@@ -14,7 +14,9 @@ boundary: `EditorApplication.update` while the editor is not in Play Mode, and a
 PlayerLoop `Update` pass in Play Mode and in player builds.
 
 Other `Awaitable` continuations wrapped by `VelvetTask` (for example `Awaitable.EndOfFrameAsync()`)
-are not driven by this editor hook — use PlayMode tests or `VelvetTask.ToCoroutine` with
-`yield return null` when a test must span frames without Play Mode.
+are driven by neither hook, and moving a test to PlayMode does not settle them on its own:
+`AwaitableSecondConsumePlayModeTests` pins `Awaitable.EndOfFrameAsync()` as still not completed
+after three PlayMode frames. Drive a frame-spanning test with `VelvetTask.Yield()`, which both hooks
+do complete.
 
 See [react-migration.md](react-migration.md) for how async hooks and routing loaders map from React.

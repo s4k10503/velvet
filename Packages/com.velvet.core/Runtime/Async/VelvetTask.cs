@@ -285,7 +285,11 @@ namespace Velvet
             where TAwaiter : INotifyCompletion
             where TStateMachine : IAsyncStateMachine
         {
-            _runner ??= AsyncVelvetTaskMethod<TStateMachine>.Rent(ref stateMachine);
+            if (_runner == null)
+            {
+                AsyncVelvetTaskMethod<TStateMachine>.Rent(ref stateMachine, ref _runner);
+            }
+
             awaiter.OnCompleted(_runner.MoveNext);
         }
 
@@ -293,7 +297,11 @@ namespace Velvet
             where TAwaiter : ICriticalNotifyCompletion
             where TStateMachine : IAsyncStateMachine
         {
-            _runner ??= AsyncVelvetTaskMethod<TStateMachine>.Rent(ref stateMachine);
+            if (_runner == null)
+            {
+                AsyncVelvetTaskMethod<TStateMachine>.Rent(ref stateMachine, ref _runner);
+            }
+
             awaiter.UnsafeOnCompleted(_runner.MoveNext);
         }
     }
@@ -362,7 +370,11 @@ namespace Velvet
             where TAwaiter : INotifyCompletion
             where TStateMachine : IAsyncStateMachine
         {
-            _runner ??= AsyncVelvetTaskMethod<TStateMachine, T>.Rent(ref stateMachine);
+            if (_runner == null)
+            {
+                AsyncVelvetTaskMethod<TStateMachine, T>.Rent(ref stateMachine, ref _runner);
+            }
+
             awaiter.OnCompleted(_runner.MoveNext);
         }
 
@@ -370,7 +382,11 @@ namespace Velvet
             where TAwaiter : ICriticalNotifyCompletion
             where TStateMachine : IAsyncStateMachine
         {
-            _runner ??= AsyncVelvetTaskMethod<TStateMachine, T>.Rent(ref stateMachine);
+            if (_runner == null)
+            {
+                AsyncVelvetTaskMethod<TStateMachine, T>.Rent(ref stateMachine, ref _runner);
+            }
+
             awaiter.UnsafeOnCompleted(_runner.MoveNext);
         }
     }

@@ -15,7 +15,7 @@ namespace Velvet.TestUtilities
 
         static readonly Action DrainEditorUpdate = CreateDrainDelegate();
 
-        // Bypasses: the update callback: production registers DrainScheduledYields as EditorApplication.update's OnEditorUpdate and as the PlayerLoop Update system's OnPlayerLoopUpdate, and calls it from neither.
+        // Bypasses: both routes production drains through, EditorApplication.update's OnEditorUpdate and the PlayerLoop Update system's OnPlayerLoopUpdate, invoking DrainScheduledYields directly instead.
         internal static void DrainEditorUpdateForTest() => DrainEditorUpdate();
 
         static Action CreateDrainDelegate()

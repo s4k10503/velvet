@@ -34,7 +34,6 @@ namespace Velvet
     internal sealed class FiberAsyncResource<T> : IFiberAsyncResource
     {
         private readonly CancellationTokenSource _cts = new();
-        private readonly CancellationToken _cancellationToken;
         private bool _disposed;
 
         public object ResourceKey { get; }
@@ -47,7 +46,6 @@ namespace Velvet
         public FiberAsyncResource(object resourceKey)
         {
             ResourceKey = resourceKey;
-            _cancellationToken = _cts.Token;
         }
 
         public void Start(Func<CancellationToken, VelvetTask<T>> factory)
@@ -61,7 +59,7 @@ namespace Velvet
             VelvetTask<T> task;
             try
             {
-                task = factory(_cancellationToken);
+                task = factory(_cts.Token);
             }
             catch (Exception ex)
             {

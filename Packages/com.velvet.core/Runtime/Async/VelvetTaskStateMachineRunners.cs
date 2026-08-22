@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 
 namespace Velvet
@@ -54,7 +55,10 @@ namespace Velvet
 
         public short Version => _core.Version;
 
-        public static IVelvetTaskStateMachineRunner Rent(ref TStateMachine stateMachine)
+        // The runner reaches the builder's field before the state machine is copied onto it: a struct
+        // state machine copies by value, so a copy taken first carries a null runner, and neither
+        // SetResult nor SetException on the resumed copy then reaches the task the caller holds.
+        public static void Rent(ref TStateMachine stateMachine, [NotNull] ref IVelvetTaskStateMachineRunner? field)
         {
             AsyncVelvetTaskMethod<TStateMachine> runner;
             if (Pool.Count == 0)
@@ -67,10 +71,10 @@ namespace Velvet
                 runner._core.Reset();
             }
 
+            field = runner;
             runner._stateMachine = stateMachine;
             runner._boxedStateMachine = null;
             runner._returnedToPool = false;
-            return runner;
         }
 
         public void SetStateMachine(IAsyncStateMachine stateMachine) =>
@@ -156,7 +160,8 @@ namespace Velvet
 
         public short Version => _core.Version;
 
-        public static IVelvetTaskStateMachineRunner<T> Rent(ref TStateMachine stateMachine)
+        // Same publish-before-copy ordering as the non-generic AsyncVelvetTaskMethod.
+        public static void Rent(ref TStateMachine stateMachine, [NotNull] ref IVelvetTaskStateMachineRunner<T>? field)
         {
             AsyncVelvetTaskMethod<TStateMachine, T> runner;
             if (Pool.Count == 0)
@@ -169,10 +174,10 @@ namespace Velvet
                 runner._core.Reset();
             }
 
+            field = runner;
             runner._stateMachine = stateMachine;
             runner._boxedStateMachine = null;
             runner._returnedToPool = false;
-            return runner;
         }
 
         public void SetStateMachine(IAsyncStateMachine stateMachine) =>

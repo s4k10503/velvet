@@ -9,9 +9,6 @@ using UnityEditor;
 
 namespace Velvet
 {
-    // EditMode batchmode does not tick the PlayerLoop, so frame-bound VelvetTask.Yield continuations
-    // register on EditorApplication.update there. In Play Mode and player builds they register on the
-    // PlayerLoop Update pass instead.
     internal static class VelvetTaskFrameDriver
     {
         const int InitialQueueCapacity = 64;
@@ -36,7 +33,9 @@ namespace Velvet
         {
             _waitQueue.Remove(source);
             _runQueue.Remove(source);
+#if UNITY_EDITOR
             MaybeUnhookEditorUpdate();
+#endif
         }
 
         static void EnsureScheduled()

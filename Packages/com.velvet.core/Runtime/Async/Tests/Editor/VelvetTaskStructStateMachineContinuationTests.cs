@@ -12,6 +12,9 @@ namespace Velvet.Tests
     [TestFixture]
     internal sealed class VelvetTaskStructStateMachineContinuationTests
     {
+        // MoveNext makes no Builder.SetStateMachine call. That call boxes this struct after
+        // AwaitOnCompleted has populated its builder, so Run would resume the box instead of the copy
+        // Rent took, and an unset runner on that copy would never show.
         struct TwoYieldStructStateMachine : IAsyncStateMachine
         {
             public int State;
@@ -33,7 +36,6 @@ namespace Velvet.Tests
                         {
                             State = 0;
                             Builder.AwaitOnCompleted(ref _awaiter1, ref this);
-                            Builder.SetStateMachine(this);
                             return;
                         }
                     }
@@ -60,7 +62,6 @@ namespace Velvet.Tests
                     {
                         State = 1;
                         Builder.AwaitOnCompleted(ref _awaiter2, ref this);
-                        Builder.SetStateMachine(this);
                         return;
                     }
 
@@ -89,7 +90,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_CompiledAsyncStateMachineForAccumulateAcrossTwoYields_When_Reflected_Then_IsValueTypeMatchesPinnedExpectation()
+        public void Given_EditorCompiledAsyncMethod_When_StateMachineReflected_Then_IsClassRatherThanStruct()
         {
             // Arrange
             var stateMachineType = Array.Find(
@@ -101,7 +102,9 @@ namespace Velvet.Tests
             // Act
             var isValueType = stateMachineType!.IsValueType;
 
-            // Assert — editor script compilation emits class state machines for this fixture.
+            // Assert — a class state machine is shared with the runner by reference, so a builder field
+            // written after Rent's copy still reaches it. The value-type path where that copy loses the
+            // write is reached here only through the hand-rolled TwoYieldStructStateMachine.
             Assert.That(isValueType, Is.False);
         }
 
