@@ -62,6 +62,9 @@ UNITY_RUNNING = "^/Applications/.*/MacOS/Unity -runTests"
 # mutation there reads as an interrupted implementation.
 SENTINEL = "MUTATION_IN_PROGRESS.json"
 
+PACKAGE = "Packages/com.velvet.core"
+REFUSAL_BASELINE = "scripts/test_quality/logic_refusal_baseline.txt"
+
 KILLED = "killed"
 TIMED_OUT = "not measured (timed out)"
 SURVIVED = "survived"
@@ -409,11 +412,30 @@ GUARD_STATEMENT = re.compile(r"^if \(.+\)\s*(?:return[^;]*|continue|break);$")
 # `MutantDeclarationRemovalTests` is the reading -- of the declaration and of the `out` assignment
 # both -- so a spelling missing from here is one red line there, and so is any narrowing that lets a
 # removal carry off an `out` argument spelled as a bare name.
-DECLARES_A_NAME = re.compile(
-    r"\bvar\s*\("
-    r"|\bout\b(?!\s*(?:_|[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+)\s*[,)])"
-    r"|\bis\s+(?:not\s+)?(?!not\b)"
+# The last two arms are read on their own by `binds_a_name_conditionally`, which asks which paths
+# reach a binding rather than whether a removal carries one off.
+DECONSTRUCTION = re.compile(r"\bvar\s*\(")
+OUT_ARGUMENT = re.compile(r"\bout\b(?!\s*(?:_|[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+)\s*[,)])")
+PATTERN_DESIGNATION = re.compile(
+    r"\bis\s+(?:not\s+)?(?!not\b)"
     r"(?:var\s+|[A-Za-z_][\w.<>\[\]?]*\s+|[{\[][^;]*[}\]]\s+)[A-Za-z_]")
+DECLARES_A_NAME = re.compile("|".join(
+    (DECONSTRUCTION.pattern, OUT_ARGUMENT.pattern, PATTERN_DESIGNATION.pattern)))
+
+# `out spec` naming a variable rather than declaring one, which is the spelling a flip need not
+# strand: unlike a declaration, the name can have been written before the statement runs.
+OUT_BARE_NAME = re.compile(r"\bout\s+([A-Za-z_]\w*)\s*[,)]")
+
+# What has to stand in front of a write for `assigned_above` to read it as the block's own. `:` is a
+# STATEMENT_BOUNDARY and is left out here because a write standing behind one need not have run: a
+# ternary's arm is entered on one side of its condition only. Inside a switch the same exclusion
+# refuses a write standing first in the flip's own arm, which does reach the flip on every path -- a
+# cost of the reading rather than its reason, since the arm above the flip's is SWITCH_LABEL's.
+ASSIGNMENT_LEAD = (";", "{", "}")
+
+# The label the walk cannot pass: the arm behind one is entered without the arm above it having run.
+# `default` is spelled with its colon because the word is also an expression.
+SWITCH_LABEL = re.compile(r"^(?:case\b|default\s*:)")
 
 
 # Braces and brackets count towards depth as well as parentheses. A property pattern puts a colon
@@ -556,6 +578,141 @@ def deletable_line(text, mask, spans, number):
     return not code_below(text, mask, spans, number).startswith("else")
 
 
+def groups_left_open(code):
+    return sum(code.count(mark) for mark in OPENING) - sum(code.count(mark) for mark in CLOSING)
+
+
+def statement_span(text, mask, spans, number):
+    """The first and last line of the statement holding line `number`, one-based and inclusive.
+
+    Bounded by the code the mask leaves rather than by the raw lines, in both directions, so a comment
+    between two continuation lines does not end a statement.
+
+    A brace the statement itself holds -- a list or property pattern, a lambda body -- is in
+    STATEMENT_BOUNDARY, so a walk stopping at every boundary reads one statement as two. The group
+    count is what carries the span past it. Downwards it stops counting once the groups balance,
+    because the brace after a balanced condition opens the block it guards rather than continuing it.
+    """
+    first = number
+    open_groups = groups_left_open(code_only(text, mask, *spans[number - 1]))
+    while first > 1:
+        if (open_groups >= 0
+                and code_only(text, mask, *spans[first - 2]).strip().endswith(STATEMENT_BOUNDARY)):
+            break
+        first -= 1
+        open_groups += groups_left_open(code_only(text, mask, *spans[first - 1]))
+    last = number
+    while last < len(spans):
+        if (open_groups <= 0
+                and code_only(text, mask, *spans[last - 1]).strip().endswith(STATEMENT_BOUNDARY)):
+            break
+        carrying = open_groups > 0
+        last += 1
+        if carrying:
+            open_groups += groups_left_open(code_only(text, mask, *spans[last - 1]))
+    return first, last
+
+
+def assigned_above(text, mask, spans, number, name):
+    """Whether a write to `name` above line `number` reaches it on every path.
+
+    Three readings of the text, none of them definite assignment. The write is in the block holding
+    line `number` rather than one nested in it; the code in front of it ended a statement; and no
+    switch label stands between the two. The brace count is the first of those on its own, and a
+    braceless body opens no brace for it -- so without the second, the write `if (fallback)` guards
+    reads the same as an unguarded one.
+
+    A write in an enclosing block reaches line `number` on every path too and is passed over anyway,
+    since a walk that left the block would have to tell a member's own writes from a field
+    initialiser, which a local of the same name shadows.
+    """
+    # `else` stands where a declaration's type stands, so the pattern would otherwise read the
+    # braceless body written on the header's own line as one -- and that body has no line above it
+    # for the lead below to refuse.
+    written = re.compile(r"^(?:(?!else\b)[\w.<>\[\]?]+\s+)?" + re.escape(name)
+                         + r"\s*(?<![-+*/%&|^!<>=])=(?![=>])")
+    depth = 0
+    for above in range(number - 1, 0, -1):
+        code = code_only(text, mask, *spans[above - 1]).strip()
+        depth += code.count("}") - code.count("{")
+        if depth < 0:
+            return False
+        if depth != 0:
+            continue
+        if SWITCH_LABEL.match(code):
+            return False
+        if not written.match(code):
+            continue
+        lead = code_above(text, mask, spans, above)
+        if not lead or lead.endswith(ASSIGNMENT_LEAD):
+            return True
+    return False
+
+
+def binds_a_name_conditionally(text, mask, spans, number):
+    """Whether the statement holding line `number` binds a name on only some of the paths through it.
+
+    Flipping a join there can leave a read of that name unassigned, and the mutant then compiles
+    nowhere -- the outcome DECLARES_A_NAME refuses for a removal, reached by a rewrite. Whether such a
+    read exists is definite assignment, which a pattern over the text cannot decide, so what is refused
+    is the statement that could strand one rather than the statement that does. The answer is the
+    statement's rather than one join's, because a join in front of the binding strands it as surely as
+    one behind, and because the read left unassigned can sit in the block the condition guards, which
+    no reading of the condition alone reaches.
+
+    A pattern designation binds only where the pattern matched, so each one this reads counts. An `out`
+    argument is refused from the first join along, since flipping a join cannot stop a condition's first
+    clause from running -- a reading of the clauses rather than of what runs inside one, and
+    `Generators~/README.md` is where that gap is measured. An `out` naming a variable rather than
+    declaring one is exempt where `assigned_above` finds a write, which is that reading's own.
+    """
+    first, last = statement_span(text, mask, spans, number)
+    statement = " ".join(code_only(text, mask, *spans[line - 1]).strip()
+                         for line in range(first, last + 1))
+    if PATTERN_DESIGNATION.search(statement):
+        return True
+    for found in OUT_ARGUMENT.finditer(statement):
+        named = OUT_BARE_NAME.match(statement, found.start())
+        if named and assigned_above(text, mask, spans, first, named.group(1)):
+            continue
+        if any(statement.find(join, 0, found.start()) >= 0 for join in LOGIC_JOINS):
+            return True
+    return False
+
+
+def flip_refused(text, mask, spans, number):
+    """Whether line `number` carries a join the statement's bindings keep the logic operator off.
+
+    The raw line is asked first, so the statement walk is not taken on a line holding no join for it
+    to answer about.
+    """
+    start, end = spans[number - 1]
+    return (any(join in text[start:end] for join in LOGIC_JOINS)
+            and binds_a_name_conditionally(text, mask, spans, number))
+
+
+def refusal_census(project):
+    """A tab-separated path and line count for each source a campaign may mutate that it fires in.
+
+    Recorded per file rather than counted in total, for the reason `duplication_check.py` records a
+    set: a total nets out, so a widening that silences one file passes behind sources that grew.
+    `Generators~/README.md` carries why it records the refusal rather than what the operator emits,
+    and what the floor this replaces could not see.
+    """
+    rows = []
+    for path in sorted((project / PACKAGE).rglob("*.cs")):
+        if not mutable(path, project):
+            continue
+        text = path.read_text()
+        mask = code_mask(text)
+        spans = line_spans(text)
+        refused = sum(1 for number in range(1, len(spans) + 1)
+                      if flip_refused(text, mask, spans, number))
+        if refused:
+            rows.append("{}\t{}".format(relative_to(path, project).as_posix(), refused))
+    return rows
+
+
 def line_spans(text):
     spans = []
     offset = 0
@@ -574,7 +731,10 @@ def mutations_for(path, text, target_lines):
             continue
         start, end = spans[number - 1]
         line = text[start:end]
+        flippable = not flip_refused(text, mask, spans, number)
         for before, after, operator in OPERATORS:
+            if operator == "logic" and not flippable:
+                continue
             index = line.find(before)
             while index >= 0:
                 if all(mask[start + index:start + index + len(before)]):
@@ -714,7 +874,7 @@ def mutable(path, project):
         relative = path.relative_to(project).as_posix()
     except ValueError:
         return False
-    if not relative.startswith("Packages/com.velvet.core/"):
+    if not relative.startswith(PACKAGE + "/"):
         return False
     # Generators~ is outside the Unity build and has its own mutation run; see its README.
     if "/Generators~/" in relative:
@@ -1048,6 +1208,9 @@ def main():
     parser.add_argument("--max", type=int, default=40,
                         help="run only the first this many mutants, in file order (default: 40)")
     parser.add_argument("--list", action="store_true", help="print the mutants and exit")
+    parser.add_argument("--refusals", action="store_true",
+                        help="print the join refusal's census over the package and exit; redirect it "
+                             "over " + REFUSAL_BASELINE + " to record a deliberate change to it")
     parser.add_argument("--timeout", type=int, default=900,
                         help="seconds before a mutant run is killed; a killed run is not measured and fails (default: 900)")
     parser.add_argument("--busy-timeout", type=int, default=1800,
@@ -1139,6 +1302,10 @@ def main():
             "  {} -- {}\n"
             "Wait for it if one is running; otherwise put it back with\n"
             "  python3 scripts/test_quality/mutation_check.py --restore".format(*names))
+
+    if args.refusals:
+        print("\n".join(refusal_census(project)))
+        return 0
 
     # Presence, not truth, the same as --carried above: the flag selects a mode, and an empty operand
     # read as absence falls through to the campaign -- which mutates a source, under a flag whose whole

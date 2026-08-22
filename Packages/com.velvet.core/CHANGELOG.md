@@ -335,6 +335,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   catch it, and the message names the unmatched number rather than the argument it came from. A silent
   `Overlay` was how such a cast survived to put a portal on a layer nobody asked for.
 
+- A `[Component(Memoize = true)]` component's props bail decides a props value whole, the way React's
+  shallow-equal comparison decides each key of a props object with `Object.is`. The member walk runs on
+  the props bag and on nothing it finds: a props value that is not a bag — a value type, a string, a
+  collection — is decided whole rather than through a member set, and a value type has the `float` and
+  `double` fields it carries — directly, or inside a value type it holds — compared by raw bit pattern,
+  as a `float` member already was.
+  Before, a bare `decimal` props value compared equal to a different one — `1.0m` against `2.0m` — and
+  so did two distinct `Guid`s, so a price or an identifier driven by that prop alone never changed. A bare
+  `new List<int> { 1, 2 }` compared equal to a bare `new List<int> { 3, 4 }`, both holding two elements.
+  And a `float` or a `double` inside a record struct props member bailed on a sign flip, `0f` becoming `-0f`,
+  where the same flip in a bare `float` member re-renders.
+  **A component handed a `List` prop of equal contents now re-renders where it used to bail.** A
+  collection passed as the props value itself is decided by its instance — the reference check
+  `Object.is` performs on an object, and what a reference-typed props member already got here — so a
+  list the render builds afresh is a change however its elements compare. Holding that list in a
+  `Hooks.UseMemo`, a `Store` or a field is what gives the bail back, and passing it as a member of a
+  props record is unchanged.
+  A bare value type is now decided the way a value-type member is, which runs the other way
+  where a bare struct holds a record class: one of equal content bails where it used to re-render, the
+  member walk having read that record by its instance.
+
 ### Fixed
 
 - Registering a portal target id again with a different element now moves the portals already mounted
