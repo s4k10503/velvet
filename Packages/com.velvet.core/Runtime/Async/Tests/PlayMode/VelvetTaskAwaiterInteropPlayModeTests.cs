@@ -13,6 +13,7 @@ namespace Velvet.Tests
 
         bool _resumed;
         int _resumedThreadId;
+        int _completedThreadId;
         int _resumedResult;
 
         [UnityTest]
@@ -56,17 +57,24 @@ namespace Velvet.Tests
             var gate = new TaskCompletionSource<bool>();
             var mainThreadId = Thread.CurrentThread.ManagedThreadId;
             _resumedThreadId = 0;
+            _completedThreadId = 0;
             AwaitBclTaskRecordingThread(gate.Task).Forget();
 
             // Act
-            Task.Run(() => gate.SetResult(true));
+            Task.Run(() =>
+            {
+                _completedThreadId = Thread.CurrentThread.ManagedThreadId;
+                gate.SetResult(true);
+            });
             for (var frame = 0; frame < ResumeFrameBudget && _resumedThreadId == 0; frame++)
             {
                 yield return null;
             }
 
             // Assert
-            Assert.That(_resumedThreadId, Is.EqualTo(mainThreadId));
+            Assert.That(
+                (_completedThreadId != 0 && _completedThreadId != mainThreadId, _resumedThreadId == mainThreadId),
+                Is.EqualTo((true, true)));
         }
 
         [UnityTest]
@@ -76,17 +84,25 @@ namespace Velvet.Tests
             var gate = new TaskCompletionSource<bool>();
             var mainThreadId = Thread.CurrentThread.ManagedThreadId;
             _resumedThreadId = 0;
+            _completedThreadId = 0;
             AwaitBclTaskOffContextRecordingThread(gate.Task).Forget();
 
             // Act
-            Task.Run(() => gate.SetResult(true));
+            Task.Run(() =>
+            {
+                _completedThreadId = Thread.CurrentThread.ManagedThreadId;
+                gate.SetResult(true);
+            });
             for (var frame = 0; frame < ResumeFrameBudget && _resumedThreadId == 0; frame++)
             {
                 yield return null;
             }
 
             // Assert
-            Assert.That((_resumedThreadId != 0, _resumedThreadId == mainThreadId), Is.EqualTo((true, false)));
+            Assert.That(
+                (_completedThreadId != 0 && _completedThreadId != mainThreadId,
+                    _resumedThreadId != 0 && _resumedThreadId != mainThreadId),
+                Is.EqualTo((true, true)));
         }
 
         [UnityTest]
