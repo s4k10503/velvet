@@ -45,6 +45,7 @@ def load_module():
 
 
 mutation_check = load_module()
+REFUSAL_BASELINE = REPO_ROOT / mutation_check.REFUSAL_BASELINE
 
 GREEN_RESULTS = '<test-run total="1" passed="1" failed="0" inconclusive="0" />'
 FAILING_RESULTS = ('<test-run total="1" passed="0" failed="1" inconclusive="0">'
@@ -637,8 +638,9 @@ class LogicFlipTests(unittest.TestCase):
 
     A flip there can leave a read of that name unassigned, which the campaign scores unmeasured and fails
     on -- the outcome `DeclarationRemovalTests` holds for a removal, reached by a rewrite. Compiled
-    against the reference set Unity's own build uses per assembly, 113 of this package's logic mutants
-    failed exactly that way; none does now, at a cost of 38 that compiled.
+    against the reference set Unity's own build uses, over the assembly `Runtime/` without its tests
+    compiles into: 90 of the 127 flips the refusal removes there failed exactly that way, and the other
+    37 are what it costs. `Generators~/README.md` carries that reading and where it stops.
 
     Each case declared green on the base is a boundary the refusal must not cross, and each goes red
     under its own widening of one. Between them they are also what says the operator still fires, so a
@@ -789,6 +791,117 @@ class LogicFlipTests(unittest.TestCase):
         # Assert
         self.assertEqual(flips, [])
 
+    def test_Given_ABracelessBodyWritingTheBareOut_When_MutantsAreGenerated_Then_NoHeaderIsFlipped(self):
+        # Arrange -- the same write, spelled without the braces the walk counts. Compiled against the
+        # reference set Unity's own build uses, each of these bases compiles and its flip is `CS0165`.
+        # A `lock`, a `using` and a braceless `do` were compiled too and are not here: their bodies run
+        # on every path, so refusing those is what the lead reading costs rather than what it is for.
+        headers = ("if (fallback)", "while (fallback)", "for (var i = 0; i < limit; i++)",
+                   "foreach (var each in items)", "if (fallback) { Reset(); }\nelse")
+        texts = {header: ("int bounds;\n" + header + "\n"
+                          "    bounds = 0;\n"
+                          "if (ready && TryCompute(spec, out bounds))\n"
+                          "{\n"
+                          "    Use(bounds);\n"
+                          "}\n") for header in headers}
+
+        # Act
+        flipped = sorted(header for header, text in texts.items() if mutants_of(text, "logic"))
+
+        # Assert
+        self.assertEqual(flipped, [])
+
+    def test_Given_ABracelessElseOnItsHeadersOwnLine_When_MutantsAreGenerated_Then_TheJoinIsNotFlipped(self):
+        # Arrange -- the write shares the header's line, so no line above it is the lead the reading
+        # would refuse; `else` is what stands where a declaration's type stands.
+        text = ("int bounds;\n"
+                "if (fallback) { Reset(); }\n"
+                "else bounds = 0;\n"
+                "if (ready && TryCompute(spec, out bounds))\n"
+                "{\n"
+                "    Use(bounds);\n"
+                "}\n")
+
+        # Act
+        flips = [applied(text, mutant) for mutant in mutants_of(text, "logic")]
+
+        # Assert
+        self.assertEqual(flips, [])
+
+    def test_Given_AWriteInAnEarlierSwitchArm_When_MutantsAreGenerated_Then_TheJoinIsNotFlipped(self):
+        # Arrange -- the write is a finished statement of the same block at the same brace depth, and
+        # the arm holding it is entered where this one is not.
+        text = ("int bounds;\n"
+                "switch (kind)\n"
+                "{\n"
+                "    case Kind.First:\n"
+                "        Reset();\n"
+                "        bounds = 0;\n"
+                "        break;\n"
+                "    default:\n"
+                "        if (ready && TryCompute(spec, out bounds))\n"
+                "        {\n"
+                "            Use(bounds);\n"
+                "        }\n"
+                "        break;\n"
+                "}\n")
+
+        # Act
+        flips = [applied(text, mutant) for mutant in mutants_of(text, "logic")]
+
+        # Assert
+        self.assertEqual(flips, [])
+
+    # GREEN_ON_BASE(characterization): a write behind a finished statement keeps the flip it had.
+    # Measured over the package, this lead recovers two of the twenty flips the three recover.
+    def test_Given_ABareOutWrittenBehindAFinishedStatement_When_MutantsAreGenerated_Then_TheJoinIsStillFlipped(self):
+        # Arrange
+        text = ("axis = default;\n"
+                "value = 0f;\n"
+                "var found = core.StartsWith(\"scale-\") && TryGetAxisScale(core, out value);\n")
+
+        # Act
+        flips = [applied(text, mutant) for mutant in mutants_of(text, "logic")]
+
+        # Assert
+        self.assertEqual(
+            flips, ["var found = core.StartsWith(\"scale-\") || TryGetAxisScale(core, out value);"])
+
+    # GREEN_ON_BASE(characterization): a write behind the brace opening its own block keeps the flip.
+    # Measured over the package, that lead recovers ten of the twenty flips the three recover.
+    def test_Given_ABareOutWrittenBehindAnOpeningBrace_When_MutantsAreGenerated_Then_TheJoinIsStillFlipped(self):
+        # Arrange
+        text = ("internal static bool TryParse(string core, out ArbitraryStyle style)\n"
+                "{\n"
+                "    style = default;\n"
+                "    return TryParsePaletteColor(core, out style)\n"
+                "        || TryParsePresetLength(core, out style);\n"
+                "}\n")
+
+        # Act
+        flips = [applied(text, mutant) for mutant in mutants_of(text, "logic")]
+
+        # Assert
+        self.assertEqual(flips, ["&& TryParsePresetLength(core, out style);"])
+
+    # GREEN_ON_BASE(characterization): a write behind a closed block keeps the flip it had.
+    # Measured over the package, that lead recovers the remaining eight of those twenty.
+    def test_Given_ABareOutWrittenBehindAClosedBlock_When_MutantsAreGenerated_Then_TheJoinIsStillFlipped(self):
+        # Arrange
+        text = ("if (!bound)\n"
+                "{\n"
+                "    return;\n"
+                "}\n"
+                "var spec = default(ShadowSpec);\n"
+                "var want = !clipActive && StyleShadowClass.TryExtract(classNames, out spec);\n")
+
+        # Act
+        flips = [applied(text, mutant) for mutant in mutants_of(text, "logic")]
+
+        # Assert
+        self.assertEqual(
+            flips, ["var want = !clipActive || StyleShadowClass.TryExtract(classNames, out spec);"])
+
     def test_Given_ABareOutWrittenOutsideTheBlockHoldingIt_When_MutantsAreGenerated_Then_TheJoinIsNotFlipped(self):
         # Arrange -- this write does run on every path reaching the statement, and the reading stops at
         # the block anyway rather than deciding where the member it is walking starts.
@@ -916,21 +1029,16 @@ class GenerationHealthTests(unittest.TestCase):
         # Assert
         self.assertEqual((len(sources) > 200, dangling), (True, []))
 
-    # GREEN_ON_BASE(characterization): the base generates more of these flips than the floor asks for.
-    # What the floor answers for is the join operator's repository-wide output, which nothing else in
-    # this file reads: measured, a widening that reads the statement off the raw lines rather than the
-    # mask costs 154 of these flips and leaves every other case in this file green.
-    def test_Given_EveryRuntimeSource_When_MutantsAreGenerated_Then_TheFlipCountHoldsAFloor(self):
-        # Arrange — the floor sits twice the band the last eighty commits moved this count through
-        # below it (1190 to 1231, no single commit falling more than five), and above the two widenings
-        # measured against it, at 1077 and 1108.
-        sources = [path for path in RUNTIME.rglob("*.cs") if "/Tests/" not in path.as_posix()]
+    def test_Given_EveryMutableSource_When_TheJoinRefusalIsAsked_Then_ItFiresWhereTheBaselineRecords(self):
+        # Arrange — the corpus a campaign may mutate, which is what `mutable` decides and what every
+        # verdict is read over; the scans above take Runtime with its tests off, which is neither.
+        recorded = REFUSAL_BASELINE.read_text().splitlines()
 
         # Act
-        flips = sum(len(mutants_of(path.read_text(), "logic")) for path in sources)
+        measured = mutation_check.refusal_census(REPO_ROOT)
 
-        # Assert — the source count rides along because an empty scan clears any floor by arithmetic.
-        self.assertEqual((len(sources) > 200, flips > 1150), (True, True))
+        # Assert — the recorded length rides along because an emptied file and a silenced census agree.
+        self.assertEqual((len(recorded) > 40, measured), (True, recorded))
 
 
 class MaskDefectTests(unittest.TestCase):
