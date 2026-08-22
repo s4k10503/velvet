@@ -10,9 +10,10 @@ namespace Velvet.Tests
     /// <list type="bullet">
     /// <item>The deps overload returns the same computed value across renders while the dependency array stays
     /// equal, and recomputes a new value when any dependency changes.</item>
-    /// <item>Dependencies are compared by reference identity: a fresh-but-content-equal reference-type dependency
-    /// counts as changed and recomputes.</item>
+    /// <item>Dependencies are compared under <c>Object.is</c>: a fresh-but-content-equal <c>record class</c>
+    /// dependency counts as changed and recomputes.</item>
     /// <item>The no-deps overload (<c>UseMemo&lt;T&gt;(Func&lt;T&gt;)</c>) is unmemoized: it recomputes on every render.</item>
+    /// <item>An explicit null dependency array declares no dependency list at all, so it recomputes too.</item>
     /// <item>A null factory raises an <see cref="ArgumentNullException"/>.</item>
     /// <item>Each call owns an independent slot keyed by call order; slots memoize and invalidate independently.</item>
     /// <item>The cached value reflects the dependencies captured when it was last recomputed.</item>
@@ -99,6 +100,23 @@ namespace Velvet.Tests
 
             // Assert
             Assert.AreNotSame(first, s_noDepsLastValue, "The no-deps overload recomputes on every render");
+        }
+
+        [Test]
+        public void Given_ExplicitNullDeps_When_ReRendered_Then_RecomputesEveryRender()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(NullDepsMemoRender, key: "null-deps"));
+            var first = s_nullDepsLastValue;
+            Assume.That(first, Is.Not.Null, "Precondition: the first render produced a value");
+
+            // Act
+            s_memoSetState.Invoke(new MemoState(2, "world"));
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.AreNotSame(first, s_nullDepsLastValue,
+                "A null deps argument is no dependency array, so the value is never frozen to an earlier render's");
         }
 
         [Test]
@@ -195,6 +213,7 @@ namespace Velvet.Tests
         private static Action<MemoState> s_memoSetState;
         private static Computed s_singleLastValue;
         private static Computed s_noDepsLastValue;
+        private static Computed s_nullDepsLastValue;
         private static Computed s_dualLastValueA;
         private static Computed s_dualLastValueB;
         private static int s_oscRenderCount;
@@ -209,6 +228,7 @@ namespace Velvet.Tests
             s_memoSetState = null;
             s_singleLastValue = null;
             s_noDepsLastValue = null;
+            s_nullDepsLastValue = null;
             s_dualLastValueA = null;
             s_dualLastValueB = null;
             s_oscRenderCount = 0;
@@ -233,6 +253,16 @@ namespace Velvet.Tests
             var (state, setState) = Hooks.UseState(s_memoInitial);
             s_memoSetState = setState;
             s_noDepsLastValue = Hooks.UseMemo(() => new Computed(state.Count));
+            return V.Label(text: state.Name);
+        }
+
+        [Component]
+        private static VNode NullDepsMemoRender()
+        {
+            var (state, setState) = Hooks.UseState(s_memoInitial);
+            s_memoSetState = setState;
+            object[] noDeps = null;
+            s_nullDepsLastValue = Hooks.UseMemo(() => new Computed(state.Count), noDeps);
             return V.Label(text: state.Name);
         }
 

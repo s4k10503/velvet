@@ -311,7 +311,11 @@ namespace Velvet
 
         public static Slider RentSlider() => s_sliderPool.Rent();
 
-        public static void ReturnSlider(Slider slider) => s_sliderPool.Return(slider);
+        public static void ReturnSlider(Slider slider)
+        {
+            if (!FiberSliderPoolHelper.CanReuse(slider)) return;
+            s_sliderPool.Return(slider);
+        }
 
         #endregion
 

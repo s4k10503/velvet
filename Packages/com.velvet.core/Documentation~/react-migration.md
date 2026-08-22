@@ -7,7 +7,7 @@ It also explicitly documents the intentional differences imposed by C# language 
 
 ## Table of Contents
 
-1. [Hooks Mapping](#1-hooks-mapping)
+1. [Hooks Mapping](#1-hooks-mapping) — including [what a dependency list means](#1-4-what-a-dependency-list-means)
 2. [DSL Mapping — JSX → V.*](#2-dsl-mapping--jsx--v)
 3. [Lifecycle Mapping](#3-lifecycle-mapping)
 4. [Styling Mapping](#4-styling-mapping)
@@ -36,8 +36,8 @@ In C#, methods conventionally use PascalCase, so the names always differ from Re
 | `useOptimistic(state, updateFn)` | `Hooks.UseOptimistic(state, applyOptimistic)` | React parity. Returns `(optimisticState, addOptimistic)`; the optimistic override is discarded once the pass-through state changes |
 | `useCallback(fn, deps)` | `Hooks.UseCallback<T>(fn, deps)` | Nearly equivalent. Type inference can fail, so specify the generic type argument explicitly |
 | `useContext(Context)` | `Hooks.UseContext(context)` | React parity. Propagates Provider value changes live (a masked consumer — shadowed by an inner Provider — is still re-rendered, but it live-reads the same value, so the reconciler diffs it to a no-op) |
-| `useTransition()` | `Hooks.UseTransition()` | React parity. Returns `(isPending, startTransition)` in the same order as React's `[isPending, startTransition]` |
-| `useDeferredValue(value)` / `useDeferredValue(value, initialValue)` | `Hooks.UseDeferredValue<T>(value)` / `Hooks.UseDeferredValue<T>(value, initialValue)` | React parity. Defers the commit of `value` changes through the Transition lane, returning the previous committed value during an urgent re-render; the `initialValue` overload returns it on the first render only, then immediately schedules a transition toward `value`. Change detection is reference equality (NaN-aware for float/double), with no comparer argument |
+| `useTransition()` | `Hooks.UseTransition()` | React parity on the returned tuple: `(isPending, startTransition)` in the same order as React's `[isPending, startTransition]`. The callback marks the updates it schedules synchronously, whichever component owns the state they write — a setter received as a prop included, and a starter still held after the component that declared it unmounted — matching React's ambient transition flag. That last case marks the writes without lighting an `isPending` nobody is left to render. As in React, the marking ends where the callback hands control back — for an `async` action, the point it first suspends: it keeps `isPending` true until the task completes, but an update it makes after an `await` that suspended it falls outside the scope its callback opened, so that update takes the Normal lane unless it lands in some other scope — a discrete handler's, or a further `startTransition` call, which is what React's reference tells callers to write for them. **C# deviation:** an `await` of a task that had already completed does not suspend — the language runs the continuation inline — so the callback runs on past it still inside the scope, and that update is a transition after all, with `isPending` staying lit until it commits. `await VelvetTask.CompletedTask` reaches it, as does any `async VelvetTask` the action awaits that returns without suspending, so one source line takes either schedule depending on the data it met. JavaScript's `await` always resumes in a later microtask, after `startTransition`'s synchronous `finally` has restored React's flag, so React has no equivalent state and is not a guide to this one; wrapping post-`await` updates in the starter makes the two paths agree, since a joined call is a transition on both. An update from elsewhere that lands while the action awaits keeps its own priority, discrete input included, and a second `UseTransition()` slot started there is an independent transition with its own `isPending`. `isPending` follows the updates the slot's own callback scheduled, not the Transition lane: a synchronous callback that scheduled no update settles as soon as it returns, and a `UseDeferredValue` in the same component holding that lane does not keep the flag lit. Where those updates landed on other components, the flag stays lit until each of them has discharged that work — committed through its terminal reconcile slice, unmounted with no commit left to make, or had the scheduler drop it at the update-depth cap; two such components wait on each other, so what settles them is the last of those commits rather than the first. For an `async` action the flag stays lit until the task completes as well, and the declaring component re-renders once whichever of the two lands last. **Velvet deviation:** nothing renders purely because `isPending` turned true, where React re-renders the component on that alone. Whichever render some other cause already produces while the transition is open is what observes the flag here — the urgent update a click also makes, an ancestor's pass, a flush the callback itself reaches, the commit of one of two components it enrolled — and where nothing produces one, the first render the component gets is the one committing the transition with the flag still lit. The terminal commit then asks for the render that takes it down. An `async` action that suspends shows it from the commit of the work its callback queued until its task completes; one that never suspends is the synchronous case. A same-starter async call joined before an outer action completes keeps that lifecycle open until the joined call completes too |
+| `useDeferredValue(value)` / `useDeferredValue(value, initialValue)` | `Hooks.UseDeferredValue<T>(value)` / `Hooks.UseDeferredValue<T>(value, initialValue)` | React parity. Defers the commit of `value` changes through the Transition lane, returning the previous committed value during an urgent re-render; the `initialValue` overload returns it on the first render only, then immediately schedules a transition toward `value`. Change detection is `Object.is`, the same default comparer as `Hooks.UseStore`, with no comparer argument of its own |
 | `useRef()` | Inside a component: `Hooks.UseRef<T>()` / outside a component (e.g. orchestrator): `new Ref<T>()` | For parent→child ref forwarding, pass the orchestrator-side `new Ref<T>()` to the `V.Component<TRef>(body, componentRef, key)` overload |
 | `useImperativeHandle(ref, createHandle, deps?)` | `Hooks.UseImperativeHandle<THandle>(handleRef, factory)` / `Hooks.UseImperativeHandle<THandle>(handleRef, factory, deps)` | React parity. Builds a handle via `factory` and writes it into the `Ref<THandle>` the parent forwarded through `componentRef:` (read back inside the child with `ForwardedRef<T>()`); omitting `deps` re-invokes `factory` every render, same as passing no deps array in React |
 | `useId()` | `Hooks.UseId(prefix?)` | React parity. Stable ID tied to the component instance and hook-slot position — same value across re-renders, distinct across instances/slots — for label/field association or `aria-*` attributes. Format is `:r{hex}:` (or `{prefix}:r{hex}:`), the same colon-wrapped shape React emits; a `prefix` is honored only on the first render |
@@ -99,10 +99,36 @@ TanStack Query's `useMutation` equivalent. Returns a handle with `Mutate` (fire-
 | `mutate(variables)` | `mutation.Mutate(variables)` |
 | `mutateAsync(variables)` | `await mutation.MutateAsync(variables)` |
 
+**Concurrent calls.** Calling `Mutate` twice starts two runs, neither cancels the other, each
+delivers its own `OnSuccess` / `OnError`, and `Status` / `Data` / `Error` / `Variables` are one
+snapshot following the newest — so a double-tapped button does not lose the first call's follow-up
+write. Starting a call resets all four to that call's own — `Data` included, so a pending call never
+shows the previous one's result. Not cancelling on re-entry, following the newest, and clearing
+`Data` when a call starts are all v5's behaviour.
+
+The `CancellationToken` handed to `MutationFn` has **no v5 counterpart** — a v5 `mutationFn` receives
+only its variables. It is cancelled when the component unmounts, which is what a Unity web request
+wants, and it is never cancelled by a later call.
+
+**`Reset`.** Puts the handle back to `Idle` and abandons whatever is in flight, as v5's `reset()`
+detaches the observer from the mutation. The abandoned call is not cancelled: it runs to completion
+and still delivers its own `OnSuccess` / `OnError`, but neither its result nor its failure reaches the
+handle, so resetting a save while it is in flight leaves the handle idle when the save lands.
+
+**When the outcome is committed.** After the handlers, which is when v5 dispatches it. A handler
+therefore never reads its own call's outcome: `Status` / `Data` / `Error` still show whatever the
+handle showed before it ran — this call pending on the ordinary path, a newer call's outcome where
+that call has already settled, `Idle` for a call `Reset` abandoned. `Variables` is not an outcome —
+it is written when a call starts, and neither outcome touches it — but a handler reads it under the
+same rule: `Reset` clears it and a later call overwrites it, so a superseded call's handler reads the
+newer call's variables and a reset one's reads none. Each outcome is written whole: `Data`
+is what one call produced and `Error` is how one call failed, so `Data` stands only under
+`Status == Success` and `Error` only under `Status == Error` — a pending or reset handle has neither.
+
 **Callback error semantics** (TanStack Query v5 parity):
 
-- A throwing **`onSuccess`** handler makes the mutation an **error**: `Status` becomes `Error`, `Error` holds the handler's exception, `onError` runs with that exception, and `MutateAsync` rethrows it to the caller. This matches React Query — the success state is not committed when the handler throws.
-- A throwing **`onError`** handler does **not** change the mutation outcome already written to the slot (`Status` / `Error` stay the mutation's). The handler exception is routed to the same unobserved-exception channel as `.Forget()` (logged via `Debug.LogException` when no custom handler is registered). `MutateAsync` still rethrows the **mutation** exception, not the handler's.
+- A throwing **`onSuccess`** handler makes the mutation an **error**: `Status` becomes `Error`, `Error` holds the handler's exception, `onError` runs with that exception, and `MutateAsync` rethrows it to the caller. This matches React Query — the success state is not committed when the handler throws, so `Data` is left empty as well.
+- A throwing **`onError`** handler does **not** change the mutation outcome (`Status` / `Error` still become the mutation's own, after the handler has returned). The handler exception is routed to the same unobserved-exception channel as `.Forget()` (logged via `Debug.LogException` when no custom handler is registered). `MutateAsync` still rethrows the **mutation** exception, not the handler's.
 
 ### 1-3. State Management (React + Zustand)
 
@@ -151,8 +177,42 @@ V.Provider(CounterStoreContext, _counterStore,
 ```
 
 If the selector's return value equals the previous one, no re-render occurs. The default comparer is
-reference (`Object.is`) equality — pass `EqualityComparer<TSel>.Default` as the third argument when a
-value-equality skip is wanted instead (e.g. a record selector with stable content).
+`Object.is` rather than value equality, so a selector returning a fresh `record class` instance of
+equal content re-renders. Passing `EqualityComparer<TSel>.Default` as the third argument is what skips
+that; for a string selector, or a value-type selector other than `float`/`double` — a `record struct`
+included — it changes nothing: `Object.is` already gives the same answer as that comparer for both. The
+`comparer` parameter points at `StateUpdater<T>`'s remarks, which state each branch.
+
+### 1-4. What a dependency list means
+
+The Velvet APIs that take a dependency list — the effect hooks, `UseCallback`, `UseMemo`,
+`UseImperativeHandle`, `UseBlocker`, and the node-level `V.Memoized` / `V.MemoizedWithKey` — read it the
+same way:
+
+| Spelling | Meaning | React equivalent |
+|----------|---------|------------------|
+| argument omitted | no dependency list: re-run / recompute / rebuild on every render | `useEffect(fn)` |
+| explicit `null` | identical to omitting it | *(a type error in React)* |
+| `Array.Empty<object>()` | an empty dependency set: run once and never again | `useEffect(fn, [])` |
+| one or more values | re-run when any of them changes, compared with `Object.is` semantics | `useEffect(fn, [a, b])` |
+
+`MemoNode.Dependencies`' remarks state which branch each element type takes.
+
+Three consequences worth knowing before writing one:
+
+- `null` never freezes a value. React has no equivalent spelling, so nothing forces the choice — Velvet
+  reads it as the absence of a list, which is the harmless direction: a frozen `UseCallback` captures stale
+  state silently, whereas an unmemoized one only costs an allocation.
+- Where `deps` is a `params` array, an omitted argument would otherwise arrive as an empty array — the
+  opposite meaning — so every such API carries a companion overload declaring no deps parameter at all.
+  Where `deps` is an ordinary optional parameter instead, its default is already `null`.
+- `V.Memoized` / `V.MemoizedWithKey` build a fresh node per call, so a call site in a render body gets a
+  rebuild every render. A node instance hoisted out of the render body and handed back unchanged is the
+  same node, and keeps the subtree it already built.
+
+`Hooks.UseAnimationSequence` defaults its list to empty rather than to null, so that a step array rebuilt
+in the component body does not restart the sequence every render; [motion.md](motion.md) owns that
+deviation.
 
 ---
 
@@ -167,17 +227,28 @@ Since C# has no JSX syntax, Velvet builds the VNode tree through `V.*` method ca
 | `<div className="x">` | `V.Div(className: "x")` | Unity has no HTML elements. Produces a `VisualElement` |
 | `<span>` | `V.Div()` | No span-equivalent element. Substitute a generic `VisualElement` |
 | `<button onClick={fn}>` | `V.Button(onClick: fn)` | Produces a UI Toolkit `Button` type |
-| `<input type="text">` | `V.TextField()` | |
+| `<input type="text">` | `V.TextField()` | `placeholder` / `maxlength` / `readonly` are the `placeholder:` / `maxLength:` / `isReadOnly:` parameters. `isDelayed:` has no HTML counterpart: it holds the value back instead of updating per keystroke — see below for what releases it |
 | `<input type="checkbox">` | `V.Toggle()` | |
 | `<input type="range">` | `V.Slider()` | |
 | `<p>` / `<h1>` | `V.Label()` | UI Toolkit `Label` type |
 | `<>{children}</>` | `V.Fragment(children)` | No shorthand `<>` syntax |
 
+`V.TextField`'s `placeholder:`, `maxLength:`, `isReadOnly:` and `isDelayed:` are **undeclared** when
+null, not reset: null is not `placeholder=""`, not `maxLength: -1` and not `isReadOnly: false`. A
+member no render has declared is left wherever a `refCallback:` put it, and one a render declared and
+a later render dropped goes back to the value the field carried before any render declared it. The
+three focus props follow the same rule — [focus.md](focus.md) states it for those.
+
+A field holding `isDelayed:` releases the typed text into its value on Enter, on losing focus, and on
+a render taking the flag off — that third one whether the render declares `isDelayed: false` or drops
+the parameter. The render-driven release reports through `onValueChanged:`, so a component that turns
+the flag off mid-edit receives the pending text rather than stranding it on screen.
+
 ### 2-2. Conditionals and Lists
 
 | React | Velvet | Notes |
 |-------|--------|------|
-| `{cond && <X/>}` | `V.When(cond, () => V.X())` | There is no JS truthy evaluation, so use an explicit factory function |
+| `{cond && <X/>}` | `V.When(cond, () => V.X())` | There is no JS truthy evaluation, so use an explicit factory function. For what the returned `null` costs the siblings after it, see [what a position is](#what-a-position-is) |
 | `items.map(x => <X key={k}/>)` | `V.List(items, keySelector, renderer)` | A dedicated API that enforces `key` |
 
 ### 2-3. Components
@@ -185,7 +256,7 @@ Since C# has no JSX syntax, Velvet builds the VNode tree through `V.*` method ca
 | React | Velvet | Notes |
 |-------|--------|------|
 | `<MyComponent/>` | `V.Component(MyRender, key: "...")` | `MyRender` is a static method annotated with `[Component]`. Stores are distributed via `V.Provider` + `UseContext` |
-| `React.memo(Component)` | `[Component(Memoize = true)]` | An opt-in attribute that shallow-compares props at the reconcile boundary with `Object.is`, and bails out of parent re-render if they are equal |
+| `React.memo(Component)` | `[Component(Memoize = true)]` | An opt-in attribute that compares props one member at a time at the reconcile boundary and bails out of parent re-render if they are equal. The attribute's own remarks state the per-member rule, and which props values skip the member walk |
 | React Compiler (automatic memoization) | no annotation (all `[Component]`) | The ILPP `CompilerWeaver` weaves inner automatic memoization with default-on. Opt out with `[Component(Compiler = false)]` |
 | `useMemo(value, deps)` | `Hooks.UseMemo(() => value, deps)` | Value-memoization hook; recomputes only when a dep changes (use inside render) |
 | `useMemo(() => <X/>, deps)` | `Hooks.UseMemo(() => V.X(), deps)` or `V.Memoized(() => V.X(), deps)` | The hook returns a memoized VNode; `V.Memoized` is a node-level escape hatch usable outside render (e.g. expanded by `[MemoizeMethod]`), diff-skipping the subtree |
@@ -194,7 +265,22 @@ Since C# has no JSX syntax, Velvet builds the VNode tree through `V.*` method ca
 > **Note — Two memoization axes**  
 > `[Component(Memoize = true)]` is equivalent to **React.memo**, bailing out of parent-driven re-render when props are shallow-equal to the previous ones (opt-in).  
 > **Inner automatic memoization** (equivalent to React Compiler) is **default-on** for all `[Component]`; the ILPP caches VNode construction keyed on hook-derived inputs. No annotation needed. To exclude a specific Component, use `[Component(Compiler = false)]` (equivalent to React's `"use no memo"`).  
-> `Hooks.UseMemo(factory, deps)` is the value-memoization hook (React's `useMemo`). `V.Memoized(factory, deps)` is a node-level escape hatch that explicitly memoizes a **VNode subtree** (callable outside a render, e.g. what `[MemoizeMethod]` expands to); the reconciler reuses the cached subtree while the deps are unchanged.
+> `Hooks.UseMemo(factory, deps)` is the value-memoization hook (React's `useMemo`). `V.Memoized(factory, deps)` is a node-level escape hatch that explicitly memoizes a **VNode subtree** (callable outside a render, e.g. what `[MemoizeMethod]` expands to); the reconciler reuses the cached subtree while the deps are unchanged. Both read `deps` per [§1-4](#1-4-what-a-dependency-list-means).
+
+<a id="what-a-position-is"></a>
+> **Note — what a position is**  
+> A component instance and its hook state belong to the position it is rendered at, as in React. The element a `V.Component` is written into is part of that position, so two containers hold two instances even where nothing else about the two call sites differs:
+>
+> ```csharp
+> V.Div(name: "left",  children: new VNode?[] { V.Component(Counter) })
+> V.Div(name: "right", children: new VNode?[] { V.Component(Counter) })
+> ```
+>
+> Those are two counters with two counts. Writing a component into a different container than the previous render did is therefore a fresh mount there and an unmount of the one it left — its state, refs and effects do not travel, and `key:` does not carry them, because a key separates siblings of one container rather than one container from another. A key is still what separates two occurrences **in** one container, and what keeps a reordered sibling matched with itself.
+>
+> Within one container the position is the slot a child is written at, and a child that renders nothing occupies its own: `cond ? V.Component(Row) : null` unmounts that one instance and leaves the components after it on the slots they already held. A slot whose component changes is a remount rather than a re-bind, so two unkeyed siblings swapping places both start over.
+>
+> Sibling **elements** are matched by position too, but a `null` among unkeyed ones does shift the ones after it. In `cond ? V.Div(V.Component(Row)) : null` beside a second such `V.Div`, the surviving wrapper is patched onto the element the departing one left, and the component inside it re-binds to that element's instance — the state of the pair's first `Row`, under the second one's props. A `key:` on those wrappers matches each with itself and keeps the pairing right.
 
 ### 2-4. Context
 
@@ -208,7 +294,7 @@ Since C# has no JSX syntax, Velvet builds the VNode tree through `V.*` method ca
 | React | Velvet | Notes |
 |-------|--------|------|
 | `<Suspense fallback={<Spinner/>}>` | `V.Suspense(fallback, children)` | Equivalent |
-| `use(promise)` | `Hooks.Use(() => someVelvetTask, resourceKey)` | Reads an async resource declaratively; while pending it throws to the nearest `V.Suspense` boundary, just like React's `use()` with a Promise |
+| `use(promise)` | `Hooks.Use(() => someVelvetTask, resourceKey)` | Reads an async resource declaratively; while pending it throws to the nearest `V.Suspense` boundary, just like React's `use()` with a Promise. A loader cancelled through a token the caller owns (a logout CTS, a superseded request) surfaces the `OperationCanceledException` to the nearest error boundary, as React does for an aborted promise. Velvet's own cancellation of the token it hands the loader — on supersede or unmount, as the `Use` API doc describes — records nothing instead |
 | Class Component + `getDerivedStateFromError` | The `V.ErrorBoundary(fallback, children)` helper, or `[Component(IsErrorBoundary = true)]` + `Hooks.UseFallback(fn)` | Explicit opt-in. The helper suits a use directly under Mount; the functional pattern suits cases where you want fallback/children values to update dynamically on parent re-render |
 | Class Component + `componentDidCatch` | `Hooks.UseEffect` + try-catch, or logging via an error-notification Store | When you want to log side effects from a functional component, do it inside an effect |
 
@@ -339,6 +425,10 @@ public sealed class SettingsStore : Store<SettingsState>
 
     public void SetVolume(float v)
         => SetState(s => s with { Volume = v });
+
+    // Store<T> declares this abstract: what Reset() puts the state back to.
+    protected override void ResetCore()
+        => SetState(_ => new SettingsState(1.0f, false));
 }
 
 // Component (Presentation layer)
@@ -350,7 +440,7 @@ private static VNode VolumeSliderRender()
     var store = Hooks.UseContext(SettingsStoreContext);
     // Re-render only when Volume changes
     var volume = Hooks.UseStore(store, s => s.Volume);
-    return V.Slider(value: volume, onChange: store.SetVolume);
+    return V.Slider(value: volume, onValueChanged: store.SetVolume);
 }
 
 // Provider site (once at the page root, etc.)
@@ -556,7 +646,7 @@ The following domains are out of scope for this migration guide and are intended
 
 - Layout features such as virtual scroll (`V.VirtualList`, not yet documented separately) and Portal (equivalent to React Window / Portal — see [portals.md](portals.md))
 - Animation features (equivalent to Framer Motion — see [motion.md](motion.md))
-- Routing features (equivalent to React Router, not yet documented separately)
+- Routing features (equivalent to React Router, not yet documented separately, except navigation blocking — see [routing-blockers.md](routing-blockers.md))
 
 Since concrete API names stay in sync more easily with the implementation, refer to the XmlDoc / IntelliSense inside the Velvet package.
 

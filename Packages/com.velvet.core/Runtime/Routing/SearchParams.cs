@@ -62,7 +62,7 @@ namespace Velvet
         bool Has(string key);
 
         /// <summary>Returns the first value for a key, or <c>null</c> when the key is absent.</summary>
-        string Get(string key);
+        string? Get(string key);
 
         /// <summary>Returns every value for a key in insertion order, or an empty list when absent.</summary>
         IReadOnlyList<string> GetAll(string key);

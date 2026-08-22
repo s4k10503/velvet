@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using NUnit.Framework;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
@@ -25,6 +26,8 @@ namespace Velvet.Tests
     /// (<c>0</c> for int, <c>null</c> for string), exposed as <see cref="ComponentContext{T}.DefaultValue"/>.</item>
     /// <item>A wrapper-emitting node (such as Suspense) between a Provider and a consumer does not break
     /// propagation: the consumer still observes the Provider value.</item>
+    /// <item><see cref="Hooks.UseContext"/> is declared nullable, because the default it falls back to is one
+    /// <see cref="ComponentContext{T}.Create"/> accepts as null.</item>
     /// </list>
     /// </summary>
     /// <remarks>
@@ -230,6 +233,35 @@ namespace Velvet.Tests
             Assert.That(s_themeDisplayLastRendered, Is.EqualTo("forest"),
                 "A wrapper-emitting Suspense node between the Provider and consumer does not break propagation");
         }
+
+        #region Declared nullability
+
+        [Test]
+        public void Given_UseContextAndUseDeferredValue_When_ReturnAnnotationsRead_Then_OnlyUseContextAdmitsNull()
+        {
+            // Arrange
+            var useContext = typeof(Hooks).GetMethod(nameof(Hooks.UseContext));
+            var useDeferredValue = typeof(Hooks).GetMethods().Single(
+                method => method.Name == nameof(Hooks.UseDeferredValue)
+                    && method.GetParameters().Length == 1);
+
+            // Act
+            var annotations = (
+                context: NullableAnnotationProbe.ReturnAnnotation(useContext),
+                deferred: NullableAnnotationProbe.ReturnAnnotation(useDeferredValue));
+
+            // Assert
+            Assert.That(
+                annotations,
+                Is.EqualTo((
+                    NullableAnnotationProbe.Annotation.Nullable,
+                    NullableAnnotationProbe.Annotation.NotNullable)),
+                "UseContext hands back a default a context is free to have created as null, so its "
+                + "declaration must admit null; UseDeferredValue returns the value it was given and is the "
+                + "control showing the probe separates the two states on an unconstrained type parameter");
+        }
+
+        #endregion
 
         #region Consumer components (leaf that calls UseContext)
 

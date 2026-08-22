@@ -95,11 +95,9 @@ namespace Velvet
     /// </remarks>
     internal static class SkewSilhouette
     {
-        // The suppression sentinel + bit-exact tests live in SilhouetteFace (shared with the drop-shadow layer);
-        // forwarded here so existing call-sites / tests keep reading them off SkewSilhouette.
+        // The suppression sentinel lives in SilhouetteFace, shared with the drop-shadow layer; forwarded
+        // here so a call site reads it off the layer it is working in.
         internal static Color SuppressedColor => SilhouetteFace.SuppressedColor;
-
-        internal static bool IsSentinel(Color c) => SilhouetteFace.IsSentinel(c);
 
         // Wires the paint + stash callbacks onto the element and returns the binding. The first stash
         // (capture the face colors, then suppress the native rect chrome) MUST land before the first paint:

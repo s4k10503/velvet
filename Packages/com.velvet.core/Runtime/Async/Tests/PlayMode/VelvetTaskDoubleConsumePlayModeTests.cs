@@ -159,9 +159,7 @@ namespace Velvet.Tests
                     ReferenceEquals(GetTaskSource(secondTask), GetTaskSource(thirdTask));
 
                 // Assert
-                Assume.That(secondResult, Is.EqualTo(2));
-                Assume.That(thirdResult, Is.EqualTo(3));
-                Assert.That(sharesSource, Is.False);
+                Assert.That((secondResult, thirdResult, sharesSource), Is.EqualTo((2, 3, false)));
             });
     }
 }

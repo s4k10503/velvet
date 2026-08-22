@@ -73,11 +73,16 @@ namespace Velvet
     public sealed class RouteBlockerState { }
 
     public readonly struct VelvetTask<T> { }
+    public readonly struct VelvetTask { }
 
     public static partial class V
     {
+        public static MemoNode Memoized(global::System.Func<VNode> factory) =>
+            new MemoNode { Factory = factory, Dependencies = null };
         public static MemoNode Memoized(global::System.Func<VNode> factory, params object[] deps) =>
             new MemoNode { Factory = factory, Dependencies = deps };
+        public static MemoNode MemoizedWithKey(string key, global::System.Func<VNode> factory) =>
+            new MemoNode { Key = key, Factory = factory, Dependencies = null };
         public static MemoNode MemoizedWithKey(string key, global::System.Func<VNode> factory, params object[] deps) =>
             new MemoNode { Key = key, Factory = factory, Dependencies = deps };
     }
@@ -115,7 +120,12 @@ namespace Velvet
         public static T UseMemo<T>(global::System.Func<T> factory) => factory();
         public static T UseMemo<T>(global::System.Func<T> factory, params object[] deps) => factory();
         public static global::Velvet.RouteBlockerState UseBlocker(
+            global::System.Func<global::Velvet.NavigationAttempt, bool> shouldBlock) => null;
+        public static global::Velvet.RouteBlockerState UseBlocker(
             global::System.Func<global::Velvet.NavigationAttempt, bool> shouldBlock, params object[] deps) => null;
+        public static global::Velvet.RouteBlockerState UseBlocker(
+            global::System.Func<global::Velvet.NavigationAttempt, global::System.Threading.CancellationToken,
+                global::Velvet.VelvetTask<bool>> shouldBlock) => null;
         public static global::Velvet.RouteBlockerState UseBlocker(
             global::System.Func<global::Velvet.NavigationAttempt, global::System.Threading.CancellationToken,
                 global::Velvet.VelvetTask<bool>> shouldBlock, params object[] deps) => null;
@@ -132,6 +142,14 @@ namespace Velvet
         public static T UseContext<T>(global::Velvet.ComponentContext<T> context) => default;
         public static (bool isPending, global::Velvet.TransitionStarter startTransition) UseTransition() =>
             (false, default);
+        public static (global::Velvet.ISearchParams searchParams, global::Velvet.SearchParamsSetter setSearchParams) UseSearchParams() =>
+            (null, null);
+        public static global::Velvet.MutationResult<TVariables, TData> UseMutation<TVariables, TData>(
+            global::Velvet.MutationOptions<TVariables, TData> options) => null;
+        public static global::Velvet.MutationResult<TVariables, global::Velvet.Unit> UseMutation<TVariables>(
+            global::Velvet.MutationOptions<TVariables> options) => null;
+        public static global::Velvet.MutationResult<global::Velvet.Unit, global::Velvet.Unit> UseMutation(
+            global::Velvet.MutationOptions options) => null;
         public static global::Velvet.Ref<T> UseRef<T>() where T : class => null;
         public static global::Velvet.Ref<T> UseRef<T>(global::System.Func<T> initialFactory) where T : class => null;
         public static global::Velvet.MutableRef<T> UseMutableRef<T>(T initial) =>
@@ -143,6 +161,31 @@ namespace Velvet
         public static void UseImperativeHandle<THandle>(
             global::Velvet.Ref<THandle> handleRef, global::System.Func<THandle> factory, params object[] deps) where THandle : class { }
     }
+
+    public interface ISearchParams : global::System.Collections.Generic.IEnumerable<string> { }
+    public sealed class SearchParamsSetter { }
+    public readonly struct Unit : global::System.IEquatable<global::Velvet.Unit>
+    {
+        public bool Equals(global::Velvet.Unit other) => true;
+        public override bool Equals(object obj) => true;
+        public override int GetHashCode() => 0;
+    }
+    public sealed class MutationResult<TVariables, TData> { }
+    public sealed record MutationOptions<TVariables, TData>(
+        global::System.Func<TVariables, global::System.Threading.CancellationToken,
+            global::Velvet.VelvetTask<TData>> MutationFn,
+        global::System.Action<TData, TVariables>? OnSuccess = null,
+        global::System.Action<global::System.Exception, TVariables>? OnError = null);
+    public sealed record MutationOptions<TVariables>(
+        global::System.Func<TVariables, global::System.Threading.CancellationToken,
+            global::Velvet.VelvetTask> MutationFn,
+        global::System.Action<TVariables>? OnSuccess = null,
+        global::System.Action<global::System.Exception, TVariables>? OnError = null);
+    public sealed record MutationOptions(
+        global::System.Func<global::System.Threading.CancellationToken,
+            global::Velvet.VelvetTask> MutationFn,
+        global::System.Action? OnSuccess = null,
+        global::System.Action<global::System.Exception>? OnError = null);
 }
 ";
 

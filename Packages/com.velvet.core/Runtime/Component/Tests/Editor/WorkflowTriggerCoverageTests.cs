@@ -24,11 +24,22 @@ namespace Velvet.Tests
     [TestFixture]
     internal sealed class WorkflowTriggerCoverageTests
     {
-        // One workflow for the coverage cases: the one whose job runs this fixture. Pairing the drift guards
-        // in the Generators~ solution with the workflow that runs THEM would take a fixture-to-job mapping
-        // nothing in this assembly can read, and writing that out by hand is the maintained-by-memory list
-        // this fixture exists to replace.
+        // The markdown-corpus case still asks about one workflow — the one whose job runs this fixture —
+        // because pairing a drift guard with the workflow that runs it would take a fixture-to-job mapping
+        // nothing in this assembly can read.
         private const string WorkflowPath = ".github/workflows/test.yml";
+
+        // The names-its-own-files case asks about every one instead. Naming a single workflow left the
+        // other's filter unread, and it was excluding four scripts its own jobs run and the two
+        // AdditionalFiles Roslyn reads at compile time — the exact failure this fixture describes, in the
+        // workflow it did not look at. A workflow added tomorrow is asked the same question for existing.
+        // Both extensions, because GitHub Actions runs both and a workflow spelled the other way would
+        // otherwise be outside every question here.
+        private static IEnumerable<string> Workflows() =>
+            Directory.EnumerateFiles(Path.GetFullPath(".github/workflows"), "*.yml")
+                .Concat(Directory.EnumerateFiles(Path.GetFullPath(".github/workflows"), "*.yaml"))
+                .Select(RepoRelative)
+                .OrderBy(path => path, StringComparer.Ordinal);
 
         private static readonly string[] RequiredCheckWorkflows =
         {
@@ -50,6 +61,12 @@ namespace Velvet.Tests
         private static readonly Regex PathTokenPattern =
             new(@"[A-Za-z0-9_.~-]+(?:/[A-Za-z0-9_.~-]+)+", RegexOptions.Compiled);
 
+        // A step that runs a command, as opposed to a path named in a filter, a comment or an input. A
+        // commented-out step is not one: the whole failure being caught is a file nothing executes, and a
+        // plain mention of the path cannot tell an invocation from either.
+        private static readonly Regex RunStepPattern =
+            new(@"^(\s*)(?:-\s*)?run:\s*(\S?)", RegexOptions.Compiled);
+
         // A negation is a whole pattern, so a ! with anything before it is being used as something else.
         private static readonly Regex UnsupportedGlobPattern = new(@"[?+\[\]{}]|.!", RegexOptions.Compiled);
 
@@ -57,15 +74,14 @@ namespace Velvet.Tests
         public void Given_TheMarkdownThisSuiteScans_When_MatchedAgainstTheWorkflowPathFilter_Then_EveryFileStartsTheRun()
         {
             // Arrange
-            var filters = ReadPathFilters();
+            var filters = ReadPathFilters(WorkflowPath);
 
             // Act
-            var uncovered = ParseFailures(filters)
+            var uncovered = ParseFailures(WorkflowPath, filters)
                 .Concat(from filter in filters
                         from file in DocumentationCorpus.Files()
-                        let relative = RepoRelative(file.Path)
-                        where !filter.Includes(relative)
-                        select $"{filter.Label} does not start for {relative}")
+                        where !filter.Includes(file)
+                        select $"{filter.Label} does not start for {file}")
                 .ToList();
 
             // Assert
@@ -78,35 +94,101 @@ namespace Velvet.Tests
         public void Given_TheRepoFilesTheWorkflowNames_When_MatchedAgainstItsOwnPathFilter_Then_EveryOneStartsTheRun()
         {
             // Arrange
-            var filters = ReadPathFilters();
-            var named = NamedRepoFiles();
+            var workflows = Workflows().ToList();
 
             // Act
-            var uncovered = ParseFailures(filters)
-                .Concat(named.Count == 0
-                    ? new[] { $"{WorkflowPath} names no file that exists in this repo" }
-                    : Array.Empty<string>())
-                .Concat(from filter in filters
-                        from file in named
-                        where !filter.Includes(file)
-                        select $"{filter.Label} does not start for {file}")
+            var uncovered = new List<string>();
+            foreach (var workflow in workflows)
+            {
+                var filters = ReadPathFilters(workflow);
+                var named = NamedRepoFiles(workflow);
+                if (named.Count == 0)
+                {
+                    uncovered.Add($"{workflow} names no file that exists in this repo");
+                }
+                uncovered.AddRange(from filter in filters
+                                   from file in named
+                                   where !filter.Includes(file)
+                                   select $"{workflow}: {filter.Label} does not start for {file}");
+            }
+
+            // Assert — the workflow count rides along because an empty directory reports nothing uncovered.
+            Assert.That((workflows.Count > 1, string.Join("\n", uncovered)), Is.EqualTo((true, string.Empty)),
+                "a workflow runs these files and does not start when one of them changes");
+        }
+
+        [Test]
+        public void Given_EveryHarnessUnitTest_When_TheWorkflowsAreScanned_Then_SomeJobRunsIt()
+        {
+            // Arrange — a harness under scripts/ carries its own unit tests because the Unity half of it
+            // needs a licence and the decisions do not. One that no job invokes is a file that passes
+            // locally and is never asked again, which is the same silence as a workflow that does not
+            // start. Read from the whole tree rather than from scripts/test_quality, which left the
+            // release and pull-request harnesses outside the scan: both happen to be run, by nothing
+            // stronger than whoever wired them having remembered to.
+            var harnessTests = Directory
+                .EnumerateFiles(Path.GetFullPath("scripts"), "test_*.py", SearchOption.AllDirectories)
+                .Select(RepoRelative)
+                .OrderBy(path => path, StringComparer.Ordinal)
+                .ToList();
+            var invoked = Workflows().SelectMany(RunCommandLines).ToList();
+
+            // Act
+            var unrun = harnessTests
+                .Where(path => !invoked.Any(line => line.Contains(path, StringComparison.Ordinal)))
                 .ToList();
 
-            // Assert
-            Assert.That(uncovered, Is.Empty,
-                $"{WorkflowPath} runs these files but does not start when one of them changes:\n"
-                + string.Join("\n", uncovered));
+            // Assert — a floor rather than the count, because a directory that yielded nothing leaves
+            // nothing unrun. Raise it with the tree, or a deletion answers the same way an empty scan does.
+            Assert.That((harnessTests.Count >= 6, string.Join("\n", unrun)), Is.EqualTo((true, string.Empty)),
+                "a harness under scripts/ has unit tests that no workflow job runs");
+        }
+
+        /// <summary>Every line of every command a workflow's <c>run:</c> steps execute.</summary>
+        /// <remarks>
+        /// A block scalar's commands sit on the lines BELOW the key, so reading only the key's own line
+        /// finds a one-line step and misses a multi-line one — a guard that reported a file unrun while a
+        /// job ran it.
+        /// </remarks>
+        private static IEnumerable<string> RunCommandLines(string workflow)
+        {
+            var blockIndent = -1;
+            foreach (var line in File.ReadAllLines(workflow))
+            {
+                var indent = line.Length - line.TrimStart().Length;
+                if (blockIndent >= 0 && line.Trim().Length > 0)
+                {
+                    if (indent > blockIndent)
+                    {
+                        yield return line;
+                        continue;
+                    }
+                    blockIndent = -1;
+                }
+                var match = RunStepPattern.Match(line);
+                if (!match.Success)
+                {
+                    continue;
+                }
+                // A block scalar opener carries only its indicator, so the command is what follows below.
+                if (match.Groups[2].Value is "|" or ">" or "")
+                {
+                    blockIndent = match.Groups[1].Value.Length;
+                    continue;
+                }
+                yield return line;
+            }
         }
 
         [Test]
         public void Given_TheWorkflowPathFilter_When_ScannedForGlobSyntax_Then_NoPatternCarriesSyntaxReadLiterally()
         {
-            // Arrange
-            var filters = ReadPathFilters();
+            // Arrange — every workflow, since a pattern GitHub reads literally does the same thing wherever
+            // it sits: the filter silently matches nothing and the workflow stops starting.
+            var filters = Workflows().SelectMany(ReadPathFilters).ToList();
 
             // Act
-            var unsupported = ParseFailures(filters)
-                .Concat(from filter in filters
+            var unsupported = (from filter in filters
                         from pattern in filter.Patterns
                         where UnsupportedGlobPattern.IsMatch(pattern)
                         select $"{filter.Label}: {pattern}")
@@ -124,14 +206,14 @@ namespace Velvet.Tests
             // Arrange — the exclusion pinned here is what keeps a generator-source edit off the Unity matrix,
             // and it is also the only case in this fixture whose answer is "no": a match that included every
             // path would satisfy every other test here.
-            var filters = ReadPathFilters();
+            var filters = ReadPathFilters(WorkflowPath);
             var root = Path.GetFullPath(GeneratorSourceRoot);
             var sources = Directory.Exists(root)
                 ? Directory.GetFiles(root, "*.cs", SearchOption.AllDirectories)
                 : Array.Empty<string>();
 
             // Act
-            var started = ParseFailures(filters)
+            var started = ParseFailures(WorkflowPath, filters)
                 .Concat(sources.Length == 0
                     ? new[] { $"no .cs file under {GeneratorSourceRoot} for the exclusion to be tested against" }
                     : Array.Empty<string>())
@@ -255,21 +337,27 @@ namespace Velvet.Tests
         // "no file is uncovered" and "no pattern is unsupported" both hold for want of anything to compare.
         // Reported as a failure of the check rather than assumed away, so the fixture cannot pass by parsing
         // nothing.
-        private static IEnumerable<string> ParseFailures(IReadOnlyCollection<PathFilter> filters) =>
+        // Only where a filter is expected. A workflow carrying none starts for every path, so it cannot
+        // fail to start for a file it names, and upm.yml deliberately carries none.
+        private static IEnumerable<string> ParseFailures(string workflow, IReadOnlyCollection<PathFilter> filters) =>
             filters.Count == 0
-                ? new[] { $"no paths: filter could be read out of {WorkflowPath}" }
+                ? new[] { $"no paths: filter could be read out of {workflow}" }
                 : Array.Empty<string>();
 
         // The one that matters here is scripts/test_quality/assert_no_inconclusive.py: no other file in the repository
         // invokes it, and its failure mode is passing a run it should have failed, which stays invisible
         // until a test starts skipping.
-        private static List<string> NamedRepoFiles() =>
-            PathTokenPattern.Matches(File.ReadAllText(Path.GetFullPath(WorkflowPath)))
+        private static List<string> NamedRepoFiles(string workflow)
+        {
+            var ignored = DocumentationCorpus.IgnoredRoots();
+            return PathTokenPattern.Matches(File.ReadAllText(Path.GetFullPath(workflow)))
                 .Select(match => match.Value)
                 .Distinct(StringComparer.Ordinal)
                 .Where(token => File.Exists(Path.GetFullPath(token)))
+                .Where(token => !ignored.Contains(token.Split('/')[0]))
                 .OrderBy(token => token, StringComparer.Ordinal)
                 .ToList();
+        }
 
         private static string RepoRelative(string path) =>
             Path.GetRelativePath(Path.GetFullPath("."), path).Replace('\\', '/');
@@ -278,9 +366,9 @@ namespace Velvet.Tests
         // appearing under a trigger that should carry none is a failure the case above reports, and reading
         // only the expected one would leave this half comparing against a filter that is no longer the
         // operative one.
-        private static List<PathFilter> ReadPathFilters()
+        private static List<PathFilter> ReadPathFilters(string workflow)
         {
-            var lines = File.ReadAllLines(Path.GetFullPath(WorkflowPath));
+            var lines = File.ReadAllLines(Path.GetFullPath(workflow));
             var filters = new List<PathFilter>();
             for (var index = 0; index < lines.Length; index++)
             {

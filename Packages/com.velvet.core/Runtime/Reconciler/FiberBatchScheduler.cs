@@ -104,6 +104,10 @@ namespace Velvet
         // root fiber that owns this context mounts.
         internal void SetAnchor(VisualElement anchor) => _anchor = anchor;
 
+        // Also hosts the passive-effect drain (FiberEffects.ScheduleRunEffects): that callback serves the
+        // whole context too, so it needs the same tree stability the tier drains do.
+        internal VisualElement? Anchor => _anchor;
+
         // Registers a probe reporting whether a reconcile pass is currently on the stack. Called once by the
         // owning Reconciler so FlushImmediate can block a synchronous discrete-event flush during
         // a time-sliced resume, which runs outside the batch Drain (so _draining is false)
@@ -132,6 +136,11 @@ namespace Velvet
             // unmount, a subsume) or when the write dedups onto a fiber already queued.
             if (_draining) _immediateWorkArrivedMidDrain = true;
             if (_immediateSet.Add(fiber)) _immediateOrder.Add(fiber);
+            ArmImmediateDrain();
+        }
+
+        private void ArmImmediateDrain()
+        {
             if (_immediateScheduled || _anchor == null) return;
             _immediateScheduled = true;
             ScheduledCallbackCount++;
@@ -210,7 +219,8 @@ namespace Velvet
                         if (dropped.LaneQueue.Count == 0)
                         {
                             dropped.IsDirty = false;
-                            dropped.ClearAllTransitionPending();
+                            // MUTANT_SURVIVES(unreachable): the one fixture that reaches the cap declares no UseTransition, so this call finds no slot and no enrolment to settle.
+                            dropped.SettleTransitionPending();
                         }
                         // else: a delayed-tier lane survives — the fiber stays dirty and enrolled on
                         // that tier, so its pending Transition/Deferred work still commits there.
@@ -223,6 +233,10 @@ namespace Velvet
                 Drain(_immediateOrder, _immediateSet, resetWave: true);
             }
             _immediateScheduled = false;
+            // Only the drop path can leave the loop above with intake queued, and a settle it runs can request
+            // a render — the loop that would otherwise consume that request being the one it abandons.
+            // MUTANT_SURVIVES(unreachable): the guard is true only after that drop path re-queues, and the one fixture reaching the cap asserts that queue empty instead.
+            if (_immediateOrder.Count > 0) ArmImmediateDrain();
             // A delayed drain already pending after this immediate drain CONTINUES this wave (it should reuse the
             // pins this drain just established). A delayed drain that arrives later, with no immediate drain to pin
             // first, is a separate wave and must open fresh. Only hand off when this drain actually opened a wave —
@@ -279,9 +293,13 @@ namespace Velvet
                 for (var i = 0; i < _drainBuffer.Count; i++)
                 {
                     // A fiber whose ancestor flushed earlier in this same pass may have been subsumed by that
-                    // ancestor's inline re-expansion (RenderInlineForExpansion → SettleSubsumedFiber), which
+                    // ancestor's inline re-expansion (SubsumeFiberIntoThisPass), which
                     // clears IsDirty and removes the fiber from the pending set. FlushState early-returns on a
                     // non-dirty fiber, so the subsumed entry is skipped rather than re-rendered a second time.
+                    // That holds only when the settle emptied the queue. A lane the subsuming render itself
+                    // requested survives it and leaves the fiber dirty, so this entry does flush, draining a
+                    // delayed-tier lane on the immediate tier. Kept because the alternative that lane had
+                    // before it survived the settle was being discarded, committing nothing at all.
                     FiberWorkLoop.FlushState(_drainBuffer[i]);
                 }
                 _drainBuffer.Clear();
@@ -304,7 +322,7 @@ namespace Velvet
         }
 
         // Orders the drain ancestors-before-descendants so a parent's flush (which re-expands its inline
-        // children via ComponentRegistry → RenderInlineForExpansion) subsumes a child into the same pass
+        // children via ComponentRegistry → SubsumeFiberIntoThisPass) subsumes a child into the same pass
         // BEFORE the child's own enqueued entry is reached — matching the single top-down pass where
         // each component renders at most once regardless of setter call order. A child dirtied before its
         // parent in one handler would otherwise re-render its slot in isolation, then a second time when the

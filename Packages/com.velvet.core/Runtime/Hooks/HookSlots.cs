@@ -114,10 +114,38 @@ namespace Velvet
         public bool IsPending;
         // An awaiting async StartTransition may hold IsPending=true on a fiber with NO pending lane (its
         // setState calls come after the await), and a drain callback armed earlier can legitimately fire
-        // on that clean fiber — the settle-time sweep (ClearAllTransitionPending) must not read the empty
-        // lane queue as "the transition settled" and wipe the flag mid-flight. Only the async completion
+        // on that clean fiber — the settle-time sweep (SettleTransitionPending) must not read the absence of
+        // enrolled work as "the transition settled" and wipe the flag mid-flight. Only the async completion
         // path clears IsPending while this is set.
-        public bool IsAsyncInFlight;
+        public int AsyncOwnerDepth;
+        public bool IsAsyncInFlight => AsyncOwnerDepth > 0;
+        // Every StartTransition call sharing THIS slot contributes one level until its callback completes.
+        // A further call joins the pending lifecycle already open instead of clearing the flag when an outer
+        // callback returns first. Scoped to the slot, not the fiber: a call on a different slot is a concurrent
+        // transition, not a nested one, and owns its own pending flag.
+        public int OwnerDepth;
+        public bool HasActiveOwner => OwnerDepth > 0;
+        // The fibers a write scheduled under THIS slot's open scope enrolled the Transition lane on, each
+        // removed by the drain that commits it. Recorded per fiber rather than as a flag on this slot,
+        // because the component owning the state a callback writes need not be the one the hook was
+        // declared on, and the flag then has to answer "is the work my callback queued still queued", which
+        // no single fiber's lane queue can be read for: a lane is shared, so another slot's transition or a
+        // UseDeferredValue re-queue reports as this slot's work, and a write to another component leaves
+        // this one's queue empty. ComponentFiber.EnrolledTransitionSlots is the reverse of this list.
+        public List<ComponentFiber>? EnrolledFibers;
+        public bool HasQueuedWork => EnrolledFibers is { Count: > 0 };
+        // The component that declared this UseTransition and reads its isPending. Held because a settle
+        // driven by another fiber's drain has to reach it — see ComponentFiber.DischargeTransitionEnrolments.
+        public ComponentFiber DeclaringFiber = null!;
+        // The isPending the declaring component's last render read, recorded where UseTransition hands it
+        // back. An exit that clears this flag has no render behind it, so it owes that component a render
+        // exactly when its last render read the flag true; asking on every clear instead would charge a
+        // render to every startTransition whose flag no render had seen.
+        public bool LastRenderedPending;
+        // Bumped whenever ownership changes hands, including the release an unmount forces on a slot whose
+        // async action is still awaiting. An owner compares its own value before touching the flags above,
+        // so a task settling after that release cannot clear a pending state a later owner is managing.
+        public int OwnerGeneration;
         public TransitionStarter Starter = default!;
     }
 
@@ -151,13 +179,28 @@ namespace Velvet
         public Func<TVariables, CancellationToken, VelvetTask<TData>> MutationFn { get; set; } = null!;
         public Action<TData, TVariables>? OnSuccess { get; set; }
         public Action<Exception, TVariables>? OnError { get; set; }
-        public CancellationTokenSource? Cts { get; set; }
+        // Every call in flight, not just the newest: two Mutate calls run side by side, so unmounting has
+        // more than one token to cancel. Who may write the observed Status / Data is Generation's to say
+        // instead: a call writes only while it still holds the current value, and Reset advances that too,
+        // so every call then in flight has lost it. The callbacks are every call's own either way.
+        public List<CancellationTokenSource> Live { get; } = new();
+
+        public long Generation { get; set; }
 
         public override void Dispose()
         {
-            Cts?.Cancel();
-            Cts?.Dispose();
-            Cts = null;
+            // Snapshot and clear before cancelling: a registration-based cancellation runs its
+            // continuations inside Cancel(), so a mutation's own finally reaches back into Live while
+            // this walks it. Unmount is the caller, and an exception out of here aborts the enclosing
+            // reconcile. Clearing first is also what makes that finally's Remove return false, which
+            // is how it knows not to dispose a source this loop still has to cancel.
+            var live = Live.ToArray();
+            Live.Clear();
+            foreach (var cts in live)
+            {
+                cts.Cancel();
+                cts.Dispose();
+            }
         }
     }
 

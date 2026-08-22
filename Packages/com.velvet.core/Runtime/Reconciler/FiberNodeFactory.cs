@@ -102,12 +102,7 @@ namespace Velvet
             // walks it to climb ComponentFiber.Parent from wherever a pointer/focus event
             // physically landed. Null at the true tree root (nothing on FiberStack yet).
             element.userData = _ctx.FiberStack.Current;
-            // Capture an element's own Text prop (Label / Button) before the text-effect pass below
-            // transforms it, so a re-apply works from the raw value.
-            if (element is TextElement && elementNode.Props != null && elementNode.Props.Text != null)
-            {
-                StyleTextEffectResolver.CaptureRaw(_ctx, element, elementNode.Props.Text);
-            }
+            CaptureOwnRawText(element, elementNode.Props);
             if (elementNode.Children != null)
             {
                 var childContainer = FiberNodePatcher.GetChildContainer(element);
@@ -127,7 +122,7 @@ namespace Velvet
             // attribute store from the props and evaluate, so a data-[..]/aria-[..] variant lights from
             // the element's carried attribute values at mount.
             _patcher.ApplyAttributes(element, elementNode.Props);
-            StyleFontResolver.ApplyIfPresent(element, elementNode.ClassNames);
+            _patcher.ApplyFontLayerOnCreate(element, elementNode.ClassNames);
             // After ReconcileChildren so the gap / divide manipulators see the final child list.
             // [&>*]: runs before gap / divide / grid so those win a shared child edge (see
             // ApplyPostChildrenClassPasses for the same ordering on the patch path).
@@ -142,7 +137,7 @@ namespace Velvet
             _patcher.ApplyHasVariantManipulators(element);
             // text-transform / -decoration cascade: after children are placed so it can reach descendant
             // text leaves, and after the element's own text is set so it transforms the final value.
-            StyleTextEffectResolver.Apply(_ctx, element, elementNode.ClassNames);
+            _patcher.ApplyTextEffects(element, elementNode.ClassNames);
 
             // The paint layers read a class source that also carries what the passes above have already
             // written onto the live class list, so a payload ALREADY LIT at this point paints from the
@@ -219,6 +214,17 @@ namespace Velvet
             return outer;
         }
 
+        // Runs before either create path's text-effect pass: that pass rewrites the element's displayed text
+        // from the raw value tracked here, and the element factory has just written the Text prop straight
+        // onto the element. FiberNodePatcher.PatchBaseElement is the same seam on the patch side.
+        private void CaptureOwnRawText(VisualElement element, FiberElementProps? props)
+        {
+            if (element is TextElement && props?.Text != null)
+            {
+                StyleTextEffectResolver.CaptureRaw(_ctx, element, props.Text);
+            }
+        }
+
         private VisualElement CreateForMotionNode(MotionNode motionNode)
         {
             // Resolve the applied classes against the effective label (own Animate, else the nearest
@@ -257,6 +263,7 @@ namespace Velvet
             {
                 _ctx.MotionChildLabel[element] = childLabel;
             }
+            CaptureOwnRawText(element, motionNode.Props);
             if (motionNode.Children != null)
             {
                 var childContainer = FiberNodePatcher.GetChildContainer(element);
@@ -285,12 +292,13 @@ namespace Velvet
             _patcher.ApplyVariantManipulators(element, appliedClasses);
             _patcher.ApplyAttributes(element, motionNode.Props);
             ApplyOptionalCreateBindings(element, motionNode.Props, appliedClasses);
-            StyleFontResolver.ApplyIfPresent(element, appliedClasses);
+            _patcher.ApplyFontLayerOnCreate(element, appliedClasses);
             _patcher.ApplyChildVariantManipulator(element, appliedClasses);
             _patcher.ApplyLayoutManipulators(element, appliedClasses);
             _patcher.ApplyStructuralVariants(element);
             _patcher.ApplyHasClassVariants(element);
             _patcher.ApplyHasVariantManipulators(element);
+            _patcher.ApplyTextEffects(element, appliedClasses);
             // Same composed source as the element path, recorded as a NON-paint-tail element so a
             // later variant re-sync never attaches to a Motion the three silhouette paints its own
             // patch would refuse.
@@ -428,31 +436,41 @@ namespace Velvet
 
         private VisualElement CreateForPortalNode(PortalNode portalNode)
         {
-            // TargetId and Layer are a one-of pair; a hand-built node violating that has no
-            // meaningful routing, so it warns and mounts an inert placeholder rather than
-            // silently picking a side.
+            // TargetId, Layer and TargetElement are a one-of triple; a hand-built node violating
+            // that has no meaningful routing, so it warns and mounts an inert placeholder rather
+            // than silently picking a side.
             var hasTargetId = !string.IsNullOrEmpty(portalNode.TargetId);
             var hasLayer = portalNode.Layer != null;
-            if (hasTargetId == hasLayer)
+            var hasElement = portalNode.TargetElement != null;
+            var kinds = (hasTargetId ? 1 : 0) + (hasLayer ? 1 : 0) + (hasElement ? 1 : 0);
+            if (kinds != 1)
             {
                 FiberLogger.LogWarning("Portal",
-                    "A PortalNode must set exactly one of TargetId or Layer (they are a one-of pair). Children will not be rendered.");
+                    "A PortalNode must set exactly one of TargetId, Layer or TargetElement (they are a one-of triple). Children will not be rendered.");
                 return CreateHiddenPlaceholder();
             }
 
             // A layer portal resolves its target at DRAIN time — the framework layer host is
             // created lazily there, once the placeholder is attached and the declaring panel
-            // is therefore known. Only a registry portal resolves here, keeping its
+            // is therefore known. The other two resolve here, keeping the registry portal's
             // not-registered warning a mount-time signal.
             VisualElement? target = null;
-            if (!hasLayer)
+            if (hasElement)
+            {
+                // Already resolved by the caller. Nothing can be missing and nothing heals later:
+                // a container that changes is a different portal, which ReconcileKeying.CanPatch
+                // turns into a remount rather than a patch.
+                target = portalNode.TargetElement;
+            }
+            else if (!hasLayer)
             {
                 target = FiberPortalRegistry.Get(portalNode.TargetId!);
                 if (target == null)
                 {
                     FiberLogger.LogWarning("Portal", $"Target \"{portalNode.TargetId}\" is not registered. Children will not be rendered.");
                     var placeholder = CreateHiddenPlaceholder();
-                    _ctx.PortalState[placeholder] = new PortalSlotInfo(null, 0, 0);
+                    _ctx.PortalState[placeholder] = new PortalSlotInfo(
+                        null, 0, 0, portalNode.TargetId, _ctx.FiberStack.Current);
                     return placeholder;
                 }
             }
@@ -487,7 +505,7 @@ namespace Velvet
             // ScrollView's direct children are the height spacer + absolutely-positioned visible
             // container, not the list items, so gap-* would have nothing meaningful to space.
             _patcher.ApplyVariantManipulators(scrollView, virtualListNode.ClassNames);
-            StyleFontResolver.ApplyIfPresent(scrollView, virtualListNode.ClassNames);
+            _patcher.ApplyFontLayerOnCreate(scrollView, virtualListNode.ClassNames);
             return scrollView;
         }
 
@@ -504,13 +522,11 @@ namespace Velvet
 
         private VisualElement CreateForComponentNode(ComponentNode componentNode)
         {
-            // Wrapper-mount path: reached only when CreateElement is invoked directly on a
-            // ComponentNode the reconcile walk did not inline-expand — a MemoNode whose
-            // resolved inner is a ComponentNode, or a ComponentNode that is a direct child of
-            // an AnimatePresence keyed entry. ComponentNodes reached during a
-            // ChildReconciler.Reconcile pass (top-level or nested under an element) are
-            // inline-mounted (no wrapper VE) by GeneralPathReconciler.ExpandInlineRecursive, so this
-            // case is unreachable for them.
+            // Wrapper-mount path, reached from a VirtualList item and nothing else: the item renderer's
+            // return goes to IReconcilerBridge.CreateElementForController unexpanded, while a reconcile
+            // rules a ComponentNode out on both of its paths — the fast one runs only where
+            // GeneralPathReconciler.NeedsExpansion found none, and the general one expands each one it
+            // reaches, a Memo's resolved inner and an AnimatePresence keyed entry included.
             // A Component does not emit a DOM element; its rendered tree attaches
             // directly to the parent. Velvet needs an anchor element for fiber tracking,
             // so the wrapper is made layout-transparent so its single child can size
@@ -524,15 +540,10 @@ namespace Velvet
         {
             // A context Provider emits no DOM element of its own; descendants attach directly to
             // the parent fiber's host. Velvet maps each VNode to exactly one VisualElement so a
-            // layout-passthrough wrapper anchors the Provider subtree without imposing layout.
-            // The wrapper is what AnimatePresence's keyed map (and any BaseElementNode children
-            // list reached through MemoNode's resolved inner) tracks for this Provider entry —
-            // the wrapper element is a deliberate choice, as documented on ContextProviderNode.
-            //
-            // GeneralPathReconciler.ExpandInlineRecursive expands Provider inline (no wrapper) during
-            // a Reconcile pass, so this case is unreachable for slot-based reconciliation; it is
-            // reached only when CreateElement is invoked directly on a Provider VNode — e.g. a
-            // MemoNode resolved inner.
+            // layout-passthrough wrapper anchors the Provider subtree without imposing layout — a
+            // deliberate choice, as documented on ContextProviderNode.
+            // Reached the one way CreateForComponentNode above is, and ruled out on the reconcile
+            // paths for the same reason.
             var container = CreateLayoutPassthroughContainer();
             container.AddToClassList(ContextProviderClassName);
 
@@ -674,8 +685,9 @@ namespace Velvet
             var placeholder = CreateHiddenPlaceholder();
             var contextSnapshot = _ctx.ComponentContextStack.SnapshotTops();
             // FiberStack.Current is the component whose Body is mid-render right now — the one that
-            // actually wrote `V.Portal(...)`/`V.WorldSpace(...)` into its returned tree. This is the
-            // only point where that's true; by drain time nothing on the stack reflects it anymore.
+            // actually wrote `V.Portal(...)`/`V.WorldSpace(...)` into its returned tree. Capturing it
+            // here is what makes it available at all: the pass that had it on the stack has unwound by
+            // drain time, and the drain pushes this captured value back rather than reading one.
             var logicalParent = _ctx.FiberStack.Current;
             _ctx.PendingPortalMounts.Enqueue((placeholder, node, target, contextSnapshot, logicalParent));
             return placeholder;
@@ -760,30 +772,11 @@ namespace Velvet
                 }
             };
 
-        // Resolves the MotionNode that drives an AnimatePresence keyed entry's
-        // enter / exit lifecycle (Transition + OnEnterComplete). Walks transparent wrappers
-        // (ContextProviderNode, FragmentNode) via
-        // FindFirstMotionDescendant and emits a warning when no Motion is found so
-        // the keyed entry surfaces as a missing animation in logs. AnimatePresence mount and patch
-        // paths read both Transition and OnEnterComplete from the same resolved
-        // Motion, so this helper exists to fold the walk + warning into a single pass — callsites
-        // that read both fields would otherwise traverse the transparent-wrapper chain twice.
-        internal static MotionNode? ResolveAnimatePresenceMotion(VNode node)
-        {
-            var motion = FindFirstMotionDescendant(node);
-            if (motion == null && node != null && node is not TextNode)
-            {
-                FiberLogger.LogWarning("FiberNodeFactory",
-                    $"Non-MotionNode child ({node.GetType().Name}) has no transition. Use V.Motion() to wrap children for enter/exit animations.");
-            }
-            return motion;
-        }
-
         // Walks node and returns the first MotionNode descendant
         // reachable through transparent wrappers — ContextProviderNode, FragmentNode, and a z-managed
         // ElementNode. Returns the node itself when it is already a MotionNode, or
         // null when no MotionNode exists in this transparent-wrapper chain. Used by
-        // ResolveAnimatePresenceMotion and AnimatePresence's else-branch
+        // AnimatePresence's else-branch
         // (Initial=false) where no warning should be emitted — so a Provider-wrapped Motion
         // contributes its transition / OnEnterComplete to the keyed entry: AnimatePresence tracks
         // the outer wrapper element while transitions remain on the inner motion components.

@@ -98,54 +98,88 @@ namespace Velvet
             FiberEffects.ScheduleRunEffects(fiber, mountDoubleInvoke: true);
         }
 
-        // Synchronously re-renders an already-mounted inline fiber so the caller (parent
-        // expansion) sees the fresh ComponentFiber.PreviousTree. Mirrors
-        // MountInline but skips SetupMount (already initialized). Effects
-        // are pushed onto the shared deferred drain so the top-level reconcile entry runs them
-        // bottom-up with the rest of the subtree: a deps-changed effect must run its
-        // prior cleanup + new setup during the layout-effect commit; staged effects would
-        // otherwise be cleared by the next RenderAndReconcile without running).
-        public static void RenderInlineForExpansion(ComponentFiber fiber)
+        // Synchronously re-renders an already-mounted inline fiber into the caller's batch pass and settles
+        // it there — the caller (parent expansion) sees the fresh ComponentFiber.PreviousTree, and the lanes
+        // that render satisfied are un-enrolled. One entry point rather than two, because the render opens
+        // the window the settle reads and a settle reached without one retains against whatever was
+        // requested since the last window closed.
+        //
+        // Like MountInline it skips nothing but SetupMount (already initialized) on the render side; unlike
+        // MountInline it settles, since a fiber that was already mounted can have lanes pending that this
+        // render just satisfied. Effects are pushed onto the shared deferred drain so the top-level
+        // reconcile entry runs them bottom-up with the rest of the subtree: a deps-changed effect must run
+        // its prior cleanup + new setup during the layout-effect commit; staged effects would otherwise be
+        // cleared by the next RenderAndReconcile without running.
+        internal static void SubsumeFiberIntoThisPass(ComponentFiber fiber)
         {
             if (!fiber.IsMounted)
             {
                 throw new InvalidOperationException(
-                    "FiberRenderer.RenderInlineForExpansion: fiber must already be mounted.");
+                    "FiberRenderer.SubsumeFiberIntoThisPass: fiber must already be mounted.");
             }
+            fiber.OpenSubsumedRenderWindow();
             RenderAndReconcile(fiber, deferReconcile: true);
             // Update commit: drain side runs prior cleanup + new setup (deps-comparing) without
             // the Editor-only mount double-invoke. ScheduleRunEffects forwards the same flag so the
             // passive (UseEffect) cleanup+setup pair fires at the next paint-tick.
             fiber.Reconciler!.Context.DeferredInlineLayoutEffectFibers.Push((fiber, IsMount: false));
             FiberEffects.ScheduleRunEffects(fiber, mountDoubleInvoke: false);
+            SettleSubsumedFiber(fiber);
         }
 
-        // Settles a fiber that an ancestor's flush just subsumed by re-rendering it inline (via
-        // RenderInlineForExpansion) in the same batch pass. Every pending
-        // update on a component coalesces into the single top-down render: the subsuming render already ran with the
-        // fiber's latest state, so all of its pending lanes are satisfied at once. This clears the whole lane
-        // queue (not just the highest lane), clears the dirty flag and transition-pending slots, and drops the
-        // fiber from BOTH batch-scheduler tiers so a later drain does not independently re-process it — without
-        // which a higher-priority lane queued on the child (e.g. Transition on the delayed tier) would be
-        // stranded and silently dropped by FlushState's not-dirty early-return.
-        internal static void SettleSubsumedFiber(ComponentFiber fiber)
+        // Settles a fiber that the render above just subsumed into the ancestor's batch pass. Every update
+        // pending BEFORE that render coalesces into it: the render ran with the fiber's latest state, so
+        // those lanes are satisfied at once. It un-enrolls every lane the render did not itself ask for
+        // again, and when that empties the queue it
+        // also clears the dirty flag and the transition-pending slots and drops the fiber from BOTH
+        // batch-scheduler tiers, so a later drain does not independently re-process it — without which a
+        // higher-priority lane queued on the child (e.g. Transition on the delayed tier) would be stranded
+        // and silently dropped by FlushState's not-dirty early-return.
+        //
+        // A lane the render itself requested is not one that render satisfied, and survives. What it requested
+        // has to be recorded as the render runs rather than derived from a before-image of the queue, because
+        // a request that coalesces onto an already-pending lane leaves no trace in the mask — see
+        // FiberLaneSet.RetainAll. A body scheduling during its own render is the reachable case
+        // (UseDeferredValue re-queues its Transition lane on every render that is not the deferred commit),
+        // and losing it left a deferred value fed from a prop never committing at all.
+        private static void SettleSubsumedFiber(ComponentFiber fiber)
         {
             // Direct field access through Lanes (not the fiber.LaneQueue read accessor): EnsureLanes would
             // allocate a LaneState for the lane-less majority of subsumed fibers (every non-memoized child
             // re-render lands here), defeating the documented lazy-allocation invariant, and a FiberLaneSet
-            // handed back by a property getter is a copy — Clear() through it would mutate a throwaway
+            // handed back by a property getter is a copy — RetainAll() through it would mutate a throwaway
             // value instead of the backing queue.
-            fiber.Lanes?.Queue.Clear();
-            // The subsuming render committed the fiber's latest (eagerly-written) state, so any
-            // starvation-promoted work is satisfied too — a marker left true on the now-clean fiber
-            // would mis-time a LATER transition's settle (its sweep would be skipped while other lanes
-            // queue).
             if (fiber.Lanes != null)
             {
+                fiber.Lanes.Queue.RetainAll(fiber.Lanes.LanesRequestedSinceReset);
+                fiber.Lanes.LanesRequestedSinceReset.Clear();
+                // The subsuming render committed the fiber's latest (eagerly-written) state, so any
+                // starvation-promoted work is satisfied too — a marker left true on the now-clean fiber
+                // would mis-time a LATER transition's settle (its sweep would be skipped while other lanes
+                // queue).
                 fiber.Lanes.HasPromotedTransition = false;
             }
+
+            if (fiber.LaneQueue.Count > 0)
+            {
+                // Re-enrol, for two reasons the surviving lane cannot tell apart here. A drain empties its
+                // tier's pending set before flushing any fiber, so when the settle runs inside one, an
+                // enrolment predating that pass is already gone. And a fiber that was dirty carrying only
+                // Normal was enrolled on the immediate tier alone: a Transition request satisfies neither
+                // term of ScheduleRerender's escalation check, so it scheduled nothing, and RetainAll has
+                // just dropped the Normal that was holding the only enrolment it had.
+                // ScheduleFlush dedups, so asking unconditionally costs nothing when the lane has a tier.
+                fiber.IsDirty = true;
+                FiberWorkLoop.ScheduleFlush(fiber, fiber.LaneQueue.Min);
+                // A surviving Transition lane keeps isPending lit only for the slot that queued it. The
+                // lane is what the render asked for again, so it may equally be a UseDeferredValue's, and
+                // reading the lane alone held the flag up until that unrelated deferral drained.
+                fiber.ClearSettledTransitionPending();
+                return;
+            }
+
             fiber.IsDirty = false;
-            fiber.ClearAllTransitionPending();
+            fiber.SettleTransitionPending();
             fiber.Reconciler?.Context.BatchScheduler.Remove(fiber);
         }
 
@@ -172,8 +206,8 @@ namespace Velvet
 
             fiber.MountPoint = mountPoint ?? throw new ArgumentNullException(nameof(mountPoint));
             // Inline-mounted descendants share the root's ReconcilerContext so registry lookups
-            // by (anchor, slotKey, identity) resolve to the same fiber instance regardless of
-            // which fiber's Reconciler is currently running. Wrapper-mounted fibers without a
+            // resolve to the same fiber instance regardless of which fiber's Reconciler is currently
+            // running. Wrapper-mounted fibers without a
             // parent fiber (root mount path) bootstrap a fresh Reconciler that owns its ctx.
             var parentCtx = sharedContext ?? fiber.Parent?.Reconciler?.Context;
             fiber.Reconciler = parentCtx != null
@@ -213,8 +247,12 @@ namespace Velvet
             // but removing here keeps the pending set from retaining a dead fiber reference until drain.
             fiber.Reconciler?.Context.BatchScheduler.Remove(fiber);
             // For components whose LaneState has not been allocated (Lane never used), do not call Clear() to
-            // preserve zero-allocation. LaneState.Clear initializes every queue/transition-related field.
+            // preserve zero-allocation.
             fiber.Lanes?.Clear();
+            // The lane queue cleared above is where another component's transition was waiting for its work
+            // to commit, so the slots enrolled here settle now: nothing is left to commit it.
+            fiber.DischargeTransitionEnrolments();
+            fiber.ReleaseTransitionSlotOwnership();
 
             // A mid-pass unmount takes its own deferred inline baselines with it: the end-of-pass
             // drain would otherwise sweep them AFTER this teardown nulls PreviousTree, disposes the
@@ -287,6 +325,15 @@ namespace Velvet
             fiber.MemoValueSlots?.Clear();
             fiber.ClearImperativeHandleSlots();
             fiber.RefSlots?.Clear();
+            // A remount is a first render, and every hook decides that by finding its index past the end of
+            // its slot list. A surviving deferred-value slot puts the index inside the list, so the
+            // initialValue overload skips the branch that returns initialValue and schedules the transition,
+            // and commits the previous mount's deferred-toward value instead.
+            //
+            // TransitionSlots deliberately survives alongside it: ReleaseTransitionSlotOwnership above
+            // scrubs what an unmount must not carry over, and UseTransitionTests distinguishes an unowned
+            // reused slot from a fresh one by identity — which a clear would make unaskable.
+            fiber.DeferredValueSlots?.Clear();
             // ExternalRef is re-injected by the parent on re-mount, mirroring how an imperative handle
             // is cleared on unmount and re-established on the next mount.
             // The ComponentRegistry path idempotently re-invokes SetExternalRef, so this is safe.

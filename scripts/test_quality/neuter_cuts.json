@@ -142,7 +142,7 @@
     },
     {
       "name": "balance-register",
-      "mechanism": "balance-wiring",
+      "mechanism": "balance",
       "summary": "the reconciler attaches and detaches no balance manipulator",
       "edits": [
         {
@@ -199,6 +199,416 @@
           "neuter": "return;"
         }
       ]
+    },
+    {
+      "name": "skew-parser",
+      "mechanism": "skew",
+      "summary": "the skew class parser recognises no skew-* token and resolves no angle",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/StyleSkewClass.cs",
+          "anchor": "public static bool TryExtract(string[]? classNames, out SkewSpec spec)",
+          "neuter": "spec = default; return false;"
+        },
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/StyleSkewClass.cs",
+          "anchor": "public static bool HasSkewClass(string[]? classNames)",
+          "neuter": "return false;"
+        }
+      ]
+    },
+    {
+      "name": "skew-applier",
+      "mechanism": "skew",
+      "summary": "the reconciler applies no skew transform, at create or at patch",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Runtime/Reconciler/FiberSkewApplier.cs",
+          "anchor": "internal void ApplySkewOnCreate(VisualElement element, string[] classNames)",
+          "neuter": "return;"
+        },
+        {
+          "file": "Packages/com.velvet.core/Runtime/Reconciler/FiberSkewApplier.cs",
+          "anchor": "bool canReleaseFace)",
+          "neuter": "return 0f;"
+        }
+      ]
+    },
+    {
+      "name": "gradient-parser",
+      "mechanism": "gradient",
+      "summary": "the gradient class parser recognises no bg-gradient-* token and resolves no stops",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/StyleGradientClass.cs",
+          "anchor": "public static bool TryExtract(string[] classNames, out GradientSpec spec)",
+          "neuter": "spec = default; return false;"
+        },
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/StyleGradientClass.cs",
+          "anchor": "public static bool HasGradientClass(string[] classNames)",
+          "neuter": "return false;"
+        }
+      ]
+    },
+    {
+      "name": "gradient-applier",
+      "mechanism": "gradient",
+      "summary": "the reconciler bakes and assigns no gradient background, at create or at patch",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Runtime/Reconciler/FiberGradientApplier.cs",
+          "anchor": "internal void ApplyGradientOnCreate(VisualElement element, string[] classNames)",
+          "neuter": "return;"
+        },
+        {
+          "file": "Packages/com.velvet.core/Runtime/Reconciler/FiberGradientApplier.cs",
+          "anchor": "internal void ApplyGradientOnPatch(VisualElement element, string[] classNames, bool skewable)",
+          "neuter": "return;"
+        },
+        {
+          "file": "Packages/com.velvet.core/Runtime/Reconciler/FiberSkewApplier.cs",
+          "anchor": "private static void SyncSkewGradient(VisualElement element, SkewBinding binding, string[] classNames)",
+          "neuter": "return;"
+        }
+      ]
+    },
+    {
+      "name": "shadow-parser",
+      "mechanism": "shadow",
+      "summary": "the shadow class parser recognises no shadow-* token and resolves no spec",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/StyleShadowClass.cs",
+          "anchor": "public static bool TryExtract(string[] classNames, out ShadowSpec spec)",
+          "neuter": "spec = default; return false;"
+        },
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/StyleShadowClass.cs",
+          "anchor": "public static bool HasShadowClass(string[] classNames)",
+          "neuter": "return false;"
+        }
+      ]
+    },
+    {
+      "name": "shadow-applier",
+      "mechanism": "shadow",
+      "summary": "the reconciler attaches and syncs no drop shadow, at create or at patch",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Runtime/Reconciler/FiberDropShadowApplier.cs",
+          "anchor": "internal void ApplyShadowOnCreate(VisualElement element, string[] classNames)",
+          "neuter": "return;"
+        },
+        {
+          "file": "Packages/com.velvet.core/Runtime/Reconciler/FiberDropShadowApplier.cs",
+          "anchor": "float skewXDeg, bool canReleaseFace)",
+          "neuter": "return;"
+        }
+      ]
+    },
+    {
+      "name": "border-style-parser",
+      "mechanism": "border-style",
+      "summary": "the border-style class parser recognises no border-dashed/dotted token",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/StyleBorderStyleClass.cs",
+          "anchor": "public static bool TryExtract(string[]? classNames, out BorderStyleSpec spec)",
+          "neuter": "spec = default; return false;"
+        },
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/StyleBorderStyleClass.cs",
+          "anchor": "public static bool HasBorderStyleClass(string[]? classNames)",
+          "neuter": "return false;"
+        }
+      ]
+    },
+    {
+      "name": "border-style-applier",
+      "mechanism": "border-style",
+      "summary": "the reconciler draws no dashed or dotted border, at create or at patch",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Runtime/Reconciler/FiberBorderStyleApplier.cs",
+          "anchor": "internal void ApplyBorderStyleOnCreate(VisualElement element, string[] classNames)",
+          "neuter": "return;"
+        },
+        {
+          "file": "Packages/com.velvet.core/Runtime/Reconciler/FiberBorderStyleApplier.cs",
+          "anchor": "bool canReleaseFace)",
+          "neuter": "return;"
+        }
+      ]
+    },
+    {
+      "name": "divide-parser",
+      "mechanism": "divide",
+      "summary": "the divide class parser recognises no divide-* token and resolves no spec",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/StyleDivideClass.cs",
+          "anchor": "public static bool TryExtract(string[] classNames, out DivideSpec spec)",
+          "neuter": "spec = default; return false;"
+        },
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/StyleDivideClass.cs",
+          "anchor": "public static bool HasDivideClass(string[] classNames)",
+          "neuter": "return false;"
+        }
+      ]
+    },
+    {
+      "name": "gap-parser",
+      "mechanism": "gap",
+      "summary": "the gap class parser recognises no gap-* token and resolves no spacing",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/StyleGapClass.cs",
+          "anchor": "public static bool TryExtract(string[] classNames, out float gap, out GapAxis axis)",
+          "neuter": "gap = 0f; axis = default; return false;"
+        },
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/StyleGapClass.cs",
+          "anchor": "public static bool HasGapClass(string[] classNames)",
+          "neuter": "return false;"
+        }
+      ]
+    },
+    {
+      "name": "grid-parser",
+      "mechanism": "grid",
+      "summary": "the grid class parser recognises no grid-cols-* token and resolves no column count",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/StyleGridClass.cs",
+          "anchor": "public static bool TryExtract(string[] classNames, out int columns)",
+          "neuter": "columns = 0; return false;"
+        },
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/StyleGridClass.cs",
+          "anchor": "public static bool HasGridClass(string[] classNames)",
+          "neuter": "return false;"
+        }
+      ]
+    },
+    {
+      "name": "animate-parser",
+      "mechanism": "animate",
+      "summary": "the animate class parser recognises no animate-* token and resolves no spec",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/StyleAnimateClass.cs",
+          "anchor": "public static bool TryExtract(string[] classNames, out AnimateSpec spec)",
+          "neuter": "spec = default; return false;"
+        }
+      ]
+    },
+    {
+      "name": "zindex-parser",
+      "mechanism": "zindex",
+      "summary": "the z-index class parser recognises no z-* token and resolves no depth",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/StyleZIndexClass.cs",
+          "anchor": "public static bool TryExtract(string[] classNames, out int z)",
+          "neuter": "z = 0; return false;"
+        },
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/StyleZIndexClass.cs",
+          "anchor": "public static bool HasZIndexClass(string[] classNames)",
+          "neuter": "return false;"
+        }
+      ]
+    },
+    {
+      "name": "has-parser",
+      "mechanism": "has-variant",
+      "summary": "the has-* variant parser recognises no token and resolves no selector",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/StyleHasVariantClass.cs",
+          "anchor": "public static bool TryParse(string token, out StyleHasKind kind, out string? className, out string? payload)",
+          "neuter": "kind = default; className = null; payload = null; return false;"
+        }
+      ]
+    },
+    {
+      "name": "attribute-variant-parser",
+      "mechanism": "attribute-variant",
+      "summary": "the data-* and aria-* variant parser recognises no token and resolves no payload",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/StyleAttributeVariantClass.cs",
+          "anchor": "string? token, out StyleAttributeNamespace ns, out string? key, out string? value, out string? payload)",
+          "neuter": "ns = default; key = null; value = null; payload = null; return false;"
+        }
+      ]
+    },
+    {
+      "name": "structural-variant-parser",
+      "mechanism": "structural-variant",
+      "summary": "the structural variant parser recognises no first/last/odd/nth token",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/StyleStructuralVariantClass.cs",
+          "anchor": "public static bool TryParse(string? token, out StyleStructuralKind kind, out int n, out string? payload)",
+          "neuter": "kind = default; n = 0; payload = null; return false;"
+        }
+      ]
+    },
+    {
+      "name": "supports-variant-parser",
+      "mechanism": "supports-variant",
+      "summary": "the supports-* variant parser recognises no token and resolves no property",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/StyleSupportsVariantClass.cs",
+          "anchor": "public static bool TryParse(string? token, out string? property, out string? value, out string? payload)",
+          "neuter": "property = null; value = null; payload = null; return false;"
+        }
+      ]
+    },
+    {
+      "name": "text-effect-parser",
+      "mechanism": "text-effect",
+      "summary": "the text-effect class parser recognises no token and resolves no effect",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/StyleTextEffectClass.cs",
+          "anchor": "public static TextEffect Parse(string[] classNames)",
+          "neuter": "return default;"
+        },
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/StyleTextEffectClass.cs",
+          "anchor": "public static bool IsTextEffectToken(string cls)",
+          "neuter": "return false;"
+        },
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/StyleTextEffectClass.cs",
+          "anchor": "public static bool IsArbitraryLeadingClass(string cls)",
+          "neuter": "return false;"
+        }
+      ]
+    },
+    {
+      "name": "text-effect-apply",
+      "mechanism": "text-effect",
+      "summary": "the text-effect applier returns the raw string, collapsing, transforming, decorating and leading nothing",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/StyleTextEffectClass.cs",
+          "anchor": "LeadingValue? leading = null)",
+          "neuter": "return raw;"
+        }
+      ]
+    },
+    {
+      "name": "font-parser",
+      "mechanism": "font",
+      "summary": "the font class parser claims no token and resolves no font intent",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/StyleFontClass.cs",
+          "anchor": "public static bool TryExtract(string[] classNames, out FontIntent intent)",
+          "neuter": "intent = default; return false;"
+        },
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/StyleFontClass.cs",
+          "anchor": "public static bool HasFontClass(string[] classNames)",
+          "neuter": "return false;"
+        },
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/StyleFontClass.cs",
+          "anchor": "public static bool IsFontToken(string cls)",
+          "neuter": "return false;"
+        },
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/StyleFontClass.cs",
+          "anchor": "public static bool IsArbitraryFontClass(string cls)",
+          "neuter": "return false;"
+        }
+      ]
+    },
+    {
+      "name": "gesture-applier",
+      "mechanism": "gesture",
+      "summary": "the reconciler attaches and removes no gesture manipulator",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Runtime/Reconciler/FiberGestureApplier.cs",
+          "anchor": "internal void ApplyGestureManipulator(VisualElement element, string? whileHoverClass, string? whileTapClass, string? whileFocusClass)",
+          "neuter": "return;"
+        }
+      ]
+    },
+    {
+      "name": "child-variant-parser",
+      "mechanism": "child-variant",
+      "summary": "the child variant parser extracts and parses no [&>*] payload",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/StyleChildVariantClass.cs",
+          "anchor": "public static bool TryExtract(string[] classNames, out string[] payloads)",
+          "neuter": "payloads = Array.Empty<string>(); return false;"
+        },
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/StyleChildVariantClass.cs",
+          "anchor": "public static bool HasChildVariantClass(string[] classNames)",
+          "neuter": "return false;"
+        },
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/StyleChildVariantClass.cs",
+          "anchor": "public static bool TryParse(string? cls, out string payload)",
+          "neuter": "payload = string.Empty; return false;"
+        }
+      ]
+    },
+    {
+      "name": "animate-applier",
+      "mechanism": "animate",
+      "summary": "the reconciler attaches and detaches no animate binding, at create or at patch",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Runtime/Reconciler/FiberAnimateMotionApplier.cs",
+          "anchor": "internal void ApplyAnimateOnCreate(VisualElement element, string[] classNames)",
+          "neuter": "return;"
+        },
+        {
+          "file": "Packages/com.velvet.core/Runtime/Reconciler/FiberAnimateMotionApplier.cs",
+          "anchor": "internal void ApplyAnimateOnPatch(VisualElement element, string[] classNames)",
+          "neuter": "return;"
+        }
+      ]
+    },
+    {
+      "name": "balance-token",
+      "mechanism": "balance",
+      "summary": "the balance class parser finds no text-balance class on a class list",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/StyleTextBalanceClass.cs",
+          "anchor": "public static bool HasTextBalanceClass(string[] classNames)",
+          "neuter": "return false;"
+        }
+      ]
+    },
+    {
+      "name": "filter-transition-applier",
+      "mechanism": "filter-transition",
+      "summary": "the reconciler starts and updates no filter tween, at create or at patch",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Runtime/Reconciler/FiberFilterTransitionApplier.cs",
+          "anchor": "internal void ApplyFilterTransitionOnCreate(VisualElement element, string[] classNames)",
+          "neuter": "return;"
+        },
+        {
+          "file": "Packages/com.velvet.core/Runtime/Reconciler/FiberFilterTransitionApplier.cs",
+          "anchor": "internal void ApplyFilterTransitionOnPatch(VisualElement element, string[] classNames)",
+          "neuter": "return;"
+        }
+      ]
     }
   ],
   "fixtures": [
@@ -219,21 +629,25 @@
           "mechanism": "ring",
           "pattern": "Ring|Outline"
         }
-      ]
+      ],
+      "platform": "EditMode"
     },
     {
       "fixture": "Velvet.Tests.StyleRingClassTests",
       "cuts": [
         "ring-parser"
       ],
-      "caseScopes": []
+      "caseScopes": [],
+      "platform": "EditMode"
     },
     {
       "fixture": "Velvet.Tests.TextBalanceParityTests",
       "cuts": [
-        "balance-register"
+        "balance-register",
+        "balance-token"
       ],
-      "caseScopes": []
+      "caseScopes": [],
+      "platform": "EditMode"
     },
     {
       "fixture": "Velvet.Tests.TextBalancePlaybackTests",
@@ -241,7 +655,8 @@
         "balance-attach",
         "balance-apply"
       ],
-      "caseScopes": []
+      "caseScopes": [],
+      "platform": "PlayMode"
     },
     {
       "fixture": "Velvet.Tests.BundledStyleSheetInclusionTests",
@@ -260,7 +675,8 @@
           "mechanism": "stylesheet-gate",
           "pattern": "WouldInject"
         }
-      ]
+      ],
+      "platform": "EditMode"
     },
     {
       "fixture": "Velvet.Tests.BundledShaderInclusionTests",
@@ -279,13 +695,213 @@
           "mechanism": "shader-gate",
           "pattern": "WouldInject"
         }
-      ]
-    }
-  ],
-  "registrationAllowlist": [
+      ],
+      "platform": "EditMode"
+    },
     {
-      "fixture": "Velvet.Tests.PaintOpacityParityPlaybackTests",
-      "reason": "PlayMode GPU readback parity between textured-quad and painter2D opacity; no neuter cut disables what these cases measure."
+      "fixture": "Velvet.Tests.SkewClassTests",
+      "cuts": [
+        "skew-parser"
+      ],
+      "caseScopes": [],
+      "platform": "EditMode"
+    },
+    {
+      "fixture": "Velvet.Tests.GradientClassParityTests",
+      "cuts": [
+        "gradient-parser"
+      ],
+      "caseScopes": [],
+      "platform": "EditMode"
+    },
+    {
+      "fixture": "Velvet.Tests.ShadowClassParityTests",
+      "cuts": [
+        "shadow-parser"
+      ],
+      "caseScopes": [],
+      "platform": "EditMode"
+    },
+    {
+      "fixture": "Velvet.Tests.BorderStylePatchTests",
+      "cuts": [
+        "border-style-parser",
+        "border-style-applier"
+      ],
+      "caseScopes": [],
+      "platform": "EditMode"
+    },
+    {
+      "fixture": "Velvet.Tests.DivideClassParityTests",
+      "cuts": [
+        "divide-parser"
+      ],
+      "caseScopes": [],
+      "platform": "EditMode"
+    },
+    {
+      "fixture": "Velvet.Tests.SkewChildTranslateManipulatorTests",
+      "cuts": [
+        "skew-applier"
+      ],
+      "caseScopes": [],
+      "platform": "EditMode"
+    },
+    {
+      "fixture": "Velvet.Tests.PaintBindingPatchTests",
+      "cuts": [
+        "gradient-applier",
+        "shadow-applier",
+        "skew-applier"
+      ],
+      "caseScopes": [
+        {
+          "mechanism": "gradient",
+          "pattern": "Gradient"
+        },
+        {
+          "mechanism": "shadow",
+          "pattern": "Shadow"
+        },
+        {
+          "mechanism": "skew",
+          "pattern": "Skew"
+        }
+      ],
+      "platform": "EditMode"
+    },
+    {
+      "fixture": "Velvet.Tests.VariantGatedPaintThemeTests",
+      "cuts": [
+        "border-style-applier",
+        "gradient-applier",
+        "shadow-applier",
+        "skew-applier"
+      ],
+      "caseScopes": [
+        {
+          "mechanism": "gradient",
+          "pattern": "Gradient"
+        },
+        {
+          "mechanism": "shadow",
+          "pattern": "Shadow"
+        },
+        {
+          "mechanism": "skew",
+          "pattern": "Skew"
+        },
+        {
+          "mechanism": "border-style",
+          "pattern": "BorderDashed|ClassSource"
+        }
+      ],
+      "platform": "EditMode"
+    },
+    {
+      "fixture": "Velvet.Tests.GapParityTests",
+      "cuts": [
+        "gap-parser"
+      ],
+      "caseScopes": [],
+      "platform": "EditMode"
+    },
+    {
+      "fixture": "Velvet.Tests.GridParityTests",
+      "cuts": [
+        "grid-parser"
+      ],
+      "caseScopes": [],
+      "platform": "EditMode"
+    },
+    {
+      "fixture": "Velvet.Tests.AnimateMotionPatchTests",
+      "cuts": [
+        "animate-parser",
+        "animate-applier"
+      ],
+      "caseScopes": [],
+      "platform": "EditMode"
+    },
+    {
+      "fixture": "Velvet.Tests.ZIndexStackingTests",
+      "cuts": [
+        "zindex-parser"
+      ],
+      "caseScopes": [],
+      "platform": "EditMode"
+    },
+    {
+      "fixture": "Velvet.Tests.HasVariantTests",
+      "cuts": [
+        "has-parser"
+      ],
+      "caseScopes": [],
+      "platform": "EditMode"
+    },
+    {
+      "fixture": "Velvet.Tests.VariantSelectorResolutionTests",
+      "cuts": [
+        "attribute-variant-parser",
+        "structural-variant-parser",
+        "supports-variant-parser"
+      ],
+      "caseScopes": [
+        {
+          "mechanism": "attribute-variant",
+          "pattern": "Data|Aria|AttributeVariantToken|EmptyValueEqualityVariant"
+        },
+        {
+          "mechanism": "structural-variant",
+          "pattern": "OddVariant|EvenVariant|FirstVariant|LastVariant|ArbitraryNthChild|OnlyVariant"
+        },
+        {
+          "mechanism": "supports-variant",
+          "pattern": "SupportsVariant"
+        }
+      ],
+      "platform": "EditMode"
+    },
+    {
+      "fixture": "Velvet.Tests.StyleTextEffectClassTests",
+      "cuts": [
+        "text-effect-parser",
+        "text-effect-apply"
+      ],
+      "caseScopes": [],
+      "platform": "EditMode"
+    },
+    {
+      "fixture": "Velvet.Tests.StyleFontTests",
+      "cuts": [
+        "font-parser"
+      ],
+      "caseScopes": [],
+      "platform": "EditMode"
+    },
+    {
+      "fixture": "Velvet.Tests.GestureClassManipulatorTests",
+      "cuts": [
+        "gesture-applier"
+      ],
+      "caseScopes": [],
+      "platform": "EditMode"
+    },
+    {
+      "fixture": "Velvet.Tests.ChildVariantClassParityTests",
+      "cuts": [
+        "child-variant-parser"
+      ],
+      "caseScopes": [],
+      "platform": "EditMode"
+    },
+    {
+      "fixture": "Velvet.Tests.FilterTransitionPanelTests",
+      "cuts": [
+        "filter-transition-applier"
+      ],
+      "caseScopes": [],
+      "platform": "EditMode"
     }
   ]
 }

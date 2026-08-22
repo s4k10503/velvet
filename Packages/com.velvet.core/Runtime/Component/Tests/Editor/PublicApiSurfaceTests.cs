@@ -5,13 +5,15 @@ using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using NUnit.Framework;
+using Velvet.Editor.DevTools;
+using Velvet.TestUtilities;
 
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Pins the shipped runtime assembly's public and protected member surface to a checked-in file so every
-    /// addition and removal is a reviewable diff. The CHANGELOG's [Unreleased] breaking entries are written
-    /// down by hand; nothing else compares two commits.
+    /// Pins the shipped assemblies' public and protected member surface to a checked-in file so every
+    /// addition, removal and nullability change is a reviewable diff. The CHANGELOG's
+    /// [Unreleased — breaking] section is written down by hand; nothing else compares two commits.
     /// </summary>
     [TestFixture]
     internal sealed class PublicApiSurfaceTests
@@ -23,10 +25,10 @@ namespace Velvet.Tests
             Path.GetFullPath("Packages/com.velvet.core/PublicAPI.txt");
 
         [Test]
-        public void Given_VelvetRuntimeAssembly_When_PublicApiSurfaceIsRendered_Then_ItMatchesPublicApiTxt()
+        public void Given_ShippedAssemblies_When_PublicApiSurfaceIsRendered_Then_ItMatchesPublicApiTxt()
         {
             // Arrange
-            var rendered = PublicApiSurface.Render(typeof(V).Assembly).ToArray();
+            var rendered = PublicApiSurface.RenderShippedAssemblies().ToArray();
 
             // Act
             if (string.Equals(
@@ -52,6 +54,48 @@ namespace Velvet.Tests
                 BuildDriftMessage(added, removed));
         }
 
+        [Test]
+        public void Given_ShippedAssemblies_When_EverySignaturePositionIsRead_Then_NoFlagIsMisread()
+        {
+            // Arrange
+            var diagnostics = new SurfaceDiagnostics();
+
+            // Act
+            foreach (var assembly in PublicApiSurface.ShippedAssemblies)
+            {
+                PublicApiSurface.Render(assembly, diagnostics);
+            }
+
+            // Assert — a walk that read no flag array at all would report nothing misread either.
+            Assert.That(
+                (read: diagnostics.FlagArraySignatures > 0, misread: string.Join("\n", diagnostics.Misread)),
+                Is.EqualTo((read: true, misread: string.Empty)),
+                "A signature position the walk misses shifts every annotation after it onto the wrong type, "
+                + "so the surface file would pin a spelling no source declares.");
+        }
+
+        [Test]
+        public void Given_CodeGenAssembly_When_ItsSurfaceTypesAreCollected_Then_ItHasNone()
+        {
+            // Arrange
+            var codeGen = AppDomain.CurrentDomain.GetAssemblies().FirstOrDefault(
+                assembly => string.Equals(
+                    assembly.GetName().Name,
+                    "Unity.Velvet.CodeGen",
+                    StringComparison.Ordinal));
+
+            // Act
+            var surface = codeGen?.GetTypes().Where(PublicApiSurface.IsSurfaceType).Select(type => type.FullName)
+                          ?? Enumerable.Empty<string>();
+
+            // Assert
+            Assert.That(
+                (loaded: codeGen != null, surface: string.Join(", ", surface)),
+                Is.EqualTo((loaded: true, surface: string.Empty)),
+                "The ILPP assembly is left out of PublicAPI.txt because a consumer can bind to nothing in "
+                + "it. An unloaded assembly would report the same empty surface, so both are read at once.");
+        }
+
         private static string BuildDriftMessage(IReadOnlyList<string> added, IReadOnlyList<string> removed)
         {
             var message = "Public API surface drifted from Packages/com.velvet.core/PublicAPI.txt.";
@@ -72,41 +116,100 @@ namespace Velvet.Tests
         }
     }
 
+    /// <summary>
+    /// What one render made of the compiler's nullable flags, for a fixture asserting it read them the way
+    /// they were written.
+    /// </summary>
+    internal sealed class SurfaceDiagnostics
+    {
+        /// <summary>Signatures whose annotation arrived as a flag array, the only form a walk can misread.</summary>
+        public int FlagArraySignatures { get; set; }
+
+        /// <summary>Signatures whose flags and type tree did not line up, one description each.</summary>
+        public List<string> Misread { get; } = new();
+    }
+
     internal static class PublicApiSurface
     {
         private const BindingFlags MemberFlags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance
             | BindingFlags.Static | BindingFlags.DeclaredOnly;
 
-        public static IReadOnlyList<string> Render(Assembly assembly)
+        /// <summary>
+        /// The package's shipped assemblies a consumer can bind to. <c>Unity.Velvet.CodeGen</c> is the third
+        /// one it ships and declares no public type, which
+        /// <c>Given_CodeGenAssembly_When_ItsSurfaceTypesAreCollected_Then_ItHasNone</c> holds.
+        /// </summary>
+        public static IReadOnlyList<Assembly> ShippedAssemblies { get; } = new[]
+        {
+            typeof(V).Assembly,
+            typeof(VelvetDevToolsWindow).Assembly,
+        };
+
+        public static IReadOnlyList<string> RenderShippedAssemblies()
         {
             var lines = new List<string>();
-            foreach (var type in assembly.GetTypes()
-                         .Where(IsSurfaceType)
-                         .OrderBy(type => type.FullName, StringComparer.Ordinal))
+            foreach (var assembly in ShippedAssemblies)
             {
-                lines.Add(RenderType(type));
-                lines.AddRange(RenderMembers(type));
+                lines.AddRange(Render(assembly, new SurfaceDiagnostics()));
             }
 
             lines.Sort(StringComparer.Ordinal);
             return lines;
         }
 
-        private static bool IsSurfaceType(Type type)
+        /// <param name="diagnostics">Reads back what the walk over the nullable flags did.</param>
+        public static IReadOnlyList<string> Render(Assembly assembly, SurfaceDiagnostics diagnostics)
         {
-            if (!type.IsPublic && !type.IsNestedPublic)
+            var prefix = "[" + assembly.GetName().Name + "] ";
+            var lines = new List<string>();
+            foreach (var type in assembly.GetTypes()
+                         .Where(IsSurfaceType)
+                         .OrderBy(type => type.FullName, StringComparer.Ordinal))
             {
-                return false;
+                lines.Add(prefix + RenderType(type));
+                lines.AddRange(RenderMembers(type, diagnostics).Select(line => prefix + line));
+            }
+
+            lines.Sort(StringComparer.Ordinal);
+            return lines;
+        }
+
+        /// <summary>Whether a consumer outside the assembly can name this type.</summary>
+        /// <remarks>
+        /// A nested type's own accessibility is not the whole answer: <c>public</c> nested in
+        /// <c>internal</c> is unnameable from outside, and three such records were being rendered here.
+        /// Nineteen lines describing an API nothing can bind to is not wrong so much as it is noise a real
+        /// change hides in — a diff against them reads as a public-surface change and is not one.
+        /// </remarks>
+        public static bool IsSurfaceType(Type type)
+        {
+            for (var link = type; link != null; link = link.DeclaringType)
+            {
+                if (link.IsNested ? !link.IsNestedPublic : !link.IsPublic)
+                {
+                    return false;
+                }
             }
 
             return !IsCompilerGenerated(type);
         }
 
-        private static IEnumerable<string> RenderMembers(Type type)
+        /// <summary>
+        /// Renders one type's members, for a fixture that pins how a signature is spelled rather than what
+        /// the package ships.
+        /// </summary>
+        public static IReadOnlyList<string> RenderMembersOf(Type type)
+        {
+            var lines = RenderMembers(type, new SurfaceDiagnostics()).ToList();
+            lines.Sort(StringComparer.Ordinal);
+            return lines;
+        }
+
+        private static IEnumerable<string> RenderMembers(Type type, SurfaceDiagnostics diagnostics)
         {
             foreach (var constructor in type.GetConstructors(MemberFlags))
             {
-                var line = RenderConstructor(type, constructor);
+                var line = RenderConstructor(type, constructor, diagnostics);
                 if (line != null)
                 {
                     yield return line;
@@ -115,7 +218,7 @@ namespace Velvet.Tests
 
             foreach (var method in type.GetMethods(MemberFlags))
             {
-                var line = RenderMethod(type, method);
+                var line = RenderMethod(type, method, diagnostics);
                 if (line != null)
                 {
                     yield return line;
@@ -124,7 +227,7 @@ namespace Velvet.Tests
 
             foreach (var property in type.GetProperties(MemberFlags))
             {
-                var line = RenderProperty(type, property);
+                var line = RenderProperty(type, property, diagnostics);
                 if (line != null)
                 {
                     yield return line;
@@ -133,7 +236,7 @@ namespace Velvet.Tests
 
             foreach (var field in type.GetFields(MemberFlags))
             {
-                var line = RenderField(type, field);
+                var line = RenderField(type, field, diagnostics);
                 if (line != null)
                 {
                     yield return line;
@@ -142,7 +245,7 @@ namespace Velvet.Tests
 
             foreach (var eventInfo in type.GetEvents(MemberFlags))
             {
-                var line = RenderEvent(type, eventInfo);
+                var line = RenderEvent(type, eventInfo, diagnostics);
                 if (line != null)
                 {
                     yield return line;
@@ -152,7 +255,10 @@ namespace Velvet.Tests
 
         private static string RenderType(Type type) => "type " + FormatType(type);
 
-        private static string RenderConstructor(Type declaringType, ConstructorInfo constructor)
+        private static string RenderConstructor(
+            Type declaringType,
+            ConstructorInfo constructor,
+            SurfaceDiagnostics diagnostics)
         {
             if (!IsVisibleMethod(constructor) || IsCompilerGenerated(constructor))
             {
@@ -162,11 +268,14 @@ namespace Velvet.Tests
             return Prefix("ctor", constructor)
                    + FormatType(declaringType)
                    + ".ctor("
-                   + FormatParameters(constructor.GetParameters())
+                   + FormatParameters(constructor, diagnostics)
                    + "): System.Void";
         }
 
-        private static string RenderMethod(Type declaringType, MethodInfo method)
+        private static string RenderMethod(
+            Type declaringType,
+            MethodInfo method,
+            SurfaceDiagnostics diagnostics)
         {
             if (method.IsSpecialName || !IsVisibleMethod(method) || IsCompilerGenerated(method))
             {
@@ -184,12 +293,19 @@ namespace Velvet.Tests
                    + "."
                    + name
                    + "("
-                   + FormatParameters(method.GetParameters())
+                   + FormatParameters(method, diagnostics)
                    + "): "
-                   + FormatType(method.ReturnType);
+                   + FormatAnnotated(
+                       method.ReturnType,
+                       method.ReturnParameter.GetCustomAttributesData(),
+                       method,
+                       diagnostics);
         }
 
-        private static string RenderProperty(Type declaringType, PropertyInfo property)
+        private static string RenderProperty(
+            Type declaringType,
+            PropertyInfo property,
+            SurfaceDiagnostics diagnostics)
         {
             if (IsCompilerGenerated(property) || !HasVisibleAccessor(property, out var accessor))
             {
@@ -199,7 +315,7 @@ namespace Velvet.Tests
             var indexer = property.GetIndexParameters();
             var indexerSuffix = indexer.Length == 0
                 ? string.Empty
-                : "[" + FormatParameters(indexer) + "]";
+                : "[" + FormatParameters(indexer, accessor, diagnostics) + "]";
 
             return Prefix("property", accessor)
                    + FormatType(declaringType)
@@ -207,10 +323,17 @@ namespace Velvet.Tests
                    + property.Name
                    + indexerSuffix
                    + ": "
-                   + FormatType(property.PropertyType);
+                   + FormatAnnotated(
+                       property.PropertyType,
+                       property.GetCustomAttributesData(),
+                       accessor,
+                       diagnostics);
         }
 
-        private static string RenderField(Type declaringType, FieldInfo field)
+        private static string RenderField(
+            Type declaringType,
+            FieldInfo field,
+            SurfaceDiagnostics diagnostics)
         {
             if (field.IsSpecialName || !IsVisibleField(field) || IsCompilerGenerated(field))
             {
@@ -222,10 +345,17 @@ namespace Velvet.Tests
                    + "."
                    + field.Name
                    + ": "
-                   + FormatType(field.FieldType);
+                   + FormatAnnotated(
+                       field.FieldType,
+                       field.GetCustomAttributesData(),
+                       field,
+                       diagnostics);
         }
 
-        private static string RenderEvent(Type declaringType, EventInfo eventInfo)
+        private static string RenderEvent(
+            Type declaringType,
+            EventInfo eventInfo,
+            SurfaceDiagnostics diagnostics)
         {
             if (IsCompilerGenerated(eventInfo) || !HasVisibleAccessor(eventInfo, out var accessor))
             {
@@ -237,7 +367,11 @@ namespace Velvet.Tests
                    + "."
                    + eventInfo.Name
                    + ": "
-                   + FormatType(eventInfo.EventHandlerType);
+                   + FormatAnnotated(
+                       eventInfo.EventHandlerType,
+                       eventInfo.GetCustomAttributesData(),
+                       accessor,
+                       diagnostics);
         }
 
         private static bool HasVisibleAccessor(PropertyInfo property, out MethodInfo accessor)
@@ -288,45 +422,112 @@ namespace Velvet.Tests
             return kind + " " + visibility;
         }
 
-        private static string FormatParameters(IReadOnlyList<ParameterInfo> parameters) =>
-            string.Join(", ", parameters.Select(parameter => FormatType(parameter.ParameterType)));
+        private static string FormatParameters(MethodBase method, SurfaceDiagnostics diagnostics) =>
+            FormatParameters(method.GetParameters(), method, diagnostics);
 
-        private static string FormatType(Type type)
+        private static string FormatParameters(
+            IReadOnlyList<ParameterInfo> parameters,
+            MethodBase scope,
+            SurfaceDiagnostics diagnostics) =>
+            string.Join(", ", parameters.Select(parameter => FormatAnnotated(
+                parameter.ParameterType,
+                parameter.GetCustomAttributesData(),
+                scope,
+                diagnostics)));
+
+        private static string FormatAnnotated(
+            Type type,
+            IList<CustomAttributeData> site,
+            MemberInfo scope,
+            SurfaceDiagnostics diagnostics)
+        {
+            var reader = NullableAnnotationProbe.Read(site, scope);
+            var formatted = FormatType(type, reader);
+            if (reader.ReadsFlagArray)
+            {
+                diagnostics.FlagArraySignatures++;
+            }
+
+            var misalignment = reader.Misalignment;
+            if (misalignment != (0, 0))
+            {
+                diagnostics.Misread.Add(
+                    $"{scope.DeclaringType?.FullName}.{scope.Name}: {formatted} "
+                    + $"(unread {misalignment.Unread}, overrun {misalignment.Overrun})");
+            }
+
+            return formatted;
+        }
+
+        private static string FormatType(Type type) => FormatType(type, null);
+
+        private static string FormatType(Type type, NullableAnnotationProbe.AnnotationReader reader)
         {
             if (type.IsByRef)
             {
-                return FormatType(type.GetElementType()!) + "&";
+                return FormatType(type.GetElementType()!, reader) + "&";
             }
 
             if (type.IsArray)
             {
+                // Read before the element: inlining this call into the expression below would hand the
+                // element's flag to the array.
+                var annotation = Annotate(type, reader);
                 var rank = type.GetArrayRank();
                 var suffix = rank == 1 ? "[]" : "[" + new string(',', rank - 1) + "]";
-                return FormatType(type.GetElementType()!) + suffix;
+                return FormatType(type.GetElementType()!, reader) + suffix + annotation;
             }
 
             if (type.IsGenericParameter)
             {
-                return type.Name;
+                return type.Name + Annotate(type, reader);
             }
 
             if (type.IsGenericType)
             {
+                var annotation = Annotate(type, reader);
                 var definition = type.IsGenericTypeDefinition ? type : type.GetGenericTypeDefinition();
                 var definitionName = definition.FullName ?? definition.Name;
                 var tickIndex = definitionName.IndexOf('`', StringComparison.Ordinal);
                 var baseName = tickIndex >= 0 ? definitionName[..tickIndex] : definitionName;
                 var arity = definition.GetGenericArguments().Length;
-                if (type.IsGenericTypeDefinition)
-                {
-                    return baseName + "`" + arity;
-                }
 
-                var arguments = string.Join(", ", type.GetGenericArguments().Select(FormatType));
-                return baseName + "`" + arity + "[" + arguments + "]";
+                // A signature written in terms of the declaring type's own parameters arrives here as the
+                // generic type definition, whose arguments still take a flag each: rendering the bare arity
+                // for it left those unread and shifted every annotation after them.
+                // Given_ShippedAssemblies_When_EverySignaturePositionIsRead_Then_NoFlagIsMisread holds this.
+                var arguments = string.Join(
+                    ", ",
+                    type.GetGenericArguments().Select(argument => FormatType(argument, reader)));
+                return baseName + "`" + arity + "[" + arguments + "]" + annotation;
             }
 
-            return type.FullName ?? type.Name;
+            return (type.FullName ?? type.Name) + Annotate(type, reader);
+        }
+
+        /// <summary>
+        /// Spells the node's declared nullability the way C# does, and advances the reader past it even when
+        /// nothing is spelled, since a value type's flag still occupies a position.
+        /// </summary>
+        private static string Annotate(Type type, NullableAnnotationProbe.AnnotationReader reader)
+        {
+            if (reader == null)
+            {
+                return string.Empty;
+            }
+
+            var annotation = reader.Next(type);
+            if (type.IsValueType)
+            {
+                return string.Empty;
+            }
+
+            return annotation switch
+            {
+                NullableAnnotationProbe.Annotation.Nullable => "?",
+                NullableAnnotationProbe.Annotation.Oblivious => "~",
+                _ => string.Empty
+            };
         }
     }
 }

@@ -37,7 +37,7 @@ namespace Velvet.Tests
         public void Given_PackageSources_When_XmlDocCrefsAreScanned_Then_EveryTargetAppearsInTheIdentifierCorpus()
         {
             // Arrange
-            var corpus = DocumentationDriftTests.SourceIdentifiers.Value;
+            var corpus = DocumentationDriftTests.SourceIdentifiers(includeClaude: false);
 
             // Act
             var crefCount = 0;

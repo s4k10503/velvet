@@ -13,9 +13,9 @@ list; the reconciler routes each one to a **manipulator** that toggles the paylo
 as the matching signal changes.
 
 A payload may also be one of the utilities Velvet realises itself rather than through a USS rule.
-Those need re-deriving when the variant toggles, and nearly all of them get it — see
-[Payloads Velvet realises itself](#payloads-velvet-realises-itself) for the one family that does not
-and for the class channels that are not variants at all.
+Those need re-deriving when the variant toggles — see
+[Payloads Velvet realises itself](#payloads-velvet-realises-itself) for the ones that get it and for
+the class channels that are not variants at all.
 
 A payload occupies one slot per `(priority, token)` pair. Declaring the same token literally and
 behind a variant is therefore safe — in `gap-4 md:gap-4` the `md:` payload turning off leaves the
@@ -48,11 +48,11 @@ worth knowing, both when several variants name one such utility:
 
 | Family | Prefixes | Driven by |
 |---|---|---|
-| **State** | `hover:` · `focus:` · `focus-visible:` · `active:` · `checked:` | The element's own pointer / focus state (and `ChangeEvent<bool>` for `checked:`) |
+| **State** | `hover:` · `focus:` · `focus-visible:` · `active:` · `checked:` | The element's own pointer / focus state (for `checked:`, its own value — whether the user changed it or a controlled `value:` prop did) |
 | **Theme** | `dark:` | `VelvetTheme.IsDark` |
 | **Responsive** | `sm:` · `md:` · `lg:` · `xl:` · `2xl:` | The resolved responsive-scope width (the panel root by default — see below) |
 | **Relational (group)** | `group-hover:` · `group-focus:` · `group-focus-within:` · `group-active:` | A marked ancestor's (`group`) state |
-| **Relational (peer)** | `peer-hover:` · `peer-focus:` · `peer-focus-within:` · `peer-active:` · `peer-checked:` | A marked previous-sibling's (`peer`) state |
+| **Relational (peer)** | `peer-hover:` · `peer-focus:` · `peer-focus-within:` · `peer-active:` · `peer-checked:` | A marked previous-sibling's (`peer`) state; `peer-checked:` reads its value on the same terms as `checked:` above |
 
 ```csharp
 // State: a hover background and an active scale, layered over the base utilities.
@@ -139,6 +139,18 @@ comes off. `bg-[#fff] dark:bg-neutral-900` and `bg-white dark:bg-[#171717]` both
 family is the exception — filters compose rather than override, so a `filter` class and a
 `blur-[6px]` layer both apply.
 
+A few things about `origin-[…]` are worth knowing. `origin-[33%_75%]` is `transform-origin: 33% 75%`
+— the underscore standing for a space, as it does in `shadow-[0px_2px_8px_#0004]` and
+`clip-path-[polygon(…)]`; a single component is the **x** alone and
+leaves the y at 50%, as CSS does, so `origin-[0px]` is the left edge's middle rather than the
+top-left corner. A keyword inside the brackets is refused — the nine keyword pivots are their own
+classes, and `origin-[0%_75%]` is how to spell the mixed keyword-and-length case they cannot. A third
+component is refused as well: CSS takes a z there and the engine carries one, but not as a
+length-percentage, so `origin-[50%_50%_0]` is not recognised. Both are deviations from Tailwind, which
+passes the bracket contents through to CSS. And
+there is no negative form of the class, as there is none in Tailwind either; a minus goes inside
+the brackets.
+
 ### Precedence order
 
 Lowest first. Families are ordered by how strong and how deliberate the condition that activates them
@@ -158,8 +170,9 @@ not, each still occupies a layer of its own, so turning one off never disturbs a
 | 8 | Element state — `checked:` < `hover:` < `focus:` < `focus-visible:` < `active:` |
 | 9 | The important band — rows 1–8 again, one level each, for anything carrying `!` |
 
-A **stacked** variant (`dark:hover:bg-red`) layers at the higher of its two parts, so it sits above
-either one alone.
+A **stacked** variant (`dark:hover:bg-red`) layers at the higher of its two parts — row 8's `hover:`
+layer here, not a layer of its own above it. So it outranks the weaker part alone and only **ties**
+with the stronger one; *Same family, different values* above settles such a tie.
 
 ### The important modifier
 
@@ -234,13 +247,18 @@ payload, since `md:shadow-lg` is a variant token and `shadow-lg` is what it reso
 utilities have to be re-derived when the variant toggles.
 
 **Re-derived, so the variant behaves exactly like a literal class.** The manipulator-backed layout
-utilities — `gap-*` / `space-*`, `grid` / `grid-cols-*`, `divide-*`, `text-balance` — and the
+utilities — `gap-*` / `space-*`, `grid` / `grid-cols-*`, `divide-*`, `text-balance`; the
 wrapper-less paints — `skew-*`, `shadow-*` / `drop-shadow-*`, gradients (`bg-gradient-*` and its
 `from-` / `via-` / `to-` stops), `animate-*`, `border-dashed` / `border-dotted`, and `ring-*` /
-`outline-*`. Each resolves at mount and on every toggle in both directions, and the order they compose
-in is preserved on a toggle just as on a render — so `className="gap-4 md:grid md:grid-cols-3"` is a
+`outline-*`; the inline font layer — `font-<family>`, `font-<weight>`, `italic` / `not-italic` and the
+`font-[…]` forms; and the axes Velvet writes into the displayed string — `uppercase` / `lowercase` /
+`capitalize` / `normal-case`, `underline` / `line-through` / `overline` / `no-underline`,
+`whitespace-pre-line`, `leading-*`. Each resolves at mount and on every toggle in both directions, and
+the order they compose in is preserved on a toggle just as on a render — so
+`className="gap-4 md:grid md:grid-cols-3"` is a
 gapped flex row below `md` and a three-column grid (spaced by the grid, which owns its gap) from `md`
-up, `className="bg-white shadow-sm md:shadow-lg"` deepens its shadow from `md` up, and
+up, `className="bg-white shadow-sm md:shadow-lg"` deepens its shadow from `md` up,
+`className="font-sans dark:font-mono"` swaps the family with the theme, and
 `className="focus:ring-2"` shows a ring while focused and none otherwise.
 
 **Where `ring-*` deviates from CSS.** UI Toolkit has neither `box-shadow` nor `outline`, so Velvet
@@ -340,6 +358,23 @@ declares a variant-gated payload **of its own** — any one, `hover:gap-4` is en
 recorded at create and `[&>*]:shadow-lg` paints at mount; if it declares none, the same class paints
 only from that child's next render. Do not lean on either outcome. Put the utility on the child, or
 behind a variant the child declares itself.
+
+The font layer and the string axes fail it differently again. A paint that cannot resolve does not
+paint; these two resolve a whole family out of a class array and rewrite the element from it, so
+they would resolve *something*. Until that child's own next render there is no array of its own to
+resolve from: the payload's landing opens its record and that render fills it in. Before that the
+only array there is its live class list, and a `font-[…]` or `leading-[…]` the child declared is
+deliberately kept off it — the resolver owns those — while the class channels above put utilities
+on it the child never declared. So both stand down there rather than replace what the child's own
+render got right with nothing left to put it back: `[&>*]:uppercase` over a `leading-[24px]` label
+leaves the label alone. From that child's next render on the two agree and both land —
+`[&>*]:font-mono` and `[&>*]:uppercase` alike — for a child rendered as an element. A `V.Text`
+child takes them at mount instead: it declares no class of its own at any render, so there is
+nothing of its own for the payload to resolve over and nothing to wait for. For a child rendered as
+an element that declares none, mount is what neither reaches — one that must carry the family or the
+transform on its first frame declares it itself, or declares a variant of its own, the same escape
+the paints take. The paints reach a `V.Text` child at no render at all: they run behind a verdict
+only an element's own class pass records.
 
 ## Container queries — `@container`
 

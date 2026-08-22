@@ -187,15 +187,15 @@ namespace Velvet
 
         /// <summary>
         /// Props value captured by the props-receiving <c>V.Component&lt;TProps&gt;</c> overload.
-        /// Stored on the fiber and compared with the previous render's props (shallow per-property identity
-        /// comparison) to decide whether to bail the re-render. Null for the refless / ref-forwarding
-        /// overloads (props-less Render).
+        /// Stored on the fiber and compared with the previous render's props to decide whether to bail the
+        /// re-render, under the shallow per-member rule <see cref="ComponentAttribute.Memoize"/> states.
+        /// Null for the refless / ref-forwarding overloads (props-less Render).
         /// </summary>
         public object? Props { get; init; }
 
         /// <summary>
         /// Optional custom <c>areEqual(prevProps, nextProps)</c> predicate supplied at the call site.
-        /// When non-null it overrides the default shallow per-property identity comparison: returning
+        /// When non-null it replaces that default comparison: returning
         /// <c>true</c> bails the re-render, <c>false</c> forces it. Supplied via <c>V.Memo(component, props, areEqual)</c>.
         /// Null means the default shallow comparison is used.
         /// </summary>
@@ -245,10 +245,15 @@ namespace Velvet
         public required Func<VNode> Factory { get; init; }
 
         /// <summary>
-        /// Dependency array. Compared element-wise with identity-equality semantics
-        /// (<see cref="ObjectIs.AreEqualDeps"/>): reference-type elements by identity (a fresh-but-equal record
-        /// counts as changed), strings/primitives by value, floats by raw bit pattern. NOT a structural
-        /// <c>SequenceEqual</c> — there is no recursion into element contents.
+        /// Dependency array. Compared element-wise (<see cref="ObjectIs.AreEqualDeps"/>) on each element's
+        /// runtime type: <c>float</c> and <c>double</c> by raw bit pattern, <c>string</c> by ordinal
+        /// content, any other value type by its own equality — so a <c>record struct</c> of equal content
+        /// is unchanged — and any other reference type by instance, so a fresh <c>record class</c> instance
+        /// of equal content is a change. Where the two branches part is how far the comparison reads: the
+        /// reference branch reads the instance and stops, while the value branch is the element's own
+        /// <c>Equals</c>, which answers for its fields in turn — a nested <c>record class</c> field by that
+        /// record's content. An empty array declares no dependencies and caches for the node's whole life; null
+        /// declares no dependency array, which no newly built node's comparison can satisfy.
         /// </summary>
         public object?[]? Dependencies { get; init; }
     }
@@ -263,10 +268,22 @@ namespace Velvet
     {
         /// <summary>
         /// ID of the mount target registered in FiberPortalRegistry. Null when the portal targets a
-        /// framework-managed layer panel instead (<see cref="Layer"/> is set) — exactly one of the two
-        /// is non-null.
+        /// framework-managed layer panel (<see cref="Layer"/>) or an element the caller holds
+        /// (<see cref="TargetElement"/>) — exactly one of the three is non-null.
         /// </summary>
         public string? TargetId { get; init; }
+
+        /// <summary>
+        /// The container this portal's children attach to, held by the caller rather than published
+        /// under a name. Null when the portal targets a registered id or a layer panel.
+        /// </summary>
+        /// <remarks>
+        /// Changing it across renders moves the children: the reconciler cannot patch one container's
+        /// portal into another's, so the old one unmounts and the new one mounts. That is what
+        /// <c>createPortal</c> does when its container changes, and it is where this differs from a
+        /// registry target, whose id is resolved once at mount and then held.
+        /// </remarks>
+        public VisualElement? TargetElement { get; init; }
 
         /// <summary>
         /// Framework-managed screen-space layer panel this portal's children attach to (null for a
@@ -440,17 +457,17 @@ namespace Velvet
     /// </summary>
     public sealed class VirtualListNode : VNode
     {
-        /// <summary>Item list (type-erased).</summary>
-        public IReadOnlyList<object> Items { get; }
+        /// <summary>Item list (type-erased; an element is nullable because the source element type may be).</summary>
+        public IReadOnlyList<object?> Items { get; }
 
         /// <summary>Function that returns a unique key for each item.</summary>
-        public Func<object, string> KeySelector { get; }
+        public Func<object?, string> KeySelector { get; }
 
         /// <summary>Fixed height (px) of each item.</summary>
         public float ItemHeight { get; }
 
         /// <summary>Function that produces a VNode from each item.</summary>
-        public Func<object, VNode> Renderer { get; }
+        public Func<object?, VNode> Renderer { get; }
 
         /// <summary>Number of extra items to render outside the visible range.</summary>
         public int Overscan { get; }
@@ -468,10 +485,10 @@ namespace Velvet
         /// <exception cref="ArgumentNullException"><paramref name="items"/>, <paramref name="keySelector"/>, or <paramref name="renderer"/> is null.</exception>
         /// <exception cref="ArgumentOutOfRangeException"><paramref name="itemHeight"/> is &lt;= 0, or <paramref name="overscan"/> is &lt; 0.</exception>
         public VirtualListNode(
-            IReadOnlyList<object> items,
-            Func<object, string> keySelector,
+            IReadOnlyList<object?> items,
+            Func<object?, string> keySelector,
             float itemHeight,
-            Func<object, VNode> renderer,
+            Func<object?, VNode> renderer,
             int overscan)
         {
             Items = items ?? throw new ArgumentNullException(nameof(items));

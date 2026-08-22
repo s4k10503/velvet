@@ -192,13 +192,11 @@ namespace Velvet.Tests
             var thirdResult = thirdTask.GetAwaiter().GetResult();
 
             // Assert
-            Assume.That(secondResult, Is.EqualTo(2));
-            Assume.That(thirdResult, Is.EqualTo(3));
             var sharesSourceWithFirst =
                 ReferenceEquals(GetTaskSource(secondTask), firstSource)
                 || ReferenceEquals(GetTaskSource(thirdTask), firstSource)
                 || ReferenceEquals(GetTaskSource(secondTask), GetTaskSource(thirdTask));
-            Assert.That(sharesSourceWithFirst, Is.False);
+            Assert.That((secondResult, thirdResult, sharesSourceWithFirst), Is.EqualTo((2, 3, false)));
         }
 
         [Test]

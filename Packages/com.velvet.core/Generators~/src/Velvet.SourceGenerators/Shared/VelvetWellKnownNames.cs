@@ -36,5 +36,8 @@ namespace Velvet.SourceGenerators.Shared
         public const string UseReducerMethodName = "UseReducer";
         public const string UseRefMethodName = "UseRef";
         public const string UseMutableRefMethodName = "UseMutableRef";
+        public const string UseTransitionMethodName = "UseTransition";
+        public const string UseSearchParamsMethodName = "UseSearchParams";
+        public const string UseMutationMethodName = "UseMutation";
     }
 }

@@ -23,6 +23,17 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 from shell_commands import program_invocations
 
+
+HOOK_TOOLS = {"Bash"}
+
+# The verdict is whether the command carries the flag, which is its own text. An operand the shell has
+# not expanded cannot add or remove one, so nothing is resolved and nothing goes unchecked.
+UNEXPANDED_POLICY = "allow"
+UNEXPANDED_PROBE = 'gh pr merge $PR --squash --delete-branch'
+
+UNREADABLE_POLICY = "none"
+UNREADABLE_PROBE = {"command": "gh pr merge 1 --squash"}
+
 DELETE_FLAGS = ("--delete-branch", "-d")
 
 
@@ -41,7 +52,7 @@ def main():
         event = json.load(sys.stdin)
     except Exception:
         return 0
-    if event.get("tool_name") != "Bash":
+    if event.get("tool_name") not in HOOK_TOOLS:
         return 0
 
     left = merges_without_deletion(event.get("tool_input", {}).get("command", ""))

@@ -1,1117 +1,1130 @@
-ctor System.Runtime.CompilerServices.ModuleInitializerAttribute.ctor(): System.Void
-ctor Velvet.AnchoredSettings.ctor(UnityEngine.Transform, UnityEngine.Camera, UnityEngine.Vector2, System.Boolean, System.Boolean, System.Nullable`1[UnityEngine.LayerMask], System.Nullable`1[System.Single]): System.Void
-ctor Velvet.AnimatePresenceNode.ctor(): System.Void
-ctor Velvet.BlurBinding.ctor(): System.Void
-ctor Velvet.ChangeEventBinding`1.ctor(): System.Void
-ctor Velvet.ChoicesSettings.ctor(System.Collections.Generic.List`1[System.String]): System.Void
-ctor Velvet.ClickedBinding.ctor(): System.Void
-ctor Velvet.ComponentAttribute.ctor(): System.Void
-ctor Velvet.ComponentFiber.ctor(): System.Void
-ctor Velvet.ComponentNode.ctor(): System.Void
-ctor Velvet.ContextProviderNode`1.ctor(): System.Void
-ctor Velvet.DndCollisionDetection.ctor(System.Object, System.IntPtr): System.Void
-ctor Velvet.DndCollisionQuery.ctor(UnityEngine.Rect, UnityEngine.Vector2, System.Collections.Generic.IReadOnlyList`1[Velvet.DndDroppableRect]): System.Void
-ctor Velvet.DndContextSettings.ctor(System.Action`1[Velvet.DragStartArgs], System.Action`1[Velvet.DragOverArgs], System.Action`1[Velvet.DragEndArgs], System.Action`1[Velvet.DragCancelArgs], Velvet.DndCollisionDetection, Velvet.DragActivation): System.Void
-ctor Velvet.DndDroppableRect.ctor(System.String, UnityEngine.Rect, System.Object): System.Void
-ctor Velvet.DragActivation.ctor(System.Single, System.Single, System.Single): System.Void
-ctor Velvet.DragCancelArgs.ctor(Velvet.DraggableInfo): System.Void
-ctor Velvet.DragEndArgs.ctor(Velvet.DraggableInfo, Velvet.DroppableInfo, UnityEngine.Vector2, UnityEngine.Vector2): System.Void
-ctor Velvet.DragOverArgs.ctor(Velvet.DraggableInfo, Velvet.DroppableInfo, UnityEngine.Vector2): System.Void
-ctor Velvet.DragOverlaySettings.ctor(): System.Void
-ctor Velvet.DragStartArgs.ctor(Velvet.DraggableInfo, UnityEngine.Vector2): System.Void
-ctor Velvet.DraggableInfo.ctor(System.String, System.Object, UnityEngine.UIElements.VisualElement): System.Void
-ctor Velvet.DraggableSettings.ctor(System.String, System.Object, System.Boolean, Velvet.DragMovement, Velvet.DragActivation, System.String): System.Void
-ctor Velvet.DroppableInfo.ctor(System.String, System.Object, UnityEngine.UIElements.VisualElement): System.Void
-ctor Velvet.DroppableSettings.ctor(System.String, System.Object, System.Boolean, System.String, System.String): System.Void
-ctor Velvet.ElementNode.ctor(): System.Void
-ctor Velvet.ErrorInfo.ctor(System.String): System.Void
-ctor Velvet.Experimental.VButton.ctor(System.String): System.Void
-ctor Velvet.Experimental.VCustom`1.ctor(System.String): System.Void
-ctor Velvet.Experimental.VDiv.ctor(System.String): System.Void
-ctor Velvet.Experimental.VImage.ctor(System.String): System.Void
-ctor Velvet.Experimental.VLabel.ctor(System.String): System.Void
-ctor Velvet.Experimental.VScrollView.ctor(System.String): System.Void
-ctor Velvet.Experimental.VSlider.ctor(System.String): System.Void
-ctor Velvet.Experimental.VTextField.ctor(System.String): System.Void
-ctor Velvet.Experimental.VToggle.ctor(System.String): System.Void
-ctor Velvet.FiberElementProps.ctor(): System.Void
-ctor Velvet.FocusBinding.ctor(): System.Void
-ctor Velvet.FocusInBinding.ctor(): System.Void
-ctor Velvet.FocusOutBinding.ctor(): System.Void
-ctor Velvet.FocusScopeSettings.ctor(System.Boolean, System.Boolean, System.Boolean, System.Boolean): System.Void
-ctor Velvet.FontIntent.ctor(System.String, System.Boolean, Velvet.VelvetFontWeight, System.Boolean, System.Boolean, System.Boolean): System.Void
-ctor Velvet.FragmentNode.ctor(): System.Void
-ctor Velvet.GeometryChangedBinding.ctor(): System.Void
-ctor Velvet.KeyDownBinding.ctor(): System.Void
-ctor Velvet.KeyUpBinding.ctor(): System.Void
-ctor Velvet.MemoNode.ctor(): System.Void
-ctor Velvet.MemoizeMethodAttribute.ctor(): System.Void
-ctor Velvet.MotionNode.ctor(): System.Void
-ctor Velvet.MutableRef`1.ctor(T): System.Void
-ctor Velvet.MutationOptions.ctor(System.Func`2[System.Threading.CancellationToken, Velvet.VelvetTask], System.Action, System.Action`1[System.Exception]): System.Void
-ctor Velvet.MutationOptions`1.ctor(System.Func`3[TVariables, System.Threading.CancellationToken, Velvet.VelvetTask], System.Action`1[TVariables], System.Action`2[System.Exception, TVariables]): System.Void
-ctor Velvet.MutationOptions`2.ctor(System.Func`3[TVariables, System.Threading.CancellationToken, Velvet.VelvetTask`1[TData]], System.Action`2[TData, TVariables], System.Action`2[System.Exception, TVariables]): System.Void
-ctor Velvet.MutationResult`2.ctor(): System.Void
-ctor Velvet.Navigate+Props.ctor(System.String, System.Boolean): System.Void
-ctor Velvet.NavigationAttempt.ctor(): System.Void
-ctor Velvet.NullStoreLogger.ctor(): System.Void
-ctor Velvet.OutletNode.ctor(): System.Void
-ctor Velvet.ParticlesElement.ctor(): System.Void
-ctor Velvet.ParticlesSettings.ctor(UnityEngine.ParticleSystem, Velvet.PlayTrigger, System.Single): System.Void
-ctor Velvet.PointerDownBinding.ctor(): System.Void
-ctor Velvet.PointerEnterBinding.ctor(): System.Void
-ctor Velvet.PointerLeaveBinding.ctor(): System.Void
-ctor Velvet.PointerMoveBinding.ctor(): System.Void
-ctor Velvet.PointerUpBinding.ctor(): System.Void
-ctor Velvet.PortalNode.ctor(): System.Void
-ctor Velvet.PureAttribute.ctor(): System.Void
-ctor Velvet.Ref`1.ctor(): System.Void
-ctor Velvet.ResolvedFont.ctor(UnityEngine.TextCore.Text.FontAsset, System.Boolean, System.Boolean): System.Void
-ctor Velvet.RouteBlockerManager.ctor(): System.Void
-ctor Velvet.RouteBlockerState.ctor(): System.Void
-ctor Velvet.RouteDefinition.ctor(): System.Void
-ctor Velvet.RouteLink+Props.ctor(System.String, System.String, System.String, System.String, Velvet.VNode[], System.Boolean): System.Void
-ctor Velvet.RouteLoaderContext.ctor(): System.Void
-ctor Velvet.RouteMatch.ctor(): System.Void
-ctor Velvet.RouteNavLink+Props.ctor(): System.Void
-ctor Velvet.RouteTree.ctor(Velvet.RouteDefinition[]): System.Void
-ctor Velvet.Router.ctor(Velvet.RouteDefinition[], Velvet.IRouteScopeFactory): System.Void
-ctor Velvet.RouterLocation.ctor(): System.Void
-ctor Velvet.SceneViewElement.ctor(): System.Void
-ctor Velvet.SceneViewSettings.ctor(UnityEngine.Camera, System.Single): System.Void
-ctor Velvet.ScrollViewSettings.ctor(System.Nullable`1[UnityEngine.UIElements.ScrollerVisibility], System.Nullable`1[UnityEngine.UIElements.ScrollerVisibility], System.Nullable`1[UnityEngine.UIElements.ScrollView+TouchScrollBehavior]): System.Void
-ctor Velvet.SearchParams.ctor(): System.Void
-ctor Velvet.SliderSettings.ctor(System.Nullable`1[System.Single], System.Nullable`1[System.Single]): System.Void
-ctor Velvet.StoreLogger.ctor(): System.Void
-ctor Velvet.StyleOverrides.ctor(): System.Void
-ctor Velvet.StylePropertyTransition.ctor(System.String, System.Nullable`1[System.Single], System.Nullable`1[UnityEngine.UIElements.EasingMode], System.Nullable`1[System.Single]): System.Void
-ctor Velvet.StyleRecipe+CompoundVariant.ctor(System.Collections.Generic.Dictionary`2[System.String, System.String], System.String): System.Void
-ctor Velvet.StyleRecipe.ctor(System.String, System.Collections.Generic.Dictionary`2[System.String, System.Collections.Generic.Dictionary`2[System.String, System.String]], System.Collections.Generic.Dictionary`2[System.String, System.String], Velvet.StyleRecipe+CompoundVariant[]): System.Void
-ctor Velvet.StyleSlotClasses.ctor(System.Collections.Generic.Dictionary`2[System.String, System.String]): System.Void
-ctor Velvet.StyleSlotRecipe+SlotCompoundVariant.ctor(System.Collections.Generic.Dictionary`2[System.String, System.String], System.Collections.Generic.Dictionary`2[System.String, System.String]): System.Void
-ctor Velvet.StyleSlotRecipe.ctor(System.Collections.Generic.Dictionary`2[System.String, System.String]): System.Void
-ctor Velvet.StyleSlotRecipe.ctor(System.Collections.Generic.Dictionary`2[System.String, System.String], System.Collections.Generic.Dictionary`2[System.String, System.Collections.Generic.Dictionary`2[System.String, System.Collections.Generic.Dictionary`2[System.String, System.String]]], System.Collections.Generic.Dictionary`2[System.String, System.String], Velvet.StyleSlotRecipe+SlotCompoundVariant[]): System.Void
-ctor Velvet.StyleTransitionConfig.ctor(): System.Void
-ctor Velvet.SuspenseNode.ctor(): System.Void
-ctor Velvet.TextFieldSettings.ctor(System.Nullable`1[System.Boolean]): System.Void
-ctor Velvet.TextNode.ctor(): System.Void
-ctor Velvet.VelvetFontFamily.ctor(): System.Void
-ctor Velvet.VelvetFontFamily.ctor(System.String, Velvet.VelvetFontWeightEntry[]): System.Void
-ctor Velvet.VelvetFontWeightEntry.ctor(): System.Void
-ctor Velvet.VelvetPreviewAttribute.ctor(): System.Void
-ctor Velvet.VelvetPreviewHost.ctor(UnityEngine.UIElements.VisualElement): System.Void
-ctor Velvet.VelvetPreviewSetupAttribute.ctor(): System.Void
-ctor Velvet.VelvetRuntimeAssets.ctor(): System.Void
-ctor Velvet.VelvetTaskCompletionSource.ctor(): System.Void
-ctor Velvet.VelvetTaskCompletionSource`1.ctor(): System.Void
-ctor Velvet.VirtualListNode.ctor(System.Collections.Generic.IReadOnlyList`1[System.Object], System.Func`2[System.Object, System.String], System.Single, System.Func`2[System.Object, Velvet.VNode], System.Int32): System.Void
-ctor Velvet.WheelBinding.ctor(): System.Void
-ctor Velvet.WorldSpaceNode.ctor(): System.Void
-ctor protected Velvet.BaseElementNode.ctor(): System.Void
-ctor protected Velvet.ContextProviderNode.ctor(): System.Void
-ctor protected Velvet.Experimental.VBuilder.ctor(System.String): System.Void
-ctor protected Velvet.FiberEventBinding.ctor(): System.Void
-ctor protected Velvet.Store`1.ctor(TState): System.Void
-ctor protected Velvet.VNode.ctor(): System.Void
-event Velvet.DevTools.VelvetDevToolsRegistry.RegistryChanged: System.Action
-event Velvet.Router.OnLocationChanged: System.Action`1[Velvet.RouterLocation]
-event Velvet.Router.OnStatusChanged: System.Action`1[Velvet.RouterStatus]
-event Velvet.VelvetFonts.FontsChanged: System.Action
-event Velvet.VelvetTheme.DarkModeChanged: System.Action
-field Velvet.AnimatePresenceMode.PopLayout: Velvet.AnimatePresenceMode
-field Velvet.AnimatePresenceMode.Sync: Velvet.AnimatePresenceMode
-field Velvet.AnimatePresenceMode.Wait: Velvet.AnimatePresenceMode
-field Velvet.ComponentFiber.RenderCount: System.Int32
-field Velvet.ComponentFiber.RequestRenderForContextHandler: System.Action`1[Velvet.ComponentFiber]
-field Velvet.DndCollisions.ClosestCenter: Velvet.DndCollisionDetection
-field Velvet.DndCollisions.PointerWithin: Velvet.DndCollisionDetection
-field Velvet.DndCollisions.RectIntersection: Velvet.DndCollisionDetection
-field Velvet.DragActivation.Default: Velvet.DragActivation
-field Velvet.DragActivation.None: Velvet.DragActivation
-field Velvet.DragMovement.None: Velvet.DragMovement
-field Velvet.DragMovement.Translate: Velvet.DragMovement
-field Velvet.FiberElementProps.Empty: Velvet.FiberElementProps
-field Velvet.FiberUpdatePriority.Deferred: Velvet.FiberUpdatePriority
-field Velvet.FiberUpdatePriority.Normal: Velvet.FiberUpdatePriority
-field Velvet.FiberUpdatePriority.Transition: Velvet.FiberUpdatePriority
-field Velvet.FiberUpdatePriority.Urgent: Velvet.FiberUpdatePriority
-field Velvet.FontIntent.Family: System.String
-field Velvet.FontIntent.HasFamily: System.Boolean
-field Velvet.FontIntent.HasItalic: System.Boolean
-field Velvet.FontIntent.HasWeight: System.Boolean
-field Velvet.FontIntent.Italic: System.Boolean
-field Velvet.FontIntent.Weight: Velvet.VelvetFontWeight
-field Velvet.HookServiceContext.Ref: Velvet.ComponentContext`1[Velvet.IHookServiceResolver]
-field Velvet.LoaderMode.Await: Velvet.LoaderMode
-field Velvet.LoaderMode.Suspend: Velvet.LoaderMode
-field Velvet.MutationStatus.Error: Velvet.MutationStatus
-field Velvet.MutationStatus.Idle: Velvet.MutationStatus
-field Velvet.MutationStatus.Pending: Velvet.MutationStatus
-field Velvet.MutationStatus.Success: Velvet.MutationStatus
-field Velvet.NavigationLifecycle.Idle: Velvet.NavigationLifecycle
-field Velvet.NavigationLifecycle.Loading: Velvet.NavigationLifecycle
-field Velvet.NavigationMode.Back: Velvet.NavigationMode
-field Velvet.NavigationMode.Forward: Velvet.NavigationMode
-field Velvet.NavigationMode.Push: Velvet.NavigationMode
-field Velvet.NavigationMode.Replace: Velvet.NavigationMode
-field Velvet.NavigationResult.Blocked: Velvet.NavigationResult
-field Velvet.NavigationResult.Cancelled: Velvet.NavigationResult
-field Velvet.NavigationResult.Error: Velvet.NavigationResult
-field Velvet.NavigationResult.NotFound: Velvet.NavigationResult
-field Velvet.NavigationResult.Success: Velvet.NavigationResult
-field Velvet.PanelFocusOrder.Chained: Velvet.PanelFocusOrder
-field Velvet.PanelFocusOrder.Isolated: Velvet.PanelFocusOrder
-field Velvet.PlayTrigger.Manual: Velvet.PlayTrigger
-field Velvet.PlayTrigger.Mount: Velvet.PlayTrigger
-field Velvet.ResolvedFont.Asset: UnityEngine.TextCore.Text.FontAsset
-field Velvet.ResolvedFont.HasAsset: System.Boolean
-field Velvet.ResolvedFont.ResidualBold: System.Boolean
-field Velvet.ResolvedFont.ResidualItalic: System.Boolean
-field Velvet.RouteBlockerStatus.Blocked: Velvet.RouteBlockerStatus
-field Velvet.RouteBlockerStatus.Idle: Velvet.RouteBlockerStatus
-field Velvet.RouterContext.Depth: Velvet.ComponentContext`1[System.Int32]
-field Velvet.RouterContext.Errors: Velvet.ComponentContext`1[System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.Exception]]
-field Velvet.RouterContext.LoaderData: Velvet.ComponentContext`1[System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.Object]]
-field Velvet.RouterContext.Location: Velvet.ComponentContext`1[Velvet.RouterLocation]
-field Velvet.RouterContext.OutletContext: Velvet.ComponentContext`1[System.Object]
-field Velvet.RouterStatus.Error: Velvet.RouterStatus
-field Velvet.RouterStatus.Idle: Velvet.RouterStatus
-field Velvet.RouterStatus.Loading: Velvet.RouterStatus
-field Velvet.RouterStatus.Matching: Velvet.RouterStatus
-field Velvet.RouterStatus.NotFound: Velvet.RouterStatus
-field Velvet.RouterStatus.Ready: Velvet.RouterStatus
-field Velvet.SearchParams.Empty: Velvet.SearchParams
-field Velvet.StyleOverrides.Empty: Velvet.StyleOverrides
-field Velvet.StyleTransition.Fade: Velvet.StyleTransitionConfig
-field Velvet.StyleTransition.FadeSlideUp: Velvet.StyleTransitionConfig
-field Velvet.StyleTransition.ScaleIn: Velvet.StyleTransitionConfig
-field Velvet.StyleTransition.SlideDown: Velvet.StyleTransitionConfig
-field Velvet.StyleTransition.SlideLeft: Velvet.StyleTransitionConfig
-field Velvet.StyleTransition.SlideRight: Velvet.StyleTransitionConfig
-field Velvet.StyleTransition.SlideUp: Velvet.StyleTransitionConfig
-field Velvet.StyleTransitionConfig.None: Velvet.StyleTransitionConfig
-field Velvet.StyleVariantKind.Active: Velvet.StyleVariantKind
-field Velvet.StyleVariantKind.Checked: Velvet.StyleVariantKind
-field Velvet.StyleVariantKind.Dark: Velvet.StyleVariantKind
-field Velvet.StyleVariantKind.Focus: Velvet.StyleVariantKind
-field Velvet.StyleVariantKind.FocusVisible: Velvet.StyleVariantKind
-field Velvet.StyleVariantKind.GroupActive: Velvet.StyleVariantKind
-field Velvet.StyleVariantKind.GroupFocus: Velvet.StyleVariantKind
-field Velvet.StyleVariantKind.GroupFocusWithin: Velvet.StyleVariantKind
-field Velvet.StyleVariantKind.GroupHover: Velvet.StyleVariantKind
-field Velvet.StyleVariantKind.Hover: Velvet.StyleVariantKind
-field Velvet.StyleVariantKind.Lg: Velvet.StyleVariantKind
-field Velvet.StyleVariantKind.Md: Velvet.StyleVariantKind
-field Velvet.StyleVariantKind.PeerActive: Velvet.StyleVariantKind
-field Velvet.StyleVariantKind.PeerChecked: Velvet.StyleVariantKind
-field Velvet.StyleVariantKind.PeerFocus: Velvet.StyleVariantKind
-field Velvet.StyleVariantKind.PeerFocusWithin: Velvet.StyleVariantKind
-field Velvet.StyleVariantKind.PeerHover: Velvet.StyleVariantKind
-field Velvet.StyleVariantKind.Sm: Velvet.StyleVariantKind
-field Velvet.StyleVariantKind.Xl: Velvet.StyleVariantKind
-field Velvet.StyleVariantKind.Xxl: Velvet.StyleVariantKind
-field Velvet.TransitionType.Bezier: Velvet.TransitionType
-field Velvet.TransitionType.Spring: Velvet.TransitionType
-field Velvet.TransitionType.Tween: Velvet.TransitionType
-field Velvet.TransitionWhen.AfterChildren: Velvet.TransitionWhen
-field Velvet.TransitionWhen.BeforeChildren: Velvet.TransitionWhen
-field Velvet.TransitionWhen.Together: Velvet.TransitionWhen
-field Velvet.UILayer.Background: Velvet.UILayer
-field Velvet.UILayer.Overlay: Velvet.UILayer
-field Velvet.UILayer.Topmost: Velvet.UILayer
-field Velvet.Unit.Default: Velvet.Unit
-field Velvet.VelvetFontFamily.name: System.String
-field Velvet.VelvetFontFamily.weights: System.Collections.Generic.List`1[Velvet.VelvetFontWeightEntry]
-field Velvet.VelvetFontWeight.Black: Velvet.VelvetFontWeight
-field Velvet.VelvetFontWeight.Bold: Velvet.VelvetFontWeight
-field Velvet.VelvetFontWeight.ExtraBold: Velvet.VelvetFontWeight
-field Velvet.VelvetFontWeight.ExtraLight: Velvet.VelvetFontWeight
-field Velvet.VelvetFontWeight.Light: Velvet.VelvetFontWeight
-field Velvet.VelvetFontWeight.Medium: Velvet.VelvetFontWeight
-field Velvet.VelvetFontWeight.Normal: Velvet.VelvetFontWeight
-field Velvet.VelvetFontWeight.SemiBold: Velvet.VelvetFontWeight
-field Velvet.VelvetFontWeight.Thin: Velvet.VelvetFontWeight
-field Velvet.VelvetFontWeightEntry.italic: UnityEngine.TextCore.Text.FontAsset
-field Velvet.VelvetFontWeightEntry.italicAddress: System.String
-field Velvet.VelvetFontWeightEntry.upright: UnityEngine.TextCore.Text.FontAsset
-field Velvet.VelvetFontWeightEntry.uprightAddress: System.String
-field Velvet.VelvetFontWeightEntry.weight: Velvet.VelvetFontWeight
-field Velvet.VelvetResponsive.ContainerClass: System.String
-field Velvet.VelvetStyleUtilities.DarkThemeClass: System.String
-field Velvet.VelvetTaskStatus.Canceled: Velvet.VelvetTaskStatus
-field Velvet.VelvetTaskStatus.Faulted: Velvet.VelvetTaskStatus
-field Velvet.VelvetTaskStatus.Pending: Velvet.VelvetTaskStatus
-field Velvet.VelvetTaskStatus.Succeeded: Velvet.VelvetTaskStatus
-method Velvet.AnimatePresenceNode.StaggerDelaySec(System.Int32, System.Int32): System.Single
-method Velvet.AnimationSequenceStep.Call(System.Action): Velvet.AnimationSequenceStep
-method Velvet.AnimationSequenceStep.To(System.String, Velvet.StyleTransitionConfig, System.Nullable`1[System.Single]): Velvet.AnimationSequenceStep
-method Velvet.AnimationSequenceStep.Wait(System.Single): Velvet.AnimationSequenceStep
-method Velvet.ComponentContext`1.Create(T): Velvet.ComponentContext`1
-method Velvet.ComponentFiber.AppendChild(Velvet.ComponentFiber): System.Void
-method Velvet.ComponentFiber.Detach(): System.Void
-method Velvet.ComponentFiber.RemoveChild(Velvet.ComponentFiber): System.Void
-method Velvet.ComponentMethodRegistry.RegisterComponentDisplayName(System.String, System.String, System.String): System.Void
-method Velvet.ComponentMethodRegistry.RegisterErrorBoundary(System.String, System.String): System.Void
-method Velvet.ComponentMethodRegistry.RegisterMemoize(System.String, System.String): System.Void
-method Velvet.DevTools.VelvetDevToolsRegistry.Clear(): System.Void
-method Velvet.DevTools.VelvetDevToolsRegistry.Register(Velvet.ComponentFiber, System.String): System.Void
-method Velvet.DevTools.VelvetDevToolsRegistry.Unregister(Velvet.ComponentFiber): System.Void
-method Velvet.DndCollisionDetection.BeginInvoke(Velvet.DndCollisionQuery&, System.AsyncCallback, System.Object): System.IAsyncResult
-method Velvet.DndCollisionDetection.EndInvoke(Velvet.DndCollisionQuery&, System.IAsyncResult): System.String
-method Velvet.DndCollisionDetection.Invoke(Velvet.DndCollisionQuery&): System.String
-method Velvet.Experimental.VBuilder.Add(Velvet.VNode): System.Void
-method Velvet.Experimental.VBuilder.Build(): Velvet.VNode
-method Velvet.Experimental.VButton.Build(): Velvet.VNode
-method Velvet.Experimental.VCustom`1.Build(): Velvet.VNode
-method Velvet.Experimental.VDiv.Build(): Velvet.VNode
-method Velvet.Experimental.VImage.Build(): Velvet.VNode
-method Velvet.Experimental.VLabel.Build(): Velvet.VNode
-method Velvet.Experimental.VScrollView.Build(): Velvet.VNode
-method Velvet.Experimental.VSlider.Build(): Velvet.VNode
-method Velvet.Experimental.VTextField.Build(): Velvet.VNode
-method Velvet.Experimental.VToggle.Build(): Velvet.VNode
-method Velvet.FiberPortalRegistry.Get(System.String): UnityEngine.UIElements.VisualElement
-method Velvet.FiberPortalRegistry.IsRegistered(System.String): System.Boolean
-method Velvet.FiberPortalRegistry.Register(System.String, UnityEngine.UIElements.VisualElement): System.Void
-method Velvet.FiberPortalRegistry.Unregister(System.String): System.Void
-method Velvet.Hooks.ForwardedRef`1(): Velvet.Ref`1[T]
-method Velvet.Hooks.StoreMemoizedVNode(System.Int32, System.Object[], Velvet.VNode): System.Void
-method Velvet.Hooks.TryGetMemoizedVNode(System.Object[], System.Int32&, Velvet.VNode&): System.Boolean
-method Velvet.Hooks.UseAnimationSequence(System.Collections.Generic.IReadOnlyList`1[Velvet.AnimationSequenceStep], System.Boolean, System.Boolean, System.Object[]): System.ValueTuple`2[Velvet.AnimationSequenceState, Velvet.AnimationSequenceControls]
-method Velvet.Hooks.UseBlocker(System.Func`2[Velvet.NavigationAttempt, System.Boolean], System.Object[]): Velvet.RouteBlockerState
-method Velvet.Hooks.UseBlocker(System.Func`3[Velvet.NavigationAttempt, System.Threading.CancellationToken, Velvet.VelvetTask`1[System.Boolean]], System.Object[]): Velvet.RouteBlockerState
-method Velvet.Hooks.UseCallback`1(T): T
-method Velvet.Hooks.UseCallback`1(T, System.Object[]): T
-method Velvet.Hooks.UseContext`1(Velvet.ComponentContext`1[T]): T
-method Velvet.Hooks.UseDeferredValue`1(T): T
-method Velvet.Hooks.UseDeferredValue`1(T, T): T
-method Velvet.Hooks.UseEffect(System.Func`1[System.Action], System.Object[]): System.Void
-method Velvet.Hooks.UseEffect(System.Func`1[System.IDisposable], System.Object[]): System.Void
-method Velvet.Hooks.UseFallback(System.Func`2[System.Exception, Velvet.VNode]): System.Void
-method Velvet.Hooks.UseFallback(System.Func`3[System.Exception, Velvet.ErrorInfo, Velvet.VNode]): System.Void
-method Velvet.Hooks.UseFocusRing(): Velvet.FocusRing
-method Velvet.Hooks.UseFrame(System.Action`1[System.Single], System.Int32): System.Void
-method Velvet.Hooks.UseId(System.String): System.String
-method Velvet.Hooks.UseImperativeHandle`1(Velvet.Ref`1[THandle], System.Func`1[THandle]): System.Void
-method Velvet.Hooks.UseImperativeHandle`1(Velvet.Ref`1[THandle], System.Func`1[THandle], System.Object[]): System.Void
-method Velvet.Hooks.UseInsertionEffect(System.Func`1[System.Action], System.Object[]): System.Void
-method Velvet.Hooks.UseInsertionEffect(System.Func`1[System.IDisposable], System.Object[]): System.Void
-method Velvet.Hooks.UseLayoutEffect(System.Func`1[System.Action], System.Object[]): System.Void
-method Velvet.Hooks.UseLayoutEffect(System.Func`1[System.IDisposable], System.Object[]): System.Void
-method Velvet.Hooks.UseLoaderData`1(): T
-method Velvet.Hooks.UseLocation(): Velvet.RouterLocation
-method Velvet.Hooks.UseMatch(System.String): Velvet.RouteMatch
-method Velvet.Hooks.UseMemo`1(System.Func`1[T]): T
-method Velvet.Hooks.UseMemo`1(System.Func`1[T], System.Object[]): T
-method Velvet.Hooks.UseMutableRef`1(System.Func`1[T]): Velvet.MutableRef`1[T]
-method Velvet.Hooks.UseMutableRef`1(T): Velvet.MutableRef`1[T]
-method Velvet.Hooks.UseMutation(Velvet.MutationOptions): Velvet.MutationResult`2[Velvet.Unit, Velvet.Unit]
-method Velvet.Hooks.UseMutation`1(Velvet.MutationOptions`1[TVariables]): Velvet.MutationResult`2[TVariables, Velvet.Unit]
-method Velvet.Hooks.UseMutation`2(Velvet.MutationOptions`2[TVariables, TData]): Velvet.MutationResult`2[TVariables, TData]
-method Velvet.Hooks.UseNavigate(System.Boolean): System.Func`2[System.String, Velvet.VelvetTask`1[Velvet.NavigationResult]]
-method Velvet.Hooks.UseNavigation(): Velvet.NavigationState
-method Velvet.Hooks.UseOptimistic`2(TState, System.Func`3[TState, TAction, TState]): System.ValueTuple`2[TState, System.Action`1[TAction]]
-method Velvet.Hooks.UseOutletContext`1(): T
-method Velvet.Hooks.UseParams(): System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]
-method Velvet.Hooks.UseReducer`2(System.Func`3[TState, TAction, TState], TState): System.ValueTuple`2[TState, System.Action`1[TAction]]
-method Velvet.Hooks.UseReducer`3(System.Func`3[TState, TAction, TState], TArg, System.Func`2[TArg, TState]): System.ValueTuple`2[TState, System.Action`1[TAction]]
-method Velvet.Hooks.UseRef`1(): Velvet.Ref`1[T]
-method Velvet.Hooks.UseRef`1(System.Func`1[T]): Velvet.Ref`1[T]
-method Velvet.Hooks.UseRouteError(): System.Exception
-method Velvet.Hooks.UseSearchParams(): System.ValueTuple`2[Velvet.ISearchParams, Velvet.SearchParamsSetter]
-method Velvet.Hooks.UseService`1(): T
-method Velvet.Hooks.UseState`1(System.Func`1[T]): System.ValueTuple`2[T, Velvet.StateUpdater`1[T]]
-method Velvet.Hooks.UseState`1(T): System.ValueTuple`2[T, Velvet.StateUpdater`1[T]]
-method Velvet.Hooks.UseStore`2(Velvet.Store`1[TStore], System.Func`2[TStore, TSel], System.Collections.Generic.IEqualityComparer`1[TSel]): TSel
-method Velvet.Hooks.UseTransition(): System.ValueTuple`2[System.Boolean, Velvet.TransitionStarter]
-method Velvet.Hooks.Use`1(System.Func`1[Velvet.VelvetTask`1[T]], System.Object): T
-method Velvet.Hooks.Use`1(System.Func`2[System.Threading.CancellationToken, Velvet.VelvetTask`1[T]], System.Object): T
-method Velvet.IHookServiceResolver.Resolve`1(): T
-method Velvet.IRouteScope.Resolve`1(): T
-method Velvet.IRouteScopeFactory.CreateScope(Velvet.RouteDefinition, Velvet.IRouteScope): Velvet.IRouteScope
-method Velvet.ISearchParams.Get(System.String): System.String
-method Velvet.ISearchParams.GetAll(System.String): System.Collections.Generic.IReadOnlyList`1[System.String]
-method Velvet.ISearchParams.Has(System.String): System.Boolean
-method Velvet.IStoreWriter`1.Mutate(System.Func`2[TState, TState]): System.Void
-method Velvet.IStoreWriter`1.SetState(System.Func`2[TState, TState]): System.Boolean
-method Velvet.MountedTree.Dispose(): System.Void
-method Velvet.MutationResultExtensions.MutateAsync`1(Velvet.MutationResult`2[Velvet.Unit, TData]): Velvet.VelvetTask`1[TData]
-method Velvet.MutationResultExtensions.Mutate`1(Velvet.MutationResult`2[Velvet.Unit, TData]): System.Void
-method Velvet.MutationResult`2.Mutate(TVariables): System.Void
-method Velvet.MutationResult`2.MutateAsync(TVariables): Velvet.VelvetTask`1[TData]
-method Velvet.MutationResult`2.Reset(): System.Void
-method Velvet.NullStoreLogger.Log(System.String): System.Void
-method Velvet.NullStoreLogger.LogError(System.String): System.Void
-method Velvet.NullStoreLogger.LogWarning(System.String): System.Void
-method Velvet.ParticlesElement.Play(): System.Void
-method Velvet.ParticlesElement.Stop(): System.Void
-method Velvet.Ref`1.Set(T): System.Void
-method Velvet.RouteBlockerManager.Register(System.Func`2[Velvet.NavigationAttempt, System.Boolean], Velvet.RouteBlockerState): System.IDisposable
-method Velvet.RouteBlockerManager.Register(System.Func`3[Velvet.NavigationAttempt, System.Threading.CancellationToken, Velvet.VelvetTask`1[System.Boolean]], Velvet.RouteBlockerState): System.IDisposable
-method Velvet.RouteBlockerManager.ResetAllBlocked(): System.Void
-method Velvet.RouteBlockerState.Proceed(): System.Void
-method Velvet.RouteBlockerState.Reset(): System.Void
-method Velvet.RouteTree.Match(System.String): System.Collections.Generic.IReadOnlyList`1[Velvet.RouteMatch]
-method Velvet.Router.Dispose(): System.Void
-method Velvet.Router.GetLoaderData(System.String): System.Object
-method Velvet.Router.GoBack(System.Threading.CancellationToken): Velvet.VelvetTask`1[Velvet.NavigationResult]
-method Velvet.Router.GoForward(System.Threading.CancellationToken): Velvet.VelvetTask`1[Velvet.NavigationResult]
-method Velvet.Router.NavigateAsync(System.String, Velvet.NavigationMode, System.Int32, System.Threading.CancellationToken): Velvet.VelvetTask`1[Velvet.NavigationResult]
-method Velvet.Router.NavigateAsync(System.String, Velvet.NavigationMode, System.Threading.CancellationToken): Velvet.VelvetTask`1[Velvet.NavigationResult]
-method Velvet.SearchParams.Append(System.String, System.String): System.Void
-method Velvet.SearchParams.Get(System.String): System.String
-method Velvet.SearchParams.GetAll(System.String): System.Collections.Generic.IReadOnlyList`1[System.String]
-method Velvet.SearchParams.GetEnumerator(): System.Collections.Generic.IEnumerator`1[System.String]
-method Velvet.SearchParams.Has(System.String): System.Boolean
-method Velvet.SearchParamsSetter.Invoke(System.Func`2[Velvet.ISearchParams, Velvet.ISearchParams], Velvet.NavigationMode): System.Void
-method Velvet.SearchParamsSetter.Invoke(Velvet.ISearchParams, Velvet.NavigationMode): System.Void
-method Velvet.StateUpdater`1.Equals(System.Object): System.Boolean
-method Velvet.StateUpdater`1.Equals(Velvet.StateUpdater`1): System.Boolean
-method Velvet.StateUpdater`1.GetHashCode(): System.Int32
-method Velvet.StateUpdater`1.Invoke(System.Func`2[T, T]): System.Void
-method Velvet.StateUpdater`1.Invoke(T): System.Void
-method Velvet.StoreLogger.Log(System.String): System.Void
-method Velvet.StoreLogger.LogError(System.String): System.Void
-method Velvet.StoreLogger.LogWarning(System.String): System.Void
-method Velvet.StoreShallowEqualityComparer.Sequence`1(): System.Collections.Generic.IEqualityComparer`1[System.Collections.Generic.IReadOnlyList`1[T]]
-method Velvet.Store`1.Dispose(): System.Void
-method Velvet.Store`1.Reset(): System.Void
-method Velvet.Store`1.Select`1(System.Func`2[TState, T], System.Action`2[T, T], System.Collections.Generic.IEqualityComparer`1[T], System.Boolean): System.IDisposable
-method Velvet.Store`1.Subscribe(System.Action`1[TState], System.Boolean): System.IDisposable
-method Velvet.Store`1.Subscribe(System.Action`2[TState, TState], System.Boolean): System.IDisposable
-method Velvet.StyleBackgroundImageResolver.Apply(UnityEngine.UIElements.VisualElement, UnityEngine.Texture2D): System.Void
-method Velvet.StyleBackgroundImageResolver.Clear(UnityEngine.UIElements.VisualElement): System.Void
-method Velvet.StyleBackgroundImageResolver.HasBackgroundImageClass(System.String[]): System.Boolean
-method Velvet.StyleBackgroundImageResolver.TryParse(System.String, UnityEngine.Texture2D&): System.Boolean
-method Velvet.StyleClassNames.Class(System.String[]): System.String
-method Velvet.StyleClassNames.When(System.Boolean, System.String): System.String
-method Velvet.StyleFontClass.HasFontClass(System.String[]): System.Boolean
-method Velvet.StyleFontClass.IsArbitraryFontClass(System.String): System.Boolean
-method Velvet.StyleFontClass.TryExtract(System.String[], Velvet.FontIntent&): System.Boolean
-method Velvet.StyleFontResolver.Apply(UnityEngine.UIElements.VisualElement, System.String[]): System.Void
-method Velvet.StyleFontResolver.ApplyIfPresent(UnityEngine.UIElements.VisualElement, System.String[]): System.Void
-method Velvet.StyleFontResolver.ApplyOnClassChange(UnityEngine.UIElements.VisualElement, System.String[], System.String[]): System.Void
-method Velvet.StyleFontResolver.Clear(UnityEngine.UIElements.VisualElement): System.Void
-method Velvet.StyleFontResolver.ComputeFontStyle(System.Boolean, System.Boolean): UnityEngine.FontStyle
-method Velvet.StyleRecipe+CompoundVariant.Matches(System.ValueTuple`2[System.String, System.String][], System.Int32): System.Boolean
-method Velvet.StyleRecipe.Apply(System.String, System.ValueTuple`2[System.String, System.String][]): System.String
-method Velvet.StyleRecipe.Apply(System.ValueTuple`2[System.String, System.String][]): System.String
-method Velvet.StyleSlotRecipe+SlotCompoundVariant.Matches(System.ValueTuple`2[System.String, System.String][], System.Int32): System.Boolean
-method Velvet.StyleSlotRecipe.Apply(): Velvet.StyleSlotClasses
-method Velvet.StyleSlotRecipe.Apply(System.ValueTuple`2[System.String, System.String][]): Velvet.StyleSlotClasses
-method Velvet.StyleTransitionConfig.With(System.Nullable`1[System.Single], System.Nullable`1[UnityEngine.UIElements.EasingMode], System.Nullable`1[UnityEngine.UIElements.EasingMode], System.Nullable`1[System.Single]): Velvet.StyleTransitionConfig
-method Velvet.StyleVariantClass.BreakpointPx(Velvet.StyleVariantKind): System.Single
-method Velvet.StyleVariantClass.IsResponsive(Velvet.StyleVariantKind): System.Boolean
-method Velvet.StyleVariantClass.IsVariant(System.String): System.Boolean
-method Velvet.StyleVariantClass.TryParse(System.String, Velvet.StyleVariantKind&, System.String&): System.Boolean
-method Velvet.TransitionStarter.Equals(System.Object): System.Boolean
-method Velvet.TransitionStarter.Equals(Velvet.TransitionStarter): System.Boolean
-method Velvet.TransitionStarter.GetHashCode(): System.Int32
-method Velvet.TransitionStarter.Invoke(System.Action): System.Void
-method Velvet.TransitionStarter.Invoke(System.Func`1[Velvet.VelvetTask]): System.Void
-method Velvet.Unit.Equals(System.Object): System.Boolean
-method Velvet.Unit.Equals(Velvet.Unit): System.Boolean
-method Velvet.Unit.GetHashCode(): System.Int32
-method Velvet.Unit.ToString(): System.String
-method Velvet.V.Anchored(UnityEngine.Transform, UnityEngine.Camera, System.Nullable`1[UnityEngine.Vector2], System.Boolean, System.Boolean, System.Nullable`1[UnityEngine.LayerMask], System.Nullable`1[System.Single], System.String, System.String, System.String, Velvet.FiberElementProps, Velvet.StyleOverrides, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action], Velvet.VNode[], System.String, System.String, System.String, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String], System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]): Velvet.ElementNode
-method Velvet.V.AnimatePresence(Velvet.VNode[], System.String, System.Boolean, System.Single, System.Single, System.Int32, Velvet.AnimatePresenceMode, System.Action): Velvet.AnimatePresenceNode
-method Velvet.V.Button(System.String, System.String, System.Action, System.String, System.String, System.String, System.Nullable`1[System.Boolean], Velvet.StyleOverrides, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action], System.Func`2[UnityEngine.UIElements.VisualElement, UnityEngine.UIElements.VisualElement], System.String, System.String, System.String, Velvet.VNode[], System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String], System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]): Velvet.ElementNode
-method Velvet.V.Button(System.String, Velvet.VNode[]): Velvet.ElementNode
-method Velvet.V.Component(System.Func`1[Velvet.VNode], System.String): Velvet.ComponentNode
-method Velvet.V.Component`1(System.Func`1[Velvet.VNode], Velvet.Ref`1[TRef], System.String): Velvet.ComponentNode
-method Velvet.V.Component`1(System.Func`2[TProps, Velvet.VNode], TProps, System.String): Velvet.ComponentNode
-method Velvet.V.Custom`1(System.String, System.String, System.String, Velvet.FiberElementProps, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action], Velvet.VNode[], System.String, System.String, System.String, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String], System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]): Velvet.ElementNode
-method Velvet.V.Custom`1(System.String, Velvet.VNode[]): Velvet.ElementNode
-method Velvet.V.Div(System.String, System.String, System.String, Velvet.FiberElementProps, Velvet.StyleOverrides, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action], Velvet.VNode[], System.String, System.String, System.String, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String], System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]): Velvet.ElementNode
-method Velvet.V.Div(System.String, Velvet.VNode[]): Velvet.ElementNode
-method Velvet.V.DndContext(System.Action`1[Velvet.DragStartArgs], System.Action`1[Velvet.DragOverArgs], System.Action`1[Velvet.DragEndArgs], System.Action`1[Velvet.DragCancelArgs], Velvet.DndCollisionDetection, Velvet.DragActivation, System.String, System.String, System.String, Velvet.FiberElementProps, Velvet.StyleOverrides, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action], Velvet.VNode[], System.String, System.String, System.String, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String], System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]): Velvet.ElementNode
-method Velvet.V.DragOverlay(Velvet.VNode[], System.String): Velvet.PortalNode
-method Velvet.V.Draggable(System.String, System.Object, System.Boolean, Velvet.DragMovement, Velvet.DragActivation, System.String, System.String, System.String, System.String, Velvet.FiberElementProps, Velvet.StyleOverrides, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action], Velvet.VNode[], System.String, System.String, System.String, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String], System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]): Velvet.ElementNode
-method Velvet.V.DropdownField(System.String, System.String, System.Collections.Generic.List`1[System.String], System.Action`1[System.String], System.String, System.String, System.String, System.Nullable`1[System.Boolean], System.Func`2[UnityEngine.UIElements.VisualElement, System.Action], System.String, System.String, System.String, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String], System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]): Velvet.ElementNode
-method Velvet.V.Droppable(System.String, System.Object, System.Boolean, System.String, System.String, System.String, System.String, System.String, Velvet.FiberElementProps, Velvet.StyleOverrides, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action], Velvet.VNode[], System.String, System.String, System.String, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String], System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]): Velvet.ElementNode
-method Velvet.V.ErrorBoundary(System.Func`2[System.Exception, Velvet.VNode], Velvet.VNode[], System.String): Velvet.ComponentNode
-method Velvet.V.FocusScope(System.String, System.String, System.String, System.Boolean, System.Boolean, System.Boolean, System.Boolean, Velvet.FiberElementProps, Velvet.StyleOverrides, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action], Velvet.VNode[], System.String, System.String, System.String, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String], System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]): Velvet.ElementNode
-method Velvet.V.Fragment(Velvet.VNode[], System.String): Velvet.FragmentNode
-method Velvet.V.Image(System.String, System.String, System.String, Velvet.StyleOverrides, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action], System.String, System.String, System.String, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String], System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]): Velvet.ElementNode
-method Velvet.V.IntegerField(System.String, System.Nullable`1[System.Int32], System.Action`1[System.Int32], System.String, System.String, System.String, System.Nullable`1[System.Boolean], System.Func`2[UnityEngine.UIElements.VisualElement, System.Action], System.String, System.String, System.String, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String], System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]): Velvet.ElementNode
-method Velvet.V.Label(System.String, System.String, System.String, System.String, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action], System.String, System.String, System.String, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String], System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]): Velvet.ElementNode
-method Velvet.V.Link(System.String, System.String, System.String, System.String, Velvet.VNode[], System.Boolean, System.String): Velvet.ComponentNode
-method Velvet.V.ListFragment`1(System.Collections.Generic.IReadOnlyList`1[T], System.Func`2[T, System.String], System.Func`2[T, Velvet.VNode], System.String): Velvet.FragmentNode
-method Velvet.V.ListFragment`1(System.Collections.Generic.IReadOnlyList`1[T], System.Func`3[T, System.Int32, System.String], System.Func`3[T, System.Int32, Velvet.VNode], System.String): Velvet.FragmentNode
-method Velvet.V.ListView(System.String, System.String, System.String, System.Nullable`1[System.Boolean], Velvet.StyleOverrides, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action], System.String, System.String, System.String, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String], System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]): Velvet.ElementNode
-method Velvet.V.List`1(System.Collections.Generic.IReadOnlyList`1[T], System.Func`2[T, System.String], System.Func`2[T, Velvet.VNode]): Velvet.VNode[]
-method Velvet.V.List`1(System.Collections.Generic.IReadOnlyList`1[T], System.Func`3[T, System.Int32, System.String], System.Func`3[T, System.Int32, Velvet.VNode]): Velvet.VNode[]
-method Velvet.V.Memo`1(System.Func`2[TProps, Velvet.VNode], TProps, System.Func`3[TProps, TProps, System.Boolean], System.String): Velvet.ComponentNode
-method Velvet.V.Memoized(System.Func`1[Velvet.VNode], System.Object[]): Velvet.MemoNode
-method Velvet.V.MemoizedWithKey(System.String, System.Func`1[Velvet.VNode], System.Object[]): Velvet.MemoNode
-method Velvet.V.MemoizedWithKey`1(System.String, System.Func`1[Velvet.VNode], T1): Velvet.MemoNode
-method Velvet.V.MemoizedWithKey`2(System.String, System.Func`1[Velvet.VNode], T1, T2): Velvet.MemoNode
-method Velvet.V.MemoizedWithKey`3(System.String, System.Func`1[Velvet.VNode], T1, T2, T3): Velvet.MemoNode
-method Velvet.V.MemoizedWithKey`4(System.String, System.Func`1[Velvet.VNode], T1, T2, T3, T4): Velvet.MemoNode
-method Velvet.V.MemoizedWithKey`5(System.String, System.Func`1[Velvet.VNode], T1, T2, T3, T4, T5): Velvet.MemoNode
-method Velvet.V.MemoizedWithKey`6(System.String, System.Func`1[Velvet.VNode], T1, T2, T3, T4, T5, T6): Velvet.MemoNode
-method Velvet.V.MemoizedWithKey`7(System.String, System.Func`1[Velvet.VNode], T1, T2, T3, T4, T5, T6, T7): Velvet.MemoNode
-method Velvet.V.MemoizedWithKey`8(System.String, System.Func`1[Velvet.VNode], T1, T2, T3, T4, T5, T6, T7, T8): Velvet.MemoNode
-method Velvet.V.Memoized`1(System.Func`1[Velvet.VNode], T1): Velvet.MemoNode
-method Velvet.V.Memoized`2(System.Func`1[Velvet.VNode], T1, T2): Velvet.MemoNode
-method Velvet.V.Memoized`3(System.Func`1[Velvet.VNode], T1, T2, T3): Velvet.MemoNode
-method Velvet.V.Memoized`4(System.Func`1[Velvet.VNode], T1, T2, T3, T4): Velvet.MemoNode
-method Velvet.V.Memoized`5(System.Func`1[Velvet.VNode], T1, T2, T3, T4, T5): Velvet.MemoNode
-method Velvet.V.Memoized`6(System.Func`1[Velvet.VNode], T1, T2, T3, T4, T5, T6): Velvet.MemoNode
-method Velvet.V.Memoized`7(System.Func`1[Velvet.VNode], T1, T2, T3, T4, T5, T6, T7): Velvet.MemoNode
-method Velvet.V.Memoized`8(System.Func`1[Velvet.VNode], T1, T2, T3, T4, T5, T6, T7, T8): Velvet.MemoNode
-method Velvet.V.Motion(System.String, System.String, System.String, Velvet.StyleTransitionConfig, System.Nullable`1[System.Single], System.Nullable`1[UnityEngine.UIElements.EasingMode], System.Nullable`1[System.Single], System.Action, Velvet.VNode[], Velvet.FiberElementProps, Velvet.FiberEventBinding[], System.Func`2[UnityEngine.UIElements.VisualElement, System.Action], System.String, System.String, System.String, System.Type, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String], System.String, System.String, System.String, System.String): Velvet.MotionNode
-method Velvet.V.Mount(UnityEngine.UIElements.VisualElement, Velvet.VNode): Velvet.MountedTree
-method Velvet.V.NavLink(System.String, System.String, System.String, System.String, System.String, Velvet.VNode[], System.Boolean, System.Boolean, System.Boolean, System.String): Velvet.ComponentNode
-method Velvet.V.Navigate(System.String, System.Boolean, System.String): Velvet.ComponentNode
-method Velvet.V.Outlet(System.Object, System.String): Velvet.OutletNode
-method Velvet.V.Particles(UnityEngine.ParticleSystem, System.String, System.String, System.String, Velvet.PlayTrigger, System.Single, Velvet.StyleOverrides, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action], System.String, System.String, System.String, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String], System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]): Velvet.ElementNode
-method Velvet.V.Portal(System.String, Velvet.VNode[], System.String): Velvet.PortalNode
-method Velvet.V.Portal(Velvet.UILayer, Velvet.VNode[], System.String, Velvet.PanelFocusOrder): Velvet.PortalNode
-method Velvet.V.Provider`1(Velvet.ComponentContext`1[T], T, Velvet.VNode[], System.String): Velvet.ContextProviderNode`1[T]
-method Velvet.V.RadioButton(System.String, System.Nullable`1[System.Boolean], System.Action`1[System.Boolean], System.String, System.String, System.String, System.Nullable`1[System.Boolean], System.Func`2[UnityEngine.UIElements.VisualElement, System.Action], System.String, System.String, System.String, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String], System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]): Velvet.ElementNode
-method Velvet.V.RadioButtonGroup(System.String, System.Nullable`1[System.Int32], System.Collections.Generic.List`1[System.String], System.Action`1[System.Int32], System.String, System.String, System.String, System.Nullable`1[System.Boolean], System.Func`2[UnityEngine.UIElements.VisualElement, System.Action], System.String, System.String, System.String, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String], System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]): Velvet.ElementNode
-method Velvet.V.Route(System.String, Velvet.ComponentNode, System.String, System.Func`3[Velvet.RouteLoaderContext, System.Threading.CancellationToken, Velvet.VelvetTask`1[System.Object]], Velvet.LoaderMode, Velvet.ComponentNode, Velvet.RouteDefinition[], System.String, System.Func`2[Velvet.RouteLoaderContext, System.String], System.Boolean): Velvet.RouteDefinition
-method Velvet.V.Routes(Velvet.RouteDefinition[]): Velvet.RouteDefinition[]
-method Velvet.V.SceneView(UnityEngine.Camera, System.String, System.String, System.String, System.Single, Velvet.StyleOverrides, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action], System.String, System.String, System.String, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String], System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]): Velvet.ElementNode
-method Velvet.V.ScrollView(System.String, System.String, System.String, System.Nullable`1[UnityEngine.UIElements.ScrollerVisibility], System.Nullable`1[UnityEngine.UIElements.ScrollerVisibility], System.Nullable`1[UnityEngine.UIElements.ScrollView+TouchScrollBehavior], System.Action`1[UnityEngine.UIElements.VisualElement], System.Func`2[UnityEngine.UIElements.VisualElement, System.Action], Velvet.VNode[], System.String, System.String, System.String, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String], System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]): Velvet.ElementNode
-method Velvet.V.ScrollView(System.String, Velvet.VNode[]): Velvet.ElementNode
-method Velvet.V.Slider(System.String, System.Nullable`1[System.Single], System.Nullable`1[System.Single], System.Nullable`1[System.Single], System.Action`1[System.Single], System.String, System.String, System.Nullable`1[System.Boolean], System.Func`2[UnityEngine.UIElements.VisualElement, System.Action], System.Action`1[UnityEngine.UIElements.VisualElement], System.String, System.String, System.String, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String], System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]): Velvet.ElementNode
-method Velvet.V.Suspense(Velvet.VNode, Velvet.VNode[], System.String): Velvet.SuspenseNode
-method Velvet.V.Text(System.String): Velvet.TextNode
-method Velvet.V.TextField(System.String, System.String, System.Action`1[System.String], System.String, System.String, System.String, System.Nullable`1[System.Boolean], System.Nullable`1[System.Boolean], System.Func`2[UnityEngine.UIElements.VisualElement, System.Action], System.String, System.String, System.String, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String], System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]): Velvet.ElementNode
-method Velvet.V.Toggle(System.String, System.Nullable`1[System.Boolean], System.Action`1[System.Boolean], System.String, System.String, System.String, System.Nullable`1[System.Boolean], System.Func`2[UnityEngine.UIElements.VisualElement, System.Action], System.String, System.String, System.String, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String], System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]): Velvet.ElementNode
-method Velvet.V.VirtualList`1(System.Collections.Generic.IReadOnlyList`1[T], System.Func`2[T, System.String], System.Single, System.Func`2[T, Velvet.VNode], System.Int32, System.String, System.String, System.String): Velvet.VirtualListNode
-method Velvet.V.When(System.Boolean, System.Func`1[Velvet.VNode]): Velvet.VNode
-method Velvet.V.WorldSpace(UnityEngine.Vector3, System.Nullable`1[UnityEngine.Quaternion], System.Nullable`1[UnityEngine.Vector2], Velvet.VNode[], System.String, Velvet.PanelFocusOrder): Velvet.WorldSpaceNode
-method Velvet.VelvetFilters.Register(System.String, UnityEngine.UIElements.FilterFunctionDefinition): System.Void
-method Velvet.VelvetFilters.Unregister(System.String): System.Boolean
-method Velvet.VelvetFontFamily.FindClosestWeight(Velvet.VelvetFontWeight): Velvet.VelvetFontWeightEntry
-method Velvet.VelvetFonts.Clear(): System.Void
-method Velvet.VelvetFonts.IsRegistered(System.String): System.Boolean
-method Velvet.VelvetFonts.Register(System.Collections.Generic.IEnumerable`1[Velvet.VelvetFontFamily], System.String): System.Void
-method Velvet.VelvetFonts.Register(Velvet.VelvetFontFamily): System.Void
-method Velvet.VelvetFonts.Resolve(System.String, Velvet.VelvetFontWeight, System.Boolean): Velvet.ResolvedFont
-method Velvet.VelvetFonts.TryLoadAddressableFont(System.String, UnityEngine.TextCore.Text.FontAsset&): System.Boolean
-method Velvet.VelvetFonts.Unregister(System.String): System.Void
-method Velvet.VelvetPreviewHost.Dispose(): System.Void
-method Velvet.VelvetPreviewHost.Mount(Velvet.VelvetPreviewStory): System.Void
-method Velvet.VelvetPreviewHost.Mount(Velvet.VelvetPreviewStory, System.Object): System.Void
-method Velvet.VelvetPreviewHost.UpdateArgs(System.Object): System.Boolean
-method Velvet.VelvetPreviewRegistry.DiscoverStories(): System.Collections.Generic.List`1[Velvet.VelvetPreviewStory]
-method Velvet.VelvetPreviewRegistry.RunSetupFor(System.Reflection.Assembly): System.IDisposable
-method Velvet.VelvetPreviewStory.Build(): Velvet.VNode
-method Velvet.VelvetPreviewStory.Build(System.Object): Velvet.VNode
-method Velvet.VelvetPreviewStory.CreateDefaultArgs(): System.Object
-method Velvet.VelvetStyleUtilities.AttachTo(UnityEngine.UIElements.VisualElement): System.Void
-method Velvet.VelvetStyleUtilities.BindThemeTo(UnityEngine.UIElements.VisualElement): System.Void
-method Velvet.VelvetTask+Awaiter.GetResult(): System.Void
-method Velvet.VelvetTask+Awaiter.OnCompleted(System.Action): System.Void
-method Velvet.VelvetTask.FromException(System.Exception): Velvet.VelvetTask
-method Velvet.VelvetTask.FromException`1(System.Exception): Velvet.VelvetTask`1[T]
-method Velvet.VelvetTask.FromResult(): Velvet.VelvetTask
-method Velvet.VelvetTask.FromResult`1(T): Velvet.VelvetTask`1[T]
-method Velvet.VelvetTask.GetAwaiter(): Velvet.VelvetTask+Awaiter
-method Velvet.VelvetTask.Never(System.Threading.CancellationToken): Velvet.VelvetTask
-method Velvet.VelvetTask.Never`1(System.Threading.CancellationToken): Velvet.VelvetTask`1[T]
-method Velvet.VelvetTask.ToCoroutine(System.Func`1[Velvet.VelvetTask]): System.Collections.IEnumerator
-method Velvet.VelvetTask.Yield(): Velvet.VelvetTask
-method Velvet.VelvetTaskCompletionSource.SetCanceled(System.Threading.CancellationToken): System.Void
-method Velvet.VelvetTaskCompletionSource.SetException(System.Exception): System.Void
-method Velvet.VelvetTaskCompletionSource.SetResult(): System.Void
-method Velvet.VelvetTaskCompletionSource.TrySetCanceled(System.Threading.CancellationToken): System.Boolean
-method Velvet.VelvetTaskCompletionSource.TrySetException(System.Exception): System.Boolean
-method Velvet.VelvetTaskCompletionSource.TrySetResult(): System.Boolean
-method Velvet.VelvetTaskCompletionSource`1.SetCanceled(System.Threading.CancellationToken): System.Void
-method Velvet.VelvetTaskCompletionSource`1.SetException(System.Exception): System.Void
-method Velvet.VelvetTaskCompletionSource`1.SetResult(T): System.Void
-method Velvet.VelvetTaskCompletionSource`1.TrySetCanceled(System.Threading.CancellationToken): System.Boolean
-method Velvet.VelvetTaskCompletionSource`1.TrySetException(System.Exception): System.Boolean
-method Velvet.VelvetTaskCompletionSource`1.TrySetResult(T): System.Boolean
-method Velvet.VelvetTaskExtensions.AttachExternalCancellation(Velvet.VelvetTask, System.Threading.CancellationToken): Velvet.VelvetTask
-method Velvet.VelvetTaskExtensions.AttachExternalCancellation`1(Velvet.VelvetTask`1[T], System.Threading.CancellationToken): Velvet.VelvetTask`1[T]
-method Velvet.VelvetTaskExtensions.Forget(Velvet.VelvetTask): System.Void
-method Velvet.VelvetTaskExtensions.Forget`1(Velvet.VelvetTask`1[T]): System.Void
-method Velvet.VelvetTaskExtensions.ToCoroutine(System.Func`1[Velvet.VelvetTask]): System.Collections.IEnumerator
-method Velvet.VelvetTaskExtensions.ToCoroutine(Velvet.VelvetTask, System.Action`1[System.Exception]): System.Collections.IEnumerator
-method Velvet.VelvetTaskExtensions.ToCoroutine`1(Velvet.VelvetTask`1[T], System.Action`1[T], System.Action`1[System.Exception]): System.Collections.IEnumerator
-method Velvet.VelvetTaskMethodBuilder.AwaitOnCompleted`2(TAwaiter&, TStateMachine&): System.Void
-method Velvet.VelvetTaskMethodBuilder.AwaitUnsafeOnCompleted`2(TAwaiter&, TStateMachine&): System.Void
-method Velvet.VelvetTaskMethodBuilder.Create(): Velvet.VelvetTaskMethodBuilder
-method Velvet.VelvetTaskMethodBuilder.SetException(System.Exception): System.Void
-method Velvet.VelvetTaskMethodBuilder.SetResult(): System.Void
-method Velvet.VelvetTaskMethodBuilder.SetStateMachine(System.Runtime.CompilerServices.IAsyncStateMachine): System.Void
-method Velvet.VelvetTaskMethodBuilder.Start`1(TStateMachine&): System.Void
-method Velvet.VelvetTaskMethodBuilder`1.AwaitOnCompleted`2(TAwaiter&, TStateMachine&): System.Void
-method Velvet.VelvetTaskMethodBuilder`1.AwaitUnsafeOnCompleted`2(TAwaiter&, TStateMachine&): System.Void
-method Velvet.VelvetTaskMethodBuilder`1.Create(): Velvet.VelvetTaskMethodBuilder`1
-method Velvet.VelvetTaskMethodBuilder`1.SetException(System.Exception): System.Void
-method Velvet.VelvetTaskMethodBuilder`1.SetResult(T): System.Void
-method Velvet.VelvetTaskMethodBuilder`1.SetStateMachine(System.Runtime.CompilerServices.IAsyncStateMachine): System.Void
-method Velvet.VelvetTaskMethodBuilder`1.Start`1(TStateMachine&): System.Void
-method Velvet.VelvetTaskStatusExtensions.IsCanceled(Velvet.VelvetTaskStatus): System.Boolean
-method Velvet.VelvetTaskStatusExtensions.IsCompleted(Velvet.VelvetTaskStatus): System.Boolean
-method Velvet.VelvetTaskStatusExtensions.IsCompletedSuccessfully(Velvet.VelvetTaskStatus): System.Boolean
-method Velvet.VelvetTaskStatusExtensions.IsFaulted(Velvet.VelvetTaskStatus): System.Boolean
-method Velvet.VelvetTask`1.FromResult(T): Velvet.VelvetTask`1
-method Velvet.VelvetTask`1.GetAwaiter(): Velvet.VelvetTask`1[T]
-method Velvet.VelvetTask`1.GetResult(): T
-method Velvet.VelvetTask`1.OnCompleted(System.Action): System.Void
-method protected Velvet.Experimental.VBuilder.BuildChildren(): Velvet.VNode[]
-method protected Velvet.Store`1.Mutate(System.Func`2[TState, TState]): System.Void
-method protected Velvet.Store`1.OnDispose(): System.Void
-method protected Velvet.Store`1.ResetCore(): System.Void
-method protected Velvet.Store`1.SetState(System.Func`2[TState, TState]): System.Boolean
-property Velvet.AnchoredSettings.Camera: UnityEngine.Camera
-property Velvet.AnchoredSettings.DistanceFactor: System.Nullable`1[System.Single]
-property Velvet.AnchoredSettings.HideWhenBehindCamera: System.Boolean
-property Velvet.AnchoredSettings.Occlude: System.Boolean
-property Velvet.AnchoredSettings.OccludeLayerMask: UnityEngine.LayerMask
-property Velvet.AnchoredSettings.Offset: UnityEngine.Vector2
-property Velvet.AnchoredSettings.Target: UnityEngine.Transform
-property Velvet.AnimatePresenceNode.Children: Velvet.VNode[]
-property Velvet.AnimatePresenceNode.DelayChildrenSec: System.Single
-property Velvet.AnimatePresenceNode.Initial: System.Boolean
-property Velvet.AnimatePresenceNode.Mode: Velvet.AnimatePresenceMode
-property Velvet.AnimatePresenceNode.OnExitComplete: System.Action
-property Velvet.AnimatePresenceNode.StaggerDirection: System.Int32
-property Velvet.AnimatePresenceNode.StaggerSec: System.Single
-property Velvet.AnimationSequenceControls.Pause: System.Action
-property Velvet.AnimationSequenceControls.Play: System.Action
-property Velvet.AnimationSequenceControls.Restart: System.Action
-property Velvet.AnimationSequenceState.CurrentLabel: System.String
-property Velvet.AnimationSequenceState.CurrentTransition: Velvet.StyleTransitionConfig
-property Velvet.AnimationSequenceState.IsComplete: System.Boolean
-property Velvet.AnimationSequenceState.StepIndex: System.Int32
-property Velvet.AnimationSequenceStep.Callback: System.Action
-property Velvet.AnimationSequenceStep.HoldSec: System.Nullable`1[System.Single]
-property Velvet.AnimationSequenceStep.Label: System.String
-property Velvet.AnimationSequenceStep.Transition: Velvet.StyleTransitionConfig
-property Velvet.BaseElementNode.Children: Velvet.VNode[]
-property Velvet.BaseElementNode.ClassNames: System.String[]
-property Velvet.BaseElementNode.ElementType: System.Type
-property Velvet.BaseElementNode.Events: Velvet.FiberEventBinding[]
-property Velvet.BaseElementNode.Name: System.String
-property Velvet.BaseElementNode.Props: Velvet.FiberElementProps
-property Velvet.BaseElementNode.RefCallback: System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]
-property Velvet.BaseElementNode.WhileFocusClass: System.String
-property Velvet.BaseElementNode.WhileHoverClass: System.String
-property Velvet.BaseElementNode.WhileTapClass: System.String
-property Velvet.BlurBinding.EventId: System.String
-property Velvet.BlurBinding.Handler: UnityEngine.UIElements.EventCallback`1[UnityEngine.UIElements.BlurEvent]
-property Velvet.ChangeEventBinding`1.EventId: System.String
-property Velvet.ChangeEventBinding`1.Handler: System.Action`1[T]
-property Velvet.ChoicesSettings.Choices: System.Collections.Generic.List`1[System.String]
-property Velvet.ClickedBinding.EventId: System.String
-property Velvet.ClickedBinding.Handler: System.Action
-property Velvet.ComponentAttribute.Compiler: System.Boolean
-property Velvet.ComponentAttribute.DisplayName: System.String
-property Velvet.ComponentAttribute.IsErrorBoundary: System.Boolean
-property Velvet.ComponentAttribute.Memoize: System.Boolean
-property Velvet.ComponentContext`1.DefaultValue: T
-property Velvet.ComponentFiber.Child: Velvet.ComponentFiber
-property Velvet.ComponentFiber.IsDirty: System.Boolean
-property Velvet.ComponentFiber.IsDisposed: System.Boolean
-property Velvet.ComponentFiber.IsErrorBoundary: System.Boolean
-property Velvet.ComponentFiber.IsMounted: System.Boolean
-property Velvet.ComponentFiber.IsRendering: System.Boolean
-property Velvet.ComponentFiber.IsSuspenseBoundary: System.Boolean
-property Velvet.ComponentFiber.Parent: Velvet.ComponentFiber
-property Velvet.ComponentFiber.Ref: System.Object
-property Velvet.ComponentFiber.Sibling: Velvet.ComponentFiber
-property Velvet.ComponentNode.Body: System.Func`1[Velvet.VNode]
-property Velvet.ComponentNode.Identity: System.Object
-property Velvet.ComponentNode.IsErrorBoundary: System.Boolean
-property Velvet.ComponentNode.Props: System.Object
-property Velvet.ContextProviderNode.Children: Velvet.VNode[]
-property Velvet.ContextProviderNode`1.Context: Velvet.ComponentContext`1[T]
-property Velvet.ContextProviderNode`1.Value: T
-property Velvet.DevTools.VelvetDevToolsRegistry+ComponentEntry.Fiber: Velvet.ComponentFiber
-property Velvet.DevTools.VelvetDevToolsRegistry+ComponentEntry.Label: System.String
-property Velvet.DevTools.VelvetDevToolsRegistry+ComponentEntry.RegisteredAt: System.DateTime
-property Velvet.DevTools.VelvetDevToolsRegistry+ComponentEntry.TypeName: System.String
-property Velvet.DevTools.VelvetDevToolsRegistry.Entries: System.Collections.Generic.IReadOnlyList`1[Velvet.DevTools.VelvetDevToolsRegistry+ComponentEntry]
-property Velvet.DndCollisionQuery.ActiveRect: UnityEngine.Rect
-property Velvet.DndCollisionQuery.Droppables: System.Collections.Generic.IReadOnlyList`1[Velvet.DndDroppableRect]
-property Velvet.DndCollisionQuery.PointerPosition: UnityEngine.Vector2
-property Velvet.DndContextSettings.Activation: Velvet.DragActivation
-property Velvet.DndContextSettings.CollisionDetection: Velvet.DndCollisionDetection
-property Velvet.DndContextSettings.OnDragCancel: System.Action`1[Velvet.DragCancelArgs]
-property Velvet.DndContextSettings.OnDragEnd: System.Action`1[Velvet.DragEndArgs]
-property Velvet.DndContextSettings.OnDragOver: System.Action`1[Velvet.DragOverArgs]
-property Velvet.DndContextSettings.OnDragStart: System.Action`1[Velvet.DragStartArgs]
-property Velvet.DndDroppableRect.Data: System.Object
-property Velvet.DndDroppableRect.Id: System.String
-property Velvet.DndDroppableRect.Rect: UnityEngine.Rect
-property Velvet.DragActivation.DelaySec: System.Single
-property Velvet.DragActivation.Distance: System.Single
-property Velvet.DragActivation.Tolerance: System.Single
-property Velvet.DragCancelArgs.Active: Velvet.DraggableInfo
-property Velvet.DragEndArgs.Active: Velvet.DraggableInfo
-property Velvet.DragEndArgs.Delta: UnityEngine.Vector2
-property Velvet.DragEndArgs.Over: Velvet.DroppableInfo
-property Velvet.DragEndArgs.Position: UnityEngine.Vector2
-property Velvet.DragOverArgs.Active: Velvet.DraggableInfo
-property Velvet.DragOverArgs.Delta: UnityEngine.Vector2
-property Velvet.DragOverArgs.Over: Velvet.DroppableInfo
-property Velvet.DragStartArgs.Active: Velvet.DraggableInfo
-property Velvet.DragStartArgs.Origin: UnityEngine.Vector2
-property Velvet.DraggableInfo.Data: System.Object
-property Velvet.DraggableInfo.Element: UnityEngine.UIElements.VisualElement
-property Velvet.DraggableInfo.Id: System.String
-property Velvet.DraggableSettings.Activation: Velvet.DragActivation
-property Velvet.DraggableSettings.Data: System.Object
-property Velvet.DraggableSettings.Disabled: System.Boolean
-property Velvet.DraggableSettings.Id: System.String
-property Velvet.DraggableSettings.Movement: Velvet.DragMovement
-property Velvet.DraggableSettings.WhileDraggingClass: System.String
-property Velvet.DroppableInfo.Data: System.Object
-property Velvet.DroppableInfo.Element: UnityEngine.UIElements.VisualElement
-property Velvet.DroppableInfo.Id: System.String
-property Velvet.DroppableSettings.Data: System.Object
-property Velvet.DroppableSettings.Disabled: System.Boolean
-property Velvet.DroppableSettings.Id: System.String
-property Velvet.DroppableSettings.WhileDragActiveClass: System.String
-property Velvet.DroppableSettings.WhileOverClass: System.String
-property Velvet.ElementNode.OnCreated: System.Action`1[UnityEngine.UIElements.VisualElement]
-property Velvet.ElementNode.Styles: Velvet.StyleOverrides
-property Velvet.ElementNode.WrapElement: System.Func`2[UnityEngine.UIElements.VisualElement, UnityEngine.UIElements.VisualElement]
-property Velvet.ErrorInfo.ComponentStack: System.String
-property Velvet.Experimental.VBuilder.Class: System.String
-property Velvet.Experimental.VBuilder.Key: System.String
-property Velvet.Experimental.VBuilder.Name: System.String
-property Velvet.Experimental.VButton.Enabled: System.Nullable`1[System.Boolean]
-property Velvet.Experimental.VButton.OnClick: System.Action
-property Velvet.Experimental.VButton.Text: System.String
-property Velvet.Experimental.VImage.Styles: Velvet.StyleOverrides
-property Velvet.Experimental.VImage.WhileFocusClass: System.String
-property Velvet.Experimental.VImage.WhileHoverClass: System.String
-property Velvet.Experimental.VImage.WhileTapClass: System.String
-property Velvet.Experimental.VLabel.Text: System.String
-property Velvet.Experimental.VSlider.Enabled: System.Nullable`1[System.Boolean]
-property Velvet.Experimental.VSlider.HighValue: System.Nullable`1[System.Single]
-property Velvet.Experimental.VSlider.LowValue: System.Nullable`1[System.Single]
-property Velvet.Experimental.VSlider.OnChange: System.Action`1[System.Single]
-property Velvet.Experimental.VSlider.Value: System.Nullable`1[System.Single]
-property Velvet.Experimental.VTextField.Enabled: System.Nullable`1[System.Boolean]
-property Velvet.Experimental.VTextField.IsPasswordField: System.Nullable`1[System.Boolean]
-property Velvet.Experimental.VTextField.Label: System.String
-property Velvet.Experimental.VTextField.OnChange: System.Action`1[System.String]
-property Velvet.Experimental.VTextField.Value: System.String
-property Velvet.Experimental.VToggle.Enabled: System.Nullable`1[System.Boolean]
-property Velvet.Experimental.VToggle.Label: System.String
-property Velvet.Experimental.VToggle.OnChange: System.Action`1[System.Boolean]
-property Velvet.Experimental.VToggle.Value: System.Nullable`1[System.Boolean]
-property Velvet.FiberElementProps.Anchored: Velvet.AnchoredSettings
-property Velvet.FiberElementProps.Aria: System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]
-property Velvet.FiberElementProps.Choices: Velvet.ChoicesSettings
-property Velvet.FiberElementProps.Data: System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]
-property Velvet.FiberElementProps.DelegatesFocus: System.Nullable`1[System.Boolean]
-property Velvet.FiberElementProps.DndContext: Velvet.DndContextSettings
-property Velvet.FiberElementProps.DragOverlay: Velvet.DragOverlaySettings
-property Velvet.FiberElementProps.Draggable: Velvet.DraggableSettings
-property Velvet.FiberElementProps.Droppable: Velvet.DroppableSettings
-property Velvet.FiberElementProps.Enabled: System.Nullable`1[System.Boolean]
-property Velvet.FiberElementProps.FieldValue: System.Object
-property Velvet.FiberElementProps.FocusScope: Velvet.FocusScopeSettings
-property Velvet.FiberElementProps.Focusable: System.Nullable`1[System.Boolean]
-property Velvet.FiberElementProps.Particles: Velvet.ParticlesSettings
-property Velvet.FiberElementProps.SceneView: Velvet.SceneViewSettings
-property Velvet.FiberElementProps.ScrollView: Velvet.ScrollViewSettings
-property Velvet.FiberElementProps.Slider: Velvet.SliderSettings
-property Velvet.FiberElementProps.TabIndex: System.Nullable`1[System.Int32]
-property Velvet.FiberElementProps.Text: System.String
-property Velvet.FiberElementProps.TextField: Velvet.TextFieldSettings
-property Velvet.FiberElementProps.Tooltip: System.String
-property Velvet.FiberElementProps.Visible: System.Nullable`1[System.Boolean]
-property Velvet.FiberEventBinding.EventId: System.String
-property Velvet.FiberStrictMode.Enabled: System.Boolean
-property Velvet.FocusBinding.EventId: System.String
-property Velvet.FocusBinding.Handler: UnityEngine.UIElements.EventCallback`1[UnityEngine.UIElements.FocusEvent]
-property Velvet.FocusInBinding.EventId: System.String
-property Velvet.FocusInBinding.Handler: UnityEngine.UIElements.EventCallback`1[UnityEngine.UIElements.FocusInEvent]
-property Velvet.FocusOutBinding.EventId: System.String
-property Velvet.FocusOutBinding.Handler: UnityEngine.UIElements.EventCallback`1[UnityEngine.UIElements.FocusOutEvent]
-property Velvet.FocusRing.IsFocusVisible: System.Boolean
-property Velvet.FocusRing.IsFocused: System.Boolean
-property Velvet.FocusRing.Ref: System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]
-property Velvet.FocusScopeSettings.AutoFocus: System.Boolean
-property Velvet.FocusScopeSettings.Contain: System.Boolean
-property Velvet.FocusScopeSettings.RestoreFocus: System.Boolean
-property Velvet.FocusScopeSettings.SingleTabStop: System.Boolean
-property Velvet.FragmentNode.Children: Velvet.VNode[]
-property Velvet.GeometryChangedBinding.EventId: System.String
-property Velvet.GeometryChangedBinding.Handler: UnityEngine.UIElements.EventCallback`1[UnityEngine.UIElements.GeometryChangedEvent]
-property Velvet.ISearchParams.Count: System.Int32
-property Velvet.ISearchParams.Keys: System.Collections.Generic.IReadOnlyList`1[System.String]
-property Velvet.IStoreWriter`1.Current: TState
-property Velvet.KeyDownBinding.EventId: System.String
-property Velvet.KeyDownBinding.Handler: UnityEngine.UIElements.EventCallback`1[UnityEngine.UIElements.KeyDownEvent]
-property Velvet.KeyUpBinding.EventId: System.String
-property Velvet.KeyUpBinding.Handler: UnityEngine.UIElements.EventCallback`1[UnityEngine.UIElements.KeyUpEvent]
-property Velvet.MemoNode.Dependencies: System.Object[]
-property Velvet.MemoNode.Factory: System.Func`1[Velvet.VNode]
-property Velvet.MotionNode.Animate: System.String
-property Velvet.MotionNode.Exit: System.String
-property Velvet.MotionNode.Initial: System.String
-property Velvet.MotionNode.LayoutId: System.String
-property Velvet.MotionNode.OnEnterComplete: System.Action
-property Velvet.MotionNode.Transition: Velvet.StyleTransitionConfig
-property Velvet.MotionNode.Variants: System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]
-property Velvet.MutableRef`1.Current: T
-property Velvet.MutationOptions.MutationFn: System.Func`2[System.Threading.CancellationToken, Velvet.VelvetTask]
-property Velvet.MutationOptions.OnError: System.Action`1[System.Exception]
-property Velvet.MutationOptions.OnSuccess: System.Action
-property Velvet.MutationOptions`1.MutationFn: System.Func`3[TVariables, System.Threading.CancellationToken, Velvet.VelvetTask]
-property Velvet.MutationOptions`1.OnError: System.Action`2[System.Exception, TVariables]
-property Velvet.MutationOptions`1.OnSuccess: System.Action`1[TVariables]
-property Velvet.MutationOptions`2.MutationFn: System.Func`3[TVariables, System.Threading.CancellationToken, Velvet.VelvetTask`1[TData]]
-property Velvet.MutationOptions`2.OnError: System.Action`2[System.Exception, TVariables]
-property Velvet.MutationOptions`2.OnSuccess: System.Action`2[TData, TVariables]
-property Velvet.MutationResult`2.Data: TData
-property Velvet.MutationResult`2.Error: System.Exception
-property Velvet.MutationResult`2.IsError: System.Boolean
-property Velvet.MutationResult`2.IsIdle: System.Boolean
-property Velvet.MutationResult`2.IsPending: System.Boolean
-property Velvet.MutationResult`2.IsSuccess: System.Boolean
-property Velvet.MutationResult`2.Status: Velvet.MutationStatus
-property Velvet.MutationResult`2.Variables: TVariables
-property Velvet.Navigate+Props.Replace: System.Boolean
-property Velvet.Navigate+Props.To: System.String
-property Velvet.NavigationAttempt.CurrentPath: System.String
-property Velvet.NavigationAttempt.NavigationMode: Velvet.NavigationMode
-property Velvet.NavigationAttempt.NextPath: System.String
-property Velvet.NavigationState.Location: Velvet.RouterLocation
-property Velvet.NavigationState.State: Velvet.NavigationLifecycle
-property Velvet.ParticlesSettings.Effect: UnityEngine.ParticleSystem
-property Velvet.ParticlesSettings.PixelsPerUnit: System.Single
-property Velvet.ParticlesSettings.PlayOn: Velvet.PlayTrigger
-property Velvet.PointerDownBinding.EventId: System.String
-property Velvet.PointerDownBinding.Handler: UnityEngine.UIElements.EventCallback`1[UnityEngine.UIElements.PointerDownEvent]
-property Velvet.PointerEnterBinding.EventId: System.String
-property Velvet.PointerEnterBinding.Handler: UnityEngine.UIElements.EventCallback`1[UnityEngine.UIElements.PointerEnterEvent]
-property Velvet.PointerLeaveBinding.EventId: System.String
-property Velvet.PointerLeaveBinding.Handler: UnityEngine.UIElements.EventCallback`1[UnityEngine.UIElements.PointerLeaveEvent]
-property Velvet.PointerMoveBinding.EventId: System.String
-property Velvet.PointerMoveBinding.Handler: UnityEngine.UIElements.EventCallback`1[UnityEngine.UIElements.PointerMoveEvent]
-property Velvet.PointerUpBinding.EventId: System.String
-property Velvet.PointerUpBinding.Handler: UnityEngine.UIElements.EventCallback`1[UnityEngine.UIElements.PointerUpEvent]
-property Velvet.PortalNode.Children: Velvet.VNode[]
-property Velvet.PortalNode.FocusOrder: Velvet.PanelFocusOrder
-property Velvet.PortalNode.Layer: System.Nullable`1[Velvet.UILayer]
-property Velvet.PortalNode.TargetId: System.String
-property Velvet.Ref`1.Current: T
-property Velvet.Ref`1.SetElement: System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]
-property Velvet.RouteBlockerState.Attempt: Velvet.NavigationAttempt
-property Velvet.RouteBlockerState.Status: Velvet.RouteBlockerStatus
-property Velvet.RouteDefinition.CaseSensitive: System.Boolean
-property Velvet.RouteDefinition.Children: Velvet.RouteDefinition[]
-property Velvet.RouteDefinition.Element: Velvet.ComponentNode
-property Velvet.RouteDefinition.ErrorElement: Velvet.ComponentNode
-property Velvet.RouteDefinition.Guard: System.Func`2[Velvet.RouteLoaderContext, System.String]
-property Velvet.RouteDefinition.Loader: System.Func`3[Velvet.RouteLoaderContext, System.Threading.CancellationToken, Velvet.VelvetTask`1[System.Object]]
-property Velvet.RouteDefinition.LoaderMode: Velvet.LoaderMode
-property Velvet.RouteDefinition.Path: System.String
-property Velvet.RouteDefinition.RedirectTo: System.String
-property Velvet.RouteDefinition.ScopeId: System.String
-property Velvet.RouteLink+Props.Children: Velvet.VNode[]
-property Velvet.RouteLink+Props.ClassName: System.String
-property Velvet.RouteLink+Props.Name: System.String
-property Velvet.RouteLink+Props.Replace: System.Boolean
-property Velvet.RouteLink+Props.Text: System.String
-property Velvet.RouteLink+Props.To: System.String
-property Velvet.RouteLoaderContext.Params: System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]
-property Velvet.RouteLoaderContext.Path: System.String
-property Velvet.RouteMatch.MatchedPath: System.String
-property Velvet.RouteMatch.Params: System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]
-property Velvet.RouteMatch.PathnameBase: System.String
-property Velvet.RouteMatch.Route: Velvet.RouteDefinition
-property Velvet.RouteMatch.RouteId: System.String
-property Velvet.RouteNavLink+Props.ActiveClass: System.String
-property Velvet.RouteNavLink+Props.CaseSensitive: System.Boolean
-property Velvet.RouteNavLink+Props.Children: Velvet.VNode[]
-property Velvet.RouteNavLink+Props.ClassName: System.String
-property Velvet.RouteNavLink+Props.End: System.Boolean
-property Velvet.RouteNavLink+Props.Name: System.String
-property Velvet.RouteNavLink+Props.Replace: System.Boolean
-property Velvet.RouteNavLink+Props.Text: System.String
-property Velvet.RouteNavLink+Props.To: System.String
-property Velvet.Router.CanGoBack: System.Boolean
-property Velvet.Router.CanGoForward: System.Boolean
-property Velvet.Router.Current: Velvet.Router
-property Velvet.Router.CurrentLoaderData: System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.Object]
-property Velvet.Router.CurrentLoaderErrors: System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.Exception]
-property Velvet.Router.CurrentLocation: Velvet.RouterLocation
-property Velvet.Router.RouteBlockerManager: Velvet.RouteBlockerManager
-property Velvet.Router.Status: Velvet.RouterStatus
-property Velvet.RouterLocation.Matches: System.Collections.Generic.IReadOnlyList`1[Velvet.RouteMatch]
-property Velvet.RouterLocation.Params: System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]
-property Velvet.RouterLocation.Path: System.String
-property Velvet.SceneViewSettings.Camera: UnityEngine.Camera
-property Velvet.SceneViewSettings.ResolutionScale: System.Single
-property Velvet.ScrollViewSettings.HorizontalScrollerVisibility: System.Nullable`1[UnityEngine.UIElements.ScrollerVisibility]
-property Velvet.ScrollViewSettings.TouchScrollBehavior: System.Nullable`1[UnityEngine.UIElements.ScrollView+TouchScrollBehavior]
-property Velvet.ScrollViewSettings.VerticalScrollerVisibility: System.Nullable`1[UnityEngine.UIElements.ScrollerVisibility]
-property Velvet.SearchParams.Count: System.Int32
-property Velvet.SearchParams.Keys: System.Collections.Generic.IReadOnlyList`1[System.String]
-property Velvet.SliderSettings.HighValue: System.Nullable`1[System.Single]
-property Velvet.SliderSettings.LowValue: System.Nullable`1[System.Single]
-property Velvet.StoreLogger.Default: Velvet.StoreLogger
-property Velvet.Store`1.Current: TState
-property Velvet.Store`1.InitialState: TState
-property Velvet.StyleOverrides.BackgroundColor: System.Nullable`1[UnityEngine.UIElements.StyleColor]
-property Velvet.StyleOverrides.BackgroundImage: System.Nullable`1[UnityEngine.UIElements.StyleBackground]
-property Velvet.StyleOverrides.Color: System.Nullable`1[UnityEngine.UIElements.StyleColor]
-property Velvet.StylePropertyTransition.DelaySec: System.Nullable`1[System.Single]
-property Velvet.StylePropertyTransition.DurationSec: System.Nullable`1[System.Single]
-property Velvet.StylePropertyTransition.Easing: System.Nullable`1[UnityEngine.UIElements.EasingMode]
-property Velvet.StylePropertyTransition.Property: System.String
-property Velvet.StyleRecipe+CompoundVariant.ClassName: System.String
-property Velvet.StyleRecipe+CompoundVariant.Conditions: System.Collections.Generic.Dictionary`2[System.String, System.String]
-property Velvet.StyleSlotClasses.Item[System.String]: System.String
-property Velvet.StyleSlotRecipe+SlotCompoundVariant.Conditions: System.Collections.Generic.Dictionary`2[System.String, System.String]
-property Velvet.StyleSlotRecipe+SlotCompoundVariant.SlotClasses: System.Collections.Generic.Dictionary`2[System.String, System.String]
-property Velvet.StyleTransitionConfig.BezierX1: System.Single
-property Velvet.StyleTransitionConfig.BezierX2: System.Single
-property Velvet.StyleTransitionConfig.BezierY1: System.Single
-property Velvet.StyleTransitionConfig.BezierY2: System.Single
-property Velvet.StyleTransitionConfig.Damping: System.Single
-property Velvet.StyleTransitionConfig.DelayChildrenSec: System.Single
-property Velvet.StyleTransitionConfig.DelaySec: System.Single
-property Velvet.StyleTransitionConfig.DurationSec: System.Single
-property Velvet.StyleTransitionConfig.Easing: UnityEngine.UIElements.EasingMode
-property Velvet.StyleTransitionConfig.ExitEasing: System.Nullable`1[UnityEngine.UIElements.EasingMode]
-property Velvet.StyleTransitionConfig.Mass: System.Single
-property Velvet.StyleTransitionConfig.PropertyOverrides: System.Collections.Generic.IReadOnlyList`1[Velvet.StylePropertyTransition]
-property Velvet.StyleTransitionConfig.StaggerChildrenSec: System.Single
-property Velvet.StyleTransitionConfig.Stiffness: System.Single
-property Velvet.StyleTransitionConfig.Type: Velvet.TransitionType
-property Velvet.StyleTransitionConfig.When: Velvet.TransitionWhen
-property Velvet.SuspenseNode.Children: Velvet.VNode[]
-property Velvet.SuspenseNode.Fallback: Velvet.VNode
-property Velvet.TextFieldSettings.IsPassword: System.Nullable`1[System.Boolean]
-property Velvet.TextNode.Text: System.String
-property Velvet.VNode.Key: System.String
-property Velvet.VelvetFonts.DefaultFamily: System.String
-property Velvet.VelvetPreviewAttribute.Group: System.String
-property Velvet.VelvetPreviewAttribute.Height: System.Int32
-property Velvet.VelvetPreviewAttribute.Name: System.String
-property Velvet.VelvetPreviewAttribute.Width: System.Int32
-property Velvet.VelvetPreviewHost.MountError: System.Exception
-property Velvet.VelvetPreviewHost.Story: Velvet.VelvetPreviewStory
-property Velvet.VelvetPreviewStory.ArgsType: System.Type
-property Velvet.VelvetPreviewStory.Assembly: System.Reflection.Assembly
-property Velvet.VelvetPreviewStory.Group: System.String
-property Velvet.VelvetPreviewStory.Height: System.Int32
-property Velvet.VelvetPreviewStory.Id: System.String
-property Velvet.VelvetPreviewStory.Name: System.String
-property Velvet.VelvetPreviewStory.Width: System.Int32
-property Velvet.VelvetStyleHints.PreviewStyleSheet: UnityEngine.UIElements.StyleSheet
-property Velvet.VelvetStyleUtilities.Sheet: UnityEngine.UIElements.StyleSheet
-property Velvet.VelvetTask+Awaiter.IsCompleted: System.Boolean
-property Velvet.VelvetTask.CompletedTask: Velvet.VelvetTask
-property Velvet.VelvetTask.Status: Velvet.VelvetTaskStatus
-property Velvet.VelvetTaskCompletionSource.Task: Velvet.VelvetTask
-property Velvet.VelvetTaskCompletionSource`1.Task: Velvet.VelvetTask`1[T]
-property Velvet.VelvetTaskMethodBuilder.Task: Velvet.VelvetTask
-property Velvet.VelvetTaskMethodBuilder`1.Task: Velvet.VelvetTask`1[T]
-property Velvet.VelvetTask`1.IsCompleted: System.Boolean
-property Velvet.VelvetTask`1.Status: Velvet.VelvetTaskStatus
-property Velvet.VelvetTheme.IsDark: System.Boolean
-property Velvet.VirtualListNode.ClassNames: System.String[]
-property Velvet.VirtualListNode.ItemHeight: System.Single
-property Velvet.VirtualListNode.Items: System.Collections.Generic.IReadOnlyList`1[System.Object]
-property Velvet.VirtualListNode.KeySelector: System.Func`2[System.Object, System.String]
-property Velvet.VirtualListNode.Name: System.String
-property Velvet.VirtualListNode.Overscan: System.Int32
-property Velvet.VirtualListNode.Renderer: System.Func`2[System.Object, Velvet.VNode]
-property Velvet.WheelBinding.EventId: System.String
-property Velvet.WheelBinding.Handler: UnityEngine.UIElements.EventCallback`1[UnityEngine.UIElements.WheelEvent]
-property Velvet.WorldSpaceNode.Children: Velvet.VNode[]
-property Velvet.WorldSpaceNode.FocusOrder: Velvet.PanelFocusOrder
-property Velvet.WorldSpaceNode.PanelSize: UnityEngine.Vector2
-property Velvet.WorldSpaceNode.Position: UnityEngine.Vector3
-property Velvet.WorldSpaceNode.Rotation: UnityEngine.Quaternion
-property protected Velvet.Store`1.CancellationToken: System.Threading.CancellationToken
-property protected Velvet.Store`1.Logger: Velvet.StoreLogger
-type System.Runtime.CompilerServices.ModuleInitializerAttribute
-type Velvet.AnchoredSettings
-type Velvet.AnimatePresenceMode
-type Velvet.AnimatePresenceNode
-type Velvet.AnimationSequenceControls
-type Velvet.AnimationSequenceState
-type Velvet.AnimationSequenceStep
-type Velvet.BaseElementNode
-type Velvet.BlurBinding
-type Velvet.ChangeEventBinding`1
-type Velvet.ChoicesSettings
-type Velvet.ClickedBinding
-type Velvet.ComponentAttribute
-type Velvet.ComponentContext`1
-type Velvet.ComponentFiber
-type Velvet.ComponentMethodRegistry
-type Velvet.ComponentNode
-type Velvet.ContextProviderNode
-type Velvet.ContextProviderNode`1
-type Velvet.DevTools.VelvetDevToolsRegistry
-type Velvet.DevTools.VelvetDevToolsRegistry+ComponentEntry
-type Velvet.DndCollisionDetection
-type Velvet.DndCollisionQuery
-type Velvet.DndCollisions
-type Velvet.DndContextSettings
-type Velvet.DndDroppableRect
-type Velvet.DragActivation
-type Velvet.DragCancelArgs
-type Velvet.DragEndArgs
-type Velvet.DragMovement
-type Velvet.DragOverArgs
-type Velvet.DragOverlaySettings
-type Velvet.DragStartArgs
-type Velvet.DraggableInfo
-type Velvet.DraggableSettings
-type Velvet.DroppableInfo
-type Velvet.DroppableSettings
-type Velvet.ElementNode
-type Velvet.ErrorInfo
-type Velvet.Experimental.VBuilder
-type Velvet.Experimental.VButton
-type Velvet.Experimental.VCustom`1
-type Velvet.Experimental.VDiv
-type Velvet.Experimental.VImage
-type Velvet.Experimental.VLabel
-type Velvet.Experimental.VScrollView
-type Velvet.Experimental.VSlider
-type Velvet.Experimental.VTextField
-type Velvet.Experimental.VToggle
-type Velvet.FiberElementProps
-type Velvet.FiberEventBinding
-type Velvet.FiberPortalRegistry
-type Velvet.FiberStrictMode
-type Velvet.FiberUpdatePriority
-type Velvet.FocusBinding
-type Velvet.FocusInBinding
-type Velvet.FocusOutBinding
-type Velvet.FocusRing
-type Velvet.FocusScopeSettings
-type Velvet.FontIntent
-type Velvet.FragmentNode
-type Velvet.GeometryChangedBinding
-type Velvet.HookServiceContext
-type Velvet.Hooks
-type Velvet.IHookServiceResolver
-type Velvet.IRouteScope
-type Velvet.IRouteScopeFactory
-type Velvet.ISearchParams
-type Velvet.IStoreWriter`1
-type Velvet.KeyDownBinding
-type Velvet.KeyUpBinding
-type Velvet.LoaderMode
-type Velvet.MemoNode
-type Velvet.MemoizeMethodAttribute
-type Velvet.MotionNode
-type Velvet.MountedTree
-type Velvet.MutableRef`1
-type Velvet.MutationOptions
-type Velvet.MutationOptions`1
-type Velvet.MutationOptions`2
-type Velvet.MutationResultExtensions
-type Velvet.MutationResult`2
-type Velvet.MutationStatus
-type Velvet.Navigate+Props
-type Velvet.NavigationAttempt
-type Velvet.NavigationLifecycle
-type Velvet.NavigationMode
-type Velvet.NavigationResult
-type Velvet.NavigationState
-type Velvet.NullStoreLogger
-type Velvet.OutletNode
-type Velvet.PanelFocusOrder
-type Velvet.ParticlesElement
-type Velvet.ParticlesSettings
-type Velvet.PlayTrigger
-type Velvet.PointerDownBinding
-type Velvet.PointerEnterBinding
-type Velvet.PointerLeaveBinding
-type Velvet.PointerMoveBinding
-type Velvet.PointerUpBinding
-type Velvet.PortalNode
-type Velvet.PureAttribute
-type Velvet.Ref`1
-type Velvet.ResolvedFont
-type Velvet.RouteBlockerManager
-type Velvet.RouteBlockerState
-type Velvet.RouteBlockerStatus
-type Velvet.RouteDefinition
-type Velvet.RouteLink+Props
-type Velvet.RouteLoaderContext
-type Velvet.RouteMatch
-type Velvet.RouteNavLink+Props
-type Velvet.RouteTree
-type Velvet.Router
-type Velvet.RouterContext
-type Velvet.RouterLocation
-type Velvet.RouterStatus
-type Velvet.SceneViewElement
-type Velvet.SceneViewSettings
-type Velvet.ScrollViewSettings
-type Velvet.SearchParams
-type Velvet.SearchParamsSetter
-type Velvet.SliderSettings
-type Velvet.StateUpdater`1
-type Velvet.StoreLogger
-type Velvet.StoreShallowEqualityComparer
-type Velvet.Store`1
-type Velvet.StyleBackgroundImageResolver
-type Velvet.StyleClassNames
-type Velvet.StyleFontClass
-type Velvet.StyleFontResolver
-type Velvet.StyleOverrides
-type Velvet.StylePropertyTransition
-type Velvet.StyleRecipe
-type Velvet.StyleRecipe+CompoundVariant
-type Velvet.StyleSlotClasses
-type Velvet.StyleSlotRecipe
-type Velvet.StyleSlotRecipe+SlotCompoundVariant
-type Velvet.StyleTransition
-type Velvet.StyleTransitionConfig
-type Velvet.StyleVariantClass
-type Velvet.StyleVariantKind
-type Velvet.SuspenseNode
-type Velvet.TextFieldSettings
-type Velvet.TextNode
-type Velvet.TransitionStarter
-type Velvet.TransitionType
-type Velvet.TransitionWhen
-type Velvet.UILayer
-type Velvet.Unit
-type Velvet.V
-type Velvet.VNode
-type Velvet.VelvetFilters
-type Velvet.VelvetFontFamily
-type Velvet.VelvetFontWeight
-type Velvet.VelvetFontWeightEntry
-type Velvet.VelvetFonts
-type Velvet.VelvetPreviewAttribute
-type Velvet.VelvetPreviewHost
-type Velvet.VelvetPreviewRegistry
-type Velvet.VelvetPreviewSetupAttribute
-type Velvet.VelvetPreviewStory
-type Velvet.VelvetResponsive
-type Velvet.VelvetRuntimeAssets
-type Velvet.VelvetStyleHints
-type Velvet.VelvetStyleUtilities
-type Velvet.VelvetTask
-type Velvet.VelvetTask+Awaiter
-type Velvet.VelvetTaskCompletionSource
-type Velvet.VelvetTaskCompletionSource`1
-type Velvet.VelvetTaskExtensions
-type Velvet.VelvetTaskMethodBuilder
-type Velvet.VelvetTaskMethodBuilder`1
-type Velvet.VelvetTaskStatus
-type Velvet.VelvetTaskStatusExtensions
-type Velvet.VelvetTask`1
-type Velvet.VelvetTask`1
-type Velvet.VelvetTheme
-type Velvet.VirtualListNode
-type Velvet.WheelBinding
-type Velvet.WorldSpaceNode
+[Velvet.Editor] ctor Velvet.Editor.DevTools.StateHistoryBuffer.ctor(System.Int32): System.Void
+[Velvet.Editor] ctor Velvet.Editor.DevTools.StateHistoryEntry.ctor(System.DateTime, System.String, System.Int32): System.Void
+[Velvet.Editor] ctor Velvet.Editor.DevTools.VelvetDevToolsWindow.ctor(): System.Void
+[Velvet.Editor] ctor Velvet.Editor.Preview.VelvetPreviewWindow.ctor(): System.Void
+[Velvet.Editor] method Velvet.Editor.DevTools.StateHistoryBuffer.Clear(): System.Void
+[Velvet.Editor] method Velvet.Editor.DevTools.StateHistoryBuffer.GetNewestFirst(): System.Collections.Generic.IReadOnlyList`1[Velvet.Editor.DevTools.StateHistoryEntry]
+[Velvet.Editor] method Velvet.Editor.DevTools.StateHistoryBuffer.Push(Velvet.Editor.DevTools.StateHistoryEntry): System.Void
+[Velvet.Editor] method Velvet.Editor.DevTools.VelvetDevToolsWindow.ShowWindow(): System.Void
+[Velvet.Editor] method Velvet.Editor.Preview.VelvetPreviewWindow.ShowWindow(): System.Void
+[Velvet.Editor] property Velvet.Editor.DevTools.StateHistoryBuffer.Capacity: System.Int32
+[Velvet.Editor] property Velvet.Editor.DevTools.StateHistoryBuffer.Count: System.Int32
+[Velvet.Editor] property Velvet.Editor.DevTools.StateHistoryEntry.RenderCount: System.Int32
+[Velvet.Editor] property Velvet.Editor.DevTools.StateHistoryEntry.StateString: System.String
+[Velvet.Editor] property Velvet.Editor.DevTools.StateHistoryEntry.Timestamp: System.DateTime
+[Velvet.Editor] type Velvet.Editor.DevTools.StateHistoryBuffer
+[Velvet.Editor] type Velvet.Editor.DevTools.StateHistoryEntry
+[Velvet.Editor] type Velvet.Editor.DevTools.VelvetDevToolsWindow
+[Velvet.Editor] type Velvet.Editor.Preview.VelvetPreviewWindow
+[Velvet] ctor System.Runtime.CompilerServices.ModuleInitializerAttribute.ctor(): System.Void
+[Velvet] ctor Velvet.AnchoredSettings.ctor(UnityEngine.Transform?, UnityEngine.Camera?, UnityEngine.Vector2, System.Boolean, System.Boolean, System.Nullable`1[UnityEngine.LayerMask], System.Nullable`1[System.Single]): System.Void
+[Velvet] ctor Velvet.AnimatePresenceNode.ctor(): System.Void
+[Velvet] ctor Velvet.BlurBinding.ctor(): System.Void
+[Velvet] ctor Velvet.ChangeEventBinding`1[T].ctor(): System.Void
+[Velvet] ctor Velvet.ChoicesSettings.ctor(System.Collections.Generic.List`1[System.String]?): System.Void
+[Velvet] ctor Velvet.ClickedBinding.ctor(): System.Void
+[Velvet] ctor Velvet.ComponentAttribute.ctor(): System.Void
+[Velvet] ctor Velvet.ComponentFiber.ctor(): System.Void
+[Velvet] ctor Velvet.ComponentNode.ctor(): System.Void
+[Velvet] ctor Velvet.ContextProviderNode`1[T].ctor(): System.Void
+[Velvet] ctor Velvet.DndCollisionDetection.ctor(System.Object~, System.IntPtr): System.Void
+[Velvet] ctor Velvet.DndCollisionQuery.ctor(UnityEngine.Rect, UnityEngine.Vector2, System.Collections.Generic.IReadOnlyList`1[Velvet.DndDroppableRect]): System.Void
+[Velvet] ctor Velvet.DndContextSettings.ctor(System.Action`1[Velvet.DragStartArgs]?, System.Action`1[Velvet.DragOverArgs]?, System.Action`1[Velvet.DragEndArgs]?, System.Action`1[Velvet.DragCancelArgs]?, Velvet.DndCollisionDetection?, Velvet.DragActivation?): System.Void
+[Velvet] ctor Velvet.DndDroppableRect.ctor(System.String, UnityEngine.Rect, System.Object?): System.Void
+[Velvet] ctor Velvet.DragActivation.ctor(System.Single, System.Single, System.Single): System.Void
+[Velvet] ctor Velvet.DragCancelArgs.ctor(Velvet.DraggableInfo): System.Void
+[Velvet] ctor Velvet.DragEndArgs.ctor(Velvet.DraggableInfo, Velvet.DroppableInfo?, UnityEngine.Vector2, UnityEngine.Vector2): System.Void
+[Velvet] ctor Velvet.DragOverArgs.ctor(Velvet.DraggableInfo, Velvet.DroppableInfo?, UnityEngine.Vector2): System.Void
+[Velvet] ctor Velvet.DragOverlaySettings.ctor(): System.Void
+[Velvet] ctor Velvet.DragStartArgs.ctor(Velvet.DraggableInfo, UnityEngine.Vector2): System.Void
+[Velvet] ctor Velvet.DraggableInfo.ctor(System.String, System.Object?, UnityEngine.UIElements.VisualElement): System.Void
+[Velvet] ctor Velvet.DraggableSettings.ctor(System.String, System.Object?, System.Boolean, Velvet.DragMovement, Velvet.DragActivation?, System.String?): System.Void
+[Velvet] ctor Velvet.DroppableInfo.ctor(System.String, System.Object?, UnityEngine.UIElements.VisualElement): System.Void
+[Velvet] ctor Velvet.DroppableSettings.ctor(System.String, System.Object?, System.Boolean, System.String?, System.String?): System.Void
+[Velvet] ctor Velvet.ElementNode.ctor(): System.Void
+[Velvet] ctor Velvet.ErrorInfo.ctor(System.String): System.Void
+[Velvet] ctor Velvet.Experimental.VButton.ctor(System.String?): System.Void
+[Velvet] ctor Velvet.Experimental.VCustom`1[T].ctor(System.String?): System.Void
+[Velvet] ctor Velvet.Experimental.VDiv.ctor(System.String?): System.Void
+[Velvet] ctor Velvet.Experimental.VImage.ctor(System.String?): System.Void
+[Velvet] ctor Velvet.Experimental.VLabel.ctor(System.String?): System.Void
+[Velvet] ctor Velvet.Experimental.VScrollView.ctor(System.String?): System.Void
+[Velvet] ctor Velvet.Experimental.VSlider.ctor(System.String?): System.Void
+[Velvet] ctor Velvet.Experimental.VTextField.ctor(System.String?): System.Void
+[Velvet] ctor Velvet.Experimental.VToggle.ctor(System.String?): System.Void
+[Velvet] ctor Velvet.FiberElementProps.ctor(): System.Void
+[Velvet] ctor Velvet.FocusBinding.ctor(): System.Void
+[Velvet] ctor Velvet.FocusInBinding.ctor(): System.Void
+[Velvet] ctor Velvet.FocusOutBinding.ctor(): System.Void
+[Velvet] ctor Velvet.FocusScopeSettings.ctor(System.Boolean, System.Boolean, System.Boolean, System.Boolean): System.Void
+[Velvet] ctor Velvet.FontIntent.ctor(System.String?, System.Boolean, Velvet.VelvetFontWeight, System.Boolean, System.Boolean, System.Boolean): System.Void
+[Velvet] ctor Velvet.FragmentNode.ctor(): System.Void
+[Velvet] ctor Velvet.GeometryChangedBinding.ctor(): System.Void
+[Velvet] ctor Velvet.KeyDownBinding.ctor(): System.Void
+[Velvet] ctor Velvet.KeyUpBinding.ctor(): System.Void
+[Velvet] ctor Velvet.MemoNode.ctor(): System.Void
+[Velvet] ctor Velvet.MemoizeMethodAttribute.ctor(): System.Void
+[Velvet] ctor Velvet.MotionNode.ctor(): System.Void
+[Velvet] ctor Velvet.MutableRef`1[T].ctor(T): System.Void
+[Velvet] ctor Velvet.MutationOptions.ctor(System.Func`2[System.Threading.CancellationToken, Velvet.VelvetTask], System.Action?, System.Action`1[System.Exception]?): System.Void
+[Velvet] ctor Velvet.MutationOptions`1[TVariables].ctor(System.Func`3[TVariables, System.Threading.CancellationToken, Velvet.VelvetTask], System.Action`1[TVariables]?, System.Action`2[System.Exception, TVariables]?): System.Void
+[Velvet] ctor Velvet.MutationOptions`2[TVariables, TData].ctor(System.Func`3[TVariables, System.Threading.CancellationToken, Velvet.VelvetTask`1[TData]], System.Action`2[TData, TVariables]?, System.Action`2[System.Exception, TVariables]?): System.Void
+[Velvet] ctor Velvet.MutationResult`2[TVariables, TData].ctor(): System.Void
+[Velvet] ctor Velvet.NavigationAttempt.ctor(): System.Void
+[Velvet] ctor Velvet.NullStoreLogger.ctor(): System.Void
+[Velvet] ctor Velvet.OutletNode.ctor(): System.Void
+[Velvet] ctor Velvet.ParticlesElement.ctor(): System.Void
+[Velvet] ctor Velvet.ParticlesSettings.ctor(UnityEngine.ParticleSystem?, Velvet.PlayTrigger, System.Single): System.Void
+[Velvet] ctor Velvet.PointerDownBinding.ctor(): System.Void
+[Velvet] ctor Velvet.PointerEnterBinding.ctor(): System.Void
+[Velvet] ctor Velvet.PointerLeaveBinding.ctor(): System.Void
+[Velvet] ctor Velvet.PointerMoveBinding.ctor(): System.Void
+[Velvet] ctor Velvet.PointerUpBinding.ctor(): System.Void
+[Velvet] ctor Velvet.PortalNode.ctor(): System.Void
+[Velvet] ctor Velvet.PureAttribute.ctor(): System.Void
+[Velvet] ctor Velvet.Ref`1[T].ctor(): System.Void
+[Velvet] ctor Velvet.ResolvedFont.ctor(UnityEngine.TextCore.Text.FontAsset?, System.Boolean, System.Boolean): System.Void
+[Velvet] ctor Velvet.RouteBlockerManager.ctor(): System.Void
+[Velvet] ctor Velvet.RouteBlockerState.ctor(): System.Void
+[Velvet] ctor Velvet.RouteDefinition.ctor(): System.Void
+[Velvet] ctor Velvet.RouteLoaderContext.ctor(): System.Void
+[Velvet] ctor Velvet.RouteMatch.ctor(): System.Void
+[Velvet] ctor Velvet.RouteTree.ctor(Velvet.RouteDefinition[]): System.Void
+[Velvet] ctor Velvet.Router.ctor(Velvet.RouteDefinition[], Velvet.IRouteScopeFactory?): System.Void
+[Velvet] ctor Velvet.RouterLocation.ctor(): System.Void
+[Velvet] ctor Velvet.SceneViewElement.ctor(): System.Void
+[Velvet] ctor Velvet.SceneViewSettings.ctor(UnityEngine.Camera?, System.Single): System.Void
+[Velvet] ctor Velvet.ScrollViewSettings.ctor(System.Nullable`1[UnityEngine.UIElements.ScrollerVisibility], System.Nullable`1[UnityEngine.UIElements.ScrollerVisibility], System.Nullable`1[UnityEngine.UIElements.ScrollView+TouchScrollBehavior]): System.Void
+[Velvet] ctor Velvet.SearchParams.ctor(): System.Void
+[Velvet] ctor Velvet.SliderSettings.ctor(System.Nullable`1[System.Single], System.Nullable`1[System.Single]): System.Void
+[Velvet] ctor Velvet.StoreLogger.ctor(): System.Void
+[Velvet] ctor Velvet.StyleOverrides.ctor(): System.Void
+[Velvet] ctor Velvet.StylePropertyTransition.ctor(System.String, System.Nullable`1[System.Single], System.Nullable`1[UnityEngine.UIElements.EasingMode], System.Nullable`1[System.Single]): System.Void
+[Velvet] ctor Velvet.StyleRecipe+CompoundVariant.ctor(System.Collections.Generic.Dictionary`2[System.String, System.String], System.String): System.Void
+[Velvet] ctor Velvet.StyleRecipe.ctor(System.String, System.Collections.Generic.Dictionary`2[System.String, System.Collections.Generic.Dictionary`2[System.String, System.String]], System.Collections.Generic.Dictionary`2[System.String, System.String]?, Velvet.StyleRecipe+CompoundVariant[]?): System.Void
+[Velvet] ctor Velvet.StyleSlotClasses.ctor(System.Collections.Generic.Dictionary`2[System.String, System.String]): System.Void
+[Velvet] ctor Velvet.StyleSlotRecipe+SlotCompoundVariant.ctor(System.Collections.Generic.Dictionary`2[System.String, System.String], System.Collections.Generic.Dictionary`2[System.String, System.String]): System.Void
+[Velvet] ctor Velvet.StyleSlotRecipe.ctor(System.Collections.Generic.Dictionary`2[System.String, System.String]): System.Void
+[Velvet] ctor Velvet.StyleSlotRecipe.ctor(System.Collections.Generic.Dictionary`2[System.String, System.String], System.Collections.Generic.Dictionary`2[System.String, System.Collections.Generic.Dictionary`2[System.String, System.Collections.Generic.Dictionary`2[System.String, System.String]]], System.Collections.Generic.Dictionary`2[System.String, System.String]?, Velvet.StyleSlotRecipe+SlotCompoundVariant[]?): System.Void
+[Velvet] ctor Velvet.StyleTransitionConfig.ctor(): System.Void
+[Velvet] ctor Velvet.SuspenseNode.ctor(): System.Void
+[Velvet] ctor Velvet.TextFieldSettings.ctor(System.Nullable`1[System.Boolean], System.String?, System.Nullable`1[System.Int32], System.Nullable`1[System.Boolean], System.Nullable`1[System.Boolean]): System.Void
+[Velvet] ctor Velvet.TextNode.ctor(): System.Void
+[Velvet] ctor Velvet.VelvetFontFamily.ctor(): System.Void
+[Velvet] ctor Velvet.VelvetFontFamily.ctor(System.String, Velvet.VelvetFontWeightEntry[]): System.Void
+[Velvet] ctor Velvet.VelvetFontWeightEntry.ctor(): System.Void
+[Velvet] ctor Velvet.VelvetPreviewAttribute.ctor(): System.Void
+[Velvet] ctor Velvet.VelvetPreviewHost.ctor(UnityEngine.UIElements.VisualElement): System.Void
+[Velvet] ctor Velvet.VelvetPreviewSetupAttribute.ctor(): System.Void
+[Velvet] ctor Velvet.VelvetRuntimeAssets.ctor(): System.Void
+[Velvet] ctor Velvet.VelvetTaskCompletionSource.ctor(): System.Void
+[Velvet] ctor Velvet.VelvetTaskCompletionSource`1[T].ctor(): System.Void
+[Velvet] ctor Velvet.VirtualListNode.ctor(System.Collections.Generic.IReadOnlyList`1[System.Object?], System.Func`2[System.Object?, System.String], System.Single, System.Func`2[System.Object?, Velvet.VNode], System.Int32): System.Void
+[Velvet] ctor Velvet.WheelBinding.ctor(): System.Void
+[Velvet] ctor Velvet.WorldSpaceNode.ctor(): System.Void
+[Velvet] ctor protected Velvet.BaseElementNode.ctor(): System.Void
+[Velvet] ctor protected Velvet.ContextProviderNode.ctor(): System.Void
+[Velvet] ctor protected Velvet.Experimental.VBuilder.ctor(System.String?): System.Void
+[Velvet] ctor protected Velvet.FiberEventBinding.ctor(): System.Void
+[Velvet] ctor protected Velvet.Store`1[TState].ctor(TState): System.Void
+[Velvet] ctor protected Velvet.VNode.ctor(): System.Void
+[Velvet] event Velvet.DevTools.VelvetDevToolsRegistry.RegistryChanged: System.Action?
+[Velvet] event Velvet.Router.OnLocationChanged: System.Action`1[Velvet.RouterLocation]
+[Velvet] event Velvet.Router.OnStatusChanged: System.Action`1[Velvet.RouterStatus]
+[Velvet] event Velvet.VelvetFonts.FontsChanged: System.Action?
+[Velvet] event Velvet.VelvetTheme.DarkModeChanged: System.Action?
+[Velvet] field Velvet.AnimatePresenceMode.PopLayout: Velvet.AnimatePresenceMode
+[Velvet] field Velvet.AnimatePresenceMode.Sync: Velvet.AnimatePresenceMode
+[Velvet] field Velvet.AnimatePresenceMode.Wait: Velvet.AnimatePresenceMode
+[Velvet] field Velvet.ComponentFiber.RenderCount: System.Int32
+[Velvet] field Velvet.ComponentFiber.RequestRenderForContextHandler: System.Action`1[Velvet.ComponentFiber]?
+[Velvet] field Velvet.DndCollisions.ClosestCenter: Velvet.DndCollisionDetection
+[Velvet] field Velvet.DndCollisions.PointerWithin: Velvet.DndCollisionDetection
+[Velvet] field Velvet.DndCollisions.RectIntersection: Velvet.DndCollisionDetection
+[Velvet] field Velvet.DragActivation.Default: Velvet.DragActivation
+[Velvet] field Velvet.DragActivation.None: Velvet.DragActivation
+[Velvet] field Velvet.DragMovement.None: Velvet.DragMovement
+[Velvet] field Velvet.DragMovement.Translate: Velvet.DragMovement
+[Velvet] field Velvet.FiberElementProps.Empty: Velvet.FiberElementProps
+[Velvet] field Velvet.FiberUpdatePriority.Deferred: Velvet.FiberUpdatePriority
+[Velvet] field Velvet.FiberUpdatePriority.Normal: Velvet.FiberUpdatePriority
+[Velvet] field Velvet.FiberUpdatePriority.Transition: Velvet.FiberUpdatePriority
+[Velvet] field Velvet.FiberUpdatePriority.Urgent: Velvet.FiberUpdatePriority
+[Velvet] field Velvet.FontIntent.Family: System.String?
+[Velvet] field Velvet.FontIntent.HasFamily: System.Boolean
+[Velvet] field Velvet.FontIntent.HasItalic: System.Boolean
+[Velvet] field Velvet.FontIntent.HasWeight: System.Boolean
+[Velvet] field Velvet.FontIntent.Italic: System.Boolean
+[Velvet] field Velvet.FontIntent.Weight: Velvet.VelvetFontWeight
+[Velvet] field Velvet.HookServiceContext.Ref: Velvet.ComponentContext`1[Velvet.IHookServiceResolver?]
+[Velvet] field Velvet.LoaderMode.Await: Velvet.LoaderMode
+[Velvet] field Velvet.LoaderMode.Suspend: Velvet.LoaderMode
+[Velvet] field Velvet.MutationStatus.Error: Velvet.MutationStatus
+[Velvet] field Velvet.MutationStatus.Idle: Velvet.MutationStatus
+[Velvet] field Velvet.MutationStatus.Pending: Velvet.MutationStatus
+[Velvet] field Velvet.MutationStatus.Success: Velvet.MutationStatus
+[Velvet] field Velvet.NavigationLifecycle.Idle: Velvet.NavigationLifecycle
+[Velvet] field Velvet.NavigationLifecycle.Loading: Velvet.NavigationLifecycle
+[Velvet] field Velvet.NavigationMode.Back: Velvet.NavigationMode
+[Velvet] field Velvet.NavigationMode.Forward: Velvet.NavigationMode
+[Velvet] field Velvet.NavigationMode.Push: Velvet.NavigationMode
+[Velvet] field Velvet.NavigationMode.Replace: Velvet.NavigationMode
+[Velvet] field Velvet.NavigationResult.Blocked: Velvet.NavigationResult
+[Velvet] field Velvet.NavigationResult.Cancelled: Velvet.NavigationResult
+[Velvet] field Velvet.NavigationResult.Error: Velvet.NavigationResult
+[Velvet] field Velvet.NavigationResult.NotFound: Velvet.NavigationResult
+[Velvet] field Velvet.NavigationResult.Success: Velvet.NavigationResult
+[Velvet] field Velvet.PanelFocusOrder.Chained: Velvet.PanelFocusOrder
+[Velvet] field Velvet.PanelFocusOrder.Isolated: Velvet.PanelFocusOrder
+[Velvet] field Velvet.PlayTrigger.Manual: Velvet.PlayTrigger
+[Velvet] field Velvet.PlayTrigger.Mount: Velvet.PlayTrigger
+[Velvet] field Velvet.ResolvedFont.Asset: UnityEngine.TextCore.Text.FontAsset?
+[Velvet] field Velvet.ResolvedFont.HasAsset: System.Boolean
+[Velvet] field Velvet.ResolvedFont.ResidualBold: System.Boolean
+[Velvet] field Velvet.ResolvedFont.ResidualItalic: System.Boolean
+[Velvet] field Velvet.RouteBlockerStatus.Blocked: Velvet.RouteBlockerStatus
+[Velvet] field Velvet.RouteBlockerStatus.Idle: Velvet.RouteBlockerStatus
+[Velvet] field Velvet.RouteBlockerStatus.Proceeding: Velvet.RouteBlockerStatus
+[Velvet] field Velvet.RouterContext.Depth: Velvet.ComponentContext`1[System.Int32]
+[Velvet] field Velvet.RouterContext.Errors: Velvet.ComponentContext`1[System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.Exception]]
+[Velvet] field Velvet.RouterContext.LoaderData: Velvet.ComponentContext`1[System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.Object]]
+[Velvet] field Velvet.RouterContext.Location: Velvet.ComponentContext`1[Velvet.RouterLocation]
+[Velvet] field Velvet.RouterContext.OutletContext: Velvet.ComponentContext`1[System.Object]
+[Velvet] field Velvet.RouterStatus.Error: Velvet.RouterStatus
+[Velvet] field Velvet.RouterStatus.Idle: Velvet.RouterStatus
+[Velvet] field Velvet.RouterStatus.Loading: Velvet.RouterStatus
+[Velvet] field Velvet.RouterStatus.Matching: Velvet.RouterStatus
+[Velvet] field Velvet.RouterStatus.NotFound: Velvet.RouterStatus
+[Velvet] field Velvet.RouterStatus.Ready: Velvet.RouterStatus
+[Velvet] field Velvet.SearchParams.Empty: Velvet.SearchParams
+[Velvet] field Velvet.StyleOverrides.Empty: Velvet.StyleOverrides
+[Velvet] field Velvet.StyleTransition.Fade: Velvet.StyleTransitionConfig
+[Velvet] field Velvet.StyleTransition.FadeSlideUp: Velvet.StyleTransitionConfig
+[Velvet] field Velvet.StyleTransition.ScaleIn: Velvet.StyleTransitionConfig
+[Velvet] field Velvet.StyleTransition.SlideDown: Velvet.StyleTransitionConfig
+[Velvet] field Velvet.StyleTransition.SlideLeft: Velvet.StyleTransitionConfig
+[Velvet] field Velvet.StyleTransition.SlideRight: Velvet.StyleTransitionConfig
+[Velvet] field Velvet.StyleTransition.SlideUp: Velvet.StyleTransitionConfig
+[Velvet] field Velvet.StyleTransitionConfig.None: Velvet.StyleTransitionConfig
+[Velvet] field Velvet.StyleVariantKind.Active: Velvet.StyleVariantKind
+[Velvet] field Velvet.StyleVariantKind.Checked: Velvet.StyleVariantKind
+[Velvet] field Velvet.StyleVariantKind.Dark: Velvet.StyleVariantKind
+[Velvet] field Velvet.StyleVariantKind.Focus: Velvet.StyleVariantKind
+[Velvet] field Velvet.StyleVariantKind.FocusVisible: Velvet.StyleVariantKind
+[Velvet] field Velvet.StyleVariantKind.GroupActive: Velvet.StyleVariantKind
+[Velvet] field Velvet.StyleVariantKind.GroupFocus: Velvet.StyleVariantKind
+[Velvet] field Velvet.StyleVariantKind.GroupFocusWithin: Velvet.StyleVariantKind
+[Velvet] field Velvet.StyleVariantKind.GroupHover: Velvet.StyleVariantKind
+[Velvet] field Velvet.StyleVariantKind.Hover: Velvet.StyleVariantKind
+[Velvet] field Velvet.StyleVariantKind.Lg: Velvet.StyleVariantKind
+[Velvet] field Velvet.StyleVariantKind.Md: Velvet.StyleVariantKind
+[Velvet] field Velvet.StyleVariantKind.PeerActive: Velvet.StyleVariantKind
+[Velvet] field Velvet.StyleVariantKind.PeerChecked: Velvet.StyleVariantKind
+[Velvet] field Velvet.StyleVariantKind.PeerFocus: Velvet.StyleVariantKind
+[Velvet] field Velvet.StyleVariantKind.PeerFocusWithin: Velvet.StyleVariantKind
+[Velvet] field Velvet.StyleVariantKind.PeerHover: Velvet.StyleVariantKind
+[Velvet] field Velvet.StyleVariantKind.Sm: Velvet.StyleVariantKind
+[Velvet] field Velvet.StyleVariantKind.Xl: Velvet.StyleVariantKind
+[Velvet] field Velvet.StyleVariantKind.Xxl: Velvet.StyleVariantKind
+[Velvet] field Velvet.TransitionType.Bezier: Velvet.TransitionType
+[Velvet] field Velvet.TransitionType.Spring: Velvet.TransitionType
+[Velvet] field Velvet.TransitionType.Tween: Velvet.TransitionType
+[Velvet] field Velvet.TransitionWhen.AfterChildren: Velvet.TransitionWhen
+[Velvet] field Velvet.TransitionWhen.BeforeChildren: Velvet.TransitionWhen
+[Velvet] field Velvet.TransitionWhen.Together: Velvet.TransitionWhen
+[Velvet] field Velvet.UILayer.Background: Velvet.UILayer
+[Velvet] field Velvet.UILayer.Overlay: Velvet.UILayer
+[Velvet] field Velvet.UILayer.Topmost: Velvet.UILayer
+[Velvet] field Velvet.Unit.Default: Velvet.Unit
+[Velvet] field Velvet.VelvetFontFamily.name: System.String
+[Velvet] field Velvet.VelvetFontFamily.weights: System.Collections.Generic.List`1[Velvet.VelvetFontWeightEntry]
+[Velvet] field Velvet.VelvetFontWeight.Black: Velvet.VelvetFontWeight
+[Velvet] field Velvet.VelvetFontWeight.Bold: Velvet.VelvetFontWeight
+[Velvet] field Velvet.VelvetFontWeight.ExtraBold: Velvet.VelvetFontWeight
+[Velvet] field Velvet.VelvetFontWeight.ExtraLight: Velvet.VelvetFontWeight
+[Velvet] field Velvet.VelvetFontWeight.Light: Velvet.VelvetFontWeight
+[Velvet] field Velvet.VelvetFontWeight.Medium: Velvet.VelvetFontWeight
+[Velvet] field Velvet.VelvetFontWeight.Normal: Velvet.VelvetFontWeight
+[Velvet] field Velvet.VelvetFontWeight.SemiBold: Velvet.VelvetFontWeight
+[Velvet] field Velvet.VelvetFontWeight.Thin: Velvet.VelvetFontWeight
+[Velvet] field Velvet.VelvetFontWeightEntry.italic: UnityEngine.TextCore.Text.FontAsset?
+[Velvet] field Velvet.VelvetFontWeightEntry.italicAddress: System.String?
+[Velvet] field Velvet.VelvetFontWeightEntry.upright: UnityEngine.TextCore.Text.FontAsset?
+[Velvet] field Velvet.VelvetFontWeightEntry.uprightAddress: System.String?
+[Velvet] field Velvet.VelvetFontWeightEntry.weight: Velvet.VelvetFontWeight
+[Velvet] field Velvet.VelvetResponsive.ContainerClass: System.String
+[Velvet] field Velvet.VelvetStyleUtilities.DarkThemeClass: System.String
+[Velvet] field Velvet.VelvetTaskStatus.Canceled: Velvet.VelvetTaskStatus
+[Velvet] field Velvet.VelvetTaskStatus.Faulted: Velvet.VelvetTaskStatus
+[Velvet] field Velvet.VelvetTaskStatus.Pending: Velvet.VelvetTaskStatus
+[Velvet] field Velvet.VelvetTaskStatus.Succeeded: Velvet.VelvetTaskStatus
+[Velvet] method Velvet.AnimatePresenceNode.StaggerDelaySec(System.Int32, System.Int32): System.Single
+[Velvet] method Velvet.AnimationSequenceStep.Call(System.Action): Velvet.AnimationSequenceStep
+[Velvet] method Velvet.AnimationSequenceStep.To(System.String, Velvet.StyleTransitionConfig?, System.Nullable`1[System.Single]): Velvet.AnimationSequenceStep
+[Velvet] method Velvet.AnimationSequenceStep.Wait(System.Single): Velvet.AnimationSequenceStep
+[Velvet] method Velvet.ComponentContext`1[T].Create(T?): Velvet.ComponentContext`1[T]
+[Velvet] method Velvet.ComponentFiber.AppendChild(Velvet.ComponentFiber): System.Void
+[Velvet] method Velvet.ComponentFiber.Detach(): System.Void
+[Velvet] method Velvet.ComponentFiber.RemoveChild(Velvet.ComponentFiber): System.Void
+[Velvet] method Velvet.ComponentMethodRegistry.RegisterComponentDisplayName(System.String, System.String, System.String): System.Void
+[Velvet] method Velvet.ComponentMethodRegistry.RegisterErrorBoundary(System.String, System.String): System.Void
+[Velvet] method Velvet.ComponentMethodRegistry.RegisterMemoize(System.String, System.String): System.Void
+[Velvet] method Velvet.DevTools.VelvetDevToolsRegistry.Clear(): System.Void
+[Velvet] method Velvet.DevTools.VelvetDevToolsRegistry.Register(Velvet.ComponentFiber, System.String?): System.Void
+[Velvet] method Velvet.DevTools.VelvetDevToolsRegistry.Unregister(Velvet.ComponentFiber): System.Void
+[Velvet] method Velvet.DndCollisionDetection.BeginInvoke(Velvet.DndCollisionQuery&, System.AsyncCallback~, System.Object~): System.IAsyncResult~
+[Velvet] method Velvet.DndCollisionDetection.EndInvoke(Velvet.DndCollisionQuery&, System.IAsyncResult~): System.String?
+[Velvet] method Velvet.DndCollisionDetection.Invoke(Velvet.DndCollisionQuery&): System.String?
+[Velvet] method Velvet.Experimental.VBuilder.Add(Velvet.VNode?): System.Void
+[Velvet] method Velvet.Experimental.VBuilder.Build(): Velvet.VNode
+[Velvet] method Velvet.Experimental.VButton.Build(): Velvet.VNode
+[Velvet] method Velvet.Experimental.VCustom`1[T].Build(): Velvet.VNode
+[Velvet] method Velvet.Experimental.VDiv.Build(): Velvet.VNode
+[Velvet] method Velvet.Experimental.VImage.Build(): Velvet.VNode
+[Velvet] method Velvet.Experimental.VLabel.Build(): Velvet.VNode
+[Velvet] method Velvet.Experimental.VScrollView.Build(): Velvet.VNode
+[Velvet] method Velvet.Experimental.VSlider.Build(): Velvet.VNode
+[Velvet] method Velvet.Experimental.VTextField.Build(): Velvet.VNode
+[Velvet] method Velvet.Experimental.VToggle.Build(): Velvet.VNode
+[Velvet] method Velvet.FiberPortalRegistry.Get(System.String): UnityEngine.UIElements.VisualElement?
+[Velvet] method Velvet.FiberPortalRegistry.IsRegistered(System.String): System.Boolean
+[Velvet] method Velvet.FiberPortalRegistry.Register(System.String, UnityEngine.UIElements.VisualElement): System.Void
+[Velvet] method Velvet.FiberPortalRegistry.Unregister(System.String): System.Void
+[Velvet] method Velvet.Hooks.ForwardedRef`1(): Velvet.Ref`1[T]?
+[Velvet] method Velvet.Hooks.StoreMemoizedVNode(System.Int32, System.Object?[]?, Velvet.VNode): System.Void
+[Velvet] method Velvet.Hooks.TryGetMemoizedVNode(System.Object?[]?, System.Int32&, Velvet.VNode?&): System.Boolean
+[Velvet] method Velvet.Hooks.UseAnimationSequence(System.Collections.Generic.IReadOnlyList`1[Velvet.AnimationSequenceStep], System.Boolean, System.Boolean, System.Object?[]?): System.ValueTuple`2[Velvet.AnimationSequenceState, Velvet.AnimationSequenceControls]
+[Velvet] method Velvet.Hooks.UseBlocker(System.Func`2[Velvet.NavigationAttempt, System.Boolean]): Velvet.RouteBlockerState
+[Velvet] method Velvet.Hooks.UseBlocker(System.Func`2[Velvet.NavigationAttempt, System.Boolean], System.Object?[]?): Velvet.RouteBlockerState
+[Velvet] method Velvet.Hooks.UseBlocker(System.Func`3[Velvet.NavigationAttempt, System.Threading.CancellationToken, Velvet.VelvetTask`1[System.Boolean]]): Velvet.RouteBlockerState
+[Velvet] method Velvet.Hooks.UseBlocker(System.Func`3[Velvet.NavigationAttempt, System.Threading.CancellationToken, Velvet.VelvetTask`1[System.Boolean]], System.Object?[]?): Velvet.RouteBlockerState
+[Velvet] method Velvet.Hooks.UseCallback`1(T): T
+[Velvet] method Velvet.Hooks.UseCallback`1(T, System.Object?[]?): T
+[Velvet] method Velvet.Hooks.UseContext`1(Velvet.ComponentContext`1[T]): T?
+[Velvet] method Velvet.Hooks.UseDeferredValue`1(T): T
+[Velvet] method Velvet.Hooks.UseDeferredValue`1(T, T): T
+[Velvet] method Velvet.Hooks.UseEffect(System.Func`1[System.Action?]?, System.Object?[]?): System.Void
+[Velvet] method Velvet.Hooks.UseEffect(System.Func`1[System.IDisposable], System.Object?[]?): System.Void
+[Velvet] method Velvet.Hooks.UseFallback(System.Func`2[System.Exception, Velvet.VNode]): System.Void
+[Velvet] method Velvet.Hooks.UseFallback(System.Func`3[System.Exception, Velvet.ErrorInfo, Velvet.VNode]): System.Void
+[Velvet] method Velvet.Hooks.UseFocusRing(): Velvet.FocusRing
+[Velvet] method Velvet.Hooks.UseFrame(System.Action`1[System.Single], System.Int32): System.Void
+[Velvet] method Velvet.Hooks.UseId(System.String?): System.String
+[Velvet] method Velvet.Hooks.UseImperativeHandle`1(Velvet.Ref`1[THandle], System.Func`1[THandle]): System.Void
+[Velvet] method Velvet.Hooks.UseImperativeHandle`1(Velvet.Ref`1[THandle], System.Func`1[THandle], System.Object?[]?): System.Void
+[Velvet] method Velvet.Hooks.UseInsertionEffect(System.Func`1[System.Action?]?, System.Object?[]?): System.Void
+[Velvet] method Velvet.Hooks.UseInsertionEffect(System.Func`1[System.IDisposable], System.Object?[]?): System.Void
+[Velvet] method Velvet.Hooks.UseLayoutEffect(System.Func`1[System.Action?]?, System.Object?[]?): System.Void
+[Velvet] method Velvet.Hooks.UseLayoutEffect(System.Func`1[System.IDisposable], System.Object?[]?): System.Void
+[Velvet] method Velvet.Hooks.UseLoaderData`1(): T?
+[Velvet] method Velvet.Hooks.UseLocation(): Velvet.RouterLocation?
+[Velvet] method Velvet.Hooks.UseMatch(System.String): Velvet.RouteMatch?
+[Velvet] method Velvet.Hooks.UseMemo`1(System.Func`1[T]): T
+[Velvet] method Velvet.Hooks.UseMemo`1(System.Func`1[T], System.Object?[]?): T
+[Velvet] method Velvet.Hooks.UseMutableRef`1(System.Func`1[T]): Velvet.MutableRef`1[T]
+[Velvet] method Velvet.Hooks.UseMutableRef`1(T): Velvet.MutableRef`1[T]
+[Velvet] method Velvet.Hooks.UseMutation(Velvet.MutationOptions): Velvet.MutationResult`2[Velvet.Unit, Velvet.Unit]
+[Velvet] method Velvet.Hooks.UseMutation`1(Velvet.MutationOptions`1[TVariables]): Velvet.MutationResult`2[TVariables, Velvet.Unit]
+[Velvet] method Velvet.Hooks.UseMutation`2(Velvet.MutationOptions`2[TVariables, TData]): Velvet.MutationResult`2[TVariables, TData]
+[Velvet] method Velvet.Hooks.UseNavigate(System.Boolean): System.Func`2[System.String, Velvet.VelvetTask`1[Velvet.NavigationResult]]
+[Velvet] method Velvet.Hooks.UseNavigation(): Velvet.NavigationState
+[Velvet] method Velvet.Hooks.UseOptimistic`2(TState, System.Func`3[TState, TAction, TState]): System.ValueTuple`2[TState, System.Action`1[TAction]]
+[Velvet] method Velvet.Hooks.UseOutletContext`1(): T?
+[Velvet] method Velvet.Hooks.UseParams(): System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]
+[Velvet] method Velvet.Hooks.UseReducer`2(System.Func`3[TState, TAction, TState], TState): System.ValueTuple`2[TState, System.Action`1[TAction]]
+[Velvet] method Velvet.Hooks.UseReducer`3(System.Func`3[TState, TAction, TState], TArg, System.Func`2[TArg, TState]): System.ValueTuple`2[TState, System.Action`1[TAction]]
+[Velvet] method Velvet.Hooks.UseRef`1(): Velvet.Ref`1[T]
+[Velvet] method Velvet.Hooks.UseRef`1(System.Func`1[T]?): Velvet.Ref`1[T]
+[Velvet] method Velvet.Hooks.UseRouteError(): System.Exception?
+[Velvet] method Velvet.Hooks.UseSearchParams(): System.ValueTuple`2[Velvet.ISearchParams, Velvet.SearchParamsSetter]
+[Velvet] method Velvet.Hooks.UseService`1(): T
+[Velvet] method Velvet.Hooks.UseState`1(System.Func`1[T]): System.ValueTuple`2[T, Velvet.StateUpdater`1[T]]
+[Velvet] method Velvet.Hooks.UseState`1(T): System.ValueTuple`2[T, Velvet.StateUpdater`1[T]]
+[Velvet] method Velvet.Hooks.UseStore`2(Velvet.Store`1[TStore], System.Func`2[TStore, TSel], System.Collections.Generic.IEqualityComparer`1[TSel]?): TSel
+[Velvet] method Velvet.Hooks.UseTransition(): System.ValueTuple`2[System.Boolean, Velvet.TransitionStarter]
+[Velvet] method Velvet.Hooks.Use`1(System.Func`1[Velvet.VelvetTask`1[T]], System.Object?): T
+[Velvet] method Velvet.Hooks.Use`1(System.Func`2[System.Threading.CancellationToken, Velvet.VelvetTask`1[T]], System.Object?): T
+[Velvet] method Velvet.IHookServiceResolver.Resolve`1(): T
+[Velvet] method Velvet.IRouteScope.Resolve`1(): T
+[Velvet] method Velvet.IRouteScopeFactory.CreateScope(Velvet.RouteDefinition?, Velvet.IRouteScope?): Velvet.IRouteScope
+[Velvet] method Velvet.ISearchParams.Get(System.String): System.String?
+[Velvet] method Velvet.ISearchParams.GetAll(System.String): System.Collections.Generic.IReadOnlyList`1[System.String]
+[Velvet] method Velvet.ISearchParams.Has(System.String): System.Boolean
+[Velvet] method Velvet.IStoreWriter`1[TState].Mutate(System.Func`2[TState, TState]): System.Void
+[Velvet] method Velvet.IStoreWriter`1[TState].SetState(System.Func`2[TState, TState]): System.Boolean
+[Velvet] method Velvet.MountedTree.Dispose(): System.Void
+[Velvet] method Velvet.MutationResultExtensions.MutateAsync`1(Velvet.MutationResult`2[Velvet.Unit, TData]): Velvet.VelvetTask`1[TData]
+[Velvet] method Velvet.MutationResultExtensions.Mutate`1(Velvet.MutationResult`2[Velvet.Unit, TData]): System.Void
+[Velvet] method Velvet.MutationResult`2[TVariables, TData].Mutate(TVariables): System.Void
+[Velvet] method Velvet.MutationResult`2[TVariables, TData].MutateAsync(TVariables): Velvet.VelvetTask`1[TData]
+[Velvet] method Velvet.MutationResult`2[TVariables, TData].Reset(): System.Void
+[Velvet] method Velvet.NullStoreLogger.Log(System.String): System.Void
+[Velvet] method Velvet.NullStoreLogger.LogError(System.String): System.Void
+[Velvet] method Velvet.NullStoreLogger.LogWarning(System.String): System.Void
+[Velvet] method Velvet.ParticlesElement.Play(): System.Void
+[Velvet] method Velvet.ParticlesElement.Stop(): System.Void
+[Velvet] method Velvet.Ref`1[T].Set(T?): System.Void
+[Velvet] method Velvet.RouteBlockerManager.Register(System.Func`2[Velvet.NavigationAttempt, System.Boolean], Velvet.RouteBlockerState): System.IDisposable
+[Velvet] method Velvet.RouteBlockerManager.Register(System.Func`3[Velvet.NavigationAttempt, System.Threading.CancellationToken, Velvet.VelvetTask`1[System.Boolean]], Velvet.RouteBlockerState): System.IDisposable
+[Velvet] method Velvet.RouteBlockerManager.ResetAllBlocked(): System.Void
+[Velvet] method Velvet.RouteBlockerState.Proceed(): System.Void
+[Velvet] method Velvet.RouteBlockerState.Reset(): System.Void
+[Velvet] method Velvet.RouteTree.Match(System.String): System.Collections.Generic.IReadOnlyList`1[Velvet.RouteMatch]?
+[Velvet] method Velvet.Router.Dispose(): System.Void
+[Velvet] method Velvet.Router.GetLoaderData(System.String): System.Object
+[Velvet] method Velvet.Router.GoBack(System.Threading.CancellationToken): Velvet.VelvetTask`1[Velvet.NavigationResult]
+[Velvet] method Velvet.Router.GoForward(System.Threading.CancellationToken): Velvet.VelvetTask`1[Velvet.NavigationResult]
+[Velvet] method Velvet.Router.NavigateAsync(System.String, Velvet.NavigationMode, System.Int32, System.Threading.CancellationToken): Velvet.VelvetTask`1[Velvet.NavigationResult]
+[Velvet] method Velvet.Router.NavigateAsync(System.String, Velvet.NavigationMode, System.Threading.CancellationToken): Velvet.VelvetTask`1[Velvet.NavigationResult]
+[Velvet] method Velvet.SearchParams.Append(System.String, System.String): System.Void
+[Velvet] method Velvet.SearchParams.Get(System.String): System.String?
+[Velvet] method Velvet.SearchParams.GetAll(System.String): System.Collections.Generic.IReadOnlyList`1[System.String]
+[Velvet] method Velvet.SearchParams.GetEnumerator(): System.Collections.Generic.IEnumerator`1[System.String]
+[Velvet] method Velvet.SearchParams.Has(System.String): System.Boolean
+[Velvet] method Velvet.SearchParamsSetter.Invoke(System.Func`2[Velvet.ISearchParams, Velvet.ISearchParams], Velvet.NavigationMode): System.Void
+[Velvet] method Velvet.SearchParamsSetter.Invoke(Velvet.ISearchParams, Velvet.NavigationMode): System.Void
+[Velvet] method Velvet.StateUpdater`1[T].Equals(System.Object?): System.Boolean
+[Velvet] method Velvet.StateUpdater`1[T].Equals(Velvet.StateUpdater`1[T]): System.Boolean
+[Velvet] method Velvet.StateUpdater`1[T].GetHashCode(): System.Int32
+[Velvet] method Velvet.StateUpdater`1[T].Invoke(System.Func`2[T, T]): System.Void
+[Velvet] method Velvet.StateUpdater`1[T].Invoke(T): System.Void
+[Velvet] method Velvet.StoreLogger.Log(System.String): System.Void
+[Velvet] method Velvet.StoreLogger.LogError(System.String): System.Void
+[Velvet] method Velvet.StoreLogger.LogWarning(System.String): System.Void
+[Velvet] method Velvet.StoreShallowEqualityComparer.Sequence`1(): System.Collections.Generic.IEqualityComparer`1[System.Collections.Generic.IReadOnlyList`1[T]]
+[Velvet] method Velvet.Store`1[TState].Dispose(): System.Void
+[Velvet] method Velvet.Store`1[TState].Reset(): System.Void
+[Velvet] method Velvet.Store`1[TState].Select`1(System.Func`2[TState, T], System.Action`2[T, T], System.Collections.Generic.IEqualityComparer`1[T]?, System.Boolean): System.IDisposable
+[Velvet] method Velvet.Store`1[TState].Subscribe(System.Action`1[TState], System.Boolean): System.IDisposable
+[Velvet] method Velvet.Store`1[TState].Subscribe(System.Action`2[TState, TState], System.Boolean): System.IDisposable
+[Velvet] method Velvet.StyleBackgroundImageResolver.Apply(UnityEngine.UIElements.VisualElement, UnityEngine.Texture2D?): System.Void
+[Velvet] method Velvet.StyleBackgroundImageResolver.Clear(UnityEngine.UIElements.VisualElement): System.Void
+[Velvet] method Velvet.StyleBackgroundImageResolver.HasBackgroundImageClass(System.String[]): System.Boolean
+[Velvet] method Velvet.StyleBackgroundImageResolver.TryParse(System.String, UnityEngine.Texture2D?&): System.Boolean
+[Velvet] method Velvet.StyleClassNames.Class(System.String?[]): System.String?
+[Velvet] method Velvet.StyleClassNames.When(System.Boolean, System.String): System.String?
+[Velvet] method Velvet.StyleFontClass.HasFontClass(System.String[]): System.Boolean
+[Velvet] method Velvet.StyleFontClass.IsArbitraryFontClass(System.String): System.Boolean
+[Velvet] method Velvet.StyleFontClass.IsFontToken(System.String): System.Boolean
+[Velvet] method Velvet.StyleFontClass.TryExtract(System.String[], Velvet.FontIntent&): System.Boolean
+[Velvet] method Velvet.StyleFontResolver.Apply(UnityEngine.UIElements.VisualElement, System.String[]): System.Void
+[Velvet] method Velvet.StyleFontResolver.ApplyIfPresent(UnityEngine.UIElements.VisualElement, System.String[]): System.Void
+[Velvet] method Velvet.StyleFontResolver.ApplyOnClassChange(UnityEngine.UIElements.VisualElement, System.String[], System.String[]): System.Void
+[Velvet] method Velvet.StyleFontResolver.Clear(UnityEngine.UIElements.VisualElement): System.Void
+[Velvet] method Velvet.StyleFontResolver.ComputeFontStyle(System.Boolean, System.Boolean): UnityEngine.FontStyle
+[Velvet] method Velvet.StyleRecipe+CompoundVariant.Matches(System.ValueTuple`2[System.String, System.String][], System.Int32): System.Boolean
+[Velvet] method Velvet.StyleRecipe.Apply(System.String, System.ValueTuple`2[System.String, System.String][]): System.String?
+[Velvet] method Velvet.StyleRecipe.Apply(System.ValueTuple`2[System.String, System.String][]): System.String?
+[Velvet] method Velvet.StyleSlotRecipe+SlotCompoundVariant.Matches(System.ValueTuple`2[System.String, System.String][], System.Int32): System.Boolean
+[Velvet] method Velvet.StyleSlotRecipe.Apply(): Velvet.StyleSlotClasses
+[Velvet] method Velvet.StyleSlotRecipe.Apply(System.ValueTuple`2[System.String, System.String][]): Velvet.StyleSlotClasses
+[Velvet] method Velvet.StyleTransitionConfig.With(System.Nullable`1[System.Single], System.Nullable`1[UnityEngine.UIElements.EasingMode], System.Nullable`1[UnityEngine.UIElements.EasingMode], System.Nullable`1[System.Single]): Velvet.StyleTransitionConfig
+[Velvet] method Velvet.StyleVariantClass.BreakpointPx(Velvet.StyleVariantKind): System.Single
+[Velvet] method Velvet.StyleVariantClass.IsResponsive(Velvet.StyleVariantKind): System.Boolean
+[Velvet] method Velvet.StyleVariantClass.IsVariant(System.String?): System.Boolean
+[Velvet] method Velvet.StyleVariantClass.TryParse(System.String?, Velvet.StyleVariantKind&, System.String?&): System.Boolean
+[Velvet] method Velvet.TransitionStarter.Equals(System.Object?): System.Boolean
+[Velvet] method Velvet.TransitionStarter.Equals(Velvet.TransitionStarter): System.Boolean
+[Velvet] method Velvet.TransitionStarter.GetHashCode(): System.Int32
+[Velvet] method Velvet.TransitionStarter.Invoke(System.Action): System.Void
+[Velvet] method Velvet.TransitionStarter.Invoke(System.Func`1[Velvet.VelvetTask]): System.Void
+[Velvet] method Velvet.Unit.Equals(System.Object?): System.Boolean
+[Velvet] method Velvet.Unit.Equals(Velvet.Unit): System.Boolean
+[Velvet] method Velvet.Unit.GetHashCode(): System.Int32
+[Velvet] method Velvet.Unit.ToString(): System.String
+[Velvet] method Velvet.V.Anchored(UnityEngine.Transform?, UnityEngine.Camera?, System.Nullable`1[UnityEngine.Vector2], System.Boolean, System.Boolean, System.Nullable`1[UnityEngine.LayerMask], System.Nullable`1[System.Single], System.String?, System.String?, System.String?, Velvet.FiberElementProps?, Velvet.StyleOverrides?, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, Velvet.VNode?[]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?): Velvet.ElementNode
+[Velvet] method Velvet.V.AnimatePresence(Velvet.VNode?[]?, System.String?, System.Boolean, System.Single, System.Single, System.Int32, Velvet.AnimatePresenceMode, System.Action?): Velvet.AnimatePresenceNode
+[Velvet] method Velvet.V.Button(System.String, Velvet.VNode?[]): Velvet.ElementNode
+[Velvet] method Velvet.V.Button(System.String?, System.String?, System.Action?, System.String?, System.String?, System.String?, System.Nullable`1[System.Boolean], Velvet.StyleOverrides?, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.Func`2[UnityEngine.UIElements.VisualElement, UnityEngine.UIElements.VisualElement]?, System.String?, System.String?, System.String?, Velvet.VNode?[]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?): Velvet.ElementNode
+[Velvet] method Velvet.V.Component(System.Func`1[Velvet.VNode]?, System.String?): Velvet.ComponentNode
+[Velvet] method Velvet.V.Component`1(System.Func`1[Velvet.VNode]?, Velvet.Ref`1[TRef], System.String?): Velvet.ComponentNode
+[Velvet] method Velvet.V.Component`1(System.Func`2[TProps, Velvet.VNode], TProps, System.String?): Velvet.ComponentNode
+[Velvet] method Velvet.V.Custom`1(System.String, Velvet.VNode?[]): Velvet.ElementNode
+[Velvet] method Velvet.V.Custom`1(System.String?, System.String?, System.String?, Velvet.FiberElementProps?, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, Velvet.VNode?[]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?): Velvet.ElementNode
+[Velvet] method Velvet.V.Div(System.String, Velvet.VNode?[]): Velvet.ElementNode
+[Velvet] method Velvet.V.Div(System.String?, System.String?, System.String?, Velvet.FiberElementProps?, Velvet.StyleOverrides?, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, Velvet.VNode?[]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?): Velvet.ElementNode
+[Velvet] method Velvet.V.DndContext(System.Action`1[Velvet.DragStartArgs]?, System.Action`1[Velvet.DragOverArgs]?, System.Action`1[Velvet.DragEndArgs]?, System.Action`1[Velvet.DragCancelArgs]?, Velvet.DndCollisionDetection?, Velvet.DragActivation?, System.String?, System.String?, System.String?, Velvet.FiberElementProps?, Velvet.StyleOverrides?, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, Velvet.VNode?[]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?): Velvet.ElementNode
+[Velvet] method Velvet.V.DragOverlay(Velvet.VNode?[]?, System.String?): Velvet.PortalNode
+[Velvet] method Velvet.V.Draggable(System.String, System.Object?, System.Boolean, Velvet.DragMovement, Velvet.DragActivation?, System.String?, System.String?, System.String?, System.String?, Velvet.FiberElementProps?, Velvet.StyleOverrides?, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, Velvet.VNode?[]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?): Velvet.ElementNode
+[Velvet] method Velvet.V.DropdownField(System.String?, System.String?, System.Collections.Generic.List`1[System.String]?, System.Action`1[System.String]?, System.String?, System.String?, System.String?, System.Nullable`1[System.Boolean], System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?): Velvet.ElementNode
+[Velvet] method Velvet.V.Droppable(System.String, System.Object?, System.Boolean, System.String?, System.String?, System.String?, System.String?, System.String?, Velvet.FiberElementProps?, Velvet.StyleOverrides?, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, Velvet.VNode?[]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?): Velvet.ElementNode
+[Velvet] method Velvet.V.ErrorBoundary(System.Func`2[System.Exception, Velvet.VNode], Velvet.VNode?[], System.String?): Velvet.ComponentNode
+[Velvet] method Velvet.V.FocusScope(System.String?, System.String?, System.String?, System.Boolean, System.Boolean, System.Boolean, System.Boolean, Velvet.FiberElementProps?, Velvet.StyleOverrides?, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, Velvet.VNode?[]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?): Velvet.ElementNode
+[Velvet] method Velvet.V.Fragment(Velvet.VNode?[], System.String?): Velvet.FragmentNode
+[Velvet] method Velvet.V.Image(System.String?, System.String?, System.String?, Velvet.StyleOverrides?, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?): Velvet.ElementNode
+[Velvet] method Velvet.V.IntegerField(System.String?, System.Nullable`1[System.Int32], System.Action`1[System.Int32]?, System.String?, System.String?, System.String?, System.Nullable`1[System.Boolean], System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?): Velvet.ElementNode
+[Velvet] method Velvet.V.Label(System.String?, System.String?, System.String?, System.String?, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?): Velvet.ElementNode
+[Velvet] method Velvet.V.Link(System.String, System.String?, System.String?, System.String?, Velvet.VNode?[]?, System.Boolean, System.String?): Velvet.ComponentNode
+[Velvet] method Velvet.V.ListFragment`1(System.Collections.Generic.IReadOnlyList`1[T], System.Func`2[T, System.String], System.Func`2[T, Velvet.VNode], System.String?): Velvet.FragmentNode
+[Velvet] method Velvet.V.ListFragment`1(System.Collections.Generic.IReadOnlyList`1[T], System.Func`3[T, System.Int32, System.String], System.Func`3[T, System.Int32, Velvet.VNode], System.String?): Velvet.FragmentNode
+[Velvet] method Velvet.V.ListView(System.String?, System.String?, System.String?, System.Nullable`1[System.Boolean], Velvet.StyleOverrides?, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?): Velvet.ElementNode
+[Velvet] method Velvet.V.List`1(System.Collections.Generic.IReadOnlyList`1[T], System.Func`2[T, System.String], System.Func`2[T, Velvet.VNode]): Velvet.VNode?[]
+[Velvet] method Velvet.V.List`1(System.Collections.Generic.IReadOnlyList`1[T], System.Func`3[T, System.Int32, System.String], System.Func`3[T, System.Int32, Velvet.VNode]): Velvet.VNode?[]
+[Velvet] method Velvet.V.Memo`1(System.Func`2[TProps, Velvet.VNode], TProps, System.Func`3[TProps, TProps, System.Boolean], System.String?): Velvet.ComponentNode
+[Velvet] method Velvet.V.Memoized(System.Func`1[Velvet.VNode]): Velvet.MemoNode
+[Velvet] method Velvet.V.Memoized(System.Func`1[Velvet.VNode], System.Object?[]?): Velvet.MemoNode
+[Velvet] method Velvet.V.MemoizedWithKey(System.String?, System.Func`1[Velvet.VNode]): Velvet.MemoNode
+[Velvet] method Velvet.V.MemoizedWithKey(System.String?, System.Func`1[Velvet.VNode], System.Object?[]?): Velvet.MemoNode
+[Velvet] method Velvet.V.MemoizedWithKey`1(System.String?, System.Func`1[Velvet.VNode], T1?): Velvet.MemoNode
+[Velvet] method Velvet.V.MemoizedWithKey`2(System.String?, System.Func`1[Velvet.VNode], T1?, T2?): Velvet.MemoNode
+[Velvet] method Velvet.V.MemoizedWithKey`3(System.String?, System.Func`1[Velvet.VNode], T1?, T2?, T3?): Velvet.MemoNode
+[Velvet] method Velvet.V.MemoizedWithKey`4(System.String?, System.Func`1[Velvet.VNode], T1?, T2?, T3?, T4?): Velvet.MemoNode
+[Velvet] method Velvet.V.MemoizedWithKey`5(System.String?, System.Func`1[Velvet.VNode], T1?, T2?, T3?, T4?, T5?): Velvet.MemoNode
+[Velvet] method Velvet.V.MemoizedWithKey`6(System.String?, System.Func`1[Velvet.VNode], T1?, T2?, T3?, T4?, T5?, T6?): Velvet.MemoNode
+[Velvet] method Velvet.V.MemoizedWithKey`7(System.String?, System.Func`1[Velvet.VNode], T1?, T2?, T3?, T4?, T5?, T6?, T7?): Velvet.MemoNode
+[Velvet] method Velvet.V.MemoizedWithKey`8(System.String?, System.Func`1[Velvet.VNode], T1?, T2?, T3?, T4?, T5?, T6?, T7?, T8?): Velvet.MemoNode
+[Velvet] method Velvet.V.Memoized`1(System.Func`1[Velvet.VNode], T1?): Velvet.MemoNode
+[Velvet] method Velvet.V.Memoized`2(System.Func`1[Velvet.VNode], T1?, T2?): Velvet.MemoNode
+[Velvet] method Velvet.V.Memoized`3(System.Func`1[Velvet.VNode], T1?, T2?, T3?): Velvet.MemoNode
+[Velvet] method Velvet.V.Memoized`4(System.Func`1[Velvet.VNode], T1?, T2?, T3?, T4?): Velvet.MemoNode
+[Velvet] method Velvet.V.Memoized`5(System.Func`1[Velvet.VNode], T1?, T2?, T3?, T4?, T5?): Velvet.MemoNode
+[Velvet] method Velvet.V.Memoized`6(System.Func`1[Velvet.VNode], T1?, T2?, T3?, T4?, T5?, T6?): Velvet.MemoNode
+[Velvet] method Velvet.V.Memoized`7(System.Func`1[Velvet.VNode], T1?, T2?, T3?, T4?, T5?, T6?, T7?): Velvet.MemoNode
+[Velvet] method Velvet.V.Memoized`8(System.Func`1[Velvet.VNode], T1?, T2?, T3?, T4?, T5?, T6?, T7?, T8?): Velvet.MemoNode
+[Velvet] method Velvet.V.Motion(System.String?, System.String?, System.String?, Velvet.StyleTransitionConfig?, System.Nullable`1[System.Single], System.Nullable`1[UnityEngine.UIElements.EasingMode], System.Nullable`1[System.Single], System.Action?, Velvet.VNode?[]?, Velvet.FiberElementProps?, Velvet.FiberEventBinding[]?, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.String?, System.String?, System.String?, System.Type?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.String?, System.String?, System.String?, System.String?): Velvet.MotionNode
+[Velvet] method Velvet.V.Mount(UnityEngine.UIElements.VisualElement, Velvet.VNode): Velvet.MountedTree
+[Velvet] method Velvet.V.NavLink(System.String, System.String, System.String?, System.String?, System.String?, Velvet.VNode?[]?, System.Boolean, System.Boolean, System.Boolean, System.String?): Velvet.ComponentNode
+[Velvet] method Velvet.V.Navigate(System.String, System.Boolean, System.String?): Velvet.ComponentNode
+[Velvet] method Velvet.V.Outlet(System.Object?, System.String?): Velvet.OutletNode
+[Velvet] method Velvet.V.Particles(UnityEngine.ParticleSystem?, System.String?, System.String?, System.String?, Velvet.PlayTrigger, System.Single, Velvet.StyleOverrides?, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?): Velvet.ElementNode
+[Velvet] method Velvet.V.Portal(System.String, Velvet.VNode?[]?, System.String?): Velvet.PortalNode
+[Velvet] method Velvet.V.Portal(UnityEngine.UIElements.VisualElement, Velvet.VNode?[]?, System.String?): Velvet.PortalNode
+[Velvet] method Velvet.V.Portal(Velvet.UILayer, Velvet.VNode?[]?, System.String?, Velvet.PanelFocusOrder): Velvet.PortalNode
+[Velvet] method Velvet.V.Provider`1(Velvet.ComponentContext`1[T], T, Velvet.VNode?[]?, System.String?): Velvet.ContextProviderNode`1[T]
+[Velvet] method Velvet.V.RadioButton(System.String?, System.Nullable`1[System.Boolean], System.Action`1[System.Boolean]?, System.String?, System.String?, System.String?, System.Nullable`1[System.Boolean], System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?): Velvet.ElementNode
+[Velvet] method Velvet.V.RadioButtonGroup(System.String?, System.Nullable`1[System.Int32], System.Collections.Generic.List`1[System.String]?, System.Action`1[System.Int32]?, System.String?, System.String?, System.String?, System.Nullable`1[System.Boolean], System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?): Velvet.ElementNode
+[Velvet] method Velvet.V.Route(System.String?, Velvet.ComponentNode?, System.String?, System.Func`3[Velvet.RouteLoaderContext, System.Threading.CancellationToken, Velvet.VelvetTask`1[System.Object]]?, Velvet.LoaderMode, Velvet.ComponentNode?, Velvet.RouteDefinition[]?, System.String?, System.Func`2[Velvet.RouteLoaderContext, System.String]?, System.Boolean): Velvet.RouteDefinition
+[Velvet] method Velvet.V.Routes(Velvet.RouteDefinition[]): Velvet.RouteDefinition[]
+[Velvet] method Velvet.V.SceneView(UnityEngine.Camera?, System.String?, System.String?, System.String?, System.Single, Velvet.StyleOverrides?, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?): Velvet.ElementNode
+[Velvet] method Velvet.V.ScrollView(System.String, Velvet.VNode?[]): Velvet.ElementNode
+[Velvet] method Velvet.V.ScrollView(System.String?, System.String?, System.String?, System.Nullable`1[UnityEngine.UIElements.ScrollerVisibility], System.Nullable`1[UnityEngine.UIElements.ScrollerVisibility], System.Nullable`1[UnityEngine.UIElements.ScrollView+TouchScrollBehavior], System.Action`1[UnityEngine.UIElements.VisualElement]?, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, Velvet.VNode?[]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?): Velvet.ElementNode
+[Velvet] method Velvet.V.Slider(System.String?, System.Nullable`1[System.Single], System.Nullable`1[System.Single], System.Nullable`1[System.Single], System.Action`1[System.Single]?, System.String?, System.String?, System.Nullable`1[System.Boolean], System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.Action`1[UnityEngine.UIElements.VisualElement]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?): Velvet.ElementNode
+[Velvet] method Velvet.V.Suspense(Velvet.VNode?, Velvet.VNode?[], System.String?): Velvet.SuspenseNode
+[Velvet] method Velvet.V.Text(System.String?): Velvet.TextNode
+[Velvet] method Velvet.V.TextField(System.String?, System.String?, System.Action`1[System.String]?, System.String?, System.String?, System.String?, System.Nullable`1[System.Boolean], System.Nullable`1[System.Boolean], System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.String?, System.Nullable`1[System.Int32], System.Nullable`1[System.Boolean], System.Nullable`1[System.Boolean]): Velvet.ElementNode
+[Velvet] method Velvet.V.Toggle(System.String?, System.Nullable`1[System.Boolean], System.Action`1[System.Boolean]?, System.String?, System.String?, System.String?, System.Nullable`1[System.Boolean], System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?): Velvet.ElementNode
+[Velvet] method Velvet.V.VirtualList`1(System.Collections.Generic.IReadOnlyList`1[T], System.Func`2[T, System.String], System.Single, System.Func`2[T, Velvet.VNode], System.Int32, System.String?, System.String?, System.String?): Velvet.VirtualListNode
+[Velvet] method Velvet.V.When(System.Boolean, System.Func`1[Velvet.VNode]?): Velvet.VNode?
+[Velvet] method Velvet.V.WorldSpace(UnityEngine.Vector3, System.Nullable`1[UnityEngine.Quaternion], System.Nullable`1[UnityEngine.Vector2], Velvet.VNode?[]?, System.String?, Velvet.PanelFocusOrder): Velvet.WorldSpaceNode
+[Velvet] method Velvet.VelvetFilters.Register(System.String, UnityEngine.UIElements.FilterFunctionDefinition?): System.Void
+[Velvet] method Velvet.VelvetFilters.Unregister(System.String): System.Boolean
+[Velvet] method Velvet.VelvetFontFamily.FindClosestWeight(Velvet.VelvetFontWeight): Velvet.VelvetFontWeightEntry?
+[Velvet] method Velvet.VelvetFonts.Clear(): System.Void
+[Velvet] method Velvet.VelvetFonts.IsRegistered(System.String?): System.Boolean
+[Velvet] method Velvet.VelvetFonts.Register(System.Collections.Generic.IEnumerable`1[Velvet.VelvetFontFamily]?, System.String?): System.Void
+[Velvet] method Velvet.VelvetFonts.Register(Velvet.VelvetFontFamily?): System.Void
+[Velvet] method Velvet.VelvetFonts.Resolve(System.String?, Velvet.VelvetFontWeight, System.Boolean): Velvet.ResolvedFont
+[Velvet] method Velvet.VelvetFonts.TryLoadAddressableFont(System.String?, UnityEngine.TextCore.Text.FontAsset?&): System.Boolean
+[Velvet] method Velvet.VelvetFonts.Unregister(System.String?): System.Void
+[Velvet] method Velvet.VelvetPreviewHost.Dispose(): System.Void
+[Velvet] method Velvet.VelvetPreviewHost.Mount(Velvet.VelvetPreviewStory): System.Void
+[Velvet] method Velvet.VelvetPreviewHost.Mount(Velvet.VelvetPreviewStory, System.Object): System.Void
+[Velvet] method Velvet.VelvetPreviewHost.UpdateArgs(System.Object): System.Boolean
+[Velvet] method Velvet.VelvetPreviewRegistry.DiscoverStories(): System.Collections.Generic.List`1[Velvet.VelvetPreviewStory]
+[Velvet] method Velvet.VelvetPreviewRegistry.RunSetupFor(System.Reflection.Assembly?): System.IDisposable?
+[Velvet] method Velvet.VelvetPreviewStory.Build(): Velvet.VNode?
+[Velvet] method Velvet.VelvetPreviewStory.Build(System.Object?): Velvet.VNode?
+[Velvet] method Velvet.VelvetPreviewStory.CreateDefaultArgs(): System.Object?
+[Velvet] method Velvet.VelvetStyleUtilities.AttachTo(UnityEngine.UIElements.VisualElement): System.Void
+[Velvet] method Velvet.VelvetStyleUtilities.BindThemeTo(UnityEngine.UIElements.VisualElement): System.Void
+[Velvet] method Velvet.VelvetTask+Awaiter.GetResult(): System.Void
+[Velvet] method Velvet.VelvetTask+Awaiter.OnCompleted(System.Action): System.Void
+[Velvet] method Velvet.VelvetTask.FromAwaitable(UnityEngine.Awaitable): Velvet.VelvetTask
+[Velvet] method Velvet.VelvetTask.FromException(System.Exception): Velvet.VelvetTask
+[Velvet] method Velvet.VelvetTask.FromException`1(System.Exception): Velvet.VelvetTask`1[T]
+[Velvet] method Velvet.VelvetTask.FromResult(): Velvet.VelvetTask
+[Velvet] method Velvet.VelvetTask.FromResult`1(T): Velvet.VelvetTask`1[T]
+[Velvet] method Velvet.VelvetTask.GetAwaiter(): Velvet.VelvetTask+Awaiter
+[Velvet] method Velvet.VelvetTask.Never(System.Threading.CancellationToken): Velvet.VelvetTask
+[Velvet] method Velvet.VelvetTask.Never`1(System.Threading.CancellationToken): Velvet.VelvetTask`1[T]
+[Velvet] method Velvet.VelvetTask.ToCoroutine(System.Func`1[Velvet.VelvetTask]): System.Collections.IEnumerator
+[Velvet] method Velvet.VelvetTask.Yield(): Velvet.VelvetTask
+[Velvet] method Velvet.VelvetTaskCompletionSource.SetCanceled(System.Threading.CancellationToken): System.Void
+[Velvet] method Velvet.VelvetTaskCompletionSource.SetException(System.Exception): System.Void
+[Velvet] method Velvet.VelvetTaskCompletionSource.SetResult(): System.Void
+[Velvet] method Velvet.VelvetTaskCompletionSource.TrySetCanceled(System.Threading.CancellationToken): System.Boolean
+[Velvet] method Velvet.VelvetTaskCompletionSource.TrySetException(System.Exception): System.Boolean
+[Velvet] method Velvet.VelvetTaskCompletionSource.TrySetResult(): System.Boolean
+[Velvet] method Velvet.VelvetTaskCompletionSource`1[T].SetCanceled(System.Threading.CancellationToken): System.Void
+[Velvet] method Velvet.VelvetTaskCompletionSource`1[T].SetException(System.Exception): System.Void
+[Velvet] method Velvet.VelvetTaskCompletionSource`1[T].SetResult(T): System.Void
+[Velvet] method Velvet.VelvetTaskCompletionSource`1[T].TrySetCanceled(System.Threading.CancellationToken): System.Boolean
+[Velvet] method Velvet.VelvetTaskCompletionSource`1[T].TrySetException(System.Exception): System.Boolean
+[Velvet] method Velvet.VelvetTaskCompletionSource`1[T].TrySetResult(T): System.Boolean
+[Velvet] method Velvet.VelvetTaskExtensions.AttachExternalCancellation(Velvet.VelvetTask, System.Threading.CancellationToken): Velvet.VelvetTask
+[Velvet] method Velvet.VelvetTaskExtensions.AttachExternalCancellation`1(Velvet.VelvetTask`1[T], System.Threading.CancellationToken): Velvet.VelvetTask`1[T]
+[Velvet] method Velvet.VelvetTaskExtensions.Forget(Velvet.VelvetTask): System.Void
+[Velvet] method Velvet.VelvetTaskExtensions.Forget`1(Velvet.VelvetTask`1[T]): System.Void
+[Velvet] method Velvet.VelvetTaskExtensions.ToCoroutine(System.Func`1[Velvet.VelvetTask]): System.Collections.IEnumerator
+[Velvet] method Velvet.VelvetTaskExtensions.ToCoroutine(Velvet.VelvetTask, System.Action`1[System.Exception]?): System.Collections.IEnumerator
+[Velvet] method Velvet.VelvetTaskExtensions.ToCoroutine`1(Velvet.VelvetTask`1[T], System.Action`1[T]?, System.Action`1[System.Exception]?): System.Collections.IEnumerator
+[Velvet] method Velvet.VelvetTaskMethodBuilder.AwaitOnCompleted`2(TAwaiter&, TStateMachine&): System.Void
+[Velvet] method Velvet.VelvetTaskMethodBuilder.AwaitUnsafeOnCompleted`2(TAwaiter&, TStateMachine&): System.Void
+[Velvet] method Velvet.VelvetTaskMethodBuilder.Create(): Velvet.VelvetTaskMethodBuilder
+[Velvet] method Velvet.VelvetTaskMethodBuilder.SetException(System.Exception): System.Void
+[Velvet] method Velvet.VelvetTaskMethodBuilder.SetResult(): System.Void
+[Velvet] method Velvet.VelvetTaskMethodBuilder.SetStateMachine(System.Runtime.CompilerServices.IAsyncStateMachine): System.Void
+[Velvet] method Velvet.VelvetTaskMethodBuilder.Start`1(TStateMachine&): System.Void
+[Velvet] method Velvet.VelvetTaskMethodBuilder`1[T].AwaitOnCompleted`2(TAwaiter&, TStateMachine&): System.Void
+[Velvet] method Velvet.VelvetTaskMethodBuilder`1[T].AwaitUnsafeOnCompleted`2(TAwaiter&, TStateMachine&): System.Void
+[Velvet] method Velvet.VelvetTaskMethodBuilder`1[T].Create(): Velvet.VelvetTaskMethodBuilder`1[T]
+[Velvet] method Velvet.VelvetTaskMethodBuilder`1[T].SetException(System.Exception): System.Void
+[Velvet] method Velvet.VelvetTaskMethodBuilder`1[T].SetResult(T): System.Void
+[Velvet] method Velvet.VelvetTaskMethodBuilder`1[T].SetStateMachine(System.Runtime.CompilerServices.IAsyncStateMachine): System.Void
+[Velvet] method Velvet.VelvetTaskMethodBuilder`1[T].Start`1(TStateMachine&): System.Void
+[Velvet] method Velvet.VelvetTaskStatusExtensions.IsCanceled(Velvet.VelvetTaskStatus): System.Boolean
+[Velvet] method Velvet.VelvetTaskStatusExtensions.IsCompleted(Velvet.VelvetTaskStatus): System.Boolean
+[Velvet] method Velvet.VelvetTaskStatusExtensions.IsCompletedSuccessfully(Velvet.VelvetTaskStatus): System.Boolean
+[Velvet] method Velvet.VelvetTaskStatusExtensions.IsFaulted(Velvet.VelvetTaskStatus): System.Boolean
+[Velvet] method Velvet.VelvetTask`1[T].FromAwaitable(UnityEngine.Awaitable`1[T]): Velvet.VelvetTask`1[T]
+[Velvet] method Velvet.VelvetTask`1[T].FromResult(T): Velvet.VelvetTask`1[T]
+[Velvet] method Velvet.VelvetTask`1[T].GetAwaiter(): Velvet.VelvetTask`1[T~]
+[Velvet] method Velvet.VelvetTask`1[T].GetResult(): T
+[Velvet] method Velvet.VelvetTask`1[T].OnCompleted(System.Action): System.Void
+[Velvet] method protected Velvet.Experimental.VBuilder.BuildChildren(): Velvet.VNode?[]
+[Velvet] method protected Velvet.Store`1[TState].Mutate(System.Func`2[TState, TState]): System.Void
+[Velvet] method protected Velvet.Store`1[TState].OnDispose(): System.Void
+[Velvet] method protected Velvet.Store`1[TState].ResetCore(): System.Void
+[Velvet] method protected Velvet.Store`1[TState].SetState(System.Func`2[TState, TState]): System.Boolean
+[Velvet] property Velvet.AnchoredSettings.Camera: UnityEngine.Camera?
+[Velvet] property Velvet.AnchoredSettings.DistanceFactor: System.Nullable`1[System.Single]
+[Velvet] property Velvet.AnchoredSettings.HideWhenBehindCamera: System.Boolean
+[Velvet] property Velvet.AnchoredSettings.Occlude: System.Boolean
+[Velvet] property Velvet.AnchoredSettings.OccludeLayerMask: UnityEngine.LayerMask
+[Velvet] property Velvet.AnchoredSettings.Offset: UnityEngine.Vector2
+[Velvet] property Velvet.AnchoredSettings.Target: UnityEngine.Transform?
+[Velvet] property Velvet.AnimatePresenceNode.Children: Velvet.VNode?[]
+[Velvet] property Velvet.AnimatePresenceNode.DelayChildrenSec: System.Single
+[Velvet] property Velvet.AnimatePresenceNode.Initial: System.Boolean
+[Velvet] property Velvet.AnimatePresenceNode.Mode: Velvet.AnimatePresenceMode
+[Velvet] property Velvet.AnimatePresenceNode.OnExitComplete: System.Action?
+[Velvet] property Velvet.AnimatePresenceNode.StaggerDirection: System.Int32
+[Velvet] property Velvet.AnimatePresenceNode.StaggerSec: System.Single
+[Velvet] property Velvet.AnimationSequenceControls.Pause: System.Action
+[Velvet] property Velvet.AnimationSequenceControls.Play: System.Action
+[Velvet] property Velvet.AnimationSequenceControls.Restart: System.Action
+[Velvet] property Velvet.AnimationSequenceState.CurrentLabel: System.String?
+[Velvet] property Velvet.AnimationSequenceState.CurrentTransition: Velvet.StyleTransitionConfig?
+[Velvet] property Velvet.AnimationSequenceState.IsComplete: System.Boolean
+[Velvet] property Velvet.AnimationSequenceState.StepIndex: System.Int32
+[Velvet] property Velvet.AnimationSequenceStep.Callback: System.Action?
+[Velvet] property Velvet.AnimationSequenceStep.HoldSec: System.Nullable`1[System.Single]
+[Velvet] property Velvet.AnimationSequenceStep.Label: System.String?
+[Velvet] property Velvet.AnimationSequenceStep.Transition: Velvet.StyleTransitionConfig?
+[Velvet] property Velvet.BaseElementNode.Children: Velvet.VNode?[]
+[Velvet] property Velvet.BaseElementNode.ClassNames: System.String[]
+[Velvet] property Velvet.BaseElementNode.ElementType: System.Type
+[Velvet] property Velvet.BaseElementNode.Events: Velvet.FiberEventBinding[]
+[Velvet] property Velvet.BaseElementNode.Name: System.String?
+[Velvet] property Velvet.BaseElementNode.Props: Velvet.FiberElementProps?
+[Velvet] property Velvet.BaseElementNode.RefCallback: System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?
+[Velvet] property Velvet.BaseElementNode.WhileFocusClass: System.String?
+[Velvet] property Velvet.BaseElementNode.WhileHoverClass: System.String?
+[Velvet] property Velvet.BaseElementNode.WhileTapClass: System.String?
+[Velvet] property Velvet.BlurBinding.EventId: System.String
+[Velvet] property Velvet.BlurBinding.Handler: UnityEngine.UIElements.EventCallback`1[UnityEngine.UIElements.BlurEvent]?
+[Velvet] property Velvet.ChangeEventBinding`1[T].EventId: System.String
+[Velvet] property Velvet.ChangeEventBinding`1[T].Handler: System.Action`1[T]?
+[Velvet] property Velvet.ChoicesSettings.Choices: System.Collections.Generic.List`1[System.String]?
+[Velvet] property Velvet.ClickedBinding.EventId: System.String
+[Velvet] property Velvet.ClickedBinding.Handler: System.Action?
+[Velvet] property Velvet.ComponentAttribute.Compiler: System.Boolean
+[Velvet] property Velvet.ComponentAttribute.DisplayName: System.String?
+[Velvet] property Velvet.ComponentAttribute.IsErrorBoundary: System.Boolean
+[Velvet] property Velvet.ComponentAttribute.Memoize: System.Boolean
+[Velvet] property Velvet.ComponentContext`1[T].DefaultValue: T?
+[Velvet] property Velvet.ComponentFiber.Child: Velvet.ComponentFiber?
+[Velvet] property Velvet.ComponentFiber.IsDirty: System.Boolean
+[Velvet] property Velvet.ComponentFiber.IsDisposed: System.Boolean
+[Velvet] property Velvet.ComponentFiber.IsErrorBoundary: System.Boolean
+[Velvet] property Velvet.ComponentFiber.IsMounted: System.Boolean
+[Velvet] property Velvet.ComponentFiber.IsRendering: System.Boolean
+[Velvet] property Velvet.ComponentFiber.IsSuspenseBoundary: System.Boolean
+[Velvet] property Velvet.ComponentFiber.Parent: Velvet.ComponentFiber?
+[Velvet] property Velvet.ComponentFiber.Ref: System.Object?
+[Velvet] property Velvet.ComponentFiber.Sibling: Velvet.ComponentFiber?
+[Velvet] property Velvet.ComponentNode.Body: System.Func`1[Velvet.VNode]?
+[Velvet] property Velvet.ComponentNode.Identity: System.Object?
+[Velvet] property Velvet.ComponentNode.IsErrorBoundary: System.Boolean
+[Velvet] property Velvet.ComponentNode.Props: System.Object?
+[Velvet] property Velvet.ContextProviderNode.Children: Velvet.VNode?[]
+[Velvet] property Velvet.ContextProviderNode`1[T].Context: Velvet.ComponentContext`1[T]
+[Velvet] property Velvet.ContextProviderNode`1[T].Value: T
+[Velvet] property Velvet.DevTools.VelvetDevToolsRegistry+ComponentEntry.Fiber: Velvet.ComponentFiber
+[Velvet] property Velvet.DevTools.VelvetDevToolsRegistry+ComponentEntry.Label: System.String
+[Velvet] property Velvet.DevTools.VelvetDevToolsRegistry+ComponentEntry.RegisteredAt: System.DateTime
+[Velvet] property Velvet.DevTools.VelvetDevToolsRegistry+ComponentEntry.TypeName: System.String
+[Velvet] property Velvet.DevTools.VelvetDevToolsRegistry.Entries: System.Collections.Generic.IReadOnlyList`1[Velvet.DevTools.VelvetDevToolsRegistry+ComponentEntry]
+[Velvet] property Velvet.DndCollisionQuery.ActiveRect: UnityEngine.Rect
+[Velvet] property Velvet.DndCollisionQuery.Droppables: System.Collections.Generic.IReadOnlyList`1[Velvet.DndDroppableRect]
+[Velvet] property Velvet.DndCollisionQuery.PointerPosition: UnityEngine.Vector2
+[Velvet] property Velvet.DndContextSettings.Activation: Velvet.DragActivation?
+[Velvet] property Velvet.DndContextSettings.CollisionDetection: Velvet.DndCollisionDetection?
+[Velvet] property Velvet.DndContextSettings.OnDragCancel: System.Action`1[Velvet.DragCancelArgs]?
+[Velvet] property Velvet.DndContextSettings.OnDragEnd: System.Action`1[Velvet.DragEndArgs]?
+[Velvet] property Velvet.DndContextSettings.OnDragOver: System.Action`1[Velvet.DragOverArgs]?
+[Velvet] property Velvet.DndContextSettings.OnDragStart: System.Action`1[Velvet.DragStartArgs]?
+[Velvet] property Velvet.DndDroppableRect.Data: System.Object?
+[Velvet] property Velvet.DndDroppableRect.Id: System.String
+[Velvet] property Velvet.DndDroppableRect.Rect: UnityEngine.Rect
+[Velvet] property Velvet.DragActivation.DelaySec: System.Single
+[Velvet] property Velvet.DragActivation.Distance: System.Single
+[Velvet] property Velvet.DragActivation.Tolerance: System.Single
+[Velvet] property Velvet.DragCancelArgs.Active: Velvet.DraggableInfo
+[Velvet] property Velvet.DragEndArgs.Active: Velvet.DraggableInfo
+[Velvet] property Velvet.DragEndArgs.Delta: UnityEngine.Vector2
+[Velvet] property Velvet.DragEndArgs.Over: Velvet.DroppableInfo?
+[Velvet] property Velvet.DragEndArgs.Position: UnityEngine.Vector2
+[Velvet] property Velvet.DragOverArgs.Active: Velvet.DraggableInfo
+[Velvet] property Velvet.DragOverArgs.Delta: UnityEngine.Vector2
+[Velvet] property Velvet.DragOverArgs.Over: Velvet.DroppableInfo?
+[Velvet] property Velvet.DragStartArgs.Active: Velvet.DraggableInfo
+[Velvet] property Velvet.DragStartArgs.Origin: UnityEngine.Vector2
+[Velvet] property Velvet.DraggableInfo.Data: System.Object?
+[Velvet] property Velvet.DraggableInfo.Element: UnityEngine.UIElements.VisualElement
+[Velvet] property Velvet.DraggableInfo.Id: System.String
+[Velvet] property Velvet.DraggableSettings.Activation: Velvet.DragActivation?
+[Velvet] property Velvet.DraggableSettings.Data: System.Object?
+[Velvet] property Velvet.DraggableSettings.Disabled: System.Boolean
+[Velvet] property Velvet.DraggableSettings.Id: System.String
+[Velvet] property Velvet.DraggableSettings.Movement: Velvet.DragMovement
+[Velvet] property Velvet.DraggableSettings.WhileDraggingClass: System.String?
+[Velvet] property Velvet.DroppableInfo.Data: System.Object?
+[Velvet] property Velvet.DroppableInfo.Element: UnityEngine.UIElements.VisualElement
+[Velvet] property Velvet.DroppableInfo.Id: System.String
+[Velvet] property Velvet.DroppableSettings.Data: System.Object?
+[Velvet] property Velvet.DroppableSettings.Disabled: System.Boolean
+[Velvet] property Velvet.DroppableSettings.Id: System.String
+[Velvet] property Velvet.DroppableSettings.WhileDragActiveClass: System.String?
+[Velvet] property Velvet.DroppableSettings.WhileOverClass: System.String?
+[Velvet] property Velvet.ElementNode.OnCreated: System.Action`1[UnityEngine.UIElements.VisualElement]?
+[Velvet] property Velvet.ElementNode.Styles: Velvet.StyleOverrides?
+[Velvet] property Velvet.ElementNode.WrapElement: System.Func`2[UnityEngine.UIElements.VisualElement, UnityEngine.UIElements.VisualElement]?
+[Velvet] property Velvet.ErrorInfo.ComponentStack: System.String
+[Velvet] property Velvet.Experimental.VBuilder.Class: System.String?
+[Velvet] property Velvet.Experimental.VBuilder.Key: System.String?
+[Velvet] property Velvet.Experimental.VBuilder.Name: System.String?
+[Velvet] property Velvet.Experimental.VButton.Enabled: System.Nullable`1[System.Boolean]
+[Velvet] property Velvet.Experimental.VButton.OnClick: System.Action?
+[Velvet] property Velvet.Experimental.VButton.Text: System.String?
+[Velvet] property Velvet.Experimental.VImage.Styles: Velvet.StyleOverrides?
+[Velvet] property Velvet.Experimental.VImage.WhileFocusClass: System.String?
+[Velvet] property Velvet.Experimental.VImage.WhileHoverClass: System.String?
+[Velvet] property Velvet.Experimental.VImage.WhileTapClass: System.String?
+[Velvet] property Velvet.Experimental.VLabel.Text: System.String?
+[Velvet] property Velvet.Experimental.VSlider.Enabled: System.Nullable`1[System.Boolean]
+[Velvet] property Velvet.Experimental.VSlider.HighValue: System.Nullable`1[System.Single]
+[Velvet] property Velvet.Experimental.VSlider.LowValue: System.Nullable`1[System.Single]
+[Velvet] property Velvet.Experimental.VSlider.OnChange: System.Action`1[System.Single]?
+[Velvet] property Velvet.Experimental.VSlider.Value: System.Nullable`1[System.Single]
+[Velvet] property Velvet.Experimental.VTextField.Enabled: System.Nullable`1[System.Boolean]
+[Velvet] property Velvet.Experimental.VTextField.IsDelayed: System.Nullable`1[System.Boolean]
+[Velvet] property Velvet.Experimental.VTextField.IsPasswordField: System.Nullable`1[System.Boolean]
+[Velvet] property Velvet.Experimental.VTextField.IsReadOnly: System.Nullable`1[System.Boolean]
+[Velvet] property Velvet.Experimental.VTextField.Label: System.String?
+[Velvet] property Velvet.Experimental.VTextField.MaxLength: System.Nullable`1[System.Int32]
+[Velvet] property Velvet.Experimental.VTextField.OnChange: System.Action`1[System.String]?
+[Velvet] property Velvet.Experimental.VTextField.Placeholder: System.String?
+[Velvet] property Velvet.Experimental.VTextField.Value: System.String?
+[Velvet] property Velvet.Experimental.VToggle.Enabled: System.Nullable`1[System.Boolean]
+[Velvet] property Velvet.Experimental.VToggle.Label: System.String?
+[Velvet] property Velvet.Experimental.VToggle.OnChange: System.Action`1[System.Boolean]?
+[Velvet] property Velvet.Experimental.VToggle.Value: System.Nullable`1[System.Boolean]
+[Velvet] property Velvet.FiberElementProps.Anchored: Velvet.AnchoredSettings?
+[Velvet] property Velvet.FiberElementProps.Aria: System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?
+[Velvet] property Velvet.FiberElementProps.Choices: Velvet.ChoicesSettings?
+[Velvet] property Velvet.FiberElementProps.Data: System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?
+[Velvet] property Velvet.FiberElementProps.DelegatesFocus: System.Nullable`1[System.Boolean]
+[Velvet] property Velvet.FiberElementProps.DndContext: Velvet.DndContextSettings?
+[Velvet] property Velvet.FiberElementProps.DragOverlay: Velvet.DragOverlaySettings?
+[Velvet] property Velvet.FiberElementProps.Draggable: Velvet.DraggableSettings?
+[Velvet] property Velvet.FiberElementProps.Droppable: Velvet.DroppableSettings?
+[Velvet] property Velvet.FiberElementProps.Enabled: System.Nullable`1[System.Boolean]
+[Velvet] property Velvet.FiberElementProps.FieldValue: System.Object?
+[Velvet] property Velvet.FiberElementProps.FocusScope: Velvet.FocusScopeSettings?
+[Velvet] property Velvet.FiberElementProps.Focusable: System.Nullable`1[System.Boolean]
+[Velvet] property Velvet.FiberElementProps.Particles: Velvet.ParticlesSettings?
+[Velvet] property Velvet.FiberElementProps.SceneView: Velvet.SceneViewSettings?
+[Velvet] property Velvet.FiberElementProps.ScrollView: Velvet.ScrollViewSettings?
+[Velvet] property Velvet.FiberElementProps.Slider: Velvet.SliderSettings?
+[Velvet] property Velvet.FiberElementProps.TabIndex: System.Nullable`1[System.Int32]
+[Velvet] property Velvet.FiberElementProps.Text: System.String?
+[Velvet] property Velvet.FiberElementProps.TextField: Velvet.TextFieldSettings?
+[Velvet] property Velvet.FiberElementProps.Tooltip: System.String?
+[Velvet] property Velvet.FiberElementProps.Visible: System.Nullable`1[System.Boolean]
+[Velvet] property Velvet.FiberEventBinding.EventId: System.String
+[Velvet] property Velvet.FiberStrictMode.Enabled: System.Boolean
+[Velvet] property Velvet.FocusBinding.EventId: System.String
+[Velvet] property Velvet.FocusBinding.Handler: UnityEngine.UIElements.EventCallback`1[UnityEngine.UIElements.FocusEvent]?
+[Velvet] property Velvet.FocusInBinding.EventId: System.String
+[Velvet] property Velvet.FocusInBinding.Handler: UnityEngine.UIElements.EventCallback`1[UnityEngine.UIElements.FocusInEvent]?
+[Velvet] property Velvet.FocusOutBinding.EventId: System.String
+[Velvet] property Velvet.FocusOutBinding.Handler: UnityEngine.UIElements.EventCallback`1[UnityEngine.UIElements.FocusOutEvent]?
+[Velvet] property Velvet.FocusRing.IsFocusVisible: System.Boolean
+[Velvet] property Velvet.FocusRing.IsFocused: System.Boolean
+[Velvet] property Velvet.FocusRing.Ref: System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]
+[Velvet] property Velvet.FocusScopeSettings.AutoFocus: System.Boolean
+[Velvet] property Velvet.FocusScopeSettings.Contain: System.Boolean
+[Velvet] property Velvet.FocusScopeSettings.RestoreFocus: System.Boolean
+[Velvet] property Velvet.FocusScopeSettings.SingleTabStop: System.Boolean
+[Velvet] property Velvet.FragmentNode.Children: Velvet.VNode?[]
+[Velvet] property Velvet.GeometryChangedBinding.EventId: System.String
+[Velvet] property Velvet.GeometryChangedBinding.Handler: UnityEngine.UIElements.EventCallback`1[UnityEngine.UIElements.GeometryChangedEvent]?
+[Velvet] property Velvet.ISearchParams.Count: System.Int32
+[Velvet] property Velvet.ISearchParams.Keys: System.Collections.Generic.IReadOnlyList`1[System.String]
+[Velvet] property Velvet.IStoreWriter`1[TState].Current: TState
+[Velvet] property Velvet.KeyDownBinding.EventId: System.String
+[Velvet] property Velvet.KeyDownBinding.Handler: UnityEngine.UIElements.EventCallback`1[UnityEngine.UIElements.KeyDownEvent]?
+[Velvet] property Velvet.KeyUpBinding.EventId: System.String
+[Velvet] property Velvet.KeyUpBinding.Handler: UnityEngine.UIElements.EventCallback`1[UnityEngine.UIElements.KeyUpEvent]?
+[Velvet] property Velvet.MemoNode.Dependencies: System.Object?[]?
+[Velvet] property Velvet.MemoNode.Factory: System.Func`1[Velvet.VNode]
+[Velvet] property Velvet.MotionNode.Animate: System.String?
+[Velvet] property Velvet.MotionNode.Exit: System.String?
+[Velvet] property Velvet.MotionNode.Initial: System.String?
+[Velvet] property Velvet.MotionNode.LayoutId: System.String?
+[Velvet] property Velvet.MotionNode.OnEnterComplete: System.Action?
+[Velvet] property Velvet.MotionNode.Transition: Velvet.StyleTransitionConfig?
+[Velvet] property Velvet.MotionNode.Variants: System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?
+[Velvet] property Velvet.MutableRef`1[T].Current: T
+[Velvet] property Velvet.MutationOptions.MutationFn: System.Func`2[System.Threading.CancellationToken, Velvet.VelvetTask]
+[Velvet] property Velvet.MutationOptions.OnError: System.Action`1[System.Exception]?
+[Velvet] property Velvet.MutationOptions.OnSuccess: System.Action?
+[Velvet] property Velvet.MutationOptions`1[TVariables].MutationFn: System.Func`3[TVariables, System.Threading.CancellationToken, Velvet.VelvetTask]
+[Velvet] property Velvet.MutationOptions`1[TVariables].OnError: System.Action`2[System.Exception, TVariables]?
+[Velvet] property Velvet.MutationOptions`1[TVariables].OnSuccess: System.Action`1[TVariables]?
+[Velvet] property Velvet.MutationOptions`2[TVariables, TData].MutationFn: System.Func`3[TVariables, System.Threading.CancellationToken, Velvet.VelvetTask`1[TData]]
+[Velvet] property Velvet.MutationOptions`2[TVariables, TData].OnError: System.Action`2[System.Exception, TVariables]?
+[Velvet] property Velvet.MutationOptions`2[TVariables, TData].OnSuccess: System.Action`2[TData, TVariables]?
+[Velvet] property Velvet.MutationResult`2[TVariables, TData].Data: TData?
+[Velvet] property Velvet.MutationResult`2[TVariables, TData].Error: System.Exception?
+[Velvet] property Velvet.MutationResult`2[TVariables, TData].IsError: System.Boolean
+[Velvet] property Velvet.MutationResult`2[TVariables, TData].IsIdle: System.Boolean
+[Velvet] property Velvet.MutationResult`2[TVariables, TData].IsPending: System.Boolean
+[Velvet] property Velvet.MutationResult`2[TVariables, TData].IsSuccess: System.Boolean
+[Velvet] property Velvet.MutationResult`2[TVariables, TData].Status: Velvet.MutationStatus
+[Velvet] property Velvet.MutationResult`2[TVariables, TData].Variables: TVariables?
+[Velvet] property Velvet.NavigationAttempt.CurrentPath: System.String
+[Velvet] property Velvet.NavigationAttempt.NavigationMode: Velvet.NavigationMode
+[Velvet] property Velvet.NavigationAttempt.NextPath: System.String
+[Velvet] property Velvet.NavigationState.Location: Velvet.RouterLocation?
+[Velvet] property Velvet.NavigationState.State: Velvet.NavigationLifecycle
+[Velvet] property Velvet.ParticlesSettings.Effect: UnityEngine.ParticleSystem?
+[Velvet] property Velvet.ParticlesSettings.PixelsPerUnit: System.Single
+[Velvet] property Velvet.ParticlesSettings.PlayOn: Velvet.PlayTrigger
+[Velvet] property Velvet.PointerDownBinding.EventId: System.String
+[Velvet] property Velvet.PointerDownBinding.Handler: UnityEngine.UIElements.EventCallback`1[UnityEngine.UIElements.PointerDownEvent]?
+[Velvet] property Velvet.PointerEnterBinding.EventId: System.String
+[Velvet] property Velvet.PointerEnterBinding.Handler: UnityEngine.UIElements.EventCallback`1[UnityEngine.UIElements.PointerEnterEvent]?
+[Velvet] property Velvet.PointerLeaveBinding.EventId: System.String
+[Velvet] property Velvet.PointerLeaveBinding.Handler: UnityEngine.UIElements.EventCallback`1[UnityEngine.UIElements.PointerLeaveEvent]?
+[Velvet] property Velvet.PointerMoveBinding.EventId: System.String
+[Velvet] property Velvet.PointerMoveBinding.Handler: UnityEngine.UIElements.EventCallback`1[UnityEngine.UIElements.PointerMoveEvent]?
+[Velvet] property Velvet.PointerUpBinding.EventId: System.String
+[Velvet] property Velvet.PointerUpBinding.Handler: UnityEngine.UIElements.EventCallback`1[UnityEngine.UIElements.PointerUpEvent]?
+[Velvet] property Velvet.PortalNode.Children: Velvet.VNode?[]
+[Velvet] property Velvet.PortalNode.FocusOrder: Velvet.PanelFocusOrder
+[Velvet] property Velvet.PortalNode.Layer: System.Nullable`1[Velvet.UILayer]
+[Velvet] property Velvet.PortalNode.TargetElement: UnityEngine.UIElements.VisualElement?
+[Velvet] property Velvet.PortalNode.TargetId: System.String?
+[Velvet] property Velvet.Ref`1[T].Current: T?
+[Velvet] property Velvet.Ref`1[T].SetElement: System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]
+[Velvet] property Velvet.RouteBlockerState.Attempt: Velvet.NavigationAttempt?
+[Velvet] property Velvet.RouteBlockerState.Status: Velvet.RouteBlockerStatus
+[Velvet] property Velvet.RouteDefinition.CaseSensitive: System.Boolean
+[Velvet] property Velvet.RouteDefinition.Children: Velvet.RouteDefinition[]?
+[Velvet] property Velvet.RouteDefinition.Element: Velvet.ComponentNode?
+[Velvet] property Velvet.RouteDefinition.ErrorElement: Velvet.ComponentNode?
+[Velvet] property Velvet.RouteDefinition.Guard: System.Func`2[Velvet.RouteLoaderContext, System.String]?
+[Velvet] property Velvet.RouteDefinition.Loader: System.Func`3[Velvet.RouteLoaderContext, System.Threading.CancellationToken, Velvet.VelvetTask`1[System.Object]]?
+[Velvet] property Velvet.RouteDefinition.LoaderMode: Velvet.LoaderMode
+[Velvet] property Velvet.RouteDefinition.Path: System.String?
+[Velvet] property Velvet.RouteDefinition.RedirectTo: System.String?
+[Velvet] property Velvet.RouteDefinition.ScopeId: System.String?
+[Velvet] property Velvet.RouteLoaderContext.Params: System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]
+[Velvet] property Velvet.RouteLoaderContext.Path: System.String?
+[Velvet] property Velvet.RouteMatch.MatchedPath: System.String?
+[Velvet] property Velvet.RouteMatch.Params: System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]
+[Velvet] property Velvet.RouteMatch.PathnameBase: System.String
+[Velvet] property Velvet.RouteMatch.Route: Velvet.RouteDefinition?
+[Velvet] property Velvet.RouteMatch.RouteId: System.String?
+[Velvet] property Velvet.Router.CanGoBack: System.Boolean
+[Velvet] property Velvet.Router.CanGoForward: System.Boolean
+[Velvet] property Velvet.Router.Current: Velvet.Router?
+[Velvet] property Velvet.Router.CurrentLoaderData: System.Collections.Generic.IReadOnlyDictionary`2[System.String?, System.Object]
+[Velvet] property Velvet.Router.CurrentLoaderErrors: System.Collections.Generic.IReadOnlyDictionary`2[System.String?, System.Exception]
+[Velvet] property Velvet.Router.CurrentLocation: Velvet.RouterLocation?
+[Velvet] property Velvet.Router.RouteBlockerManager: Velvet.RouteBlockerManager
+[Velvet] property Velvet.Router.Status: Velvet.RouterStatus
+[Velvet] property Velvet.RouterLocation.Matches: System.Collections.Generic.IReadOnlyList`1[Velvet.RouteMatch]?
+[Velvet] property Velvet.RouterLocation.Params: System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]
+[Velvet] property Velvet.RouterLocation.Path: System.String?
+[Velvet] property Velvet.SceneViewSettings.Camera: UnityEngine.Camera?
+[Velvet] property Velvet.SceneViewSettings.ResolutionScale: System.Single
+[Velvet] property Velvet.ScrollViewSettings.HorizontalScrollerVisibility: System.Nullable`1[UnityEngine.UIElements.ScrollerVisibility]
+[Velvet] property Velvet.ScrollViewSettings.TouchScrollBehavior: System.Nullable`1[UnityEngine.UIElements.ScrollView+TouchScrollBehavior]
+[Velvet] property Velvet.ScrollViewSettings.VerticalScrollerVisibility: System.Nullable`1[UnityEngine.UIElements.ScrollerVisibility]
+[Velvet] property Velvet.SearchParams.Count: System.Int32
+[Velvet] property Velvet.SearchParams.Keys: System.Collections.Generic.IReadOnlyList`1[System.String]
+[Velvet] property Velvet.SliderSettings.HighValue: System.Nullable`1[System.Single]
+[Velvet] property Velvet.SliderSettings.LowValue: System.Nullable`1[System.Single]
+[Velvet] property Velvet.StoreLogger.Default: Velvet.StoreLogger
+[Velvet] property Velvet.Store`1[TState].Current: TState
+[Velvet] property Velvet.Store`1[TState].InitialState: TState
+[Velvet] property Velvet.StyleOverrides.BackgroundColor: System.Nullable`1[UnityEngine.UIElements.StyleColor]
+[Velvet] property Velvet.StyleOverrides.BackgroundImage: System.Nullable`1[UnityEngine.UIElements.StyleBackground]
+[Velvet] property Velvet.StyleOverrides.Color: System.Nullable`1[UnityEngine.UIElements.StyleColor]
+[Velvet] property Velvet.StylePropertyTransition.DelaySec: System.Nullable`1[System.Single]
+[Velvet] property Velvet.StylePropertyTransition.DurationSec: System.Nullable`1[System.Single]
+[Velvet] property Velvet.StylePropertyTransition.Easing: System.Nullable`1[UnityEngine.UIElements.EasingMode]
+[Velvet] property Velvet.StylePropertyTransition.Property: System.String
+[Velvet] property Velvet.StyleRecipe+CompoundVariant.ClassName: System.String
+[Velvet] property Velvet.StyleRecipe+CompoundVariant.Conditions: System.Collections.Generic.Dictionary`2[System.String, System.String]
+[Velvet] property Velvet.StyleSlotClasses.Item[System.String]: System.String
+[Velvet] property Velvet.StyleSlotRecipe+SlotCompoundVariant.Conditions: System.Collections.Generic.Dictionary`2[System.String, System.String]
+[Velvet] property Velvet.StyleSlotRecipe+SlotCompoundVariant.SlotClasses: System.Collections.Generic.Dictionary`2[System.String, System.String]
+[Velvet] property Velvet.StyleTransitionConfig.BezierX1: System.Single
+[Velvet] property Velvet.StyleTransitionConfig.BezierX2: System.Single
+[Velvet] property Velvet.StyleTransitionConfig.BezierY1: System.Single
+[Velvet] property Velvet.StyleTransitionConfig.BezierY2: System.Single
+[Velvet] property Velvet.StyleTransitionConfig.Damping: System.Single
+[Velvet] property Velvet.StyleTransitionConfig.DelayChildrenSec: System.Single
+[Velvet] property Velvet.StyleTransitionConfig.DelaySec: System.Single
+[Velvet] property Velvet.StyleTransitionConfig.DurationSec: System.Single
+[Velvet] property Velvet.StyleTransitionConfig.Easing: UnityEngine.UIElements.EasingMode
+[Velvet] property Velvet.StyleTransitionConfig.ExitEasing: System.Nullable`1[UnityEngine.UIElements.EasingMode]
+[Velvet] property Velvet.StyleTransitionConfig.Mass: System.Single
+[Velvet] property Velvet.StyleTransitionConfig.PropertyOverrides: System.Collections.Generic.IReadOnlyList`1[Velvet.StylePropertyTransition]?
+[Velvet] property Velvet.StyleTransitionConfig.StaggerChildrenSec: System.Single
+[Velvet] property Velvet.StyleTransitionConfig.Stiffness: System.Single
+[Velvet] property Velvet.StyleTransitionConfig.Type: Velvet.TransitionType
+[Velvet] property Velvet.StyleTransitionConfig.When: Velvet.TransitionWhen
+[Velvet] property Velvet.SuspenseNode.Children: Velvet.VNode?[]
+[Velvet] property Velvet.SuspenseNode.Fallback: Velvet.VNode
+[Velvet] property Velvet.TextFieldSettings.IsDelayed: System.Nullable`1[System.Boolean]
+[Velvet] property Velvet.TextFieldSettings.IsPassword: System.Nullable`1[System.Boolean]
+[Velvet] property Velvet.TextFieldSettings.IsReadOnly: System.Nullable`1[System.Boolean]
+[Velvet] property Velvet.TextFieldSettings.MaxLength: System.Nullable`1[System.Int32]
+[Velvet] property Velvet.TextFieldSettings.Placeholder: System.String?
+[Velvet] property Velvet.TextNode.Text: System.String
+[Velvet] property Velvet.VNode.Key: System.String?
+[Velvet] property Velvet.VelvetFonts.DefaultFamily: System.String?
+[Velvet] property Velvet.VelvetPreviewAttribute.Group: System.String?
+[Velvet] property Velvet.VelvetPreviewAttribute.Height: System.Int32
+[Velvet] property Velvet.VelvetPreviewAttribute.Name: System.String?
+[Velvet] property Velvet.VelvetPreviewAttribute.Width: System.Int32
+[Velvet] property Velvet.VelvetPreviewHost.MountError: System.Exception?
+[Velvet] property Velvet.VelvetPreviewHost.Story: Velvet.VelvetPreviewStory?
+[Velvet] property Velvet.VelvetPreviewStory.ArgsType: System.Type?
+[Velvet] property Velvet.VelvetPreviewStory.Assembly: System.Reflection.Assembly?
+[Velvet] property Velvet.VelvetPreviewStory.Group: System.String
+[Velvet] property Velvet.VelvetPreviewStory.Height: System.Int32
+[Velvet] property Velvet.VelvetPreviewStory.Id: System.String
+[Velvet] property Velvet.VelvetPreviewStory.Name: System.String
+[Velvet] property Velvet.VelvetPreviewStory.Width: System.Int32
+[Velvet] property Velvet.VelvetStyleHints.PreviewStyleSheet: UnityEngine.UIElements.StyleSheet?
+[Velvet] property Velvet.VelvetStyleUtilities.Sheet: UnityEngine.UIElements.StyleSheet
+[Velvet] property Velvet.VelvetTask+Awaiter.IsCompleted: System.Boolean
+[Velvet] property Velvet.VelvetTask.CompletedTask: Velvet.VelvetTask
+[Velvet] property Velvet.VelvetTask.Status: Velvet.VelvetTaskStatus
+[Velvet] property Velvet.VelvetTaskCompletionSource.Task: Velvet.VelvetTask
+[Velvet] property Velvet.VelvetTaskCompletionSource`1[T].Task: Velvet.VelvetTask`1[T]
+[Velvet] property Velvet.VelvetTaskMethodBuilder.Task: Velvet.VelvetTask
+[Velvet] property Velvet.VelvetTaskMethodBuilder`1[T].Task: Velvet.VelvetTask`1[T]
+[Velvet] property Velvet.VelvetTask`1[T].IsCompleted: System.Boolean
+[Velvet] property Velvet.VelvetTask`1[T].Status: Velvet.VelvetTaskStatus
+[Velvet] property Velvet.VelvetTheme.IsDark: System.Boolean
+[Velvet] property Velvet.VirtualListNode.ClassNames: System.String[]
+[Velvet] property Velvet.VirtualListNode.ItemHeight: System.Single
+[Velvet] property Velvet.VirtualListNode.Items: System.Collections.Generic.IReadOnlyList`1[System.Object?]
+[Velvet] property Velvet.VirtualListNode.KeySelector: System.Func`2[System.Object?, System.String]
+[Velvet] property Velvet.VirtualListNode.Name: System.String?
+[Velvet] property Velvet.VirtualListNode.Overscan: System.Int32
+[Velvet] property Velvet.VirtualListNode.Renderer: System.Func`2[System.Object?, Velvet.VNode]
+[Velvet] property Velvet.WheelBinding.EventId: System.String
+[Velvet] property Velvet.WheelBinding.Handler: UnityEngine.UIElements.EventCallback`1[UnityEngine.UIElements.WheelEvent]?
+[Velvet] property Velvet.WorldSpaceNode.Children: Velvet.VNode?[]
+[Velvet] property Velvet.WorldSpaceNode.FocusOrder: Velvet.PanelFocusOrder
+[Velvet] property Velvet.WorldSpaceNode.PanelSize: UnityEngine.Vector2
+[Velvet] property Velvet.WorldSpaceNode.Position: UnityEngine.Vector3
+[Velvet] property Velvet.WorldSpaceNode.Rotation: UnityEngine.Quaternion
+[Velvet] property protected Velvet.Store`1[TState].CancellationToken: System.Threading.CancellationToken
+[Velvet] property protected Velvet.Store`1[TState].Logger: Velvet.StoreLogger
+[Velvet] type System.Runtime.CompilerServices.ModuleInitializerAttribute
+[Velvet] type Velvet.AnchoredSettings
+[Velvet] type Velvet.AnimatePresenceMode
+[Velvet] type Velvet.AnimatePresenceNode
+[Velvet] type Velvet.AnimationSequenceControls
+[Velvet] type Velvet.AnimationSequenceState
+[Velvet] type Velvet.AnimationSequenceStep
+[Velvet] type Velvet.BaseElementNode
+[Velvet] type Velvet.BlurBinding
+[Velvet] type Velvet.ChangeEventBinding`1[T]
+[Velvet] type Velvet.ChoicesSettings
+[Velvet] type Velvet.ClickedBinding
+[Velvet] type Velvet.ComponentAttribute
+[Velvet] type Velvet.ComponentContext`1[T]
+[Velvet] type Velvet.ComponentFiber
+[Velvet] type Velvet.ComponentMethodRegistry
+[Velvet] type Velvet.ComponentNode
+[Velvet] type Velvet.ContextProviderNode
+[Velvet] type Velvet.ContextProviderNode`1[T]
+[Velvet] type Velvet.DevTools.VelvetDevToolsRegistry
+[Velvet] type Velvet.DevTools.VelvetDevToolsRegistry+ComponentEntry
+[Velvet] type Velvet.DndCollisionDetection
+[Velvet] type Velvet.DndCollisionQuery
+[Velvet] type Velvet.DndCollisions
+[Velvet] type Velvet.DndContextSettings
+[Velvet] type Velvet.DndDroppableRect
+[Velvet] type Velvet.DragActivation
+[Velvet] type Velvet.DragCancelArgs
+[Velvet] type Velvet.DragEndArgs
+[Velvet] type Velvet.DragMovement
+[Velvet] type Velvet.DragOverArgs
+[Velvet] type Velvet.DragOverlaySettings
+[Velvet] type Velvet.DragStartArgs
+[Velvet] type Velvet.DraggableInfo
+[Velvet] type Velvet.DraggableSettings
+[Velvet] type Velvet.DroppableInfo
+[Velvet] type Velvet.DroppableSettings
+[Velvet] type Velvet.ElementNode
+[Velvet] type Velvet.ErrorInfo
+[Velvet] type Velvet.Experimental.VBuilder
+[Velvet] type Velvet.Experimental.VButton
+[Velvet] type Velvet.Experimental.VCustom`1[T]
+[Velvet] type Velvet.Experimental.VDiv
+[Velvet] type Velvet.Experimental.VImage
+[Velvet] type Velvet.Experimental.VLabel
+[Velvet] type Velvet.Experimental.VScrollView
+[Velvet] type Velvet.Experimental.VSlider
+[Velvet] type Velvet.Experimental.VTextField
+[Velvet] type Velvet.Experimental.VToggle
+[Velvet] type Velvet.FiberElementProps
+[Velvet] type Velvet.FiberEventBinding
+[Velvet] type Velvet.FiberPortalRegistry
+[Velvet] type Velvet.FiberStrictMode
+[Velvet] type Velvet.FiberUpdatePriority
+[Velvet] type Velvet.FocusBinding
+[Velvet] type Velvet.FocusInBinding
+[Velvet] type Velvet.FocusOutBinding
+[Velvet] type Velvet.FocusRing
+[Velvet] type Velvet.FocusScopeSettings
+[Velvet] type Velvet.FontIntent
+[Velvet] type Velvet.FragmentNode
+[Velvet] type Velvet.GeometryChangedBinding
+[Velvet] type Velvet.HookServiceContext
+[Velvet] type Velvet.Hooks
+[Velvet] type Velvet.IHookServiceResolver
+[Velvet] type Velvet.IRouteScope
+[Velvet] type Velvet.IRouteScopeFactory
+[Velvet] type Velvet.ISearchParams
+[Velvet] type Velvet.IStoreWriter`1[TState]
+[Velvet] type Velvet.KeyDownBinding
+[Velvet] type Velvet.KeyUpBinding
+[Velvet] type Velvet.LoaderMode
+[Velvet] type Velvet.MemoNode
+[Velvet] type Velvet.MemoizeMethodAttribute
+[Velvet] type Velvet.MotionNode
+[Velvet] type Velvet.MountedTree
+[Velvet] type Velvet.MutableRef`1[T]
+[Velvet] type Velvet.MutationOptions
+[Velvet] type Velvet.MutationOptions`1[TVariables]
+[Velvet] type Velvet.MutationOptions`2[TVariables, TData]
+[Velvet] type Velvet.MutationResultExtensions
+[Velvet] type Velvet.MutationResult`2[TVariables, TData]
+[Velvet] type Velvet.MutationStatus
+[Velvet] type Velvet.NavigationAttempt
+[Velvet] type Velvet.NavigationLifecycle
+[Velvet] type Velvet.NavigationMode
+[Velvet] type Velvet.NavigationResult
+[Velvet] type Velvet.NavigationState
+[Velvet] type Velvet.NullStoreLogger
+[Velvet] type Velvet.OutletNode
+[Velvet] type Velvet.PanelFocusOrder
+[Velvet] type Velvet.ParticlesElement
+[Velvet] type Velvet.ParticlesSettings
+[Velvet] type Velvet.PlayTrigger
+[Velvet] type Velvet.PointerDownBinding
+[Velvet] type Velvet.PointerEnterBinding
+[Velvet] type Velvet.PointerLeaveBinding
+[Velvet] type Velvet.PointerMoveBinding
+[Velvet] type Velvet.PointerUpBinding
+[Velvet] type Velvet.PortalNode
+[Velvet] type Velvet.PureAttribute
+[Velvet] type Velvet.Ref`1[T]
+[Velvet] type Velvet.ResolvedFont
+[Velvet] type Velvet.RouteBlockerManager
+[Velvet] type Velvet.RouteBlockerState
+[Velvet] type Velvet.RouteBlockerStatus
+[Velvet] type Velvet.RouteDefinition
+[Velvet] type Velvet.RouteLoaderContext
+[Velvet] type Velvet.RouteMatch
+[Velvet] type Velvet.RouteTree
+[Velvet] type Velvet.Router
+[Velvet] type Velvet.RouterContext
+[Velvet] type Velvet.RouterLocation
+[Velvet] type Velvet.RouterStatus
+[Velvet] type Velvet.SceneViewElement
+[Velvet] type Velvet.SceneViewSettings
+[Velvet] type Velvet.ScrollViewSettings
+[Velvet] type Velvet.SearchParams
+[Velvet] type Velvet.SearchParamsSetter
+[Velvet] type Velvet.SliderSettings
+[Velvet] type Velvet.StateUpdater`1[T]
+[Velvet] type Velvet.StoreLogger
+[Velvet] type Velvet.StoreShallowEqualityComparer
+[Velvet] type Velvet.Store`1[TState]
+[Velvet] type Velvet.StyleBackgroundImageResolver
+[Velvet] type Velvet.StyleClassNames
+[Velvet] type Velvet.StyleFontClass
+[Velvet] type Velvet.StyleFontResolver
+[Velvet] type Velvet.StyleOverrides
+[Velvet] type Velvet.StylePropertyTransition
+[Velvet] type Velvet.StyleRecipe
+[Velvet] type Velvet.StyleRecipe+CompoundVariant
+[Velvet] type Velvet.StyleSlotClasses
+[Velvet] type Velvet.StyleSlotRecipe
+[Velvet] type Velvet.StyleSlotRecipe+SlotCompoundVariant
+[Velvet] type Velvet.StyleTransition
+[Velvet] type Velvet.StyleTransitionConfig
+[Velvet] type Velvet.StyleVariantClass
+[Velvet] type Velvet.StyleVariantKind
+[Velvet] type Velvet.SuspenseNode
+[Velvet] type Velvet.TextFieldSettings
+[Velvet] type Velvet.TextNode
+[Velvet] type Velvet.TransitionStarter
+[Velvet] type Velvet.TransitionType
+[Velvet] type Velvet.TransitionWhen
+[Velvet] type Velvet.UILayer
+[Velvet] type Velvet.Unit
+[Velvet] type Velvet.V
+[Velvet] type Velvet.VNode
+[Velvet] type Velvet.VelvetFilters
+[Velvet] type Velvet.VelvetFontFamily
+[Velvet] type Velvet.VelvetFontWeight
+[Velvet] type Velvet.VelvetFontWeightEntry
+[Velvet] type Velvet.VelvetFonts
+[Velvet] type Velvet.VelvetPreviewAttribute
+[Velvet] type Velvet.VelvetPreviewHost
+[Velvet] type Velvet.VelvetPreviewRegistry
+[Velvet] type Velvet.VelvetPreviewSetupAttribute
+[Velvet] type Velvet.VelvetPreviewStory
+[Velvet] type Velvet.VelvetResponsive
+[Velvet] type Velvet.VelvetRuntimeAssets
+[Velvet] type Velvet.VelvetStyleHints
+[Velvet] type Velvet.VelvetStyleUtilities
+[Velvet] type Velvet.VelvetTask
+[Velvet] type Velvet.VelvetTask+Awaiter
+[Velvet] type Velvet.VelvetTaskCompletionSource
+[Velvet] type Velvet.VelvetTaskCompletionSource`1[T]
+[Velvet] type Velvet.VelvetTaskExtensions
+[Velvet] type Velvet.VelvetTaskMethodBuilder
+[Velvet] type Velvet.VelvetTaskMethodBuilder`1[T]
+[Velvet] type Velvet.VelvetTaskStatus
+[Velvet] type Velvet.VelvetTaskStatusExtensions
+[Velvet] type Velvet.VelvetTask`1[T]
+[Velvet] type Velvet.VelvetTask`1[T]
+[Velvet] type Velvet.VelvetTheme
+[Velvet] type Velvet.VirtualListNode
+[Velvet] type Velvet.WheelBinding
+[Velvet] type Velvet.WorldSpaceNode

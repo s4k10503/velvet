@@ -17,11 +17,23 @@ namespace Velvet
     }
 
     // The synthetic-settle surface every element-local variant consumer implements, so the reconciler
-    // sweeps (drag release, focus-loss fallback) enumerate ONE shape instead of per-type calls.
+    // sweeps (drag release, focus-loss fallback, controlled value write) enumerate ONE shape instead of
+    // per-type calls.
     internal interface IVariantSettleTarget
     {
         void SettleRelease();
         void SettleFocusLoss();
+        void SettleChecked(bool value);
+    }
+
+    // The synthetic-settle surface a relational (group-/peer-) variant consumer implements. Kept apart from
+    // IVariantSettleTarget because the two are keyed opposite ways: an element-local consumer is registered
+    // against the element that was written, while a relational one is registered against the element that
+    // CONSUMES the payload and only knows its source from the inside. So the source travels as an argument
+    // and each consumer answers for itself.
+    internal interface IRelationalSettleTarget
+    {
+        void SettleCheckedFromSource(VisualElement source, bool value);
     }
 
     // Enumerates every registered element-local variant consumer for one element through the shared
@@ -38,15 +50,47 @@ namespace Velvet
             {
                 action(variant);
             }
-            if (ctx.StackedVariantManipulators.Count > 0)
+            foreach (var m in SnapshotStacked(ctx))
             {
-                foreach (var kv in ctx.StackedVariantManipulators)
+                if (m.target == element)
                 {
-                    if (kv.Key.target == element)
-                    {
-                        action(kv.Value);
-                    }
+                    action(m);
                 }
+            }
+        }
+
+        // The stacked registry is copied before either sweep walks it, never enumerated live: settling a
+        // consumer applies its payload, and a payload that is itself a variant re-enters
+        // ReconcilerContext.GateStackedVariant, which adds to or removes from this very dictionary. Walking it
+        // live threw "Collection was modified" out of the reconcile; StackedVariantEdgeTests pins the case.
+        // Selecting by the manipulator's own target rather than by its key's is the same set — the gate adds
+        // each manipulator to the element its key names.
+        private static StyleStackedVariantManipulator[] SnapshotStacked(ReconcilerContext ctx)
+        {
+            var count = ctx.StackedVariantManipulators.Count;
+            if (count == 0)
+            {
+                return Array.Empty<StyleStackedVariantManipulator>();
+            }
+            var snapshot = new StyleStackedVariantManipulator[count];
+            ctx.StackedVariantManipulators.Values.CopyTo(snapshot, 0);
+            return snapshot;
+        }
+
+        // Offers a checked settle raised on source to every relational consumer in the context. Both registries
+        // are keyed by the consuming element, so there is nothing to look the source up in; each consumer
+        // compares it against the source it hooked, which costs one reference comparison per binding and walks
+        // no part of the tree. The caller gates this on a bool control whose controlled value actually changed,
+        // which is what keeps the scan off the ordinary render path.
+        public static void SettleCheckedFromSource(VisualElement source, ReconcilerContext ctx, bool value)
+        {
+            foreach (var kv in ctx.RelationalVariantManipulators)
+            {
+                kv.Value.SettleCheckedFromSource(source, value);
+            }
+            foreach (var m in SnapshotStacked(ctx))
+            {
+                m.SettleCheckedFromSource(source, value);
             }
         }
     }
@@ -76,9 +120,11 @@ namespace Velvet
 
         // Registers the detection callbacks on target. When registerChecked is false the ChangeEvent path is
         // skipped entirely (a consumer that does not support a checked signal — e.g. the stacked inner gate —
-        // keeps the original registration footprint). When seedChecked is true and the target is an
-        // already-checked Toggle, the initial Checked edge is emitted here (ChangeEvent fires only on change,
-        // so a mounted-true value must be read at hook time).
+        // keeps the original registration footprint). When seedChecked is true and the target reports itself
+        // already checked, the initial Checked edge is emitted here (ChangeEvent fires only on change, so a
+        // mounted-true value must be read at hook time). The read admits every control that reports a bool,
+        // not only Toggle: the registration above is untyped, so a narrower read would disagree with the
+        // change path about which controls drive checked: — CheckedVariantBehaviorTests pins the case.
         public void Hook(VisualElement target, bool seedChecked, bool registerChecked)
         {
             _target = target;
@@ -96,7 +142,7 @@ namespace Velvet
             if (registerChecked)
             {
                 target.RegisterCallback<ChangeEvent<bool>>(OnCheckedChange);
-                if (seedChecked && target is Toggle toggle && toggle.value)
+                if (seedChecked && target is INotifyValueChanged<bool> { value: true })
                 {
                     _emit(VariantSignal.Checked, true);
                 }
@@ -171,6 +217,17 @@ namespace Velvet
             _emit(VariantSignal.Active, false);
         }
 
+        // Observes a synthetic checked change, raised by the writer of a value the control takes without
+        // notification (see FiberNodePatcher.RaiseCheckedSignal). Gated on the registration choice so a
+        // consumer that opted out of the checked path never sees a Checked edge.
+        public void SettleChecked(bool value)
+        {
+            if (_target != null && _registerChecked)
+            {
+                _emit(VariantSignal.Checked, value);
+            }
+        }
+
         // Observes a synthetic focus loss: a containment snap-back reverts a landing whose queued focus
         // events can interleave such that the reverted element never receives a terminating Blur — its
         // focus / focus-visible payloads then stick lit on an unfocused element. Consumers' own
@@ -204,11 +261,8 @@ namespace Velvet
         {
             // Element-local: only the target's OWN checked state drives checked:. A ChangeEvent bubbling up
             // from a descendant control is ignored, mirroring CSS :checked on the input itself.
-            // Limitation: this tracks user-driven changes and the attach-time initial read. A purely
-            // programmatic change via SetValueWithoutNotify (how a fully-controlled FieldValue prop is
-            // applied) dispatches no ChangeEvent, so checked: does not re-sync for that path — UI Toolkit
-            // exposes no signal for it. User clicks DO fire ChangeEvent before the controlled re-render, so
-            // the common controlled-toggle case still works.
+            // This is the user-driven half; a value written by the prop path raises no ChangeEvent and
+            // arrives through SettleChecked instead.
             if (!ReferenceEquals(evt.target, _target))
             {
                 return;
@@ -284,8 +338,9 @@ namespace Velvet
         public RelationalVariantSignals(Action<RelationalVariantSignal, bool> emit) => _emit = emit;
 
         // Registers the detection callbacks on the source. registerChecked enables the peer-checked path
-        // (ChangeEvent + the initial already-checked Toggle read via seedChecked, since ChangeEvent fires only
-        // on change); group bindings and the stacked relational inner pass false.
+        // (ChangeEvent + the initial already-checked read via seedChecked, since ChangeEvent fires only on
+        // change); group bindings pass false. The seed reads any control reporting a bool, for the reason
+        // ElementLocalVariantSignals.Hook gives.
         public void Hook(VisualElement source, bool seedChecked, bool registerChecked)
         {
             _source = source;
@@ -301,7 +356,7 @@ namespace Velvet
             if (registerChecked)
             {
                 source.RegisterCallback<ChangeEvent<bool>>(OnChange);
-                if (seedChecked && source is Toggle toggle && toggle.value)
+                if (seedChecked && source is INotifyValueChanged<bool> { value: true })
                 {
                     _emit(RelationalVariantSignal.Checked, true);
                 }
@@ -371,6 +426,20 @@ namespace Velvet
                 return;
             }
             _emit(RelationalVariantSignal.Checked, evt.newValue);
+        }
+
+        // Observes a synthetic checked change on a source, raised by the writer of a value the control takes
+        // without notification (the element-local counterpart is ElementLocalVariantSignals.SettleChecked).
+        // The settle is offered to every relational consumer rather than to the ones registered against the
+        // written element, because no source-to-consumer index exists — so the element it was raised on is
+        // passed in and compared against the one THIS binding hooked, which is the same own-source filter
+        // OnChange applies to a bubbling event.
+        public void SettleChecked(VisualElement source, bool value)
+        {
+            if (_registerChecked && ReferenceEquals(_source, source))
+            {
+                _emit(RelationalVariantSignal.Checked, value);
+            }
         }
     }
 }

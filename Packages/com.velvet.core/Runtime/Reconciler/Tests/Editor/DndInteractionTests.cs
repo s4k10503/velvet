@@ -31,6 +31,7 @@ namespace Velvet.Tests
         private static int s_cancelCount;
         private static StateUpdater<bool> s_setShowSource;
         private static StateUpdater<bool> s_setAltDraggingClass;
+        private static StateUpdater<bool> s_setDeclaringFocusable;
 
         [SetUp]
         public void SetUp()
@@ -42,6 +43,7 @@ namespace Velvet.Tests
             s_cancelCount = 0;
             s_setShowSource = default;
             s_setAltDraggingClass = default;
+            s_setDeclaringFocusable = default;
         }
 
         [TearDown]
@@ -425,6 +427,74 @@ namespace Velvet.Tests
             Assert.That(
                 (ReferenceEquals(_host.Panel.focusController.focusedElement, item), item.focusable),
                 Is.EqualTo((false, false)));
+        }
+
+        [Component]
+        private static VNode DeclaredFocusableMidDragScene()
+        {
+            var (declaring, setDeclaring) = Hooks.UseState(false);
+            s_setDeclaringFocusable = setDeclaring;
+            return V.DndContext(
+                className: "w-[300px] h-[300px]",
+                children: new VNode[]
+                {
+                    V.Draggable("item", key: "item", name: "item",
+                        props: declaring ? new FiberElementProps { Focusable = true } : null,
+                        className: "absolute left-[0px] top-[0px] w-[50px] h-[50px]"),
+                });
+        }
+
+        [Test]
+        public void Given_AFocusablePropFirstDeclaredWhileTheAnchorHoldsIt_When_ThePropIsDropped_Then_TheSourceIsNotLeftFocusable()
+        {
+            // Arrange — with nothing focused, activation makes the source focusable transiently so the Escape
+            // KeyDownEvent is deliverable. That write is the session's, not the element's own value, and a
+            // Focusable prop declared for the first time while it stands must not be able to capture it: a
+            // later render dropping the prop restores what the element carried before Velvet touched the flag.
+            Mount(DeclaredFocusableMidDragScene);
+            var item = Q("item");
+            SendPointerDown(item, new Vector2(10, 10));
+            SendPointerMove(item, new Vector2(30, 10));
+            var whileAnchored = item.focusable;
+
+            // Act — declare the prop under the anchor, end the drag, then stop declaring it.
+            s_setDeclaringFocusable.Invoke(true);
+            _mounted.FlushStateForTest();
+            SendPointerUp(item, new Vector2(30, 10));
+            s_setDeclaringFocusable.Invoke(false);
+            _mounted.FlushStateForTest();
+
+            // Assert — the first term keeps the anchor load-bearing: without its transient write the
+            // declaration would have nothing to capture and the case would pin nothing.
+            Assert.That((whileAnchored, item.focusable), Is.EqualTo((true, false)));
+        }
+
+        [Test]
+        public void Given_AFocusablePropDroppedWhileTheAnchorStillNeedsIt_When_TheDragThenEnds_Then_TheAnchorReclaimsTheFlagAndStillGivesItUp()
+        {
+            // Arrange — with nothing focused, activation makes the source focusable transiently so the Escape
+            // KeyDownEvent is deliverable, then a render declares the prop and hands it the flag.
+            Mount(DeclaredFocusableMidDragScene);
+            var item = Q("item");
+            SendPointerDown(item, new Vector2(10, 10));
+            SendPointerMove(item, new Vector2(30, 10));
+            var whileAnchored = item.focusable;
+            s_setDeclaringFocusable.Invoke(true);
+            _mounted.FlushStateForTest();
+
+            // Act — the declaration goes away mid-drag, which restores the element's own default over the
+            // anchor's write, and the drag then ends.
+            s_setDeclaringFocusable.Invoke(false);
+            _mounted.FlushStateForTest();
+            var afterTheDeclarationWent = item.focusable;
+            SendPointerUp(item, new Vector2(30, 10));
+
+            // Assert — the anchor takes the flag back for the rest of the session and hands it back at close.
+            // The first term keeps the anchor load-bearing: with nothing transient written there would be
+            // nothing to reclaim and the case would pin nothing.
+            Assert.That(
+                (whileAnchored, afterTheDeclarationWent, item.focusable),
+                Is.EqualTo((true, true, false)));
         }
 
         [Test]

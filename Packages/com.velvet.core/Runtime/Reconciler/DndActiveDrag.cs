@@ -380,6 +380,10 @@ namespace Velvet
             {
                 if (!_source.focusable)
                 {
+                    // Ordering: seed before the write, per FiberPropApplier.RecordFocusableDefault. A Focusable
+                    // prop first declared while this anchor stands would otherwise take the anchor's value as
+                    // the source's own, and dropping that prop later would hand it back.
+                    FiberPropApplier.RecordFocusableDefault(_source);
                     _source.focusable = true;
                     _madeSourceFocusable = true;
                 }
@@ -693,12 +697,31 @@ namespace Velvet
 
         // A render that DECLARES Focusable on the source takes ownership of the flag mid-session: the
         // anchor's transient flip must not be "restored" over a value the props now own (the prop diff
-        // would never re-apply it).
-        internal void OnSourceFocusableDeclared(VisualElement element)
+        // would never re-apply it). Dropping the declaration hands ownership back — the applier has just
+        // put the element's own default over the anchor's flip, so the anchor re-takes the focusability the
+        // session still needs for Escape delivery, and owes the restore again exactly when it wrote for it.
+        internal void OnSourceFocusableDeclarationChanged(VisualElement element, bool declared)
         {
-            if (ReferenceEquals(element, _source))
+            if (!ReferenceEquals(element, _source))
+            {
+                return;
+            }
+
+            if (declared)
             {
                 _madeSourceFocusable = false;
+                return;
+            }
+
+            if (!_anchoredFocus)
+            {
+                return;
+            }
+
+            _madeSourceFocusable = !_source.focusable;
+            if (_madeSourceFocusable)
+            {
+                _source.focusable = true;
             }
         }
 

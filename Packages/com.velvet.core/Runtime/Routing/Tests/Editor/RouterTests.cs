@@ -18,7 +18,9 @@ namespace Velvet.Tests
     /// <item>An Await loader's result is committed before navigation completes and is keyed by
     /// <see cref="RouteMatch.RouteId"/>.</item>
     /// <item>Each successful navigation pushes a history entry; GoBack/GoForward restore the previous/next
-    /// location, and stepping past either end returns <see cref="NavigationResult.Cancelled"/>.</item>
+    /// location, and stepping past either end returns <see cref="NavigationResult.Cancelled"/> — including a
+    /// Back or Forward asked for directly through <c>NavigateAsync</c>, which those two never reach, and with
+    /// the same absence of any effect on <see cref="RouterStatus"/>.</item>
     /// <item>The history stack is FIFO-capped: pushing beyond the cap evicts the oldest entry while the
     /// Back/Forward index keeps pointing at the same locations.</item>
     /// <item>GoBack/GoForward serve loader data and loader errors from the history cache without re-running the
@@ -26,7 +28,13 @@ namespace Velvet.Tests
     /// <item>A Suspend loader commits navigation immediately and resolves later; on resolution or failure the
     /// router writes the post-resolution value into the current history entry and re-emits the location with a
     /// fresh identity, but a resolution arriving after the user navigated away does not churn the current
-    /// location.</item>
+    /// location — including when the exit was a Back/Forward served from the cache, which commits without
+    /// running the loaders.</item>
+    /// <item>A Suspend loader whose task is already complete resolves before its own navigation commits: its
+    /// result still reaches that navigation's loader data, and it is not recorded against the location being
+    /// navigated away from.</item>
+    /// <item><c>CurrentLoaderData</c> is a snapshot rather than a live view, so a Suspend loader resolving
+    /// afterwards leaves the dictionary an earlier caller is holding untouched.</item>
     /// <item><c>OnLocationChanged</c> fires once per navigation with the committed location.</item>
     /// <item>An optional <see cref="IRouteScopeFactory"/> is exposed through <c>ScopeFactory</c> and is null
     /// when not supplied.</item>
@@ -35,6 +43,9 @@ namespace Velvet.Tests
     /// during that window also maps to Cancelled rather than throwing.</item>
     /// </list>
     /// </summary>
+    // Bounded for the cases here that await a blocker stub's Entered signal;
+    // RouteTestStubs.MakeOneShotBlocker states what an unbounded fixture costs.
+    [Timeout(30000)]
     [TestFixture]
     internal sealed class RouterTests
     {
@@ -255,6 +266,62 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(result, Is.EqualTo(NavigationResult.Cancelled));
+        }
+
+        [Test]
+        public void Given_ABackModeNavigationAtTheFirstEntry_When_Requested_Then_ItIsRefusedWithoutTouchingHistory()
+        {
+            // GoBack refuses this before starting, so only a direct NavigateAsync reaches the step itself. The
+            // route redirects because that is what turns an out-of-range step from a throw into silent
+            // corruption: the redirect's Replace finds no slot to overwrite and appends instead, leaving the
+            // index pointing at an entry that is no longer the last one.
+            // Arrange
+            var router = BuildRouter("/home",
+                Route("home"), Route("guarded", guard: _ => "/target"), Route("target"));
+            Assume.That(router.CanGoBack, Is.False, "Precondition: the start entry is the only one on the stack");
+
+            // Act
+            var result = router.NavigateAsync("/guarded", NavigationMode.Back).GetAwaiter().GetResult();
+
+            // Assert
+            Assert.That($"result={result} paths={RouterHistoryProbe.PathsOf(router)}",
+                Is.EqualTo("result=Cancelled paths=/home"));
+        }
+
+        [Test]
+        public void Given_ABackModeNavigationAtTheFirstEntry_When_Requested_Then_TheRouterStaysOnTheLocationItIsOn()
+        {
+            // GoBack refuses the same step without moving Status off Ready. Reaching the refusal partway
+            // through the navigation instead announced a Matching that nothing would finish and left the
+            // router reporting Idle while a location was committed and rendering.
+            // Arrange
+            var router = BuildRouter("/home", Route("home"), Route("about"));
+            Assume.That(router.CanGoBack, Is.False, "Precondition: the start entry is the only one on the stack");
+
+            // Act
+            var result = router.NavigateAsync("/about", NavigationMode.Back).GetAwaiter().GetResult();
+
+            // Assert
+            Assert.That($"result={result} status={router.Status}", Is.EqualTo("result=Cancelled status=Ready"),
+                "A refused step leaves the router as the convenience wrapper leaves it");
+        }
+
+        [Test]
+        public void Given_AForwardModeNavigationAtTheLastEntry_When_Requested_Then_TheRouterIsNotLeftInFlight()
+        {
+            // The mirror of the Back case, and the one that throws rather than corrupts when the refusal goes
+            // missing: the redirect the Guard produces resolves the same out-of-range slot, and at this end of
+            // the stack the commit writes into it instead of appending past it.
+            // Arrange
+            var router = BuildRouter("/home",
+                Route("home"), Route("guarded", guard: _ => "/target"), Route("target"));
+            Assume.That(router.CanGoForward, Is.False, "Precondition: the start entry is the last on the stack");
+
+            // Act
+            var result = router.NavigateAsync("/guarded", NavigationMode.Forward).GetAwaiter().GetResult();
+
+            // Assert
+            Assert.That($"result={result} status={router.Status}", Is.EqualTo("result=Cancelled status=Ready"));
         }
 
         #endregion
@@ -570,6 +637,40 @@ namespace Velvet.Tests
 
         #endregion
 
+        #region Loader data snapshot
+
+        [UnityTest]
+        public IEnumerator Given_ACallerHoldingCurrentLoaderData_When_ASuspendLoaderResolvesLate_Then_TheHeldDictionaryIsUnchanged()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // The count is read on both sides of the resolution rather than only after it, because a snapshot
+            // that was already populated when it was handed out would satisfy an after-only reading of an
+            // unchanged one.
+            // Arrange
+            var tcs = new VelvetTaskCompletionSource<object>();
+            var router = new Router(new[]
+            {
+                Route("/", children: new[]
+                {
+                    Route("deferred", loader: (ctx, ct) => tcs.Task, loaderMode: LoaderMode.Suspend),
+                }),
+            });
+            router.NavigateSync("/deferred");
+            var held = router.CurrentLoaderData;
+            var countWhenHandedOut = held.Count;
+
+            // Act
+            tcs.TrySetResult("deferred-data");
+            await VelvetTask.Yield();
+
+            // Assert
+            Assert.That($"handedOut={countWhenHandedOut} afterResolution={held.Count}",
+                Is.EqualTo("handedOut=0 afterResolution=0"),
+                "A dictionary published as read-only must not gain entries under whoever is holding it");
+        });
+
+        #endregion
+
         #region Events
 
         [Test]
@@ -838,6 +939,92 @@ namespace Velvet.Tests
                 "A navigated-away Suspend loader's late failure does not record an error under the current location");
         });
 
+        [UnityTest]
+        public IEnumerator Given_InFlightSuspendLoader_When_BackHitsTheCache_Then_ItsLateResultIsDropped()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Leaving by Back/Forward is the one exit that can serve loader data from the history cache, and
+            // therefore the one that never runs RunLoadersSync, where a previous round is superseded. Both
+            // entries here match the same route pattern, so they share a RouteId and nothing downstream of
+            // the runner can tell the late result apart from the restored one.
+            // Arrange
+            var first = new VelvetTaskCompletionSource<object>();
+            var second = new VelvetTaskCompletionSource<object>();
+            var loaderCalls = 0;
+            var router = new Router(new[]
+            {
+                Route("/", children: new[]
+                {
+                    Route("users/:id", loaderMode: LoaderMode.Suspend,
+                        loader: (ctx, ct) => Interlocked.Increment(ref loaderCalls) == 1 ? first.Task : second.Task),
+                }),
+            });
+            router.NavigateSync("/users/1");
+            first.TrySetResult("user-1");
+            await VelvetTask.Yield();
+            router.NavigateSync("/users/2");
+            router.GoBackSync();
+            Assume.That(router.CurrentLocation?.Path, Is.EqualTo("/users/1"),
+                "Precondition: the Back committed the earlier entry");
+
+            // Act
+            second.TrySetResult("user-2");
+            await VelvetTask.Yield();
+
+            // Assert
+            Assert.That(string.Join(",", router.CurrentLoaderData.Values), Is.EqualTo("user-1"),
+                "A Back that hits the cache supersedes the round it left, so that round's late result is dropped");
+        });
+
+        [Test]
+        public void Given_ASuspendLoaderHandedACompletedTask_When_ItResolvesBeforeTheCommit_Then_ItsResultIsStillCommitted()
+        {
+            // A loader is free to answer immediately, and one that does resolves while its own round is still
+            // running rather than after the navigation that started it.
+            // Arrange
+            var router = new Router(new[]
+            {
+                Route("/", children: new[]
+                {
+                    Route("ready", loaderMode: LoaderMode.Suspend,
+                        loader: (ctx, ct) => VelvetTask.FromResult((object)"ready-data")),
+                }),
+            });
+
+            // Act
+            router.NavigateSync("/ready");
+
+            // Assert
+            Assert.That(router.GetLoaderData("/ready"), Is.EqualTo("ready-data"),
+                "A result produced before the commit belongs to the location that commit establishes");
+        }
+
+        [Test]
+        public void Given_ASuspendLoaderHandedACompletedTask_When_ItResolvesBeforeTheCommit_Then_ThePreviousEntryIsUntouched()
+        {
+            // The write-back that a resolving Suspend loader triggers reads the live location, which until the
+            // commit is still the one being navigated away from — so the entry it would reach is that one.
+            // Arrange
+            var router = new Router(new[]
+            {
+                Route("/", children: new[]
+                {
+                    Route("first", loader: (ctx, ct) => VelvetTask.FromResult((object)"first-data")),
+                    Route("ready", loaderMode: LoaderMode.Suspend,
+                        loader: (ctx, ct) => VelvetTask.FromResult((object)"ready-data")),
+                }),
+            });
+            router.NavigateSync("/first");
+            router.NavigateSync("/ready");
+
+            // Act
+            router.GoBackSync();
+
+            // Assert
+            Assert.That(string.Join(",", router.CurrentLoaderData.Keys), Is.EqualTo("/first"),
+                "Nothing from the round that had not committed may be cached under the entry it left");
+        }
+
         #endregion
 
         #region ScopeFactory
@@ -1001,26 +1188,6 @@ namespace Velvet.Tests
             Assert.That(router.CurrentLocation?.Path, Is.EqualTo("/about"),
                 "A cancelled cached Back does not commit the previous entry");
         });
-
-        // Blocker test infra: the first nav parks on VelvetTask.Never(ct) (raises OCE on cancellation);
-        // subsequent navs pass through without blocking. A per-invocation counter keeps the two navs from
-        // sharing TCS state.
-        private static (Func<NavigationAttempt, CancellationToken, VelvetTask<bool>> Check, VelvetTaskCompletionSource Entered) MakeOneShotBlocker()
-        {
-            var entered = new VelvetTaskCompletionSource();
-            int invocationCount = 0;
-            VelvetTask<bool> Check(NavigationAttempt _, CancellationToken ct)
-            {
-                var n = Interlocked.Increment(ref invocationCount);
-                if (n == 1)
-                {
-                    entered.TrySetResult();
-                    return VelvetTask.Never<bool>(ct);
-                }
-                return VelvetTask.FromResult(false);
-            }
-            return (Check, entered);
-        }
 
         #endregion
     }

@@ -9,11 +9,16 @@ The editor must be closed — it holds the project lock.
 
 ```bash
 UNITY=/Applications/Unity/Hub/Editor/6000.3.11f1/Unity.app/Contents/MacOS/Unity
+mkdir -p Logs
 "$UNITY" -runTests -batchmode -projectPath "$PWD" -testPlatform EditMode \
-  -testResults /tmp/results.xml -logFile /tmp/run.log
+  -testResults "$PWD/Logs/results.xml" -logFile "$PWD/Logs/run.log"
+python3 scripts/test_quality/assert_results_from_this_tree.py Logs/results.xml --log Logs/run.log
+python3 scripts/test_quality/assert_no_inconclusive.py Logs/results.xml
 ```
 
 `-testPlatform PlayMode` for the other suite. `-testFilter "Velvet.Tests.SomeFixture"` narrows it; semicolons separate several, and it matches fully-qualified class or method names.
+
+**Write into the worktree's own Logs directory, never /tmp/results.xml.** That path is one file for every worktree and every session on the machine, and the compile-error paragraph below is what it costs.
 
 ## Traps that produce wrong answers
 
@@ -25,11 +30,31 @@ UNITY=/Applications/Unity/Hub/Editor/6000.3.11f1/Unity.app/Contents/MacOS/Unity
 ps -Ao command= | grep -c '^/Applications/.*/MacOS/Uni[t]y -runTests'
 ```
 
-Concurrent Unity instances make unrelated tests fail. A failure measured while another run was in flight is not evidence; re-measure on a quiet machine before concluding anything.
+The three harnesses the exception below covers — a mutation campaign, a neuter sweep and `base_red_check.py`'s C# lane — hold no editor of their own between their runs, over a campaign's waits, mutations and restores and the lane's whole worktree build, so **a zero from that count is not proof none is in flight**. Nor does a non-zero one say whose editor it is: each harness launches the editor that count matches, so while one of their runs is up, that is what is being counted. What answers it either way is a count of the harness processes themselves:
 
-**Compile errors appear only in the log**, never in the XML: `grep "error CS" /tmp/run.log`. A run that failed to compile still writes an XML, so a missing failure count is not proof of success.
+```bash
+ps -Ao command= | grep -cE '^[^ ]*[Pp]ython[^ ]* .*[ /](mutation_check|neuter_check|base_red_check)\.py'
+```
 
-**Counts come only from the XML**: `grep -o 'passed="[0-9]*"\|failed="[0-9]*"\|inconclusive="[0-9]*"' /tmp/results.xml | head -3`.
+It is anchored twice over and needs both: on the interpreter, which is what excludes the `/bin/zsh -c` line carrying this very command and a watcher spelling `pgrep -f neuter_check.py`; and on the separator before the script's name, which excludes a `-m pytest` run over `test_mutation_check.py` — a Python process naming a harness without being one. Between the two it allows a run of flags, because an interpreter flag can sit there, as `-u` did in the campaign this was measured against.
+
+Measured over one snapshot of this machine's process table, 603 lines with one campaign in flight: this reports 1 where a bare-name count reports 10. Over an eleven-line fixture holding four real invocations, six lines that name a harness without being one, and an editor, it takes 4 of 4 with nothing false, where a pattern demanding the script immediately after the interpreter takes 2 and a bare-name count takes 10. Asking the campaign directly does not answer it: `--carried` reads the record under its `--project`, which is the worktree the campaign runs in rather than yours, and it is present only while a mutant's suite runs — `CONTRIBUTING.md`'s mutation section owns that lifetime — so a campaign waiting for the machine, running its baseline or writing its receipt holds none, and **an absent record is not an idle machine**.
+
+Concurrent instances cost wall clock. Measured on one tree, one EditMode suite, **one run per arm**, sampling the neighbour count every three seconds for each run's whole life and subtracting the run itself: alone — 34 samples, every one zero — 3943 passed / 0 failed / 0 inconclusive / 0 skipped over a reported 81.7 s; beside three other full suites — 48 samples, peak three and never below two — the same four counts over 122.7 s. One run per arm settles the wall clock; it does not settle whether load can redden a timing-sensitive case. So do not wait for a quiet machine for a suite run, and take a single failure to the per-case question below.
+
+**Three harnesses are the exception.** A mutation campaign, a neuter sweep and `base_red_check.py`'s C# lane each wait for the machine to go quiet before starting an editor — a campaign before its baseline and again before every mutant, a sweep before every fixture's baseline and again before every cut, the lane once before its first platform — up to `--busy-timeout`, 1800 s by default. All three poll that count every five seconds. **The wait returns at the first sample that finds the count at zero, and nothing afterwards acts on a neighbour**: `mutation_check.run_suite` and `base_red_check.run_unity` sample nothing while their own editor is up, and `neuter_check.run_suite`, the one of the three that samples at all, prints the peak beside the result rather than refusing on it. So a run of yours that starts after a wait has passed is charged to what the harness was measuring.
+
+Each of the three charges it differently. A campaign is built on every failure in its run being the mutation's — `wait_for_quiet` in `mutation_check.py` says so where it waits — and a case your load reddens reads there as `KILLED`, a survivor recorded as covered, with nothing in the receipt to tell it from a mutant a test really killed. In the base-red lane, which takes up to `--max-rounds` editors per platform on that single wait, the same failure is reported as red on the base — the verdict that harness exists to produce. The sweep's is the quiet one: `report_pair` scores a hole as a scoped case that passed the baseline and did **not** fail under the cut, so a case your load reddens is not one — it reads there as the cut being caught. The sweep then reports coverage it never measured, and a `--report` run over `neuter_holes.txt` records the absence.
+
+The 1800 s abort is the other cost, and it takes more than a single neighbour: the wait expires only after 1800 s in which no sample found the count at zero, against the 122.7 s the loaded arm above took. Several agents each taking a run, back to back, is what closes that gap. What it costs then is the campaign rather than the mutant it stopped on — a receipt is written after the mutant loop and nowhere inside it, so every mutant already measured goes with it. **Do not start a suite run while one of the three is in flight**, and read that off the second recipe above rather than off the editor count.
+
+Sample **for the run's whole life and subtract the run itself**, not once at launch: the loaded arm above moved between two and three neighbours while it ran, so one reading names the arm wrong. `neuter_check.run_suite` already carries that loop.
+
+Both arms are EditMode, so what a neighbour costs a **PlayMode** run is unmeasured. **A single failing case you suspect of timing gets re-run alone before you report it** — a question about one case rather than a reason to hold the run. A **player** run is separate again and does need the machine to itself, for the reason its own section gives.
+
+**Compile errors appear only in the log**, never in the XML — and `grep ": error "` over it, not `error CS`. An analyzer under `Generators~` raises its own at error severity, which fails the compile with no `CS` code anywhere in the log; that has happened here, and the run wrote no results. The abort banner is **not** in the log — it goes to the process output, and a failed-compile `-logFile` carries the line "Scripts have compiler errors" instead. A run that will not compile exits 1 and writes **no** XML, so whatever sits at that path is the last run that got there, and reading it gives another tree's counts under a `-testFilter` nobody posed. Measured: one passing case named for a fixture the worktree did not contain, from a filter naming something else. `assert_results_from_this_tree.py` is what refuses this; run it before you read a count, not after you have quoted one.
+
+**Counts come only from the XML**: `grep -o 'passed="[0-9]*"\|failed="[0-9]*"\|inconclusive="[0-9]*"' | head -3`.
 
 **`inconclusive` is not counted as a failure by the runner.** A non-zero count means a test skipped rather than reported — usually an `Assume` gating the behaviour under test. Treat it as a failure and find the test.
 
@@ -72,10 +97,11 @@ A mutation that reddens a test proves the test is sensitive to *that mutation*, 
 
 ## Sweep for the shape, not the instance
 
-Consecutive review rounds on one branch kept finding one more instance of a defect already fixed, each fix right, the class never moving — because each round fixed what it was handed. Two sweeps end that, and both cost minutes:
+Consecutive review rounds on one branch kept finding one more instance of a defect already fixed, each fix right, the class never moving — because each round fixed what it was handed. Three sweeps end that. The two over prose cost minutes; the first costs a suite run for every assertion it asks about, so scope it to the cases the change touches rather than running it over a fixture whole.
 
 - **Every assertion**: remove the condition the case arranges and check that something goes red. If nothing does, the arrangement is decoration.
-- **Every sentence containing `every`, `no other`, `always` or `none`**: check it against the set it quantifies over. Universals written from memory have been false here more often than they have held, including inside the rule that forbids writing an unverified claim, and including in a comment written after that rule landed.
+- **Every sentence containing `every`, `no other`, `always`, `none`, `never`, `only`, `any`, `nothing`, `each`, `both`, `neither` or `cannot`**: check it against the set it quantifies over. Universals written from memory have been false here more often than they have held, including inside the rule that forbids writing an unverified claim, and including in a comment written after that rule landed.
+- **Every superlative**: `the slowest`, `the one place`, `the first`. A maximum is a universal over the same set with an ordering on top, and the word list above holds none of those words, so the sweep run exactly as written passes one through.
 
 Report what a sweep found, zero included. One nobody hears about is indistinguishable from one nobody ran.
 
@@ -94,8 +120,8 @@ This has produced a wrong conclusion (a paint was reported as surviving `overflo
 
 `-testPlatform StandaloneOSX` builds a player and runs the tests inside it. It is the only configuration that catches an asset or a shader missing from a build — and it behaves nothing like an editor run.
 
-- **It writes to tracked files** — `ProjectSettings/ProjectSettings.asset` (`m_ShowUnitySplashScreen`, `m_ShowUnitySplashLogo`, `runInBackground`, `resizableWindow`, `fullscreenMode`), the whole `m_Prefiltering*` shader-stripping block in `Assets/Settings/VelvetURPAsset.asset`, `Assets/UniversalRenderPipelineGlobalSettings.asset`, and `Assets/DefaultVolumeProfile.asset` at +785 lines — plus untracked `Assets/InitTestScene*.unity` when a run is killed. None of it is anyone's change; `git restore --` by path clears the four tracked ones. `git add -A` after a player build commits the lot, which is one more reason the rule against it exists.
-- **Run it detached. Foreground is what makes the orphans.** The Bash tool caps at ten minutes whatever timeout is passed, and a player build takes longer, so it SIGTERMs the editor out from under a player that is already up — and killing the editor does not kill the player. The orphan then holds the profiler port and the *next* player run builds, launches, connects and dies with `No activity received from the player in 600 seconds`, which reads as contention from somewhere else entirely.
+- **It writes to tracked files** — `ProjectSettings/ProjectSettings.asset` (`m_ShowUnitySplashScreen`, `m_ShowUnitySplashLogo`, `runInBackground`, `resizableWindow`, `fullscreenMode`), the whole `m_Prefiltering*` shader-stripping block in `Assets/Settings/VelvetURPAsset.asset`, `Assets/UniversalRenderPipelineGlobalSettings.asset`, and `Assets/DefaultVolumeProfile.asset` at +785 lines — plus `Assets/InitTestScene*.unity` and its `.meta` when a run is killed, both of which `.gitignore` covers. None of it is anyone's change; `git restore --` by path clears the four tracked ones. `git add -A` after a player build commits those four, which is one more reason the rule against it exists.
+- **Run it detached.** The Bash tool's schema caps a foreground timeout at 600000 ms and a player build outruns that. Reaping the process a foreground call leaves behind takes more than the editor: killing the editor does not kill the player, and the orphan holds the profiler port, so the *next* player run builds, launches, connects and dies with "No activity received from the player in 600 seconds", which reads as contention from somewhere else entirely.
 - **Reap the player, and never spell its name bare in the command that counts it.** A pattern aimed at the editor misses the orphan entirely: its command line is `<worktree>/Temp/UnityTempFile-*/PlayerWithTests/…`, carrying neither `Unity` nor `-projectPath`. And the count self-matches — `[P]layer…` stops grep matching its own process, but the `/bin/zsh -c` line carrying the whole command is a process too, so if the name appears unbracketed anywhere on that line the count is inflated. Anchoring at `^/` does **not** fix it, because `/bin/zsh` starts with a slash. Put the pattern in a variable and use it:
 
 ```bash

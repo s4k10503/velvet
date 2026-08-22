@@ -98,10 +98,10 @@ namespace Velvet
         public static int ImportantOf(int priority) => Important + priority;
         #endregion
 
-        // The layer priority a stacked variant's inner kind contributes; a composed arbitrary leaf
-        // (dark:hover:w-[200px]) layers at max(outer, inner) so it sits above either variant alone.
+#pragma warning disable CS8524 // no discard arm — see the remarks on StyleVariantKind
         internal static int ForVariant(StyleVariantKind kind) => kind switch
         {
+            StyleVariantKind.Hover => Hover,
             StyleVariantKind.Sm => ResponsiveSm,
             StyleVariantKind.Md => ResponsiveMd,
             StyleVariantKind.Lg => ResponsiveLg,
@@ -121,8 +121,8 @@ namespace Velvet
             StyleVariantKind.FocusVisible => FocusVisible,
             StyleVariantKind.Active => Active,
             StyleVariantKind.Checked => Checked,
-            _ => Hover,
         };
+#pragma warning restore CS8524
     }
     // The style property an arbitrary-value utility targets (e.g. w-[120px] → Width,
     // bg-[#fff] → background color, rotate-[45deg] → rotation). Shorthand members fan out to
@@ -210,6 +210,10 @@ namespace Velvet
         TranslateX,   // translate-x-[Np] -> translate x axis    (Value + Unit, merges with y)
         TranslateY,   // translate-y-[Np] -> translate y axis    (Value + Unit, merges with x)
         Rotate,       // rotate-[45deg]   -> rotate: <deg>       (Value = degrees)
+        // origin-[33%_75%] -> transform-origin: <x> <y>. One class carries both components, so unlike the
+        // axis pairs above it is one property with a pair payload (Value/Unit + Value2/Unit2). A single
+        // component means the x alone, and the y is the 50% CSS leaves it at.
+        TransformOrigin,
         #endregion
 
         // Effects (unitless StyleFloat, routed via FloatSetters)
@@ -255,6 +259,12 @@ namespace Velvet
         // Flex basis (StyleLength)
         FlexBasis,    // basis-[120px]    -> flex-basis
 
+        // Flex grow / shrink factors (StyleFloat, unitless). The USS vocabulary stops at 0 and 1, so no
+        // class expresses any other ratio. Parsed by StyleTransformValueParser rather than through the
+        // prefix table, which is the length grammar — see TryParseFlexFactor.
+        FlexGrow,     // grow-[2]         -> flex-grow
+        FlexShrink,   // shrink-[2]       -> flex-shrink
+
         // Transition (StyleList<TimeValue>; handled out-of-band like the filter list)
         TransitionDuration,   // duration-[400ms] -> transition-duration. Value carries SECONDS.
     }
@@ -267,6 +277,11 @@ namespace Velvet
         // Numeric magnitude for length/angle properties (paired with Unit); 0 for color/custom properties.
         public float Value { get; }
         public LengthUnit Unit { get; }
+        // The second component of a pair-valued property (TransformOrigin's y), paired with Unit2. The axis
+        // pairs above are two properties over one engine property instead, because each half is written by
+        // its own class; a pair here arrives from ONE class and has no spelling that sets half of it.
+        public float Value2 { get; }
+        public LengthUnit Unit2 { get; }
         // Color payload for color properties; default for length/angle/custom properties.
         public Color Color { get; }
         // Payload for FilterCustom (the registered name, its definition, and the resolved arguments);
@@ -279,6 +294,21 @@ namespace Velvet
             Property = property;
             Value = value;
             Unit = unit;
+            Value2 = 0f;
+            Unit2 = LengthUnit.Pixel;
+            Color = default;
+            Custom = null;
+        }
+
+        // Creates a pair-valued length result.
+        public ArbitraryStyle(ArbitraryProperty property, float value, LengthUnit unit,
+            float value2, LengthUnit unit2)
+        {
+            Property = property;
+            Value = value;
+            Unit = unit;
+            Value2 = value2;
+            Unit2 = unit2;
             Color = default;
             Custom = null;
         }
@@ -290,6 +320,8 @@ namespace Velvet
             Color = color;
             Value = 0f;
             Unit = LengthUnit.Pixel;
+            Value2 = 0f;
+            Unit2 = LengthUnit.Pixel;
             Custom = null;
         }
 
@@ -300,6 +332,8 @@ namespace Velvet
             Custom = custom;
             Value = 0f;
             Unit = LengthUnit.Pixel;
+            Value2 = 0f;
+            Unit2 = LengthUnit.Pixel;
             Color = default;
         }
     }

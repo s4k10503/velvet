@@ -32,8 +32,8 @@ namespace Velvet.CodeGen
     // so a fresh record prop or a changed context value is treated as a miss rather than a stale hit.
     // Any shape the weaver cannot prove correct — a discarded hook result, a deconstruction that drops the
     // value element, a body that reaches a non-allow-listed hook, a call whose hook safety cannot be confirmed
-    // (Resolve() fails, or the call is an open virtual / interface dispatch outside the known BCL / Unity /
-    //   carve-out — an override composing a hook can live in an assembly this scan never sees, regardless
+    // (Resolve() fails, or the call is an open virtual / interface dispatch outside the known BCL / Unity
+    // carve-out — an override composing a hook can live in an assembly this scan never sees, regardless
     // of whether the statically declared base/interface's own assembly references Velvet), a return before the
     // hook section, a hook skipped or repeated by a branch, a hook return consumed by an unsupported pattern, or
     // a protected region overlapping the hook section — is left byte-for-byte unchanged
@@ -706,7 +706,7 @@ namespace Velvet.CodeGen
         };
 
         // Returns true when method's declaring type lives in a framework namespace that
-        // cannot reach a Velvet hook. The check is conservative: only well-known runtime / Unity / VelvetTask
+        // cannot reach a Velvet hook. The check is conservative: only well-known runtime / Unity
         // roots short-circuit. Anything outside them (Velvet types, app-defined custom hooks, unknown
         // third-party code) is resolved and descended so a transitively composed hook is never missed.
         private static bool CannotReachVelvetHook(MethodReference method)

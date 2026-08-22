@@ -19,7 +19,8 @@ namespace Velvet.Tests
     /// completed task or <c>Error</c> for a faulted one, and stays <c>Pending</c> while the task is in flight.</item>
     /// <item>The completion callback fires when an in-flight task settles (success or failure) but is suppressed for
     /// a synchronously completed task, whose value is returned to the caller directly.</item>
-    /// <item>Cancelling or disposing a pending resource cancels the factory's token.</item>
+    /// <item>Cancelling or disposing a pending resource cancels the factory's token and records no outcome; a
+    /// cancellation raised by a token the consumer owns settles the resource into <c>Error</c> instead.</item>
     /// <item>A synchronously completed factory returns its value on the first render; a faulted factory surfaces its
     /// exception; a pending factory without a Suspense boundary suspends, warns, and leaves the value unset until
     /// the task completes and re-renders with the value.</item>
@@ -172,7 +173,7 @@ namespace Velvet.Tests
             resource.Start(ct => { capturedToken = ct; return source.Task; });
 
             // Act
-            resource.Cancel();
+            RuntimeStateProbe.CancelAsyncResource(resource);
 
             // Assert
             Assert.That(capturedToken.IsCancellationRequested, Is.True, "Cancel cancels the factory token");
@@ -242,6 +243,57 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(fired, Is.True, "The completion callback fires when an in-flight task fails");
+        }
+
+        [Test]
+        public void Given_PendingResource_When_ConsumerOwnedTokenCancels_Then_EntersErrorState()
+        {
+            // Arrange — the loader honours the resource's token and also a token the consumer owns (a logout, a
+            // superseded request). A cancellation from the consumer's side is an outcome the consumer must see,
+            // so it has to reach a terminal state; staying Pending would suspend the boundary with no restart.
+            var resource = new FiberAsyncResource<int>(Array.Empty<object>());
+            using var consumerCts = new CancellationTokenSource();
+            var source = new VelvetTaskCompletionSource<int>();
+            resource.Start(_ => source.Task.AttachExternalCancellation(consumerCts.Token));
+            Assume.That(resource.Status, Is.EqualTo(FiberAsyncResourceStatus.Pending),
+                "Precondition: the loader is still in flight before the consumer cancels");
+
+            // Act
+            consumerCts.Cancel();
+
+            // Assert
+            Assert.That(resource.Status, Is.EqualTo(FiberAsyncResourceStatus.Error),
+                "A cancellation the resource did not request settles it into a terminal state");
+        }
+
+        [Test]
+        public void Given_PendingResource_When_DisposedWhileInFlight_Then_NoOutcomeIsRecorded()
+        {
+            // Arrange — guards the over-correction of recording an Error for any cancellation, which would make
+            // Velvet's own teardown surface an exception the consumer never asked about. The loader reports
+            // whether the cancellation reached it, because Pending is also the state before anything happens.
+            var resource = new FiberAsyncResource<int>(Array.Empty<object>());
+            var source = new VelvetTaskCompletionSource<int>();
+            var reachedLoader = false;
+            resource.Start(async ct =>
+            {
+                try
+                {
+                    return await source.Task.AttachExternalCancellation(ct);
+                }
+                catch (OperationCanceledException)
+                {
+                    reachedLoader = true;
+                    throw;
+                }
+            });
+
+            // Act
+            resource.Dispose();
+
+            // Assert
+            Assert.That((reachedLoader, resource.Status), Is.EqualTo((true, FiberAsyncResourceStatus.Pending)),
+                "The resource's own cancellation reaches the loader and still records no outcome");
         }
 
         #endregion

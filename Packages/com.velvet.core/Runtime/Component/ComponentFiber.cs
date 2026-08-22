@@ -83,6 +83,15 @@ namespace Velvet
             return true;
         }
 
+        /// <summary>
+        /// Un-enrolls everything outside <paramref name="lanes"/>. A caller that satisfied what was pending
+        /// cannot express that as a set difference against a before-image, because <see cref="Add"/> is
+        /// idempotent: a re-enrolment of an already-pending lane leaves the mask identical, so subtracting
+        /// the before-image would discard it. It states the survivors instead — see
+        /// <c>FiberRenderer.SubsumeFiberIntoThisPass</c>.
+        /// </summary>
+        internal void RetainAll(FiberLaneSet lanes) => _mask &= lanes._mask;
+
         internal void Clear() => _mask = 0;
     }
 
@@ -94,7 +103,10 @@ namespace Velvet
     internal sealed class LaneState
     {
         public FiberLaneSet Queue;
-        public bool IsInTransition;
+        // Which lanes an enrolment request named since the last reset, as opposed to which the queue gained.
+        // The two differ exactly when a request coalesces onto a lane already pending, and that is the case a
+        // subsuming render's settle has to keep — see FiberRenderer.SubsumeFiberIntoThisPass.
+        public FiberLaneSet LanesRequestedSinceReset;
         public int TransitionStarvationCounter;
         // The settle sweep keys off the Transition label's presence, which starvation promotion erases
         // (relabelling the lane to Normal) while the promoted work may still be queued — e.g. parked
@@ -105,7 +117,7 @@ namespace Velvet
         public void Clear()
         {
             Queue.Clear();
-            IsInTransition = false;
+            LanesRequestedSinceReset.Clear();
             TransitionStarvationCounter = 0;
             HasPromotedTransition = false;
         }
@@ -166,12 +178,15 @@ namespace Velvet
         public bool IsSuspenseBoundary { get; internal set; }
 
         /// <summary>
-        /// True while this fiber is a primary (hidden) child of a wrapper-less Suspense boundary that
-        /// is currently showing its fallback. Set by <c>GeneralPathReconciler.ExpandSuspenseInline</c> when
-        /// the boundary suspends and cleared when it reveals. <see cref="FiberWorkLoop.FlushState"/>'s
+        /// True while this fiber is a primary (hidden) child of a wrapper-less Suspense that is currently
+        /// showing its fallback. Written by <c>GeneralPathReconciler.ExpandSuspenseInline</c> over the
+        /// fibers that expansion created, less the ones a nested Suspense that suspended created: that
+        /// boundary owns its own primary subtree, so an enclosing one resolving leaves it
+        /// hidden. <see cref="FiberWorkLoop.FlushState"/>'s
         /// offscreen guard defers a lane flush for offscreen fibers (their slot is occupied by the
-        /// fallback) while still allowing the visible fallback subtree to flush (the
-        /// fallback renders normally; only the primary subtree is offscreen).
+        /// fallback). It is per-fiber rather than per-boundary because one component fiber can render
+        /// several Suspense nodes: that Suspense's own visible fallback subtree, and a sibling Suspense's
+        /// children, sit under the same boundary and must still flush.
         /// </summary>
         internal bool IsOffscreen { get; set; }
 
@@ -238,6 +253,14 @@ namespace Velvet
         /// <c>isPending</c> values. Lazily allocated; null treated as empty.
         /// </summary>
         internal List<HookTransitionSlot>? TransitionSlots;
+
+        /// <summary>
+        /// The transition slots — on this fiber or on any other component's — whose callback enrolled the
+        /// Transition lane here, so the drain that commits this fiber's work reaches every slot waiting on it
+        /// without walking the tree. The reverse of <see cref="HookTransitionSlot.EnrolledFibers"/>. Lazily
+        /// allocated; null treated as empty.
+        /// </summary>
+        internal List<HookTransitionSlot>? EnrolledTransitionSlots;
 
         /// <summary>Position cursors per hook kind within one render cycle.</summary>
         internal HookIndexTable Indices;
@@ -348,12 +371,108 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Clears the pending flag on every settled transition slot (called when the transition lane
-        /// settles). A slot whose async action is still in flight is skipped: its awaiting action has not
-        /// scheduled its updates yet, so an empty lane queue does not mean that transition settled — its
-        /// own completion path clears the flag once the task finishes.
+        /// Records that a write made under <paramref name="slot"/>'s open transition scope enrolled the
+        /// Transition lane on this fiber, so that slot stays pending past its callback until this fiber
+        /// commits the write.
         /// </summary>
-        internal void ClearAllTransitionPending()
+        internal void EnrolTransitionSlot(HookTransitionSlot slot)
+        {
+            slot.EnrolledFibers ??= new List<ComponentFiber>();
+            if (slot.EnrolledFibers.Contains(this))
+            {
+                return;
+            }
+            slot.EnrolledFibers.Add(this);
+            (EnrolledTransitionSlots ??= new List<HookTransitionSlot>()).Add(slot);
+        }
+
+        /// <summary>
+        /// Releases every transition slot waiting on this fiber's Transition work and clears the pending flag
+        /// on those left with nothing outstanding anywhere. Called where that work is established as
+        /// committed, and from the two places it will never commit from: unmount, and the scheduler dropping
+        /// a starvation-promoted lane at its update-depth cap.
+        /// </summary>
+        internal void DischargeTransitionEnrolments(bool requestLocalRender = false)
+        {
+            if (EnrolledTransitionSlots == null)
+            {
+                return;
+            }
+            foreach (var slot in EnrolledTransitionSlots)
+            {
+                slot.EnrolledFibers?.Remove(this);
+                if (!SettleIfNothingOutstanding(slot))
+                {
+                    continue;
+                }
+                // A pre-render settle needs no separate local render because this fiber's imminent render reads
+                // the clear. A post-commit settle does: its completed render read the flag while it was still lit.
+                if (ReferenceEquals(slot.DeclaringFiber, this))
+                {
+                    if (requestLocalRender)
+                    {
+                        RequestRenderForClearedPending(slot);
+                    }
+                    continue;
+                }
+                // Anywhere else nothing is left to take the indicator off the screen. Where this drain does
+                // reach the declaring fiber, its render subsumes the lane requested here and it retires
+                // unrendered — see FiberRenderer.SettleSubsumedFiber.
+                RequestRenderForClearedPending(slot);
+            }
+            EnrolledTransitionSlots.Clear();
+        }
+
+        /// <summary>
+        /// Asks the component that declared <paramref name="slot"/> for the render that observes its now-false
+        /// <c>isPending</c>. Nothing renders a component because its flag moved, so a clear reached from a path
+        /// that renders nobody — a drain of some other component's tree, an async action's completion — leaves
+        /// the indicator on screen without this.
+        /// </summary>
+        internal static void RequestRenderForClearedPending(HookTransitionSlot slot)
+        {
+            var declaring = slot.DeclaringFiber;
+            if (declaring is not { IsMounted: true, IsDisposed: false })
+            {
+                return;
+            }
+            // Urgent inside a discrete handler, on the rule an ordinary state update made there follows: the
+            // clear belongs to the interaction being serviced and commits with it. Never the Transition lane,
+            // though, even where this is reached inside an open transition scope — this render is what takes
+            // the indicator down, and the delayed tier would hold it up for its own delay.
+            FiberWorkLoop.ScheduleRerender(
+                declaring,
+                FiberWorkLoop.IsInDiscreteEvent ? FiberUpdatePriority.Urgent : FiberUpdatePriority.Normal);
+        }
+
+        /// <summary>
+        /// Settles this fiber's transition bookkeeping where its Transition work is established as committed:
+        /// the slots that enrolled work here are released, and those of them — plus this fiber's own — left
+        /// with nothing outstanding anywhere clear their pending flag.
+        /// </summary>
+        internal void SettleTransitionPending()
+        {
+            DischargeTransitionEnrolments();
+            ClearSettledTransitionPending();
+        }
+
+        /// <summary>
+        /// Settles transition work after its terminal reconcile slice committed, then requests the render that
+        /// takes down any indicator whose last render observed it as pending.
+        /// </summary>
+        internal void SettleTransitionPendingAfterCommit()
+        {
+            DischargeTransitionEnrolments(requestLocalRender: true);
+            ClearSettledTransitionPending();
+        }
+
+        /// <summary>
+        /// Clears the pending flag on this fiber's own transition slots with nothing outstanding, leaving the
+        /// rest lit. Used where the pending Transition lane is not evidence either way: see
+        /// <c>FiberRenderer.SubsumeFiberIntoThisPass</c>, whose surviving lane may have been requested by a
+        /// different hook during the render it settles.
+        /// </summary>
+        internal void ClearSettledTransitionPending()
         {
             if (TransitionSlots == null)
             {
@@ -361,18 +480,80 @@ namespace Velvet
             }
             foreach (var slot in TransitionSlots)
             {
-                if (slot.IsAsyncInFlight)
-                {
-                    continue;
-                }
+                SettleIfNothingOutstanding(slot);
+            }
+        }
+
+        // True when this cleared a flag that was lit, which is what a caller owing the declaring component a
+        // render keys off.
+        // A callback still on the stack settles at its own exit instead: it can enrol further fibers, and
+        // nothing would light the flag again after a clear here. An awaiting async action is the same case
+        // one await out — its updates have not been scheduled yet, so nothing outstanding does not mean
+        // settled, and its completion path is what clears the flag.
+        private static bool SettleIfNothingOutstanding(HookTransitionSlot slot)
+        {
+            if (slot.HasActiveOwner || slot.IsAsyncInFlight || slot.HasQueuedWork)
+            {
+                return false;
+            }
+            var wasPending = slot.IsPending;
+            slot.IsPending = false;
+            return wasPending;
+        }
+
+        /// <summary>
+        /// Opens the window <c>FiberRenderer.SubsumeFiberIntoThisPass</c>'s settle reads, resetting both records it
+        /// consumes: which lanes the render asks for again, and which transition slots enrolled work here.
+        /// Everything queued before the window is what that render satisfies, so the settle runs ahead of the
+        /// render — as it does in <c>FiberWorkLoop.FlushState</c>, whose commit render is likewise the one
+        /// that observes <c>isPending</c> already false.
+        /// </summary>
+        /// <remarks>
+        /// <see cref="Lanes"/> is left unallocated on purpose — a fiber with no <see cref="LaneState"/> has
+        /// nothing pending, and <see cref="EnsureLanes"/> here would allocate one for the lane-less majority
+        /// of inline re-renders.
+        /// </remarks>
+        internal void OpenSubsumedRenderWindow()
+        {
+            Lanes?.LanesRequestedSinceReset.Clear();
+            DischargeTransitionEnrolments();
+        }
+
+        /// <summary>
+        /// Hands every transition slot back to nobody, called from unmount. The slot list survives an unmount
+        /// so a remount reuses it, and an async action that outlives the unmount cannot run its own release —
+        /// so without this a remounted component's first <c>startTransition</c> would find the slot still
+        /// owned and join a transition that no longer exists.
+        /// </summary>
+        internal void ReleaseTransitionSlotOwnership()
+        {
+            if (TransitionSlots == null)
+            {
+                return;
+            }
+            foreach (var slot in TransitionSlots)
+            {
+                slot.OwnerGeneration++;
+                slot.OwnerDepth = 0;
+                slot.AsyncOwnerDepth = 0;
+                ClearTransitionEnrolments(slot);
                 slot.IsPending = false;
             }
         }
 
-        internal bool IsInTransition
+        // Unwinds both sides of the enrolment record, so no fiber is left holding a slot that has stopped
+        // waiting on it.
+        private static void ClearTransitionEnrolments(HookTransitionSlot slot)
         {
-            get => Lanes?.IsInTransition ?? false;
-            set => EnsureLanes().IsInTransition = value;
+            if (slot.EnrolledFibers == null)
+            {
+                return;
+            }
+            foreach (var fiber in slot.EnrolledFibers)
+            {
+                fiber.EnrolledTransitionSlots?.Remove(slot);
+            }
+            slot.EnrolledFibers.Clear();
         }
 
         internal int TransitionStarvationCounter
@@ -475,6 +656,20 @@ namespace Velvet
         /// </summary>
         internal bool IsInlineMounted { get; set; }
 
+        /// <summary>
+        /// The Portal placeholder whose children reconcile last placed this inline fiber, or null for one
+        /// placed outside any Portal. A Portal's top-level Component child mounts inline with the portal
+        /// TARGET as its <see cref="MountPoint"/>, so it is a sibling of the elements a portal teardown
+        /// removes rather than a descendant of any of them; this is what tells the teardown which of the
+        /// several Portals sharing that target the fiber belongs to.
+        /// <see cref="MountSlotStart"/> cannot answer that: a NEIGHBOURING Portal's own children changing
+        /// on the same target moves this fiber's output along it without rewriting it.
+        /// Rewritten on every placement rather than at creation only, so it names where the fiber renders
+        /// now; a fiber the teardown must reach that no placement ever named is reached instead through the
+        /// parent index (ComponentRegistry.DisposeInlineFibersOwnedByPortal owns which is which).
+        /// </summary>
+        internal UnityEngine.UIElements.VisualElement? OwningPortalPlaceholder { get; set; }
+
         /// <summary>The VNode array fixed by the previous reconcile. Serves as the "old" side for the next reconcile.</summary>
         internal VNode?[]? PreviousTree { get; set; }
 
@@ -487,6 +682,15 @@ namespace Velvet
         /// a Transition slice time-sliced across frames. 0 for synchronous lanes.
         /// </summary>
         internal double PendingReconcileBudgetMs { get; set; }
+
+        /// <summary>
+        /// Whether the lane that started the in-flight reconcile was carrying transition work, so a resume
+        /// restores <c>FiberWorkLoop.IsRenderingTransitionLane</c> to the same answer. A parked slice can
+        /// still evaluate component bodies: <c>GeneralPathReconciler.NeedsExpansion</c> looks one level
+        /// down, so a container of host children whose own descendants are components takes the
+        /// time-sliced path and expands them on resume.
+        /// </summary>
+        internal bool PendingReconcileDrainsTransitionWork { get; set; }
 
         /// <summary>Sentinel indicating whether the asynchronous effect flush has been scheduled via schedule.Execute.</summary>
         internal bool EffectFlushScheduled { get; set; }

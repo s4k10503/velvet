@@ -8,6 +8,7 @@ The mask locates command boundaries, where it is correct, and the tokens come fr
 text, because a masked argument has been replaced by spaces and cannot be read.
 """
 
+import collections
 import os
 import re
 import shlex
@@ -15,14 +16,38 @@ import shlex
 SEPARATORS = set(";&|\n")
 
 # Words that may precede the command without changing which command it is. `then`/`do`/`else`
-# because a command inside a conditional or a loop is still that command.
-LEADING_WORDS = {"then", "do", "else", "elif", "!", "time", "command", "nohup", "exec"}
+# because a command inside a conditional or a loop is still that command; `builtin` alongside
+# `command` because a guard reading the word after it saw `builtin cd` as neither a move nor a
+# command word, and answered about a file in the directory the move had left.
+LEADING_WORDS = {"then", "do", "else", "elif", "!", "time", "command", "builtin", "nohup", "exec"}
 ENV_ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 REDIRECTION = re.compile(r"^\d*(?:>>|>&|<&|>|<)")
 
-# git's own options, before the subcommand. Only -C is returned: it names the repository the
-# command acts on, and evaluating the cwd instead answers about a different tree.
+# git's own options, before the subcommand. -C is returned unconditionally: it names the repository
+# the command acts on, and evaluating the cwd instead answers about a different tree.
 GLOBAL_VALUE_FLAGS = {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--config-env"}
+
+# `--git-dir` and a `GIT_DIR=` assignment name that tree too, but as a git directory rather than a
+# working tree, so a caller that resolves paths under what it is handed cannot take one. Returning
+# it is therefore the caller's to ask for, and only a caller that does nothing with the answer but
+# hand it back to git may.
+GIT_DIRECTORY_FLAG = "--git-dir"
+GIT_DIRECTORY_VARIABLE = "GIT_DIR"
+
+GitContext = collections.namedtuple("GitContext", "working_directory git_directory")
+
+# `git commit` options that swallow the token after them. Which flags a guard cares about stays its
+# own, per the note above; this is the one reading they share, and two guards taking it two ways
+# would disagree about whether `git commit -m --amend` names a message or an amend.
+#
+# Membership is not "takes a value". `-S`/`--gpg-sign` and `-u`/`--untracked-files` take one only
+# when it is attached, so they consume nothing and belong out — `GitOptionGrammarTests` in
+# `scripts/hooks/test_amend_of_published_commit.py` is what fails if git stops reading them so.
+COMMIT_VALUE_FLAGS = {
+    "-m", "--message", "-F", "--file", "-c", "--reedit-message", "-C", "--reuse-message",
+    "--fixup", "--squash", "--author", "--date", "-t", "--template", "--cleanup",
+    "--trailer", "--pathspec-from-file",
+}
 
 
 def mask_shell_literals(command):
@@ -143,12 +168,36 @@ def without_redirections(tokens):
     return kept
 
 
-def git_invocation(tokens):
-    """(-C directory, subcommand, operands) when the segment runs git, else None."""
+def composed_directory(accumulated, value):
+    """Where a `-C` lands given the ones before it.
+
+    A second `-C` moves again from where the first arrived, so keeping only the last one names a
+    different tree than the command acts on; one that reaches git already rooted starts over
+    instead. `RepeatedDirectoryTests` is what fails if git stops reading them that way, and
+    `--git-dir` is not folded here because git keeps the last of those.
+    """
+    if accumulated is None or value is None:
+        return value
+    if value.startswith("~"):
+        return value
+    return os.path.join(accumulated, value)
+
+
+def git_invocation(tokens, git_directory=False):
+    """(directory, subcommand, operands) when the segment runs git, else None.
+
+    The directory is what the `-C` operands compose to. With `git_directory`, the first value is a
+    `GitContext` that keeps it alongside either spelling of the git directory. A caller needs both
+    to replay the repository selectors rather than replace one with the other.
+    """
     index = 0
+    named = None
     while index < len(tokens) and (
         ENV_ASSIGNMENT.match(tokens[index]) or tokens[index] in LEADING_WORDS
     ):
+        variable, _, value = tokens[index].partition("=")
+        if git_directory and variable == GIT_DIRECTORY_VARIABLE:
+            named = value
         index += 1
     if index >= len(tokens) or os.path.basename(tokens[index]) != "git":
         return None
@@ -165,20 +214,27 @@ def git_invocation(tokens):
                 value = tokens[index + 1] if index + 1 < len(tokens) else None
                 index += 2
             if flag == "-C":
-                directory = value
+                directory = composed_directory(directory, value)
+            elif git_directory and flag == GIT_DIRECTORY_FLAG:
+                named = value
             continue
         index += 1
 
     if index >= len(tokens):
         return None
-    return directory, tokens[index], tokens[index + 1:]
+    context = GitContext(directory, named) if git_directory else directory
+    return context, tokens[index], tokens[index + 1:]
 
 
-def git_invocations(command, subcommands):
-    """Every (-C directory, subcommand, operands) in the command naming one of `subcommands`."""
+def git_invocations(command, subcommands, git_directory=False):
+    """Each segment that runs git with one of `subcommands`, shaped as `git_invocation`.
+
+    A segment is what `command_segments` splits out, so a git call reached some other way — inside a
+    substitution, or behind a keyword `LEADING_WORDS` does not carry — is not among these.
+    """
     found = []
     for segment in command_segments(command):
-        invocation = git_invocation(without_redirections(tokens_of(segment)))
+        invocation = git_invocation(without_redirections(tokens_of(segment)), git_directory)
         if invocation and invocation[1] in subcommands:
             found.append(invocation)
     return found
@@ -211,3 +267,16 @@ def program_invocations(command, program, words):
             continue
         found.append(tokens[index + len(words):])
     return found
+
+
+# A hook is handed the command before the shell expands it, so an operand spelled with a variable or
+# a substitution is not the text the program will receive. A guard that resolves such an operand
+# answers about the literal, and every resolution of a literal fails — which for most guards is the
+# pass, so the check silently does not happen. Each guard states which way it errs there; this only
+# recognises the case.
+UNEXPANDED = re.compile(r"[$`]")
+
+
+def unexpanded(token):
+    """Whether the shell will rewrite this operand before the program sees it."""
+    return bool(UNEXPANDED.search(token))

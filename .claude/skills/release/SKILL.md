@@ -16,14 +16,24 @@ twice, and nothing is written straight into the GitHub release.
 
 ## 1. Close the version in the CHANGELOG
 
-Rename the working section to `## [X.Y.Z] - YYYY-MM-DD` and give it a `### Highlights` block above
-its `### Added` / `### Changed` / `### Fixed` headings.
+Write everything into `## [Unreleased]` while it still carries that name: the `### Highlights`
+block above its `### Added` / `### Changed` / `### Fixed` headings, and, for a major, the entries
+drained out of `## [Unreleased — breaking]`. Rename it to `## [X.Y.Z] - YYYY-MM-DD` last. The order
+is not a preference — `changelog_into_closed_version.py` refuses a write into a dated section, and
+the rename is what dates it.
+
+`## [Unreleased — breaking]` decides the version rather than following it: what sits there is to
+ship in a major and nowhere else. A major drains it as above and leaves the heading standing with
+none; a minor or a patch leaves it alone. That heading is never dated and never deleted;
+`scripts/release/test_release_notes.py` refuses both. CONTRIBUTING.md's release section owns which entry goes where.
 
 **Highlights is what the release note leads with, and the release fails without it.** Five to nine
 bullets, one short paragraph each, ordered by what a user notices first — a fix for something that
-was silently broken outranks a new utility. Lead the last bullet with `**Breaking:**` and list every
-breaking change in it. Write them fresh: a bullet copied verbatim from a long-form entry below fails
-`scripts/release/test_release_notes.py`, because the note would then say the same thing twice.
+was silently broken outranks a new utility. A major leads its last bullet with `**Breaking:**` and
+lists every breaking change in it — what the drain has just moved into this version's own
+subsections — and `scripts/release/test_release_notes.py` refuses a major without that bullet and
+any other release that carries one. Write them fresh: a bullet copied verbatim from a
+long-form entry below fails the same script, because the note would then say the same thing twice.
 
 Bump `version` in `Packages/com.velvet.core/package.json` to match. SemVer against the previous
 release: a `feat` on `main` makes it a minor, a breaking change makes it a major.
@@ -37,8 +47,21 @@ python3 scripts/release/test_release_notes.py && python3 scripts/release/release
 ## 2. Land it on main
 
 Branch, pull request, squash merge — `main` and `upm` both refuse a direct push, whatever the change
-is. Merging to `main` re-runs the split into the `upm` branch on its own; never edit `upm` by hand,
+is. A release closes no issue, so its body opens with the line CONTRIBUTING asks of every pull
+request that names one nowhere:
+
+```
+No issue: the X.Y.Z release.
+```
+
+Merging to `main` re-runs the split into the `upm` branch on its own; never edit `upm` by hand,
 it is a generated mirror.
+
+From this merge until step 3 runs, `settle.py merge` and `gh pr merge` refuse anything based on the
+branch that carries the closed version, and a pull request whose checks run in that window goes red. The edit guard is the one to watch: it fires on any ready
+pull request whatever the release is doing, and what the window adds is that the merge it tells you to
+run is now declined. That is deliberate; CONTRIBUTING.md's release section says what it is protecting
+against and what each of those costs. Do not defer step 3 without reading it.
 
 ## 3. Dispatch
 
@@ -69,7 +92,7 @@ the CHANGELOG rather than writing prose into the release:
 
 ```bash
 python3 scripts/release/release_notes.py --version X.Y.Z --repo s4k10503/velvet \
-  --compare-tag vX.Y.Z-main --previous-compare-tag vW.V.U-main --output /tmp/notes.md
+  --compare-tag vX.Y.Z-main --previous-compare-tag vA.B.C-main --output /tmp/notes.md
 gh release edit vX.Y.Z --notes-file /tmp/notes.md
 ```
 

@@ -77,6 +77,42 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AGatedShadow_When_TheReconcilerIsDisposed_Then_NoShadowBindingSurvives()
+        {
+            // Arrange — the theme is flipped AFTER the mount, and the order is the whole of what makes
+            // this pose anything: the conditional manipulator's attach-time evaluation is inside its
+            // panel check, so a theme already true at mount is never read, while the theme SIGNAL it
+            // subscribes is not — which is what applies the payload off-panel here. Releasing the
+            // manipulator at dispose then turns dark:shadow-sm off,
+            // which moves a gate token and re-derives the element's passes — and shadow-lg is still on the
+            // resolved list, so the pass re-attaches into the table ReleasePaintBindings emptied a few
+            // lines earlier. Emptying the gate table first is what stops it.
+            var scope = new ReconcilerScope();
+            var context = scope.Reconciler.Context;
+            var wasDark = VelvetTheme.IsDark;
+            try
+            {
+                Mount(scope, new VNode[] { V.Div(className: "shadow-lg dark:shadow-sm", name: "card") });
+                VelvetTheme.IsDark = true;
+                var lit = scope.Root[0].ClassListContains("shadow-sm");
+                var attached = context.ShadowBindings.Count;
+
+                // Act
+                scope.Dispose();
+
+                // Assert — both preconditions ride along. The mounted count, since a payload that never
+                // bound leaves the same empty table a correct teardown does; and the gated class, since
+                // the plain shadow-lg binds either way, so an Arrange that flipped the theme first would
+                // otherwise pass on the unfixed code with nothing to turn off.
+                Assert.That((lit, attached, context.ShadowBindings.Count), Is.EqualTo((true, 1, 0)));
+            }
+            finally
+            {
+                VelvetTheme.IsDark = wasDark;
+            }
+        }
+
+        [Test]
         public void Given_ShadowLg_When_Reconciled_Then_ThePaintBindingIsKeyedByTheElement()
         {
             // Arrange

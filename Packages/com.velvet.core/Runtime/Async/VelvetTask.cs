@@ -129,7 +129,7 @@ namespace Velvet
 
         public static IEnumerator ToCoroutine(Func<VelvetTask> taskFactory) => taskFactory().ToCoroutine();
 
-        internal static VelvetTask FromAwaitable(Awaitable awaitable) =>
+        public static VelvetTask FromAwaitable(Awaitable awaitable) =>
             new(AwaitableVelvetTaskSourcePool.Rent(awaitable));
 
         public readonly struct Awaiter : INotifyCompletion
@@ -194,7 +194,7 @@ namespace Velvet
 
         public static VelvetTask<T> FromResult(T result) => new(result);
 
-        internal static VelvetTask<T> FromAwaitable(Awaitable<T> awaitable) =>
+        public static VelvetTask<T> FromAwaitable(Awaitable<T> awaitable) =>
             new(AwaitableVelvetTaskSourcePool<T>.Rent(awaitable));
 
         public readonly struct Awaiter : INotifyCompletion

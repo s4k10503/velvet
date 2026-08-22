@@ -109,7 +109,8 @@ namespace Velvet
         // Components render, and each emitted host leaf is matched against oldNodes
         // and committed via CommitLeaf while the live stack still reflects its ancestor
         // Providers. Removals and the LIS reorder run afterwards in FinalizeGeneralCommit.
-        internal void ReconcileGeneral(
+        // Returns whether the removal pass ran, which an abort raised anywhere earlier in the pass skips.
+        internal bool ReconcileGeneral(
             VisualElement? parent,
             VNode?[] oldNodes,
             VNode?[] newChildren,
@@ -143,7 +144,6 @@ namespace Velvet
                 }
 
                 // Live-context walk: emit + commit each new leaf under its ancestor Providers.
-                var positionCounters = pool.RentPositionCounter();
                 var prevFlag = _ctx.ContextValueChanged;
                 var walk = pool.RentInlineWalk();
                 walk.IsNewSide = true;
@@ -155,12 +155,11 @@ namespace Velvet
                 walk.Commit = commit;
                 try
                 {
-                    ExpandInlineRecursive(walk, newChildren, positionCounters, FiberKeying.WalkRoot);
+                    ExpandInlineRecursive(walk, newChildren, FiberKeying.WalkRoot);
                 }
                 finally
                 {
                     _ctx.ContextValueChanged = prevFlag;
-                    pool.ReturnPositionCounter(positionCounters);
                     pool.ReturnInlineWalk(walk);
                 }
 
@@ -168,8 +167,10 @@ namespace Velvet
                 // mirroring the flat path: a deleted FunctionComponent's effect cleanups fire while its
                 // Ref.Current is still valid, then the DOM is removed. The sweep (full dispose) runs after.
                 RunOrphanEffectCleanups(oldFibers, newFibers);
-                if (!_ctx.IsAborted) FinalizeGeneralCommit(commit);
+                var removalsRan = !_ctx.IsAborted;
+                if (removalsRan) FinalizeGeneralCommit(commit);
                 SweepOrphans(oldFibers, newFibers);
+                return removalsRan;
             }
             finally
             {
@@ -326,6 +327,13 @@ namespace Velvet
         // an INNER ReconcileChildren call and therefore are NOT in the rolling-back scope's `newFibers` set.
         // The caller disposes every inline fiber whose MountPoint sits inside the returned range so its
         // effect cleanup runs and the deferred layout-effect drain short-circuits via IsDisposed.
+        // Every created orphan enters the set, with no attempt to exclude the ones that cannot hold a fiber.
+        // Excluding by element type was wrong twice over — a subclass and the type itself both reach here via
+        // V.Custom<T>, which declares children for any T — and the question is unanswerable from the element
+        // in any case, since what decides it is whether the NODE declared children. The set is a containment
+        // filter, so a surplus member costs a hash entry and changes nothing: a leaf holding no fiber
+        // contributes no fiber to dispose. The exact-type dispatch in FiberElementCleaner.ReturnToPool asks a
+        // different question — may this element enter the shared pool — and stays a type test.
         private static HashSet<VisualElement>? CollectOrphanContainers(GeneralCommitState commit, int preCount)
         {
             HashSet<VisualElement>? orphanContainers = null;
@@ -333,11 +341,6 @@ namespace Velvet
             {
                 var (element, isExisting) = commit.NewElements[i];
                 if (isExisting || element == null) continue;
-                if (element is Label or Toggle or Slider or TextField)
-                {
-                    // Poolable leaves cannot host inline-mounted descendant fibers; skip.
-                    continue;
-                }
                 (orphanContainers ??= new HashSet<VisualElement>()).Add(element);
             }
             return orphanContainers;
@@ -419,6 +422,12 @@ namespace Velvet
             public int SlotStart;
             public List<ComponentFiber> OldFibers = null!;
             public HashSet<ComponentFiber> NewFibers = null!;
+            // Filled by a Suspense expansion that suspended and read by every enclosing one in this walk,
+            // which leaves those fibers' marks alone: NewFibers is one set for the whole walk, so an
+            // enclosing delta contains a nested Suspense's primary subtree, and an enclosing Suspense
+            // resolving is not the inner one resolving. Held on the walk rather than rented per expansion,
+            // since the enclosing loop reads it after the inner one has returned its own buffers.
+            public readonly HashSet<ComponentFiber> OffscreenPrimaries = new();
             public ProviderPairTable? Providers;
             public ProviderPairTable? OldProvidersForPairing;
             public GeneralCommitState? Commit;
@@ -442,6 +451,7 @@ namespace Velvet
                 OldProvidersForPairing = null;
                 Commit = null;
                 NewProviderOrdinal = 0;
+                OffscreenPrimaries.Clear();
             }
         }
 
@@ -554,7 +564,6 @@ namespace Velvet
             if (!needsExpand) return nodes;
 
             var buffer = _ctx.BufferPool.RentNodeList();
-            var positionCounters = _ctx.BufferPool.RentPositionCounter();
             var prevFlag = _ctx.ContextValueChanged;
             var walk = _ctx.BufferPool.RentInlineWalk();
             walk.Result = buffer;
@@ -567,14 +576,13 @@ namespace Velvet
             walk.OldProvidersForPairing = oldProvidersForPairing;
             try
             {
-                ExpandInlineRecursive(walk, nodes, positionCounters, FiberKeying.WalkRoot);
+                ExpandInlineRecursive(walk, nodes, FiberKeying.WalkRoot);
                 return buffer.Count == 0 ? Array.Empty<VNode>() : buffer.ToArray();
             }
             finally
             {
                 if (isNewSide) _ctx.ContextValueChanged = prevFlag;
                 _ctx.BufferPool.ReturnNodeList(buffer);
-                _ctx.BufferPool.ReturnPositionCounter(positionCounters);
                 _ctx.BufferPool.ReturnInlineWalk(walk);
             }
         }
@@ -601,7 +609,6 @@ namespace Velvet
         private void ExpandInlineRecursive(
             InlineWalk walk,
             VNode?[] nodes,
-            Dictionary<object, int> positionCounters,
             WalkPosition position)
         {
             var result = walk.Result;
@@ -620,7 +627,7 @@ namespace Velvet
                         {
                             var childPosition = FiberKeying.FragmentChild(
                                 position, fragment.Key, nodeIndex);
-                            ExpandInlineRecursive(walk, fragment.Children, positionCounters, childPosition);
+                            ExpandInlineRecursive(walk, fragment.Children, childPosition);
                         }
                         break;
                     case ContextProviderNode provider when !isNewSide:
@@ -635,15 +642,15 @@ namespace Velvet
                         {
                             var childPosition = FiberKeying.ProviderChild(
                                 position, provider.Key, nodeIndex);
-                            ExpandInlineRecursive(walk, provider.Children, positionCounters, childPosition);
+                            ExpandInlineRecursive(walk, provider.Children, childPosition);
                         }
                         break;
                     }
                     case ContextProviderNode provider:
-                        ExpandNewSideProvider(walk, provider, positionCounters, position, nodeIndex);
+                        ExpandNewSideProvider(walk, provider, position, nodeIndex);
                         break;
                     case ComponentNode component:
-                        ExpandComponentInline(walk, component, positionCounters, position, nodeIndex);
+                        ExpandComponentInline(walk, component, position, nodeIndex);
                         break;
                     case OutletNode:
                         // Wrapper-emitting node: CreateElement(Outlet) / PatchNode(Outlet) resolve the
@@ -701,7 +708,6 @@ namespace Velvet
         private void ExpandNewSideProvider(
             InlineWalk walk,
             ContextProviderNode provider,
-            Dictionary<object, int> positionCounters,
             WalkPosition position,
             int nodeIndex)
         {
@@ -724,7 +730,7 @@ namespace Velvet
                 {
                     var childPosition = FiberKeying.ProviderChild(
                         position, provider.Key, nodeIndex);
-                    ExpandInlineRecursive(walk, provider.Children, positionCounters, childPosition);
+                    ExpandInlineRecursive(walk, provider.Children, childPosition);
                 }
             }
             finally
@@ -736,7 +742,6 @@ namespace Velvet
         private void ExpandComponentInline(
             InlineWalk walk,
             ComponentNode component,
-            Dictionary<object, int> positionCounters,
             WalkPosition position,
             int nodeIndex)
         {
@@ -747,7 +752,12 @@ namespace Velvet
             // tree, blocking proper re-mount on the next normal render.
             if (_ctx.IsAborted) return;
             var identity = component.ResolvedIdentity;
-            var slotKey = component.Key ?? FiberKeying.ResolveInlinePositionKey(positionCounters, identity, _ctx.ComponentRegistry.InlinePositionKeyBoxes);
+            var slotKey = component.Key ?? FiberKeying.ResolveInlinePositionKey(
+                position, nodeIndex, _ctx.ComponentRegistry.InlinePositionKeyBoxes);
+            // The scope member of this component's own registry key. Read at this level and never carried
+            // into its output: ExpandFiberPreviousTree pushes the fiber below, which is where the reading
+            // stops answering — ReconcilerContext.PortalChildKeyScope owns why that has to be so.
+            var portalScope = _ctx.PortalChildKeyScopeHere;
             var commit = walk.Commit;
             var result = walk.Result;
             if (walk.IsNewSide)
@@ -770,7 +780,7 @@ namespace Velvet
                 // position (with hook state shared across both copies). Mirror the
                 // leaf-level duplicate guard: warn and skip the repeat before
                 // GetOrCreate can clobber the first occurrence's slot.
-                var priorFiber = _ctx.ComponentRegistry.TryGetFiberForInlineKey(parentFiber, slotKey, identity);
+                var priorFiber = _ctx.ComponentRegistry.TryGetFiberForInlineKey(parentFiber, slotKey, identity, portalScope, walk.Parent);
                 if (priorFiber != null && walk.NewFibers.Contains(priorFiber))
                 {
                     FiberLogger.LogWarning("GeneralPathReconciler",
@@ -779,7 +789,7 @@ namespace Velvet
                     return;
                 }
                 var fiber = _ctx.ComponentRegistry.GetOrCreateInline(
-                    component, parentFiber, slotKey, walk.Parent, currentSlotStart);
+                    component, parentFiber, slotKey, walk.Parent, currentSlotStart, portalScope);
                 walk.NewFibers.Add(fiber);
                 var preCount = emittedCount;
                 ExpandFiberPreviousTree(walk, fiber, component, position, nodeIndex);
@@ -788,12 +798,11 @@ namespace Velvet
             else
             {
                 // Old-side (structural) walk: look up the previously rendered fiber by the
-                // same tree-position key the new side registered under — (parent fiber,
-                // position key, identity). FiberStack.Push mirrors the new side so nested
-                // old-side components resolve against the same parent fiber they were
+                // same registry key the new side registered under. FiberStack.Push mirrors the new
+                // side so nested old-side components resolve against the same parent fiber they were
                 // registered with; without the symmetric push the lookup parent would
                 // diverge and the diff would treat reused fibers as orphans.
-                var fiber = _ctx.ComponentRegistry.TryGetFiberForInlineKey(_ctx.FiberStack.Current, slotKey, identity);
+                var fiber = _ctx.ComponentRegistry.TryGetFiberForInlineKey(_ctx.FiberStack.Current, slotKey, identity, portalScope, walk.Parent);
                 if (fiber != null)
                 {
                     ExpandFiberPreviousTree(walk, fiber, component, position, nodeIndex);
@@ -806,11 +815,10 @@ namespace Velvet
             }
         }
 
-        // The descendants' slotKeys must be scoped to THIS fiber's body output — not shared with the
-        // surrounding siblings' position counters. Otherwise the same descendant would compute different
-        // slotKeys when the enclosing fiber re-renders independently (setState) vs when its outer parent
-        // re-renders (where preceding siblings share the position scope and shift the counters). A registry
-        // lookup mismatch would dispose the descendant fiber and reset its state.
+        // FiberKeying.ComponentChild restarts SlotPath here, so the descendants' slotKeys are scoped to
+        // THIS fiber's body output. Otherwise the same descendant would compute different slotKeys when the
+        // enclosing fiber re-renders independently (setState) vs when its outer parent re-renders. A
+        // registry lookup mismatch would dispose the descendant fiber and reset its state.
         //
         // FiberStack.Push around the recursion is required so that nested inline ComponentNodes encountered
         // while walking fiber.PreviousTree are appended as children of THIS fiber, not the outer caller's
@@ -829,17 +837,15 @@ namespace Velvet
         {
             if (fiber.PreviousTree == null || fiber.PreviousTree.Length == 0) return;
 
-            var childCounters = _ctx.BufferPool.RentPositionCounter();
             _ctx.FiberStack.Push(fiber);
             try
             {
                 var componentPosition = FiberKeying.ComponentChild(position, component.Key, nodeIndex);
-                ExpandInlineRecursive(walk, fiber.PreviousTree, childCounters, componentPosition);
+                ExpandInlineRecursive(walk, fiber.PreviousTree, componentPosition);
             }
             finally
             {
                 _ctx.FiberStack.Pop();
-                _ctx.BufferPool.ReturnPositionCounter(childCounters);
             }
         }
 
@@ -859,7 +865,7 @@ namespace Velvet
         {
             var innerPosition = FiberKeying.MemoInner(position, nodeIndex);
             var cacheKey = FiberKeying.MemoCacheKey(memo.Key, innerPosition.Scope!);
-            var (inner, _, previousCached) = _ctx.FiberMemoCache.GetOrComputeWithHitInfo(cacheKey, memo);
+            var (inner, previousCached) = _ctx.FiberMemoCache.GetOrCompute(cacheKey, memo);
             if (previousCached != null)
             {
                 // A deps change just replaced the cached inner tree. The memo wrapper is opaque to the
@@ -874,7 +880,7 @@ namespace Velvet
             // Recurse under this memo's own scope so a nested Memo's position key (or an inner
             // Component's slot key) cannot collide with this memo's scope — e.g. an outer and an
             // inner unkeyed Memo both at node index 0 would otherwise share cacheKey "{scope}/m0".
-            ExpandInlineScoped(walk, new[] { inner }, innerPosition);
+            ExpandInlineRecursive(walk, new[] { inner }, innerPosition);
         }
 
         // Bumps the propagation generation (only on the first change of this reconcile pass to
@@ -935,22 +941,6 @@ namespace Velvet
             return false;
         }
 
-        // Rent/return pairing around an expansion whose descendants must not share the surrounding
-        // siblings' position counters — the first constraint ExpandFiberPreviousTree states. Nothing is
-        // pushed onto FiberStack here; the caller's current fiber stays the parent.
-        private void ExpandInlineScoped(InlineWalk walk, VNode?[] nodes, WalkPosition position)
-        {
-            var counters = _ctx.BufferPool.RentPositionCounter();
-            try
-            {
-                ExpandInlineRecursive(walk, nodes, counters, position);
-            }
-            finally
-            {
-                _ctx.BufferPool.ReturnPositionCounter(counters);
-            }
-        }
-
         // Wrapper-less Suspense expansion. The Suspense emits no container
         // VisualElement: its children are expanded inline into result so they sit
         // directly in the parent's slot range and, on the new side, render in-scope of any enclosing
@@ -960,7 +950,7 @@ namespace Velvet
         // descendant suspends during the new-side render, the partial primary output is discarded (the
         // partially-mounted fibers stay registered so a later resolve re-render reuses them with their
         // state) and the fallback subtree is expanded instead. The children-vs-fallback decision is
-        // recorded in ReconcilerContext.SuspenseFallbackShown keyed by (boundary,
+        // recorded via ReconcilerContext.SetSuspenseFallbackShown keyed by (boundary,
         // position) so the old-side structural walk reproduces the committed subtree for the diff.
         // Primary and fallback children use distinct fragment scopes so their fibers never collide.
         private void ExpandSuspenseInline(
@@ -971,6 +961,7 @@ namespace Velvet
         {
             var result = walk.Result;
             var newFibers = walk.NewFibers;
+            var offscreenPrimaries = walk.OffscreenPrimaries;
             var commit = walk.Commit;
             var boundaryFiber = _ctx.FiberStack.Current;
             var suspenseKey = FiberKeying.SuspenseKey(position.Scope, suspense.Key, nodeIndex);
@@ -978,7 +969,6 @@ namespace Velvet
                 position, suspenseKey, suspense.Key, nodeIndex, isFallback: false);
             var fallbackPosition = FiberKeying.SuspenseSubtree(
                 position, suspenseKey, suspense.Key, nodeIndex, isFallback: true);
-            var stateKey = (boundaryFiber, suspenseKey);
 
             if (walk.IsNewSide)
             {
@@ -993,18 +983,13 @@ namespace Velvet
                 {
                     if (suspense.Children is { Length: > 0 })
                     {
-                        var counters = _ctx.BufferPool.RentPositionCounter();
                         try
                         {
-                            ExpandInlineRecursive(walk, suspense.Children, counters, primaryPosition);
+                            ExpandInlineRecursive(walk, suspense.Children, primaryPosition);
                         }
                         catch (FiberSuspendSignal)
                         {
                             suspended = true;
-                        }
-                        finally
-                        {
-                            _ctx.BufferPool.ReturnPositionCounter(counters);
                         }
                     }
                     if (!suspended)
@@ -1013,12 +998,18 @@ namespace Velvet
                     }
                     // Mark THIS Suspense's primary children (the fibers added during the children
                     // expansion) as offscreen iff suspended. The offscreen guard in FlushState defers
-                    // their lane flush while suspended (their slot is occupied by the fallback), but the
-                    // fallback subtree — expanded below and never marked — remains flushable (the
-                    // fallback renders normally; only the primary subtree is offscreen).
+                    // their lane flush while suspended (their slot is occupied by the fallback). The
+                    // fallback subtree is expanded below, so this loop never reaches it and this Suspense
+                    // leaves it flushable; what marks a nested Suspense's fallback subtree is the
+                    // enclosing expansion, whose own fallback occupies that slot too.
+                    //
+                    // A nested Suspense that suspended has already answered for the fibers it created, and
+                    // this delta contains them, so its answer stands.
                     foreach (var f in newFibers)
                     {
-                        if (!fibersBefore.Contains(f)) f.IsOffscreen = suspended;
+                        if (fibersBefore.Contains(f)) continue;
+                        if (!offscreenPrimaries.Contains(f)) f.IsOffscreen = suspended;
+                        if (suspended) offscreenPrimaries.Add(f);
                     }
                     // Rollback and fallback expansion must run while fibersBefore is still live
                     // (rented from the pool, contents intact). Performing them after the finally
@@ -1030,7 +1021,7 @@ namespace Velvet
                         else if (result!.Count > preCount) result.RemoveRange(preCount, result.Count - preCount);
                         if (suspense.Fallback != null)
                         {
-                            ExpandInlineScoped(walk, new[] { suspense.Fallback }, fallbackPosition);
+                            ExpandInlineRecursive(walk, new[] { suspense.Fallback }, fallbackPosition);
                         }
                     }
                 }
@@ -1038,33 +1029,21 @@ namespace Velvet
                 {
                     _ctx.BufferPool.ReturnFiberSet(fibersBefore);
                 }
-                _ctx.SuspenseFallbackShown[stateKey] = suspended;
-                if (boundaryFiber != null)
-                {
-                    // Mark/unmark the boundary as suspended so FlushState defers an offscreen descendant's
-                    // lane flush to this boundary's re-render (which commits the reveal in one pass).
-                    if (suspended) _ctx.SuspendedBoundaries.Add(boundaryFiber);
-                    else _ctx.SuspendedBoundaries.Remove(boundaryFiber);
-                }
+                // Records this Suspense's decision under its own position key. FlushState's offscreen guard
+                // reads the boundary-level answer derived from those keys, so a sibling Suspense expanded
+                // later in this same walk cannot clear it.
+                _ctx.SetSuspenseFallbackShown(boundaryFiber, suspenseKey, suspended);
             }
             else
             {
-                var wasFallback = _ctx.SuspenseFallbackShown.TryGetValue(stateKey, out var shown) && shown;
+                var wasFallback = _ctx.IsSuspenseFallbackShown(boundaryFiber, suspenseKey);
                 var nodesToExpand = wasFallback
                     ? (suspense.Fallback != null ? new[] { suspense.Fallback } : Array.Empty<VNode>())
                     : (suspense.Children ?? Array.Empty<VNode>());
                 if (nodesToExpand.Length > 0)
                 {
-                    var counters = _ctx.BufferPool.RentPositionCounter();
-                    try
-                    {
-                        ExpandInlineRecursive(walk, nodesToExpand, counters,
-                            wasFallback ? fallbackPosition : primaryPosition);
-                    }
-                    finally
-                    {
-                        _ctx.BufferPool.ReturnPositionCounter(counters);
-                    }
+                    ExpandInlineRecursive(walk, nodesToExpand,
+                        wasFallback ? fallbackPosition : primaryPosition);
                 }
             }
         }
@@ -1222,6 +1201,7 @@ namespace Velvet
 
             if (!walk.IsNewSide)
             {
+                _ctx.MarkPresenceReproduced(stateKey);
                 ReproduceCommittedPresence(walk, stateKey, presencePosition);
                 return;
             }
@@ -1231,6 +1211,10 @@ namespace Velvet
             {
                 state = new ReconcilerContext.PresenceBoundaryState();
                 _ctx.PresenceStates[stateKey] = state;
+            }
+            if (_ctx.CurrentPortalPlaceholder != null)
+            {
+                state!.OwningPortalPlaceholder = _ctx.CurrentPortalPlaceholder;
             }
 
             var newKeyed = _factory.BuildKeyedMapCopy(presence.Children);
@@ -1326,6 +1310,10 @@ namespace Velvet
                 {
                     foreach (var completion in tally.Deferred) completion();
                 }
+
+                // Marked here rather than beside stateKey above, so an expansion that unwound is not
+                // counted as having rendered this presence again.
+                _ctx.MarkPresenceReRendered(stateKey);
             }
             finally
             {
@@ -1896,15 +1884,7 @@ namespace Velvet
             var commit = walk.Commit;
             var startIdx = commit != null ? commit.NewElements.Count : walk.Result!.Count;
             var childPosition = FiberKeying.PresenceChild(presencePosition, key);
-            var counters = _ctx.BufferPool.RentPositionCounter();
-            try
-            {
-                ExpandInlineRecursive(walk, new[] { node }, counters, childPosition);
-            }
-            finally
-            {
-                _ctx.BufferPool.ReturnPositionCounter(counters);
-            }
+            ExpandInlineRecursive(walk, new[] { node }, childPosition);
 
             if (commit != null && commit.NewElements.Count > startIdx)
             {

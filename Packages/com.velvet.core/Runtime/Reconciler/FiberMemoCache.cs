@@ -4,23 +4,28 @@ using System.Collections.Generic;
 namespace Velvet
 {
     // Dependency-array cache for MemoNode.
-    // Skips the Factory invocation and returns the cached VNode when the dependency array is unchanged.
+    // Skips the Factory invocation and returns the cached VNode when the dependency array is unchanged, or
+    // when the same node instance is expanded again.
     internal sealed class FiberMemoCache
     {
-        private readonly Dictionary<string, (object?[]? deps, VNode cached)> _cache = new();
+        private readonly Dictionary<string, (object?[]? deps, MemoNode node, VNode cached)> _cache = new();
 
-        // Convenience overload for callers that don't need the cache-hit flags.
-        public VNode GetOrCompute(string cacheKey, MemoNode memo) => GetOrComputeWithHitInfo(cacheKey, memo).result;
-
-        // Used by PatchNode to skip child-tree rebuilds on a cache hit.
-        public (VNode result, bool wasHit, VNode? previousCached) GetOrComputeWithHitInfo(string cacheKey, MemoNode memo)
+        public (VNode result, VNode? previousCached) GetOrCompute(string cacheKey, MemoNode memo)
         {
             VNode? previousCached = null;
             if (_cache.TryGetValue(cacheKey, out var entry))
             {
-                if (ObjectIs.AreEqualDeps(entry.deps, memo.Dependencies))
+                // Two hit conditions, because a null dependency array is "no dependency array" rather than "an
+                // unchanged one": AreEqualDeps answers true for two nulls, which would cache such a node for
+                // its whole life. Once the deps arm stops answering for it, identity is what keeps the old-side
+                // expansion off the Factory — GeneralPathReconciler.ExpandMemoInline reaches this method once
+                // for the old tree and once for the new, and only the old side carries the node that produced
+                // the cached inner. Drop the identity arm and the factory-call count in ReconcilerMemoTests'
+                // omitted-versus-empty case goes up by one per reconcile.
+                if (ReferenceEquals(entry.node, memo)
+                    || (memo.Dependencies != null && ObjectIs.AreEqualDeps(entry.deps, memo.Dependencies)))
                 {
-                    return (entry.cached, true, null);
+                    return (entry.cached, null);
                 }
                 previousCached = entry.cached;
             }
@@ -30,8 +35,8 @@ namespace Velvet
             {
                 throw new InvalidOperationException("MemoNode.Factory returned null.");
             }
-            _cache[cacheKey] = (memo.Dependencies, result);
-            return (result, false, previousCached);
+            _cache[cacheKey] = (memo.Dependencies, memo, result);
+            return (result, previousCached);
         }
 
         // Returns the currently cached inner VNode for cacheKey without invoking the

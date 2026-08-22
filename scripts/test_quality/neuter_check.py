@@ -36,6 +36,33 @@ DEFAULT_UNITY = "/Applications/Unity/Hub/Editor/6000.3.11f1/Unity.app/Contents/M
 UNITY_RUNNING = "^/Applications/.*/MacOS/Unity -runTests"
 
 CUTS_FILE = "scripts/test_quality/neuter_cuts.json"
+UNCOVERED_FILE = "scripts/test_quality/neuter_uncovered.txt"
+HOLES_FILE = "scripts/test_quality/neuter_holes.txt"
+PACKAGE_ROOT = "Packages/com.velvet.core"
+
+# Two name shapes, not every class-driven mechanism. A manipulator, a build step and FiberNodePatcher
+# are cut today and no glob here would record any of them; MotionPropertyClassParser and
+# FiberWrapperElementAppliers sit inside these very directories and outside both patterns. What is
+# derived is coverage of these two shapes, and a mechanism outside them is answered for by nobody.
+MECHANISM_GLOBS = (
+    ("Runtime/Styling", "Style*Class.cs"),
+    ("Runtime/Reconciler", "Fiber*Applier.cs"),
+)
+
+# Each is checked on its own, and AuditReadsNothing in test_neuter_check.py holds one case per floor.
+# Floors rather than exact counts, so growth needs no edit here. A campaign that shrinks the hole
+# record past its floor does need one, and that is where a record getting smaller is reviewed.
+#
+# HOLE_FIXTURE_FLOOR catches a record collapsed to a handful of fixtures, not one merely thinned: at
+# 18 it passes a record rewritten to 18 fixtures of one line each, 376 of 394 lines gone.
+MECHANISM_FLOOR = 25
+CUT_FLOOR = 25
+FIXTURE_FLOOR = 15
+HOLE_FIXTURE_FLOOR = 18
+
+# What report_pair can write: it keeps a case only when the cut did not turn it red, so a line naming
+# anything outside this came from something other than a sweep.
+HOLE_RESULTS = ("Passed", "Inconclusive", "Skipped")
 
 
 def unity_processes():
@@ -203,6 +230,148 @@ def validate(project, cuts):
     return problems
 
 
+def read_record(path):
+    """The non-blank lines of a checked-in record, stripped."""
+    return [line.strip() for line in path.read_text().splitlines() if line.strip()]
+
+
+def mechanisms(project):
+    """Every mechanism the uncovered record answers for, as its path under the package."""
+    found = []
+    for folder, pattern in MECHANISM_GLOBS:
+        found += [f"{folder}/{path.name}" for path in (project / PACKAGE_ROOT / folder).glob(pattern)]
+    return sorted(found)
+
+
+def cut_files(cuts):
+    """The mechanisms some cut disables, in the same spelling mechanisms() returns."""
+    prefix = PACKAGE_ROOT + "/"
+    return {edit["file"][len(prefix):] if edit["file"].startswith(prefix) else edit["file"]
+            for cut in cuts["cuts"].values() for edit in cut["edits"]}
+
+
+def coverage_drift(found, cut, recorded):
+    """Both directions the uncovered record can disagree with the globbed set.
+
+    An arrival is a mechanism nothing can disable, which is the one this exists for: a class-driven
+    mechanism fails by being ignored, and an ignored utility class reads exactly like a class nobody
+    wrote. A departure is a cut somebody has since written, and a record keeping the line stops meaning
+    what it says.
+
+    Both are computed against `found` rather than against the record alone. A recorded path no glob
+    matches is in neither direction, and read as a departure it is told that a cut disables it — which
+    sends whoever recorded it to delete the line they were right to add. coverage_problems answers for
+    that path instead.
+    """
+    globbed = set(found)
+    uncovered = {path for path in found if path not in cut}
+    return ([f"{UNCOVERED_FILE}: {path} has no cut and is not recorded — write one in {CUTS_FILE}, "
+             "or record it as uncovered" for path in sorted(uncovered - recorded)]
+            + [f"{UNCOVERED_FILE}: {path} is recorded as uncovered and a cut disables it — drop the line"
+               for path in sorted((recorded & globbed) - uncovered)])
+
+
+def coverage_problems(project, cuts):
+    path = project / UNCOVERED_FILE
+    if not path.is_file():
+        return [f"{UNCOVERED_FILE} not found; nothing answers for a mechanism with no cut"]
+    found = mechanisms(project)
+    recorded = set(read_record(path))
+    problems = []
+    if len(found) < MECHANISM_FLOOR:
+        problems.append(f"the mechanism glob found {len(found)} files under {PACKAGE_ROOT}, "
+                        f"fewer than {MECHANISM_FLOOR}")
+    problems += coverage_drift(found, cut_files(cuts), recorded)
+    missing = {entry for entry in recorded if not (project / PACKAGE_ROOT / entry).is_file()}
+    problems += [f"{UNCOVERED_FILE}: {entry} names no file under {PACKAGE_ROOT}"
+                 for entry in sorted(missing)]
+    problems += [f"{UNCOVERED_FILE}: {entry} matches neither glob, so this record does not answer for "
+                 "it — a mechanism outside the two shapes is answered for by nothing"
+                 for entry in sorted(recorded - set(found) - missing)]
+    return problems
+
+
+def declaring_sources(project, short_name):
+    """The test sources declaring a fixture by that name.
+
+    Sought as a class declaration rather than as a file name: one file may declare several fixtures, and
+    the file sharing its name with one of them is not the file the others live in.
+    """
+    pattern = re.compile(rf"\bclass\s+{re.escape(short_name)}\b")
+    return [path for path in sorted(project.glob("Packages/**/Tests/**/*.cs"))
+            if pattern.search(path.read_text())]
+
+
+# RenamedCases in test_neuter_check.py pins the two rename spellings below. One this misses — a
+# rename built from an expression rather than a literal, which the test sources also hold — arrives as
+# a case declared by nothing rather than as silence.
+CASE_DECLARATION = re.compile(
+    r"public\s+(?:void|IEnumerator)\s+(Given_\w+)"
+    r"|TestName\s*=\s*\"(Given_\w+)\""
+    r"|SetName\(\"(Given_\w+)\"\)")
+
+
+def declared_cases(project, fixture):
+    """The case names a fixture's source declares."""
+    found = set()
+    for path in declaring_sources(project, fixture.rsplit(".", 1)[-1]):
+        found |= {name for match in CASE_DECLARATION.findall(path.read_text())
+                  for name in match if name}
+    return found
+
+
+def hole_problems(lines, cuts, cases):
+    """Why a recorded hole cannot be compared against a sweep. `cases` maps a fixture to its case names.
+
+    An entry naming a fixture, a cut or a case that no longer exists is matched by no sweep, and
+    compare_baseline hands it back as a hole that closed rather than as a line to delete.
+    """
+    problems = []
+    for number, line in lines:
+        fields = line.split("\t")
+        if len(fields) != 4:
+            problems.append(f"{HOLES_FILE}:{number}: {len(fields)} tab-separated fields, expected 4")
+            continue
+        fixture, name, case, result = fields
+        entry = cuts["fixtures"].get(fixture)
+        if entry is None:
+            problems.append(f"{HOLES_FILE}:{number}: no fixture '{fixture}' in {CUTS_FILE}")
+        elif name not in entry["cuts"]:
+            problems.append(f"{HOLES_FILE}:{number}: {fixture} is not registered against cut '{name}'")
+        elif case not in cases.get(fixture, set()):
+            problems.append(f"{HOLES_FILE}:{number}: {fixture} declares no case {case}")
+        if result not in HOLE_RESULTS:
+            problems.append(f"{HOLES_FILE}:{number}: '{result}' is not a result a hole can carry")
+    return problems
+
+
+def holes_problems(project, cuts):
+    path = project / HOLES_FILE
+    if not path.is_file():
+        return [f"{HOLES_FILE} not found; a sweep has nothing to be read as a diff against"]
+    lines = [(number, line) for number, line in enumerate(path.read_text().splitlines(), start=1)
+             if line.strip()]
+    problems = []
+    covered = {line.split("\t")[0] for _, line in lines}
+    if len(covered) < HOLE_FIXTURE_FLOOR:
+        problems.append(f"{HOLES_FILE} names fewer than {HOLE_FIXTURE_FLOOR} fixtures "
+                        f"({len(covered)}); a record a partial sweep overwrote agrees with every line "
+                        "still in it")
+    cases = {fixture: declared_cases(project, fixture) for fixture in cuts["fixtures"]}
+    return problems + hole_problems(lines, cuts, cases)
+
+
+def audit(project, cuts):
+    """Everything a sweep rests on that can be decided without an editor."""
+    problems = validate(project, cuts)
+    if len(cuts["cuts"]) < CUT_FLOOR:
+        problems.append(f"the cut map parsed to {len(cuts['cuts'])} cuts, fewer than {CUT_FLOOR}")
+    if len(cuts["fixtures"]) < FIXTURE_FLOOR:
+        problems.append(f"the cut map parsed to {len(cuts['fixtures'])} fixtures, "
+                        f"fewer than {FIXTURE_FLOOR}")
+    return problems + coverage_problems(project, cuts) + holes_problems(project, cuts)
+
+
 def apply_cut(project, cut):
     """Returns the original text of every file touched, for the revert."""
     originals = {}
@@ -270,9 +439,38 @@ def read_hole_lines(path):
     return [line for line in path.read_text().splitlines() if line.strip()]
 
 
-def baseline_arg_problems(args):
-    """Arguments that would make --baseline meaningless, checked before the first editor run."""
+def baseline_problem(fixture, baseline):
+    """Why this fixture's baseline cannot support a sweep, and which cases say so.
+
+    Both answers read as full coverage in the output, which is why neither may pass. A filter that named
+    nothing reports no holes because it ran no cases. A case already red is indistinguishable from one
+    the cut killed, and scores as coverage the fixture does not have.
+    """
+    if not baseline:
+        return f"the filter '{fixture}' ran no cases; every cut below would read as covered", []
+    red = sorted(test for test, result in baseline.items() if result != "Passed")
+    if red:
+        return "the baseline is not green; every cut below would read as covered", red
+    return None, []
+
+
+def baseline_arg_problems(args, cuts):
+    """Arguments that would make --report or --baseline meaningless, checked before the first run.
+
+    --report writes the fixtures this run swept and nothing else, so aiming a narrowed sweep at the
+    checked-in record replaces the rest of it with them. The audit downstream reads a truncated record
+    as one every line still in it agrees with, and the next full sweep reads it as holes that opened.
+
+    Narrowed against the map rather than against the flag, since --fixtures naming every registered
+    fixture is a whole sweep spelt out, and refusing it would answer with the thing it just did.
+    """
     problems = []
+    if (args.report and args.fixtures and set(args.fixtures) != set(cuts["fixtures"])
+            and Path(args.report).resolve() == (Path(args.project).resolve() / HOLES_FILE)):
+        problems.append(
+            f"--fixtures narrows this sweep to {len(args.fixtures)} of {len(cuts['fixtures'])}, and "
+            f"--report would write only those over {HOLES_FILE}, dropping the rest. Report elsewhere "
+            "and read it there, or sweep every fixture.")
     if not args.baseline:
         return problems
     baseline = Path(args.baseline).resolve()
@@ -334,9 +532,17 @@ def report_pair(entry, name, cut, baseline, cut_results, elapsed, peak):
     for test in holes:
         mark = f" ({inconclusive[test]})" if test in inconclusive else ""
         print(f"      HOLE{mark} {test.rsplit('.', 1)[-1]}", flush=True)
-    for test in missing:
-        print(f"      NOT RUN {test.rsplit('.', 1)[-1]}", flush=True)
-    return holes
+    if missing:
+        # A case the baseline ran and this one did not is not a case the cut killed — it is a case the
+        # run never reached, and a cut that stops the assembly loading produces a whole fixture of them.
+        # Reported as a hole it would read as coverage; dropped from the report it reads as one too, so
+        # it stops the sweep the way a red baseline does.
+        print(f"error: the '{name}' run reached {len(missing)} fewer cases than the baseline; "
+              "every one of them would read as covered", file=sys.stderr)
+        for test in missing:
+            print(f"  {test}", file=sys.stderr)
+        return None
+    return [(test, cut_results[test]) for test in holes]
 
 
 def main():
@@ -345,9 +551,13 @@ def main():
     parser.add_argument("--project", default=".", help="Unity project root (default: cwd)")
     parser.add_argument("--fixtures", nargs="*",
                         help="fixtures to sweep; default is every one in the cut map")
-    parser.add_argument("--platform", default="EditMode", choices=["EditMode", "PlayMode"])
+    parser.add_argument("--platform", default="", choices=["", "EditMode", "PlayMode"],
+                        help="override the platform every fixture declares; default is to use each one's")
     parser.add_argument("--validate", action="store_true",
                         help="check every anchor still matches exactly once, then exit")
+    parser.add_argument("--audit", action="store_true",
+                        help="check the anchors, the uncovered record and the hole baseline against the "
+                             "sources, then exit; no editor needed")
     parser.add_argument("--timeout", type=int, default=900, help="seconds per run (default: 900)")
     parser.add_argument("--busy-timeout", type=int, default=1800,
                         help="seconds to wait for a quiet machine (default: 1800)")
@@ -361,6 +571,18 @@ def main():
 
     project = Path(args.project).resolve()
     cuts = load_cuts(project)
+
+    if args.audit:
+        problems = audit(project, cuts)
+        for problem in problems:
+            print(f"error: {problem}", file=sys.stderr)
+        if problems:
+            return 1
+        print(f"{len(mechanisms(project))} mechanisms, {len(cuts['cuts'])} cuts across "
+              f"{len(cuts['fixtures'])} fixtures, "
+              f"{len(read_record(project / UNCOVERED_FILE))} recorded uncovered, "
+              f"{len(read_record(project / HOLES_FILE))} recorded holes", flush=True)
+        return 0
 
     problems = validate(project, cuts)
     if problems:
@@ -379,7 +601,7 @@ def main():
             print(f"  {path}", file=sys.stderr)
         return 1
 
-    for problem in baseline_arg_problems(args):
+    for problem in baseline_arg_problems(args, cuts):
         print(f"error: {problem}", file=sys.stderr)
         return BASELINE_DRIFT_EXIT
 
@@ -396,24 +618,24 @@ def main():
     report_lines = []
     for fixture in fixtures:
         short = fixture.rsplit(".", 1)[-1]
-        print(f"\n{fixture}", flush=True)
+        # The platform is a property of where the fixture lives, not of how the sweep was invoked: a
+        # PlayMode fixture asked under EditMode selects no case, and before that was refused it reported
+        # zero holes for every cut it was registered against.
+        platform = args.platform or cuts["fixtures"][fixture].get("platform", "EditMode")
+        print(f"\n{fixture} ({platform})", flush=True)
         if not wait_for_quiet(args.busy_timeout):
             print("error: the machine did not go quiet", file=sys.stderr)
             return 1
         elapsed, killed, peak = run_suite(
-            args.unity, project, args.platform, fixture,
+            args.unity, project, platform, fixture,
             out / f"{short}-baseline.xml", out / f"{short}-baseline.log", args.timeout)
         baseline = outcomes(out / f"{short}-baseline.xml")
         if killed or baseline is None:
             print("error: the baseline run produced no results", file=sys.stderr)
             return 1
-        red = sorted(test for test, result in baseline.items() if result != "Passed")
-        if red:
-            # A test failing on its own accord is indistinguishable from one the cut killed, and it
-            # scores as coverage the fixture does not have. That direction hides holes, so it stops
-            # the sweep rather than being noted in the output.
-            print("error: the baseline is not green; every cut below would read as covered",
-                  file=sys.stderr)
+        problem, red = baseline_problem(fixture, baseline)
+        if problem:
+            print(f"error: {problem}", file=sys.stderr)
             for test in red:
                 print(f"  {test}", file=sys.stderr)
             return 1
@@ -429,7 +651,7 @@ def main():
             originals = apply_cut(project, cut)
             try:
                 elapsed, killed, peak = run_suite(
-                    args.unity, project, args.platform, fixture,
+                    args.unity, project, platform, fixture,
                     out / f"{short}-{name}.xml", out / f"{short}-{name}.log", args.timeout)
             finally:
                 revert(originals)
@@ -440,8 +662,13 @@ def main():
             if holes is None:
                 return 1
             total_holes += len(holes)
-            for test in holes:
-                report_lines.append(f"{fixture}\t{name}\t{test.rsplit('.', 1)[-1]}")
+            for test, result in holes:
+                # The result rides in the line because Inconclusive and Passed are different answers
+                # filed under one word: an Inconclusive case stopped at an Assume the cut falsified, so
+                # it DID notice, while a Passed one did not. Recorded, deleting that Assume and letting
+                # the assertion pass on a default value drifts the baseline; without it the two emit the
+                # same bytes and the set comparison sees nothing.
+                report_lines.append(f"{fixture}\t{name}\t{test.rsplit('.', 1)[-1]}\t{result}")
 
     if args.report:
         Path(args.report).write_text(

@@ -19,31 +19,54 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-from shell_commands import git_invocations
+from shell_commands import COMMIT_VALUE_FLAGS, git_invocations, unexpanded
+
+
+HOOK_TOOLS = {"Bash"}
 
 NEUTER_CUTS = "scripts/test_quality/neuter_cuts.json"
 
-# `git commit` options that take a value, so their argument is not mistaken for a pathspec.
-COMMIT_VALUE_FLAGS = {
-    "-m", "--message", "-F", "--file", "-c", "--reedit-message", "-C", "--reuse-message",
-    "--fixup", "--squash", "--author", "--date", "-t", "--template", "--cleanup",
-    "-S", "--gpg-sign", "--trailer", "--pathspec-from-file",
-}
 COMMIT_ALL_FLAGS = {"-a", "--all"}
 
 
+# A pathspec the shell has not expanded names no file, so every check runs over nothing and the
+# commit records content none of them saw — the check silently not happening. Refusing errs the cheap
+# way here: a commit is remade in a second, and the alternative is a blob nothing looked at.
+UNEXPANDED_POLICY = "refuse"
+UNEXPANDED_PROBE = 'git commit -m x $PATHS'
+
+UNREADABLE_POLICY = "refuse"
+UNREADABLE_PROBE = {"command": "git commit -m probe"}
+
+
+# What a reading that did not answer resolves to. Every reader below otherwise reports it as an
+# empty result, and an empty result is "this commit records nothing that could fail a check".
+UNREADABLE = object()
+
+
 def git(cwd, *args):
-    return subprocess.run(["git", "-C", cwd, *args], capture_output=True, text=True, timeout=30)
+    """A finished `git`, or None when it could not be run at all.
+
+    Same reason `lib/repository.py` answers None rather than raising: a hook that raises exits 1,
+    and 1 lets the tool through.
+    """
+    try:
+        return subprocess.run(["git", "-C", cwd, *args], capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return None
 
 
 def git_bytes(cwd, *args):
-    result = subprocess.run(["git", "-C", cwd, *args], capture_output=True, timeout=30)
+    try:
+        result = subprocess.run(["git", "-C", cwd, *args], capture_output=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return None
     return result.stdout if result.returncode == 0 else None
 
 
 def repo_root(cwd):
     result = git(cwd, "rev-parse", "--show-toplevel")
-    return result.stdout.strip() if result.returncode == 0 else cwd
+    return result.stdout.strip() if result and result.returncode == 0 else cwd
 
 
 def commit_invocations(command):
@@ -92,8 +115,8 @@ def staged_paths(cwd):
     # R is included: a rename reports it, and dropping it left a file renamed and broken in one
     # staged change checked by nothing.
     result = git(cwd, "diff", "--cached", "--name-only", "--diff-filter=ACMR")
-    if result.returncode != 0:
-        return []
+    if result is None or result.returncode != 0:
+        return UNREADABLE
     return [line for line in result.stdout.splitlines() if line.strip()]
 
 
@@ -102,20 +125,27 @@ def worktree_paths(cwd, pathspecs):
     if pathspecs:
         args += ["--", *pathspecs]
     result = git(cwd, *args)
-    if result.returncode != 0:
-        return []
+    if result is None or result.returncode != 0:
+        return UNREADABLE
     return [line for line in result.stdout.splitlines() if line.strip()]
 
 
 def committed_content(cwd, commits_all, pathspecs):
-    """path -> bytes the commit would record."""
+    """path -> bytes the commit would record, or UNREADABLE when git did not answer."""
+    staged = staged_paths(cwd)
+    if staged is UNREADABLE:
+        return UNREADABLE
     content = {}
-    for path in staged_paths(cwd):
+    for path in staged:
         blob = git_bytes(cwd, "show", ":" + path)
-        if blob is not None:
-            content[path] = blob
+        if blob is None:
+            return UNREADABLE
+        content[path] = blob
     if commits_all or pathspecs:
-        for path in worktree_paths(cwd, pathspecs):
+        worktree = worktree_paths(cwd, pathspecs)
+        if worktree is UNREADABLE:
+            return UNREADABLE
+        for path in worktree:
             try:
                 with open(os.path.join(cwd, path), "rb") as handle:
                     content[path] = handle.read()
@@ -206,6 +236,55 @@ def check_content(display, data):
             pass
 
 
+# What mutation_check.py exits with when it refuses, as against any other non-zero status, which
+# means it could not answer at all. MutationRefusalStatusTests pins the two against each other.
+CARRIED_REFUSAL = 3
+
+# Under the timeout this hook is registered with, so the harness does not kill the hook mid-check and
+# take the refusal with it — which is the reading that lets the commit through.
+CARRIED_TIMEOUT = 10
+
+
+def check_carried_mutation(root, paths):
+    """Refuses a commit that would record a file a mutation campaign is holding.
+
+    Same hazard as `carried_neuters` above, and not the same shape: a cut is declared in a file this
+    can match against, while a mutation is whatever the campaign generated. The campaign records what
+    it holds instead, and mutation_check.py owns reading that record.
+
+    Asked wherever a commit records content rather than gated on the record existing here. Where the
+    record lives is mutation_check.py's to know, and a copy of that here would go on answering "no
+    campaign" after a rename moved it.
+    """
+    script = os.path.join(root, "scripts", "test_quality", "mutation_check.py")
+    if not os.path.exists(script):
+        return 0
+    try:
+        proc = subprocess.run(["python3", "-B", script, "--project", root, "--carried", *paths],
+                              capture_output=True, text=True, timeout=CARRIED_TIMEOUT, cwd=root)
+    except (OSError, subprocess.SubprocessError) as failure:
+        # Raising here exits 1, which this file's header records as letting the tool through — and
+        # it would take every check below out with it.
+        return refuse_mutation("this check could not be run at all.",
+                               "{}: {}".format(script, failure))
+    if proc.returncode == 0:
+        return 0
+    if proc.returncode == CARRIED_REFUSAL:
+        return refuse_mutation("a mutation campaign is holding one of these files.",
+                               proc.stdout.rstrip() or proc.stderr.rstrip())
+    return refuse_mutation(
+        "this check could not read whether a campaign holds one of these files.",
+        "{} exited {}:\n{}".format(script, proc.returncode, (proc.stderr or proc.stdout).rstrip()))
+
+
+def refuse_mutation(headline, detail):
+    """Which of the two it is, because a reading that did not happen is not one that found nothing —
+    and telling a reader the campaign holds their file when nothing established that is a false
+    statement about their tree."""
+    sys.stderr.write("Refusing `git commit`: " + headline + "\n\n" + detail + "\n")
+    return 2
+
+
 def check_neuter(root):
     script = os.path.join(root, "scripts", "test_quality", "neuter_check.py")
     if not os.path.exists(script):
@@ -249,6 +328,13 @@ def carried_neuters(content, edits):
 def audit(cwd, commits_all, pathspecs):
     root = repo_root(cwd)
     content = committed_content(root, commits_all, pathspecs)
+    if content is UNREADABLE:
+        sys.stderr.write(
+            "Refusing `git commit`: what this commit would record could not be read.\n\n"
+            "Every check below reads that content, so they would all run over nothing and pass, and "
+            "the commit would be recorded with none of them having seen it.\n\n"
+            "Retry when git answers.\n")
+        return 2
     if not content:
         return 0
 
@@ -270,6 +356,12 @@ def audit(cwd, commits_all, pathspecs):
         if code:
             return code
 
+    # After the content checks rather than before them: this one runs the working tree's copy of a
+    # script, so a mid-edit one refusing here would hide the py_compile failure that explains it.
+    code = check_carried_mutation(root, sorted(content))
+    if code:
+        return code
+
     if NEUTER_CUTS in content or any(path in targets for path in content):
         return check_neuter(root)
     return 0
@@ -280,7 +372,7 @@ def main():
         event = json.load(sys.stdin)
     except Exception:
         return 0
-    if event.get("tool_name") != "Bash":
+    if event.get("tool_name") not in HOOK_TOOLS:
         return 0
 
     commits = commit_invocations(event.get("tool_input", {}).get("command", ""))
@@ -289,6 +381,17 @@ def main():
 
     cwd = event.get("cwd") or "."
     for directory, commits_all, pathspecs in commits:
+        unresolved = [token for token in list(pathspecs) + ([directory] if directory else [])
+                      if unexpanded(token)]
+        if unresolved:
+            sys.stderr.write(
+                "Refusing `git commit`: it is scoped by an operand the shell has not expanded yet.\n\n"
+                + "\n".join("  " + token for token in unresolved)
+                + "\n\nEvery check below reads the content the commit would record, and a pathspec that "
+                  "is still a variable names no file — so they would all run over nothing and pass, "
+                  "and the commit would record content none of them saw.\n\n"
+                  "Name the paths, or commit the index and let the checks read that.\n")
+            return 2
         code = audit(directory or cwd, commits_all, pathspecs)
         if code:
             return code

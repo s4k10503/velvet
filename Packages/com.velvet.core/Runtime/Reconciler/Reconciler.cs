@@ -49,8 +49,8 @@ namespace Velvet
 
         /// <summary>
         /// Inline-mounted descendants share the root Reconciler's <see cref="ReconcilerContext"/>
-        /// so that <see cref="ComponentRegistry"/> lookups by <c>(anchor, slotKey, identity)</c>
-        /// resolve to the same fiber instance regardless of which fiber's Reconciler is currently
+        /// so that <see cref="ComponentRegistry"/> lookups resolve to the same fiber instance
+        /// regardless of which fiber's Reconciler is currently
         /// running. Each fiber still has its own Reconciler (and ChildReconciler) so per-fiber
         /// time-sliced pause/resume state is independent, but the registries / stacks
         /// (ComponentRegistry / FiberStack / ComponentContextStack / BufferPool / element-keyed
@@ -229,7 +229,11 @@ namespace Velvet
                 // EffectiveKeys is scoped to one top-level pass. VNode references are fresh
                 // per render, so unconsumed entries would otherwise accumulate across renders.
                 _ctx.EffectiveKeys.Clear();
-                // Return the inline children's old trees (queued by RenderInlineForExpansion) to the
+                // Scoped to one top-level pass because that is the span holding both readings it
+                // compares, and placed after the portal drain above so a presence the drain's own nested
+                // reconciles rendered is marked before the marks are read.
+                _ctx.RetirePresenceStatesNotReRendered();
+                // Return the inline children's old trees (queued by SubsumeFiberIntoThisPass) to the
                 // VNode pool now that the whole pass is done using them as patch baselines — deferred
                 // to here to avoid a mid-pass use-after-return that duplicates re-expanded subtrees.
                 FiberTreeReturn.DrainDeferredInlineOldTreeReturns(_ctx);
@@ -448,6 +452,9 @@ namespace Velvet
 
         void IReconcilerHost.RemoveElementDirect(VisualElement parent, VisualElement element) => _cleaner.RemoveElementDirect(parent, element);
 
+        void IReconcilerHost.ReleasePortalRangeForRetarget(VisualElement placeholder)
+            => _cleaner.ReleasePortalRangeForRetarget(placeholder);
+
         void IReconcilerHost.ReconcileChildren(VisualElement parent, VNode?[] oldChildren, VNode?[] newChildren, int slotStart)
             => _childReconciler.Reconcile(parent, oldChildren, newChildren, slotStart: slotStart);
 
@@ -541,15 +548,13 @@ namespace Velvet
                 BorderStyleSilhouette.Detach(element, binding);
             }
             _ctx.BorderStyleBindings.Clear();
-            // Dashed / dotted divider children hold a paint callback (not a style property, so unscrubbed by
-            // the pool reset): detach each so a still-mounted divider at root disposal leaves no live delegate.
+            // Detach each so a still-mounted divider at root disposal leaves no live delegate.
             foreach (var (element, binding) in _ctx.DivideDashBindings)
             {
                 DivideDashPainter.Detach(element, binding);
             }
             _ctx.DivideDashBindings.Clear();
-            // Overline rules are a generateVisualContent delegate (not a style property, so unscrubbed by the
-            // pool reset): detach each so a still-mounted text leaf at root disposal leaves no live delegate.
+            // Detach each so a still-mounted text leaf at root disposal leaves no live delegate.
             foreach (var (element, binding) in _ctx.TextOverlineBindings)
             {
                 TextOverlineSilhouette.Detach(element, binding);
@@ -641,6 +646,15 @@ namespace Velvet
 
         private void ReleaseManipulators()
         {
+            // First, and before any manipulator below turns a payload off: while VariantGateClasses holds
+            // state, moving a gate token signals the variant re-sync, which re-derives an element's passes
+            // into the paint and driver tables — and those were emptied before this method ran, so the
+            // re-derivation re-runs the whole pass tail against those tables; the paint and driver ones
+            // are the cost that lasts, nothing sweeping them again.
+            // Emptying it here makes every turn-off below inert on that path. A width token still re-derives
+            // the layout manipulators through the re-sync's other trigger, which the loops at the end of this
+            // method sweep.
+            _ctx.VariantGateClasses.Clear();
             foreach (var (element, manipulator) in _ctx.GestureManipulators)
             {
                 element.RemoveManipulator(manipulator);
@@ -671,9 +685,12 @@ namespace Velvet
             }
 
             _ctx.HasVariantManipulators.Clear();
-            // Empty every pure side-table (structural / has-[.class]: / data-/aria- rules + store / supports-)
-            // in one call, mirroring the per-element ClearElementSideTables used on cleanup.
-            _ctx.ClearAllSideTables();
+            foreach (var (element, manipulator) in _ctx.ChildVariantManipulators)
+            {
+                element.RemoveManipulator(manipulator);
+            }
+
+            _ctx.ChildVariantManipulators.Clear();
             foreach (var kv in _ctx.StackedVariantManipulators)
             {
                 kv.Key.target.RemoveManipulator(kv.Value);
@@ -704,12 +721,15 @@ namespace Velvet
             }
 
             _ctx.TextBalanceManipulators.Clear();
-            foreach (var (element, manipulator) in _ctx.ChildVariantManipulators)
-            {
-                element.RemoveManipulator(manipulator);
-            }
-
-            _ctx.ChildVariantManipulators.Clear();
+            // Empties every pure side-table in one call, mirroring the per-element ClearElementSideTables
+            // used on cleanup: the structural / has-[.class]: / data- / aria- rules and their attribute
+            // store, supports-, the Motion applied-classes and child label, the layout-id map, the four
+            // text tables, the per-child claims, the variant gate classes, and the z-layer host and member
+            // maps — ReconcilerContext's own enrolment list is the set, and this reaches all of it.
+            // It runs last, after every loop above, for the claims specifically: the child-variant, gap,
+            // divide and grid manipulators each turn a value off only on a child whose claim is still
+            // their own, so emptying those tables ahead of a loop would make every release in it a no-op.
+            _ctx.ClearAllSideTables();
         }
 
         private void ReleaseHostsAndScopes()
@@ -722,10 +742,8 @@ namespace Velvet
             // explicitly here, mirroring PortalState/PendingPortalMounts above.
             _ctx.ZLayerPlaceholders.Clear();
             _ctx.PendingZLayerTeardownChecks.Clear();
-            // Same-panel registry-portal targets are ordinary, user-owned elements that commonly
-            // outlive this reconciler (unlike the framework-owned hosts destroyed wholesale below), so
-            // each bridge is detached explicitly rather than left to die with a GameObject — see
-            // ReconcilerContext.SamePanelPortalBridges for the full rationale.
+            // Detached explicitly rather than left to die with a GameObject, unlike the framework-owned
+            // hosts destroyed wholesale below — ReconcilerContext.SamePanelPortalBridges owns why.
             foreach (var unbind in _ctx.SamePanelPortalBridges.Values)
             {
                 unbind();
@@ -756,9 +774,17 @@ namespace Velvet
             // Outlet route scopes are user-supplied DI scopes (IRouteScope extends IDisposable):
             // dispose each so an Outlet still mounted at whole-reconciler teardown does not leak the
             // scope's resources, mirroring FiberElementCleaner's per-element Outlet-scope-dispose.
+            // Best-effort per entry for the reason ReleaseRefCallbacks gives.
             foreach (var scope in _ctx.OutletScopes.Values)
             {
-                scope.Dispose();
+                try
+                {
+                    scope.Dispose();
+                }
+                catch (System.Exception ex)
+                {
+                    FiberLogger.LogException("Reconciler", ex);
+                }
             }
 
             _ctx.OutletScopes.Clear();

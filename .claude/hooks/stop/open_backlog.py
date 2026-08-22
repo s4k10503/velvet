@@ -34,12 +34,19 @@ import json
 import shutil
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
-from deferrals import DEFERRALS, deferred  # noqa: E402
+from deferrals import DEFERRALS, deferred, unusable  # noqa: E402
+from repository import open_pull_requests, unreadable_report  # noqa: E402
+
+UNREADABLE_POLICY = "refuse"
+
+# An open pull request is this guard's whole answer — it hands the stall to unsettled_pr.py rather
+# than reporting one twice — so a listing that answered ends the question here whatever fails after
+# it. Nothing past that point is read, so nothing past it is being reported unread.
+UNREADABLE_ALLOWS = ("gh-graphql-error",)
 
 EXCLUDING_LABELS = {"blocked", "needs-decision"}
 
@@ -53,23 +60,24 @@ def gh(args):
     return result.stdout.strip(), (result.stdout + result.stderr).strip(), result.returncode
 
 
-def unreachable(call, code, output):
+# Each subject's own remedy: the guard reads two, and one report told a reader with an unread issue
+# list to run `gh pr view`.
+PULL_REQUESTS_ANOTHER_WAY = ("`gh pr view <n>`, `gh run list --branch <b>`, or the output of the "
+                             "watcher `scripts/pr/settle.py watch` writes")
+
+BACKLOG_ANOTHER_WAY = ("`gh issue list --assignee @me` from another shell, or the issue list on "
+                       "github.com")
+
+
+def unreachable(subject, attempts, another_way):
     """A gh that cannot answer is not an empty answer.
 
     Every one of these used to take `|| exit 0` with stderr discarded, so an unauthenticated,
     offline or rate-limited run reported exactly what a cleared backlog reports. Refusing instead is
-    what puts the difference in front of the reader; the deferral is the way past it when the
-    network is the thing that is wrong.
+    what puts the difference in front of the reader; `lib/repository.py` owns the shape the refusal
+    takes and why it is a statement about this guard rather than about the backlog.
     """
-    print(f"""Do not stop: the backlog could not be read, so nothing here says it is clear.
-
-  gh {call} exited {code}
-{output}
-
-If gh is unauthenticated or the network is down, say so and arm the deferral rather than treating
-an unanswered question as a settled one:
-
-  echo "backlog <what clears it> $(date +%s)" >> {DEFERRALS}""", file=sys.stderr)
+    print(unreadable_report(subject, attempts, "backlog", another_way), file=sys.stderr)
     return 2
 
 
@@ -80,6 +88,10 @@ def main():
     # Printed rather than exited on quietly: this is the one key that suppresses the whole guard,
     # and lib/deferrals.py states the invariant that suppression names what was claimed and how
     # long ago.
+    broken = unusable("backlog")
+    if broken is not None:
+        print("A deferral was written for the backlog, and "
+              f"{broken} — so it is being ignored.", file=sys.stderr)
     holding = deferred("backlog")
     if holding is not None:
         reason, minutes = holding
@@ -87,35 +99,41 @@ def main():
         print(f"  held {minutes}m ago because: {reason}", file=sys.stderr)
         return 0
 
-    listing, combined, code = gh(["pr", "list", "--state", "open", "--json", "number",
-                                  "--jq", ".[].number"])
-    if code != 0:
-        return unreachable("pr list", code, combined)
-    if listing:
+    reading = open_pull_requests()
+    if reading.numbers is None:
+        return unreachable("the open pull requests", reading.attempts,
+                           PULL_REQUESTS_ANOTHER_WAY)
+    if reading.numbers:
         return 0
 
     me, combined, code = gh(["api", "user", "--jq", ".login"])
     if code != 0:
-        return unreachable("api user", code, combined)
+        return unreachable("the backlog", [("gh api user", f"exited {code}\n{combined}")],
+                           BACKLOG_ANOTHER_WAY)
     if not me:
-        return unreachable("api user", 0, "  it named no login")
+        return unreachable("the backlog", [("gh api user", "answered, and named no login")],
+                           BACKLOG_ANOTHER_WAY)
 
     raw, combined, code = gh(["issue", "list", "--state", "open", "--assignee", me,
                               "--json", "number,title,labels"])
     if code != 0:
-        return unreachable("issue list", code, combined)
+        return unreachable("the backlog", [("gh issue list", f"exited {code}\n{combined}")],
+                           BACKLOG_ANOTHER_WAY)
     try:
         issues = json.loads(raw or "[]")
     except ValueError:
         issues = []
 
-    open_work, held = [], []
+    open_work, held, ignored = [], [], []
     for issue in issues:
         if {label.get("name") for label in issue.get("labels", [])} & EXCLUDING_LABELS:
             continue
         number = str(issue.get("number", ""))
         if not number:
             continue
+        broken = unusable(number)
+        if broken is not None:
+            ignored.append(f"  #{number} — a deferral was written for it, and {broken}.")
         holding = deferred(number)
         if holding is not None:
             reason, minutes = holding
@@ -127,13 +145,18 @@ def main():
         if held:
             print("Held, not settled — check each reason is still true:", file=sys.stderr)
             print("\n" + "\n".join(held), file=sys.stderr)
+        if ignored:
+            print("\nDeferrals that were ignored:", file=sys.stderr)
+            print("\n".join(ignored), file=sys.stderr)
         return 0
 
     held_block = ("\nHeld on purpose, and worth re-reading:\n" + "\n".join(held)) if held else ""
+    ignored_block = ("\nDeferrals that were ignored:\n" + "\n".join(ignored)) if ignored else ""
     print(f"""Do not stop: assigned work is open and no pull request is carrying any of it.
 
 {chr(10).join(open_work)}
 {held_block}
+{ignored_block}
 
 Pick one and start it. If the next action is already named above this message, that naming is
 what the stall looks like from inside — do the thing instead of announcing it again.

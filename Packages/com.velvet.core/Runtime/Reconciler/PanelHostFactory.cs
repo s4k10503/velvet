@@ -40,12 +40,14 @@ namespace Velvet
         private const float OverlaySortingOffset = 100f;
         private const float TopmostSortingOffset = 200f;
 
+#pragma warning disable CS8524 // no discard arm: a new layer has to declare its own offset
         private static float SortingOffset(UILayer layer) => layer switch
         {
             UILayer.Background => BackgroundSortingOffset,
+            UILayer.Overlay => OverlaySortingOffset,
             UILayer.Topmost => TopmostSortingOffset,
-            _ => OverlaySortingOffset,
         };
+#pragma warning restore CS8524
 
         // One empty theme shared by every host whose declaring panel resolves none: panel creation
         // warns loudly about a missing theme, and per-host instances would pile up one
@@ -71,11 +73,14 @@ namespace Velvet
         // One screen-space host panel for a UILayer, sorted around the resolved base order.
         public static PanelHostRecord CreateLayerHost(UILayer layer, IPanel? declaringPanel, ReconcilerContext ctx)
         {
+            // Ahead of the parts it is applied to: a layer naming no offset throws here, and the caller
+            // puts the record in ReconcilerContext.LayerHosts only once this returns.
+            var offset = SortingOffset(layer);
             var (declaring, baseOrder) = ResolveDeclaring(declaringPanel, ctx);
             var (record, settings) = CreateHostParts($"VelvetLayer-{layer}", declaring);
             record.BaseOrder = baseOrder;
             record.DeclaringResolved = declaring != null;
-            settings.sortingOrder = baseOrder + SortingOffset(layer);
+            settings.sortingOrder = baseOrder + offset;
             AttachDocument(record.Document, settings);
             FiberCrossPanelEventDispatcher.AttachBridge(record.Document.rootVisualElement, ctx);
             return record;

@@ -157,8 +157,20 @@ namespace Velvet
             {
                 element.Clear();
 
-                oldOutlet.Scope?.Dispose();
+                // The departing route's scope is the application's, built by the IRouteScopeFactory
+                // handed to Router, so its Dispose is a call out into the caller's code — contained the
+                // way FiberElementCleaner contains the same Dispose on the unmount path. element.Clear()
+                // has already run by the time it is called, so a throw leaving instead would strand the
+                // Outlet holding neither the route it left nor the route being patched in.
                 _ctx.OutletScopes.Remove(element);
+                try
+                {
+                    oldOutlet.Scope?.Dispose();
+                }
+                catch (System.Exception exception)
+                {
+                    FiberLogger.LogException("FiberNodePatcher", exception);
+                }
                 var scopeFactory = Router.Current?.ScopeFactory;
                 if (scopeFactory != null)
                 {
@@ -261,7 +273,7 @@ namespace Velvet
         // so the full set of class-driven mechanisms lives in one place and the two paths cannot drift.
         // Gap is intentionally excluded: it is re-applied separately by the per-node patch methods
         // (PatchElement / PatchMotion) AFTER children reconcile, so it sees the
-        // final child list. The variant/font work is gated on DiffClassList's own verdict of whether the
+        // final child list. The variant work is gated on DiffClassList's own verdict of whether the
         // class list actually changed CONTENT (not merely array identity) — every variant manipulator this
         // derives from (ApplyVariantManipulators and its callees) reads ONLY the classNames array, so a
         // freshly-allocated array with the same tokens carries no new information and re-deriving from it
@@ -274,11 +286,26 @@ namespace Velvet
             if (changed)
             {
                 ApplyVariantManipulators(element, newClasses);
+            }
+            // The font layer reads the COMPOSED source, so the class diff answers only half of whether its
+            // input moved: applying a variant's payload moves the token set without moving either class
+            // array, and a [&>*]: one moves nothing on the child at all. Lit tokens are the other half.
+            // Its place here, ahead of ApplyPostChildrenClassPasses, is the order the variant re-sync
+            // mirrors.
+            if (changed || HasLitVariantGateTokens(element))
+            {
                 // Font family / weight / italic are resolved together (so font-bold + italic compose)
                 // and written as inline style that overrides the USS fallback classes.
-                StyleFontResolver.ApplyOnClassChange(element, oldClasses, newClasses);
+                ApplyFontLayer(element, oldClasses, newClasses);
             }
         }
+
+        // The condition under which ResolveGateClasses hands back something other than the reconciled
+        // array, which is what the class diff cannot answer for.
+        private bool HasLitVariantGateTokens(VisualElement element)
+            => _ctx.VariantGateClasses.Count != 0
+                && _ctx.VariantGateClasses.TryGetValue(element, out var state)
+                && state.Tokens.Count != 0;
 
         private void PatchElement(VisualElement element, ElementNode oldNode, ElementNode newNode)
         {
@@ -389,7 +416,7 @@ namespace Velvet
             ApplyStructuralVariants(element);
             ApplyHasClassVariants(element);
             ApplyHasVariantManipulators(element);
-            StyleTextEffectResolver.Apply(_ctx, element, newClassNames);
+            ApplyTextEffects(element, newClassNames);
             var resolved = ResolveVariantClasses(element, oldClassNames, newClassNames, paintTail,
                 out var classesChanged);
             // canReleaseFace: a reconcile pass may let the silhouette stashes release, because this same
@@ -724,19 +751,18 @@ namespace Velvet
             // other patch of an already-healthy Portal. Every OTHER path through this method
             // (ResolvePortalTarget's layer case, and its already-resolved registry case) needs the
             // identical marker for the identical reason — see steadyStateDeclaringFiber further down,
-            // after target resolves either way. This one stays split out because it is the only branch
-            // cheap enough to afford a fresh HashSet outright: PatchPortalChildren permanently records
-            // the resolved target the first time it runs, so this branch never re-enters for the same
-            // placeholder again.
+            // after target resolves either way. This one stays split out because it is the rare branch:
+            // PatchPortalChildren records the resolved target, so a placeholder re-enters here only when
+            // a re-registration moves it off that element again.
             ComponentFiber? healingDeclaringFiber = null;
             HashSet<ComponentFiber>? healingChildFibersBefore = null;
             if (isHeal)
             {
-                // FiberStack.Current is genuinely the declaring fiber here (RenderAndReconcile keeps
-                // it pushed for the whole patch of its own returned tree — unlike DrainPendingPortalMounts,
-                // which runs later with the reconcile root current instead), so it doubles as both the
-                // ComponentRegistry parent new children below will actually register under AND the
-                // logical ancestor FiberCrossPanelEventDispatcher.Continue needs.
+                // FiberStack.Current is the declaring fiber here (RenderAndReconcile keeps it pushed for
+                // the whole patch of its own returned tree), so it doubles as both the ComponentRegistry
+                // parent new children below will actually register under AND the logical ancestor
+                // FiberCrossPanelEventDispatcher.Continue needs. The deferred mount arrives at the same
+                // fiber by pushing it explicitly — DrainPendingPortalMounts owns why it has to.
                 healingDeclaringFiber = CaptureDeclaringChildFibers(pooled: false, out healingChildFibersBefore);
             }
 
@@ -778,13 +804,15 @@ namespace Velvet
             }
         }
 
-        // Resolves the target VisualElement a Portal patch reconciles its slot range against, across
-        // the three ways a Portal can address one: an explicit Layer (host table lookup, plus re-chaining
-        // the placeholder when FocusOrder changed), an id already resolved by an earlier patch (the
-        // target its children are already mounted into — re-registering the id only points FUTURE
-        // portals elsewhere), or an id not yet healed (the mount warned and recorded no target; this is
-        // the first patch since registration, so it also attaches the same-panel synthetic-bubbling
-        // bridge the mount-time drain never got to run for this target). Returns a null target when
+        // Resolves the target VisualElement a Portal patch reconciles its slot range against, across the
+        // four ways a Portal can address one: an explicit Layer (host table lookup, plus re-chaining the
+        // placeholder when FocusOrder changed), the element the caller passed (already resolved, and
+        // ReconcileKeying.CanPatch has refused the patch unless it is the one this Portal mounted into),
+        // an id whose element is still the one this Portal mounted into, or an id with no children of
+        // this Portal on it yet — either because the mount warned and recorded no target, or because a
+        // re-registration just moved this Portal off the element it had. Both of those go through the
+        // same tail, which also attaches the same-panel synthetic-bubbling bridge the mount-time drain
+        // never got to run for this target. Returns a null target when
         // resolution fails (already warned); the caller bails without patching. IsHeal tells the caller
         // whether this pass took the not-yet-healed case, which needs a declaring-fiber snapshot from
         // before this call for the DetachedMountContext stamp (see PatchPortal).
@@ -813,32 +841,59 @@ namespace Velvet
                 return (target, false);
             }
 
+            if (newNode.TargetElement is { } held)
+            {
+                describe = "an element the caller holds";
+                return (held, false);
+            }
+
             describe = newNode.TargetId!;
             if (_ctx.PortalState.TryGetValue(placeholder, out var recorded) && recorded.Target != null)
             {
-                // A live portal keeps the target its children mounted into: re-registering the
-                // id only points FUTURE portals elsewhere, and patching into a re-registered
-                // element would diff this portal's slot range against another element's
-                // children.
-                return (recorded.Target, false);
+                var registered = FiberPortalRegistry.Get(describe);
+                if (registered == null || ReferenceEquals(registered, recorded.Target))
+                {
+                    // Nothing to follow: an unregistered id names no element to move to, so the children
+                    // keep being patched where they live rather than being stranded.
+                    return (recorded.Target, false);
+                }
+                // The id now names a different element. The children leave the old one and are created
+                // into the new one rather than being reparented into it, which is what createPortal does
+                // when its container changes and the route V.Portal(container:) takes through
+                // ReconcileKeying.CanPatch — state, refs and effects under the portal do not survive.
+                // Patching the existing children into the replacement is what is not available: this
+                // portal's slot range addresses positions in the element it mounted into, and reusing it
+                // against another element's children would diff one portal's range against another's.
+                _host.ReleasePortalRangeForRetarget(placeholder);
             }
 
             // Mounted before the id was registered (the mount warned and recorded no
-            // target): resolve fresh so the first patch after registration heals the mount.
+            // target), or released by the retarget just above: resolve fresh so this patch mounts the
+            // children into the element the id names now.
             var resolvedTarget = FiberPortalRegistry.Get(describe);
             if (resolvedTarget == null)
             {
                 FiberLogger.LogWarning("Portal", $"Target \"{describe}\" is not registered. Children will not be rendered.");
                 return (null, false);
             }
-            // The mount-time attach (ChildReconciler's registry-portal drain branch) never ran
-            // for this target: CreateElement returned a hidden placeholder without enqueuing a
-            // drain entry while the id was still unregistered, so this first healing patch is
-            // this Portal's only chance to attach the same-panel synthetic-bubbling bridge.
-            // Guarded exactly like that branch — a target another Portal already bridged is not
-            // double-attached — and self-limiting to one run per heal even without the guard:
-            // PatchPortalChildren below records this resolved target, so every later patch on
-            // this placeholder takes the `if` branch above instead of ever re-entering here.
+            // Both entrances reach here holding a range that addresses nothing on this target — the
+            // unregistered mount recorded slot 0 against no element at all, the retarget emptied the range
+            // it held on a different one — so the range is rebased to the end of whatever this target
+            // already holds, the slot ChildReconciler's deferred-mount pass would have taken. Patching from
+            // an unrebased slot 0 instead diffs this Portal's first child against the container's own.
+            if (_ctx.PortalState.TryGetValue(placeholder, out var released))
+            {
+                _ctx.PortalState[placeholder] = released with
+                {
+                    SlotStart = LogicalChildSlots.Count(resolvedTarget),
+                    SlotLength = 0,
+                };
+            }
+            // The mount-time attach (ChildReconciler's same-panel drain branch) never ran for this
+            // target — a mount while the id was unregistered enqueued no drain entry at all, and a
+            // retarget resolves an element that mount never saw — so this patch is where the same-panel
+            // synthetic-bubbling bridge gets attached. Guarded exactly like that branch: a target
+            // another Portal already bridged is not double-attached.
             if (!_ctx.SamePanelPortalBridges.ContainsKey(resolvedTarget))
             {
                 _ctx.SamePanelPortalBridges[resolvedTarget] =
@@ -952,9 +1007,9 @@ namespace Velvet
             }
         }
 
-        // The shared slot-range child patch for every portal flavor (registry, layer, world-space):
-        // reconciles only this placeholder's own slot range against the target and shifts the
-        // downstream ranges on the same target by the growth delta. describe names the target in
+        // The shared slot-range child patch for every portal flavor (registry, held element, layer,
+        // world-space): reconciles only this placeholder's own slot range against the target and shifts
+        // the downstream ranges on the same target by the growth delta. describe names the target in
         // diagnostics only.
         private void PatchPortalChildren(
             VisualElement placeholder, VisualElement target,
@@ -981,7 +1036,24 @@ namespace Velvet
             // child gaining a filter, or a negative z — inflate the recorded length by one, which then
             // shifted every downstream portal's SlotStart and made the cleanup walk over-remove.
             var beforeTailCount = LogicalChildSlots.Count(target);
-            _host.ReconcileChildren(target, oldChildren, newChildren, slotStart: prevState.SlotStart);
+            // Restored rather than cleared: a Portal declared inside another Portal's children patches from
+            // within this call, and what the outer one mounts after that returns is still the outer one's.
+            var enclosingPortal = _ctx.CurrentPortalPlaceholder;
+            _ctx.CurrentPortalPlaceholder = placeholder;
+            // The mount half sets the same scope for the same reason — DrainPendingPortalMounts owns it —
+            // and the two have to agree or a patch looks this Portal's children up under a key the mount
+            // did not register them by. No push here: this runs from the reconcile of the tree the
+            // declaring component returned, so its fiber is already current.
+            var enclosingChildScope = _ctx.EnterPortalChildKeyScope(placeholder);
+            try
+            {
+                _host.ReconcileChildren(target, oldChildren, newChildren, slotStart: prevState.SlotStart);
+            }
+            finally
+            {
+                _ctx.ExitPortalChildKeyScope(enclosingChildScope);
+                _ctx.CurrentPortalPlaceholder = enclosingPortal;
+            }
             // (beforeTailCount - prevState.SlotLength) is the count of target children that do NOT belong to
             // this Portal's slot — unchanged by the reconcile above. Subtracting it from the new total
             // isolates this Portal's new slot length without re-counting the foreign children.
@@ -1405,9 +1477,10 @@ namespace Velvet
             if (oldProps.Focusable != newProps.Focusable)
             {
                 FiberPropApplier.ApplyFocusable(element, newProps.Focusable);
-                // A declared Focusable now owns the flag: the drag session's transient keyboard-focus
-                // anchor must not restore over it on close (the value-diffed prop would never re-apply).
-                _ctx.ActiveDrag?.OnSourceFocusableDeclared(element);
+                // Ownership of the flag moves with the declaration, in both directions — the branch also
+                // fires when the prop goes away, which is the moment the anchor has to take it back.
+                // Ordering: after the applier, whose write is what the session reads.
+                _ctx.ActiveDrag?.OnSourceFocusableDeclarationChanged(element, newProps.Focusable.HasValue);
             }
 
             if (oldProps.TabIndex != newProps.TabIndex)
@@ -1423,6 +1496,7 @@ namespace Velvet
             if (!Equals(oldProps.FieldValue, newProps.FieldValue))
             {
                 FiberPropApplier.ApplyFieldValue(element, newProps.FieldValue);
+                RaiseCheckedSignal(element);
             }
 
             if (oldProps.Slider != newProps.Slider)
@@ -1446,6 +1520,26 @@ namespace Velvet
             }
 
             DiffBindingProps(element, oldProps, newProps);
+        }
+
+        // A controlled value reaches the control through SetValueWithoutNotify, so the ChangeEvent the
+        // checked: and peer-checked: variants listen for never arrives — the same suppression
+        // RefreshHasVariants compensates for on the has- side. Reads the control back instead of re-deriving
+        // the value from the prop: a FieldValue cleared to null resets a bool control through
+        // ApplyFieldValue's own branch, and the control is where both branches land.
+        // Two sweeps because the two families are keyed opposite ways (see IRelationalSettleTarget): the
+        // element-local one visits what is registered against this element, the relational one offers the
+        // edge to every consumer so each can recognise its own source.
+        private void RaiseCheckedSignal(VisualElement element)
+        {
+            if (element is not INotifyValueChanged<bool> boolField)
+            {
+                return;
+            }
+
+            var value = boolField.value;
+            VariantSettleSweep.ForEach(element, _ctx, consumer => consumer.SettleChecked(value));
+            VariantSettleSweep.SettleCheckedFromSource(element, _ctx, value);
         }
 
         // The props that wire a binding onto the element rather than writing a VisualElement property; the
@@ -1710,8 +1804,8 @@ namespace Velvet
         // member below binds to a direct call. A class implementation, or a delegate parameter in place of
         // this interface, would allocate once per element per patch on a path that runs for every styled
         // element in the tree.
-        // Create takes the context because most families' manipulators resolve their payloads through
-        // it; gap and grid write only their own target's child margins and ignore it.
+        // Create takes the context because every family's manipulator reaches it — to resolve its payloads,
+        // or (gap, grid, divide) to claim the children it writes to.
         private interface IManipulatorOp<TManip> where TManip : Manipulator
         {
             Dictionary<VisualElement, TManip> Table(ReconcilerContext ctx);
@@ -1892,7 +1986,7 @@ namespace Velvet
                 => ctx.GapManipulators;
 
             public StyleGapManipulator Create(ReconcilerContext ctx)
-                => new StyleGapManipulator(_gap, _axis, _xReverse, _yReverse);
+                => new StyleGapManipulator(ctx, _gap, _axis, _xReverse, _yReverse);
 
             public void Update(StyleGapManipulator manipulator)
                 => manipulator.UpdateGap(_gap, _axis, _xReverse, _yReverse);
@@ -1930,7 +2024,7 @@ namespace Velvet
                 => ctx.GridManipulators;
 
             public StyleGridManipulator Create(ReconcilerContext ctx)
-                => new StyleGridManipulator(_spec);
+                => new StyleGridManipulator(ctx, _spec);
 
             public void Update(StyleGridManipulator manipulator)
                 => manipulator.UpdateSpec(_spec);
@@ -2038,20 +2132,20 @@ namespace Velvet
             for (var i = 0; i < classNames.Length; i++)
             {
                 if (!StyleVariantClass.TryParse(classNames[i], out var kind, out var name, out var payload)
-                    || !StyleVariantClass.IsRelational(kind))
+                    || StyleVariantClass.RelationalOf(kind) is not { } relational)
                 {
                     continue;
                 }
-                var key = (StyleVariantClass.RelationalIsPeer(kind), name ?? string.Empty);
+                var key = (relational.IsPeer, name ?? string.Empty);
                 map ??= new Dictionary<(bool, string), List<string>[]>();
                 positions ??= new Dictionary<(bool, string), List<int>[]>();
                 if (!map.TryGetValue(key, out var states))
                 {
-                    states = new List<string>[5];
+                    states = new List<string>[StyleVariantClass.RelationalStateCount];
                     map[key] = states;
-                    positions[key] = new List<int>[5];
+                    positions[key] = new List<int>[StyleVariantClass.RelationalStateCount];
                 }
-                var slot = (int)StyleVariantClass.RelationalStateOf(kind);
+                var slot = (int)relational.State;
                 (states[slot] ??= new List<string>()).Add(payload ?? string.Empty);
                 (positions![key][slot] ??= new List<int>()).Add(i);
             }
@@ -2334,8 +2428,8 @@ namespace Velvet
             {
                 foreach (var info in ctx.PortalState.Values)
                 {
-                    // The resolved target recorded at mount covers every portal flavor (registry,
-                    // layer, world-space); null only for the never-mounted missing-registry path.
+                    // The resolved target recorded at mount covers every portal flavor; null only for
+                    // the never-mounted missing-registry path.
                     if (info.Target != null)
                     {
                         ReevaluateHasOnAncestorChain(ctx, info.Target, hasClass, hasManip);
@@ -2695,7 +2789,21 @@ namespace Velvet
         // Resolves its own class source rather than taking the one the paint passes use: those resolve after
         // the structural / has- passes (see ApplyPostChildrenClassPasses), and gap has to run before them.
         internal void ApplyLayoutManipulators(VisualElement element, string[] classNames)
-            => ApplyResolvedLayoutManipulators(element, ResolveLayoutClasses(element, classNames));
+            => ApplyResolvedLayoutManipulators(element, ResolveGateClasses(element, classNames));
+
+        // The composed source (see ResolveGateClasses) rather than the reconciled array: the bare class
+        // `dark:font-mono` puts on the live list carries no rule of its own, so nothing but this resolver
+        // realises the payload. TypographyHasNoStylesheetRuleTests fails if a sheet ever declares one.
+        internal void ApplyFontLayer(VisualElement element, string[] oldClassNames, string[] newClassNames)
+            => StyleFontResolver.ApplyOnClassChange(element, oldClassNames,
+                ResolveGateClasses(element, newClassNames));
+
+        internal void ApplyFontLayerOnCreate(VisualElement element, string[] classNames)
+            => StyleFontResolver.ApplyIfPresent(element, ResolveGateClasses(element, classNames));
+
+        // Same rule as ApplyFontLayer, over the same guard's other half.
+        internal void ApplyTextEffects(VisualElement element, string[] classNames)
+            => StyleTextEffectResolver.Apply(_ctx, element, ResolveGateClasses(element, classNames));
 
         // Re-runs every class-driven pass a variant payload can change, for an element a variant just
         // toggled a gate token on (wired to ReconcilerContext.VariantGatedReSync). Runs the same bodies the
@@ -2708,23 +2816,49 @@ namespace Velvet
             // The array the element's own reconcile pass last applied, or none when no pass ever recorded
             // one: the trigger was a width payload, which gates nothing and so never earns an entry, or the
             // payload came from a [&>*]: rule on the PARENT, whose children are fully created before it runs.
-            // The live list stands in for the layout gates in both cases — every token those four families
-            // parse is a plain USS class — while the paint sequence stands down, since PaintTail is unknown
-            // and a Motion must not be given a silhouette.
+            // The second case is temporary for a child rendered as an element — its own next patch runs the
+            // class passes and records the array. A V.Text child's patch runs none, ever, which is why the
+            // empty array below is its reconciled array rather than a stand-in; the live list stands in for
+            // the layout gates in the element case only. The paint sequence stands down for both, since
+            // PaintTail is unknown and a Motion must not be given a silhouette.
             // That makes a [&>*]: paint land inconsistently, which is the cost of not guessing: a child that
             // declares ANY gated payload of its own was recorded at create, so the parent's payload finds
             // PaintTail set and paints at mount, while a child that declares none paints only from its next
             // patch. Recording how a child is driven before its parent's rules run would close it.
-            var reconciled = state?.Reconciled;
-            var resolved = reconciled == null
-                ? LiveClasses(element)
-                : ComposeVariantClasses(reconciled, state!.Tokens, state.Resolved);
-            var classesChanged = !ReferenceEquals(state?.Resolved, resolved);
+            // A TextNode's element applies no class of its own at any render, so an empty array is not a
+            // stand-in for its reconciled one — it IS its reconciled one. Without this the two resolvers
+            // below stand down for such a child forever, and a container's [&>*]:font-mono or
+            // [&>*]:uppercase lands on its class list and changes nothing, at mount and at every patch.
+            var reconciled = state?.Reconciled
+                ?? (_ctx.TextNodeElements.ContainsKey(element) ? System.Array.Empty<string>() : null);
+            var previous = state?.Resolved;
+            var resolved = reconciled == null ? LiveClasses(element)
+                : state == null ? reconciled
+                : ComposeVariantClasses(reconciled, state.Tokens, state.Resolved);
+            var classesChanged = !ReferenceEquals(previous, resolved);
             if (state != null)
             {
                 state.Resolved = resolved;
             }
+            // Font and text effects run only from a RECORDED array, never from the live-list stand-in the
+            // layout gates accept above. Both resolvers rewrite unconditionally, and the live list is not a
+            // narrower version of their source but a different one: the reconciler keeps a DECLARED font-[…]
+            // / leading-[…] off it, since those two are resolver-owned, and the channels that raise no
+            // signal (whileHoverClass and its siblings) put utilities on it that no reconcile ever saw.
+            // Handing it over would not lose the payload, it would resolve some other answer over the
+            // element's correct one with nothing left to put it back.
+            // Their order is the reconcile path's own (SyncClassDrivenStyling ahead of
+            // ApplyPostChildrenClassPasses), so a re-sync cannot resolve a pass against a different
+            // predecessor than a patch would.
+            if (reconciled != null)
+            {
+                StyleFontResolver.ApplyOnClassChange(element, previous ?? resolved, resolved);
+            }
             ApplyResolvedLayoutManipulators(element, resolved);
+            if (reconciled != null)
+            {
+                StyleTextEffectResolver.Apply(_ctx, element, resolved);
+            }
             var paintTail = state?.PaintTail;
             if (paintTail == null)
             {
@@ -2851,11 +2985,12 @@ namespace Velvet
         internal string[] ResolveVariantClassesOnCreate(VisualElement element, string[] classNames, bool paintTail)
             => ResolveVariantClasses(element, classNames, classNames, paintTail, out _);
 
-        // The same source for the four layout gates, which resolve at their own point in the sequence (see
-        // ApplyLayoutManipulators). It reads the cached array but does not REPLACE it: the paint resolve a few
+        // The same source for the gates that resolve at their own point in the sequence — the four layout
+        // manipulators (ApplyLayoutManipulators), the font layer (ApplyFontLayer) and the text-effect cascade
+        // (ApplyTextEffects). It reads the cached array but does not REPLACE it: the paint resolve a few
         // passes later answers "did the classes change" by comparing against that same record, and advancing it
         // here would swallow a payload one of the has- / attribute passes in between had just toggled.
-        private string[] ResolveLayoutClasses(VisualElement element, string[] classNames)
+        private string[] ResolveGateClasses(VisualElement element, string[] classNames)
             => _ctx.VariantGateClasses.Count == 0
                 || !_ctx.VariantGateClasses.TryGetValue(element, out var state)
                 || state.Tokens.Count == 0

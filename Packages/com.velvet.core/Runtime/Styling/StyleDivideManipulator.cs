@@ -20,8 +20,9 @@ namespace Velvet
     //
     // Lifecycle mirrors StyleGapManipulator: the reconciler attaches one per divide container, keeps it
     // in ReconcilerContext.DivideManipulators, and removes it on cleanup / dispose.
-    // UnregisterCallbacksFromTarget clears the borders it wrote so removing the divide class (or
-    // unmounting) leaves no residue. Re-application has the same three sources as the gap manipulator:
+    // UnregisterCallbacksFromTarget clears what it still owns, on the same terms the gap manipulator's
+    // header states, against ReconcilerContext.ChildDividerOwners.
+    // Re-application has the same three sources as the gap manipulator:
     // the reconciler's post-child-reconcile call (the panel-independent path that also covers EditMode),
     // GeometryChangedEvent (child add / remove / reorder from an unrelated reconcile), and
     // AttachToPanelEvent (the one path that can answer a direction set outside the class list). A
@@ -69,8 +70,8 @@ namespace Velvet
         private int _everApplied;
 
         // Every child this manipulator has written a divider border to. On each Apply / Clear any tracked
-        // element no longer a current child has its divider border reset, so a child reparented or removed
-        // out of the divide container keeps no residual inline border.
+        // element no longer a current child is offered for release; whether it loses the border is the
+        // claim's answer, not this list's — see ReconcilerContext.ChildDividerOwners.
         private readonly List<VisualElement> _bordered = new();
 
         private int _lastSignature;
@@ -182,6 +183,7 @@ namespace Velvet
                 // The first child has no divider (the `> * + *` rule starts at the second child).
                 var isDivider = logicalIndex != 0;
                 ApplyToChild(child, edge, isDivider);
+                StyleChildOwnership.Claim(_ctx.ChildDividerOwners, child, this);
                 _bordered.Add(child);
                 logicalIndex++;
             }
@@ -277,12 +279,13 @@ namespace Velvet
             return ResolvedColor(child, edge);
         }
 
+#pragma warning disable CS8524 // no discard arm: a new edge has to name the side it reads
         private static Color InlineColor(VisualElement child, DivideEdge edge) => edge switch
         {
             DivideEdge.Left => child.style.borderLeftColor.value,
             DivideEdge.Right => child.style.borderRightColor.value,
             DivideEdge.Top => child.style.borderTopColor.value,
-            _ => child.style.borderBottomColor.value,
+            DivideEdge.Bottom => child.style.borderBottomColor.value,
         };
 
         private static Color ResolvedColor(VisualElement child, DivideEdge edge) => edge switch
@@ -290,8 +293,9 @@ namespace Velvet
             DivideEdge.Left => child.resolvedStyle.borderLeftColor,
             DivideEdge.Right => child.resolvedStyle.borderRightColor,
             DivideEdge.Top => child.resolvedStyle.borderTopColor,
-            _ => child.resolvedStyle.borderBottomColor,
+            DivideEdge.Bottom => child.resolvedStyle.borderBottomColor,
         };
+#pragma warning restore CS8524
 
         private static void WriteEdge(VisualElement child, DivideEdge edge, StyleFloat width, StyleColor color)
         {
@@ -366,7 +370,7 @@ namespace Velvet
             }
         }
 
-        // Resets the divider border on any tracked element no longer a current child, then prunes it.
+        // Offers any tracked element no longer a current child for release, then prunes it.
         private void ResetStaleBordered(VisualElement container)
         {
             for (var i = _bordered.Count - 1; i >= 0; i--)
@@ -374,8 +378,7 @@ namespace Velvet
                 var child = _bordered[i];
                 if (child.parent != container)
                 {
-                    DetachDash(child);
-                    ResetOwnedEdges(child);
+                    ReleaseBordered(child);
                     _bordered.RemoveAt(i);
                 }
             }
@@ -385,10 +388,24 @@ namespace Velvet
         {
             foreach (var child in _bordered)
             {
+                ReleaseBordered(child);
+            }
+            _bordered.Clear();
+        }
+
+        // The claim in ReconcilerContext.ChildDividerOwners decides this, not the tracked list, and every
+        // turn-off on a child that has LEFT the container goes through here. The nulls that land on
+        // CURRENT children do not ask — ClearEdge clears an edge this pass is about to rewrite, and the
+        // first child's own pass writes the no-divider null. The dash paint goes with the border:
+        // it is the same divider drawn a different way, so a container that may not reset one may not
+        // detach the other.
+        private void ReleaseBordered(VisualElement child)
+        {
+            if (StyleChildOwnership.TryRelease(_ctx.ChildDividerOwners, child, this))
+            {
                 DetachDash(child);
                 ResetOwnedEdges(child);
             }
-            _bordered.Clear();
         }
 
         // Resets every edge this manipulator has ever written, not just the currently applied one: an element

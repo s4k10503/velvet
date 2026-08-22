@@ -46,15 +46,29 @@ namespace Velvet
         /// Evaluates the registered Blockers asynchronously.
         /// </summary>
         /// <remarks>
-        /// When multiple Blockers are registered, every one of them is evaluated (no short-circuit).
-        /// Every Blocker that blocks transitions its State to Blocked.
+        /// Blocking does not end the pass. A Blocker is passed over rather than consulted for as long as it
+        /// is <see cref="RouteBlockerStatus.Proceeding"/>, whichever navigation reaches here over that span.
         /// </remarks>
-        internal async VelvetTask<bool> CheckAsync(NavigationAttempt attempt, CancellationToken cancellationToken = default)
+        /// <param name="attempt">The navigation attempt being decided.</param>
+        /// <param name="resume">Re-issues <paramref name="attempt"/>; invoked by <see cref="RouteBlockerState.Proceed"/>.</param>
+        /// <param name="cancellationToken">Token forwarded to an asynchronous Blocker's predicate.</param>
+        internal async VelvetTask<bool> CheckAsync(NavigationAttempt attempt, Action resume,
+            CancellationToken cancellationToken = default)
         {
             var anyBlocked = false;
             // ToArray() snapshots the list so a blocker that unregisters during an await does not mutate it.
             foreach (var entry in _blockers.ToArray())
             {
+                if (!entry.IsRegistered)
+                {
+                    continue;
+                }
+
+                if (entry.State.Status == RouteBlockerStatus.Proceeding)
+                {
+                    continue;
+                }
+
                 // An entry carries exactly one of SyncCheck / AsyncCheck; anything else contributes nothing.
                 bool blocked;
                 if (entry.SyncCheck != null)
@@ -82,9 +96,9 @@ namespace Velvet
                 // Skip entries whose registration died during this pass (the snapshot keeps them
                 // iterable, but their owner unmounted or an earlier blocker's decision tore them
                 // down): nothing live is waiting on their state.
-                if (blocked && _blockers.Contains(entry))
+                if (blocked && entry.IsRegistered)
                 {
-                    entry.State.Block(attempt);
+                    entry.State.Block(attempt, resume, AbandonAttempt);
                     anyBlocked = true;
                 }
             }
@@ -93,12 +107,16 @@ namespace Velvet
 
         #endregion
 
-        #region ResetAllBlocked
+        #region Release
 
         /// <summary>
-        /// Resets every Blocker that is currently blocked, without invoking callbacks.
+        /// Resets every Blocker that is currently blocked, without re-issuing its attempt.
         /// Called from <see cref="Router"/> at the start of a new navigation attempt.
         /// </summary>
+        /// <remarks>
+        /// A <see cref="RouteBlockerStatus.Proceeding"/> Blocker is left alone: the attempt starting here may
+        /// be the one it released, and returning it to Idle would put it back in the way of that attempt.
+        /// </remarks>
         public void ResetAllBlocked()
         {
             foreach (var entry in _blockers)
@@ -108,13 +126,72 @@ namespace Velvet
                     entry.State.InternalReset();
                 }
             }
+            RemoveSettledRegistrations();
+        }
+
+        /// <summary>
+        /// Ends the attempt for every Blocker at once. Reached from <see cref="RouteBlockerState.Reset"/>,
+        /// which is one Blocker answering for a navigation the router has already turned back: leaving the
+        /// others holding it would let a later <c>Proceed</c> send the router at the destination that
+        /// answer declined.
+        /// </summary>
+        internal void AbandonAttempt()
+        {
+            ResetAllBlocked();
+            SettleProceeding();
+        }
+
+        /// <summary>
+        /// Returns each <see cref="RouteBlockerStatus.Proceeding"/> Blocker to Idle, which is what arms it
+        /// for the next navigation. Reached when a navigation commits, when a re-issued one ends without
+        /// committing, when an attempt is abandoned, and from <see cref="Unregister"/> when the
+        /// registration of a Blocker that was holding one is disposed.
+        /// </summary>
+        /// <remarks>
+        /// A registered Blocker still Blocked is a confirm nobody has answered yet, over an attempt that
+        /// has therefore not finished. Arming the Blockers that already consented to it would put them back
+        /// in the way of what they consented to, and the two would go on releasing each other in turn
+        /// without it ever landing.
+        /// </remarks>
+        internal void SettleProceeding()
+        {
+            foreach (var entry in _blockers)
+            {
+                if (entry.IsRegistered && entry.State.Status == RouteBlockerStatus.Blocked)
+                {
+                    return;
+                }
+            }
+
+            foreach (var entry in _blockers)
+            {
+                if (entry.State.Status == RouteBlockerStatus.Proceeding)
+                {
+                    entry.State.InternalReset();
+                }
+            }
+            RemoveSettledRegistrations();
         }
 
         #endregion
 
         #region Internal
 
-        private void Unregister(BlockerEntry entry) => _blockers.Remove(entry);
+        private void Unregister(BlockerEntry entry)
+        {
+            entry.IsRegistered = false;
+            if (entry.State.Status == RouteBlockerStatus.Idle)
+            {
+                _blockers.Remove(entry);
+            }
+            else if (entry.State.Status == RouteBlockerStatus.Blocked)
+            {
+                SettleProceeding();
+            }
+        }
+
+        private void RemoveSettledRegistrations() =>
+            _blockers.RemoveAll(entry => !entry.IsRegistered && entry.State.Status == RouteBlockerStatus.Idle);
 
         // Private class - mutable public fields are used intentionally.
         // Not referenced externally, so promoting them to properties would just add noise.
@@ -123,6 +200,7 @@ namespace Velvet
             public Func<NavigationAttempt, bool>? SyncCheck;
             public Func<NavigationAttempt, CancellationToken, VelvetTask<bool>>? AsyncCheck;
             public RouteBlockerState State = null!;
+            public bool IsRegistered = true;
         }
 
         private sealed class BlockerRegistration : IDisposable

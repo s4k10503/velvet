@@ -54,9 +54,10 @@ namespace Velvet
         /// <returns>
         /// 2-tuple:
         /// - <c>value</c>: current value
-        /// - <c>setValue</c>: <see cref="StateUpdater{T}"/> — call <c>setValue.Invoke(next)</c> to replace the
-        ///   value, or <c>setValue.Invoke(prev =&gt; next)</c> for the functional updater (reads the latest
-        ///   committed value, safe to invoke from a closure captured by an earlier render).
+        /// - <c>setValue</c>: <see cref="StateUpdater{T}"/>, reference-stable across renders — call
+        ///   <c>setValue.Invoke(next)</c> to replace the value, or <c>setValue.Invoke(prev =&gt; next)</c> for the
+        ///   functional updater (reads the latest committed value, safe to invoke from a closure captured by an
+        ///   earlier render).
         /// </returns>
         public static (T value, StateUpdater<T> setValue) UseState<T>(T initial)
             => UseStateInternalCore(default, initial, "UseState");
@@ -72,7 +73,8 @@ namespace Velvet
         /// <returns>
         /// 2-tuple:
         /// - <c>value</c>: current value
-        /// - <c>setValue</c>: <see cref="StateUpdater{T}"/> accepting a value or a functional updater.
+        /// - <c>setValue</c>: <see cref="StateUpdater{T}"/> accepting a value or a functional updater,
+        ///   reference-stable across renders.
         /// </returns>
         public static (T value, StateUpdater<T> setValue) UseState<T>(Func<T> initialFactory)
         {
@@ -132,10 +134,14 @@ namespace Velvet
         /// <param name="store">Store instance to subscribe to. Must not be null.</param>
         /// <param name="selector">Pure projection from the store snapshot to the value the component cares about. Must not be null.</param>
         /// <param name="comparer">
-        /// Equality comparer used to detect changes. Defaults to <see cref="ObjectIsEqualityComparer{TSel}"/>
-        /// (reference equality for objects, NaN-aware for float/double).
-        /// Pass <see cref="EqualityComparer{TSel}.Default"/> explicitly
-        /// when value-equality skip is desired (e.g. record selectors with stable content).
+        /// Equality comparer used to detect changes. The default applies the same <c>Object.is</c> rule as
+        /// the <c>UseState</c> setter, branch for branch — see the remarks on <see cref="StateUpdater{T}"/>.
+        /// Passing <see cref="EqualityComparer{TSel}.Default"/> therefore changes a non-string
+        /// reference-type selector, where it swaps instance identity for the type's own <c>Equals</c> so
+        /// that a selector returning a fresh <c>record class</c> instance of stable content skips the
+        /// re-render instead of triggering one. For a string selector, or a value-type selector other than
+        /// <c>float</c>/<c>double</c> — a <c>record struct</c> included — the default already gives the same
+        /// answer as that comparer, so passing it changes nothing.
         /// </param>
         /// <returns>The selected value at the current store snapshot.</returns>
         public static TSel UseStore<TStore, TSel>(
@@ -237,14 +243,17 @@ namespace Velvet
         /// </remarks>
         /// <typeparam name="T">Context value type.</typeparam>
         /// <param name="context">Context object to read. Must not be null.</param>
-        /// <returns>Provided value when an ancestor Provider is present, otherwise <c>context.DefaultValue</c>.</returns>
-        public static T UseContext<T>(ComponentContext<T> context)
+        /// <returns>
+        /// Provided value when an ancestor Provider is present, otherwise <c>context.DefaultValue</c>, which
+        /// is null for a context created with a null default.
+        /// </returns>
+        public static T? UseContext<T>(ComponentContext<T> context)
         {
             if (context == null) throw new ArgumentNullException(nameof(context));
             var fiber = Resolve("UseContext");
             fiber.RegisterContextDependency(context);
             var stack = fiber.Reconciler?.Context.ComponentContextStack;
-            return stack != null ? stack.Get(context) : context.DefaultValue!;
+            return stack != null ? stack.Get(context) : context.DefaultValue;
         }
 
         #endregion
@@ -289,7 +298,7 @@ namespace Velvet
         /// </summary>
         /// <remarks>
         /// The single-argument overload exists so that omitting deps is unambiguous: the
-        /// <c>params object?[] deps</c> overload would otherwise observe an empty array (not
+        /// <c>params object?[]? deps</c> overload would otherwise observe an empty array (not
         /// <c>null</c>) and incorrectly freeze the callback to the first-render closure.
         /// </remarks>
         public static T UseCallback<T>(T callback) where T : Delegate
@@ -323,9 +332,9 @@ namespace Velvet
         /// </summary>
         /// <typeparam name="T">Delegate type to memoize.</typeparam>
         /// <param name="callback">Callback to memoize. Captured on first render and on dependency changes.</param>
-        /// <param name="deps">Dependency values. When equal to the previous render (each dependency compared with <c>Object.is</c>), the cached callback is reused.</param>
+        /// <param name="deps">Dependency values. When equal to the previous render (each dependency compared with <c>Object.is</c>), the cached callback is reused. Null means no dependency array at all — the callback is not memoized, exactly as if the deps argument had been left off.</param>
         /// <returns>The cached callback reference (stable across renders while <paramref name="deps"/> are equal).</returns>
-        public static T UseCallback<T>(T callback, params object?[] deps) where T : Delegate
+        public static T UseCallback<T>(T callback, params object?[]? deps) where T : Delegate
         {
             var fiber = Resolve("UseCallback");
             fiber.CallbackSlots ??= new List<HookCallbackSlot>();
@@ -344,7 +353,7 @@ namespace Velvet
             }
 
             var entry = fiber.CallbackSlots[index];
-            if (entry.Callback != null && ObjectIs.AreEqualDeps(entry.LastDeps, deps))
+            if (deps != null && entry.Callback != null && ObjectIs.AreEqualDeps(entry.LastDeps, deps))
             {
                 // Unchanged vs the committed render: return the committed callback so its reference stays stable
                 // across a render-phase re-run. Comparing against the committed deps (never a discarded attempt)
@@ -408,7 +417,7 @@ namespace Velvet
         /// </summary>
         /// <typeparam name="T">Type of the value to memoize.</typeparam>
         /// <param name="factory">Factory invoked to produce the value on the first render and whenever the deps change.</param>
-        /// <param name="deps">Dependency values. When equal to the previous render (each dependency compared with <c>Object.is</c>), the cached value is reused.</param>
+        /// <param name="deps">Dependency values. When equal to the previous render (each dependency compared with <c>Object.is</c>), the cached value is reused. Null means no dependency array at all — the value is recomputed every render, exactly as if the deps argument had been left off.</param>
         /// <returns>The cached value (stable across renders while <paramref name="deps"/> are equal).</returns>
         public static T UseMemo<T>(Func<T> factory, params object?[]? deps)
         {
@@ -427,7 +436,7 @@ namespace Velvet
             }
 
             var entry = (HookMemoValueSlot<T>)fiber.MemoValueSlots[index];
-            if (entry.Committed && ObjectIs.AreEqualDeps(entry.LastDeps, deps))
+            if (deps != null && entry.Committed && ObjectIs.AreEqualDeps(entry.LastDeps, deps))
             {
                 // Unchanged vs the committed render: return the committed value and re-stage the committed
                 // values so a render-phase re-run keeps them. Comparing against the committed deps (never a
@@ -450,13 +459,33 @@ namespace Velvet
         #region UseBlocker
 
         /// <summary>
-        /// Conditionally blocks navigation departures (synchronous variant).
+        /// Conditionally blocks navigation departures (synchronous variant), re-registering the predicate on
+        /// every render so it answers with the state the latest render captured.
+        /// Must be used inside Render() only.
+        /// </summary>
+        /// <remarks>
+        /// The single-argument overload exists so that omitting deps is unambiguous — see
+        /// <see cref="UseCallback{T}(T)"/> for the hazard it avoids.
+        /// </remarks>
+        /// <param name="shouldBlock">Predicate delegate; returning true blocks the departure.</param>
+        /// <returns>The shared <see cref="RouteBlockerState"/> handle for inspecting / resolving the pending departure.</returns>
+        public static RouteBlockerState UseBlocker(Func<NavigationAttempt, bool> shouldBlock)
+        {
+            if (shouldBlock == null) throw new ArgumentNullException(nameof(shouldBlock));
+            return UseBlockerCore(
+                (router, state) => router.RouteBlockerManager.Register(shouldBlock, state),
+                null);
+        }
+
+        /// <summary>
+        /// Conditionally blocks navigation departures (synchronous variant), re-registering the predicate
+        /// only when a dependency changes.
         /// Must be used inside Render() only.
         /// </summary>
         /// <param name="shouldBlock">Predicate delegate; returning true blocks the departure.</param>
         /// <param name="deps">Dependency array. When null, re-registers on every render.</param>
         /// <returns>The shared <see cref="RouteBlockerState"/> handle for inspecting / resolving the pending departure.</returns>
-        public static RouteBlockerState UseBlocker(Func<NavigationAttempt, bool> shouldBlock, params object?[] deps)
+        public static RouteBlockerState UseBlocker(Func<NavigationAttempt, bool> shouldBlock, params object?[]? deps)
         {
             if (shouldBlock == null) throw new ArgumentNullException(nameof(shouldBlock));
             return UseBlockerCore(
@@ -465,13 +494,33 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Conditionally blocks navigation departures (asynchronous variant). Use when integrating with
+        /// Conditionally blocks navigation departures (asynchronous variant), re-registering the predicate on
+        /// every render so it answers with the state the latest render captured. Use when integrating with
         /// asynchronous UI such as confirmation dialogs.
+        /// </summary>
+        /// <remarks>
+        /// The single-argument overload exists so that omitting deps is unambiguous — see
+        /// <see cref="UseCallback{T}(T)"/> for the hazard it avoids.
+        /// </remarks>
+        /// <param name="shouldBlock">Async predicate; returning true blocks the departure. The CancellationToken is cancelled on unmount.</param>
+        /// <returns>The shared <see cref="RouteBlockerState"/> handle for inspecting / resolving the pending departure.</returns>
+        public static RouteBlockerState UseBlocker(Func<NavigationAttempt, CancellationToken, VelvetTask<bool>> shouldBlock)
+        {
+            if (shouldBlock == null) throw new ArgumentNullException(nameof(shouldBlock));
+            return UseBlockerCore(
+                (router, state) => router.RouteBlockerManager.Register(shouldBlock, state),
+                null);
+        }
+
+        /// <summary>
+        /// Conditionally blocks navigation departures (asynchronous variant), re-registering the predicate
+        /// only when a dependency changes. Use when integrating with asynchronous UI such as confirmation
+        /// dialogs.
         /// </summary>
         /// <param name="shouldBlock">Async predicate; returning true blocks the departure. The CancellationToken is cancelled on unmount.</param>
         /// <param name="deps">Dependency array. When null, re-registers on every render.</param>
         /// <returns>The shared <see cref="RouteBlockerState"/> handle for inspecting / resolving the pending departure.</returns>
-        public static RouteBlockerState UseBlocker(Func<NavigationAttempt, CancellationToken, VelvetTask<bool>> shouldBlock, params object?[] deps)
+        public static RouteBlockerState UseBlocker(Func<NavigationAttempt, CancellationToken, VelvetTask<bool>> shouldBlock, params object?[]? deps)
         {
             if (shouldBlock == null) throw new ArgumentNullException(nameof(shouldBlock));
             return UseBlockerCore(
@@ -479,7 +528,7 @@ namespace Velvet
                 deps);
         }
 
-        private static RouteBlockerState UseBlockerCore(Func<Router, RouteBlockerState, IDisposable> registerFn, object?[] deps)
+        private static RouteBlockerState UseBlockerCore(Func<Router, RouteBlockerState, IDisposable> registerFn, object?[]? deps)
         {
             var fiber = Resolve("UseBlocker");
 
@@ -529,9 +578,10 @@ namespace Velvet
 
         /// <summary>
         /// Returns the current router location.
-        /// Reads <see cref="RouterContext.Location"/>; returns null when no router is mounted.
+        /// Reads <see cref="RouterContext.Location"/>; returns null when no router is mounted, and until a
+        /// mounted router publishes its first location.
         /// </summary>
-        public static RouterLocation UseLocation()
+        public static RouterLocation? UseLocation()
         {
             _ = Resolve("UseLocation");
             return UseContext(RouterContext.Location);
@@ -641,7 +691,8 @@ namespace Velvet
         /// to the same path with a new query string.
         /// </summary>
         /// <returns>
-        /// A tuple of (the parsed search parameters, a setter that replaces the query string and navigates).
+        /// A tuple of (the parsed search parameters, a setter that replaces the query string and navigates). The
+        /// setter is reference-stable across renders; the parsed parameters are rebuilt every render.
         /// </returns>
         public static (ISearchParams searchParams, SearchParamsSetter setSearchParams) UseSearchParams()
         {
@@ -650,9 +701,8 @@ namespace Velvet
             var path = location?.Path ?? string.Empty;
             var parsed = RouteQuery.ParseQuery(path);
 
-            // The setter is stateless (it reads Router.Current live), so a single shared, reference-stable
-            // instance is returned — no per-render allocation. It supports a value or functional update, and
-            // defaults to a PUSH navigation so Back returns to the previous query.
+            // The setter is stateless (it reads Router.Current live), so one shared instance serves every
+            // component and every render rather than a per-render allocation.
             return (parsed, SearchParamsSetter.Shared);
         }
 
@@ -1150,7 +1200,7 @@ namespace Velvet
         /// it is assigned externally.
         /// </summary>
         /// <typeparam name="T">Reference target type.</typeparam>
-        /// <returns>The fiber-scoped <see cref="Ref{T}"/> stored at this hook position.</returns>
+        /// <returns>The fiber-scoped <see cref="Ref{T}"/> stored at this hook position, reference-stable across renders.</returns>
         public static Ref<T> UseRef<T>() where T : class => UseRef<T>(initialFactory: null);
 
         /// <summary>
@@ -1160,7 +1210,7 @@ namespace Velvet
         /// </summary>
         /// <typeparam name="T">Reference target type.</typeparam>
         /// <param name="initialFactory">Factory invoked once on first render to seed <see cref="Ref{T}.Current"/>. Pass null to leave it unset.</param>
-        /// <returns>The fiber-scoped <see cref="Ref{T}"/> stored at this hook position.</returns>
+        /// <returns>The fiber-scoped <see cref="Ref{T}"/> stored at this hook position, reference-stable across renders.</returns>
         public static Ref<T> UseRef<T>(Func<T>? initialFactory) where T : class
         {
             var fiber = Resolve("UseRef");
@@ -1196,7 +1246,7 @@ namespace Velvet
         /// </summary>
         /// <typeparam name="T">Stored value type. May be a value type or a reference type.</typeparam>
         /// <param name="initial">Initial value applied on the first render only.</param>
-        /// <returns>The fiber-scoped <see cref="MutableRef{T}"/> stored at this hook position.</returns>
+        /// <returns>The fiber-scoped <see cref="MutableRef{T}"/> stored at this hook position, reference-stable across renders.</returns>
         public static MutableRef<T> UseMutableRef<T>(T initial) => UseMutableRefInternal<T>(initial, factory: null);
 
         /// <summary>
@@ -1206,7 +1256,7 @@ namespace Velvet
         /// </summary>
         /// <typeparam name="T">Stored value type. May be a value type or a reference type.</typeparam>
         /// <param name="initialFactory">Factory invoked once on first render to produce the initial value.</param>
-        /// <returns>The fiber-scoped <see cref="MutableRef{T}"/> stored at this hook position.</returns>
+        /// <returns>The fiber-scoped <see cref="MutableRef{T}"/> stored at this hook position, reference-stable across renders.</returns>
         public static MutableRef<T> UseMutableRef<T>(Func<T> initialFactory)
         {
             if (initialFactory == null) throw new ArgumentNullException(nameof(initialFactory));
@@ -1261,7 +1311,10 @@ namespace Velvet
         /// Only the first render reflects this in the generated ID; changes on subsequent renders are
         /// ignored (same convention as the initial value of UseState).
         /// </param>
-        /// <returns>Format is <c>:r{hex}:</c> (no prefix) or <c>{prefix}:r{hex}:</c> (with prefix).</returns>
+        /// <returns>
+        /// Format is <c>:r{hex}:</c> (no prefix) or <c>{prefix}:r{hex}:</c> (with prefix). The value is stable
+        /// across renders, though as a string rather than as a reference.
+        /// </returns>
         public static string UseId(string? prefix = null)
         {
             var fiber = Resolve("UseId");
@@ -1343,7 +1396,7 @@ namespace Velvet
         /// <typeparam name="THandle">The imperative handle type exposed to the parent.</typeparam>
         /// <param name="handleRef">The ref the parent passed via <c>componentRef:</c>.</param>
         /// <param name="factory">Produces the handle; re-invoked when <paramref name="deps"/> change.</param>
-        /// <param name="deps">Dependency array gating recomputation.</param>
+        /// <param name="deps">Dependency array gating recomputation. Null means no dependency array at all — the handle is rebuilt every render.</param>
         public static void UseImperativeHandle<THandle>(
             Ref<THandle> handleRef,
             Func<THandle> factory,
@@ -1393,7 +1446,8 @@ namespace Velvet
         /// <returns>
         /// 2-tuple:
         /// - <c>state</c>: current state value.
-        /// - <c>dispatch</c>: action dispatcher that schedules a re-render with the next state.
+        /// - <c>dispatch</c>: action dispatcher that schedules a re-render with the next state,
+        ///   reference-stable across renders.
         /// </returns>
         public static (TState state, Action<TAction> dispatch) UseReducer<TState, TAction>(
             Func<TState, TAction, TState> reducer, TState initial)
@@ -1417,7 +1471,8 @@ namespace Velvet
         /// <returns>
         /// 2-tuple:
         /// - <c>state</c>: current state value.
-        /// - <c>dispatch</c>: action dispatcher that schedules a re-render with the next state.
+        /// - <c>dispatch</c>: action dispatcher that schedules a re-render with the next state,
+        ///   reference-stable across renders.
         /// </returns>
         public static (TState state, Action<TAction> dispatch) UseReducer<TArg, TState, TAction>(
             Func<TState, TAction, TState> reducer, TArg initialArg, Func<TArg, TState> init)
@@ -1629,11 +1684,15 @@ namespace Velvet
         /// </summary>
         /// <returns>
         /// 2-tuple in the order (<c>isPending</c>, <c>startTransition</c>):
-        /// - <c>isPending</c>: true while a Transition update is queued or being committed (and across an async
-        ///   transition's awaits).
-        /// - <c>startTransition</c>: a <see cref="TransitionStarter"/>. Call <c>startTransition.Invoke(() =&gt; ...)</c>
+        /// - <c>isPending</c>: true while an update this starter's callback scheduled is queued or being
+        ///   committed — through the terminal reconcile slice, wherever the state it wrote lives — and across
+        ///   an async transition's awaits.
+        /// - <c>startTransition</c>: a <see cref="TransitionStarter"/>, reference-stable across renders. Call
+        ///   <c>startTransition.Invoke(() =&gt; ...)</c>
         ///   for synchronous updates or <c>startTransition.Invoke(async () =&gt; ...)</c> for async actions whose
-        ///   <c>isPending</c> stays true across awaits. Nested calls join the outer transition.
+        ///   <c>isPending</c> stays true across awaits. A re-entrant call on the same starter joins the
+        ///   transition already running on it; a starter from another <c>UseTransition()</c> is a separate
+        ///   transition with its own <c>isPending</c>, even while the first one is still awaiting.
         /// </returns>
         public static (bool isPending, TransitionStarter startTransition) UseTransition()
         {
@@ -1643,10 +1702,9 @@ namespace Velvet
 
             if (index >= fiber.TransitionSlots.Count)
             {
-                var slot = new HookTransitionSlot();
+                var slot = new HookTransitionSlot { DeclaringFiber = fiber };
                 // The starter captures this slot so each UseTransition() drives only its own pending flag:
-                // two transitions in one component are independent. Built once so the
-                // returned starter is reference-stable across renders (safe to place in a dependency array).
+                // two transitions in one component are independent.
                 slot.Starter = new TransitionStarter(
                     updates => FiberWorkLoop.StartTransition(fiber, slot, updates),
                     asyncUpdates => FiberWorkLoop.StartTransition(fiber, slot, asyncUpdates).Forget());
@@ -1655,6 +1713,8 @@ namespace Velvet
             }
 
             var existing = fiber.TransitionSlots[index];
+            // See HookTransitionSlot.LastRenderedPending for why a read site writes.
+            existing.LastRenderedPending = existing.IsPending;
             return (existing.IsPending, existing.Starter);
         }
 
@@ -1671,7 +1731,7 @@ namespace Velvet
         /// <typeparam name="TVariables">Mutation input variables type. Use <see cref="Unit"/> for "no variables".</typeparam>
         /// <typeparam name="TData">Mutation result type. Use <see cref="Unit"/> for "no return value".</typeparam>
         /// <param name="options">The mutation function plus optional success / error callbacks.</param>
-        /// <returns>A <see cref="MutationResult{TVariables, TData}"/> whose reference is stable across renders.</returns>
+        /// <returns>A <see cref="MutationResult{TVariables, TData}"/>, reference-stable across renders.</returns>
         public static MutationResult<TVariables, TData> UseMutation<TVariables, TData>(
             MutationOptions<TVariables, TData> options)
         {
@@ -1757,24 +1817,32 @@ namespace Velvet
         {
             if (fiber.IsDisposed) return default!;
 
-            // Cancel any superseded in-flight mutation. The latest call wins.
-            slot.Cts?.Cancel();
-            slot.Cts?.Dispose();
+            // Two calls run side by side rather than the second aborting the first, as in TanStack, which
+            // hands a mutation no signal at all. Cancelling on re-entry dropped the first call's OnSuccess,
+            // so a double-tapped Buy charged the card and never ran the write that follows it. The token
+            // stays because a Unity request wants one on unmount; only the re-entry cancel is gone.
             var cts = new CancellationTokenSource();
-            slot.Cts = cts;
+            slot.Live.Add(cts);
+            // Who may write the OBSERVED result, which is the newest call, as TanStack's observer shows.
+            // Ownership is by generation now, not by holding the slot's only token: a superseded call still
+            // runs its callbacks, which is what TanStack's Mutation.execute does — it awaits them itself and
+            // consults no observer list. What detaching an observer suppresses there is the per-call form,
+            // mutate(vars, { onSuccess }), which has no equivalent here.
+            var mine = ++slot.Generation;
 
-            slot.Result.Status = MutationStatus.Pending;
-            slot.Result.Variables = variables;
-            slot.Result.Error = null;
+            slot.Result.MarkPending(variables);
             RequestRender(fiber);
 
             try
             {
                 var data = await slot.MutationFn(variables, cts.Token);
-                if (slot.Cts != cts || fiber.IsDisposed) return data;
-                slot.Result.Data = data;
-                slot.Result.Status = MutationStatus.Success;
+                if (fiber.IsDisposed) return data;
+                // The handler runs before this call's outcome is committed, which is where TanStack
+                // dispatches it: what OnSuccess reads is the handle as it stands rather than its own
+                // result, and a handler that throws leaves the call a failure with nothing of its
+                // own written.
                 slot.OnSuccess?.Invoke(data, variables);
+                if (mine == slot.Generation) slot.Result.MarkSuccess(data);
                 RequestRender(fiber);
                 return data;
             }
@@ -1784,14 +1852,12 @@ namespace Velvet
             }
             catch (Exception ex)
             {
-                if (slot.Cts != cts || fiber.IsDisposed)
+                // The owner is gone, so there is nobody to deliver to and nothing to render.
+                if (fiber.IsDisposed)
                 {
                     if (rethrowOnFailure) throw;
                     return default!;
                 }
-
-                slot.Result.Error = ex;
-                slot.Result.Status = MutationStatus.Error;
                 try
                 {
                     slot.OnError?.Invoke(ex, variables);
@@ -1800,9 +1866,19 @@ namespace Velvet
                 {
                     VelvetTask.FromException(handlerEx).Forget();
                 }
+                // Below the inner catch, not inside the try: a throwing OnError must not cost the
+                // mutation the Error status. Committed after the handler for the same reason as a success.
+                if (mine == slot.Generation) slot.Result.MarkFailed(ex);
                 RequestRender(fiber);
                 if (rethrowOnFailure) throw;
                 return default!;
+            }
+            finally
+            {
+                // Only the owner disposes. Unmount clears the list before cancelling, so a call this
+                // one's cancellation settles reaches here with its source already gone — and Cancel()
+                // on a disposed source throws, out of the unmount reconcile.
+                if (slot.Live.Remove(cts)) cts.Dispose();
             }
         }
 
@@ -1811,10 +1887,8 @@ namespace Velvet
             HookMutationSlot<TVariables, TData> slot)
         {
             if (fiber.IsDisposed) return;
-            slot.Result.Status = MutationStatus.Idle;
-            slot.Result.Data = default;
-            slot.Result.Error = null;
-            slot.Result.Variables = default;
+            slot.Generation++;
+            slot.Result.MarkIdle();
             RequestRender(fiber);
         }
 
@@ -1828,16 +1902,17 @@ namespace Velvet
         /// Use this to deprioritize heavy re-render inputs such as search queries.
         /// </summary>
         /// <remarks>
-        /// Change detection matches <see cref="UseStore{TStore,TSel}"/>:
-        /// reference equality for objects, NaN-aware for float/double. There is no comparer argument.
+        /// Change detection matches the default comparer of <see cref="UseStore{TStore,TSel}"/>. There is
+        /// no comparer argument.
         /// </remarks>
         /// <typeparam name="T">Type of the value being deferred.</typeparam>
         /// <param name="value">Latest value (provided by the caller).</param>
         /// <returns>
         /// First render: returns <paramref name="value"/> as-is.
         /// Subsequent renders: returns the previously committed value and queues the next value as pending
-        /// on the Transition lane.
-        /// Render after a Transition flush: commits the pending value and returns the new value.
+        /// on the Transition lane. A re-render that is not draining that lane keeps returning the previously
+        /// committed value and re-queues the lane.
+        /// The render that drains the Transition lane: commits the pending value and returns the new value.
         /// </returns>
         public static T UseDeferredValue<T>(T value)
             => UseDeferredValueCore(value, default!, hasInitialValue: false);
@@ -1886,9 +1961,13 @@ namespace Velvet
                     $"HookDeferredValueSlot<{typeof(T).Name}>", index);
             }
 
-            if (typed.HasPending && ObjectIs.AreEqual(typed.Pending, value))
+            if (typed.HasPending && ObjectIs.AreEqual(typed.Pending, value)
+                && FiberWorkLoop.IsRenderingTransitionLane)
             {
-                // Commit phase after a Transition flush: promote pending to current and return the new value.
+                // Only the render draining transition-lane work may promote pending to current. The rest of
+                // the condition tests the input alone, so without the gate any re-render still carrying it
+                // commits — and the subtree the deferral exists to keep off the urgent path renders there.
+                // A render that is not the one falls through to the change branch, which re-queues the lane.
                 typed.Current = value;
                 typed.Pending = default;
                 typed.HasPending = false;
@@ -2025,11 +2104,9 @@ namespace Velvet
                 fiber.MemoSlots.Add(new HookMemoSlot());
             }
             var slot = fiber.MemoSlots[slotIndex];
-            // Compare by identity (reference identity for reference types, raw bits for float/double),
-            // matching the strictness the reconciler and Provider use to decide a re-render. Structural value
-            // equality would treat a fresh-but-equal record prop or context value as unchanged and return a
-            // stale cached VNode, suppressing a re-render the framework actually committed. Identity comparison keeps the
-            // memo sound for props- and context-driven inputs that the weaver captures in the deps array.
+            // Structural value equality would call a fresh-but-content-equal record class prop or context
+            // value unchanged and hand back the cached VNode, so the render the reconciler had already
+            // decided to make would produce the committed tree instead of the new one.
             if (slot.LastDeps != null && ObjectIs.AreEqualDeps(slot.LastDeps, deps))
             {
                 // Hit against the committed deps: reuse the committed VNode and stage the committed values so the

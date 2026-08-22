@@ -49,8 +49,10 @@ namespace Velvet
         public static VNode Render(Props p)
         {
             var location = Hooks.UseLocation();
-            var currentPath = location?.Path ?? string.Empty;
-            var isActive = IsActive(currentPath, p.To, p.End, p.CaseSensitive);
+            // Standing in for a missing location with the empty string was rejected: it goes through the same
+            // normalisation as the target, where an empty path is the root, so a link to "/" came out as the
+            // current page of a tree that has no current page.
+            var isActive = location != null && IsActive(location.Path, p.To, p.End, p.CaseSensitive);
 
             var className = isActive && !string.IsNullOrEmpty(p.ActiveClass)
                 ? string.IsNullOrEmpty(p.ClassName) ? p.ActiveClass : p.ClassName + " " + p.ActiveClass
@@ -64,7 +66,7 @@ namespace Velvet
                 new RouteLink.Props(p.To, p.Text, className, p.Name, p.Children, p.Replace));
         }
 
-        private static bool IsActive(string currentPath, string to, bool end, bool caseSensitive)
+        private static bool IsActive(string? currentPath, string to, bool end, bool caseSensitive)
         {
             var current = Normalize(currentPath);
             var target = Normalize(to);

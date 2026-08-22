@@ -145,6 +145,7 @@ namespace Velvet
         /// Whether a structural rule matches an element at <paramref name="index"/> (0-based) among
         /// <paramref name="count"/> siblings.
         /// </summary>
+#pragma warning disable CS8524 // no discard arm: a new kind has to state when it matches
         public static bool Matches(StyleStructuralKind kind, int n, int index, int count) => kind switch
         {
             StyleStructuralKind.First => index == 0,
@@ -154,7 +155,7 @@ namespace Velvet
             StyleStructuralKind.Even => index % 2 == 1,         // 2nd, 4th, …
             StyleStructuralKind.NthChild => n >= 1 && index == n - 1,
             StyleStructuralKind.NthLastChild => n >= 1 && index == count - n,
-            _ => false,
         };
+#pragma warning restore CS8524
     }
 }

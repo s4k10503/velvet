@@ -12,9 +12,8 @@ namespace Velvet
     // ChildReconciler's inline-expansion (which mounts / diffs fibers and emits DOM) and
     // FiberContextSpine's spine-rewalk (which re-pushes the Providers enclosing a spine child
     // for an isolated re-render). They perform different actions per node but must agree bit-for-bit
-    // on the derived keys — otherwise a registry lookup keyed by <c>(parentFiber, positionKey,
-    // identity)</c> misses and either the spine reconstruction fails to recognize a child or a fiber's
-    // state is reset. Centralizing the derivation here makes that lockstep structural: changing a
+    // on the derived keys — otherwise a registry lookup misses and either the spine reconstruction
+    // fails to recognize a child or a fiber's state is reset. Centralizing the derivation here makes that lockstep structural: changing a
     // keying rule changes both walkers at once.
 
     // How the child array a node sits in was opened. Part of the structural path below, so two arrays opened
@@ -32,8 +31,8 @@ namespace Velvet
         PresenceChild = 8,
     }
 
-    // The two position coordinates the inline-expansion walk carries down one descent. Both are derived from
-    // the same contribution at every level, by one factory per construct below, so they cannot drift apart.
+    // The position coordinates the inline-expansion walk carries down one descent. Every construct below has
+    // one factory deriving all of them together, so a keying rule is changed for all of them in one place.
     //
     // Scope is the fiber-keying scope chain, and deliberately COLLAPSES: a Fragment / Provider / Component
     // contributes nothing while no enclosing keyed boundary has established a scope, which is what keeps an
@@ -59,15 +58,23 @@ namespace Velvet
     //
     // A Provider whose path is NOT found does not guess: it falls back to the walk-order pairing that
     // predates position pairing (see GeneralPathReconciler.ProviderPairTable).
+    //
+    // SlotPath is the same fold over the same contributions as Path, restarting at every ComponentNode
+    // boundary where Path does not. An unkeyed inline Component's slot key is derived from it, and that key
+    // has to name the same fiber from two entry points: an outer walk, which reaches a component's body
+    // through its ancestors, and that component's own isolated re-render, which starts the walk at WalkRoot.
+    // Path carries the levels above the fiber and so differs between the two.
     internal readonly struct WalkPosition
     {
         internal readonly string? Scope;
         internal readonly long Path;
+        internal readonly long SlotPath;
 
-        internal WalkPosition(string? scope, long path)
+        internal WalkPosition(string? scope, long path, long slotPath)
         {
             Scope = scope;
             Path = path;
+            SlotPath = slotPath;
         }
     }
 
@@ -127,8 +134,9 @@ namespace Velvet
         private const ulong KeyedContributionMarker = 0x9E3779B97F4A7C15UL;
 
         // The position an outer walk starts from. Scope-less (nothing has established a keyed boundary yet)
-        // with the path accumulator at its seed.
-        internal static WalkPosition WalkRoot => new(null, unchecked((long)PathSeed));
+        // with both path accumulators at their seed.
+        internal static WalkPosition WalkRoot
+            => new(null, unchecked((long)PathSeed), unchecked((long)PathSeed));
 
         // One level's contribution to the structural path. An explicit key replaces the positional index —
         // mirroring the Scope rule — so a keyed node keeps this ONE level's contribution when its siblings
@@ -163,23 +171,28 @@ namespace Velvet
         // The position a FragmentNode opens for its children.
         internal static WalkPosition FragmentChild(WalkPosition parent, string? fragmentKey, int nodeIndex)
             => new(FragmentChildScope(parent.Scope, fragmentKey, nodeIndex),
-                ExtendPath(parent.Path, WalkPathKind.Fragment, fragmentKey, nodeIndex));
+                ExtendPath(parent.Path, WalkPathKind.Fragment, fragmentKey, nodeIndex),
+                ExtendPath(parent.SlotPath, WalkPathKind.Fragment, fragmentKey, nodeIndex));
 
         // The position a ContextProviderNode opens for its children.
         internal static WalkPosition ProviderChild(WalkPosition parent, string? providerKey, int nodeIndex)
             => new(ProviderChildScope(parent.Scope, providerKey, nodeIndex),
-                ExtendPath(parent.Path, WalkPathKind.Provider, providerKey, nodeIndex));
+                ExtendPath(parent.Path, WalkPathKind.Provider, providerKey, nodeIndex),
+                ExtendPath(parent.SlotPath, WalkPathKind.Provider, providerKey, nodeIndex));
 
-        // The position an inline ComponentNode opens when its committed PreviousTree is descended.
+        // The position an inline ComponentNode opens when its committed PreviousTree is descended. The only
+        // factory that restarts SlotPath, for the reason WalkPosition states.
         internal static WalkPosition ComponentChild(WalkPosition parent, string? componentKey, int nodeIndex)
             => new(ComponentChildScope(parent.Scope, componentKey, nodeIndex),
-                ExtendPath(parent.Path, WalkPathKind.Component, componentKey, nodeIndex));
+                ExtendPath(parent.Path, WalkPathKind.Component, componentKey, nodeIndex),
+                unchecked((long)PathSeed));
 
         // The position a MemoNode opens for its resolved inner. The memo's own key selects the dep-cache
         // entry (MemoCacheKey), not the position, so only the node index contributes here.
         internal static WalkPosition MemoInner(WalkPosition parent, int nodeIndex)
             => new(MemoScope(parent.Scope, nodeIndex),
-                ExtendPath(parent.Path, WalkPathKind.Memo, null, nodeIndex));
+                ExtendPath(parent.Path, WalkPathKind.Memo, null, nodeIndex),
+                ExtendPath(parent.SlotPath, WalkPathKind.Memo, null, nodeIndex));
 
         // The position a Suspense's primary or fallback subtree renders under. The two branches contribute
         // different kinds, so a Provider in the fallback is never paired against one in the primary.
@@ -188,18 +201,23 @@ namespace Velvet
             => new(SuspenseSubtreeScope(suspenseKey, isFallback),
                 ExtendPath(parent.Path,
                     isFallback ? WalkPathKind.SuspenseFallback : WalkPathKind.SuspensePrimary,
+                    ownKey, nodeIndex),
+                ExtendPath(parent.SlotPath,
+                    isFallback ? WalkPathKind.SuspenseFallback : WalkPathKind.SuspensePrimary,
                     ownKey, nodeIndex));
 
         // The position of a DOM-less AnimatePresence itself; its Scope doubles as the boundary's state key.
         internal static WalkPosition Presence(WalkPosition parent, string? presenceKey, int nodeIndex)
             => new(PresenceKey(parent.Scope, presenceKey, nodeIndex),
-                ExtendPath(parent.Path, WalkPathKind.Presence, presenceKey, nodeIndex));
+                ExtendPath(parent.Path, WalkPathKind.Presence, presenceKey, nodeIndex),
+                ExtendPath(parent.SlotPath, WalkPathKind.Presence, presenceKey, nodeIndex));
 
         // The position one keyed AnimatePresence child renders under. Keyed by the child's own key, which is
         // stable across renders, so a Provider inside it pairs across a reorder.
         internal static WalkPosition PresenceChild(WalkPosition presence, string? childKey)
             => new(PresenceChildScope(presence.Scope, childKey),
-                ExtendPath(presence.Path, WalkPathKind.PresenceChild, childKey, 0));
+                ExtendPath(presence.Path, WalkPathKind.PresenceChild, childKey, 0),
+                ExtendPath(presence.SlotPath, WalkPathKind.PresenceChild, childKey, 0));
 
         // The position of a ContextProviderNode found at nodeIndex of the child array currently being walked
         // under fiber. An explicit key replaces the positional index so a keyed Provider keeps its identity
@@ -208,26 +226,23 @@ namespace Velvet
             ComponentFiber? fiber, WalkPosition position, string? providerKey, int nodeIndex)
             => new(fiber, position.Path, providerKey, providerKey != null ? -1 : nodeIndex);
 
-        // Returns the per-identity position key for an unkeyed inline ComponentNode: the n-th
-        // occurrence of identity within one reconcile scope. Unkeyed siblings are
-        // matched between renders by their render order. Mutates counters (bumps the
-        // per-identity count) and returns the boxed (identity, idx) ValueTuple used by the
-        // registry's 3-tuple key for equality.
+        // Returns the position key for an unkeyed inline ComponentNode: the slot it occupies in the child
+        // array it sits in, under that array's SlotPath. A slot rather than a count of how many components
+        // of its identity the walk has passed, so a sibling that renders null costs the slot it held
+        // instead of shifting the components of that identity after it onto their predecessors' keys.
         //
-        // The boxed token is interned per (identity, idx) via boxCache, so repeated reconciles reuse
-        // one box instead of allocating a fresh one on every walk. The box is only ever compared by
-        // content (the registry never reference-compares position keys), so sharing it across renders
-        // and walk passes is equality-safe.
+        // The boxed key is interned per position via boxCache, so repeated reconciles reuse one box
+        // instead of allocating a fresh one on every walk. The box is only ever compared by content (the
+        // registry never reference-compares position keys), so sharing it across renders, walk passes and
+        // identities is equality-safe; identity is a separate member of the registry's key.
         internal static object ResolveInlinePositionKey(
-            Dictionary<object, int> counters, object identity,
-            Dictionary<(object identity, int index), object> boxCache)
+            WalkPosition position, int nodeIndex,
+            Dictionary<(long slotPath, int nodeIndex), object> boxCache)
         {
-            counters.TryGetValue(identity, out var idx);
-            counters[identity] = idx + 1;
-            var cacheKey = (identity, idx);
+            var cacheKey = (position.SlotPath, nodeIndex);
             if (!boxCache.TryGetValue(cacheKey, out var boxed))
             {
-                boxed = (identity, idx);
+                boxed = cacheKey;
                 boxCache[cacheKey] = boxed;
             }
             return boxed;
@@ -267,9 +282,9 @@ namespace Velvet
         internal static string MemoCacheKey(string? memoKey, string memoScope)
             => memoKey ?? memoScope;
 
-        // The boundary key for a SuspenseNode (also the ReconcilerContext.SuspenseFallbackShown
-        // state key suffix): the parent scope extended by the Suspense's own key (or its positional
-        // index when unkeyed).
+        // The boundary key for a SuspenseNode (also the position key its
+        // ReconcilerContext.SetSuspenseFallbackShown entry is stored under): the parent scope extended
+        // by the Suspense's own key (or its positional index when unkeyed).
         internal static string SuspenseKey(string? parentScope, string? suspenseKey, int nodeIndex)
             => ComposeFragmentScope(parentScope, suspenseKey ?? Index(nodeIndex));
 

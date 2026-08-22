@@ -14,8 +14,9 @@ namespace Velvet
     //
     // Lifecycle mirrors StyleGapManipulator / StyleDivideManipulator: the reconciler attaches one per
     // container carrying a [&>*]: token, keeps it in ReconcilerContext.ChildVariantManipulators, and removes
-    // it on cleanup / dispose. UnregisterCallbacksFromTarget clears the payloads it applied so removing the
-    // token (or unmounting) leaves no residue. Re-application has the same three sources as gap / divide: the
+    // it on cleanup / dispose. UnregisterCallbacksFromTarget clears what it still owns and still tracks —
+    // ReconcilerContext.ChildVariantOwners decides the first, and a child that went out of flow after being
+    // written to leaves the second, so it keeps the payload. Re-application has the same three sources as gap / divide: the
     // reconciler's post-children pass (the panel-independent path that also covers EditMode), a
     // GeometryChangedEvent (a child add / remove / reorder from an unrelated reconcile), and an
     // AttachToPanelEvent. A signature makes a redundant Apply a no-op.
@@ -40,9 +41,9 @@ namespace Velvet
         private readonly ReconcilerContext _ctx;
         private string[] _payloads;
 
-        // Every child this manipulator has applied the payload to. On each Apply / Clear any tracked element
-        // no longer a current child has its payload turned off, so a child reparented or removed out of the
-        // container keeps no residual class / inline style.
+        // Every child this manipulator has applied the payload to. On each Apply / Clear any tracked
+        // element no longer a current child is offered for release; whether it loses the payload is the
+        // claim's answer, not this list's — see ReconcilerContext.ChildVariantOwners.
         private readonly List<VisualElement> _applied = new();
 
         // Signature of the last successful Apply: the current in-flow child identity set. Apply() early-returns
@@ -75,7 +76,7 @@ namespace Velvet
             {
                 foreach (var child in _applied)
                 {
-                    ApplyPayloads(child, false);
+                    ReleasePayloads(child);
                 }
             }
             _payloads = payloads;
@@ -143,6 +144,7 @@ namespace Velvet
                     continue;
                 }
                 ApplyPayloads(child, true);
+                StyleChildOwnership.Claim(_ctx.ChildVariantOwners, child, this);
                 _applied.Add(child);
             }
 
@@ -155,14 +157,25 @@ namespace Velvet
         {
             foreach (var child in _applied)
             {
-                ApplyPayloads(child, false);
+                ReleasePayloads(child);
             }
             _applied.Clear();
             _hasSignature = false;
         }
 
-        // Turns the payload off on any tracked child that has left the container, then prunes it — so a child
-        // reparented or removed out of the container drops the class / inline style this manipulator wrote.
+        // The claim in ReconcilerContext.ChildVariantOwners decides this, not the tracked list, and every
+        // turn-off goes through here so no path can skip the question.
+        private void ReleasePayloads(VisualElement child)
+        {
+            if (StyleChildOwnership.TryRelease(_ctx.ChildVariantOwners, child, this))
+            {
+                ApplyPayloads(child, false);
+            }
+        }
+
+        // Offers every tracked child that has left the container for release, then prunes it. A child the
+        // reconciler removed has had its claim dropped by ClearElementSideTables already, so what this
+        // reaches is the reparents: a wrapper inserted between container and child, a z-layer hoist.
         private void ResetStaleApplied(VisualElement container)
         {
             for (var i = _applied.Count - 1; i >= 0; i--)
@@ -170,7 +183,7 @@ namespace Velvet
                 var child = _applied[i];
                 if (child.parent != container)
                 {
-                    ApplyPayloads(child, false);
+                    ReleasePayloads(child);
                     _applied.RemoveAt(i);
                 }
             }

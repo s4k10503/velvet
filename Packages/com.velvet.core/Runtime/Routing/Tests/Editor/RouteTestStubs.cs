@@ -10,8 +10,9 @@ namespace Velvet.Tests
     /// (Blocker / Redirect / Loader / RouteTree / Router).
     /// Used to verify path matching / loader / blocker logic; not mounted into the Outlet.
     ///
-    /// Exposes factory helpers (Route / MakeMatch / Attempt / MakeToggleGuard / BuildRouter)
-    /// that eliminate boilerplate envelope construction in routing test files.
+    /// Exposes factory helpers (Route / MakeMatch / Attempt / MakeToggleGuard / MakeOneShotBlocker /
+    /// MakeDeferredBlocker / BuildRouter) that eliminate boilerplate envelope construction in
+    /// routing test files.
     /// </summary>
     internal static class RouteTestStubs
     {
@@ -84,6 +85,13 @@ namespace Velvet.Tests
             => new NavigationAttempt { CurrentPath = from, NextPath = to };
 
         /// <summary>
+        /// Stands in for the re-issue <c>RouteBlockerManager.CheckAsync</c> hands to a Blocker it blocks,
+        /// for a manager-level test asserting on the block decision rather than on what
+        /// <c>RouteBlockerState.Proceed</c> does with it.
+        /// </summary>
+        public static readonly Action NoResume = () => { };
+
+        /// <summary>
         /// Creates a toggleable Guard: returns null until <paramref name="enable"/> is invoked,
         /// then returns <paramref name="redirectTo"/>.
         /// </summary>
@@ -92,6 +100,69 @@ namespace Velvet.Tests
             var enabled = false;
             enable = () => enabled = true;
             return _ => enabled ? redirectTo : null;
+        }
+
+        /// <summary>
+        /// Creates an async Blocker whose FIRST invocation parks on <c>VelvetTask.Never(ct)</c> — raising
+        /// OperationCanceledException once the navigation's token is cancelled — and whose later
+        /// invocations pass through without blocking. Await the returned <c>Entered</c> to be sure the
+        /// navigation has reached the blocker await before cancelling it.
+        /// </summary>
+        /// <remarks>
+        /// <c>Entered</c> is raised from inside the predicate, so a Blocker the router stops consulting
+        /// never raises it and the await never returns. Three router fixtures await this signal or
+        /// <see cref="MakeDeferredBlocker"/>'s, over sixteen cases between them, and carry a
+        /// <c>[Timeout]</c>: left to the runner's own bound those sixteen waits cost more than a mutation
+        /// campaign's default cap gives one mutant, which reports the consultation gate as not measured
+        /// rather than as killed. <see cref="UnityRunnerDefaultTimeoutTests"/> pins that bound.
+        /// </remarks>
+        public static (Func<NavigationAttempt, CancellationToken, VelvetTask<bool>> Check, VelvetTaskCompletionSource Entered) MakeOneShotBlocker()
+        {
+            var entered = new VelvetTaskCompletionSource();
+            int invocationCount = 0;
+            VelvetTask<bool> Check(NavigationAttempt _, CancellationToken ct)
+            {
+                var n = Interlocked.Increment(ref invocationCount);
+                if (n == 1)
+                {
+                    entered.TrySetResult();
+                    return VelvetTask.Never<bool>(ct);
+                }
+                return VelvetTask.FromResult(false);
+            }
+            return (Check, entered);
+        }
+
+        /// <summary>
+        /// Creates an async Blocker whose FIRST invocation parks on a task that ignores the navigation's
+        /// token: cancelling it does not resume the blocker, which resumes only when the caller invokes
+        /// <c>ResumeCancelled</c> (raising OperationCanceledException) or <c>ResumeUnblocked</c> (returning
+        /// "not blocked"). That separation is the point — it puts the resume after the superseding
+        /// navigation has committed, which <see cref="MakeOneShotBlocker"/> cannot do because its parked
+        /// task unwinds synchronously inside <c>Cancel()</c>, before the newer navigation proceeds.
+        /// The two resumes reach different rollbacks: throwing unwinds through the exception handlers,
+        /// while returning falls into the blocker check's own cancellation branch.
+        /// </summary>
+        /// <remarks>
+        /// Its <c>Entered</c> is bounded on the same terms as <see cref="MakeOneShotBlocker"/>'s.
+        /// </remarks>
+        public static (Func<NavigationAttempt, CancellationToken, VelvetTask<bool>> Check,
+            VelvetTaskCompletionSource Entered, Action ResumeCancelled, Action ResumeUnblocked) MakeDeferredBlocker()
+        {
+            var entered = new VelvetTaskCompletionSource();
+            var parked = new VelvetTaskCompletionSource<bool>();
+            int invocationCount = 0;
+            VelvetTask<bool> Check(NavigationAttempt _, CancellationToken ct)
+            {
+                var n = Interlocked.Increment(ref invocationCount);
+                if (n == 1)
+                {
+                    entered.TrySetResult();
+                    return parked.Task;
+                }
+                return VelvetTask.FromResult(false);
+            }
+            return (Check, entered, () => parked.TrySetCanceled(), () => parked.TrySetResult(false));
         }
 
         /// <summary>

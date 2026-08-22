@@ -1556,6 +1556,145 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ScaleWithALengthSuffix_When_Parsed_Then_Declines()
+        {
+            // Act — the length grammar would convert the suffix and hand back 32, a scale of thirty-two.
+            // The float grammar rejects it, so the class falls through unrecognised instead.
+            var ok = StyleArbitraryValueResolver.TryParse("scale-[2rem]", out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
+        [Test]
+        public void Given_TransformOriginPairClass_When_Parsed_Then_BothComponentsSurvive()
+        {
+            // Act — the underscore is how the bracket grammar spells the space CSS puts between them.
+            var ok = StyleArbitraryValueResolver.TryParse("origin-[33%_75%]", out var s);
+
+            // Assert
+            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
+            Assert.That((s.Property, s.Value, s.Unit, s.Value2, s.Unit2),
+                Is.EqualTo((ArbitraryProperty.TransformOrigin, 33f, LengthUnit.Percent, 75f, LengthUnit.Percent)));
+        }
+
+        [Test]
+        public void Given_TransformOriginSingleComponentClass_When_Parsed_Then_TheSecondIsHalfAndNotTheFirst()
+        {
+            // Act — CSS leaves an unstated y at 50%, so origin-[0px] is the left edge's middle rather than
+            // the top-left corner. Copying the x across would make those two the same pivot.
+            var ok = StyleArbitraryValueResolver.TryParse("origin-[0px]", out var s);
+
+            // Assert
+            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
+            Assert.That((s.Value, s.Unit, s.Value2, s.Unit2),
+                Is.EqualTo((0f, LengthUnit.Pixel, 50f, LengthUnit.Percent)));
+        }
+
+        [Test]
+        public void Given_TransformOriginMixedUnits_When_Parsed_Then_EachComponentKeepsItsOwnUnit()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("origin-[12px_80%]", out var s);
+
+            // Assert
+            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
+            Assert.That((s.Unit, s.Unit2), Is.EqualTo((LengthUnit.Pixel, LengthUnit.Percent)));
+        }
+
+        [Test]
+        public void Given_TransformOriginKeywordValue_When_Parsed_Then_Declines()
+        {
+            // Act — the nine keyword pivots are USS classes, so origin-top-left is how they are written.
+            var ok = StyleArbitraryValueResolver.TryParse("origin-[left_top]", out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
+        [Test]
+        public void Given_TransformOriginWithThreeComponents_When_Parsed_Then_Declines()
+        {
+            // Act — CSS's third component is a z and the engine carries one, so this refusal is a choice
+            // about the value shape rather than something that could not be done.
+            var ok = StyleArbitraryValueResolver.TryParse("origin-[10%_20%_30%]", out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
+        [Test]
+        public void Given_NegatedTransformOriginClass_When_Parsed_Then_Declines()
+        {
+            // Act — Tailwind declares no negative variant of this utility; a minus inside the
+            // brackets is how to write one, and it parses.
+            var ok = StyleArbitraryValueResolver.TryParse("-origin-[10%_20%]", out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
+        [Test]
+        public void Given_TransformOriginArbitraryStyle_When_Applied_Then_SetsInlineTransformOrigin()
+        {
+            // Arrange
+            var el = new VisualElement();
+            StyleArbitraryValueResolver.TryParse("origin-[33%_75%]", out var s);
+
+            // Act
+            StyleArbitraryValueResolver.Apply(el, in s);
+
+            // Assert
+            Assert.That((el.style.transformOrigin.value.x.value, el.style.transformOrigin.value.y.value),
+                Is.EqualTo((33f, 75f)));
+        }
+
+        [Test]
+        public void Given_TransformOriginWithAPercentY_When_Applied_Then_TheYKeepsItsOwnUnit()
+        {
+            // Arrange — the one thing a pair adds over every neighbouring transform utility is a second
+            // unit, and a test whose components share one cannot tell them apart. Pixel is the enum's
+            // default, so only the percent side of a mixed pair is detectable per case: this one pins the y.
+            var el = new VisualElement();
+            StyleArbitraryValueResolver.TryParse("origin-[12px_80%]", out var s);
+
+            // Act
+            StyleArbitraryValueResolver.Apply(el, in s);
+
+            // Assert
+            Assert.That(el.style.transformOrigin.value.y.unit, Is.EqualTo(LengthUnit.Percent));
+        }
+
+        [Test]
+        public void Given_TransformOriginWithAPercentX_When_Applied_Then_TheXKeepsItsOwnUnit()
+        {
+            // Arrange — the mirror of the case above, which is what it takes to pin both: dropping the x's
+            // unit yields Pixel, and Pixel is what a percent-y case expects there anyway.
+            var el = new VisualElement();
+            StyleArbitraryValueResolver.TryParse("origin-[80%_12px]", out var s);
+
+            // Act
+            StyleArbitraryValueResolver.Apply(el, in s);
+
+            // Assert
+            Assert.That(el.style.transformOrigin.value.x.unit, Is.EqualTo(LengthUnit.Percent));
+        }
+
+        [Test]
+        public void Given_TransformOriginWithInlineValue_When_Cleared_Then_RevertsToNull()
+        {
+            // Arrange
+            var el = new VisualElement();
+            el.style.transformOrigin = new TransformOrigin(Length.Percent(33f), Length.Percent(75f));
+
+            // Act
+            StyleArbitraryValueResolver.Clear(el, ArbitraryProperty.TransformOrigin);
+
+            // Assert
+            Assert.That(el.style.transformOrigin.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        [Test]
         public void Given_RotateArbitraryStyle_When_Applied_Then_SetsInlineRotateInDegrees()
         {
             // Arrange
@@ -2410,6 +2549,102 @@ namespace Velvet.Tests
             // Assert
             Assert.That((el.style.width.keyword, el.style.height.keyword),
                 Is.EqualTo((StyleKeyword.Null, StyleKeyword.Null)));
+        }
+
+        [Test]
+        public void Given_GrowArbitrary_When_Parsed_Then_ResolvesFlexGrow()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("grow-[2]", out var s);
+
+            // Assert — the recognition rides in the tuple because a default ArbitraryStyle is a real
+            // property/value pair, so an unrecognized token would otherwise report as an Assume.
+            Assert.That((ok, s.Property, s.Value), Is.EqualTo((true, ArbitraryProperty.FlexGrow, 2f)));
+        }
+
+        [Test]
+        public void Given_ShrinkArbitrary_When_Parsed_Then_ResolvesFlexShrink()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("shrink-[3]", out var s);
+
+            // Assert
+            Assert.That((ok, s.Property, s.Value), Is.EqualTo((true, ArbitraryProperty.FlexShrink, 3f)));
+        }
+
+        [Test]
+        public void Given_GrowArbitraryWithAPercent_When_Parsed_Then_DeclinesToParse()
+        {
+            // Act — a ratio has no unit, and the float setters read only the value: accepting this would
+            // make grow-[50%] a factor of fifty.
+            var ok = StyleArbitraryValueResolver.TryParse("grow-[50%]", out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
+        [Test]
+        public void Given_GrowArbitraryWithALengthUnit_When_Parsed_Then_DeclinesToParse()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("grow-[2rem]", out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
+        [Test]
+        public void Given_NegatedGrowArbitrary_When_Parsed_Then_DeclinesToParse()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("-grow-[2]", out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
+        [Test]
+        public void Given_GrowArbitraryFraction_When_AppliedToElement_Then_SetsInlineFlexGrow()
+        {
+            // Arrange — a fraction, because the whole point is a ratio the 0/1 utilities cannot express.
+            var el = new VisualElement();
+            var ok = StyleArbitraryValueResolver.TryParse("grow-[2.5]", out var style);
+
+            // Act
+            StyleArbitraryValueResolver.Apply(el, in style);
+
+            // Assert
+            Assert.That((ok, el.style.flexGrow.value), Is.EqualTo((true, 2.5f)));
+        }
+
+        [Test]
+        public void Given_ShrinkArbitrary_When_AppliedToElement_Then_SetsInlineFlexShrink()
+        {
+            // Arrange
+            var el = new VisualElement();
+            var ok = StyleArbitraryValueResolver.TryParse("shrink-[3]", out var style);
+
+            // Act
+            StyleArbitraryValueResolver.Apply(el, in style);
+
+            // Assert
+            Assert.That((ok, el.style.flexShrink.value), Is.EqualTo((true, 3f)));
+        }
+
+        [Test]
+        public void Given_GrowArbitrary_When_Cleared_Then_RevertsInlineFlexGrowToNull()
+        {
+            // Arrange
+            var el = new VisualElement();
+            StyleArbitraryValueResolver.Apply(el, new ArbitraryStyle(ArbitraryProperty.FlexGrow, 2f, LengthUnit.Pixel));
+            var applied = el.style.flexGrow.value;
+
+            // Act
+            StyleArbitraryValueResolver.Clear(el, ArbitraryProperty.FlexGrow);
+
+            // Assert — the applied value rides along because a fresh element already reads Null, so the
+            // keyword alone cannot tell a revert from a setter that never wrote.
+            Assert.That((applied, el.style.flexGrow.keyword), Is.EqualTo((2f, StyleKeyword.Null)));
         }
 
         [Test]

@@ -78,14 +78,15 @@ namespace Velvet
         // side-tables (variant manipulators, the structural/has/data/aria/supports rules,
         // arbitrary-value layers, shadow/clip/gradient bindings) would retain the discarded element
         // for the context's whole lifetime. A genuine poolable leaf is also reclaimed to the pool:
-        // Label / Toggle / Slider / TextField never carry inline-mounted Velvet descendants (their
-        // DSL hardcodes empty children), and a Button is reclaimed only when childless. A container
-        // orphan — including a Button declared with children, whose children CreateElement
-        // inline-expands into the element itself — has its subtree's resources released recursively
-        // via CleanupElementCore, which deliberately does NOT dispose the subtree's fibers / Outlet
-        // scopes (that is CleanupElement's job): those anchor on the fiber tree and may be re-paired
-        // when the suspended primary later resolves. The element was never in the hierarchy, so there
-        // is no DOM detach.
+        // a Button or a Label only when childless, since either can be given children — V.Button's own DSL,
+        // or V.Custom<T> for both — which CreateElement inline-expands into the element itself, while this
+        // branch releases resources for the orphan alone. Toggle / Slider / TextField are reclaimed
+        // unconditionally: each already holds its own constructed sub-element, so a count cannot separate
+        // that from a V.Custom child — their reset detaches one by exclusion instead
+        // (FiberElementPoolReset.DetachForeignChildren), on this path and on ordinary unmount alike. A
+        // container orphan — including a Button or a Label declared with children — has its subtree's
+        // resources released recursively via CleanupElementCore. The element was never in the hierarchy,
+        // so there is no DOM detach.
         public void ReturnRolledBackOrphan(VisualElement? element)
         {
             if (element == null) return;
@@ -102,19 +103,16 @@ namespace Velvet
             }
 
             var exactType = element.GetType();
-            if (exactType == typeof(Label) || exactType == typeof(Toggle)
-                || exactType == typeof(Slider) || exactType == typeof(TextField)
-                || (exactType == typeof(Button) && ((Button)element).childCount == 0))
+            if (exactType == typeof(Toggle) || exactType == typeof(Slider) || exactType == typeof(TextField)
+                || ((exactType == typeof(Button) || exactType == typeof(Label)) && element.childCount == 0))
             {
                 CleanupElementResources(element);
                 ReturnToPool(element);
             }
             else
             {
-                // A plain container orphan (Div), a Button declared with children, or a user
-                // subclass of a poolable primitive (never pooled — see ReturnToPool). Release the
-                // orphan subtree's element-keyed resources without disposing its fibers and
-                // without pooling the non-poolable container.
+                // A plain container orphan (Div), a Button or Label declared with children, or a user
+                // subclass of a poolable primitive (never pooled — see ReturnToPool).
                 CleanupElementCore(element);
             }
         }
@@ -128,6 +126,7 @@ namespace Velvet
         // unrelated mount.
         private static void ReturnToPool(VisualElement element)
         {
+            FiberPropApplier.ForgetRecordedDefaults(element);
             var type = element.GetType();
             if (type == typeof(TextField))
             {
@@ -194,6 +193,7 @@ namespace Velvet
             CleanupFocusAndNavigationResources(element);
             CleanupDndResources(element);
             CleanupControllerResources(element);
+            _ctx.PrunePresenceParentElementState(element);
         }
 
         // Refs, animation/layout scheduling, the event + component registries, and every
@@ -204,7 +204,18 @@ namespace Velvet
             if (_ctx.RefCallbacks.TryGetValue(element, out var installedRef))
             {
                 _ctx.RefCallbacks.Remove(element);
-                installedRef.Cleanup?.Invoke();
+                // Contained the way Reconciler.ReleaseRefCallbacks contains the same user delegate. A throw
+                // escaping here skips the rest of this element's teardown — including the ring detach whose
+                // own note says skipping it strands a live band — and unwinds whichever removal loop called
+                // in, so the rows it had not reached yet stay in the tree.
+                try
+                {
+                    installedRef.Cleanup?.Invoke();
+                }
+                catch (System.Exception exception)
+                {
+                    FiberLogger.LogException("FiberElementCleaner", exception);
+                }
             }
             _ctx.StyleAnimationScheduler.CancelEnter(element);
             // Teardown-flavored: this element is being released for good (pool return / disposal), not merely
@@ -303,17 +314,19 @@ namespace Velvet
             }
             if (_ctx.SkewBindings.TryGetValue(element, out var skewBinding))
             {
-                // Detach unhooks the paint/stash callbacks and releases the inline color
-                // suppression so a pooled element cannot ghost a sheared face or a sentinel
-                // background onto its next consumer.
+                // Detach unhooks the paint/stash callbacks, destroys the baked gradient texture, drops the
+                // bounds spacer and removes the child-translate manipulator; no pool return does any of
+                // those. The suppression it also releases is the one part a pool return covers on its own,
+                // ResetInlineStyle nulling the same five inline colors.
                 SkewSilhouette.Detach(element, skewBinding);
                 _ctx.SkewBindings.Remove(element);
             }
             if (_ctx.BorderStyleBindings.TryGetValue(element, out var borderStyleBinding))
             {
-                // The dashed-outline paint is a generateVisualContent delegate, not a style property, so the
-                // pool reset cannot scrub it — detach unhooks the paint/stash callbacks and releases the border
-                // color suppression so a pooled element cannot ghost a dashed outline onto its next consumer.
+                // BorderStyleSilhouette.Detach also unregisters the two callbacks the binding registered on
+                // the element. Nothing else does: neither FiberElementPoolReset nor FiberPrimitiveElementPool
+                // contains an UnregisterCallback, and this cleanup runs on every element while a pool return
+                // runs on five types.
                 BorderStyleSilhouette.Detach(element, borderStyleBinding);
                 _ctx.BorderStyleBindings.Remove(element);
             }
@@ -321,15 +334,12 @@ namespace Velvet
             {
                 // Keyed by the divided CHILD, so a keyed-list reorder recycling one child independently of its
                 // divide container is still caught here (the container's own manipulator may never re-run for
-                // it). Detach unhooks the divider paint delegate the pool reset cannot scrub.
+                // it).
                 DivideDashPainter.Detach(element, divideDashBinding);
                 _ctx.DivideDashBindings.Remove(element);
             }
             if (_ctx.TextOverlineBindings.TryGetValue(element, out var overlineBinding))
             {
-                // The overline rule is a generateVisualContent delegate, not a style property, so the pool
-                // reset cannot scrub it — detach unhooks the paint callback so a pooled element cannot ghost
-                // a painted rule onto its next consumer.
                 TextOverlineSilhouette.Detach(element, overlineBinding);
                 _ctx.TextOverlineBindings.Remove(element);
             }
@@ -479,8 +489,17 @@ namespace Velvet
             }
             if (_ctx.OutletScopes.TryGetValue(element, out var routeScope))
             {
-                routeScope.Dispose();
+                // The scope comes from the application's IRouteScopeFactory — user code, contained for
+                // the reason CleanupEffectAndStyleBindingResources gives for the refCallback cleanup.
                 _ctx.OutletScopes.Remove(element);
+                try
+                {
+                    routeScope.Dispose();
+                }
+                catch (System.Exception exception)
+                {
+                    FiberLogger.LogException("FiberElementCleaner", exception);
+                }
             }
             // Identity-side registration added on every Outlet mount; without this per-element
             // removal the set would pin every unmounted Outlet's dead container element until the
@@ -494,10 +513,6 @@ namespace Velvet
         // have their slotStart shifted by -slotLength so subsequent patches stay
         // correctly addressed. Entry removal happens before target mutation to prevent double
         // processing via CleanupDescendants recursion.
-        // Deliberately does NOT touch ReconcilerContext.SamePanelPortalBridges: a same-panel target's
-        // synthetic-bubbling bridge (if this was a registry portal) stays attached even once this is
-        // the last Portal on that target — see that field's own comment for why leaving it is both
-        // correct (a harmless no-op) and simpler than reference-counting per-target attaches.
         private void CleanupPortal(VisualElement element)
         {
             if (!_ctx.PortalState.TryGetValue(element, out var portalInfo))
@@ -515,6 +530,15 @@ namespace Velvet
             {
                 return;
             }
+
+            ReleaseBridgeIfLastPortalOn(target);
+
+            // Before the removals: a Portal's top-level Component child mounts inline ON THE TARGET, so
+            // the per-element CleanupElement below never reaches its fiber and its effect cleanups would
+            // never run (ComponentRegistry.DisposeInlineFibersOwnedByPortal owns why the selection is by
+            // the placeholder rather than by the range being torn out).
+            _ctx.ComponentRegistry.DisposeInlineFibersOwnedByPortal(element);
+            _ctx.PrunePresencePortalState(element);
 
             // Both ends of the range are LOGICAL, so BOTH are converted. Adding the logical length to the
             // already-converted start mixes the two bases, and tears out one element too many the moment an
@@ -539,6 +563,45 @@ namespace Velvet
             // Surviving Portals on the same target whose slot starts after the removed range
             // collapse left by SlotLength so their next patch addresses the right DOM positions.
             PortalSlotTracker.ShiftSlotStartsAfter(_ctx.PortalState, target, portalInfo.SlotStart, -portalInfo.SlotLength);
+        }
+
+        // Empties a Portal's slot range on the element it is mounted into and leaves it in exactly the
+        // unresolved state a Portal that mounted before its id existed carries, so
+        // FiberNodePatcher.ResolvePortalTarget's tail rebases and mounts both the same way. Called before
+        // anything creates the replacements: the departing children's effect cleanups and fiber disposal
+        // must run before the arriving ones mount.
+        internal void ReleasePortalRangeForRetarget(VisualElement placeholder)
+        {
+            if (!_ctx.PortalState.TryGetValue(placeholder, out var info))
+            {
+                return;
+            }
+            CleanupPortal(placeholder);
+            _ctx.PortalState[placeholder] = info with { Target = null, SlotStart = 0, SlotLength = 0 };
+        }
+
+        // The synthetic-bubbling bridge is attached once per resolved TARGET while the Portals sharing that
+        // target are many, so it may only be released once the last of them has gone; this Portal's own
+        // PortalState entry is already removed by the time this runs. Counted by scanning PortalState
+        // rather than by a per-target counter, whose increment would have to sit outside the attach-once
+        // guard that skips every Portal after the first.
+        private void ReleaseBridgeIfLastPortalOn(VisualElement target)
+        {
+            if (!_ctx.SamePanelPortalBridges.TryGetValue(target, out var unbind))
+            {
+                return;
+            }
+
+            foreach (var info in _ctx.PortalState.Values)
+            {
+                if (ReferenceEquals(info.Target, target))
+                {
+                    return;
+                }
+            }
+
+            unbind();
+            _ctx.SamePanelPortalBridges.Remove(target);
         }
 
         // Destroys the framework-owned world-space host bound to a departing placeholder. Runs

@@ -18,10 +18,14 @@ namespace Velvet
     //   structurally safe for Velvet builder API paths. User refCallback code that mutates
     //   sub-element inline style is responsible for restoring it: a callback ref returns a cleanup
     //   delegate that runs when the element detaches, which is where such mutations must be undone.
-    // - Callbacks registered directly via element.RegisterCallback<TEvent> from user
-    //   code are NOT tracked here; user code must unregister such callbacks before the element
-    //   returns to the pool.
-    // - Modern Bindings (element.bindings, dataSourcePath) are not reset.
+    // - Callbacks a consumer registered directly, whether through element.RegisterCallback<TEvent> or
+    //   through AddManipulator, are NOT tracked here; user code must unregister them before the element
+    //   returns to the pool. The Clickable swap in FiberButtonPoolHelper covers only the manipulator a
+    //   Button holds itself, not one a consumer added alongside it.
+    // - An item a consumer put on element.schedule survives the pool cycle and resumes when the next
+    //   consumer attaches the element. The animation schedules FiberElementCleaner releases are Velvet's
+    //   own, not these.
+    // - A binding registered through element.bindings is not released here.
     internal static class FiberElementPoolReset
     {
         // Restores the base USS classes (stripped by ClearClassList) and resets the shared
@@ -61,6 +65,29 @@ namespace Velvet
             AddClassIfNotEmpty(element, ussClassC);
 
             ResetCommonState(element);
+        }
+
+        // A composite field builds its own input, and its label, into the very container children are expanded
+        // into, so its pool return cannot empty that container the way the childless primitives do —
+        // FiberButtonPoolHelper states that split. Nor can it count: CompositeFieldChildPoolReuseTests pins
+        // that an expanded child takes the container's FIRST slot, ahead of what the constructor left, so
+        // neither end of a count separates the two. What the control made is identified by the two classes
+        // passed here instead, which PoolableWidgetChildBaselineTests pins as accounting for all of it.
+        // field: Pooled composite to strip. Null is a no-op.
+        public static void DetachForeignChildren(VisualElement field, string inputUssClass, string labelUssClass)
+        {
+            if (field == null) return;
+
+            var container = FiberNodePatcher.GetChildContainer(field);
+            for (var i = container.childCount - 1; i >= 0; i--)
+            {
+                var child = container.ElementAt(i);
+                if (child.ClassListContains(inputUssClass) || child.ClassListContains(labelUssClass))
+                {
+                    continue;
+                }
+                container.RemoveAt(i);
+            }
         }
 
         // Empties the class list and the per-element style model that decides what may be on it, in one step.
@@ -118,6 +145,58 @@ namespace Velvet
             element.pickingMode = PickingMode.Position;
             element.viewDataKey = null;
             element.SetEnabled(true);
+            element.usageHints = UsageHints.None;
+            element.languageDirection = LanguageDirection.Inherit;
+            element.disablePlayModeTint = false;
+            element.cacheAsBitmap = false;
+            element.dataSource = null;
+            element.dataSourcePath = default;
+            element.dataSourceType = null;
+
+            // Every pooled primitive is a BindableElement; test fixtures reach this with plain
+            // VisualElements too, which the cast is what admits.
+            if (element is BindableElement bindable)
+            {
+                bindable.binding = null;
+                bindable.bindingPath = null;
+            }
+        }
+
+        // Read off one probe rather than restated, for the same reason FiberTextFieldPoolHelper keeps one:
+        // a colour or a flag copied out of Unity's constructor into a literal here is a mirror that drifts,
+        // and a freshly constructed instance is the very thing the pool's contract is stated against.
+        // Built on first use, which puts it on the reconciler's thread during a pool return.
+        private static Label s_textDefaults;
+
+        private static Label TextDefaults => s_textDefaults ??= new Label();
+
+        // Velvet writes none of these, which is why they ghost — nothing on the mount path takes off what
+        // a consumer holding the element put on. The selection half is reached through a get-only handle,
+        // which is why a walk over the element's own properties finds none of it.
+        public static void ResetTextElementState(TextElement element)
+        {
+            if (element == null) return;
+
+            element.enableRichText = true;
+            element.emojiFallbackSupport = true;
+            element.parseEscapeSequences = false;
+            element.displayTooltipWhenElided = true;
+            element.PostProcessTextVertices = null;
+
+            var defaults = TextDefaults;
+            // Assigning the probe's painter is what drops a consumer's: the entry a constructor installs
+            // takes its subject off the generation context rather than capturing one, so one instance's is
+            // every instance's.
+            element.generateVisualContent = defaults.generateVisualContent;
+            // Writes focusable false on its way through, so anything restoring a type's own focusable — the
+            // line in FiberButtonPoolHelper — has to come after this call.
+            element.selection.isSelectable = defaults.selection.isSelectable;
+            element.selection.doubleClickSelectsWord = defaults.selection.doubleClickSelectsWord;
+            element.selection.tripleClickSelectsLine = defaults.selection.tripleClickSelectsLine;
+            element.selection.selectAllOnFocus = defaults.selection.selectAllOnFocus;
+            element.selection.selectAllOnMouseUp = defaults.selection.selectAllOnMouseUp;
+            element.selection.cursorColor = defaults.selection.cursorColor;
+            element.selection.selectionColor = defaults.selection.selectionColor;
         }
 
         // Source for the zero transition duration written above. Shared because the inline-style write path

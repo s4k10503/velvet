@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine.UIElements;
 
@@ -38,7 +39,7 @@ namespace Velvet
     // (focus-within semantics) since group/peer sources are commonly containers or inputs. Sources are
     // resolved on AttachToPanelEvent. Lifecycle mirrors the other variant manipulators
     // (ReconcilerContext.RelationalVariantManipulators).
-    internal sealed class StyleRelationalVariantManipulator : Manipulator
+    internal sealed class StyleRelationalVariantManipulator : Manipulator, IRelationalSettleTarget
     {
         internal const string GroupClass = "group";
         internal const string PeerClass = "peer";
@@ -130,6 +131,16 @@ namespace Velvet
             }
         }
 
+        // Forwards a controlled write's synthetic checked edge to each binding; a binding that hooked a
+        // different source, or none, drops it (RelationalVariantSignals.SettleChecked).
+        public void SettleCheckedFromSource(VisualElement source, bool value)
+        {
+            foreach (var b in _bindings)
+            {
+                b.SettleChecked(source, value);
+            }
+        }
+
         private void ResetApplied()
         {
             if (target == null)
@@ -199,35 +210,51 @@ namespace Velvet
             private readonly StyleRelationalVariantManipulator _owner;
             private readonly bool _isPeer;
             private readonly string _name; // "" = unnamed
-            private readonly string[] _hover;
-            private readonly string[] _focus;
-            private readonly string[] _focusWithin;
-            private readonly string[] _active;
-            private readonly string[] _checked;
-            private readonly VariantDeclarations _declarations;
+            // Payloads, their className positions and their applied flags, one slot per
+            // StyleVariantClass.RelationalState (see RelationalStateCount) — so every state this binding can
+            // hook for is reached by iterating rather than by naming each one at each of the sites below.
+            private readonly string[][] _payloads;
+            private readonly int[][] _declarations;
+            private readonly bool[] _applied;
 
             private RelationalVariantSignals _signals = null!;
-            private bool _aHover, _aFocus, _aFocusWithin, _aActive, _aChecked;
 
             public Binding(StyleRelationalVariantManipulator owner, RelationalBindingConfig config)
             {
                 _owner = owner;
                 _isPeer = config.IsPeer;
                 _name = config.Name ?? string.Empty;
-                _hover = config.Payloads.Hover;
-                _focus = config.Payloads.Focus;
-                _focusWithin = config.Payloads.FocusVisible;
-                _active = config.Payloads.Active;
-                _checked = config.Payloads.Checked;
-                _declarations = config.Declarations;
+                var count = StyleVariantClass.RelationalStateCount;
+                _payloads = new string[count][];
+                _declarations = new int[count][];
+                _applied = new bool[count];
+                for (var slot = 0; slot < count; slot++)
+                {
+                    var state = (StyleVariantClass.RelationalState)slot;
+                    _payloads[slot] = PayloadFor(config.Payloads, state);
+                    _declarations[slot] = DeclarationFor(config.Declarations, state);
+                }
             }
 
             // The class that marks this binding's source (see SourceClassFor).
             private string SourceClass => SourceClassFor(_isPeer, _name);
 
             private bool HasAnyState()
-                => HasAny(_hover) || HasAny(_focus) || HasAny(_focusWithin) || HasAny(_active)
-                    || (_isPeer && HasAny(_checked));
+            {
+                for (var slot = 0; slot < _payloads.Length; slot++)
+                {
+                    if (_payloads[slot].Length > 0 && DrivesState((StyleVariantClass.RelationalState)slot))
+                    {
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+            // Checked is the one state with no group spelling (StyleVariantClass lists peer-checked and no
+            // group-checked), so a group binding hooks no source for it even when handed a checked payload.
+            private bool DrivesState(StyleVariantClass.RelationalState state)
+                => _isPeer || state != StyleVariantClass.RelationalState.Checked;
 
             public void Resolve(VisualElement target)
             {
@@ -236,7 +263,8 @@ namespace Velvet
                 // peer-checked is the one state seeded by Resolve itself (the initial-checked read below), not
                 // purely by events. Clear any prior application up front so each Resolve re-derives it from
                 // scratch against the (possibly changed) source.
-                if (_aChecked) { _aChecked = false; Apply(_checked, false, StyleLayerPriority.PeerChecked); }
+                var checkedSlot = (int)StyleVariantClass.RelationalState.Checked;
+                if (_applied[checkedSlot]) { _applied[checkedSlot] = false; Apply(checkedSlot, false); }
 
                 var source = _isPeer
                     ? FindPrevSiblingWithClass(target, SourceClass, _owner._ctx)
@@ -248,8 +276,8 @@ namespace Velvet
 
                 _signals ??= new RelationalVariantSignals(OnSignal);
                 // registerChecked only for peer (group has no checked state). seedChecked reflects an
-                // already-checked peer Toggle immediately (_aChecked was cleared above, so no double-apply).
-                _signals.Hook(source, seedChecked: HasAny(_checked), registerChecked: _isPeer);
+                // already-checked peer immediately (the slot was cleared above, so no double-apply).
+                _signals.Hook(source, seedChecked: _payloads[checkedSlot].Length > 0, registerChecked: _isPeer);
             }
 
             public void Unhook()
@@ -257,13 +285,17 @@ namespace Velvet
                 _signals?.Unhook();
             }
 
+            public void SettleChecked(VisualElement source, bool value)
+            {
+                _signals?.SettleChecked(source, value);
+            }
+
             public void ResetApplied()
             {
-                if (_aHover) { _aHover = false; Apply(_hover, false, HoverPriority); }
-                if (_aFocus) { _aFocus = false; Apply(_focus, false, FocusPriority); }
-                if (_aFocusWithin) { _aFocusWithin = false; Apply(_focusWithin, false, FocusWithinPriority); }
-                if (_aActive) { _aActive = false; Apply(_active, false, ActivePriority); }
-                if (_aChecked) { _aChecked = false; Apply(_checked, false, StyleLayerPriority.PeerChecked); }
+                for (var slot = 0; slot < _applied.Length; slot++)
+                {
+                    if (_applied[slot]) { _applied[slot] = false; Apply(slot, false); }
+                }
             }
 
             // Maps a detected relational signal edge to its payload at the per-state priority, deduping on the
@@ -271,38 +303,44 @@ namespace Velvet
             // change) does not churn the payload.
             private void OnSignal(RelationalVariantSignal signal, bool on)
             {
-                switch (signal)
+                var slot = (int)StyleVariantClass.StateOf(signal);
+                if (on == _applied[slot])
                 {
-                    case RelationalVariantSignal.Hover:
-                        if (on != _aHover) { _aHover = on; Apply(_hover, on, HoverPriority); }
-                        break;
-                    case RelationalVariantSignal.Focus:
-                        if (on != _aFocus) { _aFocus = on; Apply(_focus, on, FocusPriority); }
-                        break;
-                    case RelationalVariantSignal.FocusWithin:
-                        if (on != _aFocusWithin) { _aFocusWithin = on; Apply(_focusWithin, on, FocusWithinPriority); }
-                        break;
-                    case RelationalVariantSignal.Active:
-                        if (on != _aActive) { _aActive = on; Apply(_active, on, ActivePriority); }
-                        break;
-                    case RelationalVariantSignal.Checked:
-                        if (on != _aChecked) { _aChecked = on; Apply(_checked, on, StyleLayerPriority.PeerChecked); }
-                        break;
+                    return;
                 }
+                _applied[slot] = on;
+                Apply(slot, on);
             }
 
             // Pass THIS binding as the stacked-gate owner so distinct named bindings never share a gate key.
-            private void Apply(string[] payloads, bool on, int priority)
-                => _owner.ApplyPayloads(this, payloads, DeclarationsFor(payloads), on, priority);
+            private void Apply(int slot, bool on)
+                => _owner.ApplyPayloads(this, _payloads[slot], _declarations[slot], on,
+                    PriorityFor((StyleVariantClass.RelationalState)slot));
 
-            // The className positions belonging to the payload array passed, paired by reference the same way
-            // the caller pairs the layer.
-            private int[] DeclarationsFor(string[] payloads) =>
-                ReferenceEquals(payloads, _checked) ? _declarations.Checked
-                : ReferenceEquals(payloads, _active) ? _declarations.Active
-                : ReferenceEquals(payloads, _focusWithin) ? _declarations.FocusVisible
-                : ReferenceEquals(payloads, _focus) ? _declarations.Focus
-                : _declarations.Hover;
+            // Where a relational state's payloads and their className positions sit in the pair, which is
+            // shared with the state-variant manipulator: that manipulator's third slot is focus-VISIBLE, a
+            // state no relational source has, so relational focus-within rides it. These two switches and
+            // PriorityFor below carry no discard arm — see the remarks on StyleVariantKind.
+#pragma warning disable CS8524 // no discard arm — see the remarks on StyleVariantKind
+            private static string[] PayloadFor(VariantPayloads payloads, StyleVariantClass.RelationalState state)
+                => (state switch
+                {
+                    StyleVariantClass.RelationalState.Hover => payloads.Hover,
+                    StyleVariantClass.RelationalState.Focus => payloads.Focus,
+                    StyleVariantClass.RelationalState.FocusWithin => payloads.FocusVisible,
+                    StyleVariantClass.RelationalState.Active => payloads.Active,
+                    StyleVariantClass.RelationalState.Checked => payloads.Checked,
+                }) ?? Array.Empty<string>();
+
+            private static int[] DeclarationFor(VariantDeclarations declarations, StyleVariantClass.RelationalState state)
+                => (state switch
+                {
+                    StyleVariantClass.RelationalState.Hover => declarations.Hover,
+                    StyleVariantClass.RelationalState.Focus => declarations.Focus,
+                    StyleVariantClass.RelationalState.FocusWithin => declarations.FocusVisible,
+                    StyleVariantClass.RelationalState.Active => declarations.Active,
+                    StyleVariantClass.RelationalState.Checked => declarations.Checked,
+                }) ?? Array.Empty<int>();
 
             // Each sub-state gets its OWN priority so two active on the same property layer independently and
             // clearing one falls back to the other. Group and peer have distinct priority sets; the priority is
@@ -313,12 +351,19 @@ namespace Velvet
             // plain USS class collide likewise (USS class toggling is not ref-counted) — the same pre-existing
             // behavior any two variants sharing a class already have (hover:bg-on focus:bg-on). Give distinct
             // names distinct payloads to avoid it. The stacked-inner case is kept independent via per-binding owners.
-            private int HoverPriority => _isPeer ? StyleLayerPriority.PeerHover : StyleLayerPriority.GroupHover;
-            private int FocusPriority => _isPeer ? StyleLayerPriority.PeerFocus : StyleLayerPriority.GroupFocus;
-            private int FocusWithinPriority => _isPeer ? StyleLayerPriority.PeerFocusWithin : StyleLayerPriority.GroupFocusWithin;
-            private int ActivePriority => _isPeer ? StyleLayerPriority.PeerActive : StyleLayerPriority.GroupActive;
-
-            private static bool HasAny(string[] arr) => arr != null && arr.Length > 0;
+            private int PriorityFor(StyleVariantClass.RelationalState state) => state switch
+            {
+                StyleVariantClass.RelationalState.Hover
+                    => _isPeer ? StyleLayerPriority.PeerHover : StyleLayerPriority.GroupHover,
+                StyleVariantClass.RelationalState.Focus
+                    => _isPeer ? StyleLayerPriority.PeerFocus : StyleLayerPriority.GroupFocus,
+                StyleVariantClass.RelationalState.FocusWithin
+                    => _isPeer ? StyleLayerPriority.PeerFocusWithin : StyleLayerPriority.GroupFocusWithin,
+                StyleVariantClass.RelationalState.Active
+                    => _isPeer ? StyleLayerPriority.PeerActive : StyleLayerPriority.GroupActive,
+                StyleVariantClass.RelationalState.Checked => StyleLayerPriority.PeerChecked,
+            };
+#pragma warning restore CS8524
         }
     }
 }

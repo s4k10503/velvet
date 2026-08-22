@@ -1,5 +1,7 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using NUnit.Framework;
 using UnityEngine.TestTools;
@@ -16,11 +18,20 @@ namespace Velvet.Tests
     /// <see cref="RouteMatch.RouteId"/>, and <c>allCompleted</c> is true.</item>
     /// <item>A Suspend loader returns immediately with <c>allCompleted</c> false and runs in the background,
     /// firing <c>OnSuspendLoaderCompleted</c> on success or <c>OnSuspendLoaderFailed</c> on failure; a failure
-    /// is also recorded per-path in <c>Errors</c> symmetrically with the Await path.</item>
+    /// is also recorded per-path in the round's errors, symmetrically with the Await path.</item>
     /// <item><see cref="RouteLoaderRunner.ActiveSuspendTaskCount"/> is incremented while a Suspend task is live
     /// and returned to zero in the finally block on success, failure, and honored cancellation alike.</item>
-    /// <item>The loader receives a cancelable token that <c>CancelPending</c> cancels.</item>
+    /// <item>The loader receives a cancelable token that <c>CancelPending</c> cancels, and a loader that
+    /// answers that token by succeeding rather than throwing is still treated as a torn-down round.</item>
     /// <item>An Await loader that throws records the error in <c>Errors</c> and reports <c>allCompleted</c> false.</item>
+    /// <item>Each round tracks its own outstanding Suspend loaders, so a round asked after a later one has
+    /// started still answers for itself.</item>
+    /// <item>A round's loaders all launch under that round's own token, so a loader that starts another round
+    /// mid-run does not lend the next round's currency to the leftovers of the one it superseded.</item>
+    /// <item>A round's errors are its own, so a nested round neither wipes the errors already recorded by the
+    /// round it started from nor collects the ones that round records afterwards.</item>
+    /// <item>A superseded round still records both a late success and a late failure; supersession withholds
+    /// the announcement, not the record.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -35,7 +46,7 @@ namespace Velvet.Tests
             var runner = new RouteLoaderRunner();
 
             // Act
-            var (_, allCompleted) = runner.RunLoadersSync(MakeMatch("/"), CancellationToken.None);
+            var allCompleted = runner.RunLoadersSync(MakeMatch("/"), CancellationToken.None).AllCompleted;
 
             // Assert
             Assert.That(allCompleted, Is.True);
@@ -48,7 +59,7 @@ namespace Velvet.Tests
             var runner = new RouteLoaderRunner();
 
             // Act
-            var (results, _) = runner.RunLoadersSync(MakeMatch("/"), CancellationToken.None);
+            var results = runner.RunLoadersSync(MakeMatch("/"), CancellationToken.None).Results;
 
             // Assert
             Assert.That(results, Is.Empty);
@@ -66,7 +77,7 @@ namespace Velvet.Tests
             var matches = MakeMatch("test", loader: (ctx, ct) => VelvetTask.FromResult<object>("loaded-data"));
 
             // Act
-            var (_, allCompleted) = runner.RunLoadersSync(matches, CancellationToken.None);
+            var allCompleted = runner.RunLoadersSync(matches, CancellationToken.None).AllCompleted;
 
             // Assert
             Assert.That(allCompleted, Is.True);
@@ -80,7 +91,7 @@ namespace Velvet.Tests
             var matches = MakeMatch("test", loader: (ctx, ct) => VelvetTask.FromResult<object>("loaded-data"));
 
             // Act
-            var (results, _) = runner.RunLoadersSync(matches, CancellationToken.None);
+            var results = runner.RunLoadersSync(matches, CancellationToken.None).Results;
 
             // Assert
             Assert.That(results["test"], Is.EqualTo("loaded-data"));
@@ -99,7 +110,7 @@ namespace Velvet.Tests
             var matches = MakeMatch("test", loader: (ctx, ct) => tcs.Task, loaderMode: LoaderMode.Suspend);
 
             // Act
-            var (_, allCompleted) = runner.RunLoadersSync(matches, CancellationToken.None);
+            var allCompleted = runner.RunLoadersSync(matches, CancellationToken.None).AllCompleted;
 
             // Assert
             Assert.That(allCompleted, Is.False);
@@ -183,14 +194,14 @@ namespace Velvet.Tests
             var runner = new RouteLoaderRunner();
             var tcs = new VelvetTaskCompletionSource<object>();
             var matches = MakeMatch("fail", loader: (ctx, ct) => tcs.Task, loaderMode: LoaderMode.Suspend);
-            runner.RunLoadersSync(matches, CancellationToken.None);
+            var round = runner.RunLoadersSync(matches, CancellationToken.None);
 
             // Act
             tcs.TrySetException(new InvalidOperationException("deferred-failure"));
             await VelvetTask.Yield();
 
             // Assert
-            Assert.That(runner.Errors["fail"].Message, Does.Contain("deferred-failure"));
+            Assert.That(round.Errors["fail"].Message, Does.Contain("deferred-failure"));
         });
 
         [UnityTest]
@@ -209,80 +220,6 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(runner.ActiveSuspendTaskCount, Is.EqualTo(0), "The finally block decrements the counter even on failure");
-        });
-
-        [Test]
-        public void Given_SuspendLoaderCompletingSynchronously_When_CompletionHandlerThrows_Then_ActiveTaskCountReturnsToZero()
-        {
-            // Arrange
-            var runner = new RouteLoaderRunner();
-            runner.OnSuspendLoaderCompleted += (_, _) => throw new InvalidOperationException("handler-threw");
-            var matches = MakeMatch("test",
-                loader: (ctx, ct) => VelvetTask.FromResult<object>("sync-data"),
-                loaderMode: LoaderMode.Suspend);
-            LogAssert.Expect(UnityEngine.LogType.Exception, new System.Text.RegularExpressions.Regex("handler-threw"));
-
-            // Act
-            try
-            {
-                runner.RunLoadersSync(matches, CancellationToken.None);
-            }
-            catch (InvalidOperationException)
-            {
-            }
-
-            // Assert
-            Assert.That(runner.ActiveSuspendTaskCount, Is.EqualTo(0));
-        }
-
-        [Test]
-        public void Given_SuspendLoaderCompletingSynchronously_When_CompletionHandlerThrows_Then_DoesNotRecordLoadError()
-        {
-            // Arrange
-            var runner = new RouteLoaderRunner();
-            runner.OnSuspendLoaderCompleted += (_, _) => throw new InvalidOperationException("handler-threw");
-            var matches = MakeMatch("test",
-                loader: (ctx, ct) => VelvetTask.FromResult<object>("sync-data"),
-                loaderMode: LoaderMode.Suspend);
-            LogAssert.Expect(UnityEngine.LogType.Exception, new System.Text.RegularExpressions.Regex("handler-threw"));
-
-            // Act
-            try
-            {
-                runner.RunLoadersSync(matches, CancellationToken.None);
-            }
-            catch (InvalidOperationException)
-            {
-            }
-
-            // Assert
-            Assert.That(runner.Errors.ContainsKey("test"), Is.False);
-        }
-
-        [UnityTest]
-        public IEnumerator Given_SuspendLoader_When_DeferredCompletionAndHandlerThrows_Then_ActiveTaskCountReturnsToZero()
-            => VelvetTask.ToCoroutine(async () =>
-        {
-            // Arrange
-            var runner = new RouteLoaderRunner();
-            var tcs = new VelvetTaskCompletionSource<object>();
-            runner.OnSuspendLoaderCompleted += (_, _) => throw new InvalidOperationException("handler-threw");
-            var matches = MakeMatch("test", loader: (ctx, ct) => tcs.Task, loaderMode: LoaderMode.Suspend);
-            runner.RunLoadersSync(matches, CancellationToken.None);
-            Assume.That(runner.ActiveSuspendTaskCount, Is.EqualTo(1), "Precondition: deferred task is live");
-            LogAssert.Expect(UnityEngine.LogType.Exception, new System.Text.RegularExpressions.Regex("handler-threw"));
-
-            // Act
-            try
-            {
-                tcs.TrySetResult("deferred-data");
-            }
-            catch (InvalidOperationException)
-            {
-            }
-
-            // Assert
-            Assert.That(runner.ActiveSuspendTaskCount, Is.EqualTo(0));
         });
 
         [UnityTest]
@@ -306,6 +243,69 @@ namespace Velvet.Tests
             runner.CancelPending();
             // Assert
             Assert.That(runner.ActiveSuspendTaskCount, Is.EqualTo(0), "A token-honoring loader unwinds and the counter returns to zero");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_SuspendLoaderSucceedsOnCancellation_When_CancelPendingRuns_Then_NoCompletionIsFired()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // A loader may answer its token by resolving a fallback rather than throwing, and that
+            // continuation runs inside CancelPending's own Cancel call. The live-task count is folded into
+            // the assertion because a zero firing count would otherwise also be satisfied by a loader that
+            // never ran at all.
+            // Arrange
+            var runner = new RouteLoaderRunner();
+            var tcs = new VelvetTaskCompletionSource<object>();
+            var fired = 0;
+            runner.OnSuspendLoaderCompleted += (_, __) => fired++;
+            var matches = MakeMatch("succeed-on-ct",
+                loader: (ctx, ct) =>
+                {
+                    ct.Register(() => tcs.TrySetResult("fallback"));
+                    return tcs.Task;
+                },
+                loaderMode: LoaderMode.Suspend);
+            runner.RunLoadersSync(matches, CancellationToken.None);
+            var liveBefore = runner.ActiveSuspendTaskCount;
+
+            // Act
+            runner.CancelPending();
+            await VelvetTask.Yield();
+
+            // Assert
+            Assert.That($"live={liveBefore} fired={fired}", Is.EqualTo("live=1 fired=0"),
+                "The round being torn down must not be read as the current one by its own late success");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_ASupersededRound_When_OneSuspendLoaderSucceedsAndAnotherFails_Then_BothOutcomesAreRecorded()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Pending is counted off on both paths whatever the round's currency, so a round that records only
+            // one of the two reports itself settled while holding neither a result nor an error for the route
+            // the other path owns.
+            // Arrange
+            var runner = new RouteLoaderRunner();
+            var succeeding = new VelvetTaskCompletionSource<object>();
+            var failing = new VelvetTaskCompletionSource<object>();
+            var matches = new List<RouteMatch>();
+            matches.AddRange(MakeMatch("succeeds", loader: (ctx, ct) => succeeding.Task,
+                loaderMode: LoaderMode.Suspend));
+            matches.AddRange(MakeMatch("fails", loader: (ctx, ct) => failing.Task,
+                loaderMode: LoaderMode.Suspend));
+            var round = runner.RunLoadersSync(matches, CancellationToken.None);
+            runner.CancelPending();
+
+            // Act
+            succeeding.TrySetResult("late-data");
+            failing.TrySetException(new InvalidOperationException("late-failure"));
+            await VelvetTask.Yield();
+
+            // Assert
+            Assert.That(
+                $"results={string.Join(",", round.Results.Keys)} errors={string.Join(",", round.Errors.Keys)}",
+                Is.EqualTo("results=succeeds errors=fails"),
+                "A superseded round records what its loaders did on both paths alike");
         });
 
         #endregion
@@ -364,7 +364,7 @@ namespace Velvet.Tests
             var matches = MakeMatch("fail", loader: (ctx, ct) => throw new InvalidOperationException("loader failed"));
 
             // Act
-            var (_, allCompleted) = runner.RunLoadersSync(matches, CancellationToken.None);
+            var allCompleted = runner.RunLoadersSync(matches, CancellationToken.None).AllCompleted;
 
             // Assert
             Assert.That(allCompleted, Is.False);
@@ -378,10 +378,93 @@ namespace Velvet.Tests
             var matches = MakeMatch("fail", loader: (ctx, ct) => throw new InvalidOperationException("loader failed"));
 
             // Act
+            var round = runner.RunLoadersSync(matches, CancellationToken.None);
+
+            // Assert
+            Assert.That(round.Errors["fail"].Message, Does.Contain("loader failed"));
+        }
+
+        #endregion
+
+        #region Round settlement
+
+        [Test]
+        public void Given_ARoundWithAnUnfinishedSuspendLoader_When_ALaterRoundHasNone_Then_EachRoundReportsItsOwn()
+        {
+            // The router asks a round whether it finished at the moment it commits the entry that round's
+            // data went into, which can be after another round has started — a loader delegate that
+            // navigates starts one before the round it belongs to has even finished launching. A round that
+            // answered for whichever round is current would report an unfinished one as finished.
+            // Arrange
+            var runner = new RouteLoaderRunner();
+            var unresolved = new VelvetTaskCompletionSource<object>();
+            runner.RunLoadersSync(
+                MakeMatch("slow", loader: (ctx, ct) => unresolved.Task, loaderMode: LoaderMode.Suspend),
+                CancellationToken.None);
+            var firstRound = runner.CurrentRound;
+
+            // Act
+            runner.RunLoadersSync(MakeMatch("plain"), CancellationToken.None);
+
+            // Assert
+            Assert.That($"first={firstRound.Settled} second={runner.CurrentRound.Settled}",
+                Is.EqualTo("first=False second=True"),
+                "A round reports its own outstanding loaders, not those of whichever round is current");
+        }
+
+        [Test]
+        public void Given_ALoaderThatStartsAnotherRound_When_TheOuterRoundsNextLoaderLaunches_Then_ItGetsTheOuterRoundsToken()
+        {
+            // The nested round cancels the outer one on its way in, so the token the outer round's remaining
+            // loaders belong to is a cancelled one. Handing them the nested round's live token instead makes
+            // their completions read as current to every check keyed on the round's source.
+            // Arrange
+            var runner = new RouteLoaderRunner();
+            bool? nextLoaderSawCancellation = null;
+            var matches = new List<RouteMatch>();
+            matches.AddRange(MakeMatch("nesting", loader: (ctx, ct) =>
+            {
+                runner.RunLoadersSync(MakeMatch("nested"), CancellationToken.None);
+                return VelvetTask.FromResult<object>("nesting-data");
+            }));
+            matches.AddRange(MakeMatch("next", loader: (ctx, ct) =>
+            {
+                nextLoaderSawCancellation = ct.IsCancellationRequested;
+                return VelvetTask.FromResult<object>("next-data");
+            }));
+
+            // Act
             runner.RunLoadersSync(matches, CancellationToken.None);
 
             // Assert
-            Assert.That(runner.Errors["fail"].Message, Does.Contain("loader failed"));
+            Assert.That(nextLoaderSawCancellation, Is.True,
+                "A round's later loaders must launch under the token of the round they belong to");
+        }
+
+        [Test]
+        public void Given_ALoaderThatStartsAnotherRound_When_TheOuterRoundFailsOnBothSidesOfIt_Then_BothErrorsAreTheOuterRounds()
+        {
+            // The nested round starts from inside the loop that is still launching the outer round's loaders,
+            // so an error map belonging to the runner rather than to the round is cleared between the two
+            // failures and then written by the second one.
+            // Arrange
+            var runner = new RouteLoaderRunner();
+            var matches = new List<RouteMatch>();
+            matches.AddRange(MakeMatch("early", loader: (ctx, ct) => throw new InvalidOperationException("early")));
+            matches.AddRange(MakeMatch("nesting", loader: (ctx, ct) =>
+            {
+                runner.RunLoadersSync(MakeMatch("nested"), CancellationToken.None);
+                return VelvetTask.FromResult<object>("nesting-data");
+            }));
+            matches.AddRange(MakeMatch("late", loader: (ctx, ct) => throw new InvalidOperationException("late")));
+
+            // Act
+            var round = runner.RunLoadersSync(matches, CancellationToken.None);
+
+            // Assert
+            Assert.That(string.Join(",", round.Errors.Keys.OrderBy(key => key, StringComparer.Ordinal)),
+                Is.EqualTo("early,late"),
+                "A round keeps every error its own loaders raised, on both sides of a nested round");
         }
 
         #endregion

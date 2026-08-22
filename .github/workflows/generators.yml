@@ -29,9 +29,16 @@ on:
     paths:
       - 'Packages/com.velvet.core/**'
       - '.github/workflows/generators.yml'
+      # The jobs below run these, and a push editing one used to start only test.yml — whose Unity jobs
+      # are skipped without a licence, so the ratchet that push was about executed nowhere.
+      - 'scripts/**'
       - '!**.md'
       - 'Packages/com.velvet.core/Documentation~/setup.md'
       - 'Packages/com.velvet.core/Generators~/README.md'
+      # AdditionalFiles on the generator projects, so Roslyn's release-tracking analyzer reads them at
+      # compile time. The blanket markdown exclusion above reads them as documentation, and a push
+      # editing either started no run at all.
+      - 'Packages/com.velvet.core/Generators~/src/**/AnalyzerReleases.*.md'
   pull_request:
     branches: [main]
   merge_group:
@@ -64,11 +71,89 @@ jobs:
         working-directory: Packages/com.velvet.core/Generators~
         run: dotnet test Velvet.SourceGenerators.sln -c Release --nologo
 
+      # The step above tests the sources; Unity loads the committed DLLs beside them, and nothing else
+      # in this repository compares the two. Generators~/Directory.Build.props owns what makes that
+      # comparison possible.
+      - name: Committed generator DLLs
+        run: python3 scripts/generators/deployed_dll_check.py
+
+      # A guard that exits 0 having compared nothing looks exactly like one that compared and was
+      # satisfied. These drive the states where it would — an absent binary, a failing build, an SDK
+      # other than the pin — which a run over a healthy checkout does not reach.
+      - name: Committed generator DLL check tests
+        run: python3 scripts/generators/test_deployed_dll_check.py
+
       - name: Cohesion report
         run: python3 scripts/test_quality/cohesion_report.py
 
       - name: Duplication ratchet
         run: python3 scripts/test_quality/duplication_check.py
+
+      # The ratchet reports what its block set says, so the set is what has to be held: a swap that
+      # leaves the total alone is invisible to the step above and is what this asserts.
+      - name: Duplication ratchet tests
+        run: python3 scripts/test_quality/test_duplication_check.py
+
+      # The merge gate decides from plain data so its cases run without a network — a gate exercised
+      # only against live pull requests is exercised only in the states those happen to be in.
+      - name: Pull request settle tests
+        run: python3 scripts/pr/test_settle.py
+
+      # A PreToolUse guard whose repository reading failed exits 0, which is also what it exits with
+      # nothing to report, so the difference is measured by running each guard with git or gh unable
+      # to answer. Here rather than beside the EditMode fixtures that read the same directory:
+      # test.yml's Unity jobs are skipped without a UNITY_LICENSE secret and its aggregate counts a
+      # skip as a pass, so a guard silently not running is the very shape this checks for.
+      - name: Hook unreadable-state tests
+        run: python3 scripts/hooks/test_unreadable_state_check.py
+
+      # The reading those Stop guards share, and what it says when no way of asking answered. Held
+      # apart from the check above because that one runs whole guards and this one holds the library
+      # they run through: a guard could satisfy the check by hand-rolling a report, and then only
+      # one of the two would say it.
+      - name: Hook repository-reading tests
+        run: python3 scripts/hooks/test_hook_repository.py
+
+      # Every guard over a merge, posed a pull request based on a branch that is not main. Until a
+      # maintenance branch was cut, every case in this repository posed one based on main, and two
+      # guards had been refusing everything else since they were written.
+      - name: Pull-request base check
+        run: python3 scripts/hooks/pull_request_base_check.py
+
+      # A sweep that reports nothing looks the same whether the guards read the base or the directory
+      # was empty, so these drive the states where it would report something.
+      - name: Pull-request base check tests
+        run: python3 scripts/hooks/test_pull_request_base_check.py
+
+      # The reading both merge guards take their base through. The sweep above exercises its numbered
+      # half through the guards themselves; the other shape is posed here, and that file says why the
+      # sweep cannot hold it.
+      - name: Merge target reading tests
+        run: python3 scripts/hooks/test_merge_target.py
+
+      # The session-start report shares that reading, and what it prints is a rebase command — so the
+      # branch it names is an instruction rather than a number.
+      - name: Stale base report tests
+        run: python3 scripts/hooks/test_stale_main.py
+
+      # Holds the body guards' record of which gh options take a value against the gh on the runner,
+      # which needs no licence and no token, only `--help`. The script owns what a disagreement
+      # costs in either direction.
+      - name: Pull-request body option-table tests
+        run: python3 scripts/hooks/test_pr_body_flags.py
+
+      # Both guards decide from something the licence-free half can build: one from a pair of
+      # repositories git makes here, the other from the text of an edit. Neither needs the editor,
+      # and the amend guard's cases are the only place the two commands that answer its question are
+      # held to each other.
+      - name: Amend guard tests
+        run: python3 scripts/hooks/test_amend_of_published_commit.py
+
+      - name: Declaration first-line tests
+        run: python3 scripts/hooks/test_declaration_first_line_fragment.py
+
+      - name: Hand-rolled poller guard tests
+        run: python3 scripts/hooks/test_hand_rolled_pr_poller.py
 
   # ---------------------------------------------------------------------------
   # Repository settings live only in GitHub's own state; nothing in this

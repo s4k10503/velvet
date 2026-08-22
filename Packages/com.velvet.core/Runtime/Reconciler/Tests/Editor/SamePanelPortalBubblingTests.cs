@@ -13,7 +13,7 @@ namespace Velvet.Tests
     /// PHYSICAL bubbling UI Toolkit's own native dispatch performs after a Portal reparents its children
     /// under the registered target, and the SYNTHETIC bubbling Velvet bridges separately to the LOGICAL
     /// ancestor chain of the <c>V.Portal</c> call site (<see cref="FiberCrossPanelEventDispatcher"/>,
-    /// attached per resolved target from <c>ChildReconciler</c>'s registry-portal drain branch — see
+    /// attached per resolved target from <c>ChildReconciler</c>'s same-panel drain branch — see
     /// <c>ReconcilerContext.SamePanelPortalBridges</c>). The same mechanism <c>V.Portal(layer:)</c>/
     /// <c>V.WorldSpace</c> already had for their separate host panels, extended to this same-panel form.
     /// Beyond the BASIC case (a plain logical-ancestor handler firing at all, and physical bubbling still
@@ -53,7 +53,7 @@ namespace Velvet.Tests
         {
             base.SetUp();
             _reconciler = new Reconciler();
-            FiberPortalRegistry.Clear();
+            RuntimeStateProbe.ClearPortalRegistry();
 
             _root = new VisualElement();
             _window.rootVisualElement.Add(_root);
@@ -79,7 +79,7 @@ namespace Velvet.Tests
         public override void TearDown()
         {
             _reconciler.Dispose();
-            FiberPortalRegistry.Clear();
+            RuntimeStateProbe.ClearPortalRegistry();
             base.TearDown();
         }
 
@@ -136,7 +136,7 @@ namespace Velvet.Tests
             // Arrange — the same mount, plus a raw callback on the target (the portal child's physical ancestor).
             // The portal content here is a BARE V.Div (no enclosing V.Component) and the mount goes through the
             // bare reconciler (no root fiber), so the same-panel synthetic bridge that auto-attaches to
-            // _portalTarget on every registry-portal mount (see ReconcilerContext.SamePanelPortalBridges) finds
+            // _portalTarget on every same-panel portal mount (see ReconcilerContext.SamePanelPortalBridges) finds
             // no DetachedMountContext to resolve and is a no-op here — this test is unaffected and still pins
             // ordinary native physical bubbling in isolation from the synthetic path.
             var bubbledToPhysical = false;
@@ -504,9 +504,9 @@ namespace Velvet.Tests
         public void Given_PortalUnmountedThenRemountedToTheSameTarget_When_PortalChildFiresPointerDown_Then_HandlerStillFires()
         {
             // Arrange — the target is registered once and never re-registered; only the Portal above it
-            // unmounts and remounts. SamePanelPortalBridges is deliberately never cleared when a Portal's
-            // own children unmount (see that field's own comment on ReconcilerContext), so the remount
-            // must reuse the already-attached bridge rather than needing, or getting, a second attach.
+            // unmounts and remounts. The unmount releases the bridge once no Portal is left on the target
+            // (see SamePanelPortalBridges on ReconcilerContext), so the remount has to re-attach it, and a
+            // release that skipped the re-attach would leave the logical handler silent.
             var target = new VisualElement();
             _window.rootVisualElement.Add(target);
             FiberPortalRegistry.Register("same-panel-remount-target", target);

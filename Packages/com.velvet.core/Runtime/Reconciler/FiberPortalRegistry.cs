@@ -14,6 +14,14 @@ namespace Velvet
     {
         private static readonly Dictionary<string, VisualElement> _targets = new();
 
+        // Raised on every accepted registration. A live Portal re-reads this table only when it is
+        // patched, and a registration causes no patch of its own, so nothing observes a swap without
+        // this signal. Whether a given registration IS a swap is left to the subscriber rather
+        // than tested here against the previous entry: an id unregistered by a departing screen and
+        // registered by its replacement leaves nothing here to compare against, while a Portal still
+        // holds the element it mounted into.
+        internal static event System.Action<string, VisualElement>? TargetRegistered;
+
 #if UNITY_EDITOR
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         private static void ResetStaticFields() => _targets.Clear();
@@ -43,6 +51,8 @@ namespace Velvet
             {
                 Debug.LogWarning($"[FiberPortalRegistry] Id \"{id}\" is already registered. Overwriting.");
             }
+            // After the table is written, so a subscriber that re-resolves the id reads this target.
+            TargetRegistered?.Invoke(id, target);
         }
 
         /// <summary>
@@ -72,10 +82,5 @@ namespace Velvet
         /// <param name="id">Identifier to test. Null or empty values always return <c>false</c>.</param>
         /// <returns><c>true</c> when a target is currently registered for <paramref name="id"/>; otherwise <c>false</c>.</returns>
         public static bool IsRegistered(string id) => NameKeyedRegistry.IsRegistered(id, _targets);
-
-        /// <summary>
-        /// Test-only: clears all registrations.
-        /// </summary>
-        internal static void Clear() => _targets.Clear();
     }
 }

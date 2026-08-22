@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using NUnit.Framework;
 using Velvet;
 using UnityEngine.UIElements;
@@ -21,6 +22,7 @@ namespace Velvet.Tests
     /// <item>An empty collection renders no visible items and tolerates range updates without throwing.</item>
     /// <item>The DSL rejects a null items / keySelector / renderer with <see cref="ArgumentNullException"/>, and a
     /// non-positive itemHeight with <see cref="ArgumentOutOfRangeException"/>.</item>
+    /// <item>The type-erased item list admits a null element, since the source element type may itself.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -442,6 +444,28 @@ namespace Velvet.Tests
                     keySelector: item => item.Id,
                     itemHeight: -10f,
                     renderer: item => V.Label(text: item.Name)));
+        }
+
+        #endregion
+
+        #region Type erasure
+
+        [Test]
+        public void Given_TheTypeErasedItemList_When_ItsAnnotationIsReadBackFromTheAssembly_Then_ItsElementAdmitsNull()
+        {
+            // Arrange
+            var surface = PublicApiSurface.RenderShippedAssemblies();
+
+            // Act
+            var items = surface.FirstOrDefault(line =>
+                line.StartsWith("[Velvet] property Velvet.VirtualListNode.Items:", StringComparison.Ordinal));
+
+            // Assert — an element goes straight back to the caller's own selector and renderer, so a source
+            // list of a nullable element type erases to a nullable element type.
+            Assert.That(
+                items,
+                Is.EqualTo("[Velvet] property Velvet.VirtualListNode.Items: "
+                    + "System.Collections.Generic.IReadOnlyList`1[System.Object?]"));
         }
 
         #endregion

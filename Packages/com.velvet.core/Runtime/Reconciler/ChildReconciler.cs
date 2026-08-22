@@ -52,6 +52,11 @@ namespace Velvet
         // Pool while suspended).
         internal KeyedReconcileState? PendingKeyedState { get; private set; }
 
+        // The presence reproductions the state above still owes a removal pass, carried until the slice
+        // that resumes it runs them. Instance state rather than context state like the lists it feeds,
+        // because the park it answers for is this instance's own while the context is shared.
+        private readonly List<(ComponentFiber? boundary, VisualElement? parent, string presenceKey)> _presenceOwedByThisPark = new();
+
         public ChildReconciler(ReconcilerContext ctx, FiberNodePatcher patcher, FiberNodeFactory factory, FiberElementCleaner cleaner)
         {
             _ctx = ctx;
@@ -75,8 +80,8 @@ namespace Velvet
         //     prefix scan's slot always exists by construction (Pass 1 never changes childCount ahead
         //     of index i).
         //   Removal deliberately stays BEFORE CreateElement (remove-then-create), not
-        //     create-then-remove: an inline-mounted component fiber is keyed by
-        //     (parentFiber, positionKey, identity) — NOT by which VisualElement currently hosts it
+        //     create-then-remove: an inline-mounted component fiber is keyed by its tree position —
+        //     NOT by which VisualElement currently hosts it
         //     (FiberRenderer.SetupMount's comment on the registry key; ComponentRegistry.cs). If the
         //     OLD element (and the same-keyed nested fiber ComponentRegistry still has registered
         //     under it) is still present when CreateElement builds the NEW element's same-keyed
@@ -168,6 +173,14 @@ namespace Velvet
             // directly and bypasses this path, so discarding here does not break a Continue run.
             // Nested calls entered via PatchNode during ContinueXxx also pass through here, but at
             // that point ContinueXxx has already taken ownership of pending (= null), so this is a no-op.
+            // The presence reproductions that state owed go with it, since no slice will run its removals
+            // now — gated on the state so that stays a no-op too: the owed span is still in flight during
+            // a ContinueXxx, and dropping it there would strand the entry.
+            if (PendingIndexedState != null || PendingKeyedState != null)
+            {
+                _ctx.SettlePresenceReproductionsOwedByAPark(
+                    ReconcilerContext.PresenceRemovalOutcome.Skipped, _presenceOwedByThisPark);
+            }
             PendingIndexedState = null;
             DiscardPendingKeyedState();
 
@@ -197,6 +210,11 @@ namespace Velvet
                 OldProviders = oldProviders,
             };
             VNode?[] oldNodes;
+            // The presence reproductions this container's own walk takes, retirable only once the removal
+            // pass below has run — see ReconcilerContext.EndPresenceReproductionScope.
+            var presenceScope = _ctx.BeginPresenceReproductionScope();
+            // Only an exception unwinding out of the try below reads this, since both branches assign first.
+            var removals = ReconcilerContext.PresenceRemovalOutcome.Skipped;
             try
             {
                 // Old side is always expanded structurally into the flat leaf array used for matching.
@@ -209,7 +227,9 @@ namespace Velvet
                     // (CreateElement / PatchNode) while its ancestor Providers are still pushed, so
                     // element descendants render in-scope without a pre-captured snapshot. Orphan
                     // effect-cleanup + sweep and the LIS reorder are performed inside.
-                    _general.ReconcileGeneral(parent, oldNodes, newChildren, slotStart, in pairing);
+                    removals = _general.ReconcileGeneral(parent, oldNodes, newChildren, slotStart, in pairing)
+                        ? ReconcilerContext.PresenceRemovalOutcome.Ran
+                        : ReconcilerContext.PresenceRemovalOutcome.Skipped;
                 }
                 else
                 {
@@ -228,10 +248,12 @@ namespace Velvet
                         ReconcileIndexed(parent, oldNodes, newNodes, frameBudgetMs, slotStart, slotLimit);
                     }
                     _general.SweepOrphans(oldFibers, newFibers);
+                    removals = FastPathRemovalOutcome();
                 }
             }
             finally
             {
+                _ctx.EndPresenceReproductionScope(presenceScope, removals, _presenceOwedByThisPark);
                 _ctx.BufferPool.ReturnProviderTable(oldProviders);
                 _ctx.BufferPool.ReturnFiberList(oldFibers);
                 _ctx.BufferPool.ReturnFiberSet(newFibers);
@@ -260,42 +282,67 @@ namespace Velvet
                 {
                     continue;
                 }
-                // Resolve the deferred targets: a registry portal arrived with its target resolved
-                // at enqueue; a layer portal creates (or reuses) the per-layer framework host here,
-                // and a world-space node creates its per-instance host here — the placeholder is
-                // attached by now, so the declaring panel whose settings/theme the host copies is
-                // known.
-                VNode?[] children;
-                switch (node)
+                if (node is ZLayerMountNode zLayerMount)
                 {
-                    case PortalNode { Layer: { } layer } layerPortal:
-                        (target, children) = ResolveLayerPortalTarget(placeholder, layerPortal, layer);
-                        break;
-                    case WorldSpaceNode worldSpaceNode:
-                        (target, children) = ResolveWorldSpacePortalTarget(placeholder, worldSpaceNode);
-                        break;
-                    case PortalNode registryPortal:
-                        (target, children) = ResolveRegistryPortalTarget(target, registryPortal);
-                        break;
-                    case ZLayerMountNode zLayerMount:
-                        // Not a host mount: the real element is already fully built (CreateElement / a
-                        // patch-time none-to-z transition ran its whole child reconcile inline, under live
-                        // context, like any ordinary sibling) — only its CONTAINER placement was deferred,
-                        // because placeholder.parent (the stacking parent) is only knowable now. No target
-                        // resolution, no nested Reconcile, no PortalState entry: resolve the layer placement
-                        // and move on to the next queued entry. `this` is passed through so a first-of-its-
-                        // sign container creation can rebase a park THIS SAME instance's Reconcile() call just
-                        // captured (see RebasePendingSlotStartIfTargeting) — invisible to any other lookup
-                        // until this whole top-level call returns.
-                        FiberZLayerCoordinator.ResolveQueuedMount(_ctx, placeholder, zLayerMount);
-                        continue;
-                    default:
-                        // Only PortalNode / WorldSpaceNode enqueue deferred mounts; anything else is
-                        // a missing branch for a new node kind and must fail loudly rather than
-                        // mount nothing in silence.
-                        FiberLogger.LogWarning("Portal",
-                            $"Unsupported deferred host mount node: {node.GetType().Name}. Entry skipped.");
-                        continue;
+                    // Not a host mount: the real element is already fully built (CreateElement / a
+                    // patch-time none-to-z transition ran its whole child reconcile inline, under live
+                    // context, like any ordinary sibling) — only its CONTAINER placement was deferred,
+                    // because placeholder.parent (the stacking parent) is only knowable now. No target
+                    // resolution, no nested Reconcile, no PortalState entry: resolve the layer placement
+                    // and move on to the next queued entry.
+                    // Ahead of the containment below rather than inside it: that catch answers for a failed
+                    // target resolution and this arm resolves none — it performs the whole placement, and
+                    // the insert that lands the element runs the panel-attach callbacks a V.Custom<T>
+                    // subclass registered on it (PortalLayersTests pins that the insert reaches them).
+                    // Leaving that application throw on the render's own escape path is the decision here;
+                    // contained, it is reported to the console with `real` already in the container and no
+                    // ZLayerMembers entry, which is the key Reposition needs to move it again.
+                    FiberZLayerCoordinator.ResolveQueuedMount(_ctx, placeholder, zLayerMount);
+                    continue;
+                }
+                // Resolve the deferred targets: a same-panel portal (a registered id, or the container
+                // the caller passed) arrived with its target resolved at enqueue; a layer portal
+                // creates (or reuses) the per-layer framework host here, and a world-space node
+                // creates its per-instance host here — the placeholder is attached by now, so the
+                // declaring panel whose settings/theme the host copies is known.
+                VNode?[] children;
+                try
+                {
+                    switch (node)
+                    {
+                        case PortalNode { Layer: { } layer } layerPortal:
+                            (target, children) = ResolveLayerPortalTarget(placeholder, layerPortal, layer);
+                            break;
+                        case WorldSpaceNode worldSpaceNode:
+                            (target, children) = ResolveWorldSpacePortalTarget(placeholder, worldSpaceNode);
+                            break;
+                        case PortalNode samePanelPortal:
+                            (target, children) = ResolveSamePanelPortalTarget(target, samePanelPortal);
+                            break;
+                        default:
+                            // The three kinds this queue holds are PortalNode, WorldSpaceNode
+                            // (FiberNodeFactory.EnqueueDeferredHostMount has no third caller) and the
+                            // ZLayerMountNode left above, so a node arriving here is a missing branch for a
+                            // new kind and must fail loudly rather than mount nothing in silence.
+                            FiberLogger.LogWarning("Portal",
+                                $"Unsupported deferred host mount node: {node.GetType().Name}. Entry skipped.");
+                            continue;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // Per-entry, for the same reason Reconciler.ReleaseRefCallbacks is. The queue is FIFO
+                    // and shared, so whatever this pass deferred after this entry — another Portal, a
+                    // WorldSpace host, a z-* placement — is still in it, and an escape loses every one of
+                    // them to the caller's own finally clear. Nor is an escape a clean abort of the render
+                    // that queued it: it unwinds the top-level Reconcile of whichever fiber began the pass,
+                    // discarding that fiber's newly rendered tree while the DOM keeps what the pass
+                    // already committed, so every later render diffs against a baseline short by all of
+                    // it and appends the difference again. Scoped to resolution, ahead of the nested
+                    // Reconcile below: that one mounts children through the fiber machinery, which
+                    // already routes a component's throw to its own Error Boundary.
+                    FiberLogger.LogException("Portal", ex);
+                    continue;
                 }
                 var resolvedTarget = target!;
                 // Append after the target's existing rendered children: LogicalChildSlots.Count is the
@@ -317,20 +364,23 @@ namespace Velvet
                         stack.PushRaw(contextSnapshot[s].Key, contextSnapshot[s].Value);
                     }
                 }
-                // The drain runs in the top-level reconcile finally, so FiberStack.Current is the reconcile
-                // root: the top-level Portal child fibers created below parent off it (not the component that
-                // rendered V.Portal). Snapshot its direct children before, so the fibers added by this Portal's
+                // A Portal child registers in ComponentRegistry under whatever fiber is current
+                // while it mounts, and a later patch of the same Portal reaches
+                // FiberNodePatcher.PatchPortalChildren from the reconcile of the tree the declaring
+                // component itself returned — with that component's own fiber current. So the declaring
+                // fiber is the half of the registry key a patch looks the child up by, and the mount has
+                // to agree or the first patch misses its own fiber and builds a second one. This drain
+                // runs from the top-level reconcile finally instead, long after that fiber came off the
+                // stack, so it pushes the one captured at enqueue (LogicalParent) back for the nested
+                // reconcile below. Same push, for the same registry-parent reason, as the VirtualList
+                // detached-item scope (Reconciler.BeginDetachedItemScope). A Portal reconciled outside any
+                // component body has no declaring fiber, and then neither side has one to key on.
+                var declaringFiber = logicalParent is { IsDisposed: false } ? logicalParent : null;
+                // Snapshot the anchor's direct children before, so the fibers added by this Portal's
                 // reconcile can be identified afterwards and stamped with the context needed to reconstruct
                 // their enclosing Providers on an isolated re-render (the spine cannot otherwise reach them).
-                var drainAnchor = _ctx.FiberStack.Current;
-                if (drainAnchor != null)
-                {
-                    (childFibersBefore ??= new HashSet<ComponentFiber>()).Clear();
-                    for (var f = drainAnchor.Child; f != null; f = f.Sibling)
-                    {
-                        childFibersBefore.Add(f);
-                    }
-                }
+                var drainAnchor = declaringFiber ?? _ctx.FiberStack.Current;
+                CaptureAnchorChildren(drainAnchor, ref childFibersBefore);
                 // The nested Reconcile below re-enters ChildReconciler.Reconcile on THIS SAME instance, whose
                 // entry unconditionally discards PendingIndexedState/PendingKeyedState as stale state left by a
                 // finished pass — correct for a genuine fresh top-level call, but wrong here: this drain runs
@@ -346,21 +396,33 @@ namespace Velvet
                 // restore unconditionally: the call below never carries a frameBudgetMs argument (defaults to 0),
                 // and at budget 0 ReconcileIndexedFrom's `budgeted` gate is false while ReconcileKeyed routes to
                 // the fully synchronous ReconcileKeyedSync — neither can ever set new pending state of its own, so
-                // there is nothing legitimate from the nested call itself to preserve instead. Scoped to just this
-                // call (not the whole drain loop) so FiberZLayerCoordinator's own rebase of a self-caused park
-                // (RebaseParkedSlotsForContainerChange, triggered only between loop iterations or after the loop
-                // via DrainTeardowns, never while this call is on the stack) still sees the real parked state
-                // everywhere else in the drain.
+                // there is nothing legitimate from the nested call itself to preserve instead.
                 var parkedIndexed = PendingIndexedState;
                 var parkedKeyed = PendingKeyedState;
                 PendingIndexedState = null;
                 PendingKeyedState = null;
+                // Same set-and-restore as FiberNodePatcher.PatchPortalChildren, and for the same reason:
+                // this is the mount half of the pair that stamps the fibers a Portal's own children
+                // reconcile creates. A nested Portal enqueued here is drained by a later turn of this loop,
+                // with the field already restored, so its own entry sets its own placeholder.
+                var enclosingPortal = _ctx.CurrentPortalPlaceholder;
+                _ctx.CurrentPortalPlaceholder = placeholder;
+                // Pushing the declaring fiber gives this Portal's children the registry parent that
+                // fiber's own in-tree children already have, so the two would otherwise collide on a
+                // whole key. The scope is the member that separates them —
+                // ReconcilerContext.PortalChildKeyScope owns it. Entered after the push, so the nesting
+                // it records is the one the children below reconcile at.
+                if (declaringFiber != null) _ctx.FiberStack.Push(declaringFiber);
+                var enclosingChildScope = _ctx.EnterPortalChildKeyScope(placeholder);
                 try
                 {
                     Reconcile(resolvedTarget, Array.Empty<VNode>(), children, slotStart: slotStart);
                 }
                 finally
                 {
+                    _ctx.ExitPortalChildKeyScope(enclosingChildScope);
+                    if (declaringFiber != null) _ctx.FiberStack.Pop();
+                    _ctx.CurrentPortalPlaceholder = enclosingPortal;
                     if (contextSnapshot != null)
                     {
                         for (var s = contextSnapshot.Count - 1; s >= 0; s--)
@@ -371,24 +433,44 @@ namespace Velvet
                     PendingIndexedState = parkedIndexed;
                     PendingKeyedState = parkedKeyed;
                 }
-                if (drainAnchor != null)
-                {
-                    DetachedMountContext? detachedContext = null;
-                    for (var f = drainAnchor.Child; f != null; f = f.Sibling)
-                    {
-                        if (childFibersBefore!.Contains(f)) continue;
-                        detachedContext ??= new DetachedMountContext(contextSnapshot, children, drainAnchor, logicalParent);
-                        f.DetachedMountContext = detachedContext;
-                    }
-                }
+                StampDrainedChildren(drainAnchor, childFibersBefore, contextSnapshot, children, logicalParent);
                 // The growth this mount contributed, in logical slots — the same basis as slotStart.
                 var slotLength = LogicalChildSlots.Count(resolvedTarget) - slotStart;
-                _ctx.PortalState[placeholder] = new PortalSlotInfo(resolvedTarget, slotStart, slotLength);
+                _ctx.PortalState[placeholder] = new PortalSlotInfo(
+                    resolvedTarget, slotStart, slotLength, (node as PortalNode)?.TargetId, logicalParent);
             }
             // Same safe (post-pass, no diff in flight) context as the drain above: a container that lost its
-            // last member this pass tears down here, never synchronously mid-diff. `this` mirrors
-            // ResolveQueuedMount's own reason above (a self-caused park from THIS instance's own pass).
+            // last member this pass tears down here, never synchronously mid-diff.
             FiberZLayerCoordinator.DrainTeardowns(_ctx);
+        }
+
+        // Taken by ref so one set serves the whole drain loop: each entry's snapshot is consumed by its own
+        // StampDrainedChildren call before the next entry clears it.
+        private static void CaptureAnchorChildren(ComponentFiber? anchor, ref HashSet<ComponentFiber>? before)
+        {
+            if (anchor == null) return;
+            (before ??= new HashSet<ComponentFiber>()).Clear();
+            for (var f = anchor.Child; f != null; f = f.Sibling)
+            {
+                before.Add(f);
+            }
+        }
+
+        // Stamps the fibers this drain entry just added under anchor with what an isolated re-render needs
+        // to rebuild their enclosing Providers — the same diff-against-a-before-set that
+        // FiberNodePatcher.StampNewTopLevelChildren applies on the patch half of the pair.
+        private static void StampDrainedChildren(
+            ComponentFiber? anchor, HashSet<ComponentFiber>? before,
+            List<KeyValuePair<object, object>>? contextSnapshot, VNode?[] children, ComponentFiber? logicalParent)
+        {
+            if (anchor == null) return;
+            DetachedMountContext? detachedContext = null;
+            for (var f = anchor.Child; f != null; f = f.Sibling)
+            {
+                if (before!.Contains(f)) continue;
+                detachedContext ??= new DetachedMountContext(contextSnapshot, children, anchor, logicalParent);
+                f.DetachedMountContext = detachedContext;
+            }
         }
 
         private (VisualElement Target, VNode?[] Children) ResolveLayerPortalTarget(
@@ -427,28 +509,40 @@ namespace Velvet
             return (target, children);
         }
 
-        private (VisualElement Target, VNode?[] Children) ResolveRegistryPortalTarget(
-            VisualElement? target, PortalNode registryPortal)
+        private (VisualElement Target, VNode?[] Children) ResolveSamePanelPortalTarget(
+            VisualElement? target, PortalNode samePanelPortal)
         {
-            // The target was resolved (non-null) at enqueue: the create path never
-            // queues a registry portal without one.
-            var children = registryPortal.Children ?? Array.Empty<VNode>();
+            // The target was resolved (non-null) at enqueue: the create path never queues a registry
+            // portal without one, and an element-valued portal arrives already holding its container.
+            var children = samePanelPortal.Children ?? Array.Empty<VNode>();
             // Same-panel synthetic-bubbling bridge: attached ONCE per resolved target,
             // guarded by SamePanelPortalBridges (see its own comment for why the guard
             // lives here rather than at a single creation call site — unlike a layer/
-            // world-space host, a registry target is an ordinary, already-existing
+            // world-space host, a same-panel target is an ordinary, already-existing
             // element with no one-time "just created it" moment to hook). Never attached
             // from FiberPortalRegistry.Register itself: that registry is a bare global
             // static with no ReconcilerContext to guard duplicate attaches with or later
             // dispose the bridge through.
-            var registryTarget = target!;
-            if (!_ctx.SamePanelPortalBridges.ContainsKey(registryTarget))
+            var samePanelTarget = target!;
+            if (!_ctx.SamePanelPortalBridges.ContainsKey(samePanelTarget))
             {
-                _ctx.SamePanelPortalBridges[registryTarget] =
-                    FiberCrossPanelEventDispatcher.AttachBridge(registryTarget, _ctx);
+                _ctx.SamePanelPortalBridges[samePanelTarget] =
+                    FiberCrossPanelEventDispatcher.AttachBridge(samePanelTarget, _ctx);
             }
-            return (registryTarget, children);
+            return (samePanelTarget, children);
         }
+
+        // Neither time-sliced strategy finishes its removals in one gated call the way the general path
+        // does, so returning from it is not proof they ran: an abort raised while a descendant of a patched
+        // leaf rendered stops the state machine between phases, and an exhausted frame budget parks it. The
+        // two differ in who pays the debt — the abort's next pass expands both sides again, while a park is
+        // resumed from the old side this one already expanded — which is why the outcome is three-valued.
+        private ReconcilerContext.PresenceRemovalOutcome FastPathRemovalOutcome()
+            => PendingIndexedState != null || PendingKeyedState != null
+                ? ReconcilerContext.PresenceRemovalOutcome.OwedByAContinuation
+                : _ctx.IsAborted
+                    ? ReconcilerContext.PresenceRemovalOutcome.Skipped
+                    : ReconcilerContext.PresenceRemovalOutcome.Ran;
 
         // Resumes a suspended IndexedReconcile.
         // Does nothing when PendingIndexedState is null.
@@ -458,8 +552,20 @@ namespace Velvet
 
             var state = PendingIndexedState.Value;
             PendingIndexedState = null;
-            ReconcileIndexedFrom(state.Parent, state.OldNodes, state.NewNodes,
-                state.ResumePhase, state.ResumeIndex, frameBudgetMs, state.SlotStart, state.SlotLimit);
+            // Read only when the resume unwinds, for the reason Reconcile's own initialiser carries.
+            // Deriving the outcome inside the finally instead is what this shape rejects: measured, the
+            // unwound resume then retires an entry whose slots the unfinished diff never emptied.
+            var removals = ReconcilerContext.PresenceRemovalOutcome.Skipped;
+            try
+            {
+                ReconcileIndexedFrom(state.Parent, state.OldNodes, state.NewNodes,
+                    state.ResumePhase, state.ResumeIndex, frameBudgetMs, state.SlotStart, state.SlotLimit);
+                removals = FastPathRemovalOutcome();
+            }
+            finally
+            {
+                _ctx.SettlePresenceReproductionsOwedByAPark(removals, _presenceOwedByThisPark);
+            }
         }
 
         // Resumes a suspended KeyedReconcile.
@@ -470,7 +576,17 @@ namespace Velvet
 
             var state = PendingKeyedState;
             PendingKeyedState = null;
-            ReconcileKeyedFrom(state, frameBudgetMs);
+            // Same initialiser discipline as ContinueIndexed.
+            var removals = ReconcilerContext.PresenceRemovalOutcome.Skipped;
+            try
+            {
+                ReconcileKeyedFrom(state, frameBudgetMs);
+                removals = FastPathRemovalOutcome();
+            }
+            finally
+            {
+                _ctx.SettlePresenceReproductionsOwedByAPark(removals, _presenceOwedByThisPark);
+            }
         }
 
         // Shifts the captured SlotStart of whichever time-sliced state is currently parked by

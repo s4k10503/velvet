@@ -1,4 +1,6 @@
 using System;
+using System.Collections;
+using System.Reflection;
 using System.Threading;
 using NUnit.Framework;
 using UnityEngine.UIElements;
@@ -14,20 +16,35 @@ namespace Velvet.Tests
     /// <list type="bullet">
     /// <item>With no blockers registered a check reports not-blocked; a registered predicate returning true
     /// blocks and transitions its <see cref="RouteBlockerState"/> to Blocked, while false leaves it Idle.</item>
-    /// <item>Every registered blocker is evaluated with no short-circuit, so a single blocking predicate blocks
+    /// <item>Registered blockers are evaluated with no short-circuit, so a single blocking predicate blocks
     /// regardless of the others.</item>
     /// <item>Registration returns a disposable that unregisters the blocker on dispose.</item>
     /// <item><c>ResetAllBlocked</c> returns every Blocked state to Idle.</item>
-    /// <item><c>CheckAsync</c> evaluates every registered blocker (sync and async entries alike).</item>
+    /// <item>A Blocker left <see cref="RouteBlockerStatus.Proceeding"/> by <c>Proceed</c> is passed over by
+    /// <c>CheckAsync</c> and keeps that status; <c>SettleProceeding</c> puts it back in the way, and defers
+    /// doing so while another Blocker is Blocked.</item>
+    /// <item><c>CheckAsync</c> evaluates sync and async entries alike.</item>
     /// <item>A blocking blocker on a router navigation yields <see cref="NavigationResult.Blocked"/> and keeps
-    /// the current location, and on a Back/Forward step the provisional history index is rolled back; an
-    /// allowing blocker yields <see cref="NavigationResult.Success"/>.</item>
+    /// the current location — and, on a Back/Forward step, the history index describing it; an allowing
+    /// blocker yields <see cref="NavigationResult.Success"/>.</item>
     /// <item>A re-attempt after being blocked resets the prior block and navigates.</item>
     /// <item><c>UseBlocker</c> registers the committed predicate at settle and survives a render-phase re-run
     /// without registering a discarded attempt's transient predicate.</item>
+    /// <item><c>UseBlocker</c> called without a deps argument re-registers every render, so the predicate
+    /// answers with the state it captured on the render that registered it — on both the synchronous and
+    /// the asynchronous overload.</item>
     /// <item>A blocker's Block() side effect lands only for live registrations on a live attempt: an entry
     /// disposed mid-pass (by its own check, or by an earlier blocker's decision) stays Idle, and a pass whose
     /// attempt token is already cancelled flips no state at all.</item>
+    /// <item><c>Reset</c> returns a Blocker to Idle even where its registration was disposed while it was
+    /// blocked, because the manager-wide release it reaches walks entries that a disposal leaves in place
+    /// until their state settles.</item>
+    /// <item>A re-render re-registers a <c>UseBlocker</c> without the departure it is holding going unheld
+    /// in between, so a second Blocker that released the same departure stays out of its way and the
+    /// departure lands once both have answered.</item>
+    /// <item>An entry leaves the manager's list once it is both unregistered and settled: at the disposal
+    /// where it is already Idle, and at the release that settles one disposed while Blocked or
+    /// Proceeding.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -49,7 +66,7 @@ namespace Velvet.Tests
             var manager = new RouteBlockerManager();
 
             // Act
-            var blocked = manager.CheckAsync(Attempt()).GetAwaiter().GetResult();
+            var blocked = manager.CheckAsync(Attempt(), NoResume).GetAwaiter().GetResult();
 
             // Assert
             Assert.That(blocked, Is.False);
@@ -63,7 +80,7 @@ namespace Velvet.Tests
             manager.Register(_ => true, new RouteBlockerState());
 
             // Act
-            var blocked = manager.CheckAsync(Attempt()).GetAwaiter().GetResult();
+            var blocked = manager.CheckAsync(Attempt(), NoResume).GetAwaiter().GetResult();
 
             // Assert
             Assert.That(blocked, Is.True);
@@ -78,7 +95,7 @@ namespace Velvet.Tests
             manager.Register(_ => true, state);
 
             // Act
-            manager.CheckAsync(Attempt()).GetAwaiter().GetResult();
+            manager.CheckAsync(Attempt(), NoResume).GetAwaiter().GetResult();
 
             // Assert
             Assert.That(state.Status, Is.EqualTo(RouteBlockerStatus.Blocked));
@@ -92,7 +109,7 @@ namespace Velvet.Tests
             manager.Register(_ => false, new RouteBlockerState());
 
             // Act
-            var blocked = manager.CheckAsync(Attempt()).GetAwaiter().GetResult();
+            var blocked = manager.CheckAsync(Attempt(), NoResume).GetAwaiter().GetResult();
 
             // Assert
             Assert.That(blocked, Is.False);
@@ -107,7 +124,7 @@ namespace Velvet.Tests
             manager.Register(_ => false, state);
 
             // Act
-            manager.CheckAsync(Attempt()).GetAwaiter().GetResult();
+            manager.CheckAsync(Attempt(), NoResume).GetAwaiter().GetResult();
 
             // Assert
             Assert.That(state.Status, Is.EqualTo(RouteBlockerStatus.Idle));
@@ -122,7 +139,7 @@ namespace Velvet.Tests
             manager.Register(_ => true, new RouteBlockerState());
 
             // Act
-            var blocked = manager.CheckAsync(Attempt()).GetAwaiter().GetResult();
+            var blocked = manager.CheckAsync(Attempt(), NoResume).GetAwaiter().GetResult();
 
             // Assert
             Assert.That(blocked, Is.True);
@@ -137,7 +154,7 @@ namespace Velvet.Tests
 
             // Act
             registration.Dispose();
-            var blocked = manager.CheckAsync(Attempt()).GetAwaiter().GetResult();
+            var blocked = manager.CheckAsync(Attempt(), NoResume).GetAwaiter().GetResult();
 
             // Assert
             Assert.That(blocked, Is.False);
@@ -152,7 +169,7 @@ namespace Velvet.Tests
             var state2 = new RouteBlockerState();
             manager.Register(_ => true, state1);
             manager.Register(_ => true, state2);
-            manager.CheckAsync(Attempt()).GetAwaiter().GetResult();
+            manager.CheckAsync(Attempt(), NoResume).GetAwaiter().GetResult();
             Assume.That(state1.Status, Is.EqualTo(RouteBlockerStatus.Blocked), "Precondition: both blockers blocked");
             Assume.That(state2.Status, Is.EqualTo(RouteBlockerStatus.Blocked), "Precondition: both blockers blocked");
 
@@ -163,6 +180,74 @@ namespace Velvet.Tests
             Assert.That(
                 (state1.Status, state2.Status),
                 Is.EqualTo((RouteBlockerStatus.Idle, RouteBlockerStatus.Idle)));
+        }
+
+        [Test]
+        public void Given_ABlockerThatProceeded_When_CheckAsyncRunsAgain_Then_ItIsNotConsulted()
+        {
+            // Arrange — the resume is a no-op, so the pass under test is the next CheckAsync rather than
+            // whatever Proceed() would have re-issued through a Router.
+            var checks = 0;
+            var manager = new RouteBlockerManager();
+            var state = new RouteBlockerState();
+            manager.Register(_ =>
+            {
+                checks++;
+                return true;
+            }, state);
+            manager.CheckAsync(Attempt(), NoResume).GetAwaiter().GetResult();
+            state.Proceed();
+
+            // Act
+            var blocked = manager.CheckAsync(Attempt(), NoResume).GetAwaiter().GetResult();
+
+            // Assert — the status is what the skip is keyed on, and the pass leaves it where it was.
+            Assert.That(
+                (checks, blocked, state.Status),
+                Is.EqualTo((1, false, RouteBlockerStatus.Proceeding)));
+        }
+
+        [Test]
+        public void Given_ABlockerThatProceeded_When_SettleProceeding_Then_ItBlocksAgain()
+        {
+            // Arrange
+            var manager = new RouteBlockerManager();
+            var state = new RouteBlockerState();
+            manager.Register(_ => true, state);
+            manager.CheckAsync(Attempt(), NoResume).GetAwaiter().GetResult();
+            state.Proceed();
+
+            // Act
+            manager.SettleProceeding();
+            var blocked = manager.CheckAsync(Attempt(), NoResume).GetAwaiter().GetResult();
+
+            // Assert
+            Assert.That((blocked, state.Status), Is.EqualTo((true, RouteBlockerStatus.Blocked)));
+        }
+
+        [Test]
+        public void Given_ABlockedBlockerBesideAProceedingOne_When_SettleProceeding_Then_TheProceedingOneIsLeftAlone()
+        {
+            // Arrange — the second Blocker blocks only its second pass, so it is the one holding the attempt
+            // the first released.
+            var manager = new RouteBlockerManager();
+            var proceeded = new RouteBlockerState();
+            var holding = new RouteBlockerState();
+            var checks = 0;
+            manager.Register(_ => true, proceeded);
+            manager.Register(_ => ++checks == 2, holding);
+            manager.CheckAsync(Attempt(), NoResume).GetAwaiter().GetResult();
+            proceeded.Proceed();
+            manager.CheckAsync(Attempt(), NoResume).GetAwaiter().GetResult();
+
+            // Act
+            manager.SettleProceeding();
+
+            // Assert — the blocked one rides along because a pass that left it Idle would make the settle
+            // trivially correct rather than deferred.
+            Assert.That(
+                (proceeded.Status, holding.Status),
+                Is.EqualTo((RouteBlockerStatus.Proceeding, RouteBlockerStatus.Blocked)));
         }
 
         #endregion
@@ -177,7 +262,7 @@ namespace Velvet.Tests
             manager.Register((_, __) => VelvetTask.FromResult(true), new RouteBlockerState());
 
             // Act
-            var blocked = manager.CheckAsync(Attempt()).GetAwaiter().GetResult();
+            var blocked = manager.CheckAsync(Attempt(), NoResume).GetAwaiter().GetResult();
 
             // Assert
             Assert.That(blocked, Is.True);
@@ -192,7 +277,7 @@ namespace Velvet.Tests
             manager.Register((_, __) => VelvetTask.FromResult(true), state);
 
             // Act
-            manager.CheckAsync(Attempt()).GetAwaiter().GetResult();
+            manager.CheckAsync(Attempt(), NoResume).GetAwaiter().GetResult();
 
             // Assert
             Assert.That(state.Status, Is.EqualTo(RouteBlockerStatus.Blocked));
@@ -206,7 +291,7 @@ namespace Velvet.Tests
             manager.Register((_, __) => VelvetTask.FromResult(false), new RouteBlockerState());
 
             // Act
-            var blocked = manager.CheckAsync(Attempt()).GetAwaiter().GetResult();
+            var blocked = manager.CheckAsync(Attempt(), NoResume).GetAwaiter().GetResult();
 
             // Assert
             Assert.That(blocked, Is.False);
@@ -221,7 +306,7 @@ namespace Velvet.Tests
             manager.Register((_, __) => VelvetTask.FromResult(false), state);
 
             // Act
-            manager.CheckAsync(Attempt()).GetAwaiter().GetResult();
+            manager.CheckAsync(Attempt(), NoResume).GetAwaiter().GetResult();
 
             // Assert
             Assert.That(state.Status, Is.EqualTo(RouteBlockerStatus.Idle));
@@ -238,7 +323,7 @@ namespace Velvet.Tests
             manager.Register((_, __) => VelvetTask.FromResult(true), asyncState);
 
             // Act
-            manager.CheckAsync(Attempt()).GetAwaiter().GetResult();
+            manager.CheckAsync(Attempt(), NoResume).GetAwaiter().GetResult();
 
             // Assert
             Assert.That(
@@ -374,9 +459,9 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_BlockerRegisteredAfterArriving_When_GoBackBlocked_Then_HistoryIndexIsRolledBack()
+        public void Given_BlockerRegisteredAfterArriving_When_GoBackBlocked_Then_HistoryIndexIsUnchanged()
         {
-            // The provisional Back index decrement is undone when the blocker rejects the step.
+            // A blocked step never commits, so the history keeps describing the entry the user is on.
             // Arrange
             var router = BuildRouter("/home", Route("home"), Route("other"));
             router.NavigateSync("/other");
@@ -548,6 +633,198 @@ namespace Velvet.Tests
 
         #endregion
 
+        #region UseBlocker with deps omitted
+
+        private static StateUpdater<bool> s_omittedDepsSetDirty;
+
+        [Component]
+        private static VNode OmittedDepsBlockerRender()
+        {
+            var (isDirty, setDirty) = Hooks.UseState(false);
+            s_omittedDepsSetDirty = setDirty;
+            Hooks.UseBlocker(_ => isDirty);
+            return V.Label(text: isDirty ? "dirty" : "clean");
+        }
+
+        [Test]
+        public void Given_UseBlockerWithDepsOmitted_When_TheCapturedStateChanges_Then_TheNewAnswerBlocks()
+        {
+            // Arrange
+            var router = BuildRouter("/home", Route("home"), Route("other"));
+            s_omittedDepsSetDirty = default;
+            using var mounted = V.Mount(new VisualElement(), V.Component(OmittedDepsBlockerRender, key: "blk"));
+
+            // Act — the first departure reads the mount render's false, the second the re-render's true.
+            var beforeChange = router.NavigateSync("/other");
+            s_omittedDepsSetDirty.Invoke(true);
+            mounted.FlushStateForTest();
+            var afterChange = router.NavigateSync("/home");
+
+            // Assert
+            Assert.That(
+                (beforeChange, afterChange),
+                Is.EqualTo((NavigationResult.Success, NavigationResult.Blocked)),
+                "Omitting deps re-registers the predicate every render, so the blocker answers with the "
+                + "state of the render that registered it rather than the mount render's");
+        }
+
+        private static StateUpdater<bool> s_omittedDepsAsyncSetDirty;
+
+        [Component]
+        private static VNode OmittedDepsAsyncBlockerRender()
+        {
+            var (isDirty, setDirty) = Hooks.UseState(false);
+            s_omittedDepsAsyncSetDirty = setDirty;
+            Hooks.UseBlocker((_, _) => VelvetTask.FromResult(isDirty));
+            return V.Label(text: isDirty ? "dirty" : "clean");
+        }
+
+        [Test]
+        public void Given_AsyncUseBlockerWithDepsOmitted_When_TheCapturedStateChanges_Then_TheNewAnswerBlocks()
+        {
+            // Arrange
+            var router = BuildRouter("/home", Route("home"), Route("other"));
+            s_omittedDepsAsyncSetDirty = default;
+            using var mounted = V.Mount(
+                new VisualElement(), V.Component(OmittedDepsAsyncBlockerRender, key: "blk-async"));
+
+            // Act — the first departure reads the mount render's false, the second the re-render's true.
+            var beforeChange = router.NavigateSync("/other");
+            s_omittedDepsAsyncSetDirty.Invoke(true);
+            mounted.FlushStateForTest();
+            var afterChange = router.NavigateSync("/home");
+
+            // Assert
+            Assert.That(
+                (beforeChange, afterChange),
+                Is.EqualTo((NavigationResult.Success, NavigationResult.Blocked)),
+                "The async overload stages the same null deps as the synchronous one, so the two must not "
+                + "drift apart under an edit to either");
+        }
+
+        #endregion
+
+        #region UseBlocker re-registration beside a proceeding Blocker
+
+        private static RouteBlockerState s_answeredFormBlocker;
+        private static RouteBlockerState s_holdingFormBlocker;
+        private static StateUpdater<int> s_holdingFormRevise;
+
+        [Component]
+        private static VNode AnsweredFormRender()
+        {
+            s_answeredFormBlocker = Hooks.UseBlocker(_ => true);
+            return V.Label(text: "answered");
+        }
+
+        [Component]
+        private static VNode HoldingFormRender()
+        {
+            var (revision, revise) = Hooks.UseState(0);
+            s_holdingFormRevise = revise;
+            s_holdingFormBlocker = Hooks.UseBlocker(_ => true);
+            return V.Label(text: revision.ToString());
+        }
+
+        [Component]
+        private static VNode TwoBlockingFormsRender() =>
+            V.Div(
+                "forms",
+                V.Component(AnsweredFormRender, key: "answered"),
+                V.Component(HoldingFormRender, key: "holding"));
+
+        [Test]
+        public void Given_ABlockerReRegisteringWhileAnotherProceeds_When_ItProceedsToo_Then_TheDepartureLands()
+        {
+            // Arrange — the second form re-renders while it is the one still holding the departure, and a
+            // UseBlocker written without a deps argument swaps its registration on every render.
+            var router = BuildRouter("/home", Route("home"), Route("other"));
+            s_answeredFormBlocker = null;
+            s_holdingFormBlocker = null;
+            s_holdingFormRevise = default;
+            using var mounted = V.Mount(new VisualElement(), V.Component(TwoBlockingFormsRender, key: "forms"));
+            var blockedResult = router.NavigateSync("/other");
+            s_answeredFormBlocker.Proceed();
+            s_holdingFormRevise.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Act
+            s_holdingFormBlocker.Proceed();
+
+            // Assert — the first result rides along because a page whose forms never blocked reaches "/other"
+            // on the navigation itself, with neither Proceed() having anything to resume.
+            Assert.That(
+                (blockedResult, router.CurrentLocation.Path),
+                Is.EqualTo((NavigationResult.Blocked, "/other")));
+        }
+
+        #endregion
+
+        #region Registration bookkeeping
+
+        // A registration the manager keeps is one every later check walks and copies, so an entry nothing
+        // can reach again has to leave the list rather than merely stop answering.
+        private static int EntryCountOf(RouteBlockerManager manager) =>
+            ((ICollection)typeof(RouteBlockerManager)
+                .GetField("_blockers", BindingFlags.NonPublic | BindingFlags.Instance)
+                .GetValue(manager)).Count;
+
+        [Test]
+        public void Given_AnIdleBlocker_When_ItsRegistrationIsDisposed_Then_ItsEntryLeavesTheList()
+        {
+            // Arrange
+            var manager = new RouteBlockerManager();
+            var registration = manager.Register(_ => false, new RouteBlockerState());
+            var entriesBeforeDispose = EntryCountOf(manager);
+
+            // Act
+            registration.Dispose();
+
+            // Assert — the count before rides along because a manager that never held the entry reads 0
+            // afterwards too.
+            Assert.That((entriesBeforeDispose, EntryCountOf(manager)), Is.EqualTo((1, 0)));
+        }
+
+        [Test]
+        public void Given_ABlockerDisposedWhileBlocked_When_ANavigationLiftsTheBlock_Then_ItsEntryLeavesTheList()
+        {
+            // Arrange — the disposal itself cannot drop this entry: the state is still Blocked, and a saved
+            // dialog handler may still answer it.
+            var manager = new RouteBlockerManager();
+            var registration = manager.Register(_ => true, new RouteBlockerState());
+            manager.CheckAsync(Attempt(), NoResume).GetAwaiter().GetResult();
+            registration.Dispose();
+            var entriesBeforeTheNextAttempt = EntryCountOf(manager);
+
+            // Act
+            manager.ResetAllBlocked();
+
+            // Assert
+            Assert.That((entriesBeforeTheNextAttempt, EntryCountOf(manager)), Is.EqualTo((1, 0)));
+        }
+
+        [Test]
+        public void Given_ABlockerDisposedWhileProceeding_When_TheAttemptSettles_Then_ItsEntryLeavesTheList()
+        {
+            // Arrange — Proceeding is the one status a disposal leaves that no later navigation's own
+            // release clears, so the settle is the only place this entry can go.
+            var manager = new RouteBlockerManager();
+            var state = new RouteBlockerState();
+            var registration = manager.Register(_ => true, state);
+            manager.CheckAsync(Attempt(), NoResume).GetAwaiter().GetResult();
+            state.Proceed();
+            registration.Dispose();
+            var entriesBeforeTheSettle = EntryCountOf(manager);
+
+            // Act
+            manager.SettleProceeding();
+
+            // Assert
+            Assert.That((entriesBeforeTheSettle, EntryCountOf(manager)), Is.EqualTo((1, 0)));
+        }
+
+        #endregion
+
         #region Blocker liveness during CheckAsync mutation
 
         [Test]
@@ -565,7 +842,7 @@ namespace Velvet.Tests
             }, state);
 
             // Act
-            var blocked = manager.CheckAsync(Attempt()).GetAwaiter().GetResult();
+            var blocked = manager.CheckAsync(Attempt(), NoResume).GetAwaiter().GetResult();
 
             // Assert — a dead registration neither blocks the navigation nor strands its state.
             Assert.That((blocked, state.Status), Is.EqualTo((false, RouteBlockerStatus.Idle)));
@@ -587,7 +864,7 @@ namespace Velvet.Tests
             laterRegistration = manager.Register(_ => true, laterState);
 
             // Act
-            var blocked = manager.CheckAsync(Attempt()).GetAwaiter().GetResult();
+            var blocked = manager.CheckAsync(Attempt(), NoResume).GetAwaiter().GetResult();
 
             // Assert
             Assert.That((blocked, laterState.Status), Is.EqualTo((false, RouteBlockerStatus.Idle)));
@@ -605,10 +882,32 @@ namespace Velvet.Tests
             cts.Cancel();
 
             // Act
-            manager.CheckAsync(Attempt(), cts.Token).GetAwaiter().GetResult();
+            manager.CheckAsync(Attempt(), NoResume, cts.Token).GetAwaiter().GetResult();
 
             // Assert — the abandoned attempt leaves no Blocked state behind.
             Assert.That(state.Status, Is.EqualTo(RouteBlockerStatus.Idle));
+        }
+
+        [Test]
+        public void Given_ABlockedBlockerWhoseRegistrationDied_When_Reset_Then_ItStillReturnsToIdle()
+        {
+            // Arrange — the registration is disposed after the block, the shape of an owner unmounting
+            // while the dialog bound to its state is still up.
+            var manager = new RouteBlockerManager();
+            var state = new RouteBlockerState();
+            var registration = manager.Register(_ => true, state);
+            manager.CheckAsync(Attempt(), NoResume).GetAwaiter().GetResult();
+            var statusBeforeReset = state.Status;
+            registration.Dispose();
+
+            // Act
+            state.Reset();
+
+            // Assert — the status before the call rides along because a pass that never blocked leaves
+            // Idle here too, which would make the release read as correct without it having run.
+            Assert.That(
+                (statusBeforeReset, state.Status),
+                Is.EqualTo((RouteBlockerStatus.Blocked, RouteBlockerStatus.Idle)));
         }
 
         #endregion

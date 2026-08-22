@@ -9,8 +9,8 @@ namespace Velvet.Tests
     /// Specifies the default-on inner auto-memoization weaver's behavior across the shapes it must handle: the
     /// raw runtime slot API it compiles down to (<c>Hooks.TryGetMemoizedVNode</c> / <c>Hooks.StoreMemoizedVNode</c>),
     /// how it keys its dependency array on a component's captured inputs (props and <c>UseContext</c> values)
-    /// under Velvet's <c>ObjectIs</c> reference-identity equality, and the two-element <c>UseState</c>
-    /// destructuring binding as an input alongside the discard form.
+    /// under Velvet's <c>ObjectIs</c> equality, and the two-element <c>UseState</c> destructuring binding as
+    /// an input alongside the discard form.
     /// <list type="bullet">
     /// <item>The first render of a component always misses the slot cache (freshly allocated), so the body takes
     /// the pure-build + store path.</item>
@@ -18,10 +18,9 @@ namespace Velvet.Tests
     /// baseline: when a render-phase setState normalizes the value back to the committed one, that settled
     /// attempt is a cache hit and does not rebuild. Both slot APIs are render-scoped: calling either outside of
     /// Render raises an <see cref="InvalidOperationException"/>.</item>
-    /// <item>A captured prop is held by reference identity: re-rendering with the same record instance is a
-    /// cache hit; a changed prop value or a fresh-but-equal record instance is a miss, because <c>ObjectIs</c>
-    /// compares reference-type inputs by reference identity, not structural equality. A captured context value is
-    /// keyed the same way.</item>
+    /// <item>A captured <c>record class</c> prop is held by instance: re-rendering with the same instance is a
+    /// cache hit; a changed prop value or a fresh-but-equal instance is a miss, because <c>ObjectIs</c> compares
+    /// such an input by instance, not by content. A captured context value is keyed the same way.</item>
     /// <item>The idiomatic two-element <c>var (value, setValue) = Hooks.UseState(...)</c> binding is captured the
     /// same way as the value-only discard form: Item1 (the value) is a dependency and Item2 (the
     /// reference-stable setter) is not, so the component is woven and memoizes its VNode build.</item>
@@ -227,12 +226,17 @@ namespace Velvet.Tests
                 "The rebuilt child renders the new prop value");
         }
 
+        // GREEN_ON_BASE(characterization): this branch changes no production code — it corrects the
+        // arrangement comment, which stated the keying rule in a form that is false for a string input —
+        // so the case is green on both sides. What shows it can fail is the reference fall-through of
+        // ObjectIs.AreEqualObjects perturbed to return true, measured: the fresh instance is then a memo
+        // hit and the child does not rebuild.
         [Test]
         public void Given_FreshPropInstanceWithEqualValues_When_ParentReRenders_Then_ChildRebuilds()
         {
-            // Arrange — a fresh record instance with identical members on every render. The inner memo keys on
-            // reference identity, so a fresh-but-equal instance is a miss (sound: the framework reconciles the
-            // child on each parent re-render and only reuses a VNode when the captured reference is identical).
+            // Arrange — a fresh record class instance with identical members on every render. The inner memo
+            // keys such an input on instance, so a fresh-but-equal one is a miss (sound: the framework
+            // reconciles the child on each parent re-render, so a miss costs a rebuild and never a stale tree).
             s_childProps = _ => new ChildProps("a");
             using var mounted = V.Mount(_root, V.Component(PropsParent, key: "parent"));
             Assume.That(s_propsChildRebuildCount, Is.EqualTo(1), "Precondition: mount misses once and builds the child");
@@ -243,7 +247,7 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(s_propsChildRebuildCount, Is.EqualTo(2),
-                "A distinct record instance is not reference-equal -> ObjectIs miss -> rebuild");
+                "A distinct record class instance is not the same instance -> ObjectIs miss -> rebuild");
         }
 
         private static readonly ComponentContext<string> ThemeContext =

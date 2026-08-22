@@ -533,6 +533,11 @@ namespace Velvet
         /// <summary>
         /// Creates a TextField.
         /// </summary>
+        /// <remarks>
+        /// <paramref name="placeholder"/>, <paramref name="maxLength"/>, <paramref name="isReadOnly"/> and
+        /// <paramref name="isDelayed"/> are undeclared when null rather than reset to a default;
+        /// <c>Documentation~/react-migration.md</c> owns what a null and a dropped one each do.
+        /// </remarks>
         /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces.</param>
         /// <param name="value">Current text value (controlled).</param>
         /// <param name="onValueChanged">Handler invoked when the input text changes.</param>
@@ -547,6 +552,10 @@ namespace Velvet
         /// <param name="whileFocusClass">USS class toggled while the element holds keyboard/UI focus.</param>
         /// <param name="data">data-* attribute map matched by <c>data-[...]</c> variants.</param>
         /// <param name="aria">aria-* attribute map matched by <c>aria-[...]</c> variants.</param>
+        /// <param name="placeholder">A short hint shown in the empty field (HTML <c>placeholder</c>). An empty string declares an empty hint.</param>
+        /// <param name="maxLength">Maximum number of characters the field accepts, -1 for no limit (HTML <c>maxlength</c>).</param>
+        /// <param name="isReadOnly">When true, the field cannot be edited (HTML <c>readonly</c>).</param>
+        /// <param name="isDelayed">When true, the value is not updated per keystroke but on Enter, on the field losing focus, and on a later render taking the flag off.</param>
         /// <returns>The created <see cref="ElementNode"/> representing this text field.</returns>
         public static ElementNode TextField(
             string? className = null,
@@ -562,19 +571,29 @@ namespace Velvet
             string? whileTapClass = null,
             string? whileFocusClass = null,
             IReadOnlyDictionary<string, string>? data = null,
-            IReadOnlyDictionary<string, string>? aria = null)
+            IReadOnlyDictionary<string, string>? aria = null,
+            // These sit after `aria` rather than beside `isPasswordField`, where they belong by subject,
+            // so a positional call written against 2.1.0 still binds as it did.
+            // TextFieldPositionalOrderTests holds the prefix that placement protects.
+            string? placeholder = null,
+            int? maxLength = null,
+            bool? isReadOnly = null,
+            bool? isDelayed = null)
         {
             var events = SingleEvent(onValueChanged != null ? new ChangeEventBinding<string> { Handler = onValueChanged } : null);
 
+            var declaresTextField = isPasswordField.HasValue || placeholder != null || maxLength.HasValue
+                                    || isReadOnly.HasValue || isDelayed.HasValue;
+
             FiberElementProps? props = null;
-            if (value != null || label != null || isPasswordField.HasValue || enabled.HasValue)
+            if (value != null || label != null || declaresTextField || enabled.HasValue)
             {
                 props = VNodePool.RentProps();
                 props.FieldValue = value;
                 props.Text = label;
                 props.Enabled = enabled;
-                props.TextField = isPasswordField.HasValue
-                    ? new TextFieldSettings(isPasswordField)
+                props.TextField = declaresTextField
+                    ? new TextFieldSettings(isPasswordField, placeholder, maxLength, isReadOnly, isDelayed)
                     : null;
             }
             props = WithAttributes(props, data, aria);
@@ -1246,12 +1265,12 @@ namespace Velvet
         /// identity, and child hooks (<c>UseCallback</c> / <c>UseMemo</c>) can declare
         /// <paramref name="props"/> fields as <c>deps</c> to stabilize callbacks across renders.
         /// <br/>
-        /// <typeparamref name="TProps"/> is stored as <see cref="object"/> on the fiber and compared
-        /// via <see cref="object.Equals(object, object)"/>. Prefer a reference type
-        /// (<c>sealed record</c>) to obtain value equality without boxing; a <c>record struct</c>
-        /// boxes on every <c>V.Component</c> call.
+        /// <typeparamref name="TProps"/> is stored as <see cref="object"/> on the fiber. Prefer a
+        /// reference type (<c>sealed record</c>): a <c>record struct</c> boxes on every
+        /// <c>V.Component</c> call. Whether that stored value is compared at all, and under which
+        /// rule, is what <see cref="ComponentAttribute.Memoize"/> states.
         /// </remarks>
-        /// <typeparam name="TProps">Props type. Use <c>sealed record</c> (reference type) for value equality without boxing.</typeparam>
+        /// <typeparam name="TProps">Props type. Use <c>sealed record</c> (reference type) to avoid boxing.</typeparam>
         /// <param name="body">Delegate of a static method annotated with <c>[Component]</c> taking a single <typeparamref name="TProps"/> parameter.</param>
         /// <param name="props">The props value to pass to <paramref name="body"/>.</param>
         /// <param name="key">Key used to disambiguate siblings at the same position.</param>
@@ -1275,7 +1294,7 @@ namespace Velvet
         /// <remarks>
         /// <paramref name="areEqual"/> receives the previous and next props and returns <c>true</c> to
         /// <b>bail</b> (skip re-render). When the
-        /// default shallow per-property identity comparison is sufficient, prefer plain
+        /// default shallow comparison <see cref="ComponentAttribute.Memoize"/> states is sufficient, prefer plain
         /// <c>V.Component(body, props)</c> with <c>[Component(Memoize = true)]</c>; this overload is for
         /// the cases where shallow equality is too coarse or too fine (e.g. comparing only a subset of
         /// props, or deep-comparing one field).<br/>
@@ -1397,11 +1416,12 @@ namespace Velvet
         /// Memoization node. Skips rebuilding the child subtree while the dependency array is unchanged.
         /// When <c>key</c> is omitted, the order of MemoNodes within the same component must remain stable,
         /// since identity is resolved by call order. If the order can change dynamically, use
-        /// <see cref="MemoizedWithKey"/> instead. This is distinct from <see cref="Memo{TProps}"/>, which
+        /// <see cref="MemoizedWithKey(string, Func{VNode}, object[])"/> instead. This is distinct from
+        /// <see cref="Memo{TProps}"/>, which
         /// memoizes a function-style component by props equality.
         /// </summary>
         /// <param name="factory">Factory invoked to produce the cached VNode when <paramref name="deps"/> change.</param>
-        /// <param name="deps">Dependency values. When equal to the previous render (each dependency compared via <see cref="ObjectIs.AreEqualDeps"/> — reference-type elements by identity, strings and primitives by value, floats by raw bit pattern), the cached VNode is reused.</param>
+        /// <param name="deps">Dependency values. When equal to the previous render, the cached VNode is reused; <see cref="MemoNode.Dependencies"/> states the branch each element type takes. Pass an empty array to declare no dependencies and cache the subtree for the node's whole life; null declares no dependency array, which no newly built node's comparison can satisfy.</param>
         /// <returns>The created <see cref="MemoNode"/>.</returns>
         public static MemoNode Memoized(Func<VNode> factory, params object?[]? deps)
         {
@@ -1409,6 +1429,26 @@ namespace Velvet
             {
                 Factory = factory,
                 Dependencies = deps,
+            };
+        }
+
+        /// <summary>
+        /// Declares no dependency array, for a factory whose inputs are not expressible as one: a newly built
+        /// node never reuses the cached subtree, so a call site inside a render body rebuilds every render.
+        /// </summary>
+        /// <remarks>
+        /// The single-argument overload exists so that omitting deps is unambiguous — see
+        /// <see cref="Hooks.UseCallback{T}(T)"/> for the hazard it avoids. To cache the subtree for the node's
+        /// whole life instead, pass an empty array.
+        /// </remarks>
+        /// <param name="factory">Factory invoked on every reconcile to produce the subtree.</param>
+        /// <returns>The created <see cref="MemoNode"/>.</returns>
+        public static MemoNode Memoized(Func<VNode> factory)
+        {
+            return new MemoNode
+            {
+                Factory = factory,
+                Dependencies = null,
             };
         }
 
@@ -1420,7 +1460,7 @@ namespace Velvet
         /// </summary>
         /// <param name="key">Stable cache key independent of sibling order.</param>
         /// <param name="factory">Factory invoked to produce the cached VNode when <paramref name="deps"/> change.</param>
-        /// <param name="deps">Dependency values used to detect changes.</param>
+        /// <param name="deps">Dependency values used to detect changes, with the same empty-array and null meanings as <see cref="Memoized(Func{VNode}, object[])"/>.</param>
         /// <returns>The created <see cref="MemoNode"/>.</returns>
         public static MemoNode MemoizedWithKey(string? key, Func<VNode> factory, params object?[]? deps)
         {
@@ -1429,6 +1469,23 @@ namespace Velvet
                 Key = key,
                 Factory = factory,
                 Dependencies = deps,
+            };
+        }
+
+        /// <summary>
+        /// Keyed variant of <see cref="Memoized(Func{VNode})"/>: declares no dependency array, under an
+        /// explicit cache key.
+        /// </summary>
+        /// <param name="key">Stable cache key independent of sibling order.</param>
+        /// <param name="factory">Factory invoked on every reconcile to produce the subtree.</param>
+        /// <returns>The created <see cref="MemoNode"/>.</returns>
+        public static MemoNode MemoizedWithKey(string? key, Func<VNode> factory)
+        {
+            return new MemoNode
+            {
+                Key = key,
+                Factory = factory,
+                Dependencies = null,
             };
         }
 
@@ -1500,6 +1557,35 @@ namespace Velvet
             {
                 Key = key,
                 TargetId = targetId,
+                Children = children ?? EmptyChildren,
+            };
+        }
+
+        /// <summary>
+        /// Renders <paramref name="children"/> into <paramref name="target"/> — a container the caller
+        /// already holds, rather than one published under a name. The React form:
+        /// <c>createPortal(children, container)</c> takes the node itself, so two trees in one process
+        /// cannot collide the way two registrations of one id do, and an element reached through a
+        /// <c>refCallback</c> is a valid container without being named first.
+        /// </summary>
+        /// <remarks>
+        /// Passing a different container on a later render moves the children: the reconciler cannot
+        /// patch one container's portal into another's, so the old unmounts and the new mounts. A
+        /// registry target behaves differently — its id resolves once at mount and is then held, so
+        /// re-registering the id points only future portals elsewhere. The portals documentation
+        /// states that difference; the rest of the contract (context inheritance, event bubbling) is
+        /// the same as the <see cref="Portal(string, VNode?[], string)"/> form.
+        /// </remarks>
+        /// <param name="target">Container the children attach to. Null renders nothing and warns.</param>
+        /// <param name="children">Nodes to render at the target.</param>
+        /// <param name="key">Key used to disambiguate siblings at the same position.</param>
+        /// <returns>The created <see cref="PortalNode"/>.</returns>
+        public static PortalNode Portal(VisualElement target, VNode?[]? children = null, string? key = null)
+        {
+            return new PortalNode
+            {
+                Key = key,
+                TargetElement = target,
                 Children = children ?? EmptyChildren,
             };
         }
@@ -2099,8 +2185,9 @@ namespace Velvet
         #region Suspense
 
         /// <summary>
-        /// Boundary that displays <paramref name="fallback"/> while any descendant declares a pending async
-        /// resource via <c>Use&lt;T&gt;()</c>, until the resource resolves.
+        /// Boundary that displays <paramref name="fallback"/> while a descendant declares a pending async
+        /// resource via <c>Use&lt;T&gt;()</c>, until the resource resolves. A descendant behind a nested
+        /// <c>V.Suspense()</c> is caught by that boundary instead, so it does not raise this one's fallback.
         /// On error, the failure is propagated to the nearest Error Boundary
         /// (a component that overrides <c>RenderFallback</c>).
         /// </summary>
@@ -2177,11 +2264,13 @@ namespace Velvet
                 throw new ArgumentNullException(nameof(renderer));
             }
 
+            // The erased item is the element the caller's own list held at that index, so the cast hands
+            // their delegate back the T they put in — a null included, where their T admits one.
             var node = new VirtualListNode(
                 items: new CastReadOnlyList<T>(items),
-                keySelector: obj => keySelector((T)obj),
+                keySelector: obj => keySelector((T)obj!),
                 itemHeight: itemHeight,
-                renderer: obj => renderer((T)obj),
+                renderer: obj => renderer((T)obj!),
                 overscan: overscan)
             {
                 ClassNames = ParseClassNames(className),
@@ -2417,10 +2506,16 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Allocation-free wrapper that adapts <see cref="IReadOnlyList{T}"/> to <see cref="IReadOnlyList{Object}"/>.
-        /// Used for type erasure in VirtualListNode; avoids array copies on every Reconcile.
+        /// Allocation-free wrapper that adapts an <see cref="IReadOnlyList{T}"/> to a list of nullable
+        /// <see cref="object"/>. Used for type erasure in VirtualListNode; avoids array copies on every
+        /// Reconcile.
         /// </summary>
-        private sealed class CastReadOnlyList<T> : IReadOnlyList<object>
+        /// <remarks>
+        /// The erased element type is nullable because <typeparamref name="T"/> may itself be, and nothing
+        /// here narrows that: Velvet never dereferences an item — every one goes straight back to the
+        /// caller's own selector and renderer.
+        /// </remarks>
+        private sealed class CastReadOnlyList<T> : IReadOnlyList<object?>
         {
             private readonly IReadOnlyList<T> _inner;
 
@@ -2429,11 +2524,11 @@ namespace Velvet
             public object? this[int index] => _inner[index];
             public int Count => _inner.Count;
 
-            public IEnumerator<object> GetEnumerator()
+            public IEnumerator<object?> GetEnumerator()
             {
                 for (var i = 0; i < _inner.Count; i++)
                 {
-                    yield return _inner[i]!;
+                    yield return _inner[i];
                 }
             }
 

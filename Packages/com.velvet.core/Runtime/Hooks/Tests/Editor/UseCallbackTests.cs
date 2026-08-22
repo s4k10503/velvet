@@ -10,10 +10,11 @@ namespace Velvet.Tests
     /// <list type="bullet">
     /// <item>The deps overload returns the same delegate reference across renders while the dependency array stays
     /// equal, and a new delegate when any dependency changes.</item>
-    /// <item>Dependencies are compared by reference identity: a fresh-but-content-equal reference-type dependency
-    /// counts as changed and yields a new delegate.</item>
+    /// <item>Dependencies are compared under <c>Object.is</c>: a fresh-but-content-equal <c>record class</c>
+    /// dependency counts as changed and yields a new delegate.</item>
     /// <item>The no-deps overload (<c>UseCallback&lt;T&gt;(T)</c>) is unmemoized: it returns a fresh closure on
     /// every render.</item>
+    /// <item>An explicit null dependency array declares no dependency list at all, so it is unmemoized too.</item>
     /// <item>A null callback raises an <see cref="ArgumentNullException"/>.</item>
     /// <item>Each call owns an independent slot keyed by call order; slots memoize and invalidate independently.</item>
     /// <item>The returned delegate is invocable and captures the latest committed state.</item>
@@ -107,6 +108,28 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ExplicitNullDeps_When_ReRendered_Then_ReturnsFreshClosure()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(NullDepsCallbackRender, key: "null-deps"));
+            var first = s_nullDepsLastCallback;
+            Assume.That(first, Is.Not.Null, "Precondition: the first render produced a callback");
+
+            // Act
+            s_callbackSetState.Invoke(new CallbackState(2, "world"));
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.AreNotSame(first, s_nullDepsLastCallback,
+                "A null deps argument is no dependency array, so the callback is never frozen to an earlier closure");
+        }
+
+        // GREEN_ON_BASE(characterization): this branch changes no production code — it corrects the failure
+        // message, which named the comparison in a form that is false for a string dep — so the case is
+        // green on both sides. What shows it can fail is the reference fall-through of
+        // ObjectIs.AreEqualObjects cut to return true, measured: the fresh dep then compares equal and the
+        // committed delegate is handed back.
+        [Test]
         public void Given_RecordDep_When_FreshButContentEqualInstance_Then_ReturnsNewDelegate()
         {
             // Arrange — the dep is a record reconstructed with identical content but a new instance every render
@@ -120,7 +143,7 @@ namespace Velvet.Tests
 
             // Assert
             Assert.AreNotSame(first, s_recordDepLastCallback,
-                "A fresh-but-content-equal reference-type dep counts as changed (identity compare), so the delegate is new");
+                "A fresh-but-content-equal record class dep counts as changed, so the delegate is new");
         }
 
         [Test]
@@ -202,6 +225,7 @@ namespace Velvet.Tests
         private static Action<CallbackState> s_callbackSetState;
         private static Func<string> s_singleLastCallback;
         private static Func<string> s_emptyDepsLastCallback;
+        private static Func<string> s_nullDepsLastCallback;
         private static Func<string> s_dualLastCallbackA;
         private static Func<string> s_dualLastCallbackB;
         private static int s_oscRenderCount;
@@ -216,6 +240,7 @@ namespace Velvet.Tests
             s_callbackSetState = null;
             s_singleLastCallback = null;
             s_emptyDepsLastCallback = null;
+            s_nullDepsLastCallback = null;
             s_dualLastCallbackA = null;
             s_dualLastCallbackB = null;
             s_oscRenderCount = 0;
@@ -246,6 +271,16 @@ namespace Velvet.Tests
         }
 
         [Component]
+        private static VNode NullDepsCallbackRender()
+        {
+            var (state, setState) = Hooks.UseState(s_callbackInitial);
+            s_callbackSetState = setState;
+            object[] noDeps = null;
+            s_nullDepsLastCallback = Hooks.UseCallback<Func<string>>(() => state.Name, noDeps);
+            return V.Label(text: state.Name);
+        }
+
+        [Component]
         private static VNode DualCallbackRender()
         {
             var (state, setState) = Hooks.UseState(s_callbackInitial);
@@ -264,8 +299,8 @@ namespace Velvet.Tests
         {
             var (tick, setTick) = Hooks.UseState(0);
             s_recordDepSetTick = setTick;
-            // A fresh-but-content-equal record instance every render. Under reference-identity deps semantics this is
-            // a CHANGED dep (the reference differs), so the callback must be a fresh reference.
+            // A fresh-but-content-equal record class instance every render. That dep is compared by instance,
+            // so it is CHANGED and the callback must be a fresh reference.
             var dep = new DepRecord("constant");
             s_recordDepLastCallback = Hooks.UseCallback<Func<string>>(() => dep.Value, dep);
             return V.Label(text: $"{tick}:{dep.Value}");

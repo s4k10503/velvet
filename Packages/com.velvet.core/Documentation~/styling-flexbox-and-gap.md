@@ -143,6 +143,21 @@ can change outside the manipulator's own events, so it is re-applied from three 
    once `resolvedStyle.flexDirection` is valid — needed for the one case no class marker can cover
    (below). Registered on the attached element only, since the inner box attaches in its subtree pass.
 
+**A child that leaves keeps whatever its new container wrote.** A container also clears what it wrote
+on a child that is no longer in it, so a child *reparented* elsewhere carries no leftover gap. Because
+the three sources above land on their own schedules, the container a child left can re-apply *after*
+the container it joined has already spaced it — and the element pool makes that ordinary, handing a
+child pooled out of one container straight to another. So the clear only fires while the value on the
+child is still the clearing container's own: two `gap-4` rows exchanging a child leave it spaced by
+the row it is in. `grid-cols-*` shares that answer with `gap-*` — both write a child's margins, and
+the grid its width as well; `divide-*` keeps its own for the border edge it owns.
+
+A child the reconciler *removes* is the one case where nothing clears: element cleanup drops the
+child's record before the container's next pass looks for it, so the container has nothing to clear
+against and the inline spacing stays on the element. Nothing on screen shows it — a removed element is
+discarded with its subtree, or scrubbed on its way into the element pool — so it matters only for an
+element your own code kept a reference to and re-parented after the removal.
+
 **Which element the verdict is read from: the container the children are actually in.** Both
 manipulators are attached to the element the class string is written on, but they resolve, iterate and
 read from the element that element's children are *reconciled into*. For a plain element those are the
@@ -303,6 +318,21 @@ The common non-wrap row/column layout is **exact**; the remaining gaps are calle
   half-margin trick has no way to cancel only the *inner* outer-edge halves; only native UITK `gap`
   avoids it. Non-wrap containers never bleed — they write no container margin. Add `gap/2` of padding
   on the parent, or wrap the grid, if the overlap matters.
+
+## Proportional splits: `grow-[N]` / `shrink-[N]`
+
+The USS vocabulary for these two factors is `grow` / `grow-0` / `shrink` / `shrink-0` and the
+`flex-1` / `flex-auto` / `flex-initial` / `flex-none` shorthands — every one of them 0 or 1. Two
+siblings with `flex-1` split leftover space 1:1 and there is no class for any other ratio.
+
+The bracket form takes an arbitrary factor and lands as an inline style: a sidebar carrying `grow-[1]`
+beside a content pane carrying `grow-[3]` divides the leftover space one to three.
+
+The value is a plain number. `grow-[50%]`, `grow-[2rem]` and `-grow-[2]` are not recognized — a factor
+has no unit and no sign, and the percent form especially would otherwise read as a factor of fifty.
+
+`basis-[..]` and `w-[..]` are a different thing and do not substitute: they fix a size, where these
+two divide what is left over after every sibling's basis is taken.
 
 ## Roadmap
 
