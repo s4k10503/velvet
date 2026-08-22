@@ -32,11 +32,13 @@ namespace Velvet
         /// decided by the per-type rule <see cref="MemoNode.Dependencies"/> states. A props value that is
         /// not a props bag — a value type, a string, a collection — is compared whole under that same rule
         /// instead of through a member set, so two distinct collections of equal content are a change.
-        /// A value type is decided by its own <c>Equals</c>, which reads what it holds, and
-        /// the <c>float</c> and <c>double</c> fields it carries — directly, or inside a value type it
-        /// holds — are compared by raw bit pattern on top of that, so <c>+0</c> and <c>-0</c> in one of
-        /// those are a change as two <c>float</c> members are. <c>ComponentPropsComparerTests</c> is what
-        /// fails if either half stops holding.
+        /// Any other value type is decided by its own <c>Equals</c>, which reads what it holds, and then — on this
+        /// path alone — the <c>float</c> and <c>double</c> fields it carries, directly or inside a value
+        /// type it holds, are compared by raw bit pattern on top of that, so <c>+0</c> and <c>-0</c> in one
+        /// of those are a change as two <c>float</c> members are. That last reading is not part of the
+        /// cited rule and the dependency comparison does not take it, so the same pair reaching a hook as a
+        /// dependency is unchanged. <c>ComponentPropsComparerTests</c> is what fails if either half of the
+        /// props answer stops holding, and <c>ObjectIsTests</c> if the dependency answer starts taking it.
         /// Default is <c>false</c>.
         /// <para>
         /// This is a true opt-in gate: only a component with <c>Memoize = true</c> (or one created via

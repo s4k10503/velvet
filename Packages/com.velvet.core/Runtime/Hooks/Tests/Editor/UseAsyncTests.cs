@@ -24,8 +24,11 @@ namespace Velvet.Tests
     /// <item>A synchronously completed factory returns its value on the first render; a faulted factory surfaces its
     /// exception; a pending factory without a Suspense boundary suspends, warns, and leaves the value unset until
     /// the task completes and re-renders with the value.</item>
-    /// <item>The resource is keyed by reference identity: an unchanged key reuses the same resource slot, a changed
-    /// key replaces it.</item>
+    /// <item>The resource is keyed by value rather than by the instance a render presented: the same object, a
+    /// string rebuilt with equal content and an id re-boxed each render all reuse the same resource slot, and a
+    /// changed key replaces it.</item>
+    /// <item>A boundary over a run-time-built key leaves its fallback when the pending loader lands, rather than
+    /// restarting the loader on the render that landing asks for.</item>
     /// <item>When no explicit resource key is passed and the factory delegate identity changes across renders, the
     /// resource restarts and a footgun warning is emitted; an explicit key silences that warning.</item>
     /// <item>Unmounting a component with a pending resource cancels the factory's token.</item>
@@ -504,6 +507,129 @@ namespace Velvet.Tests
 
         #endregion
 
+        #region Value-equal resource key
+
+        [Test]
+        public void Given_ComputedStringResourceKey_When_ReRendered_Then_FactoryRunsOnce()
+        {
+            // Arrange
+            s_computedStringKeyRuns = 0;
+            s_computedStringKeySetTick = null;
+            using var mounted = V.Mount(_root, V.Component(ComputedStringKeyRender, key: "computed-string-key"));
+            var runsAfterMount = s_computedStringKeyRuns;
+
+            // Act
+            s_computedStringKeySetTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That((runsAfterMount, s_computedStringKeyRuns), Is.EqualTo((1, 1)),
+                "A resource key rebuilt with equal content names the same resource, so the factory is not re-run");
+        }
+
+        [Test]
+        public void Given_BoxedIntResourceKey_When_ReRendered_Then_FactoryRunsOnce()
+        {
+            // Arrange
+            s_boxedIntKeyRuns = 0;
+            s_boxedIntKeySetTick = null;
+            using var mounted = V.Mount(_root, V.Component(BoxedIntKeyRender, key: "boxed-int-key"));
+            var runsAfterMount = s_boxedIntKeyRuns;
+
+            // Act
+            s_boxedIntKeySetTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That((runsAfterMount, s_boxedIntKeyRuns), Is.EqualTo((1, 1)),
+                "An id re-boxed at the call boundary names the same resource, so the factory is not re-run");
+        }
+
+        [Test]
+        public void Given_ComputedStringResourceKeyUnderBoundary_When_PendingLoaderLands_Then_BoundaryRevealsTheValue()
+        {
+            // Arrange
+            s_boundaryKeyLatestSource = null;
+            using var mounted = V.Mount(_root, V.Component(ComputedStringKeyBoundaryHostRender, key: "boundary-host"));
+            var textWhilePending = _root.FindFirstLabel()?.text;
+
+            // Act
+            s_boundaryKeyLatestSource.TrySetResult(11);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That((textWhilePending, _root.FindFirstLabel()?.text), Is.EqualTo(("loading", "11")),
+                "The render the landing loader asks for reuses the resource that landed, so the boundary leaves its fallback");
+        }
+
+        private static int s_computedStringKeyRuns;
+        private static Action<int> s_computedStringKeySetTick;
+        private static int s_computedStringKeyId;
+
+        [Component]
+        private static VNode ComputedStringKeyRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_computedStringKeySetTick = setTick;
+            // A literal would be interned and reuse the resource whatever the comparison does;
+            // concatenating a field is what makes each render present a distinct instance.
+            var resourceKey = "user-" + s_computedStringKeyId;
+            _ = Hooks.Use<int>(ComputedStringKeyFactory, resourceKey);
+            return V.Label(text: tick.ToString());
+        }
+
+        private static UniTask<int> ComputedStringKeyFactory(CancellationToken _)
+        {
+            s_computedStringKeyRuns++;
+            return UniTask.FromResult(7);
+        }
+
+        private static int s_boxedIntKeyRuns;
+        private static Action<int> s_boxedIntKeySetTick;
+        private static int s_boxedIntKeyId;
+
+        [Component]
+        private static VNode BoxedIntKeyRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_boxedIntKeySetTick = setTick;
+            // The parameter is object?, so the int is boxed afresh on every render.
+            _ = Hooks.Use<int>(BoxedIntKeyFactory, s_boxedIntKeyId);
+            return V.Label(text: tick.ToString());
+        }
+
+        private static UniTask<int> BoxedIntKeyFactory(CancellationToken _)
+        {
+            s_boxedIntKeyRuns++;
+            return UniTask.FromResult(7);
+        }
+
+        private static UniTaskCompletionSource<int> s_boundaryKeyLatestSource;
+
+        [Component]
+        private static VNode ComputedStringKeyBoundaryHostRender()
+            => V.Suspense(
+                fallback: V.Label(text: "loading"),
+                children: new VNode[] { V.Component(ComputedStringKeyBoundaryChildRender, key: "child") });
+
+        [Component]
+        private static VNode ComputedStringKeyBoundaryChildRender()
+        {
+            // The key is rebuilt each render for the reason ComputedStringKeyRender gives.
+            var resourceKey = "user-" + s_computedStringKeyId;
+            return V.Label(text: Hooks.Use<int>(BoundaryKeyFactory, resourceKey).ToString());
+        }
+
+        // A single shared completion source would already be settled when a restarted resource read it,
+        // which would hide the restart this case exists to catch, so each call gets its own pending task.
+        private static UniTask<int> BoundaryKeyFactory(CancellationToken _)
+        {
+            s_boundaryKeyLatestSource = new UniTaskCompletionSource<int>();
+            return s_boundaryKeyLatestSource.Task;
+        }
+
+        #endregion
+
         #region UseAsync component (Hooks.Use + UseState tick)
 
         private static Func<CancellationToken, VelvetTask<int>> s_useAsyncFactory;
@@ -519,6 +645,8 @@ namespace Velvet.Tests
             s_useAsyncLastValue = null;
             s_useAsyncSetTick = null;
             s_useAsyncCapturedFiber = null;
+            s_computedStringKeyId = 4242;
+            s_boxedIntKeyId = 4242;
         }
 
         [Component]
