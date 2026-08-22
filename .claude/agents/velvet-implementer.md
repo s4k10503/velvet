@@ -40,7 +40,7 @@ A measurement in your instructions, a mechanism named in an issue, a reason reco
 
 Sweep every sentence you added or changed — comments, test summaries, CHANGELOG, the report — for the universals it asserts. The `unity-tests` skill owns which words to sweep for and why; do not restate its list here or in your report. **Sweep against the merge base**, not `origin/main`: `origin/main` moves under you, so a sweep against it audits somebody else's prose as the change's. Report the sweep including a zero result.
 
-Then four questions the review will ask. Answering them yourself is cheaper than a round, and each has caught a defect that shipped past a fully green suite.
+Then four questions the review will ask. Answering them yourself is cheaper than a round, and each has caught a defect a fully green suite did not see.
 
 - **If you changed one of a pair, what happened to the other?** The commonest way a fix opens the next hole is a symmetric pair — two resume paths, two overloads, two lanes — where one side got the treatment and the sibling did not. This has gone out twice with the suite green, because the one case exercising that shape happened to take the side that was fixed. Say what the sibling does now, or why it needs nothing.
 - **For each assertion you added, which single cut reddens it?** Name the cut, apply it, and check that **no other case reddens under it**. An assertion no cut reddens is measuring nothing; one that reddens under two unrelated cuts characterizes their conjunction rather than pinning either. Both have shipped here, and one author's first sweep was entirely inert because a pattern and its call site were doubly anchored.
