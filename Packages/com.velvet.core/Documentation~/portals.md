@@ -17,6 +17,12 @@ V.WorldSpace(anchor.position, children: …);          // into a world-space pan
 does. Nothing is published and nothing is named, so two mounted trees in one process cannot collide,
 and an element reached through a `refCallback` is a valid container without being registered first.
 
+A ref attaches at the end of the reconcile pass
+([react-migration.md, lifecycle mapping](react-migration.md#3-lifecycle-mapping) states when), so a
+container the same pass creates is not in the ref while that pass renders. Reading it for a portal's
+target lands on the render after the one that created the container — the render a `UseState` write
+from the `refCallback`, or the effect that follows the pass, asks for.
+
 `V.Portal("modal-root", …)` resolves a name through `FiberPortalRegistry`, whose table is one map for
 the whole process. That is what makes an id convenient across unrelated call sites and what makes two
 registrations of one name overwrite each other.
@@ -36,6 +42,12 @@ registration rather than waiting for the declaring component to re-render for so
 Registering the same element again, and
 unregistering the id, both leave a live portal where it is — an unregistered id names nothing to move
 to.
+
+**A screen that registers an id from its `refCallback` and unregisters it from that callback's cleanup
+hands the id to its replacement.** The reconcile path that replaces one screen with another creates
+the arriving element before it removes the departing one, so what keeps the departing `Unregister`
+from taking the arriving registration with it is the ref timing above: every cleanup a pass owes runs
+before any setup it owes.
 
 Moving the portal is an unmount and a remount, so child state, refs and effects do not survive it.
 

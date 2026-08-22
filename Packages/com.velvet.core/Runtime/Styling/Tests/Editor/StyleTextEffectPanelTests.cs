@@ -649,7 +649,7 @@ namespace Velvet.Tests
             return V.Label(className: "whitespace-pre-line", text: text);
         }
 
-        // Stable delegate identity (a static readonly field, not a per-render closure) so InvokeRefCallback's
+        // Stable delegate identity (a static readonly field, not a per-render closure) so SyncRefCallback's
         // same-identity skip means this fires exactly once, at mount — the driven patch below then exercises
         // ONLY the text-effect pass's own restraint, not a re-firing ref re-asserting the value each time.
         private static readonly Func<VisualElement, Action> s_manualWhiteSpaceRef = element =>

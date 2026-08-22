@@ -363,6 +363,80 @@ namespace Velvet.Tests
                 "The exited element is still removed from the DOM even though onExitComplete threw");
         }
 
+        // The other half of the presence-callback pair. Both entrances below fire it inside the expansion
+        // rather than handing it to StyleAnimationScheduler, so the throw lands in the middle of the pass
+        // that is still emitting the child.
+        private const string EnterFailureMessage = "arranged failure out of onEnterComplete";
+
+        [Test]
+        public void Given_OnEnterCompleteThrows_When_ThePresenceSuppressesItsFirstMountEnter_Then_TheChildStillMounts()
+        {
+            // Arrange — initial:false is what suppresses the enter on a first mount, which is the branch
+            // that fires the callback with no animation to hand it to.
+            var tree = new VNode[]
+            {
+                V.AnimatePresence(initial: false, children: new VNode[]
+                {
+                    V.Motion(key: "a", transition: NewConfig(),
+                        onEnterComplete: () => throw new InvalidOperationException(EnterFailureMessage),
+                        children: new VNode[] { V.Label(text: "A") }),
+                }),
+            };
+            LogAssert.Expect(LogType.Exception, $"InvalidOperationException: {EnterFailureMessage}");
+
+            // Act
+            var escaped = EnterFailureEscapesFrom(
+                () => _reconciler.Reconcile(Root, Array.Empty<VNode>(), tree));
+
+            // Assert
+            Assert.That((escaped, string.Join(",", LabelTexts())), Is.EqualTo((false, "A")));
+        }
+
+        [Test]
+        public void Given_OnEnterCompleteThrows_When_AVariantMotionDeclaresNoInitialState_Then_TheChildStillMounts()
+        {
+            // Arrange — variants + animate with no initial rests at variants[animate] and plays no enter,
+            // which is the dispatch's own no-animation branch.
+            var tree = new VNode[]
+            {
+                V.AnimatePresence(children: new VNode[]
+                {
+                    V.Motion(key: "a", transition: NewConfig(),
+                        variants: s_enterVariants, animate: "visible",
+                        onEnterComplete: () => throw new InvalidOperationException(EnterFailureMessage),
+                        children: new VNode[] { V.Label(text: "A") }),
+                }),
+            };
+            LogAssert.Expect(LogType.Exception, $"InvalidOperationException: {EnterFailureMessage}");
+
+            // Act
+            var escaped = EnterFailureEscapesFrom(
+                () => _reconciler.Reconcile(Root, Array.Empty<VNode>(), tree));
+
+            // Assert
+            Assert.That((escaped, string.Join(",", LabelTexts())), Is.EqualTo((false, "A")));
+        }
+
+        private static readonly Dictionary<string, string> s_enterVariants = new()
+        {
+            ["visible"] = "opacity-100",
+            ["hidden"] = "opacity-0",
+        };
+
+        // Filtered on the arranged message so any other InvalidOperationException still leaves the case.
+        private static bool EnterFailureEscapesFrom(Action reconcile)
+        {
+            try
+            {
+                reconcile();
+                return false;
+            }
+            catch (InvalidOperationException exception) when (exception.Message == EnterFailureMessage)
+            {
+                return true;
+            }
+        }
+
         #endregion
 
         #region Mode Wait

@@ -1680,12 +1680,29 @@ namespace Velvet
                 if (!pass.FirstRender || presence.Initial)
                 {
                     DispatchPresenceEnter(motion, anchor, motionElement, wasExiting,
-                        presence.StaggerDelaySec(pass.Tally.VisualIndex, pass.NewKeyed.Count));
+                        presence.StaggerDelaySec(pass.Tally.VisualIndex, pass.NewKeyed.Count),
+                        pass.BoundaryFiber);
                 }
                 else
                 {
-                    motion.OnEnterComplete?.Invoke();
+                    InvokeEnterComplete(motion, pass.BoundaryFiber);
                 }
+            }
+        }
+
+        // The two enter paths that fire the callback in-pass rather than handing it to
+        // StyleAnimationScheduler share this so the containment is written once, and it is the same
+        // containment RunExitComplete gives the other half of the pair: the emission this sits inside has
+        // bookkeeping still to do, and a user callback must not be what stops it.
+        private static void InvokeEnterComplete(MotionNode motion, ComponentFiber? boundaryFiber)
+        {
+            try
+            {
+                motion.OnEnterComplete?.Invoke();
+            }
+            catch (Exception ex)
+            {
+                ComponentBoundarySearch.PropagateException(boundaryFiber, ex);
             }
         }
 
@@ -1706,7 +1723,8 @@ namespace Velvet
             VisualElement? anchor,
             VisualElement? motionElement,
             bool wasExiting,
-            float staggerDelaySec)
+            float staggerDelaySec,
+            ComponentFiber? boundaryFiber)
         {
             var isVariantMotion = motionElement != null && motion.Variants != null && motion.Animate != null;
             if (isVariantMotion && !wasExiting
@@ -1720,7 +1738,7 @@ namespace Velvet
             else if (isVariantMotion)
             {
                 // Variant Motion without `initial`: rest at variants[animate], no enter anim.
-                motion.OnEnterComplete?.Invoke();
+                InvokeEnterComplete(motion, boundaryFiber);
             }
             else
             {

@@ -243,6 +243,13 @@ namespace Velvet
                 // drain just above. Draining here, at the top-level boundary, is the first point where every
                 // element created in this pass has its final parent.
                 RingOverlay.DrainPendingPlacements(_ctx);
+                // Last, so a ref setup sees the element where the pass finally put it and every cleanup
+                // this pass owed has already run — the portal drain above included, which reconciles a
+                // Portal's children through ChildReconciler directly and so reaches no boundary of its
+                // own. Attaching where the walk creates the element instead would put an arriving
+                // element's setup ahead of a departing element's cleanup, because the general path
+                // creates before it removes.
+                _ctx.DrainRefAttaches();
             }
         }
 
@@ -353,6 +360,8 @@ namespace Velvet
         VisualElement IReconcilerBridge.CreateElementForController(VNode node) => _factory.CreateElement(node);
 
         void IReconcilerBridge.CleanupElementForController(VisualElement element) => _cleaner.CleanupElement(element);
+
+        void IReconcilerBridge.DrainRefAttachesForController() => _ctx.DrainRefAttaches();
 
         VisualElement IReconcilerBridge.PatchNodeForController(VisualElement element, VNode oldNode, VNode newNode)
         {

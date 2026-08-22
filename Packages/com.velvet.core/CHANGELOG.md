@@ -257,6 +257,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Status` first showed it. The outcome is now committed after the handlers on both paths, which is
   where v5 dispatches it, so a handler no longer reads its own call's outcome and `Data` stands only
   under `Status == Success`.
+- A `refCallback` setup, a `refCallback` cleanup cycled by a changed callback identity, an `onCreated:`,
+  a `wrapElement:` and a `V.Motion` `onEnterComplete:` that throw reach the nearest error boundary
+  instead of leaving the reconcile call — the containment a `UseEffect` cleanup and
+  `V.AnimatePresence`'s own `onExitComplete:` already had. Each is application code the reconciler
+  invokes for a component that is still live; with no boundary above it the exception is reported to
+  the console and the pass carries on. The `wrapElement:` escape left an orphan: the element was fully
+  built and its ref already queued, then dropped, so the ref was about to point at an element no tree
+  held — it now takes the slot unwrapped. A ref setup that throws no longer strands the setups queued
+  behind it, and a replacement setup still runs when the cleanup it replaced threw — React's own
+  independence between `safelyDetachRef` and `safelyAttachRef`.
 
 ## [Unreleased — breaking]
 
@@ -268,6 +278,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   portals guide states which containers a portal of either form may target.
 
 ### Changed
+
+- A `refCallback` setup runs at the end of the reconcile pass rather than where the pass creates or
+  patches its element. Nothing moves for a reader outside the pass: layout effects, effects
+  and anything after the `V.Mount` or flush call returns still find the ref attached. What moves is a
+  read taken *during* the pass — another component's render body, an `onCreated:`, a `wrapElement:`, or
+  another ref's setup — which now sees what the previous pass left rather than what this pass has just
+  written, the way React's `ref.current` reads during render. `V.Portal(someRef.Current, …)` for an
+  element the same pass creates is the reachable case: the target resolves on the render after the one
+  that created it, so give the portal a render to arrive on.
+  What the move buys is the ordering the register-in-setup / unregister-in-cleanup idiom needs. The
+  general reconcile path creates the arriving element before it removes the departing one, so an
+  arriving screen's setup registered an id and the departing screen's cleanup then unregistered it —
+  `FiberPortalRegistry` warning that the id was already registered, then ending up holding nothing for
+  it and the portal with nowhere to go. Every cleanup a pass owes now runs before any setup it owes,
+  and that holds for the whole pass rather than for a pair of siblings.
 
 - The container a `V.Component` is written into is part of which instance it is, as the position of a
   component is in React. Two sibling containers each holding the same component now hold two instances
