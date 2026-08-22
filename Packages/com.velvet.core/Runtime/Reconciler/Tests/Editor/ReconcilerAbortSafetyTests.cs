@@ -116,6 +116,9 @@ namespace Velvet.Tests
                 Is.EqualTo((true, 2, "caught", "b")));
         }
 
+        // GREEN_ON_BASE(refactor): the base raises the flag from CreateElement too, so this case is green
+        // there whichever of the two callbacks raises it. The swap is what keeps it that way here, where
+        // one of the two no longer runs from CreateElement at all.
         [Test]
         public void Given_AbortObservedDuringTimeSlicedKeyedReplace_When_Reconciled_Then_TheReplacementIsInsertedAndLaterSiblingIsUntouched()
         {
@@ -126,20 +129,18 @@ namespace Velvet.Tests
             // (V.Mount's re-render path always uses frameBudgetMs: 0), and a real error-boundary
             // component mounted this way would bootstrap its OWN isolated ReconcilerContext (its
             // fiber has no parent fiber to inherit the shared one from — see SetupMount), so
-            // SetAborted() would never reach the context this test observes. A refCallback fired
+            // SetAborted() would never reach the context this test observes. An onCreated fired
             // during CreateElement stands in for the abort a real boundary would raise, exercising
-            // the same _ctx.IsAborted contract without depending on component-fiber parentage.
+            // the same _ctx.IsAborted contract without depending on component-fiber parentage. A
+            // refCallback would not: its setup is queued for the pass boundary, which is past the scan
+            // this drives.
             var oldTree = new VNode[] { V.Label(text: "a", key: "k0"), V.Label(text: "b", key: "k1") };
             Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
             var ctx = Reconciler.Context;
 
             var newTree = new VNode[]
             {
-                V.Div(key: "k0", refCallback: _ =>
-                {
-                    ctx.IsAborted = true;
-                    return null;
-                }),
+                V.ScrollView(key: "k0", onCreated: _ => ctx.IsAborted = true),
                 V.Label(text: "b-updated", key: "k1"),
             };
 
@@ -147,7 +148,7 @@ namespace Velvet.Tests
             Reconciler.Reconcile(Root, oldTree, newTree, frameBudgetMs: 0.001);
             DrainPendingWork();
 
-            // Assert — the rebuilt k0 element is inserted despite the abort (refCallback fires after
+            // Assert — the rebuilt k0 element is inserted despite the abort (onCreated fires after
             // the element is fully built), and the abort stops the scan before k1 is reached, so its
             // original text survives instead of being patched to "b-updated".
             Assert.That((Root.childCount, ((Label)Root.ElementAt(1)).text), Is.EqualTo((2, "b")));

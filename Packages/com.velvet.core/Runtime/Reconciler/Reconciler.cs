@@ -162,6 +162,12 @@ namespace Velvet
                 VNodePool.BeginReleaseScope();
             }
 
+            // Put back rather than cleared, and held across FinishTopLevelPass below: that boundary runs
+            // after the depth is decremented, so the setups its portal drain queues still have to carry
+            // this pass — and a re-render a ref setup commits from the same place opens its own bracket
+            // over the top of this one and has to hand it back.
+            var enclosingPass = _ctx.CurrentPass;
+            _ctx.CurrentPass = this;
             _ctx.SharedReconcileDepth++;
             try
             {
@@ -170,22 +176,29 @@ namespace Velvet
             finally
             {
                 _ctx.SharedReconcileDepth--;
-                if (isTopLevel)
+                try
                 {
-                    try
+                    if (isTopLevel)
                     {
-                        FinishTopLevelPass();
+                        try
+                        {
+                            FinishTopLevelPass();
+                        }
+                        finally
+                        {
+                            // Flush releases staged during the pass (AFTER the drain above, which stages
+                            // more). Guaranteed even if the drain throws (its mark pass can execute a user
+                            // IReadOnlyList via the slot probes): a skipped flush would wedge the pool in
+                            // staging mode for the process lifetime — every later return staged, never
+                            // flushed, pools starving — with no recovery outside the editor's domain reload.
+                            VNodePool.EndReleaseScope();
+                            profilerScope.Dispose();
+                        }
                     }
-                    finally
-                    {
-                        // Flush releases staged during the pass (AFTER the drain above, which stages
-                        // more). Guaranteed even if the drain throws (its mark pass can execute a user
-                        // IReadOnlyList via the slot probes): a skipped flush would wedge the pool in
-                        // staging mode for the process lifetime — every later return staged, never
-                        // flushed, pools starving — with no recovery outside the editor's domain reload.
-                        VNodePool.EndReleaseScope();
-                        profilerScope.Dispose();
-                    }
+                }
+                finally
+                {
+                    _ctx.CurrentPass = enclosingPass;
                 }
             }
         }
@@ -243,6 +256,19 @@ namespace Velvet
                 // drain just above. Draining here, at the top-level boundary, is the first point where every
                 // element created in this pass has its final parent.
                 RingOverlay.DrainPendingPlacements(_ctx);
+                // Last, so a ref setup sees the element where the pass finally put it and every cleanup
+                // this pass owed has already run — the portal drain above included, which reconciles a
+                // Portal's children through ChildReconciler directly and so reaches no boundary of its
+                // own. Attaching where the walk creates the element instead would put an arriving
+                // element's setup ahead of a departing element's cleanup, because the general path
+                // creates before it removes.
+                // A parked pass reaches this boundary as well, and the drain leaves the entries it queued
+                // where they are: the keyed machine processes every arrival before Pass2Remove reaches
+                // any departure, so a slice yielding between the two would attach into that same
+                // create-before-remove order, with Pass2Reorder not having placed anything yet either.
+                // Which pass ends last is not this one's to know, so the call is unconditional and
+                // DrainRefAttaches asks each entry's own pass instead.
+                _ctx.DrainRefAttaches();
             }
         }
 
@@ -293,6 +319,10 @@ namespace Velvet
             // reconciler on the stack.
             var isTopLevel = _ctx.SharedReconcileDepth == 0;
 
+            // A resume continues the pass an earlier slice suspended, so a setup it queues carries that
+            // pass — see Reconcile's own bracket for why the stamp is put back rather than cleared.
+            var enclosingPass = _ctx.CurrentPass;
+            _ctx.CurrentPass = this;
             _ctx.SharedReconcileDepth++;
             // A resume slice rents and returns pooled objects like the original pass, so it gets the
             // same release staging bracket (nested entries are depth-counted inside VNodePool).
@@ -326,6 +356,7 @@ namespace Velvet
                 finally
                 {
                     VNodePool.EndReleaseScope();
+                    _ctx.CurrentPass = enclosingPass;
                 }
             }
         }
@@ -353,6 +384,8 @@ namespace Velvet
         VisualElement IReconcilerBridge.CreateElementForController(VNode node) => _factory.CreateElement(node);
 
         void IReconcilerBridge.CleanupElementForController(VisualElement element) => _cleaner.CleanupElement(element);
+
+        void IReconcilerBridge.DrainRefAttachesForController() => _ctx.DrainRefAttaches();
 
         VisualElement IReconcilerBridge.PatchNodeForController(VisualElement element, VNode oldNode, VNode newNode)
         {
