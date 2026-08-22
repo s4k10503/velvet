@@ -78,7 +78,7 @@ namespace Velvet.Tests
         }
 
         [UnityTest]
-        public IEnumerator Given_AsyncVelvetTaskAwaitingABclTaskWithTheContextSuppressed_When_ThatTaskCompletesOffTheMainThread_Then_ItResumesOffTheMainThread()
+        public IEnumerator Given_AsyncVelvetTaskAwaitingABclTaskWithTheSynchronizationContextSuppressed_When_ThatTaskCompletesOffTheMainThread_Then_TheContinuationDoesNotReturnToTheMainThread()
         {
             // Arrange
             var gate = new TaskCompletionSource<bool>();

@@ -80,6 +80,171 @@ namespace Velvet.Tests
                 Builder.SetStateMachine(stateMachine);
         }
 
+        // Reaching either AwaitUnsafeOnCompleted overload takes an awaiter of the fixture's own: both
+        // awaiters Velvet declares implement INotifyCompletion alone, so neither satisfies the
+        // ICriticalNotifyCompletion those overloads constrain their awaiter to.
+        sealed class ContinuationGate
+        {
+            Action _continuation;
+
+            public bool IsCompleted { get; private set; }
+
+            public void Register(Action continuation) => _continuation = continuation;
+
+            public void Complete()
+            {
+                IsCompleted = true;
+                var continuation = _continuation;
+                _continuation = null;
+                continuation?.Invoke();
+            }
+        }
+
+        readonly struct ContinuationGateAwaiter : ICriticalNotifyCompletion
+        {
+            readonly ContinuationGate _gate;
+
+            public ContinuationGateAwaiter(ContinuationGate gate) => _gate = gate;
+
+            public bool IsCompleted => _gate.IsCompleted;
+
+            public void GetResult()
+            {
+            }
+
+            public void OnCompleted(Action continuation) => _gate.Register(continuation);
+
+            public void UnsafeOnCompleted(Action continuation) => _gate.Register(continuation);
+        }
+
+        // Same no-SetStateMachine constraint as TwoYieldStructStateMachine.
+        struct YieldingVoidStructStateMachine : IAsyncStateMachine
+        {
+            public int State;
+            public VelvetTaskMethodBuilder Builder;
+            VelvetTask.Awaiter _awaiter;
+
+            public void MoveNext()
+            {
+                try
+                {
+                    if (State == -1)
+                    {
+                        _awaiter = VelvetTask.Yield().GetAwaiter();
+                        if (!_awaiter.IsCompleted)
+                        {
+                            State = 0;
+                            Builder.AwaitOnCompleted(ref _awaiter, ref this);
+                            return;
+                        }
+                    }
+                    else if (State != 0)
+                    {
+                        return;
+                    }
+
+                    _awaiter.GetResult();
+                    State = -2;
+                    Builder.SetResult();
+                }
+                catch (Exception ex)
+                {
+                    State = -2;
+                    Builder.SetException(ex);
+                }
+            }
+
+            public void SetStateMachine(IAsyncStateMachine stateMachine) =>
+                Builder.SetStateMachine(stateMachine);
+        }
+
+        // Same no-SetStateMachine constraint as TwoYieldStructStateMachine.
+        struct GatedVoidStructStateMachine : IAsyncStateMachine
+        {
+            public int State;
+            public VelvetTaskMethodBuilder Builder;
+            public ContinuationGate Gate;
+            ContinuationGateAwaiter _awaiter;
+
+            public void MoveNext()
+            {
+                try
+                {
+                    if (State == -1)
+                    {
+                        _awaiter = new ContinuationGateAwaiter(Gate);
+                        if (!_awaiter.IsCompleted)
+                        {
+                            State = 0;
+                            Builder.AwaitUnsafeOnCompleted(ref _awaiter, ref this);
+                            return;
+                        }
+                    }
+                    else if (State != 0)
+                    {
+                        return;
+                    }
+
+                    _awaiter.GetResult();
+                    State = -2;
+                    Builder.SetResult();
+                }
+                catch (Exception ex)
+                {
+                    State = -2;
+                    Builder.SetException(ex);
+                }
+            }
+
+            public void SetStateMachine(IAsyncStateMachine stateMachine) =>
+                Builder.SetStateMachine(stateMachine);
+        }
+
+        // Same no-SetStateMachine constraint as TwoYieldStructStateMachine.
+        struct GatedValueStructStateMachine : IAsyncStateMachine
+        {
+            public int State;
+            public VelvetTaskMethodBuilder<int> Builder;
+            public ContinuationGate Gate;
+            public int Token;
+            ContinuationGateAwaiter _awaiter;
+
+            public void MoveNext()
+            {
+                try
+                {
+                    if (State == -1)
+                    {
+                        Token = 17;
+                        _awaiter = new ContinuationGateAwaiter(Gate);
+                        if (!_awaiter.IsCompleted)
+                        {
+                            State = 0;
+                            Builder.AwaitUnsafeOnCompleted(ref _awaiter, ref this);
+                            return;
+                        }
+                    }
+                    else if (State != 0)
+                    {
+                        return;
+                    }
+
+                    _awaiter.GetResult();
+                    Token += 5;
+                    State = -2;
+                    Builder.SetResult(Token);
+                }
+                catch (Exception ex)
+                {
+                    State = -2;
+                    Builder.SetException(ex);
+                }
+            }
+
+            public void SetStateMachine(IAsyncStateMachine stateMachine) =>
+                Builder.SetStateMachine(stateMachine);
+        }
+
         static async VelvetTask<int> AccumulateAcrossTwoYields()
         {
             var token = 17;
@@ -127,6 +292,70 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(result, Is.EqualTo(22));
+        }
+
+        [Test]
+        public void Given_StructStateMachineOnTheVoidBuilder_When_EditorUpdateDrained_Then_CompletesTheTaskTheCallerHolds()
+        {
+            // Arrange
+            var stateMachine = new YieldingVoidStructStateMachine
+            {
+                Builder = VelvetTaskMethodBuilder.Create(),
+                State = -1,
+            };
+            stateMachine.Builder.Start(ref stateMachine);
+            var pendingBeforeDrain = !stateMachine.Builder.Task.Status.IsCompleted();
+
+            // Act
+            DrainEditorUpdateForTest();
+            var status = stateMachine.Builder.Task.Status;
+
+            // Assert
+            Assert.That((pendingBeforeDrain, status), Is.EqualTo((true, VelvetTaskStatus.Succeeded)));
+        }
+
+        [Test]
+        public void Given_StructStateMachineOnTheVoidBuilderSuspendedOnACriticalAwaiter_When_ThatAwaiterCompletes_Then_CompletesTheTaskTheCallerHolds()
+        {
+            // Arrange
+            var gate = new ContinuationGate();
+            var stateMachine = new GatedVoidStructStateMachine
+            {
+                Builder = VelvetTaskMethodBuilder.Create(),
+                Gate = gate,
+                State = -1,
+            };
+            stateMachine.Builder.Start(ref stateMachine);
+            var pendingBeforeCompletion = !stateMachine.Builder.Task.Status.IsCompleted();
+
+            // Act
+            gate.Complete();
+            var status = stateMachine.Builder.Task.Status;
+
+            // Assert
+            Assert.That((pendingBeforeCompletion, status), Is.EqualTo((true, VelvetTaskStatus.Succeeded)));
+        }
+
+        [Test]
+        public void Given_StructStateMachineOnTheValueBuilderSuspendedOnACriticalAwaiter_When_ThatAwaiterCompletes_Then_DeliversTheResultToTheCaller()
+        {
+            // Arrange
+            var gate = new ContinuationGate();
+            var stateMachine = new GatedValueStructStateMachine
+            {
+                Builder = VelvetTaskMethodBuilder<int>.Create(),
+                Gate = gate,
+                State = -1,
+            };
+            stateMachine.Builder.Start(ref stateMachine);
+            var pendingBeforeCompletion = !stateMachine.Builder.Task.Status.IsCompleted();
+
+            // Act
+            gate.Complete();
+            var result = stateMachine.Builder.Task.GetAwaiter().GetResult();
+
+            // Assert
+            Assert.That((pendingBeforeCompletion, result), Is.EqualTo((true, 22)));
         }
 
         [Test]

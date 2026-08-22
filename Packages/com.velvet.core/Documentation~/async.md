@@ -17,7 +17,10 @@ An `Awaitable` awaited inside an `async VelvetTask` (for example `Awaitable.EndO
 driven by neither hook, and moving a test to PlayMode does not settle it on its own:
 `AwaitableSecondConsumePlayModeTests` pins `Awaitable.EndOfFrameAsync()` as still not completed
 after three PlayMode frames. Drive a frame-spanning test with `VelvetTask.Yield()`, which both hooks
-do complete.
+do complete, from a `[UnityTest]` — `VelvetTask.ToCoroutine` turns an `async VelvetTask` body into
+the `IEnumerator` such a test returns. A synchronous `[Test]` body does not return to either hook
+between its own await and its assertion, so a `Yield()` awaited there is still pending when the
+assertion reads it.
 
 ## Awaiting something that is not a VelvetTask
 
@@ -28,9 +31,16 @@ against — `AwaitOnCompleted` for `INotifyCompletion` and `AwaitUnsafeOnComplet
 resume inside one with no conversion and no wrapper, which
 `VelvetTaskAwaiterInteropPlayModeTests` pins.
 
-Where an `Awaitable` and a `Task` part is who resumes the continuation. A BCL `Task` resumes through the synchronization
-context captured at the `await`: awaited on Unity's main thread it comes back on the main thread, and
-the same await written `ConfigureAwait(false)` comes back off it. That fixture pins both of those too.
+A BCL `Task` resumes through the synchronization context captured at the `await`: awaited on Unity's
+main thread it comes back on the main thread, and the same await written `ConfigureAwait(false)`
+comes back off it. That fixture pins both of those too.
+
+A continuation that resumed off the main thread must not call back into Velvet. Its pooled task
+sources, its state-machine runners and the frame driver's queues are plain collections that nothing
+synchronizes, and `VelvetTask.Yield()` is not a way back out: scheduling one appends to the same list
+the main-thread drain swaps and clears. Keep off-thread work inside the awaited `Task` and await it
+without `ConfigureAwait(false)`, so the continuation is on the main thread before it reaches any of
+that.
 
 There is no combinator for awaiting several tasks at once, and no await that suppresses the
 cancellation throw.
