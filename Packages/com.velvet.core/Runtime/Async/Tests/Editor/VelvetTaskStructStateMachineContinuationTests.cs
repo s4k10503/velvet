@@ -268,8 +268,9 @@ namespace Velvet.Tests
             var isValueType = stateMachineType!.IsValueType;
 
             // Assert — a class state machine is shared with the runner by reference, so a builder field
-            // written after Rent's copy still reaches it. The value-type path where that copy loses the
-            // write is reached here only through the hand-rolled TwoYieldStructStateMachine.
+            // written after Rent's copy still reaches it. Which kind the compiler emits is its own choice
+            // and not this package's: the hand-rolled machines in this fixture are what reach the
+            // value-type path whatever the editor is compiling with.
             Assert.That(isValueType, Is.False);
         }
 

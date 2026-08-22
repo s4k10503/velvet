@@ -35,9 +35,9 @@ A BCL `Task` resumes through the synchronization context captured at the `await`
 main thread it comes back on the main thread, and the same await written `ConfigureAwait(false)`
 comes back off it. That fixture pins both of those too.
 
-A continuation that resumed off the main thread must not call back into Velvet. Its pooled task
-sources, its state-machine runners and the frame driver's queues are plain collections that nothing
-synchronizes, and `VelvetTask.Yield()` is not a way back out: scheduling one appends to the same list
+A continuation that resumed off the main thread must not call back into Velvet. The pools it rents
+task sources and state-machine runners from, and the frame driver's queues, are plain collections
+that nothing synchronizes, and `VelvetTask.Yield()` is not a way back out: scheduling one appends to the same list
 the main-thread drain swaps and clears. Keep off-thread work inside the awaited `Task` and await it
 without `ConfigureAwait(false)`, so the continuation is on the main thread before it reaches any of
 that.
