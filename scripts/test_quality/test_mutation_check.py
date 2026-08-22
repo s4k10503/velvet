@@ -45,10 +45,6 @@ def load_module():
 
 
 mutation_check = load_module()
-REFUSAL_BASELINE = REPO_ROOT / mutation_check.REFUSAL_BASELINE
-REGENERATE_REFUSALS = ("record a deliberate change to it with\n  {} scripts/test_quality/"
-                       "mutation_check.py --refusals > {}").format(sys.executable,
-                                                                   mutation_check.REFUSAL_BASELINE)
 
 GREEN_RESULTS = '<test-run total="1" passed="1" failed="0" inconclusive="0" />'
 FAILING_RESULTS = ('<test-run total="1" passed="0" failed="1" inconclusive="0">'
@@ -1053,7 +1049,9 @@ class GenerationHealthTests(unittest.TestCase):
     def test_Given_EveryMutableSource_When_TheJoinRefusalIsAsked_Then_ItFiresWhereTheBaselineRecords(self):
         # Arrange — the corpus a campaign may mutate, which is what `mutable` decides and what every
         # verdict is read over; the scans above take Runtime with its tests off, which is neither.
-        recorded = REFUSAL_BASELINE.read_text().splitlines()
+        # A name only the branch carries is read here rather than beside the import, since one at
+        # module scope stops the base tree loading any case in this file.
+        recorded = (REPO_ROOT / mutation_check.REFUSAL_BASELINE).read_text().splitlines()
 
         # Act
         measured = mutation_check.refusal_census(REPO_ROOT)
@@ -1063,7 +1061,10 @@ class GenerationHealthTests(unittest.TestCase):
         # Assert — the directions rather than the two lists, since a failure has to name the source
         # that moved; the recorded length rides along because an emptied file and a silenced census
         # agree.
-        self.assertEqual((len(recorded) > 40, added, removed), (True, [], []), REGENERATE_REFUSALS)
+        self.assertEqual((len(recorded) > 40, added, removed), (True, [], []),
+                         "record a deliberate change to it with\n  {} scripts/test_quality/"
+                         "mutation_check.py --refusals > {}".format(sys.executable,
+                                                                    mutation_check.REFUSAL_BASELINE))
 
 
 class MaskDefectTests(unittest.TestCase):
