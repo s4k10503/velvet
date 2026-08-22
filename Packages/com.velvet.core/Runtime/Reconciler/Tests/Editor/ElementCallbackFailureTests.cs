@@ -176,8 +176,9 @@ namespace Velvet.Tests
             s_setProbe.Invoke("after");
             mounted.FlushStateForTest();
 
-            // Assert
-            Assert.That((s_fallbackShown, Root!.Q<Label>("probe").text), Is.EqualTo((true, "after")));
+            // Assert — the query is null-tolerant so a tree missing the probe altogether disagrees here
+            // rather than raising, which is a reading and not a crash.
+            Assert.That((s_fallbackShown, Root!.Q<Label>("probe")?.text), Is.EqualTo((true, "after")));
         }
 
         #region RefFailureHost component (a boundary over a child whose ref setup throws, beside a probe)
