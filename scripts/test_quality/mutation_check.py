@@ -427,12 +427,14 @@ DECLARES_A_NAME = re.compile("|".join(
 OUT_BARE_NAME = re.compile(r"\bout\s+([A-Za-z_]\w*)\s*[,)]")
 
 # What has to stand in front of a write for `assigned_above` to read it as the block's own. `:` is a
-# STATEMENT_BOUNDARY and is left out here, since the arm behind a `case` label is entered without the
-# arm above it having run.
+# STATEMENT_BOUNDARY and is left out here because a write standing behind one need not have run: a
+# ternary's arm is entered on one side of its condition only. Inside a switch the same exclusion
+# refuses a write standing first in the flip's own arm, which does reach the flip on every path -- a
+# cost of the reading rather than its reason, since the arm above the flip's is SWITCH_LABEL's.
 ASSIGNMENT_LEAD = (";", "{", "}")
 
-# The label the walk cannot pass for the same reason. `default` is spelled with its colon because the
-# word is also an expression.
+# The label the walk cannot pass: the arm behind one is entered without the arm above it having run.
+# `default` is spelled with its colon because the word is also an expression.
 SWITCH_LABEL = re.compile(r"^(?:case\b|default\s*:)")
 
 

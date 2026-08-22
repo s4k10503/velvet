@@ -46,6 +46,9 @@ def load_module():
 
 mutation_check = load_module()
 REFUSAL_BASELINE = REPO_ROOT / mutation_check.REFUSAL_BASELINE
+REGENERATE_REFUSALS = ("record a deliberate change to it with\n  {} scripts/test_quality/"
+                       "mutation_check.py --refusals > {}").format(sys.executable,
+                                                                   mutation_check.REFUSAL_BASELINE)
 
 GREEN_RESULTS = '<test-run total="1" passed="1" failed="0" inconclusive="0" />'
 FAILING_RESULTS = ('<test-run total="1" passed="0" failed="1" inconclusive="0">'
@@ -852,6 +855,24 @@ class LogicFlipTests(unittest.TestCase):
         # Assert
         self.assertEqual(flips, [])
 
+    def test_Given_AWriteInATernarysFalseArm_When_MutantsAreGenerated_Then_TheJoinIsNotFlipped(self):
+        # Arrange -- the write is a finished statement of the same block at the same brace depth, and
+        # the ternary holding it runs it on one side of the condition only.
+        text = ("int bounds;\n"
+                "var x = fallback ? 1 :\n"
+                "    bounds = 0;\n"
+                "Use(x);\n"
+                "if (ready && TryCompute(spec, out bounds))\n"
+                "{\n"
+                "    Use(bounds);\n"
+                "}\n")
+
+        # Act
+        flips = [applied(text, mutant) for mutant in mutants_of(text, "logic")]
+
+        # Assert
+        self.assertEqual(flips, [])
+
     # GREEN_ON_BASE(characterization): a write behind a finished statement keeps the flip it had.
     # Measured over the package, this lead recovers two of the twenty flips the three recover.
     def test_Given_ABareOutWrittenBehindAFinishedStatement_When_MutantsAreGenerated_Then_TheJoinIsStillFlipped(self):
@@ -1036,9 +1057,13 @@ class GenerationHealthTests(unittest.TestCase):
 
         # Act
         measured = mutation_check.refusal_census(REPO_ROOT)
+        added = sorted(set(measured) - set(recorded))
+        removed = sorted(set(recorded) - set(measured))
 
-        # Assert — the recorded length rides along because an emptied file and a silenced census agree.
-        self.assertEqual((len(recorded) > 40, measured), (True, recorded))
+        # Assert — the directions rather than the two lists, since a failure has to name the source
+        # that moved; the recorded length rides along because an emptied file and a silenced census
+        # agree.
+        self.assertEqual((len(recorded) > 40, added, removed), (True, [], []), REGENERATE_REFUSALS)
 
 
 class MaskDefectTests(unittest.TestCase):
