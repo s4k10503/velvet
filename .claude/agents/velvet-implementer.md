@@ -71,4 +71,6 @@ Say what you changed, the RED evidence with its failure text, the suite counts, 
 
 For each comment the change adds, alters or removes, say which of those it was, and for anything that is not a removal, what removing it would have lost.
 
+For each case you added or changed, report the arrangement sweep and what it returned, including a nil result. The `unity-tests` skill owns what that sweep is; do not restate it here or in your report.
+
 If a claim in your instructions turned out to be wrong, say so plainly and show what you measured instead. That has happened repeatedly and is always worth more than politely working around it.

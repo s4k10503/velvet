@@ -4,8 +4,10 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using NUnit.Framework;
+using UnityEngine;
 using UnityEngine.TestTools;
 using Velvet;
+using Velvet.TestUtilities;
 using static Velvet.Tests.RouteTestStubs;
 
 namespace Velvet.Tests
@@ -32,6 +34,8 @@ namespace Velvet.Tests
     /// round it started from nor collects the ones that round records afterwards.</item>
     /// <item>A superseded round still records both a late success and a late failure; supersession withholds
     /// the announcement, not the record.</item>
+    /// <item>A subscriber that throws out of either announcement is reported by the runner, and leaves the
+    /// round's own accounting — its pending count and what it recorded for the route — as the loader left it.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -307,6 +311,127 @@ namespace Velvet.Tests
                 Is.EqualTo("results=succeeds errors=fails"),
                 "A superseded round records what its loaders did on both paths alike");
         });
+
+        #endregion
+
+        #region Announcement failures
+
+        [UnityTest]
+        public IEnumerator Given_ASuspendLoaderThatSucceeded_When_TheCompletionSubscriberThrows_Then_TheRoundStillSettles()
+            => UniTask.ToCoroutine(async () =>
+        {
+            // A round holding nothing for the route would settle too, so the result is folded in.
+            // Arrange
+            var runner = new RouteLoaderRunner();
+            var tcs = new UniTaskCompletionSource<object>();
+            runner.OnSuspendLoaderCompleted += (_, __) => throw new InvalidOperationException("handler-threw");
+            var matches = MakeMatch("test", loader: (ctx, ct) => tcs.Task, loaderMode: LoaderMode.Suspend);
+            var round = runner.RunLoadersSync(matches, CancellationToken.None);
+            ContainedFailureLog.Expect<InvalidOperationException>(nameof(RouteLoaderRunner), "handler-threw");
+
+            // Act
+            tcs.TrySetResult("deferred-data");
+            await UniTask.Yield();
+
+            // Assert
+            Assert.That($"settled={round.Settled} results=[{string.Join("|", round.Results.Keys)}]",
+                Is.EqualTo("settled=True results=[test]"),
+                "A subscriber's failure must not count this round's pending loader off a second time");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_ASuspendLoaderThatSucceeded_When_TheCompletionSubscriberThrows_Then_NoLoadErrorIsRecorded()
+            => UniTask.ToCoroutine(async () =>
+        {
+            // An empty error map is also what a round that recorded nothing at all holds, so the result is
+            // folded in.
+            // Arrange
+            var runner = new RouteLoaderRunner();
+            var tcs = new UniTaskCompletionSource<object>();
+            runner.OnSuspendLoaderCompleted += (_, __) => throw new InvalidOperationException("handler-threw");
+            var matches = MakeMatch("test", loader: (ctx, ct) => tcs.Task, loaderMode: LoaderMode.Suspend);
+            var round = runner.RunLoadersSync(matches, CancellationToken.None);
+            ContainedFailureLog.Expect<InvalidOperationException>(nameof(RouteLoaderRunner), "handler-threw");
+
+            // Act
+            tcs.TrySetResult("deferred-data");
+            await UniTask.Yield();
+
+            // Assert
+            Assert.That(
+                $"errors=[{string.Join("|", round.Errors.Keys)}] results=[{string.Join("|", round.Results.Keys)}]",
+                Is.EqualTo("errors=[] results=[test]"),
+                "What failed is the subscriber, so a caller reading this route's loader error would be reading a load failure that did not happen");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_ASuspendLoaderThatSucceeded_When_TheCompletionSubscriberThrowsACancellation_Then_TheRunnerStillSettlesAndReportsIt()
+            => UniTask.ToCoroutine(async () =>
+        {
+            // A cancellation is the spelling the await's other catch clause takes, so a containment written
+            // against the general one alone leaves this round short a pending count and its report to
+            // whatever observes a forgotten task.
+            // Arrange
+            var runner = new RouteLoaderRunner();
+            var tcs = new UniTaskCompletionSource<object>();
+            runner.OnSuspendLoaderCompleted += (_, __) => throw new OperationCanceledException("handler-cancelled");
+            var matches = MakeMatch("test", loader: (ctx, ct) => tcs.Task, loaderMode: LoaderMode.Suspend);
+            var round = runner.RunLoadersSync(matches, CancellationToken.None);
+            ContainedFailureLog.Expect<OperationCanceledException>(nameof(RouteLoaderRunner), "handler-cancelled");
+            using var reports = new ContainedReportProbe();
+
+            // Act
+            tcs.TrySetResult("deferred-data");
+            await UniTask.Yield();
+
+            // Assert
+            Assert.That($"settled={round.Settled} reports={reports.Count}", Is.EqualTo("settled=True reports=1"),
+                "A cancellation raised by a subscriber is that subscriber's failure, not this round's cancellation");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_ASuspendLoaderThatFailed_When_TheFailureSubscriberThrows_Then_TheRunnerReportsItAndKeepsTheLoaderError()
+            => UniTask.ToCoroutine(async () =>
+        {
+            // The sibling announcement. The round's accounting is finished before it runs, so what this pins
+            // is that a subscriber's throw is reported by the runner rather than left to whatever observes
+            // the forgotten task.
+            // Arrange
+            var runner = new RouteLoaderRunner();
+            var tcs = new UniTaskCompletionSource<object>();
+            runner.OnSuspendLoaderFailed += (_, __) => throw new InvalidOperationException("handler-threw");
+            var matches = MakeMatch("fail", loader: (ctx, ct) => tcs.Task, loaderMode: LoaderMode.Suspend);
+            var round = runner.RunLoadersSync(matches, CancellationToken.None);
+            ContainedFailureLog.Expect<InvalidOperationException>(nameof(RouteLoaderRunner), "handler-threw");
+            using var reports = new ContainedReportProbe();
+
+            // Act
+            tcs.TrySetException(new InvalidOperationException("deferred-failure"));
+            await UniTask.Yield();
+
+            // Assert
+            Assert.That($"reports={reports.Count} errors=[{string.Join("|", round.Errors.Keys)}]",
+                Is.EqualTo("reports=1 errors=[fail]"),
+                "The loader's own failure is still the route's, and the subscriber's is the runner's to report");
+        });
+
+        // A report the runner made carries its tag; one published by whatever observes a task the runner
+        // forgot does not, and that is what these cases read the two apart by.
+        private sealed class ContainedReportProbe : IDisposable
+        {
+            private int _count;
+
+            internal ContainedReportProbe() => Application.logMessageReceived += Capture;
+
+            internal int Count => _count;
+
+            private void Capture(string condition, string stackTrace, LogType type)
+            {
+                if (type == LogType.Error && condition.Contains(nameof(RouteLoaderRunner))) _count++;
+            }
+
+            public void Dispose() => Application.logMessageReceived -= Capture;
+        }
 
         #endregion
 
