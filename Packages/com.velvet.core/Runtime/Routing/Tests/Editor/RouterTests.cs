@@ -639,14 +639,14 @@ namespace Velvet.Tests
 
         [UnityTest]
         public IEnumerator Given_ASubscriberThatThrowsOnASuspendResolution_When_GoBackToThatEntry_Then_TheCacheStillServesIt()
-            => UniTask.ToCoroutine(async () =>
+            => VelvetTask.ToCoroutine(async () =>
         {
             // The framework puts application code behind the resolution announcement: the router answers it by
             // re-emitting the location, and a subscriber is free to fail. The count is read on both sides of the
             // Back because an after-only reading of one run cannot tell a Back that ran none from a Back that
             // ran the only one.
             // Arrange
-            var tcs = new UniTaskCompletionSource<object>();
+            var tcs = new VelvetTaskCompletionSource<object>();
             var loaderRuns = 0;
             var router = new Router(new[]
             {
@@ -665,7 +665,7 @@ namespace Velvet.Tests
             router.OnLocationChanged += Throwing;
             ContainedFailureLog.Expect<InvalidOperationException>(nameof(RouteLoaderRunner), "subscriber-threw");
             tcs.TrySetResult("deferred-data");
-            await UniTask.Yield();
+            await VelvetTask.Yield();
             router.OnLocationChanged -= Throwing;
             var runsBeforeBack = loaderRuns;
             router.NavigateSync("/other");
