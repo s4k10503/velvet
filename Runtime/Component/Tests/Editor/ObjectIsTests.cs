@@ -22,13 +22,15 @@ namespace Velvet.Tests
     /// <c>record class</c> or list counts as changed, while the same instance counts as unchanged. A
     /// <c>record struct</c> element takes the value branch instead, so a fresh one of equal content counts
     /// as unchanged — and that branch reads on into what the element holds, a nested <c>record class</c>
-    /// included.</item>
+    /// included. Nothing is layered on that <c>Equals</c>, so a <c>float</c> the element holds does not
+    /// get the raw-bit reading an element that is itself a float gets: two elements differing only in
+    /// the sign of a zero are unchanged.</item>
     /// <item>The two overloads read the branch from different places — <see cref="ObjectIs.AreEqual{T}"/>
     /// from the static <c>T</c>, <see cref="ObjectIs.AreEqualObjects"/> from the runtime type — and an
     /// operand whose static type is <c>object</c> is where that separates their answers, for a boxed value
     /// type and for a rebuilt string alike.</item>
-    /// <item>Float elements follow raw-bit equality: <c>NaN</c> equals itself and <c>+0</c> does not equal
-    /// <c>-0</c>.</item>
+    /// <item>An element that is itself a float follows raw-bit equality: <c>NaN</c> equals itself and
+    /// <c>+0</c> does not equal <c>-0</c>.</item>
     /// <item>Nullable value types compare by value: a lifted <c>default(T) == null</c> check would otherwise
     /// misroute them to the reference-identity branch, where boxing each operand yields a fresh object every
     /// call and makes two equal values never compare equal — turning every store notification into an apparent
@@ -45,6 +47,8 @@ namespace Velvet.Tests
         private readonly record struct DepRecStruct(int Value);
 
         private readonly record struct NestingStruct(DepRec Held);
+
+        private readonly record struct DepFloatStruct(float Value);
 
         private enum Color { Red, Green }
 
@@ -131,8 +135,7 @@ namespace Velvet.Tests
         // GREEN_ON_BASE(characterization): this branch changes no production code — it says which kind of
         // record the arrangement builds, where the bare word covered a struct it does not describe — so the
         // case is green on both sides. What shows it can fail is the reference fall-through of
-        // AreEqualObjects cut to return true, measured: this case reddens beside the fresh-list case in
-        // this fixture.
+        // AreEqualObjects cut to return true: measured, this case reddens.
         [Test]
         public void Given_FreshRecordInstanceSameContent_When_AreEqualDeps_Then_AreNotEqual()
         {
@@ -142,11 +145,9 @@ namespace Velvet.Tests
                 Is.False);
         }
 
-        // GREEN_ON_BASE(characterization): this case adds no production change — it pins the value branch a
-        // boxed element takes, which the base already has — so it is green on both sides. What shows it can
-        // fail is that branch of AreEqualObjects cut to return false, measured: this case reddens beside the
-        // int and enum element cases, the nested case below and the boxed overload-split case, which share
-        // the branch.
+        // GREEN_ON_BASE(characterization): this case adds no production change — it pins the value branch
+        // a boxed element takes, which the base already has — so it is green on both sides. What shows it can
+        // fail is that branch of AreEqualObjects cut to return false: measured, this case reddens.
         [Test]
         public void Given_FreshRecordStructElementSameContent_When_AreEqualDeps_Then_AreEqual()
         {
@@ -159,11 +160,24 @@ namespace Velvet.Tests
                 Is.True);
         }
 
+        // GREEN_ON_BASE(characterization): this case adds no production change — it pins where the value
+        // branch stops, which the base already decides this way — so it is green on both sides. What shows
+        // it can fail is a float-leaf reading added to that branch, the one the props bail carries:
+        // measured, this case reddens.
+        [Test]
+        public void Given_FloatBearingRecordStructElement_When_OnlyTheZeroSignDiffers_Then_AreEqual()
+        {
+            // Arrange
+            var a = new object[] { new DepFloatStruct(0f) };
+            var b = new object[] { new DepFloatStruct(-0f) };
+
+            // Act + Assert
+            Assert.That(ObjectIs.AreEqualDeps(a, b), Is.True);
+        }
+
         // GREEN_ON_BASE(characterization): this case adds no production change — it pins how far the value
         // branch reads, which the base already decides this way — so it is green on both sides. What shows
-        // it can fail is that branch of AreEqualObjects cut to return false, measured: this case reddens
-        // beside the int, enum and bare record struct element cases and the boxed overload-split case,
-        // which share the branch.
+        // it can fail is that branch of AreEqualObjects cut to return false: measured, this case reddens.
         [Test]
         public void Given_RecordStructElementHoldingFreshEqualRecordClass_When_AreEqualDeps_Then_AreEqual()
         {
@@ -238,9 +252,9 @@ namespace Velvet.Tests
             Assert.That(ObjectIs.AreEqual("a", "b"), Is.False);
         }
 
-        // GREEN_ON_BASE(characterization): the same wording correction as the deps case above, on the
-        // generic overload — green on both sides. What shows it can fail is AreEqual<T>'s reference branch
-        // cut to EqualityComparer<T>.Default, measured: this case reddens beside both overload-split cases.
+        // GREEN_ON_BASE(characterization): the same wording correction as the deps case above, on
+        // the generic overload — green on both sides. What shows it can fail is AreEqual<T>'s reference branch
+        // cut to EqualityComparer<T>.Default: measured, this case reddens.
         [Test]
         public void Given_FreshRecordInstanceSameContent_When_AreEqualGeneric_Then_AreNotEqual()
         {
@@ -341,8 +355,7 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(characterization): this case adds no production change — it pins the split the base
         // already has between the two overloads — so it is green on both sides. What shows it can fail is
-        // AreEqual<T>'s reference guard narrowed to exclude object, measured: this case and the string one
-        // below are the only two in the fixture that redden.
+        // AreEqual<T>'s reference guard narrowed to exclude object: measured, this case reddens.
         [Test]
         public void Given_ValueTypeErasedToObject_When_ComparedBothWays_Then_TheTwoOverloadsDisagree()
         {
@@ -359,9 +372,8 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(characterization): this case adds no production change — it pins the same split on
         // the other operand class the base already splits, a string rather than a boxed value type — so it
-        // is green on both sides. What shows it can fail is AreEqualObjects' string branch deleted,
-        // measured: this case reddens beside the string element case, and the boxed-value-type case above
-        // stays green under that cut.
+        // is green on both sides. What shows it can fail is AreEqualObjects' string branch deleted:
+        // measured, this case reddens.
         [Test]
         public void Given_StringErasedToObject_When_ComparedBothWays_Then_TheTwoOverloadsDisagree()
         {
