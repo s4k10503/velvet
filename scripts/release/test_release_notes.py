@@ -250,13 +250,14 @@ class BuildNotes(unittest.TestCase):
         # Assert
         self.assertIn("Requires Unity 6000.3 or newer", notes)
 
-    def test_Given_the_install_snippet_When_building_Then_the_note_links_to_installation(self):
+    def test_Given_the_install_snippet_When_building_Then_the_requirement_names_only_unity(self):
         # Arrange
         notes = notes_for(COMPLETE)
 
         # Act / Assert
         self.assertIn(
-            f"see [Installation](https://github.com/{REPO}/blob/v2.0.0/README.md#installation)",
+            f"Requires Unity 6000.3 or newer — see "
+            f"[Installation](https://github.com/{REPO}/blob/v2.0.0/README.md#installation) for details.",
             notes,
         )
 

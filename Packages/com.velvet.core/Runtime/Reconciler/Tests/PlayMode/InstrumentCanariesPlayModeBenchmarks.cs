@@ -12,6 +12,9 @@ namespace Velvet.Tests.Performance
         private const int MeasurementCount = 20;
         private const int TimingCanaryIterations = 10000;
 
+        // GREEN_ON_BASE(characterization): a canary that moved with this change would not be a canary.
+        // It charges Unity.PerformanceTesting's GC measurement with a known 16-byte array, answering for the
+        // recorder the async allocation benchmarks beside it read, never for the async paths themselves.
         [Test, Performance]
         public void InstrumentCanary_AllocationBlocks()
         {
@@ -22,6 +25,9 @@ namespace Velvet.Tests.Performance
                 .Run();
         }
 
+        // GREEN_ON_BASE(characterization): a canary that moved with this change would not be a canary.
+        // It charges GCAllocationProbe with a known 16-byte array, so it answers for the probe the async
+        // allocation benchmarks beside it read, never for the async paths themselves.
         [Test, Performance]
         public void InstrumentCanary_AllocationProbeCountsKnownArray()
         {
@@ -36,6 +42,9 @@ namespace Velvet.Tests.Performance
             Assert.That(blocks, Is.GreaterThan(0));
         }
 
+        // GREEN_ON_BASE(characterization): a canary that moved with this change would not be a canary.
+        // It times an arithmetic loop that calls nothing this branch touched, so it answers for the timing
+        // harness the async benchmarks beside it read, never for the async paths themselves.
         [Test, Performance]
         public void InstrumentCanary_TimingBaseline()
         {

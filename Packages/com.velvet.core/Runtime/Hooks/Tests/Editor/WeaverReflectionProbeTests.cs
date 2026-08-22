@@ -71,6 +71,9 @@ namespace Velvet.Tests
                 + " dropping the [Component] metadata registrations");
         }
 
+        // GREEN_ON_BASE(refactor): the synthetic probe type sits outside every carve-out root on both sides.
+        // Dropping "Cysharp." from NonVelvetNamespaceRoots retires a root that Probe.Base never matched, so
+        // this case reads the base's answer for the base's reason, and what changed here is its wording.
         [Test]
         public void Given_OpenVirtualOutsideCarveOutInNonVelvetReferencingAssembly_When_ReachesNonSafeHookClassifies_Then_TreatsCalleeAsNonSafe()
         {
