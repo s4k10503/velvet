@@ -114,6 +114,28 @@ jobs:
       - name: Hook repository-reading tests
         run: python3 scripts/hooks/test_hook_repository.py
 
+      # Every guard over a merge, posed a pull request based on a branch that is not main. Until a
+      # maintenance branch was cut, every case in this repository posed one based on main, and two
+      # guards had been refusing everything else since they were written.
+      - name: Pull-request base check
+        run: python3 scripts/hooks/pull_request_base_check.py
+
+      # A sweep that reports nothing looks the same whether the guards read the base or the directory
+      # was empty, so these drive the states where it would report something.
+      - name: Pull-request base check tests
+        run: python3 scripts/hooks/test_pull_request_base_check.py
+
+      # The reading both merge guards take their base through. The sweep above exercises its numbered
+      # half through the guards themselves; the other shape is posed here, and that file says why the
+      # sweep cannot hold it.
+      - name: Merge target reading tests
+        run: python3 scripts/hooks/test_merge_target.py
+
+      # The session-start report shares that reading, and what it prints is a rebase command — so the
+      # branch it names is an instruction rather than a number.
+      - name: Stale base report tests
+        run: python3 scripts/hooks/test_stale_main.py
+
       # Holds the body guards' record of which gh options take a value against the gh on the runner,
       # which needs no licence and no token, only `--help`. The script owns what a disagreement
       # costs in either direction.

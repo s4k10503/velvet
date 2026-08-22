@@ -63,8 +63,8 @@ def held_branches(cwd):
 def branch_of(cwd, operands):
     """The branch a `gh pr merge` invocation would merge, or UNREADABLE when it did not answer.
 
-    Read over REST for the reason stale_merge.py states, and read from git when no number is given:
-    the head of the current branch's pull request is that branch, which needs no API at all.
+    Read over REST for the reason `scripts/pr/settle.py` states, and read from git when no number
+    is given: the head of the current branch's pull request is that branch, which needs no API.
     """
     number = next((token for token in operands if token.isdigit()), None)
     if number is None:

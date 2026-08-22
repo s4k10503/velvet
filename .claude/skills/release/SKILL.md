@@ -57,8 +57,8 @@ No issue: the X.Y.Z release.
 Merging to `main` re-runs the split into the `upm` branch on its own; never edit `upm` by hand,
 it is a generated mirror.
 
-From this merge until step 3 runs, `settle.py merge` and `gh pr merge` refuse, and a pull request
-whose checks run in that window goes red. The edit guard is the one to watch: it fires on any ready
+From this merge until step 3 runs, `settle.py merge` and `gh pr merge` refuse anything based on the
+branch that carries the closed version, and a pull request whose checks run in that window goes red. The edit guard is the one to watch: it fires on any ready
 pull request whatever the release is doing, and what the window adds is that the merge it tells you to
 run is now declined. That is deliberate; CONTRIBUTING.md's release section says what it is protecting
 against and what each of those costs. Do not defer step 3 without reading it.
