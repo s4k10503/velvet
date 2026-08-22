@@ -271,11 +271,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   round that loader belonged to. The router answers a resolution by re-emitting the location, so a
   `Router.OnLocationChanged` subscriber can run behind that announcement — and a throw from one was
   caught by the clauses that exist for the loader itself. That counted the round's outstanding loader
-  off a second time, to a pending count of −1 which nothing afterwards raises back to zero, and
-  recorded the throw as that route's loader error. So a caller reading the route's loader error saw a
-  load failure that had not happened, the console carried the subscriber's exception under the name of
-  that failure, and the history entry stayed unsettled — a Back or Forward to it re-ran the loader
-  instead of being served from the cache. The throw is now reported as the subscriber's own and the
+  off a second time and recorded the throw as that route's loader error. So a caller reading the route's
+  loader error saw a load failure that had not happened, and the console carried the subscriber's
+  exception under the name of that failure. Filing it as a failure also ran the router's failure
+  handler, which writes the history entry's snapshot again — this time from a round the second count
+  had corrupted — so the entry stayed unsettled and a Back or Forward to it re-ran the loader instead
+  of being served from the cache. What that second count costs the round itself depends on how many
+  loaders it holds: one leaves it permanently short of settling, and two leave it reporting itself
+  settled while the second loader is still outstanding. The throw is now reported as the subscriber's own and the
   round stands as the loader left it, with its result recorded and no error. A subscriber throwing out
   of the failure announcement is reported the same way, where it used to be left to whatever observes a
   forgotten task.

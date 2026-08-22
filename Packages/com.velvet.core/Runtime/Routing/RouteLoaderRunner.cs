@@ -155,9 +155,10 @@ namespace Velvet
                 _activeSuspendTaskCount++;
                 object result;
                 // Only the await is inside: an announcement made from within it is taken for the loader by
-                // the clauses that follow — the round's pending loader counted off a second time, leaving a
-                // round that can never settle, and the general clause filing the throw as the route's load
-                // error besides.
+                // the clauses that follow — the round's pending loader counted off a second time, and the
+                // general clause filing the throw as the route's load error besides. What the second count
+                // costs depends on how many loaders the round holds: one leaves it at -1 and permanently
+                // unsettled, two leave it at 0 and settled while the second loader is still outstanding.
                 try
                 {
                     result = await task;
