@@ -5,6 +5,21 @@ All notable changes to this package are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- `Hooks.Use(factory, resourceKey)` compares the resource key by value, so a key a render builds names
+  the resource the previous render named instead of starting a new one. The comparison closed over the
+  parameter's own `object` type and took the reference branch for every key whatever it held, so a
+  string built at run time — the query id the parameter's documentation recommends — and an id boxed at
+  the call boundary each tore the resource down and restarted it on every render. Under a `V.Suspense`
+  that cost the boundary its resolve, since the render a landing loader asks for restarted the loader
+  and suspended again. Nothing said so either: the warning about a resource restarting every render is
+  gated on the key being omitted, and an omitted key is the factory delegate, which a delegate's own
+  identity comparison covers either way. A key of any other reference type is still compared by
+  instance, so that omitted-key behaviour is unchanged.
+
 ## [2.1.1] - 2026-08-21
 
 ### Highlights

@@ -17,13 +17,13 @@ namespace Velvet
     {
         FiberAsyncResourceStatus Status { get; }
 
-        // Identity of the resource this slot represents; the slot is keyed by this resource
-        // instance. When the next render presents a key that is not reference-equal, the slot is recreated.
+        // Hooks.UseCore compares the key a later render presents against this one and recreates the
+        // slot when they differ.
         object ResourceKey { get; }
     }
 
     // State machine representing a single async fetch.
-    // Stored in a Use<T> slot and reused across re-renders when deps are equal.
+    // Stored in a Use<T> slot and reused across re-renders while the resource key is unchanged.
     // State transitions: Pending → Success / Error. Once a terminal state is entered, it does not restart
     // (the entire slot is discarded and recreated).
     // Cancel / Dispose cancels the token, but if the loader does not honor ct the task may keep running internally.
