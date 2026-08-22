@@ -346,8 +346,11 @@ namespace Velvet
                         motionNode, out var standaloneFromClasses, out var standaloneToClasses))
                 {
                     var t = motionNode.Transition;
+                    // Contained on the same terms the presence expansion's own enters are, and attributed
+                    // to the component whose render reached this create — the owner SyncRefCallback reads
+                    // for the same element, captured here because the callback can fire frames later.
                     _ctx.StyleAnimationScheduler.PlayVariantEnter(element, standaloneFromClasses, standaloneToClasses,
-                        t, motionNode.OnEnterComplete);
+                        t, GeneralPathReconciler.ContainedEnterComplete(motionNode, _ctx.FiberStack.Current));
                 }
                 else
                 {

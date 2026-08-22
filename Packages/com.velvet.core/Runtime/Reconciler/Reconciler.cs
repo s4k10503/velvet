@@ -249,7 +249,12 @@ namespace Velvet
                 // own. Attaching where the walk creates the element instead would put an arriving
                 // element's setup ahead of a departing element's cleanup, because the general path
                 // creates before it removes.
-                _ctx.DrainRefAttaches();
+                // A parked pass reaches this boundary as well, and is skipped: the keyed machine
+                // processes every arrival before Pass2Remove reaches any departure, so a slice yielding
+                // between the two would drain into that same create-before-remove order, with
+                // Pass2Reorder not having placed anything yet either. The slice that ends the pass
+                // drains what the parked ones queued.
+                if (!HasPendingWork) _ctx.DrainRefAttaches();
             }
         }
 

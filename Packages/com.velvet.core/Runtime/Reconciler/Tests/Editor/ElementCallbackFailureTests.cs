@@ -26,11 +26,26 @@ namespace Velvet.Tests
     /// Each reads whether the failure left the reconcile call beside the state it is named for, because a
     /// tree where it escapes never reaches that state and a bare rethrow says nothing about which of the
     /// two moved.
+    /// <para>
+    /// A case naming no boundary reads the console fall-through. The two that register one read the
+    /// arrangement under which a caught failure calls SetAborted — and a ref setup runs at a point where
+    /// nothing downstream consumes that flag unless the drain does.
+    /// </para>
     /// </summary>
     [TestFixture]
     internal sealed class ElementCallbackFailureTests : ReconcilerTestFixture
     {
         private const string FailureMessage = "arranged failure out of an element callback";
+
+        private static bool s_fallbackShown;
+        private static StateUpdater<string> s_setProbe;
+
+        public override void SetUp()
+        {
+            base.SetUp();
+            s_fallbackShown = false;
+            s_setProbe = default;
+        }
 
         [Test]
         public void Given_ARefSetupThatThrows_When_TheQueuedSetupsRun_Then_TheOneBehindItStillAttaches()
@@ -136,6 +151,72 @@ namespace Velvet.Tests
             Assert.That((escaped, Root!.childCount == 1 && ReferenceEquals(captured, Root.ElementAt(0))),
                 Is.EqualTo((false, true)));
         }
+
+        [Test]
+        public void Given_ARefSetupThatThrows_When_ABoundaryIsRegisteredAboveIt_Then_ItCatchesInsteadOfTheConsole()
+        {
+            // Arrange — no LogAssert.Expect: a boundary consuming the exception is the difference this
+            // reads, and an unexpected console exception fails the case on its own.
+
+            // Act
+            using var mounted = V.Mount(Root, V.Component(RefFailureHost, key: "host"));
+
+            // Assert
+            Assert.That((s_fallbackShown, Root!.Q<Label>("fallback") != null), Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_ABoundaryCaughtARefSetupFailure_When_AnUnrelatedFiberRendersNext_Then_ItsChangeStillCommits()
+        {
+            // Arrange — the probe Label is outside the boundary, so nothing about it was replaced by the
+            // fallback and its next render is an ordinary pass on the same shared context.
+            using var mounted = V.Mount(Root, V.Component(RefFailureHost, key: "host"));
+
+            // Act
+            s_setProbe.Invoke("after");
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That((s_fallbackShown, Root!.Q<Label>("probe").text), Is.EqualTo((true, "after")));
+        }
+
+        #region RefFailureHost component (a boundary over a child whose ref setup throws, beside a probe)
+
+        [Component]
+        private static VNode RefFailureHost()
+        {
+            var (probe, setProbe) = Hooks.UseState("before");
+            s_setProbe = setProbe;
+            // The probe follows the boundary rather than preceding it: a fallback swap reconciles from
+            // the boundary's mount point at slot 0, so a sibling ahead of the boundary sits inside the
+            // range that swap rewrites and would be replaced by the fallback instead.
+            return V.Div(children: new VNode[]
+            {
+                V.Component(RefFailureBoundary, key: "boundary"),
+                V.Label(name: "probe", text: probe),
+            });
+        }
+
+        [Component(IsErrorBoundary = true)]
+        private static VNode RefFailureBoundary()
+        {
+            Hooks.UseFallback(_ =>
+            {
+                s_fallbackShown = true;
+                return V.Label(name: "fallback", text: "caught");
+            });
+            return V.Component(FailingRefChild, key: "child");
+        }
+
+        // The setup is attributed to the component that rendered the element, and the boundary search
+        // starts above that component — so the failing ref belongs to a child of the boundary rather than
+        // to the boundary itself.
+        [Component]
+        private static VNode FailingRefChild()
+            => V.Div(name: "failing",
+                refCallback: _ => throw new InvalidOperationException(FailureMessage));
+
+        #endregion
 
         // One line, not the two a FiberLogger.LogException site leaves: with no error boundary registered
         // the boundary search reports through Debug.LogException.

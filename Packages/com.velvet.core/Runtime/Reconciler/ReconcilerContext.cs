@@ -1153,6 +1153,13 @@ namespace Velvet
                     // Ahead of the setup, so a setup that re-queues this same element appends a fresh
                     // entry instead of overwriting the one being run.
                     _pendingRefAttachIndex.Remove(element);
+                    // Ahead of the setup too, so an element the setup itself takes out of the tree is one
+                    // FiberElementCleaner finds an entry for and removes. A setup CAN reach that: it runs
+                    // at depth zero now, where a discrete event it dispatches commits synchronously instead
+                    // of being held back. Recorded only afterwards, the removal would find no entry and the
+                    // write below would then add one for an element no tree holds, past the removal that
+                    // would have taken it.
+                    RefCallbacks[element] = (callback, null);
                     System.Action? cleanup = null;
                     try
                     {
@@ -1162,7 +1169,7 @@ namespace Velvet
                     {
                         ContainUserCallbackFailure(owner, exception);
                     }
-                    RefCallbacks[element] = (callback, cleanup);
+                    if (RefCallbacks.ContainsKey(element)) RefCallbacks[element] = (callback, cleanup);
                 }
             }
             finally
@@ -1170,6 +1177,12 @@ namespace Velvet
                 _pendingRefAttaches.Clear();
                 _pendingRefAttachIndex.Clear();
                 _drainingRefAttaches = false;
+                // An abort raised in this loop is one a boundary raised for a setup, and this is the only
+                // point left that can consume it: no walk is on the stack (the depth guard above), and the
+                // pass boundary that calls this made both of its own consuming writes before calling. Left
+                // set, ChildReconciler.Reconcile's entry guard returns out of the next pass having touched
+                // nothing.
+                IsAborted = false;
             }
         }
 

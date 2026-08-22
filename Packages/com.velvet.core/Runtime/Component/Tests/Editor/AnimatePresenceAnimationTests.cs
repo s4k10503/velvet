@@ -363,9 +363,10 @@ namespace Velvet.Tests
                 "The exited element is still removed from the DOM even though onExitComplete threw");
         }
 
-        // The other half of the presence-callback pair. Both entrances below fire it inside the expansion
-        // rather than handing it to StyleAnimationScheduler, so the throw lands in the middle of the pass
-        // that is still emitting the child.
+        // The other half of the presence-callback pair. The first two entrances below fire it inside the
+        // expansion rather than handing it to StyleAnimationScheduler; the last three hand it over and the
+        // scheduler fires it back inside the same call, because StyleTransitionConfig.None declares no
+        // duration to wait out. All five land in the middle of a pass.
         private const string EnterFailureMessage = "arranged failure out of onEnterComplete";
 
         [Test]
@@ -406,6 +407,76 @@ namespace Velvet.Tests
                         onEnterComplete: () => throw new InvalidOperationException(EnterFailureMessage),
                         children: new VNode[] { V.Label(text: "A") }),
                 }),
+            };
+            LogAssert.Expect(LogType.Exception, $"InvalidOperationException: {EnterFailureMessage}");
+
+            // Act
+            var escaped = EnterFailureEscapesFrom(
+                () => _reconciler.Reconcile(Root, Array.Empty<VNode>(), tree));
+
+            // Assert
+            Assert.That((escaped, string.Join(",", LabelTexts())), Is.EqualTo((false, "A")));
+        }
+
+        [Test]
+        public void Given_OnEnterCompleteThrows_When_ThePresenceEnterHasNoDurationToWaitOut_Then_TheChildStillMounts()
+        {
+            // Arrange — no variants, so the dispatch takes the classic PlayEnter branch and hands the
+            // callback to the scheduler rather than firing it itself.
+            var tree = new VNode[]
+            {
+                V.AnimatePresence(children: new VNode[]
+                {
+                    V.Motion(key: "a", transition: StyleTransitionConfig.None,
+                        onEnterComplete: () => throw new InvalidOperationException(EnterFailureMessage),
+                        children: new VNode[] { V.Label(text: "A") }),
+                }),
+            };
+            LogAssert.Expect(LogType.Exception, $"InvalidOperationException: {EnterFailureMessage}");
+
+            // Act
+            var escaped = EnterFailureEscapesFrom(
+                () => _reconciler.Reconcile(Root, Array.Empty<VNode>(), tree));
+
+            // Assert
+            Assert.That((escaped, string.Join(",", LabelTexts())), Is.EqualTo((false, "A")));
+        }
+
+        [Test]
+        public void Given_OnEnterCompleteThrows_When_ThePresenceVariantEnterHasNoDurationToWaitOut_Then_TheChildStillMounts()
+        {
+            // Arrange — variants + animate + initial is the branch that hands the callback to the variant
+            // play instead of the classic one.
+            var tree = new VNode[]
+            {
+                V.AnimatePresence(children: new VNode[]
+                {
+                    V.Motion(key: "a", transition: StyleTransitionConfig.None,
+                        variants: s_enterVariants, initial: "hidden", animate: "visible",
+                        onEnterComplete: () => throw new InvalidOperationException(EnterFailureMessage),
+                        children: new VNode[] { V.Label(text: "A") }),
+                }),
+            };
+            LogAssert.Expect(LogType.Exception, $"InvalidOperationException: {EnterFailureMessage}");
+
+            // Act
+            var escaped = EnterFailureEscapesFrom(
+                () => _reconciler.Reconcile(Root, Array.Empty<VNode>(), tree));
+
+            // Assert
+            Assert.That((escaped, string.Join(",", LabelTexts())), Is.EqualTo((false, "A")));
+        }
+
+        [Test]
+        public void Given_OnEnterCompleteThrows_When_AStandaloneMotionPlaysItsOwnMountEnter_Then_TheChildStillMounts()
+        {
+            // Arrange — outside any AnimatePresence, which is the enter the create path plays itself.
+            var tree = new VNode[]
+            {
+                V.Motion(transition: StyleTransitionConfig.None,
+                    variants: s_enterVariants, initial: "hidden", animate: "visible",
+                    onEnterComplete: () => throw new InvalidOperationException(EnterFailureMessage),
+                    children: new VNode[] { V.Label(text: "A") }),
             };
             LogAssert.Expect(LogType.Exception, $"InvalidOperationException: {EnterFailureMessage}");
 

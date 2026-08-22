@@ -1690,7 +1690,7 @@ namespace Velvet
             }
         }
 
-        // The two enter paths that fire the callback in-pass rather than handing it to
+        // The enter paths that fire the callback in-pass rather than handing it to
         // StyleAnimationScheduler share this so the containment is written once, and it is the same
         // containment RunExitComplete gives the other half of the pair: the emission this sits inside has
         // bookkeeping still to do, and a user callback must not be what stops it.
@@ -1705,6 +1705,13 @@ namespace Velvet
                 ComponentBoundarySearch.PropagateException(boundaryFiber, ex);
             }
         }
+
+        // What StyleAnimationScheduler is handed, rather than the user's own delegate: a play whose
+        // duration is zero — StyleTransitionConfig.None is one — completes inside the Play* call that
+        // starts it (StyleAnimationScheduler.ValidateDuration), and the enter dispatches make that call
+        // from inside the pass.
+        internal static Action? ContainedEnterComplete(MotionNode motion, ComponentFiber? boundaryFiber)
+            => motion.OnEnterComplete == null ? null : () => InvokeEnterComplete(motion, boundaryFiber);
 
         // A variant Motion (carrying variants + animate) manages its resting state through variant classes:
         // variants[animate] is applied at mount and restored by CancelExit on an exit-cancel. So it only ever
@@ -1733,7 +1740,7 @@ namespace Velvet
                 // `initial`: enter from variants[initial] to variants[animate] (kept as the persistent
                 // resting state).
                 _ctx.StyleAnimationScheduler.PlayVariantEnter(motionElement, fromClasses, toClasses,
-                    motion.Transition, motion.OnEnterComplete, staggerDelaySec);
+                    motion.Transition, ContainedEnterComplete(motion, boundaryFiber), staggerDelaySec);
             }
             else if (isVariantMotion)
             {
@@ -1743,7 +1750,7 @@ namespace Velvet
             else
             {
                 _ctx.StyleAnimationScheduler.PlayEnter(anchor, motion.Transition,
-                    motion.OnEnterComplete, staggerDelaySec);
+                    ContainedEnterComplete(motion, boundaryFiber), staggerDelaySec);
             }
         }
 
