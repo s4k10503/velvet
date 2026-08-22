@@ -37,6 +37,8 @@ namespace Velvet.Tests
     /// <item><c>CurrentLoaderData</c> is a snapshot rather than a live view, so a Suspend loader resolving
     /// afterwards leaves the dictionary an earlier caller is holding untouched.</item>
     /// <item><c>OnLocationChanged</c> fires once per navigation with the committed location.</item>
+    /// <item>A subscriber that throws out of the re-emit a Suspend resolution drives leaves the entry settled,
+    /// so the Back cache still serves it.</item>
     /// <item>An optional <see cref="IRouteScopeFactory"/> is exposed through <c>ScopeFactory</c> and is null
     /// when not supplied.</item>
     /// <item>A concurrent navigation arriving during an async Blocker await cancels the in-flight navigation
@@ -634,6 +636,47 @@ namespace Velvet.Tests
             // Assert
             Assert.That(router.CurrentLoaderErrors["/deferred"].Message, Does.Contain("deferred-failure"),
                 "The Back cache hit restores the post-resolution error recorded by the Suspend loader");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_ASubscriberThatThrowsOnASuspendResolution_When_GoBackToThatEntry_Then_TheCacheStillServesIt()
+            => UniTask.ToCoroutine(async () =>
+        {
+            // The framework puts application code behind the resolution announcement: the router answers it by
+            // re-emitting the location, and a subscriber is free to fail. The count is read on both sides of the
+            // Back because an after-only reading of one run cannot tell a Back that ran none from a Back that
+            // ran the only one.
+            // Arrange
+            var tcs = new UniTaskCompletionSource<object>();
+            var loaderRuns = 0;
+            var router = new Router(new[]
+            {
+                Route("/", children: new[]
+                {
+                    Route("deferred", loader: (ctx, ct) =>
+                    {
+                        loaderRuns++;
+                        return tcs.Task;
+                    }, loaderMode: LoaderMode.Suspend),
+                    Route("other"),
+                }),
+            });
+            router.NavigateSync("/deferred");
+            void Throwing(RouterLocation _) => throw new InvalidOperationException("subscriber-threw");
+            router.OnLocationChanged += Throwing;
+            ContainedFailureLog.Expect<InvalidOperationException>(nameof(RouteLoaderRunner), "subscriber-threw");
+            tcs.TrySetResult("deferred-data");
+            await UniTask.Yield();
+            router.OnLocationChanged -= Throwing;
+            var runsBeforeBack = loaderRuns;
+            router.NavigateSync("/other");
+
+            // Act
+            router.GoBackSync();
+
+            // Assert
+            Assert.That($"beforeBack={runsBeforeBack} afterBack={loaderRuns}", Is.EqualTo("beforeBack=1 afterBack=1"),
+                "An entry left unsettled by a failing subscriber is one the Back cache does not serve, so the loader runs again");
         });
 
         #endregion
