@@ -13,7 +13,8 @@ namespace Velvet
         // render range rather than where the item was created, for the reason
         // ReconcilerContext.SyncRefCallback gives — and this is the seam that reaches it, because the
         // item loop also runs outside any reconcile pass (BeginDetachedItemScope names when). A no-op
-        // when a pass IS on the stack (the list was patched), which leaves the entries to that boundary.
+        // when a pass IS on the stack (the list was patched), which leaves the entries to that boundary,
+        // and while any pass on this context is parked, which leaves them to whichever boundary finds none.
         void DrainRefAttachesForController();
 
         // Patches an item element previously returned by CreateElementForController or by this

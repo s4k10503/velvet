@@ -1143,6 +1143,10 @@ namespace Velvet
             // A setup that re-enters a top-level pass leaves its own entries to the loop below, which
             // re-reads the count; draining them from inside would run the ones already run a second time.
             if (_drainingRefAttaches) return;
+            // The queue is the context's while a pass belongs to one Reconciler, so the pass that reaches
+            // this boundary is not necessarily the one that queued the entries. That question is asked here
+            // rather than at either call site, where only the calling pass's own answer is in hand.
+            if (AnyPassParked()) return;
             _drainingRefAttaches = true;
             try
             {
@@ -1168,8 +1172,28 @@ namespace Velvet
                     catch (System.Exception exception)
                     {
                         ContainUserCallbackFailure(owner, exception);
+                        ConsumeAbortRaisedByASetup();
                     }
-                    if (RefCallbacks.ContainsKey(element)) RefCallbacks[element] = (callback, cleanup);
+                    if (RefCallbacks.ContainsKey(element))
+                    {
+                        RefCallbacks[element] = (callback, cleanup);
+                    }
+                    else if (cleanup != null)
+                    {
+                        // The setup took its own element out of the tree, so the entry that would have
+                        // fired this cleanup on the element's removal is already gone and no later removal
+                        // will find one. Firing it here is what keeps a setup that acquires a resource from
+                        // leaking it.
+                        try
+                        {
+                            cleanup();
+                        }
+                        catch (System.Exception exception)
+                        {
+                            ContainUserCallbackFailure(owner, exception);
+                            ConsumeAbortRaisedByASetup();
+                        }
+                    }
                 }
             }
             finally
@@ -1177,13 +1201,43 @@ namespace Velvet
                 _pendingRefAttaches.Clear();
                 _pendingRefAttachIndex.Clear();
                 _drainingRefAttaches = false;
-                // An abort raised in this loop is one a boundary raised for a setup, and this is the only
-                // point left that can consume it: no walk is on the stack (the depth guard above), and the
-                // pass boundary that calls this made both of its own consuming writes before calling. Left
-                // set, ChildReconciler.Reconcile's entry guard returns out of the next pass having touched
-                // nothing.
+                // Repeated from the catch above so this loop leaves the flag clear whichever entrance ran
+                // it. Dropping it would rest on that catch being the only raise a setup can reach, which
+                // nothing here establishes.
                 IsAborted = false;
             }
+        }
+
+        // A boundary that caught a setup's failure raised the abort with no walk left on the stack for it
+        // to stop. Consuming it here rather than once the loop ends is what leaves the setups queued behind
+        // it a context they can still work in: a later boundary's own TryShowFallback reconciles through
+        // ChildReconciler.Reconcile, and so does a state write a later setup commits synchronously, and
+        // its entry guard returns out of either having touched nothing. Not inside
+        // ContainUserCallbackFailure, which the create-path callbacks and DetachRefCallback reach as
+        // well: an abort raised through one of those is not this loop's to consume.
+        private void ConsumeAbortRaisedByASetup() => IsAborted = false;
+
+        // The passes a frame budget suspended mid-flight. The setup queue above belongs to this context
+        // while a pass belongs to one Reconciler, so a fiber that finishes its own pass while a sibling's
+        // is parked would otherwise run the sibling's setups between the arrivals that queued them and the
+        // departures still ahead of them — the create-before-remove order the drain's position exists to
+        // undo. Confirmed against HasPendingWork before it is read rather than trusted, so a stale entry
+        // cannot suspend the drain for good.
+        private readonly HashSet<Reconciler> _parkedPasses = new();
+
+        private static readonly System.Predicate<Reconciler> s_passCompleted = reconciler => !reconciler.HasPendingWork;
+
+        internal void NoteParkedPass(Reconciler reconciler, bool parked)
+        {
+            if (parked) _parkedPasses.Add(reconciler);
+            else _parkedPasses.Remove(reconciler);
+        }
+
+        internal bool AnyPassParked()
+        {
+            if (_parkedPasses.Count == 0) return false;
+            _parkedPasses.RemoveWhere(s_passCompleted);
+            return _parkedPasses.Count > 0;
         }
 
         // Wrapper-less Suspense fallback state: per boundary fiber, the scoped position keys of the

@@ -252,9 +252,12 @@ namespace Velvet
                 // A parked pass reaches this boundary as well, and is skipped: the keyed machine
                 // processes every arrival before Pass2Remove reaches any departure, so a slice yielding
                 // between the two would drain into that same create-before-remove order, with
-                // Pass2Reorder not having placed anything yet either. The slice that ends the pass
-                // drains what the parked ones queued.
-                if (!HasPendingWork) _ctx.DrainRefAttaches();
+                // Pass2Reorder not having placed anything yet either. Which pass ends last is not this
+                // one's to know: a park is registered on the context here, and DrainRefAttaches refuses
+                // while a registration is still in flight.
+                var parked = HasPendingWork;
+                _ctx.NoteParkedPass(this, parked);
+                if (!parked) _ctx.DrainRefAttaches();
             }
         }
 
@@ -479,6 +482,9 @@ namespace Velvet
 
         public void Dispose()
         {
+            // Deregistered before the pending state below is released: a disposed Reconciler answers the
+            // context's parked-pass question no more, and an indexed park survives DiscardPendingKeyedState.
+            _ctx.NoteParkedPass(this, parked: false);
             // Per-Reconciler pending state always needs releasing — even non-owners may have
             // suspended their own keyed run while sharing the root's registries.
             _childReconciler.DiscardPendingKeyedState();

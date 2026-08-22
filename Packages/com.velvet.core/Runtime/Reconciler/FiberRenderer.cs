@@ -450,6 +450,9 @@ namespace Velvet
                 // before the next RenderAndReconcile.
                 fiber.PendingLayoutEffects?.Clear();
                 fiber.PendingInsertionEffects?.Clear();
+                // Cleared here rather than where it is read, so a fallback swapped over this fiber's tree
+                // before this render began is not read as this one's.
+                fiber.FallbackReplacedPreviousTree = false;
 
                 var rendered = FiberBeginWork.RunRenderPhaseLoop(fiber);
 
@@ -486,7 +489,9 @@ namespace Velvet
                 // A deleted fiber is treated as a no-op for post-render bookkeeping
                 // rather than continuing to schedule work on it.
                 var reconciler = fiber.Reconciler;
-                if (reconciler == null || reconciler.LastTopLevelWasAborted)
+                // FinishTopLevelPass samples the abort flag before the ref-setup drain it ends with, so a
+                // boundary catching inside that drain is not in the sample — this fiber's own included.
+                if (reconciler == null || reconciler.LastTopLevelWasAborted || fiber.FallbackReplacedPreviousTree)
                 {
                     // A disposed fiber must not retain its newly rendered tree (post-commit
                     // would no longer see it). Aborted reconciles are likewise discarded so the

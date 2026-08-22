@@ -291,7 +291,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - A `refCallback` setup runs at the end of the reconcile pass rather than where the pass creates or
   patches its element. For an element the pass keeps, nothing moves outside the pass: layout effects,
-  effects and anything after the `V.Mount` or flush call returns still find the ref attached. For one
+  effects and anything after the `V.Mount` or flush call returns still find the ref attached. A flush a
+  frame budget spreads over several frames is the exception on that last point: it returns with the pass
+  still going, and the setups run in the slice that completes it — the same slice that runs the effects
+  that pass deferred. For one
   the pass creates and then discards — the leaf of a `V.Suspense` primary that suspends — the setup no
   longer runs at all, where it used to run and then have its cleanup run behind it. What else moves is a
   read taken *during* the pass — another component's render body, an `onCreated:` or a `wrapElement:` —
