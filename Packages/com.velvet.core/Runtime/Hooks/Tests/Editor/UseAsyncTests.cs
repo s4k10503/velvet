@@ -578,10 +578,10 @@ namespace Velvet.Tests
             return V.Label(text: tick.ToString());
         }
 
-        private static UniTask<int> ComputedStringKeyFactory(CancellationToken _)
+        private static VelvetTask<int> ComputedStringKeyFactory(CancellationToken _)
         {
             s_computedStringKeyRuns++;
-            return UniTask.FromResult(7);
+            return VelvetTask.FromResult(7);
         }
 
         private static int s_boxedIntKeyRuns;
@@ -598,13 +598,13 @@ namespace Velvet.Tests
             return V.Label(text: tick.ToString());
         }
 
-        private static UniTask<int> BoxedIntKeyFactory(CancellationToken _)
+        private static VelvetTask<int> BoxedIntKeyFactory(CancellationToken _)
         {
             s_boxedIntKeyRuns++;
-            return UniTask.FromResult(7);
+            return VelvetTask.FromResult(7);
         }
 
-        private static UniTaskCompletionSource<int> s_boundaryKeyLatestSource;
+        private static VelvetTaskCompletionSource<int> s_boundaryKeyLatestSource;
 
         [Component]
         private static VNode ComputedStringKeyBoundaryHostRender()
@@ -622,9 +622,9 @@ namespace Velvet.Tests
 
         // A single shared completion source would already be settled when a restarted resource read it,
         // which would hide the restart this case exists to catch, so each call gets its own pending task.
-        private static UniTask<int> BoundaryKeyFactory(CancellationToken _)
+        private static VelvetTask<int> BoundaryKeyFactory(CancellationToken _)
         {
-            s_boundaryKeyLatestSource = new UniTaskCompletionSource<int>();
+            s_boundaryKeyLatestSource = new VelvetTaskCompletionSource<int>();
             return s_boundaryKeyLatestSource.Task;
         }
 
