@@ -16,8 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - A `Router.OnLocationChanged` subscriber that threw while a Suspend-mode loader was resolving had
   its exception recorded as that route's load failure. The route reported an error no loader had
-  raised, and the round it belonged to was miscounted: a round holding one loader is left unsettled
-  by that, so a Back to its history entry re-ran the loader instead of being served from the cache.
+  raised, and filing it as a failure ran the router's failure handler, which rewrites the history
+  entry's snapshot from a round the same mistake had miscounted — so a Back to that entry re-ran the
+  loader instead of being served from the cache.
 
 ### Fixed
 
@@ -36,8 +37,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Router.OnLocationChanged` subscriber can run behind that announcement — and a throw from one was
   caught by the clauses that exist for the loader itself. That counted the round's outstanding loader
   off a second time and recorded the throw as that route's loader error. So a caller reading the route's
-  loader error saw a load failure that had not happened, and the console carried the subscriber's
-  exception under the name of that failure. Filing it as a failure also ran the router's failure
+  loader error saw a load failure that had not happened, and the subscriber's exception reached the
+  console through the path that failure takes, naming nothing that would tie it to the subscriber. Filing it as a failure also ran the router's failure
   handler, which writes the history entry's snapshot again — this time from a round the second count
   had corrupted — so the entry stayed unsettled and a Back or Forward to it re-ran the loader instead
   of being served from the cache. What that second count costs the round itself depends on how many
