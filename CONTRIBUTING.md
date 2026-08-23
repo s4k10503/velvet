@@ -686,9 +686,8 @@ Consumers then install a pinned version with:
 
 A maintenance branch is named `<major>.x` and cut from that series' last release; `main` is where the
 next major is built. **One line is maintained at a time — the series immediately before `main`'s.**
-Cutting the next major's line ends the one before it.
 
-**The line takes fixes and does not take features.** A `feat` waits for `main`.
+**The line takes fixes, and the CI its own pull requests need. It does not take features.**
 
 **A commit that carries a breaking change does not come, even when it also carries a fix.** What makes
 one unsplittable is the code: the fix can name a symbol that arrives with the breaking half, so the
@@ -698,8 +697,7 @@ direction, and `main` may already carry its own; ask before opening one.
 
 **Decide per commit, not per `[Unreleased]` entry.** The mapping runs many-to-many, and a commit may
 write no bullet at all. Where one did, ask which section its bullets sit in on `main` today — reading
-the nearest heading out of a diff's context answers the wrong question. Where it did not, the decision
-is only whether the line wants the change.
+the nearest heading out of a diff's context answers the wrong question.
 
 **Cherry-pick with `-x`, in the order the commits landed, and compile after each one.** A clean
 cherry-pick is not evidence the tree still builds: a pick can name a helper that arrives with a commit
@@ -712,7 +710,7 @@ attract it. `changelog_into_closed_version.py`, which step 1 above relies on, is
 `Edit|Write`, so a cherry-pick does not reach it — and the line does not carry that hook at all.
 
 **The record is the `-x` trailer.** Squash as everywhere else, and put the `(cherry picked from commit
-…)` lines **in the pull request body**, which is what becomes the squash message. Do not reach for
+…)` lines **in the pull request body**. Do not reach for
 `git cherry`: measured here, it reported every commit it walked as absent from the line, including the
 ones whose fix the line carries.
 
@@ -720,18 +718,20 @@ A new line needs no change to the merge and release guards — they judge the pu
 branch name, and `### Repository scripts` above says how that is held. What a cut does cost is
 everything else written for one branch:
 
+- each required workflow's `pull_request` trigger must filter by no branch, or a pull request based on
+  the line starts neither workflow and its required checks stay Pending with nothing able to clear them;
 - `.github/dependabot.yml`'s `target-branch`, which names the line rather than `main`, so a new one
-  needs its own entry and the old one's removing;
-- the `protect-main` ruleset, which covers `main` and nothing else, so a new line starts unprotected;
+  needs its own entry;
+- the `protect-main` ruleset, which covers `main` and nothing else, so a new line starts unprotected —
+  and `generators.yml` asserts that ruleset's ref list is exactly `main`, so widening it to reach the
+  line reds every pull request in the repository until that assertion moves too;
 - `upm.yml`, whose force-push of the split and whose repo-wide `PREV_MAIN_TAG` both assume a single
   series is publishing.
 
-A line inherits neither the scripts nor the hooks `main` grew after it was cut, and the two halves are
-not run the same way. Run a script from `main`'s copy: `assert_results_from_this_tree.py` with
+A line inherits neither the scripts nor the hooks `main` grew after it was cut. Run a script from `main`'s copy: `assert_results_from_this_tree.py` with
 `--project` at a checkout the suite has run in, `base_red_check.py` with `--base origin/<line>` besides
 since its default is `origin/main`, and `assume_gate_check.py` with an absolute `--baseline`, which is
-what escapes `--project` — the line carries no record of its own, and `main`'s describes a different
-tree. A hook has no such choice: it runs from whichever tree `CLAUDE_PROJECT_DIR` names, so a worktree
+what escapes `--project`, since the line carries no record of its own. A hook has no such choice: it runs from whichever tree `CLAUDE_PROJECT_DIR` names, so a worktree
 rooted on the line runs the line's copies, and those predate the fix that made a merge guard read the
 pull request's own base.
 
