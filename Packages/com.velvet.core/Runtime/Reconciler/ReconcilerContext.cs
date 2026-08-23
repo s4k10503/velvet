@@ -1148,8 +1148,6 @@ namespace Velvet
         // Motion's resting set and be clobbered by the wrapper's own class patching.
         internal VisualElement? PresenceAnchorMotionElement;
 
-        // The two subjects a prune retires a DOM-less AnimatePresence entry for. A presence whose node
-        // stops being rendered outlives both, which is what RetirePresenceStatesNotReRendered answers for.
         private enum PresenceStateOwner
         {
             // The fiber that rendered the AnimatePresence, unregistered.

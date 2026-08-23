@@ -67,6 +67,10 @@ V.Div(name: "row", className: "flex flex-row gap-x-2", children: new VNode[]
   parent, so put `flex` / `gap-*` / wrapping on the parent.
 - **Framer's splice semantics:** while a ghost exits, surviving siblings keep their positions;
   the ghost holds its slot until the exit completes (the default `Sync` mode).
+- **Inside `V.Portal(targetId:)`:** put the presence under an element in the portal's children
+  rather than directly in them. A presence whose children expand straight into the registered
+  target keeps its departed child there across a close, and a later open brings that child back
+  alongside the new one.
 - Re-adding a key mid-exit cancels the exit and returns the element to its resting variant —
   including inline geometry the pose had overwritten.
 - **What an exit animates:** under the default Tween driver, any USS-transitionable property the
