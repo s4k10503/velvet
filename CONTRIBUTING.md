@@ -702,12 +702,14 @@ the nearest heading out of a diff's context answers the wrong question. Where it
 is only whether the line wants the change.
 
 **Cherry-pick with `-x`, in the order the commits landed, and compile after each one.** A clean
-cherry-pick is not evidence the tree still builds, and neither is the absence of a conflict: where a
-change both adds and removes and the line has nothing to remove, the merge keeps the addition silently.
+cherry-pick is not evidence the tree still builds: a pick can name a helper that arrives with a commit
+that stayed behind. Nor is the absence of a conflict evidence the pick is right — where a change both
+adds and removes and the line has nothing to remove, the merge keeps the addition and compiles.
 
 **Take the CHANGELOG hunk out of the pick and write the entry on the line by hand.** Picked as it
 stands it applies clean and lands in the *released* section, and reopening `## [Unreleased]` does not
-attract it.
+attract it. `changelog_into_closed_version.py`, which step 1 above relies on, is registered against
+`Edit|Write`, so a cherry-pick does not reach it — and the line does not carry that hook at all.
 
 **The record is the `-x` trailer.** Squash as everywhere else, and put the `(cherry picked from commit
 …)` lines **in the pull request body**, which is what becomes the squash message. Do not reach for
@@ -718,19 +720,20 @@ A new line needs no change to the merge and release guards — they judge the pu
 branch name, and `### Repository scripts` above says how that is held. What a cut does cost is
 everything else written for one branch:
 
-- each required workflow's `pull_request` trigger must filter by no branch, or a pull request based on
-  the line starts neither workflow and its required checks stay Pending with nothing able to clear them;
 - `.github/dependabot.yml`'s `target-branch`, which names the line rather than `main`, so a new one
   needs its own entry and the old one's removing;
 - the `protect-main` ruleset, which covers `main` and nothing else, so a new line starts unprotected;
 - `upm.yml`, whose force-push of the split and whose repo-wide `PREV_MAIN_TAG` both assume a single
   series is publishing.
 
-A line also does not inherit the scripts `main` grew after it was cut. `assert_results_from_this_tree.py`
-reads `Library`, so point `--project` at a checkout the suite has run in. `base_red_check.py` wants
-`--base origin/<line>` besides: its default is `origin/main`, and a backport branch's merge base with
-`main` is the release the line was cut from. `assume_gate_check.py` cannot be run against a line at all
-— it resolves `--baseline` under `--project`, and the record is a file the line does not have.
+A line inherits neither the scripts nor the hooks `main` grew after it was cut, and the two halves are
+not run the same way. Run a script from `main`'s copy: `assert_results_from_this_tree.py` with
+`--project` at a checkout the suite has run in, `base_red_check.py` with `--base origin/<line>` besides
+since its default is `origin/main`, and `assume_gate_check.py` with an absolute `--baseline`, which is
+what escapes `--project` — the line carries no record of its own, and `main`'s describes a different
+tree. A hook has no such choice: it runs from whichever tree `CLAUDE_PROJECT_DIR` names, so a worktree
+rooted on the line runs the line's copies, and those predate the fix that made a merge guard read the
+pull request's own base.
 
 ## API documentation
 
