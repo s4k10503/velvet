@@ -624,44 +624,6 @@ behaviour a working application would notice changing.
 3. Run the **UPM** workflow via *Actions ▸ UPM ▸ Run workflow*, entering the same version.
    This tags `vX.Y.Z` on the `upm` (package-at-root) commit and publishes a GitHub release.
 
-### The maintenance line
-
-When a major ships, the series before it gets a maintenance branch named `<major>.x`, cut from that
-series' last release; `main` is where the next major is built. **One line is maintained at a time — the
-series immediately before `main`'s.** Cutting the next major's line ends the one before it.
-
-**The line takes fixes and does not take features.** Somebody on it is there because they cannot yet
-take a breaking change, so a new utility they could have by upgrading is not worth moving code under
-them. A `feat` waits for `main`.
-
-**A commit that carries a breaking change does not come, even when it also carries a fix.** A commit
-that wrote bullets into both open sections is not separable by cherry-picking half of it; if the fix
-is wanted on the line, it is written fresh there.
-
-**The count of `[Unreleased]` entries is not the count of backportable commits.** Decide per commit,
-by asking which section that commit's own bullets sit in on `main` today. Reading the nearest heading
-out of a diff's context answers the wrong question.
-
-**Cherry-pick with `-x`, in the order the commits landed, and compile after each one.** A clean
-cherry-pick is not evidence the tree still builds: a pick can name a helper that arrives with a commit
-that stayed behind. Nor is the absence of a conflict a safe signal — where a change both adds and
-removes, and the line has nothing to remove, the merge keeps the addition silently.
-
-**The record is the `-x` trailer.** `git cherry` cannot answer what a line holds, because relocating a
-CHANGELOG bullet changes a patch id; splitting a backport into one commit per fix does not repair that.
-Squash as everywhere else, and put the `(cherry picked from commit …)` lines **in the pull request
-body**, which is what becomes the squash message.
-
-**Keep an `## [Unreleased]` section open between releases.** Without one a backport's bullet has
-nowhere to land, and appending into the released section above it does not conflict.
-
-Nothing in `.claude/hooks/`, `scripts/` or `.github/workflows/` names a maintenance branch: the merge
-guards read the pull request's own base through `.claude/hooks/lib/merge_target.py`. A new line needs
-no tooling change. What it does not inherit is every script `main` has grown since it was cut, and the
-one to check for is `assert_results_from_this_tree.py` — the failure it catches is a run that compiled
-nowhere, which is the shape a backport produces. Run `main`'s copy with `--project` against a checkout
-of the line.
-
 Between step 2 and step 3, `main` names a version that does not exist. The dispatch builds the note
 from the CHANGELOG section, which was written before anything merged in that window and describes none
 of it — so those commits ship inside the release, undescribed. v2.0.1 spent a day there and took twelve
@@ -719,6 +681,56 @@ Consumers then install a pinned version with:
 ```jsonc
 "com.velvet.core": "https://github.com/s4k10503/velvet.git#v1.0.0"
 ```
+
+### The maintenance line
+
+A maintenance branch is named `<major>.x` and cut from that series' last release; `main` is where the
+next major is built. Cut it before `main` takes a change that series cannot, because from that commit
+on there is no branch able to carry a patch for it. **One line is maintained at a time — the series
+immediately before `main`'s.** Cutting the next major's line ends the one before it.
+
+**The line takes fixes and does not take features.** A feature on it is a second place that feature has
+to keep working, for users who could have it by upgrading instead. A `feat` waits for `main`.
+
+**A fix made on the line comes forward to `main` as its own pull request.** Nothing checks this, and a
+line left ahead of `main` on a file they share means the next line cut from `main` inherits the bug this
+one already fixed.
+
+**A commit that carries a breaking change does not come, even when it also carries a fix.** A commit
+that wrote bullets into both open sections is not separable by cherry-picking half of it; if the fix is
+wanted on the line, it is written fresh there.
+
+**The count of `[Unreleased]` entries is not the count of backportable commits.** Decide per commit, by
+asking which section that commit's own bullets sit in on `main` today. Reading the nearest heading out
+of a diff's context answers the wrong question.
+
+**Cherry-pick with `-x`, in the order the commits landed, and compile after each one.** A clean
+cherry-pick is not evidence the tree still builds: a pick can name a helper that arrives with a commit
+that stayed behind. Nor is the absence of a conflict a safe signal — where a change both adds and
+removes, and the line has nothing to remove, the merge keeps the addition silently.
+
+**Take the CHANGELOG hunk out of the pick and write the entry on the line by hand.** Picked as it
+stands it applies clean and lands in the *released* section, because that is where the context it was
+written against ended up when the release renamed the heading above it; reopening `## [Unreleased]`
+does not attract it. `changelog_into_closed_version.py` is registered against `Edit|Write`, so a
+cherry-pick does not reach it either.
+
+**The record is the `-x` trailer.** Squash as everywhere else, and put the `(cherry picked from commit
+…)` lines **in the pull request body**, which is what becomes the squash message. `git cherry` cannot
+read a line that squashes: the backport arrives as one commit, so there is no per-fix commit for it to
+match, and it reports every commit on `main` as absent from the line.
+
+The merge and release guards need nothing for a new line: they read the pull request's own base through
+`.claude/hooks/lib/merge_target.py`, and `scripts/hooks/pull_request_base_check.py` poses each of them a
+pull request based on something other than `main`. What a cut does cost is what names `main` for other
+reasons — the `target-branch` entry in `.github/dependabot.yml`, the `protect-main` ruleset, which
+covers `main` and nothing else so a new line starts unprotected, and `upm.yml`, whose force-push of the
+split and whose repo-wide `PREV_MAIN_TAG` both assume a single series is publishing.
+
+A line also does not inherit the scripts `main` grew after it was cut, of which
+`assert_results_from_this_tree.py` and `base_red_check.py` (both above) are the two a backport wants.
+Run `main`'s copy with `--project`; the first reads `Library`, so point it at a checkout the suite has
+already run in.
 
 ## API documentation
 
