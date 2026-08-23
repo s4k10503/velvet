@@ -444,7 +444,8 @@ namespace Velvet.Tests
                 return "push";
             }
 
-            // Matched as a prefix, so a paths-ignore block reads as a filter here too.
+            // Prefix-matched because a paths-ignore block stops a workflow starting too, so reading
+            // only paths would leave the other free to reintroduce the filter.
             for (var i = push + 1; i < onBlock.Count && !OnKeyPattern.IsMatch(onBlock[i]); i++)
             {
                 if (onBlock[i].TrimStart().StartsWith("paths", StringComparison.Ordinal))

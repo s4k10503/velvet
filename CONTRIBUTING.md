@@ -566,7 +566,7 @@ on every platform.
 
 The two required checks are aggregates, and the real jobs are not required themselves. A required check
 that does not run stays `Pending` and blocks the pull request with nothing able to clear it, which is what
-a trigger filter, a matrix change or a rename would each cause. The aggregates carry no filter, `needs:`
+a trigger filter, a matrix change or a rename would each cause. The aggregates carry no trigger filter, `needs:`
 the real jobs, and pass when every dependency is `success` **or** `skipped` — the second is what lets a
 fork with no `UNITY_LICENSE` merge, since `unity-tests` is skipped in exactly that case.
 

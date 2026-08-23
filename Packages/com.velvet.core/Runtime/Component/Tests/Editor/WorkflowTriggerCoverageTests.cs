@@ -230,8 +230,8 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): both subscriptions are the base's own.
-        // What this change moves is the sentence beside them, which named pull_request as the one
-        // trigger whose key carried children.
+        // What this change moves is the sentence beside them, which read the gated triggers'
+        // children as paths alone.
         [Test]
         public void Given_TheWorkflowsBranchProtectionRequires_When_TheirTriggersAreRead_Then_EachSubscribesToBoth()
         {
@@ -268,8 +268,10 @@ namespace Velvet.Tests
                 .Select(entry => $"{entry.Workflow}: {entry.Trigger}.{entry.Key}")
                 .ToList();
 
-            // Assert — four on push is each workflow's branch list and its path list.
-            Assert.That((onPush, string.Join(", ", onGated)), Is.EqualTo((4, string.Empty)),
+            // Assert — a floor rather than the count, the way the harness and workflow cases above are:
+            // this reader yields every push child, so a count moves on an ordinary push-filter edit
+            // that touches neither gated trigger.
+            Assert.That((onPush >= 2, string.Join(", ", onGated)), Is.EqualTo((true, string.Empty)),
                 "The gated triggers carry no indented child at all. That is a blanket rule rather than a "
                 + "judgement per key, because judging per key is what let a branch filter through while a "
                 + "path filter was the one being watched for.");
