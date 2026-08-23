@@ -110,11 +110,13 @@ class PinExampleCheckTests(unittest.TestCase):
     def test_Given_ADocumentNamingATag_When_TheScriptIsRun_Then_ItExitsNonZero(self):
         # Arrange -- findings() answering is not the same as the CI step failing
         project = self.repository_holding({"README.md": VELVET + "\n"})
+        column = VELVET.index(".git") + 1
         # Act
         run = subprocess.run([sys.executable, str(Path(__file__).resolve().parent / "pin_example_check.py"),
                               "--project", project], capture_output=True, text=True)
         # Assert
-        self.assertEqual((1, True), (run.returncode, "README.md:1:" in run.stdout))
+        self.assertEqual((1, True), (run.returncode,
+                                     "README.md:1:{}: {}".format(column, VELVET) in run.stdout))
 
 
 if __name__ == "__main__":

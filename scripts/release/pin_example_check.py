@@ -16,12 +16,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-# A pin the reader could paste: a `.git` URL, optionally carrying UPM's `?path=` segment, with a
-# fragment that starts on a digit -- `#v1.0.0` for a Velvet tag, `#2.5.0` for a dependency whose tags
-# take no prefix. `#upm`, `#vX.Y.Z` and `#<tag>` all decline, being branches and shapes rather than
-# versions. The abbreviated spelling a sentence uses in place of a URL (`...UniTask#2.5.0`) is not
-# reached, and is not meant to be: nothing can be pasted from it.
-CONCRETE_PIN = re.compile(r"\.git(\?[^\s`\"')\]]*)?#v?\d")
+CONCRETE_PIN = re.compile(r"\.git(\?[^\s]*)?#v?\d")
 
 
 def documents(project):

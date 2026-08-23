@@ -683,8 +683,8 @@ Consumers then install a pinned version with:
 ```
 
 The shape rather than a version, because a document naming one is right on the day it is written and
-wrong from the next release: `scripts/release/pin_example_check.py` refuses a concrete tag in any
-markdown or workflow file, and runs in `Test ▸ release-notes`.
+wrong from the next release: `scripts/release/pin_example_check.py` refuses one inside a `.git` URL's
+fragment, in the tracked markdown and workflow files, and runs in `Test ▸ release-notes`.
 
 ## API documentation
 
