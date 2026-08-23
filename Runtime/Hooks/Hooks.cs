@@ -1538,7 +1538,10 @@ namespace Velvet
         /// <remarks>
         /// The hook is keyed by the resource identity, not by a dependency array:
         /// the same resource returns the same result; presenting a different resource starts a new fetch.
-        /// The optional <paramref name="resourceKey"/> identifies the resource (compared by reference identity).
+        /// The optional <paramref name="resourceKey"/> identifies the resource, compared with <c>Object.is</c>
+        /// semantics on the key's runtime type rather than by instance: a string rebuilt every render, or an id
+        /// re-boxed at the call boundary, names the same resource, while a fresh instance of any other reference
+        /// type starts a new one.
         /// When omitted, the factory delegate's identity is the key — a stable (cached) factory reuses the running
         /// resource, while a fresh closure each render is treated as a new resource. Pass a stable
         /// <paramref name="resourceKey"/> (e.g. the query id) when the factory is a fresh closure but the
@@ -1591,9 +1594,9 @@ namespace Velvet
             else
             {
                 var existing = slots[index];
-                // Reuse while the resource identity is unchanged (by reference): the same
-                // resource returns the same result without re-fetching.
-                if (existing is FiberAsyncResource<T> typed && ObjectIs.AreEqual(typed.ResourceKey, resourceKey))
+                // AreEqualObjects, not AreEqual: AreEqual selects its branch from T, and ResourceKey is
+                // declared object, so every key would take that method's reference branch whatever it holds.
+                if (existing is FiberAsyncResource<T> typed && ObjectIs.AreEqualObjects(typed.ResourceKey, resourceKey))
                 {
                     resource = typed;
                 }
