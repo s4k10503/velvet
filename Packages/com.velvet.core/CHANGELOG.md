@@ -23,16 +23,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   behind per removal, and a poolable parent rented back for a fresh presence at the same position
   picked the stale entry up again.
   A presence written directly in a `V.Portal`'s own children — so its children expand straight into
-  the registered target element — is outside what this release answers for, and reads here as it
-  does on 2.1.1. Nothing records which portal expanded an entry, so closing the portal retires none;
-  and the fiber term a reopen records is not the term the mount recorded, so the reopen starts a
-  second entry rather than finding the mount's, which stays behind unchanged. Closing the portal
-  empties the target and the first reopen shows only the new child; the second reopen brings a child
+  the registered target element — is outside what this release answers for. Closing the portal
+  empties the target and leaves the entry behind, and the fiber term the first reopen records is not
+  the term the mount recorded, so it starts a second entry rather than finding the mount's, which
+  stays behind unchanged; that reopen shows only the new child. The second reopen brings a child
   whose key changed between opens back beside the new one, while one stable child key was measured
   holding exactly one child after each of three reopens. Leaving the portal open and hiding only the
   presence reads differently again: the departed child stays in the target straight away, and is
   beside the new one on the next show. Placing the presence under an element inside the portal's
-  children is covered, and `Documentation~/motion.md` owns the placement advice.
+  children covers the close, not that hide, which leaves the departed child under the wrapper the
+  same way. `Documentation~/motion.md` owns the placement advice.
 
 ## [2.1.2] - 2026-08-23
 
