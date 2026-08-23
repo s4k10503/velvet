@@ -25,8 +25,8 @@ Run: python3 scripts/release/published_check.py \
        --base "$(git merge-base origin/main HEAD)" --result HEAD
 
 The merge base rather than origin/main: an origin/main that has moved on charges this change with
-breaking entries it never saw. The workflow reads the same pair from the event — the base commit it
-names, against the merge commit it checks out.
+breaking entries it never saw. The workflow names its own base from the event, against the merge
+commit it checks out.
 """
 
 import argparse
