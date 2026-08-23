@@ -566,15 +566,16 @@ on every platform.
 
 The two required checks are aggregates, and the real jobs are not required themselves. A required check
 that does not run stays `Pending` and blocks the pull request with nothing able to clear it, which is what
-a path filter, a matrix change or a rename would each cause. The aggregates carry no path filter, `needs:`
+a trigger filter, a matrix change or a rename would each cause. The aggregates carry no filter, `needs:`
 the real jobs, and pass when every dependency is `success` **or** `skipped` — the second is what lets a
 fork with no `UNITY_LICENSE` merge, since `unity-tests` is skipped in exactly that case.
 
-Path filtering therefore applies to `push` only. Every pull request runs both workflows, and so does every
-merge-group entry once a queue is turned on — the `merge_group:` keys are there for that, and
-`WorkflowTriggerCoverageTests` fails if either of the two gated triggers goes missing from either workflow,
-or gains a path filter. Skipping work per queue entry is a job-level condition, not a trigger filter: a
-required check that does not start has nothing able to clear it.
+In these two, filtering therefore applies to `push` only, by branch as much as by path — so a pull
+request runs both workflows whether it is based on `main` or on a maintenance branch, and so does every
+merge-group entry once a queue is turned on. The `merge_group:` keys are there for that, and
+`WorkflowTriggerCoverageTests` fails if either of the two gated triggers goes missing from either
+workflow, or gains an indented child key. Skipping work per queue entry is a job-level condition, not a
+trigger filter: a required check that does not start has nothing able to clear it.
 
 `main` does not require heads to be up to date before merging. That setting serialises the queue — each
 merge invalidates every other branch's run, and the Unity matrix is 21–25 minutes — without testing the

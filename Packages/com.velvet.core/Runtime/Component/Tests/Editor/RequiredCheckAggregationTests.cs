@@ -444,7 +444,7 @@ namespace Velvet.Tests
                 return "push";
             }
 
-            // paths-ignore counts, for the reason TriggerFilters in WorkflowTriggerCoverageTests gives.
+            // Matched as a prefix, so a paths-ignore block reads as a filter here too.
             for (var i = push + 1; i < onBlock.Count && !OnKeyPattern.IsMatch(onBlock[i]); i++)
             {
                 if (onBlock[i].TrimStart().StartsWith("paths", StringComparison.Ordinal))
