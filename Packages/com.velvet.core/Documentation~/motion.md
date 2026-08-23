@@ -70,9 +70,9 @@ V.Div(name: "row", className: "flex flex-row gap-x-2", children: new VNode[]
 - **Inside `V.Portal(targetId:)`:** put the presence under an element in the portal's children
   rather than directly in them, and give each portal its own such element. Expanding straight into
   the registered target keeps state that closing the portal does not clear: with one portal feeding
-  the target, the close empties it and the second reopen brings a child whose key changed between
-  opens back beside the new one; and two portals expanding into one target at the same position
-  share a single set of that state, which puts a duplicate child in the target on the first
+  the target, the close empties the target and the second reopen brings a child whose key changed
+  between opens back beside the new one; and two portals expanding into one target at the same
+  position share a single set of that state, which puts a duplicate child in the target on the first
   mount — keyed and unkeyed alike. The wrapper element answers both, measured over three
   close/reopen cycles and on two portals carrying a keyed presence.
   It does not answer hiding the presence while the portal stays open. Measured with a wrapper and
