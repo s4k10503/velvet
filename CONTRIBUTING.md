@@ -570,7 +570,7 @@ a trigger filter, a matrix change or a rename would each cause. The aggregates c
 the real jobs, and pass when every dependency is `success` **or** `skipped` — the second is what lets a
 fork with no `UNITY_LICENSE` merge, since `unity-tests` is skipped in exactly that case.
 
-In these two, filtering therefore applies to `push` only, by branch as much as by path — so a pull
+In `test.yml` and `generators.yml`, filtering therefore applies to `push` only, by branch as much as by path — so a pull
 request runs both workflows whether it is based on `main` or on a maintenance branch, and so does every
 merge-group entry once a queue is turned on. The `merge_group:` keys are there for that, and
 `WorkflowTriggerCoverageTests` fails if either of the two gated triggers goes missing from either

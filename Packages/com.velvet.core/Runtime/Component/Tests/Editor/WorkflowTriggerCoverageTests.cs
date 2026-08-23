@@ -49,8 +49,10 @@ namespace Velvet.Tests
 
         private const string GeneratorSourceRoot = "Packages/com.velvet.core/Generators~/src";
 
+        // Three spellings of one key, the way OnKeyLinePattern in RequiredCheckAggregationTests takes them:
+        // a quoted child is a child, and a reader that misses it leaves the filter free to come back quoted.
         private static readonly Regex KeyPattern =
-            new(@"^(\s*)([A-Za-z_][A-Za-z0-9_-]*):", RegexOptions.Compiled);
+            new(@"^(\s*)[""']?([A-Za-z_][A-Za-z0-9_-]*)[""']?:", RegexOptions.Compiled);
 
         private static readonly Regex ListItemPattern = new(@"^(\s*)-\s*(.+?)\s*$", RegexOptions.Compiled);
 
@@ -230,8 +232,6 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): both subscriptions are the base's own.
-        // What this change moves is the sentence beside them, which read the gated triggers'
-        // children as paths alone.
         [Test]
         public void Given_TheWorkflowsBranchProtectionRequires_When_TheirTriggersAreRead_Then_EachSubscribesToBoth()
         {
