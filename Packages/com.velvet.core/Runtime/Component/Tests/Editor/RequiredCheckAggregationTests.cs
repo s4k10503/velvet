@@ -444,8 +444,7 @@ namespace Velvet.Tests
                 return "push";
             }
 
-            // Prefix-matched so a paths-ignore push reads as filtered here: the column has two words
-            // for a push, and this is what chooses between them.
+            // Prefix-matched so a paths-ignore push reads as filtered here too.
             for (var i = push + 1; i < onBlock.Count && !OnKeyPattern.IsMatch(onBlock[i]); i++)
             {
                 if (onBlock[i].TrimStart().StartsWith("paths", StringComparison.Ordinal))

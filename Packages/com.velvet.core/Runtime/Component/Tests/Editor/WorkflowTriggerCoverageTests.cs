@@ -18,7 +18,7 @@ namespace Velvet.Tests
     /// <para>
     /// The trigger side is held by two rules, and the last two cases here are the whole of them: branch
     /// protection requires a check from each of these workflows, so each must subscribe to both events that
-    /// ask for one, and neither of those subscriptions may carry an indented child key.
+    /// ask for one, and neither of those subscriptions may carry a child key.
     /// </para>
     /// </summary>
     [TestFixture]
@@ -49,8 +49,6 @@ namespace Velvet.Tests
 
         private const string GeneratorSourceRoot = "Packages/com.velvet.core/Generators~/src";
 
-        // Three spellings of one key, the way OnKeyLinePattern in RequiredCheckAggregationTests takes them:
-        // a quoted child is a child, and a reader that misses it leaves the filter free to come back quoted.
         private static readonly Regex KeyPattern =
             new(@"^(\s*)[""']?([A-Za-z_][A-Za-z0-9_-]*)[""']?:", RegexOptions.Compiled);
 
@@ -303,9 +301,9 @@ namespace Velvet.Tests
             }
         }
 
-        // Every indented child key is reported rather than a list of the filters named today. The rule
-        // over the gated triggers is that they carry no child, and a list has the wrong failure direction:
-        // one it has not got passes silently, where one it should not report fails and gets corrected.
+        // A child key whose colon follows its name is reported, rather than a list of the filters named
+        // today: a list is silent about a key it has not got, where reporting one it should not have
+        // reported fails and gets corrected. Spellings this reader does not reach are on #737.
         private static IEnumerable<(string Workflow, string Trigger, string Key)> TriggerFilters(string workflow)
         {
             var lines = File.ReadAllLines(Path.GetFullPath(workflow));
