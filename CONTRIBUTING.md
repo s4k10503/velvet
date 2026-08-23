@@ -679,7 +679,7 @@ python3 scripts/release/release_notes.py --version X.Y.Z --repo s4k10503/velvet
 Consumers then install a pinned version with:
 
 ```jsonc
-"com.velvet.core": "https://github.com/s4k10503/velvet.git#v1.0.0"
+"com.velvet.core": "https://github.com/s4k10503/velvet.git#vX.Y.Z"
 ```
 
 ## API documentation
