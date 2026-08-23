@@ -21,12 +21,16 @@ the question is posed of the edit rather than of either tree's contents, and onl
 closes a version: an entry leaves that section reclassified, reworded, or dropped as untrue, and a
 change closing nothing is free to do any of those.
 
-Run: python3 scripts/release/published_check.py \
-       --base "$(git merge-base origin/main HEAD)" --result HEAD
+Run, locally, both of these:
 
-The merge base rather than origin/main: an origin/main that has moved on charges this change with
-breaking entries it never saw. The workflow names its own base from the event, against the merge
-commit it checks out.
+    python3 scripts/release/published_check.py --base origin/main --result HEAD
+    python3 scripts/release/published_check.py \
+        --base "$(git merge-base origin/main HEAD)" --result HEAD
+
+--base drives two questions and one value cannot serve both here. The publication question wants
+origin/main, which is where an unpublished release sits; the drain question wants the merge base,
+because an origin/main that has moved on charges this change with breaking entries it never saw. One
+invocation answers both in CI, where --result is the merge commit and so contains the base tip.
 """
 
 import argparse
