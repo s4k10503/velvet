@@ -12,8 +12,10 @@ a concrete pin the repository means to keep. Widening `documents()` to `.py` red
 The rejected alternative to anchoring on the `.git` suffix is reading the fragment alone, which
 reports an issue reference and a colour as pins.
 
-A commit SHA is not a tag and is out of scope, which is what reading the fragment to its end is for:
-by its first character instead, the SHAs that begin on a digit would be reported and the rest missed.
+A commit SHA is out of scope where it can be told from a tag, which is what reading the fragment to
+its end is for: by its first character instead, every SHA beginning on a digit would be reported. One
+shape stays in, and nothing can take it out -- an all-numeric abbreviated SHA is spelled exactly like
+a version.
 """
 
 import argparse
@@ -22,7 +24,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-CONCRETE_PIN = re.compile(r"\.git/?(\?[^\s#]*)?#v?\d+(?:\.\d+)*(?:-[\w.]+)?(?![\w.-])")
+CONCRETE_PIN = re.compile(r"\.git/?(\?[^\s#]*)?#v?\d+(?:\.\d+)*(?:-[\w.]+)?(?![\w-])")
 
 
 def documents(project):

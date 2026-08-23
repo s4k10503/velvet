@@ -42,11 +42,11 @@ class PinExampleCheckTests(unittest.TestCase):
 
     def test_Given_AMarkdownInstallExample_When_ItNamesATag_Then_ItIsReported(self):
         # Arrange
-        project = self.repository_holding({"README.md": "install with `" + VELVET + "`\n"})
+        project = self.repository_holding({"README.md": "\ninstall with `" + VELVET + "`\n"})
         # Act
         found = pin_example_check.findings(project)
         # Assert
-        self.assertEqual([("README.md", 1)], [(name, number) for name, number, _, _ in found])
+        self.assertEqual([("README.md", 2)], [(name, number) for name, number, _, _ in found])
 
     def test_Given_AUrlCarryingAQuery_When_ItsFragmentNamesATagWithNoPrefix_Then_ItIsReported(self):
         # Arrange
@@ -181,6 +181,22 @@ class PinExampleCheckTests(unittest.TestCase):
         # Assert
         self.assertEqual((1, True), (run.returncode,
                                      "README.md:1:{}: {}".format(column, VELVET) in run.stdout))
+
+    def test_Given_APinClosingASentence_When_ItIsRead_Then_ItIsReported(self):
+        # Arrange
+        project = self.repository_holding({"README.md": "Install with " + VELVET + ".\n"})
+        # Act
+        found = pin_example_check.findings(project)
+        # Assert
+        self.assertEqual(1, len(found))
+
+    def test_Given_AnAllNumericAbbreviatedSha_When_ItIsRead_Then_ItIsReportedLikeATag(self):
+        # Arrange -- nothing can tell it from a version, and the docstring says so
+        project = self.repository_holding({"README.md": "https://github.com/o/r.git#1234567\n"})
+        # Act
+        found = pin_example_check.findings(project)
+        # Assert
+        self.assertEqual(1, len(found))
 
     def test_Given_ADocumentNamingNoTag_When_TheScriptIsRun_Then_ItExitsZero(self):
         # Arrange
