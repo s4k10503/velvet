@@ -130,6 +130,30 @@ class SupportedVersionsCheckTests(unittest.TestCase):
         # Assert
         self.assertEqual((0, ""), (run.returncode, run.stdout))
 
+    def test_Given_ARowClosedByNoLeadingPipe_When_ItIsRead_Then_ThatRowAnswers(self):
+        # Arrange -- GitHub renders it as a row
+        table = TABLE.replace("| 2.1.x   | ✅        |", "2.1.x   | ✅        |")
+        # Act
+        answer = check.reason("2.1.0", table)
+        # Assert
+        self.assertIsNone(answer)
+
+    def test_Given_AVersionLineAboveTheHeading_When_TheTableIsRead_Then_ItIsNoRow(self):
+        # Arrange -- the reporting section comes first in the real file
+        table = "## Reporting\n\n9.9.x | ✅        |\n\n" + TABLE
+        # Act
+        answer = check.reason("9.9.0", table)
+        # Assert
+        self.assertIn("no row covering 9.9.0", answer or "")
+
+    def test_Given_AVersionLineBelowTheNextHeading_When_TheTableIsRead_Then_ItIsNoRow(self):
+        # Arrange -- the section bound is what lets the leading pipe be optional
+        table = TABLE + "\n## Reporting\n\n9.9.x | ✅        |\n"
+        # Act
+        answer = check.reason("9.9.0", table)
+        # Assert
+        self.assertIn("no row covering 9.9.0", answer or "")
+
     def test_Given_TheRepositorysOwnTable_When_ItsDeclaredVersionIsRead_Then_NothingIsReported(self):
         # Arrange
         root = Path(__file__).resolve().parents[2]

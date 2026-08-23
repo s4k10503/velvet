@@ -22,13 +22,29 @@ import re
 import sys
 from pathlib import Path
 
-ROW = re.compile(r"^\s*\|\s*([0-9]+(?:\.[0-9]+)*)\.x\s*\|([^|]*)(?:\||$)")
+TABLE_HEADING = re.compile(r"^##\s+Supported versions\s*$")
+SECTION_END = re.compile(r"^##\s")
+ROW = re.compile(r"^\s*\|?\s*([0-9]+(?:\.[0-9]+)*)\.x\s*\|([^|]*)(?:\||$)")
 SUPPORTED = "\u2705"
 VARIATION_SELECTOR = "\ufe0f"
 
 
 def rows(security_md):
+    """Rows of the supported-versions table, read between its heading and the next one.
+
+    The leading pipe is optional because GitHub renders a row without one, and the section bound is
+    what lets it be: unbounded, a pattern that does not require it would take any line elsewhere in
+    the file that happens to open on a version.
+    """
+    inside = False
     for line in security_md.splitlines():
+        if TABLE_HEADING.match(line):
+            inside = True
+            continue
+        if inside and SECTION_END.match(line):
+            return
+        if not inside:
+            continue
         found = ROW.match(line)
         if found:
             yield found.group(1), found.group(2).replace(VARIATION_SELECTOR, "").strip()
