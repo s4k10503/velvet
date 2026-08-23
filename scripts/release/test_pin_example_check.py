@@ -43,7 +43,6 @@ class PinExampleCheckTests(unittest.TestCase):
         self.assertEqual([("README.md", 1)], [(name, number) for name, number, _, _ in found])
 
     def test_Given_AUrlCarryingUpmsPathSegment_When_ItNamesATagWithNoPrefix_Then_ItIsReported(self):
-        # Arrange -- the query sits between the suffix and the fragment, and the tag takes no `v`
         project = self.repository_holding({"README.md": PATHED + "\n"})
         # Act
         found = pin_example_check.findings(project)
@@ -58,8 +57,7 @@ class PinExampleCheckTests(unittest.TestCase):
         # Assert
         self.assertEqual((2, True), (len(columns), len(set(columns)) == len(columns)))
 
-    def test_Given_AWorkflowFile_When_AnyLineNamesATag_Then_ItIsReported(self):
-        # Arrange -- every line, not only the header comments
+    def test_Given_AWorkflowLineThatIsNoComment_When_ItNamesATag_Then_ItIsReported(self):
         project = self.repository_holding({".github/workflows/upm.yml": "    run: git clone " + VELVET + "\n"})
         # Act
         found = pin_example_check.findings(project)
@@ -82,8 +80,7 @@ class PinExampleCheckTests(unittest.TestCase):
         # Assert
         self.assertEqual([], found)
 
-    def test_Given_AProseLink_When_ItsAnchorBeginsOnAVersion_Then_NothingIsReported(self):
-        # Arrange -- a heading anchor is not something a manifest can resolve
+    def test_Given_AProseLinkNoManifestResolves_When_ItsAnchorBeginsOnAVersion_Then_NothingIsReported(self):
         project = self.repository_holding({"README.md": ANCHOR + "\n"})
         # Act
         found = pin_example_check.findings(project)
@@ -91,7 +88,6 @@ class PinExampleCheckTests(unittest.TestCase):
         self.assertEqual([], found)
 
     def test_Given_ACodeAssertionOnAGeneratedNote_When_ItNamesATag_Then_NothingIsReported(self):
-        # Arrange -- the generator writes the version being released, and its test is right to say so
         project = self.repository_holding({"scripts/release/test_notes.py": "assertIn('" + VELVET + "')\n"})
         # Act
         found = pin_example_check.findings(project)
@@ -108,7 +104,6 @@ class PinExampleCheckTests(unittest.TestCase):
         self.assertEqual([], found)
 
     def test_Given_ADocumentNamingATag_When_TheScriptIsRun_Then_ItExitsNonZero(self):
-        # Arrange -- findings() answering is not the same as the CI step failing
         project = self.repository_holding({"README.md": VELVET + "\n"})
         column = VELVET.index(".git") + 1
         # Act
