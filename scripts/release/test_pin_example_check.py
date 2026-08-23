@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Holds `pin_example_check.py` against the distinctions it decides: concrete against shape, a
-document against code, and tracked against not."""
+"""Holds `pin_example_check.py` against what it has to tell apart: a pin from a branch or a shape, a
+document from code, a tracked file from an untracked one, and one pin on a line from two."""
 
 import shutil
 import subprocess
@@ -13,11 +13,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import pin_example_check  # noqa: E402
 
-# Built rather than written: a literal here would be one this file has to keep out of scope by hand.
-PLAIN = ".git#v" + "1.0.0"
-PATHED = "github.com/o/r.git?path=/Packages/x#v" + "1.0.0"
-NO_SUFFIX = "github.com/o/r#v" + "1.0.0"
-SHAPE = ".git#v" + "X.Y.Z"
+VELVET = "https://github.com/s4k10503/velvet.git#v" + "1.0.0"
+PATHED = "https://github.com/Cysharp/UniTask.git?path=src/UniTask/Assets/Plugins/UniTask#" + "2.5.0"
+BRANCH = "https://github.com/s4k10503/velvet.git#upm"
+SHAPE = "https://github.com/s4k10503/velvet.git#v" + "X.Y.Z"
+ANCHOR = "https://github.com/s4k10503/velvet/blob/main/MIGRATION.md#v" + "200"
 
 
 class PinExampleCheckTests(unittest.TestCase):
@@ -34,66 +34,82 @@ class PinExampleCheckTests(unittest.TestCase):
         subprocess.run(["git", "-C", self.directory, "add", "-A"], check=True)
         return self.directory
 
-    def test_Given_AMarkdownInstallExample_When_ItNamesARelease_Then_ItIsReported(self):
+    def test_Given_AMarkdownInstallExample_When_ItNamesATag_Then_ItIsReported(self):
         # Arrange
-        project = self.repository_holding({"README.md": "install with `x" + PLAIN + "`\n"})
+        project = self.repository_holding({"README.md": "install with `" + VELVET + "`\n"})
         # Act
         found = pin_example_check.findings(project)
         # Assert
         self.assertEqual([("README.md", 1)], [(name, number) for name, number, _, _ in found])
 
-    def test_Given_APinAUpmUrlShapePutsBeyondThePlainForm_When_ItIsRead_Then_ItIsReported(self):
-        # Arrange -- a `?path=` segment and a missing `.git` are both spellings UPM accepts
-        project = self.repository_holding({"README.md": PATHED + "\n" + NO_SUFFIX + "\n"})
-        # Act
-        found = pin_example_check.findings(project)
-        # Assert
-        self.assertEqual([1, 2], [number for _, number, _, _ in found])
-
-    def test_Given_TwoPinsOnOneLine_When_TheyAreRead_Then_BothAreReported(self):
-        # Arrange
-        project = self.repository_holding({"README.md": "a`x" + PLAIN + "` b`y" + PLAIN + "`\n"})
-        # Act
-        found = pin_example_check.findings(project)
-        # Assert
-        self.assertEqual(2, len(found))
-
-    def test_Given_AWorkflowFile_When_AnyLineNamesARelease_Then_ItIsReported(self):
-        # Arrange -- every line, not only the header comments
-        project = self.repository_holding({".github/workflows/upm.yml": "    run: git clone x" + PLAIN + "\n"})
+    def test_Given_AUrlCarryingUpmsPathSegment_When_ItNamesATagWithNoPrefix_Then_ItIsReported(self):
+        # Arrange -- the query sits between the suffix and the fragment, and the tag takes no `v`
+        project = self.repository_holding({"README.md": PATHED + "\n"})
         # Act
         found = pin_example_check.findings(project)
         # Assert
         self.assertEqual(1, len(found))
 
-    def test_Given_AMarkdownInstallExample_When_ItNamesTheShape_Then_NothingIsReported(self):
+    def test_Given_TwoPinsOnOneLine_When_TheyAreRead_Then_EachIsReportedAtItsOwnColumn(self):
         # Arrange
-        project = self.repository_holding({"README.md": "install with `x" + SHAPE + "`\n"})
+        project = self.repository_holding({"README.md": "a `" + VELVET + "` b `" + VELVET + "`\n"})
+        # Act
+        columns = [column for _, _, column, _ in pin_example_check.findings(project)]
+        # Assert
+        self.assertEqual((2, True), (len(columns), len(set(columns)) == len(columns)))
+
+    def test_Given_AWorkflowFile_When_AnyLineNamesATag_Then_ItIsReported(self):
+        # Arrange -- every line, not only the header comments
+        project = self.repository_holding({".github/workflows/upm.yml": "    run: git clone " + VELVET + "\n"})
+        # Act
+        found = pin_example_check.findings(project)
+        # Assert
+        self.assertEqual(1, len(found))
+
+    def test_Given_AnInstallExample_When_ItNamesABranch_Then_NothingIsReported(self):
+        # Arrange
+        project = self.repository_holding({"README.md": BRANCH + "\n"})
         # Act
         found = pin_example_check.findings(project)
         # Assert
         self.assertEqual([], found)
 
-    def test_Given_ACodeAssertionOnAGeneratedNote_When_ItNamesARelease_Then_NothingIsReported(self):
+    def test_Given_AnInstallExample_When_ItNamesTheShape_Then_NothingIsReported(self):
+        # Arrange
+        project = self.repository_holding({"README.md": SHAPE + "\n"})
+        # Act
+        found = pin_example_check.findings(project)
+        # Assert
+        self.assertEqual([], found)
+
+    def test_Given_AProseLink_When_ItsAnchorBeginsOnAVersion_Then_NothingIsReported(self):
+        # Arrange -- a heading anchor is not something a manifest can resolve
+        project = self.repository_holding({"README.md": ANCHOR + "\n"})
+        # Act
+        found = pin_example_check.findings(project)
+        # Assert
+        self.assertEqual([], found)
+
+    def test_Given_ACodeAssertionOnAGeneratedNote_When_ItNamesATag_Then_NothingIsReported(self):
         # Arrange -- the generator writes the version being released, and its test is right to say so
-        project = self.repository_holding({"scripts/release/test_notes.py": "assertIn('x" + PLAIN + "')\n"})
+        project = self.repository_holding({"scripts/release/test_notes.py": "assertIn('" + VELVET + "')\n"})
         # Act
         found = pin_example_check.findings(project)
         # Assert
         self.assertEqual([], found)
 
-    def test_Given_AnUntrackedDocument_When_ItNamesARelease_Then_NothingIsReported(self):
+    def test_Given_AnUntrackedDocument_When_ItNamesATag_Then_NothingIsReported(self):
         # Arrange
         project = self.repository_holding({})
-        Path(project, "README.md").write_text("x" + PLAIN + "\n", encoding="utf-8")
+        Path(project, "README.md").write_text(VELVET + "\n", encoding="utf-8")
         # Act
         found = pin_example_check.findings(project)
         # Assert
         self.assertEqual([], found)
 
-    def test_Given_ADocumentNamingARelease_When_TheScriptIsRun_Then_ItExitsNonZero(self):
+    def test_Given_ADocumentNamingATag_When_TheScriptIsRun_Then_ItExitsNonZero(self):
         # Arrange -- findings() answering is not the same as the CI step failing
-        project = self.repository_holding({"README.md": "x" + PLAIN + "\n"})
+        project = self.repository_holding({"README.md": VELVET + "\n"})
         # Act
         run = subprocess.run([sys.executable, str(Path(__file__).resolve().parent / "pin_example_check.py"),
                               "--project", project], capture_output=True, text=True)

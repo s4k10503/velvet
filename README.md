@@ -78,9 +78,10 @@ some UniTask present in the project.
 }
 ```
 
-The UniTask git URL above tracks its latest release. Pin either by appending a tag:
-`...UniTask#<tag>`, and `...velvet.git#vX.Y.Z` for a Velvet
-[release](https://github.com/s4k10503/velvet/releases). Velvet's remaining dependencies
+The UniTask git URL above tracks its latest release; pin it by appending a tag —
+`...UniTask#<tag>`. Velvet's `#upm` is a branch that follows every push to `main`; put a
+[release](https://github.com/s4k10503/velvet/releases) tag there in its place to pin one —
+`...velvet.git#vX.Y.Z`. Velvet's remaining dependencies
 (`com.unity.addressables`, `com.unity.nuget.mono-cecil`) are on the Unity registry and resolve
 automatically.
 
