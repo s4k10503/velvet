@@ -21,7 +21,6 @@ from pathlib import Path
 
 ROW = re.compile(r"^\|\s*([0-9]+(?:\.[0-9]+)*)\.x\s*\|\s*(\S+)\s*\|")
 SUPPORTED = "\u2705"
-# A picker inserts the variation selector after the mark, which is invisible in the rendered table.
 VARIATION_SELECTOR = "\ufe0f"
 
 
@@ -37,7 +36,6 @@ def reason(version, security_md):
     covering = [(prefix, mark) for prefix, mark in rows(security_md)
                 if version.startswith(prefix + ".")]
     if len(covering) > 1:
-        # Refused rather than resolved by document order, which decides silently and reads as a rule.
         return ("SECURITY.md has {} rows covering {}: {}. One version belongs to one series."
                 .format(len(covering), version, ", ".join(p + ".x" for p, _ in covering)))
     if covering:

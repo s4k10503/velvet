@@ -33,8 +33,7 @@ class SupportedVersionsCheckTests(unittest.TestCase):
         # Assert
         self.assertIn("marks 2.0.x as", answer or "")
 
-    def test_Given_AMinorTheTableHasNoRowFor_When_ItIsRead_Then_TheMissingRowIsNamed(self):
-        # Arrange -- the release main can ship next, which is what the table stands still through
+    def test_Given_TheMinorMainCanShipNext_When_ItIsRead_Then_TheMissingRowIsNamed(self):
         # Act
         answer = check.reason("2.2.0", TABLE)
         # Assert
@@ -47,36 +46,31 @@ class SupportedVersionsCheckTests(unittest.TestCase):
         self.assertIn("no row covering 3.0.0", answer or "")
 
     def test_Given_ARowNamingAWholeMajor_When_AVersionOfItIsRead_Then_ThatRowAnswers(self):
-        # Arrange -- `1.x` covers 1.6.0, where `2.1.x` covers only 2.1.z
         # Act
         answer = check.reason("1.6.0", TABLE)
         # Assert
         self.assertIn("marks 1.x as", answer or "")
 
     def test_Given_AMinorThatOnlySharesADigitWithARow_When_ItIsRead_Then_TheMissingRowIsNamed(self):
-        # Arrange -- 2.10 is not 2.1, and the boundary between them is the separator
         # Act
         answer = check.reason("2.10.0", TABLE)
         # Assert
         self.assertIn("no row covering 2.10.0", answer or "")
 
-    def test_Given_TwoRowsCoveringOneVersion_When_ItIsRead_Then_BothAreNamed(self):
-        # Arrange -- a summary row for a retired major above the minor rows
+    def test_Given_ASummaryRowAboveTheMinorRows_When_ItIsRead_Then_NeitherDecidesByOrder(self):
         table = TABLE.replace("| 2.1.x   | ✅        |", "| 2.x     | ❌        |\n| 2.1.x   | ✅        |")
         # Act
         answer = check.reason("2.1.2", table)
         # Assert
         self.assertIn("2 rows covering 2.1.2: 2.x, 2.1.x", answer or "")
 
-    def test_Given_AMarkCarryingAVariationSelector_When_ItIsRead_Then_ItStillReadsAsSupported(self):
-        # Arrange -- the selector is invisible in the rendered table
+    def test_Given_AMarkCarryingAnInvisibleVariationSelector_When_ItIsRead_Then_ItStillReadsAsSupported(self):
         # Act
         answer = check.reason("2.1.0", TABLE.replace("✅", "✅\ufe0f"))
         # Assert
         self.assertIsNone(answer)
 
     def test_Given_AVersionWithNoRow_When_TheScriptIsRun_Then_ItExitsNonZero(self):
-        # Arrange -- reason() answering is not the same as the CI step failing
         import json, subprocess, tempfile
         project = Path(tempfile.mkdtemp())
         (project / "Packages/com.velvet.core").mkdir(parents=True)
