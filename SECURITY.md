@@ -20,7 +20,6 @@ coordinated with the reporter.
 | 2.0.x   | ❌        |
 | 1.x     | ❌        |
 
-Security fixes go to the newest release and to `main`. While `main` is building a new major, the
-series before it stays supported on a maintenance branch and receives patch releases; when the new
-major ships, support moves to it and this table is updated. A series marked ❌ receives no further
-releases, and the fix for one is to upgrade.
+Security fixes go to `main` and to the newest release of each series marked ✅. This table is updated
+with every release, so a version it does not list is not supported: the fix for one is to upgrade, and
+the [CHANGELOG](Packages/com.velvet.core/CHANGELOG.md) lists what each major changed.
