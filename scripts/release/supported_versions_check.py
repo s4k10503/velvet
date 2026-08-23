@@ -5,12 +5,15 @@ The table is the only statement a user has of whether their version still receiv
 wrong by standing still. The file was written once and not touched at any of the twelve releases that
 followed, which is why this is a check rather than an intention.
 
-What it does not ask is whether a row still marked supported should be: it refuses a version with no
-row, or one on a row marked otherwise, and a series that stopped receiving fixes with its row left
-standing passes.
+Three refusals: a version no row covers, a version on a row marked otherwise, and a version more than
+one row covers. The last is refused rather than settled by document order, which would decide silently
+and read as a rule.
 
-Asked of the version `package.json` declares, so the failure lands on the pull request that closes a
-version rather than after the dispatch has published it.
+What it does not ask is whether a row still marked supported should be: a series that stopped
+receiving fixes with its row left standing passes.
+
+Asked of the version `package.json` declares rather than of a published tag, so a release can be
+refused before it exists.
 """
 
 import argparse
@@ -19,7 +22,7 @@ import re
 import sys
 from pathlib import Path
 
-ROW = re.compile(r"^\|\s*([0-9]+(?:\.[0-9]+)*)\.x\s*\|\s*(\S+)\s*\|")
+ROW = re.compile(r"^\s*\|\s*([0-9]+(?:\.[0-9]+)*)\.x\s*\|([^|]*)(?:\||$)")
 SUPPORTED = "\u2705"
 VARIATION_SELECTOR = "\ufe0f"
 
@@ -28,7 +31,7 @@ def rows(security_md):
     for line in security_md.splitlines():
         found = ROW.match(line)
         if found:
-            yield found.group(1), found.group(2).replace(VARIATION_SELECTOR, "")
+            yield found.group(1), found.group(2).replace(VARIATION_SELECTOR, "").strip()
 
 
 def reason(version, security_md):

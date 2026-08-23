@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
-"""Holds `supported_versions_check.py` against the three answers it has: supported, marked otherwise,
-and named nowhere."""
+"""Holds `supported_versions_check.py` against the four answers it has: supported, marked otherwise,
+covered by two rows, and named nowhere."""
 
+import json
+import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -19,6 +22,8 @@ TABLE = """## Supported versions
 | 1.x     | ❌        |
 """
 
+SUPPORTED_ROW = "| 2.1.x   | ✅        |"
+
 
 class SupportedVersionsCheckTests(unittest.TestCase):
     def test_Given_AVersionTheTableMarksSupported_When_ItIsRead_Then_NothingIsReported(self):
@@ -33,7 +38,7 @@ class SupportedVersionsCheckTests(unittest.TestCase):
         # Assert
         self.assertIn("marks 2.0.x as", answer or "")
 
-    def test_Given_TheMinorMainCanShipNext_When_ItIsRead_Then_TheMissingRowIsNamed(self):
+    def test_Given_AMinorTheTableHasNoRowFor_When_ItIsRead_Then_TheMissingRowIsNamed(self):
         # Act
         answer = check.reason("2.2.0", TABLE)
         # Assert
@@ -57,8 +62,9 @@ class SupportedVersionsCheckTests(unittest.TestCase):
         # Assert
         self.assertIn("no row covering 2.10.0", answer or "")
 
-    def test_Given_ASummaryRowAboveTheMinorRows_When_ItIsRead_Then_NeitherDecidesByOrder(self):
-        table = TABLE.replace("| 2.1.x   | ✅        |", "| 2.x     | ❌        |\n| 2.1.x   | ✅        |")
+    def test_Given_ASupportedSummaryRowAboveASupportedMinorRow_When_ItIsRead_Then_BothRowsAreNamed(self):
+        # Arrange
+        table = TABLE.replace(SUPPORTED_ROW, "| 2.x     | ✅        |\n" + SUPPORTED_ROW)
         # Act
         answer = check.reason("2.1.2", table)
         # Assert
@@ -66,12 +72,42 @@ class SupportedVersionsCheckTests(unittest.TestCase):
 
     def test_Given_AMarkCarryingAnInvisibleVariationSelector_When_ItIsRead_Then_ItStillReadsAsSupported(self):
         # Act
-        answer = check.reason("2.1.0", TABLE.replace("✅", "✅\ufe0f"))
+        answer = check.reason("2.1.0", TABLE.replace("✅", "✅️"))
+        # Assert
+        self.assertIsNone(answer)
+
+    def test_Given_AMarkWrittenAsAShortcode_When_ItIsRead_Then_ItIsNamedRatherThanAccepted(self):
+        # Act
+        answer = check.reason("2.1.0", TABLE.replace("✅", ":white_check_mark:"))
+        # Assert
+        self.assertIn("marks 2.1.x as :white_check_mark:", answer or "")
+
+    def test_Given_AMarkTheRowAnnotates_When_ItIsRead_Then_TheWholeCellIsNamed(self):
+        # Arrange
+        table = TABLE.replace(SUPPORTED_ROW, "| 2.1.x   | ✅ until 2027 |")
+        # Act
+        answer = check.reason("2.1.0", table)
+        # Assert
+        self.assertIn("marks 2.1.x as ✅ until 2027", answer or "")
+
+    def test_Given_ARowIndentedUnderItsHeading_When_ItIsRead_Then_ThatRowAnswers(self):
+        # Arrange
+        table = TABLE.replace(SUPPORTED_ROW, "  " + SUPPORTED_ROW)
+        # Act
+        answer = check.reason("2.1.0", table)
+        # Assert
+        self.assertIsNone(answer)
+
+    def test_Given_ARowClosedByNoTrailingPipe_When_ItIsRead_Then_ThatRowAnswers(self):
+        # Arrange
+        table = TABLE.replace(SUPPORTED_ROW, SUPPORTED_ROW.rstrip("| "))
+        # Act
+        answer = check.reason("2.1.0", table)
         # Assert
         self.assertIsNone(answer)
 
     def test_Given_AVersionWithNoRow_When_TheScriptIsRun_Then_ItExitsNonZero(self):
-        import json, subprocess, tempfile
+        # Arrange
         project = Path(tempfile.mkdtemp())
         (project / "Packages/com.velvet.core").mkdir(parents=True)
         (project / "Packages/com.velvet.core/package.json").write_text(json.dumps({"version": "2.2.0"}))
@@ -82,10 +118,21 @@ class SupportedVersionsCheckTests(unittest.TestCase):
         # Assert
         self.assertEqual((1, True), (run.returncode, "no row covering 2.2.0" in run.stdout))
 
+    def test_Given_AVersionTheTableMarksSupported_When_TheScriptIsRun_Then_ItExitsZero(self):
+        # Arrange
+        project = Path(tempfile.mkdtemp())
+        (project / "Packages/com.velvet.core").mkdir(parents=True)
+        (project / "Packages/com.velvet.core/package.json").write_text(json.dumps({"version": "2.1.0"}))
+        (project / "SECURITY.md").write_text(TABLE)
+        # Act
+        run = subprocess.run([sys.executable, str(Path(__file__).resolve().parent / "supported_versions_check.py"),
+                              "--project", str(project)], capture_output=True, text=True)
+        # Assert
+        self.assertEqual((0, ""), (run.returncode, run.stdout))
+
     def test_Given_TheRepositorysOwnTable_When_ItsDeclaredVersionIsRead_Then_NothingIsReported(self):
         # Arrange
         root = Path(__file__).resolve().parents[2]
-        import json
         version = json.loads((root / "Packages/com.velvet.core/package.json").read_text())["version"]
         # Act
         answer = check.reason(version, (root / "SECURITY.md").read_text())

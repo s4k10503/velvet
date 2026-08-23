@@ -621,7 +621,7 @@ behaviour a working application would notice changing.
    bullet in `### Highlights` belongs to a major and to no other release; `test_release_notes.py`
    refuses each of those. Give the version a row in `SECURITY.md`'s supported-versions table, and
    decide there what happens to the series it succeeds: `supported_versions_check.py` refuses a
-   `package.json` version the table does not mark supported.
+   release the table does not cover with one row marked supported.
 2. Merge to `main` (the `upm` branch is updated automatically).
 3. Run the **UPM** workflow via *Actions ▸ UPM ▸ Run workflow*, entering the same version.
    This tags `vX.Y.Z` on the `upm` (package-at-root) commit and publishes a GitHub release.

@@ -165,8 +165,7 @@ jobs:
   # whose body is missing rather than stopping anything. This runs the same builder here, so
   # that failure lands on the pull request that introduced it. No Unity license needed.
   #
-  # supported_versions_check.py rides here for the same reason: SECURITY.md's table names versions, so
-  # the release that outruns it is the one that has to hear about it.
+  # supported_versions_check.py rides here for the same reason.
   # ---------------------------------------------------------------------------
   release-notes:
     name: Release notes
