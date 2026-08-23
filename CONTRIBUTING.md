@@ -688,8 +688,7 @@ A maintenance branch is named `<major>.x` and cut from that series' last release
 next major is built. **One line is maintained at a time — the series immediately before `main`'s.**
 Cutting the next major's line ends the one before it.
 
-**The line takes fixes and does not take features.** A feature on it is a second place that feature has
-to keep working, for users who could have it by upgrading instead. A `feat` waits for `main`.
+**The line takes fixes and does not take features.** A `feat` waits for `main`.
 
 **A commit that carries a breaking change does not come, even when it also carries a fix.** What makes
 one unsplittable is the code: the fix can name a symbol that arrives with the breaking half, so the
@@ -697,19 +696,18 @@ pick auto-merges and then does not compile. If the fix is wanted on the line it 
 — and a fix written first on the line may need to come forward to `main`. Nothing checks either
 direction, and `main` may already carry its own; ask before opening one.
 
-**Decide per commit, not per `[Unreleased]` entry.** The mapping runs many-to-many, and more than half
-the commits since this line was cut wrote no bullet at all. Where a commit did, ask which section its
-bullets sit in on `main` today — reading the nearest heading out of a diff's context answers the wrong
-question. Where it did not, the decision is only whether the line wants the change.
+**Decide per commit, not per `[Unreleased]` entry.** The mapping runs many-to-many, and a commit may
+write no bullet at all. Where one did, ask which section its bullets sit in on `main` today — reading
+the nearest heading out of a diff's context answers the wrong question. Where it did not, the decision
+is only whether the line wants the change.
 
 **Cherry-pick with `-x`, in the order the commits landed, and compile after each one.** A clean
 cherry-pick is not evidence the tree still builds, and neither is the absence of a conflict: where a
 change both adds and removes and the line has nothing to remove, the merge keeps the addition silently.
 
 **Take the CHANGELOG hunk out of the pick and write the entry on the line by hand.** Picked as it
-stands it applies clean and lands in the *released* section, because that is where the context it was
-written against ended up when the release renamed the heading above it; reopening `## [Unreleased]`
-does not attract it.
+stands it applies clean and lands in the *released* section, and reopening `## [Unreleased]` does not
+attract it.
 
 **The record is the `-x` trailer.** Squash as everywhere else, and put the `(cherry picked from commit
 …)` lines **in the pull request body**, which is what becomes the squash message. Do not reach for
@@ -728,12 +726,11 @@ everything else written for one branch:
 - `upm.yml`, whose force-push of the split and whose repo-wide `PREV_MAIN_TAG` both assume a single
   series is publishing.
 
-A line also does not inherit the scripts `main` grew after it was cut, and two of them judge what a
-backport carries. `assert_results_from_this_tree.py` reads `Library`, so point `--project` at a
-checkout the suite has run in. `base_red_check.py` wants `--base origin/<line>` besides, since its
-default is `origin/main` and a backport branch's merge base with `main` is the release the line was cut
-from. `assume_gate_check.py` is not a third: it resolves `--baseline` under `--project`, and the record
-it looks for is a file the line does not have.
+A line also does not inherit the scripts `main` grew after it was cut. `assert_results_from_this_tree.py`
+reads `Library`, so point `--project` at a checkout the suite has run in. `base_red_check.py` wants
+`--base origin/<line>` besides: its default is `origin/main`, and a backport branch's merge base with
+`main` is the release the line was cut from. `assume_gate_check.py` cannot be run against a line at all
+— it resolves `--baseline` under `--project`, and the record is a file the line does not have.
 
 ## API documentation
 
