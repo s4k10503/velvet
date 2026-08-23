@@ -685,20 +685,19 @@ Consumers then install a pinned version with:
 ### The maintenance line
 
 A maintenance branch is named `<major>.x` and cut from that series' last release; `main` is where the
-next major is built. Cut it before `main` takes a change that series cannot, because from that commit
-on there is no branch able to carry a patch for it. **One line is maintained at a time — the series
-immediately before `main`'s.** Cutting the next major's line ends the one before it.
+next major is built. **One line is maintained at a time — the series immediately before `main`'s.**
+Cutting the next major's line ends the one before it.
 
 **The line takes fixes and does not take features.** A feature on it is a second place that feature has
 to keep working, for users who could have it by upgrading instead. A `feat` waits for `main`.
 
-**A fix made on the line comes forward to `main` as its own pull request.** Nothing checks this, and a
-line left ahead of `main` on a file they share means the next line cut from `main` inherits the bug this
-one already fixed.
+**A fix made on the line comes forward to `main` as its own pull request.** Nothing checks this, and
+until it happens `main` carries the bug — which the next major then ships to everyone who upgrades.
 
-**A commit that carries a breaking change does not come, even when it also carries a fix.** A commit
-that wrote bullets into both open sections is not separable by cherry-picking half of it; if the fix is
-wanted on the line, it is written fresh there.
+**A commit that carries a breaking change does not come, even when it also carries a fix.** What makes
+one unsplittable is the code rather than the CHANGELOG: the fix can name a symbol that arrives with the
+breaking half, so the pick auto-merges and then does not compile. If the fix is wanted on the line, it
+is written fresh there.
 
 **The count of `[Unreleased]` entries is not the count of backportable commits.** Decide per commit, by
 asking which section that commit's own bullets sit in on `main` today. Reading the nearest heading out
@@ -716,21 +715,23 @@ does not attract it. `changelog_into_closed_version.py` is registered against `E
 cherry-pick does not reach it either.
 
 **The record is the `-x` trailer.** Squash as everywhere else, and put the `(cherry picked from commit
-…)` lines **in the pull request body**, which is what becomes the squash message. `git cherry` cannot
-read a line that squashes: the backport arrives as one commit, so there is no per-fix commit for it to
-match, and it reports every commit on `main` as absent from the line.
+…)` lines **in the pull request body**, which is what becomes the squash message. Do not reach for
+`git cherry` instead: measured here, it reported every commit it walked as absent from the line,
+including the ones whose fix the line carries.
 
-The merge and release guards need nothing for a new line: they read the pull request's own base through
-`.claude/hooks/lib/merge_target.py`, and `scripts/hooks/pull_request_base_check.py` poses each of them a
-pull request based on something other than `main`. What a cut does cost is what names `main` for other
-reasons — the `target-branch` entry in `.github/dependabot.yml`, the `protect-main` ruleset, which
-covers `main` and nothing else so a new line starts unprotected, and `upm.yml`, whose force-push of the
-split and whose repo-wide `PREV_MAIN_TAG` both assume a single series is publishing.
+A new line needs no change to the merge and release guards — each reads the pull request's own base,
+and `### Repository scripts` above says how. What a cut does cost is everything else that is written
+for one branch: `.github/dependabot.yml`'s `target-branch`, which names the line explicitly; the
+`protect-main` ruleset, which covers `main` and nothing else, so a new line starts unprotected; and
+`upm.yml`, whose force-push of the split and whose repo-wide `PREV_MAIN_TAG` both assume a single
+series is publishing.
 
-A line also does not inherit the scripts `main` grew after it was cut, of which
-`assert_results_from_this_tree.py` and `base_red_check.py` (both above) are the two a backport wants.
-Run `main`'s copy with `--project`; the first reads `Library`, so point it at a checkout the suite has
-already run in.
+A line also does not inherit the scripts `main` grew after it was cut, and three of them judge what a
+backport carries. Run `main`'s copy of each with `--project`:
+`assert_results_from_this_tree.py`, which reads `Library`, so point it at a checkout the suite has run
+in; `base_red_check.py`, which needs `--base origin/<line>` besides, since its default is
+`origin/main` and a backport branch's merge base with `main` is the release the line was cut from; and
+`assume_gate_check.py`, which reads its own `--baseline` and so needs nothing further.
 
 ## API documentation
 
