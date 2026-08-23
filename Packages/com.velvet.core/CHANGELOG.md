@@ -5,6 +5,28 @@ All notable changes to this package are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- A `V.AnimatePresence` that stops being rendered takes its bookkeeping with it. That bookkeeping is
+  keyed by the component the presence renders in, the parent element its children expand into, and the
+  presence's position, and only the component being disposed or the whole tree being unmounted retired
+  it. So a `cond ? V.AnimatePresence(…) : null` flipping to `null` left an entry holding the committed
+  children, and per key the exit anchor and the Motion element it had recorded, well after the removal
+  had taken those elements out of the tree: measured on a presence under a `V.Button`, the entry left
+  behind named both the departed child's element and the Button, which had already gone back to the
+  element pool. Rendering the presence again at that position then started from that stale set —
+  children that had left were spliced back into the DOM as exiting ghosts, and `initial: false` no
+  longer suppressed the enter, since the second mount was not taken for a first render. The entry also
+  survived its parent element being torn down, one left behind per removal, and a poolable parent
+  rented back for a fresh presence at the same position picked the stale entry up again. A presence
+  written inside a `V.Portal`'s own children reaches the same table by a route this release does not
+  answer for and keeps its entry when the portal closes: the entry is keyed by the container the portal
+  renders into, that container belongs to the caller rather than to the portal, and nothing here records
+  which portal expanded an entry. Reopening the portal starts a fresh entry rather than resurrecting the
+  departed child, so what is left there is the retention.
+
 ## [2.1.1] - 2026-08-21
 
 ### Highlights
