@@ -34,6 +34,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   beside the new one on the next show. Placing the presence under an element inside the portal's
   children is covered, and `Documentation~/motion.md` owns the placement advice.
 
+## [2.1.2] - 2026-08-23
+
+### Highlights
+
+- A `Hooks.Use` resource key rebuilt on each render — a run-time string, or an id boxed on its way to
+  the parameter — named a resource nothing had loaded yet, so the fetch was torn down and started
+  again every render. Under a `V.Suspense` the boundary never came out of its fallback: the render a
+  landing loader asked for restarted that loader and suspended on it again.
+
+- A `Router.OnLocationChanged` subscriber that threw while a Suspend-mode loader was resolving had
+  its exception recorded as that route's load failure. The route reported an error no loader had
+  raised, and filing it as a failure ran the router's failure handler, which rewrites the history
+  entry's snapshot from a round the same mistake had miscounted — so a Back to that entry re-ran the
+  loader instead of being served from the cache.
+
+### Fixed
+
+- `Hooks.Use(factory, resourceKey)` compares the resource key by value, so a key a render builds names
+  the resource the previous render named instead of starting a new one. The comparison closed over the
+  parameter's own `object` type and took the reference branch for every key whatever it held, so a
+  string built at run time — the query id the parameter's documentation recommends — and an id boxed at
+  the call boundary each tore the resource down and restarted it on every render. Under a `V.Suspense`
+  that cost the boundary its resolve, since the render a landing loader asks for restarted the loader
+  and suspended again. Nothing said so either: the warning about a resource restarting every render is
+  gated on the key being omitted, and an omitted key is the factory delegate, which a delegate's own
+  identity comparison covers either way. A key of any other reference type is still compared by
+  instance, so that omitted-key behaviour is unchanged.
+- A subscriber that throws while a `LoaderMode.Suspend` loader is resolving no longer corrupts the
+  round that loader belonged to. The router answers a resolution by re-emitting the location, so a
+  `Router.OnLocationChanged` subscriber can run behind that announcement — and a throw from one was
+  caught by the clauses that exist for the loader itself. That counted the round's outstanding loader
+  off a second time and recorded the throw as that route's loader error. So a caller reading the route's
+  loader error saw a load failure that had not happened. Filing it as a failure also ran the router's failure
+  handler, which writes the history entry's snapshot again — this time from a round the second count
+  had corrupted — so the entry stayed unsettled and a Back or Forward to it re-ran the loader instead
+  of being served from the cache. What that second count costs the round itself depends on how many
+  loaders it holds: one leaves it permanently short of settling, and two leave it reporting itself
+  settled while the second loader is still outstanding. The throw is now reported as the subscriber's own and the
+  round stands as the loader left it, with its result recorded and no error. A subscriber throwing out
+  of the failure announcement is reported the same way, where it used to be left to whatever observes a
+  forgotten task.
+
 ## [2.1.1] - 2026-08-21
 
 ### Highlights
