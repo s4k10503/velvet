@@ -624,6 +624,45 @@ behaviour a working application would notice changing.
 3. Run the **UPM** workflow via *Actions ▸ UPM ▸ Run workflow*, entering the same version.
    This tags `vX.Y.Z` on the `upm` (package-at-root) commit and publishes a GitHub release.
 
+### The maintenance line
+
+`2.x` is the maintenance line for the 2 series; `main` is where the next major is built. **The line
+takes fixes and does not take features.** Somebody on `2.x` is there because they cannot yet take a
+breaking change, so a new utility they could get by upgrading is not worth the risk of moving code
+under them; a `feat` waits for `main`.
+
+**A commit that carries a breaking change does not come, even when it also carries a fix.** Four of the
+commits considered for 2.1.2 wrote bullets into both open sections at once, and the non-breaking half of
+one of those is not separable by cherry-picking it. If the fix is wanted it is written fresh against
+this line, which is what #605's was: `main`'s version of it reads a portal-ownership model that arrives
+with a `V.Portal` behaviour change, so the arm that reads it has no subject here.
+
+**The number of entries is not the number of commits.** Twenty-five of `main`'s `[Unreleased]` entries
+were absent from `2.x` when 2.1.2 was cut and five commits were cherry-pickable. Decide by asking which
+section a commit's own bullets sit in on `main` today; reading the nearest heading out of a diff's
+context answers wrong, and did.
+
+**Backport with `cherry-pick -x`, in the order the commits landed, and compile after each one.** A clean
+cherry-pick is evidence of nothing: two of 2.1.2's applied with no conflict at all and the tree then
+failed to compile in five places, because one of them uses a helper that arrives with a commit that
+stayed behind. And the file that does *not* conflict is where the danger is — `V.cs` merged silently
+while keeping the half of a change that adds parameters and dropping the half that removes them,
+because there was nothing here to remove.
+
+**The record is the `-x` trailer, not the commit count.** v2.1.1 squashed seven backports into its
+release commit and carried no trailer, and `git cherry` cannot answer what this branch holds either
+way — relocating a CHANGELOG bullet changes a patch id, so splitting into one commit per fix does not
+repair it. Squash as everywhere else, and put the `(cherry picked from commit …)` lines **in the pull
+request body**, which is what becomes the squash message.
+
+**Keep an `## [Unreleased]` section open here between releases.** Without one a backport's bullet has
+nowhere to land, and one of 2.1.2's appended silently into the released `## [2.1.1]` section rather
+than conflicting.
+
+`2.x` does not carry every script `main` has grown since it was cut — `assert_results_from_this_tree.py`
+is the one that matters, because the failure it catches is a run that compiled nowhere, which is what a
+backport produces. Run `main`'s copy with `--project` against a checkout of this line.
+
 Between step 2 and step 3, `main` names a version that does not exist. The dispatch builds the note
 from the CHANGELOG section, which was written before anything merged in that window and describes none
 of it — so those commits ship inside the release, undescribed. v2.0.1 spent a day there and took twelve
