@@ -165,8 +165,8 @@ jobs:
   # whose body is missing rather than stopping anything. This runs the same builder here, so
   # that failure lands on the pull request that introduced it. No Unity license needed.
   #
-  # pin_example_check.py rides here because an install example naming a release is the same shape of
-  # defect one release later: correct when written, wrong from the next version on.
+  # pin_example_check.py rides here for the same reason, and is not gated on a release: the pin that
+  # goes stale is written in an ordinary documentation change.
   # ---------------------------------------------------------------------------
   release-notes:
     name: Release notes

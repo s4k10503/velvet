@@ -8,6 +8,12 @@ installs a version the project may no longer support.
 Scope is markdown and the workflow files. Code is out of it deliberately, and one line depends on
 that: `test_release_notes.py` asserts the generated note carries the version being released, which is
 a concrete pin the repository means to keep. Widening `documents()` to `.py` reddens that line.
+
+The rejected alternative to anchoring on the `.git` suffix is reading the fragment alone, which
+reports an issue reference and a colour as pins.
+
+A commit SHA is not a tag and is out of scope, which is what reading the fragment to its end is for:
+by its first character instead, the SHAs that begin on a digit would be reported and the rest missed.
 """
 
 import argparse
@@ -16,7 +22,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-CONCRETE_PIN = re.compile(r"\.git(\?[^\s]*)?#v?\d")
+CONCRETE_PIN = re.compile(r"\.git/?(\?[^\s#]*)?#v?\d+(?:\.\d+)*(?:-[\w.]+)?(?![\w.-])")
 
 
 def documents(project):
@@ -37,7 +43,7 @@ def findings(project):
             continue
         for number, line in enumerate(text.splitlines(), 1):
             for match in CONCRETE_PIN.finditer(line):
-                found.append((name, number, match.start() + 1, line.strip()))
+                found.append((name, number, match.start() + 1, line))
     return found
 
 
