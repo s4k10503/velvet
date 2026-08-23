@@ -619,7 +619,9 @@ behaviour a working application would notice changing.
    `changelog_into_closed_version.py` refuses a write into a dated section, and the rename is what
    dates it. The breaking heading itself is never dated and never deleted, and a `**Breaking:**`
    bullet in `### Highlights` belongs to a major and to no other release; `test_release_notes.py`
-   refuses each of those.
+   refuses each of those. Give the version a row in `SECURITY.md`'s supported-versions table, and
+   decide there what happens to the series it succeeds: `supported_versions_check.py` refuses a
+   `package.json` version the table does not mark supported.
 2. Merge to `main` (the `upm` branch is updated automatically).
 3. Run the **UPM** workflow via *Actions ▸ UPM ▸ Run workflow*, entering the same version.
    This tags `vX.Y.Z` on the `upm` (package-at-root) commit and publishes a GitHub release.

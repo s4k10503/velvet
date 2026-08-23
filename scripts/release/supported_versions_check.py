@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """Refuses a version `SECURITY.md`'s table does not say is supported.
 
-The table is the only statement a user has of whether their version still receives fixes, and it names
-versions, so it is the kind of document that goes wrong by standing still. The prose it replaced named
-none and could not; what makes the table worth that is a check rather than an intention -- the file was
-written once and not touched at any of the twelve releases that followed.
+The table is the only statement a user has of whether their version still receives fixes, and it goes
+wrong by standing still. The file was written once and not touched at any of the twelve releases that
+followed, which is why this is a check rather than an intention.
+
+What it does not ask is whether a row still marked supported should be: it refuses a version with no
+row, or one on a row marked otherwise, and a series that stopped receiving fixes with its row left
+standing passes.
 
 Asked of the version `package.json` declares, so the failure lands on the pull request that closes a
 version rather than after the dispatch has published it.
@@ -17,24 +20,32 @@ import sys
 from pathlib import Path
 
 ROW = re.compile(r"^\|\s*([0-9]+(?:\.[0-9]+)*)\.x\s*\|\s*(\S+)\s*\|")
-SUPPORTED = "✅"
+SUPPORTED = "\u2705"
+# A picker inserts the variation selector after the mark, which is invisible in the rendered table.
+VARIATION_SELECTOR = "\ufe0f"
 
 
 def rows(security_md):
     for line in security_md.splitlines():
         found = ROW.match(line)
         if found:
-            yield found.group(1), found.group(2)
+            yield found.group(1), found.group(2).replace(VARIATION_SELECTOR, "")
 
 
 def reason(version, security_md):
     """None when the table says this version is supported, else what to put right."""
-    for prefix, mark in rows(security_md):
-        if version == prefix or version.startswith(prefix + "."):
-            if mark == SUPPORTED:
-                return None
-            return ("SECURITY.md marks {}.x as {}, and package.json declares {}. A release marks the "
-                    "series it ships as supported.".format(prefix, mark, version))
+    covering = [(prefix, mark) for prefix, mark in rows(security_md)
+                if version.startswith(prefix + ".")]
+    if len(covering) > 1:
+        # Refused rather than resolved by document order, which decides silently and reads as a rule.
+        return ("SECURITY.md has {} rows covering {}: {}. One version belongs to one series."
+                .format(len(covering), version, ", ".join(p + ".x" for p, _ in covering)))
+    if covering:
+        prefix, mark = covering[0]
+        if mark == SUPPORTED:
+            return None
+        return ("SECURITY.md marks {}.x as {}, and package.json declares {}. A release marks the "
+                "series it ships as supported.".format(prefix, mark, version))
     return ("SECURITY.md has no row covering {}, which is the version package.json declares. Add one, "
             "and decide what happens to the series it succeeds.".format(version))
 
