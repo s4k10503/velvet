@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Hold a repository to two things about the version it names, each asked of a different tree.
+"""Hold a repository to three things about the version it names.
 
 CONTRIBUTING.md's release section owns what goes wrong when nothing asks. What is decided here is
-which question is posed of which tree, and both answers follow from what repairs the state.
+which question is posed of which tree, and every answer follows from what repairs the state.
 
 **Publication**, asked of the BASE: every version the CHANGELOG has closed is tagged. A dispatch
 repairs it, so refusing merges is pressure toward one, and reading the base leaves the pull request
@@ -12,6 +12,13 @@ that closes a section free to merge — the one tree the state is allowed to be 
 exists, carries a date, and has no dated section above it. A commit repairs each of these, so they
 must fail whoever would introduce them. Read of the base too, they would leave the repair itself
 unmergeable, with no direct push to main to escape through.
+
+**Drain**, asked of BOTH: a release leaves `## [Unreleased — breaking]` the way the version it closes
+requires. Neither tree answers that, because one file is right or wrong depending on the change that
+produced it — a section still holding entries under a freshly closed major is a release that forgot to
+move them, and under an older major it is the ordinary state of collecting breaks for the next one; an
+entry no longer listed either shipped with a release or was reclassified by an edit that closed
+nothing. So the question is posed of the edit rather than of either tree's contents.
 
 Run: python3 scripts/release/published_check.py --base origin/main --result HEAD
 """
@@ -23,7 +30,16 @@ import subprocess
 import sys
 from pathlib import Path
 
-from release_notes import DEFAULT_CHANGELOG, DEFAULT_PACKAGE_JSON, VERSION_HEADING
+from release_notes import (
+    BREAKING_SECTION,
+    DEFAULT_CHANGELOG,
+    DEFAULT_PACKAGE_JSON,
+    ReleaseNotesError,
+    VERSION_HEADING,
+    extract_version_section,
+    normalize,
+    split_entries,
+)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
@@ -41,6 +57,39 @@ def version_headings(changelog_text):
     return [(match.group("version"), line)
             for line in changelog_text.splitlines()
             if (match := VERSION_HEADING.match(line))]
+
+
+def released_versions(changelog_text):
+    """Every version the CHANGELOG has closed, in file order."""
+    return [version for version, line in version_headings(changelog_text)
+            if RELEASE_DATE.search(line)]
+
+
+def is_major_bump(released, version):
+    """Whether `version` opens a new major against the release below it in `released`.
+
+    The last of them has nothing below it and is nobody's bump.
+    """
+    below = released.index(version) + 1
+    return below < len(released) and version.split(".")[0] != released[below].split(".")[0]
+
+
+def section_entries(changelog_text, version):
+    """The top-level entries under `## [version]`, or none where the CHANGELOG has no such section."""
+    try:
+        return split_entries(extract_version_section(changelog_text, version))
+    except ReleaseNotesError:
+        return []
+
+
+def entries_missing_from(entries, elsewhere):
+    """Those of `entries` that `elsewhere` does not also list, in the order `entries` gives."""
+    present = {normalize(entry) for entry in elsewhere}
+    return [entry for entry in entries if normalize(entry) not in present]
+
+
+def counted(entries, noun="entry", plural="entries"):
+    return f"{len(entries)} {noun if len(entries) == 1 else plural}"
 
 
 def declared_version(package_json_text):
@@ -73,6 +122,49 @@ def consistency_reason(changelog_text, package_json_text):
     if above:
         return (f"the CHANGELOG has closed {', '.join(above)} above the {version} package.json "
                 f"names: bump package.json to {above[0]} so the dispatch can reach it")
+
+    return None
+
+
+def drain_reason(base_changelog, result_changelog):
+    """Why this change may not close the version it closes, or None.
+
+    Read of the two trees rather than one, for the reason the module docstring gives. A change that
+    closes nothing is nobody's release and is asked nothing here — that is what leaves an entry free
+    to be reclassified out of the section on its own.
+    """
+    before = released_versions(base_changelog)
+    after = released_versions(result_changelog)
+    waiting_before = section_entries(base_changelog, BREAKING_SECTION)
+    waiting_after = section_entries(result_changelog, BREAKING_SECTION)
+
+    for version in (named for named in after if named not in before):
+        if not is_major_bump(after, version):
+            edited = entries_missing_from(waiting_before, waiting_after)
+            if edited:
+                return (f"{version} is not a major, and this change does not leave "
+                        f"'## [{BREAKING_SECTION}]' as it found it: {counted(edited)} changed or "
+                        f"gone, starting with:\n"
+                        f"  {edited[0].splitlines()[0]}\n"
+                        f"A minor or a patch leaves that section alone. Close this as a major if it "
+                        f"ships the break, or make the edit in a change that closes no version.")
+            continue
+
+        if waiting_after:
+            return (f"{version} is a major and '## [{BREAKING_SECTION}]' still lists "
+                    f"{counted(waiting_after)}, starting with:\n"
+                    f"  {waiting_after[0].splitlines()[0]}\n"
+                    f"A major moves them into the section it closes and leaves the heading standing "
+                    f"with none. The note is built from that section alone, so a break left here "
+                    f"ships in {version} with nothing describing it.")
+
+        lost = entries_missing_from(waiting_before, section_entries(result_changelog, version))
+        if lost:
+            return (f"{counted(lost)} left '## [{BREAKING_SECTION}]' without arriving in "
+                    f"{version}, starting with:\n"
+                    f"  {lost[0].splitlines()[0]}\n"
+                    f"A major carries the whole section into the version it closes. Move the entry "
+                    f"rather than dropping it, or the break ships in {version} undescribed.")
 
     return None
 
@@ -200,6 +292,13 @@ def main():
                consistency_reason(read_at(project, args.result, CHANGELOG_PATH),
                                   read_at(project, args.result, PACKAGE_JSON_PATH)),
                "could not be released as it stands", "package.json and the CHANGELOG agree")
+
+    if args.base and args.result:
+        report(f"{args.base}..{args.result}",
+               drain_reason(read_at(project, args.base, CHANGELOG_PATH),
+                            read_at(project, args.result, CHANGELOG_PATH)),
+               "leaves the breaking section wrong for the version it closes",
+               "the breaking section suits whatever this closes")
 
     return 1 if failed else 0
 

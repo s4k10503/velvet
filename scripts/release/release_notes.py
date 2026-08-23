@@ -20,6 +20,11 @@ SUBSECTION_HEADING = re.compile(r"^### +(?P<title>.+?)\s*$")
 
 HIGHLIGHTS_TITLE = "Highlights"
 
+# The two sections that carry no version. CONTRIBUTING.md's release section owns which entry goes in
+# which and what a release does with each.
+OPEN_SECTION = "Unreleased"
+BREAKING_SECTION = "Unreleased — breaking"
+
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 DEFAULT_CHANGELOG = REPO_ROOT / "Packages" / "com.velvet.core" / "CHANGELOG.md"
 DEFAULT_PACKAGE_JSON = REPO_ROOT / "Packages" / "com.velvet.core" / "package.json"
@@ -118,6 +123,31 @@ def trim_blank_edges(lines):
     while end > start and not lines[end - 1].strip():
         end -= 1
     return lines[start:end]
+
+
+def split_entries(section_lines):
+    """The top-level list items of one section body.
+
+    An item stops at the next `### ` heading as well as at the next item: where one of these is
+    compared against the same item written elsewhere, a heading carried into one copy makes the two
+    compare unequal.
+    """
+    entries = []
+    current = None
+    for line in section_lines:
+        if SUBSECTION_HEADING.match(line):
+            current = None
+        elif line.startswith("- "):
+            current = [line]
+            entries.append(current)
+        elif current is not None:
+            current.append(line)
+    return ["\n".join(entry) for entry in entries]
+
+
+def normalize(text):
+    """Collapse the wrapping a CHANGELOG line carries, so two spellings of one sentence match."""
+    return " ".join(text.split())
 
 
 RELATIVE_LINK = re.compile(r"\]\((?!https?://|#)(?P<target>[^)\s]+)\)")

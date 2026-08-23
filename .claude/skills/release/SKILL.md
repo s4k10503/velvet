@@ -24,8 +24,10 @@ the rename is what dates it.
 
 `## [Unreleased — breaking]` decides the version rather than following it: what sits there is to
 ship in a major and nowhere else. A major drains it as above and leaves the heading standing with
-none; a minor or a patch leaves it alone. That heading is never dated and never deleted;
-`scripts/release/test_release_notes.py` refuses both. CONTRIBUTING.md's release section owns which entry goes where.
+none; a minor or a patch leaves it alone. `scripts/release/published_check.py` reads what the pull
+request itself does to that section and refuses a release that gets either wrong. That heading is
+never dated and never deleted; `scripts/release/test_release_notes.py` refuses both.
+CONTRIBUTING.md's release section owns which entry goes where.
 
 **Highlights is what the release note leads with, and the release fails without it.** Five to nine
 bullets, one short paragraph each, ordered by what a user notices first — a fix for something that

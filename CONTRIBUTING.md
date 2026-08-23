@@ -619,7 +619,11 @@ behaviour a working application would notice changing.
    `changelog_into_closed_version.py` refuses a write into a dated section, and the rename is what
    dates it. The breaking heading itself is never dated and never deleted, and a `**Breaking:**`
    bullet in `### Highlights` belongs to a major and to no other release; `test_release_notes.py`
-   refuses each of those.
+   refuses each of those. Where the entries went is read from the change rather than the file, by
+   `published_check.py` on the pull request that closes the version: a major has to close with the
+   section empty and every entry of it accounted for in the version being closed, and a minor or a
+   patch may not take anything out of it or reword what is there. Reclassifying an entry out of it —
+   deciding it was never breaking — closes no version, so none of that is asked of it.
 2. Merge to `main` (the `upm` branch is updated automatically).
 3. Run the **UPM** workflow via *Actions ▸ UPM ▸ Run workflow*, entering the same version.
    This tags `vX.Y.Z` on the `upm` (package-at-root) commit and publishes a GitHub release.
