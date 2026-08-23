@@ -626,42 +626,41 @@ behaviour a working application would notice changing.
 
 ### The maintenance line
 
-`2.x` is the maintenance line for the 2 series; `main` is where the next major is built. **The line
-takes fixes and does not take features.** Somebody on `2.x` is there because they cannot yet take a
-breaking change, so a new utility they could get by upgrading is not worth the risk of moving code
-under them; a `feat` waits for `main`.
+When a major ships, the series before it gets a maintenance branch named `<major>.x`, cut from that
+series' last release; `main` is where the next major is built. **One line is maintained at a time — the
+series immediately before `main`'s.** Cutting the next major's line ends the one before it.
 
-**A commit that carries a breaking change does not come, even when it also carries a fix.** Four of the
-commits considered for 2.1.2 wrote bullets into both open sections at once, and the non-breaking half of
-one of those is not separable by cherry-picking it. If the fix is wanted it is written fresh against
-this line, which is what #605's was: `main`'s version of it reads a portal-ownership model that arrives
-with a `V.Portal` behaviour change, so the arm that reads it has no subject here.
+**The line takes fixes and does not take features.** Somebody on it is there because they cannot yet
+take a breaking change, so a new utility they could have by upgrading is not worth moving code under
+them. A `feat` waits for `main`.
 
-**The number of entries is not the number of commits.** Twenty-five of `main`'s `[Unreleased]` entries
-were absent from `2.x` when 2.1.2 was cut and five commits were cherry-pickable. Decide by asking which
-section a commit's own bullets sit in on `main` today; reading the nearest heading out of a diff's
-context answers wrong, and did.
+**A commit that carries a breaking change does not come, even when it also carries a fix.** A commit
+that wrote bullets into both open sections is not separable by cherry-picking half of it; if the fix
+is wanted on the line, it is written fresh there.
 
-**Backport with `cherry-pick -x`, in the order the commits landed, and compile after each one.** A clean
-cherry-pick is evidence of nothing: two of 2.1.2's applied with no conflict at all and the tree then
-failed to compile in five places, because one of them uses a helper that arrives with a commit that
-stayed behind. And the file that does *not* conflict is where the danger is — `V.cs` merged silently
-while keeping the half of a change that adds parameters and dropping the half that removes them,
-because there was nothing here to remove.
+**The count of `[Unreleased]` entries is not the count of backportable commits.** Decide per commit,
+by asking which section that commit's own bullets sit in on `main` today. Reading the nearest heading
+out of a diff's context answers the wrong question.
 
-**The record is the `-x` trailer, not the commit count.** v2.1.1 squashed seven backports into its
-release commit and carried no trailer, and `git cherry` cannot answer what this branch holds either
-way — relocating a CHANGELOG bullet changes a patch id, so splitting into one commit per fix does not
-repair it. Squash as everywhere else, and put the `(cherry picked from commit …)` lines **in the pull
-request body**, which is what becomes the squash message.
+**Cherry-pick with `-x`, in the order the commits landed, and compile after each one.** A clean
+cherry-pick is not evidence the tree still builds: a pick can name a helper that arrives with a commit
+that stayed behind. Nor is the absence of a conflict a safe signal — where a change both adds and
+removes, and the line has nothing to remove, the merge keeps the addition silently.
 
-**Keep an `## [Unreleased]` section open here between releases.** Without one a backport's bullet has
-nowhere to land, and one of 2.1.2's appended silently into the released `## [2.1.1]` section rather
-than conflicting.
+**The record is the `-x` trailer.** `git cherry` cannot answer what a line holds, because relocating a
+CHANGELOG bullet changes a patch id; splitting a backport into one commit per fix does not repair that.
+Squash as everywhere else, and put the `(cherry picked from commit …)` lines **in the pull request
+body**, which is what becomes the squash message.
 
-`2.x` does not carry every script `main` has grown since it was cut — `assert_results_from_this_tree.py`
-is the one that matters, because the failure it catches is a run that compiled nowhere, which is what a
-backport produces. Run `main`'s copy with `--project` against a checkout of this line.
+**Keep an `## [Unreleased]` section open between releases.** Without one a backport's bullet has
+nowhere to land, and appending into the released section above it does not conflict.
+
+Nothing in `.claude/hooks/`, `scripts/` or `.github/workflows/` names a maintenance branch: the merge
+guards read the pull request's own base through `.claude/hooks/lib/merge_target.py`. A new line needs
+no tooling change. What it does not inherit is every script `main` has grown since it was cut, and the
+one to check for is `assert_results_from_this_tree.py` — the failure it catches is a run that compiled
+nowhere, which is the shape a backport produces. Run `main`'s copy with `--project` against a checkout
+of the line.
 
 Between step 2 and step 3, `main` names a version that does not exist. The dispatch builds the note
 from the CHANGELOG section, which was written before anything merged in that window and describes none
