@@ -5,7 +5,19 @@ All notable changes to this package are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.1.2] - 2026-08-23
+
+### Highlights
+
+- A `Hooks.Use` resource key rebuilt on each render — a run-time string, or an id boxed on its way to
+  the parameter — named a resource nothing had loaded yet, so the fetch was torn down and started
+  again every render. Under a `V.Suspense` the boundary never came out of its fallback: the render a
+  landing loader asked for restarted that loader and suspended on it again.
+
+- A `Router.OnLocationChanged` subscriber that threw while a Suspend-mode loader was resolving had
+  its exception recorded as that route's load failure. The route reported an error no loader had
+  raised, and the round it belonged to was miscounted: a round holding one loader is left unsettled
+  by that, so a Back to its history entry re-ran the loader instead of being served from the cache.
 
 ### Fixed
 
