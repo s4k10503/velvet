@@ -1150,7 +1150,7 @@ namespace Velvet
 
         private enum PresenceStateOwner
         {
-            // The fiber that rendered the AnimatePresence, unregistered.
+            // The key's fiber term — whichever fiber the expansion ran under — unregistered.
             Boundary,
 
             // The element its children expand into, leaving the DOM.

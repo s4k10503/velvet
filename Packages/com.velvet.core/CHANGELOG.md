@@ -10,27 +10,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - A `V.AnimatePresence` that stops being rendered takes its bookkeeping with it. That bookkeeping is
-  keyed by the component the presence renders in, the parent element its children expand into, and
-  the presence's position, and only the component being disposed or the whole tree being unmounted
-  retired it. So a `cond ? V.AnimatePresence(…) : null` flipping to `null` left an entry holding the
-  committed children, and per key the exit anchor and the Motion element it had recorded, well after
-  the removal had taken those elements out of the tree: measured on a presence under a `V.Button`,
-  the entry left behind named both the departed child's element and the Button, which had already
-  gone back to the element pool. Rendering the presence again at that position then started from
-  that stale set — children that had left were spliced back into the DOM as exiting ghosts, and
-  `initial: false` no longer suppressed the enter, since the second mount was not taken for a first
-  render. The entry also survived its parent element being torn down, one left behind per removal,
-  and a poolable parent rented back for a fresh presence at the same position picked the stale entry
-  up again. A presence written directly in a `V.Portal`'s own children — so its children expand
-  straight into the registered target element — is outside what this release answers for, and reads
-  the same here as it does on 2.1.1: the entry is keyed on that target, which the caller owns and
-  the portal closing does not touch, and nothing here records which portal expanded an entry.
-  Closing the portal leaves the entry behind, and a later open brings the departed child back beside
-  the new one. Measured over two open/close cycles of a portal holding one keyed child: one entry
-  after the first close, two after the reopen, and after the second cycle the target held both the
-  departed child and the new one. Hiding a presence inside a portal left open reads the same way —
-  the departed child was still in the target afterwards, and beside the new one once the presence
-  returned. Placing the presence under an element inside the portal's children is covered.
+  keyed by three terms — the fiber the expansion ran under, the parent element its children expand
+  into, and the presence's position — and only that fiber being unregistered or the whole tree being
+  unmounted retired it. So a `cond ? V.AnimatePresence(…) : null` flipping to `null` left an entry
+  holding the committed children, and per key the exit anchor and the Motion element it had
+  recorded, well after the removal had taken those elements out of the tree: measured on a presence
+  under a `V.Button`, the entry left behind named both the departed child's element and the Button,
+  which had already gone back to the element pool. Rendering the presence again at that position
+  then started from that stale set — children that had left were spliced back into the DOM as
+  exiting ghosts, and `initial: false` no longer suppressed the enter, since the second mount was
+  not taken for a first render. The entry also survived its parent element being torn down, one left
+  behind per removal, and a poolable parent rented back for a fresh presence at the same position
+  picked the stale entry up again.
+  A presence written directly in a `V.Portal`'s own children — so its children expand straight into
+  the registered target element — is outside what this release answers for, and reads here as it
+  does on 2.1.1. Nothing records which portal expanded an entry, so closing the portal retires none;
+  and the fiber term a reopen records is not the term the mount recorded, so the reopen starts a
+  second entry rather than finding the mount's, which stays behind unchanged. Closing the portal
+  empties the target and the first reopen shows only the new child; the second reopen brings a child
+  whose key changed between opens back beside the new one, while one stable child key was measured
+  holding exactly one child after each of three reopens. Leaving the portal open and hiding only the
+  presence reads differently again: the departed child stays in the target straight away, and is
+  beside the new one on the next show. Placing the presence under an element inside the portal's
+  children is covered, and `Documentation~/motion.md` owns the placement advice.
 
 ## [2.1.1] - 2026-08-21
 
