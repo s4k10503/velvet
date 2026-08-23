@@ -20,6 +20,6 @@ coordinated with the reporter.
 | 2.0.x   | ❌        |
 | 1.x     | ❌        |
 
-Security fixes go to `main` and to the newest release of each series marked ✅. This table is updated
-with every release, so a version it does not list is not supported: the fix for one is to upgrade, and
-the [CHANGELOG](Packages/com.velvet.core/CHANGELOG.md) lists what each major changed.
+Security fixes go to `main` and to the newest release of each series marked ✅. A version this table
+does not list is not supported, and the fix for one is to upgrade; the
+[releases](https://github.com/s4k10503/velvet/releases) carry a note for every version.
