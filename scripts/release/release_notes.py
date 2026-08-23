@@ -17,6 +17,7 @@ from pathlib import Path
 
 VERSION_HEADING = re.compile(r"^## +\[(?P<version>[^\]]+)\]")
 SUBSECTION_HEADING = re.compile(r"^### +(?P<title>.+?)\s*$")
+ANY_HEADING = re.compile(r"^#{1,6}(?: |$)")
 
 HIGHLIGHTS_TITLE = "Highlights"
 
@@ -128,14 +129,15 @@ def trim_blank_edges(lines):
 def split_entries(section_lines):
     """The top-level list items of one section body.
 
-    An item stops at the next `### ` heading as well as at the next item: where one of these is
+    An item stops at the heading below it as well as at the next item: where one of these is
     compared against the same item written elsewhere, a heading carried into one copy makes the two
-    compare unequal.
+    compare unequal. Any depth ends it rather than `### ` alone, so a sub-subheading cannot carry
+    the same defect one level down.
     """
     entries = []
     current = None
     for line in section_lines:
-        if SUBSECTION_HEADING.match(line):
+        if ANY_HEADING.match(line):
             current = None
         elif line.startswith("- "):
             current = [line]

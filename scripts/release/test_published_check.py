@@ -59,7 +59,7 @@ TAGS = {"v2.0.0", "v2.0.0-main", "v2.0.1", "v2.0.1-main"}
 
 # Two open sections with a break waiting in each of two subsections. The `### Changed` one is last in
 # its subsection here and is not last in DRAINED, so the drain readings compare two spellings of one
-# entry and only a split that stops at `### ` matches them.
+# entry and only a split that ends an entry at the heading below it matches them.
 WAITING = """# Changelog
 
 ## [Unreleased]
@@ -127,6 +127,17 @@ SHIPPED_BY_A_MINOR = DRAINED.replace("## [3.0.0] - 2026-09-01", "## [2.2.0] - 20
 
 # The ordinary minor: the section is where the change found it.
 MINOR = WAITING.replace("## [Unreleased]", "## [2.2.0] - 2026-09-01")
+
+# The same drain with one entry copy-edited on the way instead of carried across unchanged.
+REWORDED_ON_THE_WAY = DRAINED.replace("- An API a caller has to edit around.",
+                                      "- An API that callers have to edit around.")
+
+# The major above, closing in the same change as a patch cut off the maintenance line. The whole
+# section moved into 3.0.0, which is what a rule reading only the section's before and after charges
+# to 2.1.1.
+MAJOR_BESIDE_A_PATCH = DRAINED.replace(
+    "## [2.0.1] - 2026-08-08",
+    "## [2.1.1] - 2026-08-30\n\n### Highlights\n\n- A backported fix.\n\n## [2.0.1] - 2026-08-08")
 
 # One entry decided not to be breaking after all, in a change that closes nothing.
 RECLASSIFIED = WAITING.replace(
@@ -199,7 +210,8 @@ class DrainDecisionTests(unittest.TestCase):
         reason = drain_reason(WAITING, DROPPED)
 
         # Assert
-        self.assertIn("1 entry left '## [Unreleased — breaking]' without arriving in 3.0.0", reason)
+        self.assertIn("1 entry left '## [Unreleased — breaking]' and no entry of 3.0.0 carries "
+                      "that text", reason)
 
     def test_Given_AMinorClosingOverAnEntryItTakesWithIt_When_Decided_Then_ItIsRefused(self):
         # Arrange — the same drain under a version that is not a major, which is a break shipped to
@@ -213,6 +225,23 @@ class DrainDecisionTests(unittest.TestCase):
         # Arrange — the ordinary release. A rule reading the result alone refuses this one, since
         # what it sees is a minor closing with breaks listed above it.
         reason = drain_reason(WAITING, MINOR)
+
+        # Assert
+        self.assertIsNone(reason)
+
+    def test_Given_AMajorDrainThatRewordedAnEntryOnTheWay_When_Decided_Then_TheRepairIsNamed(self):
+        # Arrange — the entry arrived, so the break is described and this refusal is a false one. It
+        # stands because the reading sees only that the text is gone, which a drop leaves too; what
+        # the message owes the reader is the way out.
+        reason = drain_reason(WAITING, REWORDED_ON_THE_WAY)
+
+        # Assert
+        self.assertIn("make any wording change in a change that closes no version", reason)
+
+    def test_Given_AMajorClosingBesideAPatchInOneChange_When_Decided_Then_ThereIsNoReason(self):
+        # Arrange — 3.0.0 drains the section correctly and 2.1.1 closes below it. Both are new here,
+        # so both are asked, and the section's own before and after cannot say which one emptied it.
+        reason = drain_reason(WAITING, MAJOR_BESIDE_A_PATCH)
 
         # Assert
         self.assertIsNone(reason)

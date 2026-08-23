@@ -2,7 +2,7 @@
 """Hold a repository to three things about the version it names.
 
 CONTRIBUTING.md's release section owns what goes wrong when nothing asks. What is decided here is
-which question is posed of which tree, and every answer follows from what repairs the state.
+which question is posed of which tree.
 
 **Publication**, asked of the BASE: every version the CHANGELOG has closed is tagged. A dispatch
 repairs it, so refusing merges is pressure toward one, and reading the base leaves the pull request
@@ -16,11 +16,17 @@ unmergeable, with no direct push to main to escape through.
 **Drain**, asked of BOTH: a release leaves `## [Unreleased — breaking]` the way the version it closes
 requires. Neither tree answers that, because one file is right or wrong depending on the change that
 produced it — a section still holding entries under a freshly closed major is a release that forgot to
-move them, and under an older major it is the ordinary state of collecting breaks for the next one; an
-entry no longer listed either shipped with a release or was reclassified by an edit that closed
-nothing. So the question is posed of the edit rather than of either tree's contents.
+move them, and under an older major it is the ordinary state of collecting breaks for the next one. So
+the question is posed of the edit rather than of either tree's contents, and only of an edit that
+closes a version: an entry leaves that section reclassified, reworded, or dropped as untrue, and a
+change closing nothing is free to do any of those.
 
-Run: python3 scripts/release/published_check.py --base origin/main --result HEAD
+Run: python3 scripts/release/published_check.py \
+       --base "$(git merge-base origin/main HEAD)" --result HEAD
+
+The merge base rather than origin/main: an origin/main that has moved on charges this change with
+breaking entries it never saw. The workflow reads the same pair from the event — the base commit it
+names, against the merge commit it checks out.
 """
 
 import argparse
@@ -131,25 +137,23 @@ def drain_reason(base_changelog, result_changelog):
 
     Read of the two trees rather than one, for the reason the module docstring gives. A change that
     closes nothing is nobody's release and is asked nothing here — that is what leaves an entry free
-    to be reclassified out of the section on its own.
+    to be reclassified, reworded or dropped on its own.
+
+    A major's entries are compared by text, so a drain that reworded one on the way is refused too.
+    Counting them instead permits the reword and still catches a drop, until the release writes an
+    entry of its own and the counts agree again; and a count reads two entries merged into one
+    exactly as it reads one of the two dropped. The refusal is loud and repaired by making the
+    wording change in a change that closes no version; the miss is a break published in a major with
+    nothing describing it.
     """
     before = released_versions(base_changelog)
     after = released_versions(result_changelog)
+    closing = [named for named in after if named not in before]
     waiting_before = section_entries(base_changelog, BREAKING_SECTION)
     waiting_after = section_entries(result_changelog, BREAKING_SECTION)
 
-    for version in (named for named in after if named not in before):
-        if not is_major_bump(after, version):
-            edited = entries_missing_from(waiting_before, waiting_after)
-            if edited:
-                return (f"{version} is not a major, and this change does not leave "
-                        f"'## [{BREAKING_SECTION}]' as it found it: {counted(edited)} changed or "
-                        f"gone, starting with:\n"
-                        f"  {edited[0].splitlines()[0]}\n"
-                        f"A minor or a patch leaves that section alone. Close this as a major if it "
-                        f"ships the break, or make the edit in a change that closes no version.")
-            continue
-
+    majors = [version for version in closing if is_major_bump(after, version)]
+    for version in majors:
         if waiting_after:
             return (f"{version} is a major and '## [{BREAKING_SECTION}]' still lists "
                     f"{counted(waiting_after)}, starting with:\n"
@@ -160,11 +164,27 @@ def drain_reason(base_changelog, result_changelog):
 
         lost = entries_missing_from(waiting_before, section_entries(result_changelog, version))
         if lost:
-            return (f"{counted(lost)} left '## [{BREAKING_SECTION}]' without arriving in "
-                    f"{version}, starting with:\n"
+            return (f"{counted(lost)} left '## [{BREAKING_SECTION}]' and no entry of {version} "
+                    f"carries that text, starting with:\n"
                     f"  {lost[0].splitlines()[0]}\n"
-                    f"A major carries the whole section into the version it closes. Move the entry "
-                    f"rather than dropping it, or the break ships in {version} undescribed.")
+                    f"A major carries the section into the version it closes. This reading compares "
+                    f"the entry's text, so it cannot tell one reworded on the way from one dropped "
+                    f"on the way, and a dropped one ships the break in {version} with nothing "
+                    f"describing it. Carry the entry across as it stands, and make any wording "
+                    f"change in a change that closes no version.")
+
+    # A minor closing beside a major is answerable for what that drain left, not for the drain.
+    carried = [entry for version in majors
+               for entry in section_entries(result_changelog, version)]
+    edited = entries_missing_from(waiting_before, waiting_after + carried)
+    others = [named for named in closing if named not in majors]
+    if edited and others:
+        return (f"{others[0]} is not a major, and this change does not leave "
+                f"'## [{BREAKING_SECTION}]' as it found it: {counted(edited)} changed or "
+                f"gone, starting with:\n"
+                f"  {edited[0].splitlines()[0]}\n"
+                f"A minor or a patch leaves that section alone. Close this as a major if it "
+                f"ships the break, or make the edit in a change that closes no version.")
 
     return None
 

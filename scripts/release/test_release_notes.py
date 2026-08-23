@@ -241,6 +241,13 @@ class SplitEntries(unittest.TestCase):
         # Assert
         self.assertEqual(entries, ["- One.", "- Two."])
 
+    def test_Given_an_item_last_before_a_deeper_heading_When_splitting_Then_that_heading_is_left_out(self):
+        # Arrange / Act
+        entries = release_notes.split_entries(["- One.", "#### Detail", "- Two."])
+
+        # Assert
+        self.assertEqual(entries, ["- One.", "- Two."])
+
     def test_Given_a_wrapped_item_When_splitting_Then_its_continuation_stays_with_it(self):
         # Arrange / Act
         entries = release_notes.split_entries(["- One", "  wrapped at a column.", "- Two."])
