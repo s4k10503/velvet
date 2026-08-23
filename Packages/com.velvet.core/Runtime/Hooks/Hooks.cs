@@ -1594,8 +1594,8 @@ namespace Velvet
             else
             {
                 var existing = slots[index];
-                // AreEqualObjects, not AreEqual: ResourceKey is declared object, which is exactly the
-                // erasure the comment over AreEqualObjects warns against.
+                // AreEqualObjects, not AreEqual: AreEqual selects its branch from T, and ResourceKey is
+                // declared object, so every key would take that method's reference branch whatever it holds.
                 if (existing is FiberAsyncResource<T> typed && ObjectIs.AreEqualObjects(typed.ResourceKey, resourceKey))
                 {
                     resource = typed;
