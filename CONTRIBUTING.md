@@ -574,7 +574,7 @@ In `test.yml` and `generators.yml`, filtering therefore applies to `push` only, 
 request runs both workflows whether it is based on `main` or on a maintenance branch, and so does every
 merge-group entry once a queue is turned on. The `merge_group:` keys are there for that, and
 `WorkflowTriggerCoverageTests` fails if either of the two gated triggers goes missing from either
-workflow, or gains a child key under one of them. Skipping work per queue entry is a job-level condition, not a
+workflow, or gains a child key whose colon follows its name under one of them. Skipping work per queue entry is a job-level condition, not a
 trigger filter: a required check that does not start has nothing able to clear it.
 
 `main` does not require heads to be up to date before merging. That setting serialises the queue — each

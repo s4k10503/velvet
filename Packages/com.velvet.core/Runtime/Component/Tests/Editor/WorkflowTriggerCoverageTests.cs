@@ -18,7 +18,7 @@ namespace Velvet.Tests
     /// <para>
     /// The trigger side is held by two rules, and the last two cases here are the whole of them: branch
     /// protection requires a check from each of these workflows, so each must subscribe to both events that
-    /// ask for one, and neither of those subscriptions may carry a child key.
+    /// ask for one, and neither of those subscriptions may carry a child key whose colon follows its name.
     /// </para>
     /// </summary>
     [TestFixture]
@@ -303,7 +303,8 @@ namespace Velvet.Tests
 
         // A child key whose colon follows its name is reported, rather than a list of the filters named
         // today: a list is silent about a key it has not got, where reporting one it should not have
-        // reported fails and gets corrected. Spellings this reader does not reach are on #737.
+        // reported fails and gets corrected. A spelling that puts anything between the name and the
+        // colon, or that writes the trigger as a flow mapping, is not reached.
         private static IEnumerable<(string Workflow, string Trigger, string Key)> TriggerFilters(string workflow)
         {
             var lines = File.ReadAllLines(Path.GetFullPath(workflow));
