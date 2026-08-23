@@ -37,8 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Router.OnLocationChanged` subscriber can run behind that announcement — and a throw from one was
   caught by the clauses that exist for the loader itself. That counted the round's outstanding loader
   off a second time and recorded the throw as that route's loader error. So a caller reading the route's
-  loader error saw a load failure that had not happened, and the subscriber's exception reached the
-  console through the path that failure takes, naming nothing that would tie it to the subscriber. Filing it as a failure also ran the router's failure
+  loader error saw a load failure that had not happened. Filing it as a failure also ran the router's failure
   handler, which writes the history entry's snapshot again — this time from a round the second count
   had corrupted — so the entry stayed unsettled and a Back or Forward to it re-ran the loader instead
   of being served from the cache. What that second count costs the round itself depends on how many
