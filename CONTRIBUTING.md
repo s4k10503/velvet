@@ -691,47 +691,49 @@ Cutting the next major's line ends the one before it.
 **The line takes fixes and does not take features.** A feature on it is a second place that feature has
 to keep working, for users who could have it by upgrading instead. A `feat` waits for `main`.
 
-**A fix made on the line comes forward to `main` as its own pull request.** Nothing checks this, and
-until it happens `main` carries the bug — which the next major then ships to everyone who upgrades.
-
 **A commit that carries a breaking change does not come, even when it also carries a fix.** What makes
-one unsplittable is the code rather than the CHANGELOG: the fix can name a symbol that arrives with the
-breaking half, so the pick auto-merges and then does not compile. If the fix is wanted on the line, it
-is written fresh there.
+one unsplittable is the code: the fix can name a symbol that arrives with the breaking half, so the
+pick auto-merges and then does not compile. If the fix is wanted on the line it is written fresh there
+— and a fix written first on the line may need to come forward to `main`. Nothing checks either
+direction, and `main` may already carry its own; ask before opening one.
 
-**The count of `[Unreleased]` entries is not the count of backportable commits.** Decide per commit, by
-asking which section that commit's own bullets sit in on `main` today. Reading the nearest heading out
-of a diff's context answers the wrong question.
+**Decide per commit, not per `[Unreleased]` entry.** The mapping runs many-to-many, and more than half
+the commits since this line was cut wrote no bullet at all. Where a commit did, ask which section its
+bullets sit in on `main` today — reading the nearest heading out of a diff's context answers the wrong
+question. Where it did not, the decision is only whether the line wants the change.
 
 **Cherry-pick with `-x`, in the order the commits landed, and compile after each one.** A clean
-cherry-pick is not evidence the tree still builds: a pick can name a helper that arrives with a commit
-that stayed behind. Nor is the absence of a conflict a safe signal — where a change both adds and
-removes, and the line has nothing to remove, the merge keeps the addition silently.
+cherry-pick is not evidence the tree still builds, and neither is the absence of a conflict: where a
+change both adds and removes and the line has nothing to remove, the merge keeps the addition silently.
 
 **Take the CHANGELOG hunk out of the pick and write the entry on the line by hand.** Picked as it
 stands it applies clean and lands in the *released* section, because that is where the context it was
 written against ended up when the release renamed the heading above it; reopening `## [Unreleased]`
-does not attract it. `changelog_into_closed_version.py` is registered against `Edit|Write`, so a
-cherry-pick does not reach it either.
+does not attract it.
 
 **The record is the `-x` trailer.** Squash as everywhere else, and put the `(cherry picked from commit
 …)` lines **in the pull request body**, which is what becomes the squash message. Do not reach for
-`git cherry` instead: measured here, it reported every commit it walked as absent from the line,
-including the ones whose fix the line carries.
+`git cherry`: measured here, it reported every commit it walked as absent from the line, including the
+ones whose fix the line carries.
 
-A new line needs no change to the merge and release guards — each reads the pull request's own base,
-and `### Repository scripts` above says how. What a cut does cost is everything else that is written
-for one branch: `.github/dependabot.yml`'s `target-branch`, which names the line explicitly; the
-`protect-main` ruleset, which covers `main` and nothing else, so a new line starts unprotected; and
-`upm.yml`, whose force-push of the split and whose repo-wide `PREV_MAIN_TAG` both assume a single
-series is publishing.
+A new line needs no change to the merge and release guards — they judge the pull request rather than a
+branch name, and `### Repository scripts` above says how that is held. What a cut does cost is
+everything else written for one branch:
 
-A line also does not inherit the scripts `main` grew after it was cut, and three of them judge what a
-backport carries. Run `main`'s copy of each with `--project`:
-`assert_results_from_this_tree.py`, which reads `Library`, so point it at a checkout the suite has run
-in; `base_red_check.py`, which needs `--base origin/<line>` besides, since its default is
-`origin/main` and a backport branch's merge base with `main` is the release the line was cut from; and
-`assume_gate_check.py`, which reads its own `--baseline` and so needs nothing further.
+- each required workflow's `pull_request` trigger must filter by no branch, or a pull request based on
+  the line starts neither workflow and its required checks stay Pending with nothing able to clear them;
+- `.github/dependabot.yml`'s `target-branch`, which names the line rather than `main`, so a new one
+  needs its own entry and the old one's removing;
+- the `protect-main` ruleset, which covers `main` and nothing else, so a new line starts unprotected;
+- `upm.yml`, whose force-push of the split and whose repo-wide `PREV_MAIN_TAG` both assume a single
+  series is publishing.
+
+A line also does not inherit the scripts `main` grew after it was cut, and two of them judge what a
+backport carries. `assert_results_from_this_tree.py` reads `Library`, so point `--project` at a
+checkout the suite has run in. `base_red_check.py` wants `--base origin/<line>` besides, since its
+default is `origin/main` and a backport branch's merge base with `main` is the release the line was cut
+from. `assume_gate_check.py` is not a third: it resolves `--baseline` under `--project`, and the record
+it looks for is a file the line does not have.
 
 ## API documentation
 
