@@ -2,13 +2,12 @@
 """Refuses an install example that pins a concrete release tag.
 
 A pin written into a document is correct on the day it is written and silently wrong from the next
-release on. The one this replaced named v1.0.0 and stood through seven releases and two majors,
-until the series it named stopped being supported and the install instructions were still telling a
-new user to pin it. A guard is what keeps the placeholder from being helpfully filled in again.
+release on. Nothing else asks the question: the tag resolves, the manifest is valid, and the reader
+installs a version the project may no longer support.
 
-Only what a reader is shown is in scope -- markdown, and the comments in the workflow files. A
-concrete pin inside code is the opposite case: `test_release_notes.py` asserts the generated note
-carries the version being released, and that assertion is right to name one.
+Scope is markdown and the workflow files -- everything a reader is handed an install URL from, which
+excludes code. `test_release_notes.py` asserts the generated note carries the version being released,
+and that assertion is right to name one.
 """
 
 import argparse
@@ -17,21 +16,18 @@ import subprocess
 import sys
 from pathlib import Path
 
-# `.git#v<digit>` is the install-URL shape. A tag reference elsewhere -- a compare link, a changelog
-# heading -- names a release that happened and stays true; only an install example goes stale.
-CONCRETE_PIN = re.compile(r"\.git#v\d")
-
-SKIP = {"scripts/release/pin_example_check.py", "scripts/release/test_pin_example_check.py"}
+# Two spellings of the same install URL. `.git#v<digit>` is the plain form; the second reaches a pin
+# that a `?path=` segment or a missing `.git` suffix puts out of the first's reach, both of which UPM
+# accepts. Measured over every tracked file, neither matches anything the repository means to keep.
+CONCRETE_PIN = re.compile(r"\.git#v\d|github\.com/[^\s`\"')\]]*#v\d")
 
 
 def documents(project):
-    """Markdown anywhere, plus the workflow files, whose header comments carry install examples."""
+    """Markdown and the workflow files: every format this repository hands a reader an install URL in."""
     listed = subprocess.run(["git", "-C", str(project), "ls-files", "-z"],
                             capture_output=True, text=True, check=True)
     for name in listed.stdout.split("\0"):
-        if not name or name in SKIP:
-            continue
-        if name.endswith(".md") or name.startswith(".github/workflows/"):
+        if name and (name.endswith(".md") or name.startswith(".github/workflows/")):
             yield name
 
 
@@ -44,8 +40,9 @@ def findings(project):
         except (OSError, UnicodeDecodeError):
             continue
         for number, line in enumerate(text.splitlines(), 1):
-            if CONCRETE_PIN.search(line):
-                found.append((name, number, line.strip()))
+            for match in CONCRETE_PIN.finditer(line):
+                # The column, so two pins on one line report as two.
+                found.append((name, number, match.start() + 1, line.strip()))
     return found
 
 
@@ -59,8 +56,8 @@ def main():
     if not found:
         return 0
     print("An install example names a release tag, which the next release makes wrong:\n")
-    for name, number, line in found:
-        print("  {}:{}: {}".format(name, number, line))
+    for name, number, column, line in found:
+        print("  {}:{}:{}: {}".format(name, number, column, line))
     print("\nWrite the shape instead -- `#vX.Y.Z` -- and link the releases page for the current one.")
     return 1
 
