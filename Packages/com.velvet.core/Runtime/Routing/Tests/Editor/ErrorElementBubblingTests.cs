@@ -9,31 +9,6 @@ using Velvet.TestUtilities;
 
 namespace Velvet.Tests
 {
-    /// <summary>
-    /// Specifies how a loader error bubbles to the nearest ancestor route (at or above the errored route) that
-    /// defines an <c>ErrorElement</c>.
-    /// <list type="bullet">
-    /// <item>A child loader error with no child <c>ErrorElement</c> surfaces in the nearest ancestor boundary:
-    /// the boundary route renders its <c>ErrorElement</c> in place of its own Element and descendant Outlet
-    /// subtree, ancestors above the boundary render normally, and routes below the boundary render nothing.</item>
-    /// <item>The error is keyed by the descendant's <see cref="RouteMatch.RouteId"/>, yet <c>UseRouteError</c>
-    /// at the bubble-target boundary resolves the caught descendant error rather than the boundary route's own
-    /// id.</item>
-    /// <item>A child with its own <c>ErrorElement</c> is the boundary itself: the parent renders normally and
-    /// the child's <c>ErrorElement</c> renders at the child position (no over-bubbling).</item>
-    /// <item>A parent that errors and defines an <c>ErrorElement</c> is its own boundary: its
-    /// <c>ErrorElement</c> replaces its Element and the whole descendant subtree.</item>
-    /// <item>A deep child error bubbles past ancestors without an <c>ErrorElement</c> to the nearest ancestor
-    /// that has one.</item>
-    /// <item>When no route at or above the errored route defines an <c>ErrorElement</c>, the error bubbles to
-    /// the implicit root boundary, which renders nothing (there is no default error surface).</item>
-    /// </list>
-    /// </summary>
-    /// <remarks>
-    /// The tests drive a real <see cref="Router"/> and mount the router-root provider chain (Location /
-    /// LoaderData / Errors) above an Outlet, then assert on rendered Label text to verify which element
-    /// surfaced. <c>ParentErrorCaptureRender</c> records <c>UseRouteError</c> into a static field.
-    /// </remarks>
     [TestFixture]
     internal sealed class ErrorElementBubblingTests
     {
@@ -183,8 +158,6 @@ namespace Velvet.Tests
         [Test]
         public void Given_ChildErrorBubbledToParent_When_UseRouteErrorAtBoundary_Then_ResolvesDescendantError()
         {
-            // The error is keyed by the child's RouteId, but the ErrorElement renders at the parent boundary;
-            // UseRouteError there resolves the caught descendant error, not the boundary route's own id.
             // Arrange
             var routes = V.Routes(
                 V.Route(
@@ -359,7 +332,6 @@ namespace Velvet.Tests
         [Test]
         public void Given_DeepChildError_When_Rendered_Then_AncestorAboveBoundaryRendersNormally()
         {
-            // grandparent (no errorElement) -> parent (errorElement) -> child (errors, no errorElement).
             // Arrange
             var router = BuildDeepChainRouter();
 
@@ -442,8 +414,6 @@ namespace Velvet.Tests
         [Test]
         public void Given_ChildErrorNoAncestorBoundary_When_Rendered_Then_ParentLayoutBlanks()
         {
-            // With no errorElement anywhere, the error bubbles to the implicit root boundary, which has no
-            // default error surface and renders nothing.
             // Arrange
             var router = BuildNoBoundaryRouter();
 
