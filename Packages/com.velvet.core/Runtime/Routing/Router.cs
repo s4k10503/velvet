@@ -129,14 +129,12 @@ namespace Velvet
 
         /// <summary>
         /// Navigates to the given path. Evaluation order is Guard -&gt; Blocker -&gt; Loader.
-        /// When a Guard returns a redirect, recursively navigates to the redirect target and records only
-        /// that target, with this navigation's own history effect: a Push appends it where the originating
-        /// path would have gone, and a Replace or a Back/Forward step overwrites the entry at the slot this
-        /// navigation resolved. Up to 5 redirects.
+        /// A successful Guard redirect records the final target rather than intermediate targets while
+        /// preserving the originating navigation's history effect.
         /// </summary>
         /// <param name="path">Target path to navigate to.</param>
         /// <param name="mode">How the destination is recorded in the history stack. Defaults to <see cref="NavigationMode.Push"/>.</param>
-        /// <param name="cancellationToken">Token observed by Guards, Blockers, and Loaders to abort the navigation.</param>
+        /// <param name="cancellationToken">Token forwarded to Blockers and Loaders.</param>
         /// <returns>
         /// A <see cref="NavigationResult"/> indicating the outcome:
         /// <see cref="NavigationResult.Success"/> on completion,
@@ -303,9 +301,8 @@ namespace Velvet
             int redirectCount,
             PendingNavigation? initiator)
         {
-            // Concurrent-navigation handling. Recursive redirect calls (redirectCount > 0) reuse the
-            // outer navigation's CTS so a redirect doesn't cancel its own initiator, and inherit its
-            // claim so a redirect's rollback is judged by whether the INITIATOR still holds it.
+            // Redirect recursion shares the initiating CTS and claim without cancelling or dispossessing the
+            // navigation it belongs to.
             CancellationTokenSource? myCts = null;
             CancellationToken navToken = cancellationToken;
             if (redirectCount == 0)
@@ -429,10 +426,7 @@ namespace Velvet
             }
             catch (Exception)
             {
-                // A Guard delegate is application code invoked with nothing between it and the caller, and the
-                // guard phase's mutual-exclusion throw reaches here the same way. The exception is left to
-                // the caller, and the router records the failure rather than the phase it died in — Matching
-                // and Loading are what UseNavigation renders a pending branch for.
+                // Release this attempt's Status claim before propagating; a newer owner remains untouched.
                 ReleaseClaim(pending, RouterStatus.Error);
                 throw;
             }
@@ -510,11 +504,7 @@ namespace Velvet
 
         #region Guard check (after Match, before Loader)
 
-        // Guard runs before the Blocker check, so an attempt naming a path a Guard rejected is not put
-        // to a Blocker. That is not a way past Blockers: the redirect goes out through
-        // NavigateInternalAsync, which puts its target to them on the same terms as any other
-        // navigation. The navigation-blocking guide says what that leaves a dirty form doing.
-        // Returns null when no match redirected, so the caller falls through to the Blocker check.
+        // Redirects re-enter the pipeline, so a target that passes its Guards still reaches Blockers.
         private async UniTask<NavigationResult?> RunGuardChecks(
             IReadOnlyList<RouteMatch> matches,
             NavigationMode mode,
@@ -549,13 +539,8 @@ namespace Velvet
 
                 if (redirectTarget != null)
                 {
-                    // The redirect target is the only entry the pair records, and it records it with the
-                    // originating navigation's own history effect: a Push appends the target where the
-                    // originating path would have gone, and a Back/Forward replaces the entry at the slot
-                    // that navigation resolved. The rejected alternative was to append the originating path
-                    // up front for the target's Replace to overwrite — a redirect abandoned in a Blocker
-                    // then leaves an entry for a path the user never reached, and it cannot be taken back
-                    // once a newer navigation has built on the stack that entry sits in.
+                    // Committing the rejected path before the target would leave a ghost entry when the target
+                    // is blocked or fails, so it inherits the initiator's history slot and effect.
                     return await NavigateInternalAsync(
                         redirectTarget,
                         mode == NavigationMode.Push ? NavigationMode.Push : NavigationMode.Replace,
@@ -869,7 +854,7 @@ namespace Velvet
         /// <summary>
         /// Moves one step back on the history stack. Returns <see cref="NavigationResult.Cancelled"/> when <see cref="CanGoBack"/> is false.
         /// </summary>
-        /// <param name="cancellationToken">Token observed by Guards, Blockers, and Loaders to abort the navigation.</param>
+        /// <param name="cancellationToken">Token forwarded to Blockers and Loaders.</param>
         /// <returns>The <see cref="NavigationResult"/> from the underlying <see cref="NavigateAsync"/>, or <see cref="NavigationResult.Cancelled"/> when the history has no previous entry.</returns>
         public UniTask<NavigationResult> GoBack(CancellationToken cancellationToken = default)
         {
@@ -884,7 +869,7 @@ namespace Velvet
         /// <summary>
         /// Moves one step forward on the history stack. Returns <see cref="NavigationResult.Cancelled"/> when <see cref="CanGoForward"/> is false.
         /// </summary>
-        /// <param name="cancellationToken">Token observed by Guards, Blockers, and Loaders to abort the navigation.</param>
+        /// <param name="cancellationToken">Token forwarded to Blockers and Loaders.</param>
         /// <returns>The <see cref="NavigationResult"/> from the underlying <see cref="NavigateAsync"/>, or <see cref="NavigationResult.Cancelled"/> when the history has no next entry.</returns>
         public UniTask<NavigationResult> GoForward(CancellationToken cancellationToken = default)
         {

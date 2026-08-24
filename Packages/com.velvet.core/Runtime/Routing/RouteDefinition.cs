@@ -5,8 +5,8 @@ using Cysharp.Threading.Tasks;
 namespace Velvet
 {
     /// <summary>
-    /// Route definition. Construction via the V.Route() DSL is recommended (it performs exclusivity validation).
-    /// When constructed directly, specifying RedirectTo and Guard together throws during NavigateAsync.
+    /// A directly constructed route that combines <see cref="RedirectTo"/> and <see cref="Guard"/> throws
+    /// <see cref="InvalidOperationException"/> when its redirect configuration is evaluated during navigation.
     /// </summary>
     public sealed class RouteDefinition
     {
@@ -40,16 +40,14 @@ namespace Velvet
         public RouteDefinition[]? Children { get; init; }
 
         /// <summary>
-        /// Static redirect target path. Dynamic parameters (such as :id) are not expanded.
-        /// Use Guard for redirects that need parameters.
-        /// RedirectTo and Guard cannot be specified together.
+        /// Static redirect target without parameter interpolation. Use <see cref="Guard"/> to derive a target
+        /// from matched parameters.
         /// </summary>
         public string? RedirectTo { get; init; }
 
         /// <summary>
-        /// Dynamic redirect predicate. Returning null lets navigation continue; returning a non-null path
-        /// redirects to it. Evaluated after Match and before Loader. RedirectTo and Guard cannot be
-        /// specified together.
+        /// Returning null continues navigation; returning a path redirects. Runs after matching and before
+        /// Blockers and Loaders.
         /// </summary>
         public Func<RouteLoaderContext, string>? Guard { get; init; }
 
