@@ -5,10 +5,7 @@ using Cysharp.Threading.Tasks;
 
 namespace Velvet
 {
-    /// <summary>
-    /// Registry of navigation blockers for a <see cref="Router"/>. A registered blocker can veto or defer a
-    /// navigation attempt (e.g. an unsaved-changes prompt); backs the <c>UseBlocker</c> hook.
-    /// </summary>
+    /// <summary>Coordinates the navigation Blockers registered with a <see cref="Router"/>.</summary>
     public sealed class RouteBlockerManager
     {
         private readonly List<BlockerEntry> _blockers = new();
@@ -16,10 +13,9 @@ namespace Velvet
         #region Register
 
         /// <summary>
-        /// Registers a synchronous Blocker. Disposing the returned <see cref="IDisposable"/> unregisters it.
+        /// Disposing stops future predicate checks. An already Blocked state remains answerable until its
+        /// attempt settles.
         /// </summary>
-        /// <param name="shouldBlock">Function that receives a navigation attempt and returns true to block.</param>
-        /// <param name="state">State object for this blocker. <see cref="RouteBlockerState.Block"/> is invoked when blocking.</param>
         public IDisposable Register(Func<NavigationAttempt, bool> shouldBlock, RouteBlockerState state)
         {
             var entry = new BlockerEntry { SyncCheck = shouldBlock, State = state };
@@ -28,10 +24,9 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Registers an asynchronous Blocker. Disposing the returned <see cref="IDisposable"/> unregisters it.
+        /// Disposing stops future predicate checks. An already Blocked state remains answerable until its
+        /// attempt settles.
         /// </summary>
-        /// <param name="shouldBlock">Async function that receives a navigation attempt and returns true to block.</param>
-        /// <param name="state">State object for this blocker. <see cref="RouteBlockerState.Block"/> is invoked when blocking.</param>
         public IDisposable Register(Func<NavigationAttempt, CancellationToken, UniTask<bool>> shouldBlock, RouteBlockerState state)
         {
             var entry = new BlockerEntry { AsyncCheck = shouldBlock, State = state };
@@ -43,21 +38,11 @@ namespace Velvet
 
         #region Check
 
-        /// <summary>
-        /// Evaluates the registered Blockers asynchronously.
-        /// </summary>
-        /// <remarks>
-        /// Blocking does not end the pass. A Blocker is passed over rather than consulted for as long as it
-        /// is <see cref="RouteBlockerStatus.Proceeding"/>, whichever navigation reaches here over that span.
-        /// </remarks>
-        /// <param name="attempt">The navigation attempt being decided.</param>
-        /// <param name="resume">Re-issues <paramref name="attempt"/>; invoked by <see cref="RouteBlockerState.Proceed"/>.</param>
-        /// <param name="cancellationToken">Token forwarded to an asynchronous Blocker's predicate.</param>
         internal async UniTask<bool> CheckAsync(NavigationAttempt attempt, Action resume,
             CancellationToken cancellationToken = default)
         {
             var anyBlocked = false;
-            // ToArray() snapshots the list so a blocker that unregisters during an await does not mutate it.
+            // Decisions may unregister later entries, so iteration must use the pass's original ordering.
             foreach (var entry in _blockers.ToArray())
             {
                 if (!entry.IsRegistered)
@@ -70,7 +55,6 @@ namespace Velvet
                     continue;
                 }
 
-                // An entry carries exactly one of SyncCheck / AsyncCheck; anything else contributes nothing.
                 bool blocked;
                 if (entry.SyncCheck != null)
                 {
@@ -85,18 +69,12 @@ namespace Velvet
                     continue;
                 }
 
-                // A superseded attempt must not flip any state: the token is the navigation's own,
-                // cancelled when a newer navigation takes over, and the caller is about to discard
-                // this result as Cancelled — a Blocked state would strand a confirm-UI until some
-                // unrelated future navigation resets it.
                 if (cancellationToken.IsCancellationRequested)
                 {
                     return anyBlocked;
                 }
 
-                // Skip entries whose registration died during this pass (the snapshot keeps them
-                // iterable, but their owner unmounted or an earlier blocker's decision tore them
-                // down): nothing live is waiting on their state.
+                // A registration removed during this pass no longer owns state that may be blocked.
                 if (blocked && entry.IsRegistered)
                 {
                     entry.State.Block(attempt, resume, AbandonAttempt);
@@ -110,10 +88,7 @@ namespace Velvet
 
         #region Release
 
-        /// <summary>
-        /// Resets every Blocker that is currently blocked, without re-issuing its attempt.
-        /// Called from <see cref="Router"/> at the start of a new navigation attempt.
-        /// </summary>
+        /// <summary>Clears Blocked entries without rearming entries that already released the attempt.</summary>
         /// <remarks>
         /// A <see cref="RouteBlockerStatus.Proceeding"/> Blocker is left alone: the attempt starting here may
         /// be the one it released, and returning it to Idle would put it back in the way of that attempt.
@@ -131,10 +106,8 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Ends the attempt for every Blocker at once. Reached from <see cref="RouteBlockerState.Reset"/>,
-        /// which is one Blocker answering for a navigation the router has already turned back: leaving the
-        /// others holding it would let a later <c>Proceed</c> send the router at the destination that
-        /// answer declined.
+        /// A reset abandons the shared attempt, preventing another Blocker from resuming an attempt that was
+        /// already declined.
         /// </summary>
         internal void AbandonAttempt()
         {
@@ -142,17 +115,9 @@ namespace Velvet
             SettleProceeding();
         }
 
-        /// <summary>
-        /// Returns each <see cref="RouteBlockerStatus.Proceeding"/> Blocker to Idle, which is what arms it
-        /// for the next navigation. Reached when a navigation commits, when a re-issued one ends without
-        /// committing, when an attempt is abandoned, and from <see cref="Unregister"/> when the
-        /// registration of a Blocker that was holding one is disposed.
-        /// </summary>
         /// <remarks>
-        /// A registered Blocker still Blocked is a confirm nobody has answered yet, over an attempt that
-        /// has therefore not finished. Arming the Blockers that already consented to it would put them back
-        /// in the way of what they consented to, and the two would go on releasing each other in turn
-        /// without it ever landing.
+        /// A registered Blocker still Blocked has not released or abandoned the attempt. Rearming the
+        /// Blockers that already released it would put them back in its way before it can settle.
         /// </remarks>
         internal void SettleProceeding()
         {
@@ -194,8 +159,6 @@ namespace Velvet
         private void RemoveSettledRegistrations() =>
             _blockers.RemoveAll(entry => !entry.IsRegistered && entry.State.Status == RouteBlockerStatus.Idle);
 
-        // Private class - mutable public fields are used intentionally.
-        // Not referenced externally, so promoting them to properties would just add noise.
         private sealed class BlockerEntry
         {
             public Func<NavigationAttempt, bool>? SyncCheck;
