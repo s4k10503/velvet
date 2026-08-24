@@ -7,37 +7,23 @@ using UnityEngine;
 namespace Velvet
 {
     /// <summary>
-    /// The single source of preview stories. Discovers every <c>[VelvetPreview]</c> method and the
-    /// <c>[VelvetPreviewSetup]</c> environment its assembly opts into, by plain reflection over the loaded
-    /// assemblies that reference Velvet — so the live editor window and the headless capture path both drive off
-    /// one registry and a story authored once renders identically in either.
+    /// Discovers preview stories and their assembly setup methods from loaded assemblies that reference Velvet.
     /// </summary>
     public static class VelvetPreviewRegistry
     {
-        // Discovered stories, computed once per domain. A domain reload tears down the AppDomain and resets every
-        // static, so a recompile rebuilds this on the next access with no manual invalidation needed; the
-        // expensive AppDomain-wide scan therefore runs at most once per editor session between reloads.
         private static List<VelvetPreviewStory>? s_cachedStories;
 
-        // Per-assembly resolved [VelvetPreviewSetup] method (null value = scanned, none found), cached so a story
-        // re-mounting many times (e.g. a controls knob edited per keystroke) does not re-scan the assembly each
-        // mount. Reset for free by a domain reload, like s_cachedStories.
         private static readonly Dictionary<Assembly, MethodInfo?> s_setupCache = new();
 
         /// <summary>
-        /// All valid preview stories declared by the project's own (non-test) assemblies, ordered by group then
-        /// name so a story list is stable across reloads. Test-runner assemblies are excluded so fixture stories
-        /// authored for unit tests never leak into the preview window or the capture set.
+        /// Discovered valid stories from the project's non-test assemblies, ordered by group then name.
         /// </summary>
         public static List<VelvetPreviewStory> DiscoverStories() =>
             s_cachedStories ??= DiscoverStoriesIn(NonTestVelvetAssemblies());
 
         /// <summary>
-        /// Discovers the valid stories declared in <paramref name="assemblies"/> only. The public
-        /// <see cref="DiscoverStories"/> calls this with the project's non-test assemblies; tests call it with
-        /// their own assembly to exercise discovery despite the production test-assembly exclusion. An invalid
-        /// signature (non-static, parameterized, generic, or not returning <see cref="VNode"/>) is skipped with a
-        /// warning rather than silently dropped, so a mistyped story is noticed.
+        /// Discovers valid stories from <paramref name="assemblies"/>. Invalid discovered signatures are skipped
+        /// with a warning.
         /// </summary>
         internal static List<VelvetPreviewStory> DiscoverStoriesIn(IEnumerable<Assembly> assemblies)
         {
@@ -66,9 +52,9 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Resolves the <c>[VelvetPreviewSetup]</c> environment for <paramref name="assembly"/>, runs it, and
-        /// returns a disposable that tears it back down — or <c>null</c> when the assembly declares no setup.
-        /// Honors at most one setup per assembly (a second is ignored with a warning).
+        /// Resolves and runs the <c>[VelvetPreviewSetup]</c> environment for <paramref name="assembly"/>. Returns
+        /// its teardown handle when it supplied one; otherwise returns <c>null</c>. Honors at most one setup per
+        /// assembly.
         /// </summary>
         public static IDisposable? RunSetupFor(Assembly? assembly)
         {
@@ -77,8 +63,6 @@ namespace Velvet
             return chosen == null ? null : Invoke(chosen);
         }
 
-        // The assembly's single [VelvetPreviewSetup] method (or null), resolved once and cached. The scan +
-        // validation warnings run only on the first resolve per assembly; subsequent mounts read the cache.
         private static MethodInfo? ResolveSetup(Assembly assembly)
         {
             if (s_setupCache.TryGetValue(assembly, out var cached)) return cached;
@@ -109,9 +93,8 @@ namespace Velvet
             return chosen;
         }
 
-        // The project's own assemblies that reference Velvet, minus any that reference the Unity test runner or
-        // NUnit: a test assembly's fixture stories are scaffolding for unit tests, not project UI, so they must
-        // not surface in the preview window or be written out by the capture harness.
+        // Test fixture stories are scaffolding, not project UI; keep their assemblies out of the preview and
+        // capture registries.
         private static IEnumerable<Assembly> NonTestVelvetAssemblies()
         {
             var velvet = typeof(VelvetPreviewRegistry).Assembly.GetName().Name;
@@ -124,8 +107,7 @@ namespace Velvet
             }
         }
 
-        // Enumerates every method tagged with TAttribute across the given assemblies. A load/reflection failure
-        // on one assembly does not abort the scan.
+        // Failure to enumerate one assembly or type must not hide stories from the remaining assemblies.
         private static IEnumerable<MethodInfo> MethodsWith<TAttribute>(IEnumerable<Assembly> assemblies)
             where TAttribute : Attribute
         {
@@ -256,7 +238,6 @@ namespace Velvet
                 return false;
             }
 
-            // Either parameterless (a fixed view) or a single "args" object the window turns into control knobs.
             var parameters = method.GetParameters();
             return parameters.Length switch
             {
@@ -266,10 +247,8 @@ namespace Velvet
             };
         }
 
-        // An args type must be a non-primitive the window can default-construct and reflect: a struct (always has
-        // a parameterless ctor) or a concrete class/record with a public parameterless ctor. Primitives, string,
-        // enums, by-ref / pointer parameters, open generics, and abstract types (cannot be instantiated) are
-        // rejected so the single-parameter shape always means a real, constructible args object.
+        // Value types use their default value; supported reference types must be concrete and publicly
+        // default-constructible.
         private static bool IsValidArgsType(Type type)
         {
             if (type.IsByRef || type.IsPointer || type.IsPrimitive || type.IsEnum || type == typeof(string)) return false;
@@ -290,7 +269,6 @@ namespace Velvet
         private static string Describe(MethodInfo method) =>
             (method.DeclaringType?.FullName ?? "?") + "." + method.Name;
 
-        /// <summary>Adapts an <see cref="Action"/> teardown returned by a setup method to <see cref="IDisposable"/>.</summary>
         private sealed class ActionDisposable : IDisposable
         {
             private Action? _teardown;

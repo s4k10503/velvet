@@ -6,10 +6,7 @@ using UnityEngine.UIElements;
 namespace Velvet
 {
     /// <summary>
-    /// Mounts a single preview story onto a target <see cref="VisualElement"/> and keeps it live: it opens the
-    /// story's assembly environment, performs the initial <see cref="V.Mount"/>, and tears both down on
-    /// <see cref="Dispose"/>. Holding the host separate from the window lets the headless capture path mount the
-    /// exact same way without an <c>EditorWindow</c>.
+    /// Mounts a preview story and its assembly environment onto a target <see cref="VisualElement"/>.
     /// </summary>
     public sealed class VelvetPreviewHost : IDisposable
     {
@@ -19,13 +16,12 @@ namespace Velvet
         private StyleSheet? _appliedStyleSheet;
         private bool _disposed;
 
-        /// <summary>The story currently mounted by this host, or <c>null</c> before the first mount and after a
-        /// failed mount — so a caller polling this never repaints / re-mounts a broken story.</summary>
+        /// <summary>The currently mounted story, or <c>null</c> before a successful mount and after failure.</summary>
         public VelvetPreviewStory? Story { get; private set; }
 
         /// <summary>
-        /// The exception the last mount attempt raised (story build or initial render), or <c>null</c> when the
-        /// last mount succeeded. Lets a window surface a failing story without throwing out of its layout pass.
+        /// The exception raised by the latest mount or args update, or <c>null</c> when it succeeded. Lets a
+        /// window surface a failing story without throwing out of its layout pass.
         /// </summary>
         public Exception? MountError { get; private set; }
 
@@ -35,28 +31,22 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Tears down the previous story (if any) and mounts <paramref name="story"/> in its place at its default
-        /// args, re-running the story's assembly environment so each mount starts from a clean store / font /
-        /// resolver state. A build or render failure is captured into <see cref="MountError"/> rather than thrown,
-        /// and leaves <see cref="Story"/> null (the mount did not take effect).
+        /// Tears down the previous story and environment, then mounts <paramref name="story"/> with its default
+        /// args. Build and render failures are captured in <see cref="MountError"/> and leave
+        /// <see cref="Story"/> null.
         /// </summary>
         public void Mount(VelvetPreviewStory story) => Mount(story, useArgs: false, args: null);
 
         /// <summary>
-        /// Mounts <paramref name="story"/> driving an args-story with the supplied live <paramref name="args"/>
-        /// instance (the preview controls call this on every edit). For a parameterless story
-        /// <paramref name="args"/> is ignored. Same failure handling as <see cref="Mount(VelvetPreviewStory)"/>.
+        /// Mounts <paramref name="story"/> with <paramref name="args"/>. Parameterless stories ignore the args.
+        /// Failures are handled as in <see cref="Mount(VelvetPreviewStory)"/>.
         /// </summary>
         public void Mount(VelvetPreviewStory story, object args) => Mount(story, useArgs: true, args: args);
 
         /// <summary>
-        /// Re-renders the live story's TREE with new <paramref name="args"/> WITHOUT tearing down the assembly
-        /// environment — so a controls knob edited per keystroke does not re-register fonts / re-seed the store /
-        /// recreate the dummy API (and its cancellation source) each time. Only the VNode tree is rebuilt and
-        /// re-mounted; the environment and any applied stylesheet stay open. Returns <c>false</c> when there is no
-        /// successfully-mounted story to update (the caller should fall back to a full <see cref="Mount"/>); a
-        /// build/render failure during the update is captured into <see cref="MountError"/> and returns true
-        /// (the update path was taken).
+        /// Rebuilds the mounted story with new <paramref name="args"/> without restarting its environment or
+        /// replacing its stylesheet. Returns <c>false</c> when no story can be updated. A failed update records
+        /// <see cref="MountError"/> and returns <c>true</c> because the update path was taken.
         /// </summary>
         public bool UpdateArgs(object args)
         {
@@ -112,8 +102,7 @@ namespace Velvet
                 }
 
                 _mounted = V.Mount(_target, tree);
-                // Set only after the mount actually succeeds: a failed mount leaves Story null so the window
-                // does not keep repainting / re-mounting a story that cannot render.
+                // Publish Story only after V.Mount succeeds so failure remains distinguishable from a live mount.
                 Story = story;
             }
             catch (Exception ex)
@@ -123,10 +112,8 @@ namespace Velvet
             }
         }
 
-        // Attaches the stylesheet the active environment published, then consumes the hint (clears the static)
-        // so it cannot leak onto a later, unrelated host. It is added after Velvet's utilities — which the
-        // caller put on the canvas first — so later source order lets the app's :root overrides win. The host
-        // remembers exactly the sheet it added so Unmount removes that one and not a sheet the caller owns.
+        // Consume the static hint before attaching it so it cannot leak to a later host. Track only a sheet this
+        // host added; Unmount must not remove a sheet the target already owned.
         private void ApplyStyleHint()
         {
             var sheet = VelvetStyleHints.PreviewStyleSheet;

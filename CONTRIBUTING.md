@@ -81,12 +81,11 @@ be inspected rather than only measured:
 ```
 
 The images land in `Logs/story-captures/` (git-ignored), grouped into a directory per story group, or
-under the directory named by `VELVET_STORY_CAPTURE_DIR`. Each run deletes the captures the previous
-run recorded in its manifest, so a renamed or deleted story leaves nothing stale behind. A file the
-harness never wrote is never removed — but a capture it *did* write is, so point the variable at a
-directory you are content for it to own rather than at one holding anything else. The run fails if a
-story does not mount, if it renders a uniform frame, or — once for the whole run, not per story — if
-the bundled stylesheet resolves none of its plain classes.
+under the directory named by `VELVET_STORY_CAPTURE_DIR`. Before each run, the harness deletes every
+non-empty path listed in the previous manifest; it does not verify that an entry stays under the output
+directory or was created by the harness. Use a dedicated output directory and do not seed or edit its
+manifest. The run fails if a story does not mount, if it renders a uniform frame, or — once for the
+whole run, not per story — if the bundled stylesheet's `bg-slate-700` probe does not resolve.
 
 **Look at the images.** Those three checks are the floor, not the ceiling: the uniform-frame one in
 particular is satisfied by a single differing pixel, so a story can render almost nothing and still
