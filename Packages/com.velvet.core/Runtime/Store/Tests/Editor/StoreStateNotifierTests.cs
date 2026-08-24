@@ -4,26 +4,6 @@ using NUnit.Framework;
 
 namespace Velvet.Tests.Editor
 {
-    /// <summary>
-    /// Pins the delivery contract of <see cref="StoreStateNotifier{T}"/>, the hand-rolled listener set
-    /// behind <see cref="Store{TState}"/>. The cases below lock the most
-    /// delicate invariants that <see cref="StoreTests"/> does not exercise directly:
-    /// <list type="bullet">
-    /// <item>Listeners are notified in registration order.</item>
-    /// <item>A listener that subscribes during a notification does not join the in-flight pass; it
-    /// participates only from the next <c>Notify</c> (copy-on-write snapshot).</item>
-    /// <item>A listener removed during a notification still receives the value already being delivered,
-    /// and is absent from the next pass.</item>
-    /// <item>A throwing listener aborts the remaining listeners and propagates to the caller (no internal
-    /// try/catch); the throw does not clear the snapshot, so the listener still participates next time.</item>
-    /// <item>The same callback subscribed twice yields two independent registrations, each disposable on
-    /// its own.</item>
-    /// <item>A disposed subscription receives no further values.</item>
-    /// <item>A re-entrant <c>Notify</c> during delivery still hands every listener the value current at its
-    /// own call time, so the last delivery any listener receives across a re-entrant cascade matches the
-    /// store's true final state rather than the value captured when the outer pass began.</item>
-    /// </list>
-    /// </summary>
     [TestFixture]
     internal sealed class StoreStateNotifierTests
     {
@@ -52,7 +32,7 @@ namespace Velvet.Tests.Editor
             var lateCalls = 0;
             notifier.Subscribe(_ => notifier.Subscribe(__ => lateCalls++));
 
-            // Act: the listener registered mid-notify must not run during the in-flight (snapshot) pass.
+            // Act
             notifier.Notify(1);
 
             // Assert
@@ -77,8 +57,8 @@ namespace Velvet.Tests.Editor
             });
 
             // Act
-            notifier.Notify(1); // registers the late listener (does not run it this pass)
-            notifier.Notify(2); // late listener now participates
+            notifier.Notify(1);
+            notifier.Notify(2);
 
             // Assert
             Assert.That(lateCalls, Is.EqualTo(1));
@@ -94,12 +74,12 @@ namespace Velvet.Tests.Editor
             notifier.Subscribe(_ =>
             {
                 calls.Add(1);
-                secondSub?.Dispose(); // remove listener 2 mid-pass
+                secondSub?.Dispose();
             });
             secondSub = notifier.Subscribe(_ => calls.Add(2));
             notifier.Subscribe(_ => calls.Add(3));
 
-            // Act: the in-flight snapshot still delivers to listener 2 even though it was just removed.
+            // Act
             notifier.Notify(1);
 
             // Assert
@@ -127,9 +107,9 @@ namespace Velvet.Tests.Editor
             notifier.Subscribe(_ => calls.Add(3));
 
             // Act
-            notifier.Notify(1); // listener 2 removed mid-pass but still delivered
+            notifier.Notify(1);
             calls.Clear();
-            notifier.Notify(2); // next pass reflects the removal
+            notifier.Notify(2);
 
             // Assert
             Assert.That(calls, Is.EqualTo(new[] { 1, 3 }));
@@ -146,7 +126,7 @@ namespace Velvet.Tests.Editor
             notifier.Subscribe(_ => throw new InvalidOperationException("boom"));
             notifier.Subscribe(_ => afterThrowCalled = true);
 
-            // Act + Assert: no internal try/catch, so the exception aborts the cycle and reaches the caller.
+            // Act + Assert
             Assert.Throws<InvalidOperationException>(() => notifier.Notify(1));
             Assert.That(firstCalled, Is.True);
             Assert.That(afterThrowCalled, Is.False);
@@ -179,7 +159,7 @@ namespace Velvet.Tests.Editor
             var firstSub = notifier.Subscribe(listener);
             notifier.Subscribe(listener);
 
-            // Act: disposing one registration leaves the independent duplicate intact.
+            // Act
             firstSub.Dispose();
             notifier.Notify(1);
 
@@ -223,7 +203,7 @@ namespace Velvet.Tests.Editor
             var calls = 0;
             notifier.Subscribe(_ => calls++);
 
-            // Act: Notify after Dispose is a no-op.
+            // Act
             notifier.Dispose();
             notifier.Notify(1);
 
@@ -239,7 +219,7 @@ namespace Velvet.Tests.Editor
             var calls = 0;
             notifier.Dispose();
 
-            // Act: subscribing after disposal returns a disposable that is safe to dispose and never fires.
+            // Act
             var sub = notifier.Subscribe(_ => calls++);
             Assert.DoesNotThrow(() => sub.Dispose());
             notifier.Notify(1);
@@ -256,13 +236,13 @@ namespace Velvet.Tests.Editor
             var calls = 0;
             var sub = notifier.Subscribe(_ => calls++);
 
-            // Act: disposing the same subscription twice must not throw or disturb other registrations.
+            // Act
             sub.Dispose();
             Assert.DoesNotThrow(() => sub.Dispose());
             notifier.Subscribe(_ => calls++);
             notifier.Notify(1);
 
-            // Assert: the first listener is gone after one dispose; only the live listener fires.
+            // Assert
             Assert.That(calls, Is.EqualTo(1));
         }
 
@@ -274,7 +254,7 @@ namespace Velvet.Tests.Editor
             var throwCount = 0;
             notifier.Subscribe(_ => { throwCount++; throw new InvalidOperationException("boom"); });
 
-            // Act + Assert: a throw does not clear the cached snapshot, so the same listener fires next Notify.
+            // Act + Assert
             Assert.Throws<InvalidOperationException>(() => notifier.Notify(1));
             Assert.Throws<InvalidOperationException>(() => notifier.Notify(2));
             Assert.That(throwCount, Is.EqualTo(2));
@@ -292,7 +272,7 @@ namespace Velvet.Tests.Editor
         [Test]
         public void Given_AnEarlierListenerReentrantlySetsState_When_Notified_Then_ALaterListenersFinalValueIsCurrent()
         {
-            // Arrange — the first listener supersedes value 1 with 2 mid-pass; a later listener records.
+            // Arrange
             using var store = new CounterStore();
             var lastSeenByLater = -1;
             using var reentrant = store.Subscribe(s =>
@@ -307,14 +287,14 @@ namespace Velvet.Tests.Editor
             // Act
             store.Set(1);
 
-            // Assert — the later listener's final delivery matches Current, not the superseded 1.
+            // Assert
             Assert.AreEqual(store.Current.Value, lastSeenByLater);
         }
 
         [Test]
         public void Given_AListenerReentrantlyNotifies_When_TheOuterPassResumes_Then_ItDeliversTheLiveValue()
         {
-            // Arrange — listener one pushes 2 upon seeing 1; listener two records every delivery.
+            // Arrange
             using var notifier = new StoreStateNotifier<int>(0);
             var seenByTwo = new List<int>();
             notifier.Subscribe(v =>
@@ -329,7 +309,7 @@ namespace Velvet.Tests.Editor
             // Act
             notifier.Notify(1);
 
-            // Assert — the outer pass's resumed delivery carries the live value, not its stale parameter.
+            // Assert
             Assert.That(seenByTwo, Is.EqualTo(new[] { 2, 2 }));
         }
     }
