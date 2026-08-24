@@ -6,10 +6,7 @@ using Cysharp.Threading.Tasks;
 
 namespace Velvet
 {
-    /// <summary>
-    /// Navigation controller: matches paths against a route tree, runs guards / blockers / loaders, and
-    /// maintains a history stack with Back/Forward. The active instance is exposed as <see cref="Current"/>.
-    /// </summary>
+    /// <summary>Owns a route tree and the history produced by its navigations.</summary>
     public sealed class Router : IDisposable
     {
         private readonly RouteTree _routeTree;
@@ -21,15 +18,9 @@ namespace Velvet
         private Dictionary<string?, Exception> _loaderErrors = new();
         private const int MaxRedirects = 5;
         private const int MaxHistoryEntries = 50;
-        // Cancellation token for the currently in-flight navigation (null when idle). When a new
-        // navigation arrives during an async Blocker await, we cancel the previous CTS so the prior
-        // nav unwinds (NavigationResult.Cancelled) and the latest nav takes over, so concurrent
-        // navigations during the blocker window resolve to the most recent one.
+        // A new top-level navigation cancels the prior source; its attempt disposes it during unwind.
         private CancellationTokenSource? _activeNavigationCts;
-        // Identifies whoever currently owns Status. An attempt that has lost the claim must not put Status
-        // back: cancelling its token does not force it to resume at that moment, so it can reach its rollback
-        // after a newer navigation has established its own Status, and by then the value it would write
-        // describes a router that no longer exists.
+        // A superseded attempt must not overwrite the Status owned by a newer navigation.
         private int _navigationSequence;
         // The loader round whose data the current location was committed with. A round that has not reached
         // its commit has no location to write under: the live loader state and _historyIndex still describe
@@ -37,15 +28,11 @@ namespace Velvet
         // entry being navigated away from. The commit takes such a result from the round's results instead.
         private RouteLoaderRunner.LoaderRound? _committedRound;
 
-        /// <summary>
-        /// The currently active <see cref="Router"/> instance, or null when none is mounted. Set when a
-        /// router is constructed and cleared on <see cref="Dispose"/>.
-        /// </summary>
+        /// <summary>Construction installs the active instance; disposing the active instance clears it.</summary>
         public static Router? Current { get; private set; }
 
         private RouterStatus _status = RouterStatus.Idle;
 
-        /// <summary>Current processing state of the router.</summary>
         public RouterStatus Status
         {
             get => _status;
@@ -61,9 +48,7 @@ namespace Velvet
         }
         /// <summary>Location information for the most recently successful navigation. null before the first navigation.</summary>
         public RouterLocation? CurrentLocation { get; private set; }
-        /// <summary>True when the history stack can be moved backward.</summary>
         public bool CanGoBack => _historyIndex > 0;
-        /// <summary>True when the history stack can be moved forward.</summary>
         public bool CanGoForward => _historyIndex >= 0 && _historyIndex < _history.Count - 1;
         /// <summary>Blocker manager attached to this router. Referenced from the UseBlocker hook.</summary>
         public RouteBlockerManager RouteBlockerManager => _blockerManager;
@@ -79,18 +64,11 @@ namespace Velvet
         /// </summary>
         public event Action<RouterLocation> OnLocationChanged = null!;
 
-        /// <summary>
-        /// Raised whenever <see cref="Status"/> transitions (idle/matching/loading/etc.), letting hooks
-        /// such as <c>UseNavigation</c> observe an in-flight navigation.
-        /// </summary>
+        /// <summary>Raised only when <see cref="Status"/> changes value.</summary>
         public event Action<RouterStatus> OnStatusChanged = null!;
 
         private readonly IRouteScopeFactory? _scopeFactory;
 
-        /// <summary>
-        /// Builds a router over the given <paramref name="routes"/> and sets it as <see cref="Current"/>.
-        /// </summary>
-        /// <param name="routes">Root route definitions (may contain nested <see cref="RouteDefinition.Children"/>).</param>
         /// <param name="scopeFactory">Optional factory for per-route DI scopes; null disables route scoping.</param>
         public Router(RouteDefinition[] routes, IRouteScopeFactory? scopeFactory = null)
         {
@@ -136,7 +114,7 @@ namespace Velvet
         /// </summary>
         /// <param name="path">Target path to navigate to.</param>
         /// <param name="mode">How the destination is recorded in the history stack. Defaults to <see cref="NavigationMode.Push"/>.</param>
-        /// <param name="cancellationToken">Token observed by Guards, Blockers, and Loaders to abort the navigation.</param>
+        /// <param name="cancellationToken">Token forwarded to Blockers and Loaders.</param>
         /// <returns>
         /// A <see cref="NavigationResult"/> indicating the outcome:
         /// <see cref="NavigationResult.Success"/> on completion,
@@ -157,11 +135,8 @@ namespace Velvet
                     initiator: null);
 
         /// <summary>
-        /// Navigates with relative resolution anchored to a specific matched-route level
-        /// (<paramref name="baseRouteIndex"/>), so a <c>..</c> is interpreted relative to the route the
-        /// caller is rendered in rather than the leaf route. <c>UseNavigate</c>/<c>V.Navigate</c> pass the
-        /// caller's Outlet depth here so a relative target anchors at the caller's route level;
-        /// <c>-1</c> falls back to the leaf route.
+        /// Anchors relative resolution at <paramref name="baseRouteIndex"/>; when the current location has
+        /// matches, a negative or oversized index selects its leaf.
         /// </summary>
         public UniTask<NavigationResult> NavigateAsync(
             string path,
@@ -173,15 +148,8 @@ namespace Velvet
                 : NavigateInternalAsync(ResolvePath(path, baseRouteIndex), mode, cancellationToken,
                     redirectCount: 0, initiator: null);
 
-        // Refusing the step before the navigation starts, rather than partway through it, is what makes
-        // NavigateAsync and GoBack/GoForward agree on everything the refusal skips: no in-flight attempt
-        // cancelled out from under its caller, and no Status transition left to put back. It is also where
-        // the Back/Forward branch of the loader phase, which indexes the history directly, gets its
-        // assurance that the slot it reads existed when the attempt started.
-        // The discard is what carries a mode outside the enum through to the commit, whose own switch
-        // answers it with ArgumentOutOfRangeException — the router's one report of such a cast, and the
-        // one RouterUnfinishedNavigationTests reaches the commit's unwind through. Naming these four arms
-        // would raise the cast here instead, before Status has anything to put back.
+        // Refuse a missing history slot before cancelling another attempt or changing Status.
+        // Invalid modes that reach CommitHistoryEntry use its shared exception and Status unwind.
         private bool StepHasNoEntryToLandOn(NavigationMode mode) => mode switch
         {
             NavigationMode.Back => !CanGoBack,
@@ -190,17 +158,9 @@ namespace Velvet
         };
 
         /// <summary>
-        /// Resolves a relative navigation target (<c>.</c>, <c>..</c>, <c>../sibling</c>, or a bare
-        /// <c>segment</c>) against the current location, returning an absolute path. Absolute paths
-        /// (starting with <c>/</c>) pass through unchanged.
-        /// <para/>
-        /// Relative resolution is <b>route-relative</b>:
-        /// each leading <c>..</c> drops one matched-route level — and therefore that route's <i>entire</i>
-        /// URL contribution, which may be several segments for a multi-segment route pattern — anchored at
-        /// <paramref name="baseRouteIndex"/> (the caller's route level; <c>-1</c> = the leaf route). After
-        /// the leading <c>./..</c> are consumed, the remaining target is appended segment-wise to the
-        /// resolved base. When no route matches are available yet (e.g. the very first navigation), it
-        /// falls back to URL-segment-relative resolution against the current path.
+        /// Leading <c>..</c> segments remove whole matched-route contributions from the selected route level;
+        /// without a current match chain, resolution falls back to URL segments. Absolute paths pass through
+        /// unchanged.
         /// </summary>
         internal string? ResolvePath(string path, int baseRouteIndex = -1)
         {
@@ -209,7 +169,6 @@ namespace Velvet
                 return null;
             }
 
-            // Absolute paths pass through. An empty string is invalid and handled downstream by RouteTree.
             if (path.Length == 0 || path[0] == '/')
             {
                 return path;
@@ -218,18 +177,15 @@ namespace Velvet
             var matches = CurrentLocation?.Matches;
             if (matches == null || matches.Count == 0)
             {
-                // No route context yet: fall back to URL-segment-relative resolution.
                 return ResolvePathBySegments(path);
             }
 
             var targetParts = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
 
-            // Anchor at the caller's route level (clamped into range; -1 -> leaf).
             var cursor = baseRouteIndex < 0
                 ? matches.Count - 1
                 : System.Math.Min(baseRouteIndex, matches.Count - 1);
 
-            // Consume leading "." (no-op) and ".." (pop one route level each).
             var start = 0;
             while (start < targetParts.Length && (targetParts[start] == "." || targetParts[start] == ".."))
             {
@@ -240,21 +196,14 @@ namespace Velvet
                 start++;
             }
 
-            // The resolved base is the popped route level's cumulative pathname (or the root once we pop
-            // past the top of the matched chain).
             var basePath = cursor < 0 ? "/" : matches[cursor].PathnameBase;
 
             var baseSegments = new List<string>(
                 basePath.Trim('/').Split('/', StringSplitOptions.RemoveEmptyEntries));
 
-            // Append the remainder segment-wise (any interior "./.." in the tail still resolves URL-wise).
             return FoldSegments(baseSegments, targetParts, start);
         }
 
-        // Folds the tail segments (from start) into baseSegments — "." is a no-op, ".." pops one level (only
-        // when non-empty), anything else appends — then rebuilds the absolute path ("/" when empty). The
-        // core URL-folding step shared by the route-relative and URL-segment-relative resolvers; the caller
-        // supplies the already-built base list since the base source differs per resolver.
         private static string FoldSegments(List<string> baseSegments, string[] tail, int start)
         {
             for (var i = start; i < tail.Length; i++)
@@ -278,10 +227,6 @@ namespace Velvet
             return baseSegments.Count == 0 ? "/" : "/" + string.Join("/", baseSegments);
         }
 
-        /// <summary>
-        /// URL-segment-relative fallback: resolves a relative target against <see cref="CurrentLocation"/>'s
-        /// raw path by dropping/appending single URL segments. Used only before any route match exists.
-        /// </summary>
         private string ResolvePathBySegments(string path)
         {
             var basePath = CurrentLocation?.Path ?? "/";
@@ -303,17 +248,12 @@ namespace Velvet
             int redirectCount,
             PendingNavigation? initiator)
         {
-            // Concurrent-navigation handling. Recursive redirect calls (redirectCount > 0) reuse the
-            // outer navigation's CTS so a redirect doesn't cancel its own initiator, and inherit its
-            // claim so a redirect's rollback is judged by whether the INITIATOR still holds it.
+            // Redirect recursion shares its initiator's cancellation source and Status claim.
             CancellationTokenSource? myCts = null;
             CancellationToken navToken = cancellationToken;
             if (redirectCount == 0)
             {
-                // Cancel any in-flight navigation so it unwinds (Blocker.CheckAsync await observes
-                // the cancellation). Dispose of the prior CTS is left to the prior navigation's own
-                // finally — disposing here would double-dispose and confuse ownership, and the
-                // synchronous Cancel chain may already run the prior finally before we proceed.
+                // The prior attempt owns disposal of its source, including synchronous cancellation unwind.
                 _activeNavigationCts?.Cancel();
                 myCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 _activeNavigationCts = myCts;
@@ -326,19 +266,14 @@ namespace Velvet
             }
             catch (OperationCanceledException) when (myCts != null && myCts.IsCancellationRequested)
             {
-                // Cancellation came either from a newer navigation taking over OR from the caller's
-                // own token (both flow through `myCts` because we linked it to the caller). Map both
-                // to NavigationResult.Cancelled to match the loader-phase behavior in NavigateCore
-                // (the early `if (cancellationToken.IsCancellationRequested) return Cancelled` check)
-                // — callers branch on `nav != Success` and don't catch OCE.
+                // Linked caller cancellation and supersession share the public Cancelled outcome.
                 return NavigationResult.Cancelled;
             }
             finally
             {
                 if (myCts != null)
                 {
-                    // Only clear the active-CTS field if we're still the active navigation; a newer
-                    // navigation that took over will have already replaced the field with its own CTS.
+                    // Do not clear the source installed by a newer navigation.
                     if (ReferenceEquals(_activeNavigationCts, myCts)) _activeNavigationCts = null;
                     myCts.Dispose();
                 }
@@ -379,16 +314,12 @@ namespace Velvet
             PendingNavigation pending;
             if (initiator.HasValue)
             {
-                // A redirect inherits its initiator's claim rather than taking one, so it does not dispossess
-                // the navigation it is part of, and it commits into the slot the initiator resolved.
+                // Redirects retain their initiator's Status claim and resolved history slot.
                 pending = initiator.Value;
             }
             else
             {
-                // The claim is taken after the match and not when the navigation started: every return above
-                // this line leaves Status describing its own outcome, so a navigation that matches no route
-                // must not dispossess an attempt parked in a blocker — that attempt is then the only one able
-                // to put Status back.
+                // A matching failure takes no claim, preserving a parked attempt's ownership.
                 pending = new PendingNavigation(++_navigationSequence, CommitIndexFor(mode), path, mode);
             }
 
@@ -414,25 +345,18 @@ namespace Velvet
                     return loaderResult.Value;
                 }
                 round = loaderRound;
-                // Inside the try: the commit throws on a navigation mode outside the enum, and leaving that
-                // to escape past the handlers is what left Status mid-flight before.
+                // Commit failures share the same Status-claim unwind as earlier phases.
                 location = CommitHistoryEntry(path, matches, mode, pending, round);
             }
             catch (OperationCanceledException)
             {
-                // A Guard redirect or a Blocker that honors its token unwinds by exception, skipping the
-                // in-line rollback the blocked path uses. Status was set before both of those awaits, so an
-                // aborted attempt would otherwise leave UseNavigation reporting a navigation that is no
-                // longer in flight.
+                // Release the abandoned attempt's Status claim before unwinding.
                 ReleaseClaim(pending, RouterStatus.Idle);
                 throw;
             }
             catch (Exception)
             {
-                // A Guard delegate is application code invoked with nothing between it and the caller, and the
-                // guard phase's mutual-exclusion throw reaches here the same way. The exception is left to
-                // the caller, and the router records the failure rather than the phase it died in — Matching
-                // and Loading are what UseNavigation renders a pending branch for.
+                // Release this attempt's Status claim before propagating; a newer owner remains untouched.
                 ReleaseClaim(pending, RouterStatus.Error);
                 throw;
             }
@@ -452,20 +376,12 @@ namespace Velvet
 
         #region Per-attempt navigation state
 
-        // Where one navigation attempt will land, and the sequence deciding whether it still owns Status.
-        // The destination stays here until the attempt commits, because the Guard and Blocker phases await
-        // application code and a navigation starting in that window resolves its own destination from the
-        // shared index: a parked Back that had already moved it puts a Push's forward truncation one entry
-        // too low, taking the entry the user is looking at with it.
+        // Capture the history slot and Status ownership before awaited phases let shared router state move.
         private readonly struct PendingNavigation
         {
             internal readonly int Sequence;
-            // The history slot this attempt commits into. Unused by a Push, which appends.
             internal readonly int CommitIndex;
-            // What the caller asked for, which a redirect inherits rather than restates: a Guard rewrites
-            // the path, and rewrites a Back or Forward into a Replace, so the attempt a Blocker is handed
-            // no longer says which slot it belongs in. Blocker.Proceed() re-issues these two, and the
-            // redirect is taken again from a navigation resolving the slot this one did.
+            // Preserve the caller's request because a rewritten path and mode no longer identify its step.
             internal readonly string OriginPath;
             internal readonly NavigationMode OriginMode;
 
@@ -478,8 +394,7 @@ namespace Velvet
             }
         }
 
-        // Same reason for the discard as StepHasNoEntryToLandOn: this runs before the commit, and the
-        // commit is where a mode outside the enum is reported.
+        // Same invalid-mode ownership as StepHasNoEntryToLandOn.
         private int CommitIndexFor(NavigationMode mode) => mode switch
         {
             NavigationMode.Back => _historyIndex - 1,
@@ -866,11 +781,7 @@ namespace Velvet
             }
         }
 
-        /// <summary>
-        /// Moves one step back on the history stack. Returns <see cref="NavigationResult.Cancelled"/> when <see cref="CanGoBack"/> is false.
-        /// </summary>
-        /// <param name="cancellationToken">Token observed by Guards, Blockers, and Loaders to abort the navigation.</param>
-        /// <returns>The <see cref="NavigationResult"/> from the underlying <see cref="NavigateAsync"/>, or <see cref="NavigationResult.Cancelled"/> when the history has no previous entry.</returns>
+        /// <summary>Returns Cancelled without starting an attempt when no previous entry exists.</summary>
         public UniTask<NavigationResult> GoBack(CancellationToken cancellationToken = default)
         {
             if (!CanGoBack)
@@ -881,11 +792,7 @@ namespace Velvet
             return NavigateAsync(_history[_historyIndex - 1].Path, NavigationMode.Back, cancellationToken);
         }
 
-        /// <summary>
-        /// Moves one step forward on the history stack. Returns <see cref="NavigationResult.Cancelled"/> when <see cref="CanGoForward"/> is false.
-        /// </summary>
-        /// <param name="cancellationToken">Token observed by Guards, Blockers, and Loaders to abort the navigation.</param>
-        /// <returns>The <see cref="NavigationResult"/> from the underlying <see cref="NavigateAsync"/>, or <see cref="NavigationResult.Cancelled"/> when the history has no next entry.</returns>
+        /// <summary>Returns Cancelled without starting an attempt when no next entry exists.</summary>
         public UniTask<NavigationResult> GoForward(CancellationToken cancellationToken = default)
         {
             if (!CanGoForward)
@@ -920,14 +827,8 @@ namespace Velvet
 
         public void Dispose()
         {
-            // Retire the outstanding claim BEFORE the Cancel, which inverts the ordering a navigation uses.
-            // A navigation takes its claim afterwards so that a prior attempt unwinding synchronously inside
-            // the Cancel still restores its own state; here there is no such attempt worth restoring, and
-            // that same synchronous unwind would write an index back and raise OnStatusChanged on a router
-            // being torn down.
+            // Retire the claim before cancellation so synchronous unwind leaves Status untouched during disposal.
             _navigationSequence++;
-            // Cancel and dispose any in-flight navigation CTS so a pending Blocker await unwinds
-            // cleanly during shutdown.
             _activeNavigationCts?.Cancel();
             _activeNavigationCts?.Dispose();
             _activeNavigationCts = null;

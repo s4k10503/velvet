@@ -9,19 +9,6 @@ using static Velvet.Tests.RouteTestStubs;
 
 namespace Velvet.Tests
 {
-    /// <summary>
-    /// Specifies what an abandoned navigation leaves behind. It sets <see cref="RouterStatus"/> before the
-    /// Guard and Blocker awaits, so an attempt that abandons them has to put it back whether it leaves by
-    /// exception (a blocker honoring its token) or by return value (one awaiting without forwarding it).
-    /// <list type="bullet">
-    /// <item>The history keeps describing the entry the user is still on, and holds no entry for a path an
-    /// abandoned Guard redirect started from.</item>
-    /// <item><see cref="RouterStatus"/> returns to Idle, so <c>UseNavigation</c> stops reporting a pending
-    /// navigation that no longer exists.</item>
-    /// <item>That restore does not happen once a newer navigation has taken over, since the status it would
-    /// put back describes a router that navigation has already replaced.</item>
-    /// </list>
-    /// </summary>
     // Bounded for the cases here that await a blocker stub's Entered signal;
     // RouteTestStubs.MakeOneShotBlocker states what an unbounded fixture costs.
     [Timeout(30000)]
@@ -43,7 +30,6 @@ namespace Velvet.Tests
             };
         }
 
-        // Same isolation rule as RouterTests: Router.Current is a global that each new Router() overwrites.
         [TearDown]
         public void TearDown()
         {
