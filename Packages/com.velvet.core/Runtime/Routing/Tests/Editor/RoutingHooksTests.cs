@@ -216,10 +216,6 @@ namespace Velvet.Tests
     /// <item><c>UseMatch</c> returns a match (with captured params) when its location-relative pattern matches
     /// the current location, matching case-insensitively by default and independently of the route table, and
     /// returns null when the pattern does not match.</item>
-    /// <item><c>UseSearchParams</c> parses the query string of the current location.</item>
-    /// <item><see cref="ISearchParams"/> — the type the hook hands back — declares the null
-    /// <see cref="ISearchParams.Get"/> returns for an absent key, while
-    /// <see cref="ISearchParams.GetAll"/> declares the empty list it substitutes instead.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -342,7 +338,6 @@ namespace Velvet.Tests
         [Test]
         public void Given_LocationWithQueryString_When_UseSearchParams_Then_ParsesFirstParam()
         {
-            // The route table matches by path only; the query string lives on CurrentLocation.Path.
             // Arrange
             var router = new Router(new[] { Route("search", element: V.Component(StubA)) });
             router.NavigateSync("/search?q=velvet&page=2");
@@ -371,7 +366,6 @@ namespace Velvet.Tests
         [Test]
         public void Given_LocationWithRepeatedKey_When_UseSearchParams_Then_GetReturnsFirstValue()
         {
-            // Get yields the first value of a repeated key.
             // Arrange
             var router = new Router(new[] { Route("search", element: V.Component(StubA)) });
             router.NavigateSync("/search?a=1&a=2");
@@ -386,7 +380,6 @@ namespace Velvet.Tests
         [Test]
         public void Given_LocationWithRepeatedKey_When_UseSearchParams_Then_GetAllReturnsEveryValue()
         {
-            // GetAll preserves every value of a repeated key in order.
             // Arrange
             var router = new Router(new[] { Route("search", element: V.Component(StubA)) });
             router.NavigateSync("/search?a=1&a=2");
@@ -401,7 +394,6 @@ namespace Velvet.Tests
         [Test]
         public void Given_PlusInValue_When_UseSearchParams_Then_DecodesPlusAsSpace()
         {
-            // A literal '+' in the query denotes a space.
             // Arrange
             var router = new Router(new[] { Route("search", element: V.Component(StubA)) });
             router.NavigateSync("/search?q=hello+world");
@@ -416,7 +408,6 @@ namespace Velvet.Tests
         [Test]
         public void Given_EncodedPlusInValue_When_UseSearchParams_Then_DecodesToLiteralPlus()
         {
-            // '%2B' is an escaped plus and must round-trip to '+', not collapse to a space.
             // Arrange
             var router = new Router(new[] { Route("search", element: V.Component(StubA)) });
             router.NavigateSync("/search?op=1%2B2");
@@ -470,19 +461,17 @@ namespace Velvet.Tests
         [Test]
         public void Given_SetSearchParams_When_Invoked_Then_ReplacesLocationWithBuiltQuery()
         {
-            // The setter rebuilds the query (multi-value + escaping) and replaces the current entry,
-            // dropping any previously present key.
             // Arrange
             var router = new Router(new[] { Route("search", element: V.Component(StubA)) });
             router.NavigateSync("/search?old=1");
             using var mounted = MountAt(router);
 
             var next = new SearchParams();
-            next.Append("name", "a b");   // space escapes to %20 and survives the round-trip
+            next.Append("name", "a b");
             next.Append("tag", "x");
-            next.Append("tag", "y");      // repeated key is preserved
+            next.Append("tag", "y");
 
-            // Act — explicit Replace mode.
+            // Act
             Capture.SetSearchParams!.Invoke(next, NavigationMode.Replace);
 
             // Assert
@@ -492,7 +481,6 @@ namespace Velvet.Tests
         [Test]
         public void Given_SetSearchParams_When_InvokedWithDefaultMode_Then_PushesSoBackReturnsToPreviousQuery()
         {
-            // setSearchParams defaults to PUSH, so the previous query stays in history.
             // Arrange
             var router = new Router(new[] { Route("search", element: V.Component(StubA)) });
             router.NavigateSync("/search?old=1");
@@ -500,11 +488,11 @@ namespace Velvet.Tests
             var next = new SearchParams();
             next.Append("new", "2");
 
-            // Act — default mode (Push).
+            // Act
             Capture.SetSearchParams!.Invoke(next);
             Assume.That(router.CurrentLocation.Path, Is.EqualTo("/search?new=2"), "Precondition: navigated to the new query");
 
-            // Assert — Back returns to the previous query (a Replace default would have dropped it).
+            // Assert
             router.GoBackSync();
             Assert.That(router.CurrentLocation.Path, Is.EqualTo("/search?old=1"),
                 "Default setSearchParams pushes, so Back returns to the previous query");
@@ -518,16 +506,16 @@ namespace Velvet.Tests
             router.NavigateSync("/search?keep=1");
             using var mounted = MountAt(router);
 
-            // Act — functional form: edit the CURRENT params without rebuilding from scratch.
+            // Act
             Capture.SetSearchParams!.Invoke(prev =>
             {
                 var n = new SearchParams();
-                n.Append("keep", prev.Get("keep"));   // reads the current params
+                n.Append("keep", prev.Get("keep"));
                 n.Append("added", "2");
                 return n;
             });
 
-            // Assert — the updater saw keep=1 (current) and its result became the new query.
+            // Assert
             Assert.That(router.CurrentLocation.Path, Is.EqualTo("/search?keep=1&added=2"),
                 "The functional updater receives the current params and its result is applied");
         }
