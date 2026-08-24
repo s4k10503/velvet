@@ -3,9 +3,6 @@ using Cysharp.Threading.Tasks;
 
 namespace Velvet
 {
-    // Functional component backing the V.Navigate DSL primitive: a declarative redirect that
-    // navigates to a target path and renders nothing. Kept out of V.cs because it calls hooks
-    // (UseNavigate / UseEffect) and must therefore run as a [Component] body.
     internal static class Navigate
     {
         public sealed record Props(string To, bool Replace);
@@ -15,9 +12,7 @@ namespace Velvet
         {
             var navigate = Hooks.UseNavigate(p.Replace);
 
-            // The redirect re-issues whenever the target (or replace mode) changes, not only on mount.
-            // Keying the effect on To/Replace re-navigates when a parent re-renders this element with new
-            // props, while leaving identical re-renders a no-op.
+            // The dependency list makes target and history-mode changes issue a new redirect.
             Hooks.UseEffect(() =>
             {
                 navigate(p.To).Forget();
