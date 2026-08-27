@@ -364,7 +364,7 @@ live framework — see [preview-tooling.md](preview-tooling.md) for the full gui
 | React ecosystem | Velvet | Notes |
 |-----------------|--------|------|
 | Storybook (a "story") | Velvet Preview window — a `[VelvetPreview]` static method returning `VNode` | **Window ▸ Velvet ▸ Preview.** Live-renders without Play Mode |
-| Storybook global decorators / `preview.js` | `[VelvetPreviewSetup]` | Runs once per assembly before any story mounts (fonts / store / resolver); returns `IDisposable` / `Action` / `void` |
+| Storybook global decorators / `preview.js` | `[VelvetPreviewSetup]` | Runs for each full story mount and is retained during args updates; returns `IDisposable` / `Action` / `void` |
 | Storybook Controls / Args | The Controls addon + a story's single "args" object | Reflects the args type into live editor knobs and re-renders on edit |
 | Storybook Viewport | The Viewport addon | Simulates responsive widths by sizing the canvas and making it a `@container` scope |
 | React DevTools | Velvet DevTools | **Window ▸ Velvet ▸ DevTools Inspector.** VNode-tree inspector + state-history time travel |
