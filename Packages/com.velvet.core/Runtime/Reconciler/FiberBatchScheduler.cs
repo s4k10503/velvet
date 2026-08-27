@@ -189,14 +189,14 @@ namespace Velvet
                     // frame callback cannot reach an error boundary and would only re-arm next frame,
                     // burning the full cap every frame forever — so the runaway update is DROPPED
                     // instead and the UI keeps the last committed state. Only the IMMEDIATE-tier
-                    // lanes are dropped: a fiber can be queued this deep with an unrelated
-                    // Transition lane still pending (the
-                    // runaway's commits may write bystanders each pass), and wiping that lane would
-                    // strand its delayed-tier work (a StartTransition left isPending forever). A
-                    // Transition lane that starvation-promoted to Normal DURING the runaway (the cap
-                    // exceeds the starvation threshold) is dropped with it — acceptable: state slots are
-                    // written eagerly, so the last committed render already showed the transition's
-                    // values, and the pending-flag sweep below spares an async action still in flight.
+                    // lanes are dropped: a fiber can be queued this deep with an unrelated Transition
+                    // lane still pending (the runaway's commits may write bystanders each pass), and
+                    // wiping that lane would strand its delayed-tier work (a StartTransition left
+                    // isPending forever). A Transition lane that starvation-promoted to Normal DURING
+                    // the runaway (the cap exceeds the starvation threshold) is dropped with it —
+                    // acceptable: state slots are written eagerly, so the last committed render already
+                    // showed the transition's values, and the pending-flag sweep below spares an async
+                    // action still in flight.
                     FiberLogger.LogError("Scheduler",
                         "Maximum update depth exceeded. A component repeatedly schedules state"
                         + " updates from its commit phase (a callback ref or an effect writing a"

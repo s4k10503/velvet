@@ -41,12 +41,12 @@ namespace Velvet.TestUtilities
 
         /// <summary>
         /// Schedules a re-render of <paramref name="fiber"/> on the given lane, the same path a hook setter
-        /// takes once the lane is decided. Production picks the lane from the surrounding scheduling context
-        /// (Transition inside StartTransition or for a UseDeferredValue derivation, Urgent inside a discrete
-        /// event handler, Normal otherwise), so a test that wants a specific lane names it here rather than
-        /// arranging the context that would pick it. It mutates only the lane queue and the batch-scheduler
-        /// tier; the flush itself still runs through FlushStateForTest or a FiberBatchScheduler drain entry
-        /// point.
+        /// takes once the lane is decided. Production picks a hook setter's lane from the surrounding
+        /// scheduling context (Transition inside StartTransition or for a UseDeferredValue derivation,
+        /// Urgent inside a discrete event handler, Normal otherwise), so a test that wants a specific lane
+        /// names it here rather than arranging the context that would pick it. It mutates only the lane
+        /// queue and the batch-scheduler tier; the flush itself still runs through FlushStateForTest or a
+        /// FiberBatchScheduler drain entry point.
         /// Test-only. Must not be used from production code.
         /// </summary>
         // Bypasses: lane selection: production picks the lane from the surrounding scheduling context rather than being handed one.
@@ -61,8 +61,8 @@ namespace Velvet.TestUtilities
 
         /// <summary>
         /// Flushes <paramref name="fiber"/>'s highest pending lane with a time-sliced budget too small to admit
-        /// a single node, so a Transition flush parks after its first iteration regardless of host
-        /// speed — the real budget rarely overruns on a list small enough for a test to build, and the UIToolkit
+        /// a single node, so a Transition flush parks after its first iteration regardless of host speed —
+        /// the real budget rarely overruns on a list small enough for a test to build, and the UIToolkit
         /// scheduler does not advance in EditMode. The budget travels on this one call: it is captured on the
         /// fiber as the resume budget (so <see cref="DrainTimeSlicedReconcileForTest"/> continues at the same
         /// tiny budget) and is invisible to every other fiber's flush.
