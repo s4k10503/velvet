@@ -29,6 +29,14 @@ namespace Velvet.Tests
     /// cleanup it returned still runs. Running at the pass boundary is what makes that reachable: a
     /// discrete event a setup dispatches from there commits synchronously, where one dispatched from
     /// inside the walk was held back.</item>
+    /// <item>That same synchronous write decides two more of the queue's answers: a setup queued behind
+    /// the writer whose element the write leaves without a ref does not run, and one whose element the
+    /// write re-binds to another callback runs that callback before the same drain ends.</item>
+    /// <item>A ref dropped by one patch and carried again by a later one is attached again, rather than
+    /// read as the ref still installed.</item>
+    /// <item>A range update a patch drives hands its entries to the enclosing pass, whose removals are
+    /// still ahead of it — the same departing-before-arriving order the cases above pin.</item>
+    /// <item>The queue keeps no slot for a setup already run.</item>
     /// </list>
     /// The first three are driven by a leaf whose explicit key changes, which is what sends the pair down
     /// the create-then-remove branch of the general path rather than the in-place patch.
@@ -169,6 +177,8 @@ namespace Velvet.Tests
             s_selfRemovedCleanups = 0;
             s_seenByLayoutEffect = null;
             s_layoutEffectRuns = 0;
+            s_targetAttaches = 0;
+            s_reboundAttaches = 0;
         }
 
         public override void TearDown()
@@ -408,5 +418,174 @@ namespace Velvet.Tests
             // Assert
             Assert.That(FiberPortalRegistry.Get(ModalRootId), Is.SameAs(Root!.ElementAt(0)));
         }
+        private static int s_targetAttaches;
+
+        private static int s_reboundAttaches;
+
+        // One instance per callback, reused across renders: a fresh delegate would re-queue the setup where a
+        // patch reaches it, which is a different question than the cases below ask.
+        private static readonly Func<VisualElement, Action> s_clickTheDropTrigger = ClickTheDropTrigger;
+
+        private static readonly Func<VisualElement, Action> s_countTargetAttach = CountTargetAttach;
+
+        private static readonly Func<VisualElement, Action> s_clickTheRebindTrigger = ClickTheRebindTrigger;
+
+        private static readonly Func<VisualElement, Action> s_countReboundAttach = CountReboundAttach;
+
+        private static Action ClickTheDropTrigger(VisualElement element)
+        {
+            element.parent?.Q<UnityEngine.UIElements.Button>("drop-trigger")?.SimulateClick();
+            return null;
+        }
+
+        private static Action CountTargetAttach(VisualElement element)
+        {
+            s_targetAttaches++;
+            return null;
+        }
+
+        private static Action ClickTheRebindTrigger(VisualElement element)
+        {
+            element.parent?.Q<UnityEngine.UIElements.Button>("rebind-trigger")?.SimulateClick();
+            return null;
+        }
+
+        private static Action CountReboundAttach(VisualElement element)
+        {
+            s_reboundAttaches++;
+            return null;
+        }
+
+        // The dropper's setup is queued ahead of the target's, so the write its click commits reaches the
+        // target while the drain is still an entry short of it.
+        [Component]
+        private static VNode RefDroppingHost()
+        {
+            var (dropped, setDropped) = Hooks.UseState(false);
+            return V.Div(children: new VNode[]
+            {
+                V.Button(name: "drop-trigger", onClick: () => setDropped.Invoke(true)),
+                V.Div(name: "dropper", refCallback: s_clickTheDropTrigger),
+                V.Div(name: "target", refCallback: dropped ? null : s_countTargetAttach),
+                V.Label(name: "drop-probe", text: dropped ? "dropped" : "held"),
+            });
+        }
+
+        // The write the setup's click commits re-binds the very element that setup was handed, so the
+        // replacement is queued while the drain is inside the entry it replaces.
+        [Component]
+        private static VNode RebindingHost()
+        {
+            var (binding, setBinding) = Hooks.UseState(0);
+            return V.Div(children: new VNode[]
+            {
+                V.Button(name: "rebind-trigger", onClick: () => setBinding.Invoke(1)),
+                V.Div(name: "rebinding",
+                    refCallback: binding == 0 ? s_clickTheRebindTrigger : s_countReboundAttach),
+                V.Label(name: "rebind-probe", text: binding.ToString()),
+            });
+        }
+
+        private static VNode ListOfThreeRows()
+            => V.VirtualList(items: new[] { "a", "b", "c" }, keySelector: item => item, itemHeight: 50f,
+                renderer: item => V.Label(text: item, key: item), overscan: 0, key: "list");
+
+        // A headless run drives no layout, so the height a geometry change would have measured is written
+        // here instead — without it the refresh a patch triggers renders no range at all.
+        private static void GiveTheListAViewport(FiberVirtualListController controller, float height)
+            => typeof(FiberVirtualListController)
+                .GetField("_viewportHeight", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .SetValue(controller, height);
+
+        [Test]
+        public void Given_ASetupsWriteDropsTheRefOfAnElementQueuedBehindIt_When_TheDrainReachesThatEntry_Then_ItsSetupDoesNotRun()
+        {
+            // Arrange / Act
+            using var mounted = V.Mount(Root, V.Component(RefDroppingHost, key: "host"));
+
+            // Assert — the committed state is read beside the count, because a pass whose write never landed
+            // still declares the ref and would disagree here for a reason this case is not about.
+            Assert.That((Root!.Q<Label>("drop-probe")?.text, s_targetAttaches), Is.EqualTo(("dropped", 0)));
+        }
+
+        [Test]
+        public void Given_ASetupsWriteRebindsTheRefOfItsOwnElement_When_TheDrainContinues_Then_TheReplacementRunsInTheSameDrain()
+        {
+            // Arrange / Act
+            using var mounted = V.Mount(Root, V.Component(RebindingHost, key: "host"));
+
+            // Assert — the committed state is read beside the count, because a pass whose write never landed
+            // re-bound nothing and would read zero for a reason this case is not about.
+            Assert.That((Root!.Q<Label>("rebind-probe")?.text, s_reboundAttaches), Is.EqualTo(("1", 1)));
+        }
+
+        // GREEN_ON_BASE(refactor): the base's InvokeRefCallback drops the entry before firing the cleanup it
+        // held, so a ref dropped and carried again re-attaches there too. Splitting that method into
+        // SyncRefCallback and DetachRefCallback has to keep it, and the stable-ref gate ahead of the split
+        // is what would read the returning callback as the one already installed.
+        [Test]
+        public void Given_ARefDroppedByAPatch_When_TheSameCallbackReturnsOnALaterPatch_Then_ItIsAttachedAgain()
+        {
+            // Arrange — one delegate instance stands in the first and last trees, so the stable-ref gate is
+            // what decides whether the return re-attaches or is read as already installed.
+            VisualElement attached = null;
+            Func<VisualElement, Action> setup = element => { attached = element; return () => attached = null; };
+            var withRef = new VNode[] { V.Div(name: "host", refCallback: setup) };
+            var withoutRef = new VNode[] { V.Div(name: "host") };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), withRef);
+            Reconciler.Reconcile(Root, withRef, withoutRef);
+            var clearedByTheDrop = attached == null;
+
+            // Act
+            Reconciler.Reconcile(Root, withoutRef, new VNode[] { V.Div(name: "host", refCallback: setup) });
+
+            // Assert — the cleared capture gates the re-attach, because a tree that never dropped the ref
+            // holds the same element here with nothing about the drop measured.
+            Assert.That((clearedByTheDrop, ReferenceEquals(attached, Root!.ElementAt(0))),
+                Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_APatchDrivesAVirtualListRangeInsideThePass_When_ItsItemsAreRendered_Then_TheDepartingCleanupStillRunsFirst()
+        {
+            // Arrange — the list follows the tracked leaf, so one pass creates the arrival, patches the list,
+            // and reaches the removals only after both.
+            var departing = new VNode[]
+            {
+                V.Div(key: "departing", name: "departing", refCallback: Tracked("departing")),
+                ListOfThreeRows(),
+            };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), departing);
+            var scrollView = (ScrollView)Root!.ElementAt(1);
+            GiveTheListAViewport(Reconciler.Context.VirtualListControllers[scrollView], 50f);
+            s_log.Clear();
+
+            // Act
+            Reconciler.Reconcile(Root, departing, new VNode[]
+            {
+                V.Div(key: "arriving", name: "arriving", refCallback: Tracked("arriving")),
+                ListOfThreeRows(),
+            });
+
+            // Assert — the rendered row count is read beside the order, because a range update that rendered
+            // nothing reaches the same order with nothing about this entrance measured.
+            Assert.That((scrollView.contentContainer.ElementAt(1).childCount, string.Join(",", s_log)),
+                Is.EqualTo((2, "detach:departing,attach:arriving")));
+        }
+
+        [Test]
+        public void Given_APassAttachedARef_When_TheDrainEnds_Then_TheQueueKeepsNoSlotForIt()
+        {
+            // Arrange
+            var tree = new VNode[] { V.Div(name: "host", refCallback: Tracked("host")) };
+
+            // Act
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), tree);
+
+            // Assert — the attach is read beside the count, because a pass that queued nothing reads the
+            // same empty queue with nothing about the compaction measured.
+            Assert.That((string.Join(",", s_log), QueuedRefSetupCount()), Is.EqualTo(("attach:host", 0)));
+        }
+
     }
 }

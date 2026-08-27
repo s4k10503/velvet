@@ -1159,6 +1159,10 @@ namespace Velvet
                 for (var i = 0; i < _pendingRefAttaches.Count; i++)
                 {
                     var (element, callback, owner, pass) = _pendingRefAttaches[i];
+                    // MUTANT_SURVIVES(equivalent): an entry's element and callback are written together —
+                    // SyncRefCallback queues one only with both set, and a cancelled or consumed one is
+                    // overwritten with default — so neither is null without the other and both spellings
+                    // skip exactly the holes.
                     if (element == null || callback == null) continue;
                     // The queue is the context's while a pass belongs to one Reconciler, so the pass that
                     // reached this boundary is not necessarily the one that queued this entry. A parked
@@ -1226,10 +1230,15 @@ namespace Velvet
             for (var i = 0; i < _pendingRefAttaches.Count; i++)
             {
                 var entry = _pendingRefAttaches[i];
+                // MUTANT_SURVIVES(equivalent): an entry's two members are null together for the reason
+                // DrainRefAttaches's own skip gives, so this reaches the same entries either way.
                 if (entry.Element == null || entry.Callback == null) continue;
                 _pendingRefAttaches[kept++] = entry;
             }
             _pendingRefAttaches.RemoveRange(kept, _pendingRefAttaches.Count - kept);
+            // MUTANT_SURVIVES(equivalent): every key here belongs to an entry the loop above kept, because
+            // a hole's key is removed where the hole is made — so the rebuild below rewrites each of them
+            // and leaves none behind for this to have removed.
             _pendingRefAttachIndex.Clear();
             for (var i = 0; i < _pendingRefAttaches.Count; i++)
             {

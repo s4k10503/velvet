@@ -192,6 +192,9 @@ namespace Velvet
                             // staging mode for the process lifetime — every later return staged, never
                             // flushed, pools starving — with no recovery outside the editor's domain reload.
                             VNodePool.EndReleaseScope();
+                            // MUTANT_SURVIVES(equivalent): AutoScope.Dispose ends the profiler sample its
+                            // Auto() opened and writes nothing else, so no tree, element or pool this pass
+                            // touched reads differently without it.
                             profilerScope.Dispose();
                         }
                     }

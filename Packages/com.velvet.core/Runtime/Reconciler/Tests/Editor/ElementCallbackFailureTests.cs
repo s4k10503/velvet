@@ -22,6 +22,9 @@ namespace Velvet.Tests
     /// <item>An <c>onCreated</c> that throws leaves the element it was handed occupying its slot.</item>
     /// <item>A <c>wrapElement</c> that throws leaves the element itself in the slot, so the ref points at
     /// something the tree holds rather than at an orphan.</item>
+    /// <item>The cleanup a setup returned for an element that left while the setup ran is fired by the drain
+    /// itself, and a throw out of that firing is contained on the same terms as the setup's own: it reaches
+    /// the boundary, and the abort the boundary raised is consumed before the next setup runs.</item>
     /// </list>
     /// Each reads whether the failure left the reconcile call beside the state it is named for, because a
     /// tree where it escapes never reaches that state and a bare rethrow says nothing about which of the
@@ -54,6 +57,7 @@ namespace Velvet.Tests
             s_setAttempt = default;
             s_boundaryFiber = null;
             s_hostFiber = null;
+            s_orphanedCleanups = 0;
         }
 
         [Test]
@@ -428,6 +432,106 @@ namespace Velvet.Tests
                 return true;
             }
         }
+
+
+        #region An orphaned setup's cleanup that throws (a boundary above it, and a setup queued behind it)
+
+        private static int s_orphanedCleanups;
+
+        // One instance across renders, so a patch inside the drain reads the ref as unchanged rather than
+        // re-queueing this setup.
+        private static readonly Func<VisualElement, Action> s_selfRemovingSetupWithAThrowingCleanup =
+            SelfRemovingSetupWithAThrowingCleanup;
+
+        // The setup dispatches a discrete event whose handler stops rendering the element it was handed, so
+        // the entry the drain recorded for that element is gone by the time the setup returns — which is
+        // what sends the cleanup it returned down the drain's own orphan arm.
+        private static Action SelfRemovingSetupWithAThrowingCleanup(VisualElement element)
+        {
+            element.parent?.Q<Button>("victim-trigger")?.SimulateClick();
+            return () =>
+            {
+                s_orphanedCleanups++;
+                throw new InvalidOperationException(FailureMessage);
+            };
+        }
+
+        [Component]
+        private static VNode SelfRemovingVictimHost()
+        {
+            var (show, setShow) = Hooks.UseState(true);
+            return V.Div(children: show
+                ? new VNode[]
+                {
+                    V.Button(name: "victim-trigger", onClick: () => setShow.Invoke(false)),
+                    V.Div(name: "victim", refCallback: s_selfRemovingSetupWithAThrowingCleanup),
+                }
+                : new VNode[]
+                {
+                    V.Button(name: "victim-trigger", onClick: () => setShow.Invoke(false)),
+                });
+        }
+
+        [Component(IsErrorBoundary = true)]
+        private static VNode OrphanedCleanupBoundary()
+        {
+            Hooks.UseFallback(_ =>
+            {
+                s_fallbackShown = true;
+                return V.Label(name: "orphan-fallback", text: "caught");
+            });
+            return V.Component(SelfRemovingVictimHost, key: "victim-host");
+        }
+
+        [Component]
+        private static VNode OrphanedCleanupHost()
+            => V.Div(children: new VNode[] { V.Component(OrphanedCleanupBoundary, key: "boundary") });
+
+        // The committer's setup is queued behind the victim's, so it runs in the same drain the boundary
+        // caught in — the same slot-0 reason the RefFailureHost region gives for the container around the
+        // boundary.
+        [Component]
+        private static VNode OrphanedCleanupThenCommitHost()
+        {
+            var (probe, setProbe) = Hooks.UseState("before");
+            s_setProbe = setProbe;
+            return V.Div(children: new VNode[]
+            {
+                V.Div(name: "left", children: new VNode[]
+                {
+                    V.Component(OrphanedCleanupBoundary, key: "boundary"),
+                }),
+                V.Button(name: "trigger", onClick: () => setProbe.Invoke("after")),
+                V.Div(name: "committer", refCallback: ClickTheTrigger),
+                V.Label(name: "probe", text: probe),
+            });
+        }
+
+        [Test]
+        public void Given_AnOrphanedSetupsCleanupThatThrows_When_ABoundaryIsRegisteredAboveIt_Then_ItCatchesInsteadOfSwallowing()
+        {
+            // Arrange / Act
+            using var mounted = V.Mount(Root, V.Component(OrphanedCleanupHost, key: "host"));
+
+            // Assert — the cleanup's own count gates the fallback, because a tree that never reached the
+            // orphan arm reads the same absent fallback as one that reached it and swallowed the throw.
+            Assert.That((s_orphanedCleanups, Root!.Q<Label>("orphan-fallback") != null),
+                Is.EqualTo((1, true)));
+        }
+
+        [Test]
+        public void Given_AnOrphanedCleanupThrewIntoABoundary_When_ALaterSetupCommitsAStateWrite_Then_ItStillReachesTheDom()
+        {
+            // Arrange / Act
+            using var mounted = V.Mount(Root, V.Component(OrphanedCleanupThenCommitHost, key: "host"));
+
+            // Assert — the fallback is read beside the probe, because a pass where the cleanup never threw
+            // reads the same committed probe as one where it threw and the abort was consumed.
+            Assert.That((Root!.Q<Label>("orphan-fallback") != null, Root.Q<Label>("probe")?.text),
+                Is.EqualTo((true, "after")));
+        }
+
+        #endregion
 
         private static string NamesOf(VisualElement parent)
         {
