@@ -20,7 +20,6 @@ namespace Velvet
         // Per-round state prevents a navigation started inside a Loader from overwriting the outer run.
         internal sealed class LoaderRound
         {
-            // RouteId prevents an index route's empty MatchedPath from colliding with its parent.
             internal readonly Dictionary<string?, object> Results = new();
 
             internal readonly Dictionary<string?, Exception> Errors = new();
@@ -34,6 +33,8 @@ namespace Velvet
 
         private LoaderRound _currentRound = new();
 
+        // Read by subscribers from inside OnSuspendLoaderCompleted and OnSuspendLoaderFailed, which
+        // fire only after the supersession check, so what a subscriber reads there is its own round.
         internal LoaderRound CurrentRound => _currentRound;
 
         // Cancellation can overlap rounds, so this counts live tasks across all rounds.
@@ -129,7 +130,6 @@ namespace Velvet
             {
                 _activeSuspendTaskCount++;
                 object result;
-                // Subscriber failures must not enter these Loader catches and decrement Pending twice.
                 try
                 {
                     result = await task;
@@ -149,9 +149,10 @@ namespace Velvet
                     return;
                 }
 
-                // Subscribers must observe the completion already removed from its round's Pending count.
+                // Both writes stay above the supersession return: a round settles its own accounting
+                // whether or not anything is announced, and a subscriber that does get the
+                // announcement reads a completion already out of Pending.
                 round.Pending--;
-                // The round owns the result even when no announcement is emitted.
                 round.Results[routeId] = result;
                 if (ownCts != _cts) return;
                 Announce(OnSuspendLoaderCompleted, routeId, result);

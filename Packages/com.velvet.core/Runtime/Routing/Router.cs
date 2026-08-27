@@ -487,9 +487,7 @@ namespace Velvet
             _ => _historyIndex,
         };
 
-        // Whether the Suspend loader now reporting belongs to the round the current location was committed
-        // with. The runner fires its events only for the round it holds as current, so this compares that
-        // round against the committed one.
+        // Sound because of the ordering RouteLoaderRunner.CurrentRound states.
         private bool ResolvedIntoTheCommittedRound() =>
             ReferenceEquals(_loaderRunner.CurrentRound, _committedRound);
 
