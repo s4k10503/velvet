@@ -14,7 +14,9 @@ namespace Velvet.DevTools
     ///   VelvetDevToolsRegistry.Unregister(myFiber);
     /// </code>
     /// </para>
-    /// The registry is editor-only and is absent from player builds.
+    /// It lives in the runtime assembly so <see cref="V.Mount"/> can reach it — Velvet.Editor references
+    /// Velvet and not the other way round — with the <c>#if UNITY_EDITOR</c> above keeping it out of a
+    /// player build.
     /// </summary>
     public static class VelvetDevToolsRegistry
     {
@@ -24,7 +26,8 @@ namespace Velvet.DevTools
 
             public string Label { get; }
 
-            /// <summary>Cached component function name used by the inspector.</summary>
+            /// <summary>Component function name, taken once from <c>Body</c>'s <c>MethodInfo</c> so the
+            /// inspector's per-entry repaint loop does not materialise one per entry per frame.</summary>
             public string TypeName { get; }
 
             public DateTime RegisteredAt { get; } = DateTime.Now;
