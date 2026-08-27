@@ -618,7 +618,11 @@ behaviour a working application would notice changing.
 
 1. Close the version in `Packages/com.velvet.core/CHANGELOG.md` and bump `version` in
    `package.json` to match. A major moves the breaking entries up into `## [Unreleased]` and leaves
-   their heading standing with none; a minor or a patch leaves them where they are. Rename
+   their heading standing with none. A minor or a patch closes only over a section already empty,
+   and `published_check.py` refuses one that is not: a release publishes the tree rather than the
+   section, and `main` was found carrying the code an entry described while that entry still
+   waited. The maintenance line was cut before the section existed and holds neither it nor that
+   code, so the reading stays silent there. Rename
    `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD` **last**, once nothing further is going into it:
    `changelog_into_closed_version.py` refuses a write into a dated section, and the rename is what
    dates it. The breaking heading itself is never dated and never deleted, and a `**Breaking:**`
