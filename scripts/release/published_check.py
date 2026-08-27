@@ -28,9 +28,10 @@ origin/main for most, origin/2.x for one onto the maintenance line:
     python3 scripts/release/published_check.py \
         --base "$(git merge-base "$BASE" HEAD)" --result HEAD
 
-The branch rather than a constant: the two pull requests that closed a version most recently targeted
-the maintenance line, which is the class the drain question judges, and merge_onto_unpublished_release.py
-carries the record of a constant here refusing that line's release for a version main had left open.
+The branch rather than a constant: a version-closing pull request targets either, and the three most
+recent went one to main and two to the maintenance line. The failure a constant produces is on the
+publication question -- merge_onto_unpublished_release.py carries the record of one refusing the line's
+release for a version main had left open.
 
 --base drives two questions and one value cannot be relied on to serve both. The publication question
 wants the base, where an unpublished release sits, and reads whatever the local ref holds, so a checkout
