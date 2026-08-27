@@ -165,8 +165,9 @@ jobs:
   # whose body is missing rather than stopping anything. This runs the same builder here, so
   # that failure lands on the pull request that introduced it. No Unity license needed.
   #
-  # pin_example_check.py rides here for the same reason, and is not gated on a release: the pin that
-  # goes stale is written in an ordinary documentation change.
+  # supported_versions_check.py and pin_example_check.py ride here for the same reason, and neither
+  # is gated on a release: the row that goes missing and the pin that goes stale are both written in
+  # an ordinary documentation change.
   # ---------------------------------------------------------------------------
   release-notes:
     name: Release notes
@@ -175,6 +176,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - run: python3 scripts/release/test_release_notes.py
+
+      - run: python3 scripts/release/test_supported_versions_check.py
+
+      - run: python3 scripts/release/supported_versions_check.py
 
       - run: python3 scripts/release/test_pin_example_check.py
 
