@@ -81,7 +81,6 @@ namespace Velvet
                     return anyBlocked;
                 }
 
-                // A registration removed during this pass no longer owns state that may be blocked.
                 if (blocked && entry.IsRegistered)
                 {
                     entry.State.Block(attempt, resume, AbandonAttempt);
