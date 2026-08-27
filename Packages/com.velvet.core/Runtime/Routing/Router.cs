@@ -18,7 +18,8 @@ namespace Velvet
         private Dictionary<string?, Exception> _loaderErrors = new();
         private const int MaxRedirects = 5;
         private const int MaxHistoryEntries = 50;
-        // A new top-level navigation cancels the prior source; its attempt disposes it during unwind.
+        // A new top-level navigation cancels the prior source, which its attempt then disposes during
+        // unwind — or Dispose does, for the one still in flight when the router goes away.
         private CancellationTokenSource? _activeNavigationCts;
         // A superseded attempt must not overwrite the Status owned by a newer navigation.
         private int _navigationSequence;
@@ -69,6 +70,8 @@ namespace Velvet
 
         private readonly IRouteScopeFactory? _scopeFactory;
 
+        /// <summary>Builds the route tree and takes over as <see cref="Current"/>.</summary>
+        /// <param name="routes">Top-level route definitions; children are nested within them.</param>
         /// <param name="scopeFactory">Optional factory for per-route DI scopes; null disables route scoping.</param>
         public Router(RouteDefinition[] routes, IRouteScopeFactory? scopeFactory = null)
         {
