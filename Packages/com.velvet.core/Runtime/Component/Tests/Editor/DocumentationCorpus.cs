@@ -124,6 +124,15 @@ namespace Velvet.Tests
                 "obj", "bin", "StrykerOutput", ".pytest_cache",
             };
 
+        // A mutation campaign's own record, which holds the original text of the file it is mutating,
+        // comments and all. StripProse takes nothing from a .json, so while a run is in flight those
+        // comments are read as code — and a mutant of a file whose comments spell an allowlisted name is
+        // recorded killed by the drift failure that follows, whatever the tests of the line it cut do.
+        // The name is derived where it is pinned, the way the paths below are:
+        // Given_ACampaignHoldsItsRecord_... in DocumentationDriftTests reads it off mutation_check.py.
+        private static readonly HashSet<string> BaseUnwalkedFiles =
+            new(StringComparer.Ordinal) { "MUTATION_IN_PROGRESS.json" };
+
         // Build output under docs/, each a generated copy that outlives the sources it was made from: DocFX
         // writes runtime type names into api/ and _site/, which hold that spelling until docs/build.py is
         // re-run, and docs/build.py stages a copy of every guide into guides/ before invoking DocFX, so a
@@ -151,6 +160,7 @@ namespace Velvet.Tests
             // machine and red only on CI.
             var walkedRoots = WalkedRoots(includeClaude);
             var unwalked = new HashSet<string>(BaseUnwalkedDirectories);
+            unwalked.UnionWith(BaseUnwalkedFiles);
             if (includeClaude)
             {
                 unwalked.Add("worktrees");
@@ -166,7 +176,9 @@ namespace Velvet.Tests
             var pending = new Stack<(string Directory, int Depth)>(
                 walkedRoots.Select(Path.GetFullPath).Where(Directory.Exists).Select(walked => (walked, 1)));
             entries.AddRange(walkedRoots.Where(walked => Directory.Exists(Path.GetFullPath(walked))));
-            entries.AddRange(Directory.EnumerateFiles(root).Select(file => Path.GetFileName(file)));
+            entries.AddRange(Directory.EnumerateFiles(root)
+                .Select(file => Path.GetFileName(file))
+                .Where(name => !unwalked.Contains(name)));
             while (pending.Count > 0)
             {
                 var (directory, depth) = pending.Pop();
