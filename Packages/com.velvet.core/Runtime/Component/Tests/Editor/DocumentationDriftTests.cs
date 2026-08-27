@@ -732,11 +732,10 @@ namespace Velvet.Tests
         }
 
         // Comments are prose in every format that has them, so a name surviving only in one is a deleted
-        // name as far as any caller is concerned. Strings are not: in C# a string is a label for code, while
-        // in USS, YAML, JSON and an asmdef the string IS the content, and the CI variable names a document
-        // cites live in exactly those. So C# loses both and the rest lose only their comments. Nothing is
-        // taken from JSON or an asmdef, and no file of either carries a comment for the guard to be wrong
-        // about.
+        // name as far as any caller is concerned. C# and Python lose their strings besides, USS and YAML
+        // lose only their comments, and nothing is taken from JSON or an asmdef -- which is where the CI
+        // variable names a document cites live. Python's strings are the loose end: this repository holds
+        // at least one name whose only source is one of them, so a document citing it resolves nowhere.
         private static string StripProse(string entry, string text)
         {
             if (entry.EndsWith(".cs", StringComparison.Ordinal))
@@ -1360,5 +1359,68 @@ namespace Velvet.Tests
 
         private static readonly Regex DocfxOutputPattern =
             new(@"""(?:dest|output)""\s*:\s*""([^""]+)""", RegexOptions.Compiled);
+
+        // GREEN_ON_BASE(characterization): the exclusion this pins lives in DocumentationCorpus.
+        // That is a test-assembly file the base run carries from the branch along with the case, so the
+        // base answers over the branch's own list. What stands in for the base run is the entry removed
+        // and the case run, measured: it reported the record as walked.
+        [Test]
+        public void Given_ACampaignHoldsItsRecord_When_TheWalkRuns_Then_TheRecordStaysOutOfTheCorpus()
+        {
+            // Arrange — a scratch root rather than this one, because a campaign reads the record to find
+            // an abandoned mutation, so a copy a killed run left at this root would refuse the next
+            // campaign. Both cached corpora are forced before the move, so that neither is first built
+            // while the process points at the scratch root.
+            DocumentationCorpus.RepoEntries(includeClaude: true);
+            DocumentationCorpus.RepoEntries(includeClaude: false);
+            var record = CampaignRecordName();
+            var scratch = Directory.CreateDirectory(Path.Combine(
+                Path.GetTempPath(), "velvet-campaign-record-" + Guid.NewGuid().ToString("N"))).FullName;
+            File.WriteAllText(Path.Combine(scratch, ScratchRootProbe), "# scratch root #\n");
+            if (record.Length > 0)
+            {
+                File.WriteAllText(Path.Combine(scratch, record), "{}\n");
+            }
+            var here = Directory.GetCurrentDirectory();
+
+            try
+            {
+                // Act
+                Directory.SetCurrentDirectory(scratch);
+                var walked = (List<string>)typeof(DocumentationCorpus)
+                    .GetMethod("Walk", BindingFlags.NonPublic | BindingFlags.Static)!
+                    .Invoke(null, new object[] { false })!;
+                var planted = walked
+                    .Where(entry => entry == record || entry == ScratchRootProbe)
+                    .OrderBy(entry => entry, StringComparer.Ordinal);
+
+                // Assert — that mutation_check.py still names a record rides along, because a derivation
+                // finding none plants nothing and leaves this reporting the probe alone either way.
+                Assert.That(
+                    (record.Length > 0, string.Join(", ", planted)),
+                    Is.EqualTo((true, ScratchRootProbe)),
+                    "a campaign's record holds the original text of the file it is mutating, comments and "
+                    + "all, so a walk taking it in reads those comments as code for the length of the run");
+            }
+            finally
+            {
+                Directory.SetCurrentDirectory(here);
+                Remove(scratch);
+            }
+        }
+
+        private const string ScratchRootProbe = "campaign-record-probe.md";
+
+        private static string CampaignRecordName()
+        {
+            var script = Path.GetFullPath(Path.Combine("scripts", "test_quality", "mutation_check.py"));
+            if (!File.Exists(script))
+            {
+                return string.Empty;
+            }
+            var assignment = Regex.Match(
+                File.ReadAllText(script), @"^SENTINEL\s*=\s*""([^""]+)""", RegexOptions.Multiline);
+            return assignment.Success ? assignment.Groups[1].Value : string.Empty;
+        }
     }
 }
