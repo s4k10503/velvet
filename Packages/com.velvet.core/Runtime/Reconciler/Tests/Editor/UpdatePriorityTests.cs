@@ -202,6 +202,7 @@ namespace Velvet.Tests
 
         #region Delayed-tier routing
 
+        // GREEN_ON_BASE(refactor): Transition already routed to the delayed tier and nowhere else.
         [Test]
         public void Given_TransitionLaneUpdate_When_Scheduled_Then_EnrollsOnDelayedTierOnly()
         {
@@ -218,6 +219,7 @@ namespace Velvet.Tests
                 "The Transition lane routes to the delayed tier, preserving its deferral");
         }
 
+        // GREEN_ON_BASE(refactor): the immediate drain already left a Transition enrolment alone.
         [Test]
         public void Given_TransitionLaneUpdate_When_ImmediateDrained_Then_LeavesItPendingUnflushed()
         {
@@ -236,6 +238,7 @@ namespace Velvet.Tests
                 "The immediate drain leaves the delayed-tier fiber unflushed and still enrolled");
         }
 
+        // GREEN_ON_BASE(refactor): the delayed drain already flushed a Transition enrolment.
         [Test]
         public void Given_TransitionLaneUpdate_When_DelayedDrained_Then_Flushes()
         {
@@ -251,6 +254,7 @@ namespace Velvet.Tests
             Assert.AreEqual(2, s_simpleRenderCount, "The delayed drain flushes the delayed-tier fiber");
         }
 
+        // GREEN_ON_BASE(refactor): repeated enrolment on one lane already coalesced.
         [Test]
         public void Given_RepeatedTransitionLaneUpdates_When_Scheduled_Then_CoalesceToOneDelayedEntry()
         {
@@ -267,6 +271,7 @@ namespace Velvet.Tests
                 "Repeated delayed-tier scheduling on the same fiber coalesces into one delayed entry");
         }
 
+        // GREEN_ON_BASE(refactor): a coalesced delayed entry already rendered once.
         [Test]
         public void Given_RepeatedTransitionLaneUpdates_When_DelayedDrained_Then_RendersOnce()
         {
@@ -451,6 +456,7 @@ namespace Velvet.Tests
 
         #region Lane queue ordering
 
+        // GREEN_ON_BASE(refactor): Urgent already outranked Transition in the same queue.
         [Test]
         public void Given_UrgentAddedToTransitionFiber_When_Flushed_Then_DrainsUrgentLaneFirst()
         {
@@ -468,6 +474,7 @@ namespace Velvet.Tests
                 "The first flush drains the higher-priority Urgent lane and leaves the Transition lane pending");
         }
 
+        // GREEN_ON_BASE(refactor): the second flush already drained what the first left queued.
         [Test]
         public void Given_UrgentAddedToTransitionFiber_When_FlushedTwice_Then_DrainsRemainingTransitionLane()
         {
@@ -486,6 +493,7 @@ namespace Velvet.Tests
                 "The second flush drains the remaining Transition lane and clears the dirty flag");
         }
 
+        // GREEN_ON_BASE(refactor): the escalation already enrolled both tiers for this pair.
         [Test]
         public void Given_UrgentAddedToTransitionFiber_When_Scheduled_Then_EnrollsOnBothTiers()
         {
@@ -506,6 +514,7 @@ namespace Velvet.Tests
                 "The Urgent lane enrolls the immediate tier while the original Transition lane stays on the delayed tier");
         }
 
+        // GREEN_ON_BASE(refactor): FlushImmediate already left the delayed lane queued.
         [Test]
         public void Given_UrgentAddedToTransitionFiber_When_FlushImmediate_Then_DrainsUrgentLaneAndLeavesTransitionPending()
         {
@@ -523,6 +532,7 @@ namespace Velvet.Tests
                 "FlushImmediate drains the Urgent lane and leaves the Transition lane pending");
         }
 
+        // GREEN_ON_BASE(refactor): these three lanes already drained in this order.
         [Test]
         public void Given_ThreeLanesOnOneFiber_When_FlushedRepeatedly_Then_DrainsLowestValueFirst()
         {

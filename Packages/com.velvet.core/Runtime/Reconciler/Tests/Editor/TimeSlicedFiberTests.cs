@@ -74,6 +74,7 @@ namespace Velvet.Tests
                 "The Urgent and Normal lanes run synchronously with a zero budget");
         }
 
+        // GREEN_ON_BASE(refactor): Transition already sliced against this budget before the lane beside it went.
         [Test]
         public void Given_TransitionLane_When_BudgetQueried_Then_IsTimeSliced()
         {
