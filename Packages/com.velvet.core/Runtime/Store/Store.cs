@@ -11,10 +11,11 @@ namespace Velvet
     /// Stores are single-threaded. Reads, mutations, and subscription changes must occur on the Unity
     /// main thread.
     /// <para>
-    /// Do not mutate the store from a state-change notification. A nested mutation interleaves notification
-    /// passes, so later subscribers can miss the outer state and observe reordered (current, previous)
-    /// pairs. Defer the update until notification completes. Listener exceptions propagate and stop the
-    /// current notification pass.
+    /// Do not mutate the store from a state-change notification. The pass reads the current value per
+    /// listener rather than the one it started with, so a nested mutation leaves every listener after the
+    /// mutating one never called with the outer state and called twice with the inner one. Defer the
+    /// update until notification completes. Listener exceptions propagate and stop the current
+    /// notification pass.
     /// </para>
     /// </remarks>
     /// <typeparam name="TState">Immutable state record type.</typeparam>

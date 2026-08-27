@@ -20,6 +20,9 @@ namespace Velvet
         [Conditional("DEVELOPMENT_BUILD")]
         public virtual void LogWarning(string message) => UnityEngine.Debug.LogWarning(message);
 
+        /// <summary>Logs an error. Carries no <c>[Conditional]</c> of its own, unlike the two above:
+        /// <c>Store.Dispose</c> reports a subscriber's throw through here, and in a release player
+        /// that is the only report there is.</summary>
         public virtual void LogError(string message) => UnityEngine.Debug.LogError(message);
     }
 
