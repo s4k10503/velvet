@@ -4,20 +4,6 @@ using NUnit.Framework;
 
 namespace Velvet.Tests.Editor
 {
-    /// <summary>
-    /// Specifies the contract of <see cref="StoreShallowEqualityComparer.Sequence{T}"/>, the comparer used to
-    /// decide whether two consecutive <see cref="IReadOnlyList{T}"/> selector slices are equal.
-    /// <list type="bullet">
-    /// <item>Two sequences are equal only when both are null, or when they share the same reference, or when
-    /// their lengths match and every element pair is identity-equal.</item>
-    /// <item>One null and one non-null sequence are never equal, regardless of the non-null one being empty.</item>
-    /// <item>Sequences of differing length are never equal.</item>
-    /// <item>Value-type elements compare by value; reference-type elements compare by identity, so distinct-but
-    /// value-equal instances at matching positions count as unequal.</item>
-    /// <item>The comparer for a given element type is a cached singleton, so repeated requests return the same
-    /// instance.</item>
-    /// </list>
-    /// </summary>
     [TestFixture]
     internal sealed class StoreShallowEqualityComparerTests
     {
@@ -118,7 +104,7 @@ namespace Velvet.Tests.Editor
         [Test]
         public void Given_DistinctButValueEqualReferenceTypeElements_When_Compared_Then_AreNotEqual()
         {
-            // Arrange — reference-type elements compare by identity, so distinct instances are not equal
+            // Arrange
             var cmp = StoreShallowEqualityComparer.Sequence<Item>();
 
             // Act
