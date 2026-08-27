@@ -6,12 +6,10 @@ using System.Reflection;
 namespace Velvet
 {
     /// <summary>
-    /// One discovered <c>[VelvetPreview]</c> story: the metadata a preview tool lists, plus a thunk that
-    /// produces a fresh <see cref="VNode"/> tree each time the story is mounted.
+    /// Metadata and invocation support for a discovered <c>[VelvetPreview]</c> story.
     /// <para>
-    /// A story method is parameterless (renders one fixed view) or takes a single "args" object — a
-    /// class/struct/record of editable props. For an args-story the preview window reflects the args type into
-    /// live control knobs and re-mounts with the edited instance.
+    /// A story method is parameterless or takes one supported args value. The preview window creates controls
+    /// for supported writable members and rebuilds the story when one is edited.
     /// </para>
     /// </summary>
     public sealed class VelvetPreviewStory
@@ -22,7 +20,7 @@ namespace Velvet
         /// <summary>Grouping heading the story sits under (the attribute's Group, else the declaring type name).</summary>
         public string Group { get; }
 
-        /// <summary>Stable identifier (<c>Group/Name</c>) used to address a story and remember a selection.</summary>
+        /// <summary>Identifier (<c>Group/Name</c>) used to address a story and remember a selection.</summary>
         public string Id { get; }
 
         /// <summary>Preferred mount width in reference pixels; <c>0</c> means fill the host.</summary>
@@ -54,18 +52,14 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Builds a fresh VNode tree at the story's default args. A parameterless story is invoked directly; an
-        /// args-story is invoked with a default-constructed args instance (so the capture harness and the first
-        /// mount show the story at its declared default values). Use <see cref="CreateDefaultArgs"/> +
-        /// <see cref="Build(object)"/> to drive it with edited args.
+        /// Invokes the story with its default args. Use <see cref="CreateDefaultArgs"/> and
+        /// <see cref="Build(object)"/> to supply edited args.
         /// </summary>
         public VNode? Build() => Build(ArgsType == null ? null : CreateDefaultArgs());
 
         /// <summary>
-        /// Builds a fresh VNode tree, passing <paramref name="args"/> to an args-story (or no argument to a
-        /// parameterless one — <paramref name="args"/> is ignored there). Rethrows the story's own exception
-        /// (unwrapped from the reflection <see cref="TargetInvocationException"/>) so a caller surfaces a clean
-        /// message.
+        /// Invokes an args-story with <paramref name="args"/>; parameterless stories ignore it. The story's own
+        /// exception is rethrown without the reflection wrapper.
         /// </summary>
         public VNode? Build(object? args)
         {
@@ -81,9 +75,8 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Default-constructs an instance of <see cref="ArgsType"/> (honoring its field/property initializers),
-        /// or returns <c>null</c> for a parameterless story. The preview window seeds its live control state from
-        /// this.
+        /// Creates the default <see cref="ArgsType"/> value. The result is <c>null</c> for a parameterless story
+        /// and may also be null for a nullable args type.
         /// </summary>
         public object? CreateDefaultArgs() => ArgsType == null ? null : Activator.CreateInstance(ArgsType);
     }
