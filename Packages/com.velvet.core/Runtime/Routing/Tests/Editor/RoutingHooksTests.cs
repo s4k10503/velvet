@@ -216,6 +216,8 @@ namespace Velvet.Tests
     /// <item><c>UseMatch</c> returns a match (with captured params) when its location-relative pattern matches
     /// the current location, matching case-insensitively by default and independently of the route table, and
     /// returns null when the pattern does not match.</item>
+    /// <item><c>UseSearchParams</c> returns the query parsed off the current location, rebuilt every
+    /// render, beside one shared setter that replaces the query string and navigates.</item>
     /// </list>
     /// </summary>
     [TestFixture]
