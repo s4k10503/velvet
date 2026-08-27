@@ -5,20 +5,17 @@ using System.Threading;
 namespace Velvet
 {
     /// <summary>
-    /// State container: immutable state plus collocated actions in a single class, with
-    /// synchronous subscribers notified on every change.
+    /// State container for immutable state, collocated actions, and synchronous change notifications.
     /// </summary>
     /// <remarks>
-    /// Threading: a store is single-threaded. All reads, mutations (<see cref="SetState"/> /
-    /// <see cref="Mutate"/>), and subscription changes must occur on the Unity main thread
-    /// (PlayerLoop). The store performs no internal locking; it assumes a single-threaded model.
+    /// Stores are single-threaded. Reads, mutations, and subscription changes must occur on the Unity
+    /// main thread.
     /// <para>
-    /// Re-entrancy: listeners passed to <see cref="Subscribe(Action{TState}, bool)"/> /
-    /// <see cref="Select{T}(Func{TState, T}, Action{T, T}, IEqualityComparer{T}, bool)"/> must not
-    /// synchronously mutate the store. Notification is synchronous and not serialized,
-    /// so a re-entrant mutation interleaves delivery and can reorder the (current, previous) pairs seen
-    /// by other subscribers. Defer such updates (e.g. via a scheduler / next frame) instead of mutating
-    /// during notification.
+    /// Do not mutate the store from a state-change notification. The pass reads the current value per
+    /// listener rather than the one it started with, so a nested mutation leaves every listener after the
+    /// mutating one never called with the outer state and called twice with the inner one. Defer the
+    /// update until notification completes. Listener exceptions propagate and stop the current
+    /// notification pass.
     /// </para>
     /// </remarks>
     /// <typeparam name="TState">Immutable state record type.</typeparam>
@@ -28,17 +25,11 @@ namespace Velvet
 
         private readonly StoreStateNotifier<TState> _state;
 
-        /// <summary>
-        /// Snapshot of the current state.
-        /// </summary>
         public TState Current
             => _state.Value;
 
         /// <summary>
-        /// The state value the store was constructed with.
-        /// Useful for distinguishing "untouched" from
-        /// "user-modified" without separately tracking a dirty flag, and for diffing against
-        /// the persisted/seed value.
+        /// The construction value, unchanged when <see cref="Current"/> changes.
         /// </summary>
         public TState InitialState { get; }
 
@@ -71,10 +62,6 @@ namespace Velvet
 
         #region Constructor
 
-        /// <summary>
-        /// Retains <paramref name="initial"/> as <see cref="InitialState"/> and seeds the live state with it.
-        /// </summary>
-        /// <param name="initial">Initial state.</param>
         protected Store(TState initial)
         {
             Logger = StoreLogger.Default;
@@ -98,19 +85,8 @@ namespace Velvet
         protected bool SetState(Func<TState, TState> updater)
             => TryApply(updater, force: false);
 
-        // Sole write path into the state cell: SetState and Mutate both funnel through here, so the
-        // disposal guard and equality check apply to every mutation.
-        //
-        // Disposal-order race guard: during app shutdown, a DI container's LIFO singleton teardown can
-        // dispose this store before the code that tears down the mounted tree runs, so a V.Mount UseEffect
-        // cleanup can still call setState on an already-disposed store. A state update on an unmounted
-        // component is treated as a no-op, so a setState after disposal is silently ignored rather than
-        // throwing.
-        //
-        // ObjectIs.AreEqual rather than EqualityComparer<TState>.Default, chosen for the case where the
-        // two differ: a record CLASS snapshot rebuilt with equal content is a fresh instance and must
-        // still notify. Where the snapshot is a record STRUCT the two are the same call, so an
-        // equal-content one is suppressed instead — StoreTests pins both.
+        // Both mutation modes share this disposal guard. ObjectIs preserves identity semantics for
+        // record classes while record structs retain value equality; StoreTests pins both branches.
         private bool TryApply(Func<TState, TState> updater, bool force)
         {
             if (_disposed) return false;
@@ -127,9 +103,8 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Updates state unconditionally.
-        /// Unlike <see cref="SetState"/>, this always raises a notification even when the state is unchanged.
-        /// Use this for cases like Reset where subscribers must always be notified.
+        /// Updates state without the equality bailout used by <see cref="SetState"/>.
+        /// A live store notifies even when the reducer returns the current value.
         /// </summary>
         void IStoreWriter<TState>.Mutate(Func<TState, TState> reducer)
             => Mutate(reducer);
@@ -141,7 +116,7 @@ namespace Velvet
         /// <summary>
         /// Subscribes to state changes.
         /// </summary>
-        /// <param name="listener">Invoked on every state mutation. Must not be null.</param>
+        /// <param name="listener">Callback for state-change notifications. Must not be null.</param>
         /// <param name="fireImmediately">
         /// When <c>true</c>, the listener is invoked synchronously with <see cref="Current"/> before
         /// returning. Default is
@@ -150,10 +125,8 @@ namespace Velvet
         public IDisposable Subscribe(Action<TState> listener, bool fireImmediately = false)
         {
             if (listener == null) throw new ArgumentNullException(nameof(listener));
-            // Wrap in a fresh delegate so the same callback subscribed twice yields two distinct,
-            // independently-disposable listeners (notifier removal is by reference identity). Subscribe BEFORE the
-            // immediate fire so a listener that mutates the store during that fire observes its own mutation;
-            // a fire-before-subscribe order would silently drop it.
+            // Give reused callbacks distinct registrations so their subscriptions remain independently disposable.
+            // Registration precedes the immediate callback so a nested mutation reaches this listener.
             var subscription = _state.Subscribe(state => listener(state));
             if (fireImmediately) listener(Current);
             return subscription;
@@ -168,7 +141,7 @@ namespace Velvet
         /// <c>(previous, next)</c> — the two areas settled on opposite conventions, so check the parameter
         /// names at the call site rather than assuming one order.
         /// </remarks>
-        /// <param name="listener">Invoked with <c>(currentState, previousState)</c> on every state mutation. Must not be null.</param>
+        /// <param name="listener">Callback receiving <c>(currentState, previousState)</c>. Must not be null.</param>
         /// <param name="fireImmediately">
         /// When <c>true</c>, fires the listener synchronously with <c>(Current, Current)</c> before returning
         /// (both arguments equal — there is no previous state at subscribe time). Default is <c>false</c>.
@@ -177,8 +150,7 @@ namespace Velvet
         {
             if (listener == null) throw new ArgumentNullException(nameof(listener));
             var prev = Current;
-            // Subscribe before the immediate fire (see the single-arg overload) so a mutation made during the
-            // fire is observed; the closure's `prev` tracking stays correct because a reentrant notify updates it.
+            // Registration precedes the immediate callback for the same reason as the single-argument overload.
             var subscription = _state.Subscribe(current =>
             {
                 var oldPrev = prev;
@@ -201,7 +173,7 @@ namespace Velvet
         /// </remarks>
         /// <typeparam name="T">Selected projection type.</typeparam>
         /// <param name="selector">Pure projection from the store snapshot. Must not be null.</param>
-        /// <param name="observer">Invoked with <c>(currentSlice, previousSlice)</c> on each change. Must not be null.</param>
+        /// <param name="observer">Callback receiving <c>(currentSlice, previousSlice)</c> when the slice changes. Must not be null.</param>
         /// <param name="comparer">
         /// Equality comparer that decides whether two consecutive slices are equal. Defaults to
         /// <c>Object.is</c> equality, the same default used by <see cref="Hooks.UseStore{TStore,TSel}"/>.
@@ -222,8 +194,7 @@ namespace Velvet
             if (observer == null) throw new ArgumentNullException(nameof(observer));
             var cmp = comparer ?? ObjectIsEqualityComparer<T>.Instance;
             var prev = selector(Current);
-            // Subscribe before the immediate fire (see the single-arg overload) so a mutation made during the fire
-            // is observed through the now-active subscription.
+            // Registration precedes the immediate callback for the same reason as Subscribe.
             var subscription = _state.Subscribe(snapshot =>
             {
                 var current = selector(snapshot);
@@ -237,35 +208,20 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Resets state to the initial value. Non-virtual template method that short-circuits
-        /// when the store has been disposed; concrete stores implement <see cref="ResetCore"/>.
+        /// Resets state to the initial value unless the store has been disposed.
         /// </summary>
-        /// <remarks>
-        /// During app shutdown / scene unload, a DI container's LIFO singleton teardown can dispose a child
-        /// store before a parent store's Reset chain reaches it. The same disposal
-        /// race also fires when V.Mount's UseEffect cleanup runs after the store has been disposed.
-        /// Centralizing the guard here ensures every <see cref="Store{TState}"/> subclass — including
-        /// those whose <see cref="ResetCore"/> touches disposable internal resources — is automatically
-        /// protected.
-        /// </remarks>
         public void Reset()
         {
             if (_disposed) return;
             ResetCore();
         }
 
-        /// <summary>
-        /// Concrete reset logic. Called by <see cref="Reset"/> only when the store is not disposed.
-        /// </summary>
         protected abstract void ResetCore();
 
         #endregion
 
         #region Dispose
 
-        /// <summary>
-        /// Releases resources in the order: CTS cancel → state notifier → OnDispose.
-        /// </summary>
         public void Dispose()
         {
             if (_disposed)
