@@ -702,7 +702,7 @@ the nearest heading out of a diff's context answers the wrong question.
 **Cherry-pick with `-x`, in the order the commits landed, and compile after each one.** A clean
 cherry-pick is not evidence the tree still builds: a pick can name a helper that arrives with a commit
 that stayed behind. Nor is the absence of a conflict evidence the pick is right — where a change both
-adds and removes and the line has nothing to remove, the merge keeps the addition silently.
+adds and removes and the line has nothing to remove, the merge keeps the addition and compiles.
 
 **Take the CHANGELOG hunk out of the pick and write the entry on the line by hand.** Picked as it
 stands it applies clean and lands in the *released* section, and reopening `## [Unreleased]` does not
