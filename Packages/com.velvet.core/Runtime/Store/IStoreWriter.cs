@@ -8,9 +8,6 @@ namespace Velvet
     /// </summary>
     public interface IStoreWriter<TState>
     {
-        /// <summary>
-        /// Snapshot of the current state.
-        /// </summary>
         TState Current { get; }
 
         /// <summary>
@@ -19,7 +16,7 @@ namespace Velvet
         bool SetState(Func<TState, TState> updater);
 
         /// <summary>
-        /// Updates state unconditionally. Used for cases like Reset where notification must always fire.
+        /// Updates state without an equality check.
         /// </summary>
         void Mutate(Func<TState, TState> reducer);
     }

@@ -45,9 +45,7 @@ namespace Velvet
             public int GetHashCode(IReadOnlyList<T> obj)
             {
                 if (obj is null) return 0;
-                // The selector hook stores the last value as a snapshot and only uses the comparer
-                // via Equals, so the hash is never consulted in practice. Falling back to Count
-                // keeps the contract well-defined without iterating the sequence on every check.
+                // Equal sequences always share a count; using it avoids traversing the list for hashing.
                 return obj.Count;
             }
         }
