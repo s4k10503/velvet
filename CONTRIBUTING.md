@@ -700,6 +700,12 @@ next major is built. **One line is maintained at a time — the series immediate
 
 **The line takes fixes, and the CI its own pull requests need. It does not take features.**
 
+**A fix that lands there is owed a release.** `main` between releases is expected to hold unreleased
+entries; a maintenance line holding them is a backport nobody shipped, and the release readings do
+not see it — `published_check.py` asks whether a *closed* version went unpublished, and these entries
+belong to no version yet. `unreleased_maintenance_line.py` reports the state at session start; it
+found the line holding one entry for four days, which no session had noticed.
+
 **A commit that carries a breaking change does not come, even when it also carries a fix.** What makes
 one unsplittable is the code: the fix can name a symbol that arrives with the breaking half, so the
 pick auto-merges and then does not compile. If the fix is wanted on the line it is written fresh there
