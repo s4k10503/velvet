@@ -8,7 +8,8 @@ namespace Velvet
     public sealed class RouteMatch
     {
         public RouteDefinition? Route { get; init; }
-        /// <summary>Parameters captured across the full matched branch, shared by every level.</summary>
+        /// <summary>Parameters captured across the full matched branch, shared by every level. A <c>:id</c>
+        /// segment keys its capture as <c>id</c>, and a splat as <c>*</c>.</summary>
         public IReadOnlyDictionary<string, string> Params { get; init; } = null!;
         /// <summary>The route's pattern without surrounding slashes; root remains <c>/</c>.</summary>
         public string? MatchedPath { get; init; }

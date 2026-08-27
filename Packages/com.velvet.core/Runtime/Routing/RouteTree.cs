@@ -227,6 +227,9 @@ namespace Velvet
         {
             matches = null;
 
+            // Null until the first capture, and threaded by ref for that: Match probes every ranked
+            // branch until one succeeds, and most probes fail on a static segment having captured
+            // nothing, so allocating per attempted branch would allocate for the failures.
             Dictionary<string, string>? captured = null;
 
             if (!TryConsume(branch.Pattern, 0, segments, 0, ref captured))
@@ -464,7 +467,6 @@ namespace Velvet
             return trimmed.Length == 0 ? Array.Empty<string>() : trimmed.Split('/');
         }
 
-        // Interior slashes are preserved because each caller owns segment splitting.
         private static string TrimSlashes(string path) => path.TrimStart('/').TrimEnd('/');
     }
 }
