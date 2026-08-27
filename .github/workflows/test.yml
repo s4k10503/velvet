@@ -4,9 +4,9 @@ name: Test
 # reports Pending forever when a filter stops its workflow from starting, and nothing can clear it; whether
 # GitHub honours the filter on a given trigger today is not something to bet the merge path on. The push
 # filter is a different question — a push to main has already passed the pull request — so it keeps the
-# list. WorkflowTriggerCoverageTests holds both the absence of those filters and the presence of both
-# triggers, the latter because merge_group subscribes through a key with no children and pull_request was
-# held by nothing at all.
+# list. WorkflowTriggerCoverageTests holds that the gated triggers carry no child key whose colon follows its name, and the
+# presence of both triggers besides — each subscribes through a key with no children, which is the shape
+# an edit removes without leaving a gap.
 #
 # Generators~ sources stay out of the push list: the Unity side consumes their committed DLLs under
 # Runtime/Plugins, so a generator change reaches this workflow when the redeployed DLLs are committed.
@@ -27,7 +27,6 @@ on:
       - '!Packages/com.velvet.core/Generators~/**'
       - '**.md'
   pull_request:
-    branches: [main]
   merge_group:
   workflow_dispatch:
 
@@ -164,6 +163,10 @@ jobs:
   # request is left to fail: a version section that cannot produce one would publish a release
   # whose body is missing rather than stopping anything. This runs the same builder here, so
   # that failure lands on the pull request that introduced it. No Unity license needed.
+  #
+  # supported_versions_check.py and pin_example_check.py ride here for the same reason, and neither
+  # is gated on a release: the row that goes missing and the pin that goes stale are both written in
+  # an ordinary documentation change.
   # ---------------------------------------------------------------------------
   release-notes:
     name: Release notes
@@ -172,6 +175,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - run: python3 scripts/release/test_release_notes.py
+
+      - run: python3 scripts/release/test_supported_versions_check.py
+
+      - run: python3 scripts/release/supported_versions_check.py
+
+      - run: python3 scripts/release/test_pin_example_check.py
+
+      - run: python3 scripts/release/pin_example_check.py
 
   # ---------------------------------------------------------------------------
   # CONTRIBUTING.md's release section owns why this exists; scripts/release/published_check.py owns

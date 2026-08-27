@@ -18,7 +18,7 @@ namespace Velvet.Tests
     /// <para>
     /// The trigger side is held by two rules, and the last two cases here are the whole of them: branch
     /// protection requires a check from each of these workflows, so each must subscribe to both events that
-    /// ask for one, and neither of those subscriptions may carry a path filter.
+    /// ask for one, and neither of those subscriptions may carry a child key whose colon follows its name.
     /// </para>
     /// </summary>
     [TestFixture]
@@ -50,7 +50,7 @@ namespace Velvet.Tests
         private const string GeneratorSourceRoot = "Packages/com.velvet.core/Generators~/src";
 
         private static readonly Regex KeyPattern =
-            new(@"^(\s*)([A-Za-z_][A-Za-z0-9_-]*):", RegexOptions.Compiled);
+            new(@"^(\s*)[""']?([A-Za-z_][A-Za-z0-9_-]*)[""']?:", RegexOptions.Compiled);
 
         private static readonly Regex ListItemPattern = new(@"^(\s*)-\s*(.+?)\s*$", RegexOptions.Compiled);
 
@@ -229,13 +229,14 @@ namespace Velvet.Tests
                 $"{WorkflowPath} excludes the generator solution, but starts for:\n" + string.Join("\n", started));
         }
 
+        // GREEN_ON_BASE(characterization): both subscriptions are the base's own.
         [Test]
         public void Given_TheWorkflowsBranchProtectionRequires_When_TheirTriggersAreRead_Then_EachSubscribesToBoth()
         {
             // Arrange — a required check reports nothing for a pull request or a queue entry unless its
-            // workflow subscribes to the event, and the thing waiting on it then waits forever. merge_group
-            // subscribes through a key with no children, which is the shape an edit removes without leaving
-            // a gap; pull_request has children and was held by nothing at all.
+            // workflow subscribes to the event, and the thing waiting on it then waits forever. Both
+            // subscribe through a key with no children, which is the shape an edit removes without leaving
+            // a gap.
             var workflows = RequiredCheckWorkflows;
 
             // Act
@@ -251,7 +252,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_TheWorkflowsBranchProtectionRequires_When_TheirTriggersAreRead_Then_OnlyPushFiltersByPath()
+        public void Given_TheWorkflowsBranchProtectionRequires_When_TheirTriggersAreRead_Then_OnlyPushCarriesAChild()
         {
             // Arrange
             var filters = RequiredCheckWorkflows.SelectMany(TriggerFilters).ToList();
@@ -265,10 +266,13 @@ namespace Velvet.Tests
                 .Select(entry => $"{entry.Workflow}: {entry.Trigger}.{entry.Key}")
                 .ToList();
 
-            // Assert
-            Assert.That((onPush, string.Join(", ", onGated)), Is.EqualTo((2, string.Empty)),
-                "Filter the push trigger, never pull_request or merge_group: a required check that does "
-                + "not start has nothing able to clear it.");
+            // Assert — a floor rather than the count, the way the harness and workflow cases above are:
+            // this reader yields every push child, so a count moves on an ordinary push-filter edit
+            // that touches neither gated trigger.
+            Assert.That((onPush >= 2, string.Join(", ", onGated)), Is.EqualTo((true, string.Empty)),
+                "The gated triggers carry no indented child at all. That is a blanket rule rather than a "
+                + "judgement per key, because judging per key is what let a branch filter through while a "
+                + "path filter was the one being watched for.");
         }
 
         // Read separately from the filters below because their absence and a trigger's absence are
@@ -297,8 +301,10 @@ namespace Velvet.Tests
             }
         }
 
-        // Both paths and paths-ignore stop a workflow from starting, so a guard naming one leaves the other
-        // free to reintroduce the block.
+        // A child key whose colon follows its name is reported, rather than a list of the filters named
+        // today: a list is silent about a key it has not got, where reporting one it should not have
+        // reported fails and gets corrected. A spelling that puts anything between the name and the
+        // colon, or that writes the trigger as a flow mapping, is not reached.
         private static IEnumerable<(string Workflow, string Trigger, string Key)> TriggerFilters(string workflow)
         {
             var lines = File.ReadAllLines(Path.GetFullPath(workflow));
@@ -326,7 +332,7 @@ namespace Velvet.Tests
                 {
                     trigger = name;
                 }
-                else if (name is "paths" or "paths-ignore")
+                else
                 {
                     yield return (workflow, trigger, name);
                 }
