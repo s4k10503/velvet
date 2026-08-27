@@ -4,9 +4,8 @@ using System.Collections.Generic;
 namespace Velvet
 {
     /// <summary>
-    /// Bitmask over the four <see cref="FiberUpdatePriority"/> values, used as the per-fiber pending-lane
-    /// set. The priority space is fixed at exactly 4 members (Urgent=0 .. Transition=3), and this type sits
-    /// on the scheduler's hottest path (<see cref="FiberWorkLoop.ScheduleRerender"/> /
+    /// Bitmask over the <see cref="FiberUpdatePriority"/> values, used as the per-fiber pending-lane
+    /// set. This type sits on the scheduler's hottest path (<see cref="FiberWorkLoop.ScheduleRerender"/> /
     /// <see cref="FiberWorkLoop.FlushState"/> run on every hook-driven update), so membership is tracked with
     /// a single byte rather than a general-purpose ordered-set container: no per-enrollment node allocation,
     /// no comparer indirection.
@@ -15,18 +14,15 @@ namespace Velvet
     {
         private byte _mask;
 
-        /// <summary>Number of lanes currently enrolled (0-4).</summary>
+        /// <summary>Number of lanes currently enrolled.</summary>
         internal readonly int Count
         {
             get
             {
                 var count = 0;
-                for (var bit = 0; bit < 4; bit++)
+                for (var remaining = _mask; remaining != 0; remaining >>= 1)
                 {
-                    if ((_mask & (1 << bit)) != 0)
-                    {
-                        count++;
-                    }
+                    count += remaining & 1;
                 }
                 return count;
             }
@@ -42,9 +38,10 @@ namespace Velvet
         {
             get
             {
-                for (var bit = 0; bit < 4; bit++)
+                var bit = 0;
+                for (var remaining = _mask; remaining != 0; remaining >>= 1, bit++)
                 {
-                    if ((_mask & (1 << bit)) != 0)
+                    if ((remaining & 1) != 0)
                     {
                         return (FiberUpdatePriority)bit;
                     }

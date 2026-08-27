@@ -11,7 +11,7 @@ namespace Velvet.Tests
     /// cover the integration.
     /// <list type="bullet">
     /// <item><see cref="FiberLane.BudgetForLane"/> gives the Urgent and Normal lanes a zero budget (they run
-    /// synchronously and are never interrupted) and hands the Transition and Deferred lanes the time-sliced
+    /// synchronously and are never interrupted) and hands the Transition lane the time-sliced
     /// budget its caller supplied, so a large flat-list diff can pause.</item>
     /// <item>A Transition flush threads the time-sliced budget onto the fiber so the resume continues at the same
     /// budget — including a budget a caller supplied in place of the default; a Normal flush runs synchronously
@@ -75,15 +75,13 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_TransitionAndDeferredLanes_When_BudgetQueried_Then_AreTimeSliced()
+        public void Given_TransitionLane_When_BudgetQueried_Then_IsTimeSliced()
         {
-            // Act + Assert — Transition and Deferred slice against the budget the flush carries, so a large diff
-            // can pause
+            // Act + Assert — Transition slices against the budget the flush carries, so a large diff can pause
             Assert.That(
-                (FiberLane.BudgetForLane(FiberUpdatePriority.Transition, ProbeTimeSlicedBudgetMs),
-                    FiberLane.BudgetForLane(FiberUpdatePriority.Deferred, ProbeTimeSlicedBudgetMs)),
-                Is.EqualTo((ProbeTimeSlicedBudgetMs, ProbeTimeSlicedBudgetMs)),
-                "The Transition and Deferred lanes slice against the time-sliced budget the flush carries");
+                FiberLane.BudgetForLane(FiberUpdatePriority.Transition, ProbeTimeSlicedBudgetMs),
+                Is.EqualTo(ProbeTimeSlicedBudgetMs),
+                "The Transition lane slices against the time-sliced budget the flush carries");
         }
 
         // Distinct from both the synchronous budget (0) and the production default, so a routing that ignored
