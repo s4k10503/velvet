@@ -164,6 +164,8 @@ jobs:
   # request is left to fail: a version section that cannot produce one would publish a release
   # whose body is missing rather than stopping anything. This runs the same builder here, so
   # that failure lands on the pull request that introduced it. No Unity license needed.
+  #
+  # supported_versions_check.py rides here for the same reason.
   # ---------------------------------------------------------------------------
   release-notes:
     name: Release notes
@@ -172,6 +174,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - run: python3 scripts/release/test_release_notes.py
+
+      - run: python3 scripts/release/test_supported_versions_check.py
+
+      - run: python3 scripts/release/supported_versions_check.py
 
   # ---------------------------------------------------------------------------
   # CONTRIBUTING.md's release section owns why this exists; scripts/release/published_check.py owns
