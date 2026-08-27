@@ -7,23 +7,12 @@ using Velvet.TestUtilities;
 
 namespace Velvet.Tests
 {
-    /// <summary>
-    /// Mount contract for <see cref="VelvetPreviewHost"/>: a story mounts onto a real panel and its element
-    /// appears under the target; unmounting (dispose) removes it; and a failing story (null tree or a throw)
-    /// leaves no leftover stylesheet and no live <see cref="VelvetPreviewHost.Story"/> — so the window does not
-    /// keep repainting / re-mounting something that cannot render.
-    /// </summary>
-    /// <remarks>
-    /// Stories are built directly from this fixture's methods (via the <c>internal</c> story constructor,
-    /// reached by reflection) rather than through a registry scan, so these tests do not depend on — or trip the
-    /// diagnostics of — the other preview fixtures sharing this test assembly.
-    /// </remarks>
     internal sealed class VelvetPreviewHostTests : PanelTestBase
     {
         private const string Marker = "preview-host-marker";
 
         private static VNode MarkerStory() => V.Div(name: Marker, className: "box");
-        private static VNode NullStory() => null;                                  // idiomatic render-nothing
+        private static VNode NullStory() => null;
         private static VNode ThrowingStory() => throw new InvalidOperationException("boom");
 
         protected override Rect WindowSize => new Rect(0, 0, 400, 300);
@@ -35,7 +24,6 @@ namespace Velvet.Tests
             base.TearDown();
         }
 
-        // Builds a VelvetPreviewStory around a named method on this fixture without going through discovery.
         private static VelvetPreviewStory Story(string methodName)
         {
             var method = typeof(VelvetPreviewHostTests).GetMethod(
