@@ -2,7 +2,7 @@
 """Refuses a version `SECURITY.md`'s table does not say is supported.
 
 The table is the only statement a user has of whether their version still receives fixes, and it goes
-wrong by standing still. The file was written once and not touched at any of the twelve releases that
+wrong by standing still. The file was written once and not touched at any of the thirteen releases that
 followed, which is why this is a check rather than an intention.
 
 Three refusals: a version no row covers, a version on a row marked otherwise, and a version more than
