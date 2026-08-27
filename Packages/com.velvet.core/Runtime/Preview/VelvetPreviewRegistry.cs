@@ -247,8 +247,9 @@ namespace Velvet
             };
         }
 
-        // The scalar rejections come first so a single-parameter story always means a real args object;
-        // an int or an enum would otherwise pass the value-type arm below.
+        // The scalar rejections come first: an int, an enum and a string would otherwise reach the
+        // value-type arm or the constructor check and pass. They do not exhaust what does — a DateTime
+        // or a Guid is accepted — so this narrows the single-parameter shape rather than deciding it.
         private static bool IsValidArgsType(Type type)
         {
             if (type.IsByRef || type.IsPointer || type.IsPrimitive || type.IsEnum || type == typeof(string)) return false;

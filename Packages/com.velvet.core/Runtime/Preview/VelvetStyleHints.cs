@@ -13,9 +13,10 @@ namespace Velvet
     public static class VelvetStyleHints
     {
         /// <summary>
-        /// An additional stylesheet consumed by the next preview-host mount. It is attached after Velvet's
-        /// utility sheet, which the caller puts on the canvas first, so the later source order lets an
-        /// equal-specificity <c>:root</c> override in this sheet win — which is what the channel is for.
+        /// An additional stylesheet consumed by the next preview-host mount, attached in the order the
+        /// mount reaches it. An equal-specificity <c>:root</c> override here wins over one in a sheet
+        /// attached earlier and loses to one attached later, which is what a caller publishing design
+        /// tokens through this channel is choosing between.
         /// </summary>
         public static StyleSheet? PreviewStyleSheet { get; set; }
     }

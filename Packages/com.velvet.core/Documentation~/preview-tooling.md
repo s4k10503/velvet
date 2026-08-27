@@ -27,8 +27,8 @@ internal static class MyPreviews
 ```
 
 The method is invoked whenever the host builds the story tree — at mount, and again for each
-args change, which disposes the mounted tree first. So it may freely construct fresh props, and
-state held in the story's own hooks does not survive a knob edit. The annotated method must be `static`,
+args change, which disposes the mounted tree first. So state held in the story's own hooks does not
+survive a knob edit, and the method runs once per keystroke on an edited field. The annotated method must be `static`,
 non-generic, return `VNode`, and take either no parameters or a single args object. An invalid
 signature is skipped with a console warning rather than silently dropped, so a mistyped story
 is noticed.
@@ -147,9 +147,10 @@ it survives remounts and domain reloads.
 
 The **Controls** addon is the Storybook "controls" equivalent. If a story takes one supported
 args value, the window creates typed editor knobs for its supported public, writable members.
-Editing a knob updates the current args value, disposes the mounted tree and builds it again
-from the edited args, **without tearing down the assembly environment** — so a knob edited per
-keystroke does not re-register fonts, re-seed the store, or recreate the dummy API each time. An args type with no supported writable members
+Editing a knob updates the current args value and rebuilds the story from it, **without tearing down
+the assembly environment** — so a knob edited per keystroke does not re-register fonts, re-seed the
+store, or recreate the dummy API each time. What the rebuild does to the tree is above, under
+[Declaring a story](#declaring-a-story--velvetpreview). An args type with no supported writable members
 shows no editable knobs.
 
 Public, writable fields and properties are turned into controls; supported member types map to

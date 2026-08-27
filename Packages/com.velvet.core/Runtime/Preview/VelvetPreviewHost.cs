@@ -112,9 +112,8 @@ namespace Velvet
             }
         }
 
-        // Consume the static hint before attaching it so it cannot leak to a later host, and attach after the
-        // caller's utilities for the source order VelvetStyleHints.PreviewStyleSheet states. Track only a
-        // sheet this host added; Unmount must not remove a sheet the target already owned.
+        // Consume the static hint before attaching it so it cannot leak to a later host. Track only a sheet
+        // this host added; Unmount must not remove a sheet the target already owned.
         private void ApplyStyleHint()
         {
             var sheet = VelvetStyleHints.PreviewStyleSheet;
