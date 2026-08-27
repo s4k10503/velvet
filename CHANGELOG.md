@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.3] - 2026-08-27
+
+### Highlights
+
+- Hiding a `V.AnimatePresence` and rendering it again no longer brings back the children that had
+  already left. The record a presence keeps outlived the node that owned it, so the second render
+  started from a set naming elements the tree had let go — they spliced back in as ghosts already
+  exiting, and the enter animation `initial: false` exists to suppress ran anyway. The record also
+  outlived the element it expanded into, one per removal, and a pooled parent rented back at the
+  same position adopted the one left behind.
+
 ### Fixed
 
 - A `V.AnimatePresence` that stops being rendered takes its bookkeeping with it. That bookkeeping is
