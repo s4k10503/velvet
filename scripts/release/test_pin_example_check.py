@@ -171,6 +171,14 @@ class PinExampleCheckTests(unittest.TestCase):
         # Assert
         self.assertEqual(["README.md"], [name for name, _, _, _ in found])
 
+    def test_Given_AFragmentNamingAMaintenanceBranch_When_ItIsRead_Then_NothingIsReported(self):
+        # Arrange
+        project = self.repository_holding({"README.md": "https://github.com/o/r.git#2.x\n"})
+        # Act
+        found = pin_example_check.findings(project)
+        # Assert
+        self.assertEqual([], found)
+
     def test_Given_ADocumentNamingATag_When_TheScriptIsRun_Then_ItExitsNonZero(self):
         # Arrange
         project = self.repository_holding({"README.md": VELVET + "\n"})

@@ -24,7 +24,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-CONCRETE_PIN = re.compile(r"\.git/?(\?[^\s#]*)?#v?\d+(?:\.\d+)*(?:-[\w.]+)?(?![\w-])")
+CONCRETE_PIN = re.compile(r"\.git/?(\?[^\s#]*)?#v?\d+(?:\.\d+)*(?:-[\w.]+)?(?![\w-]|\.\w)")
 
 
 def documents(project):
