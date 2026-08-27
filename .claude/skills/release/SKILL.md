@@ -38,6 +38,10 @@ long-form entry below fails the same script, because the note would then say the
 Bump `version` in `Packages/com.velvet.core/package.json` to match. SemVer against the previous
 release: a `feat` on `main` makes it a minor, a breaking change makes it a major.
 
+Give the new version a row in `SECURITY.md`'s supported-versions table, and mark there what happens to
+the series it succeeds. `supported_versions_check.py` refuses a release the table does not cover with
+one row marked supported, and runs in the same licence-free job as the note builder.
+
 Check the note before opening the pull request:
 
 ```bash
