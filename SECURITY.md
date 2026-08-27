@@ -14,5 +14,13 @@ coordinated with the reporter.
 
 ## Supported versions
 
-Velvet is a single actively-developed line; security fixes target the latest release
-and the `main` branch. There are no separately-maintained older branches.
+| Version | Supported |
+| ------- | --------- |
+| 3.0.x   | ✅        |
+| 2.1.x   | ✅        |
+| 2.0.x   | ❌        |
+| 1.x     | ❌        |
+
+Security fixes go to `main` and to the newest release of each series marked ✅. A version this table
+does not list is not supported, and the fix for one is to upgrade; the
+[releases](https://github.com/s4k10503/velvet/releases) carry a note for every version.

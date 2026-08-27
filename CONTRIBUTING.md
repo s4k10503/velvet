@@ -570,15 +570,16 @@ on every platform.
 
 The two required checks are aggregates, and the real jobs are not required themselves. A required check
 that does not run stays `Pending` and blocks the pull request with nothing able to clear it, which is what
-a path filter, a matrix change or a rename would each cause. The aggregates carry no path filter, `needs:`
+a trigger filter, a matrix change or a rename would each cause. The aggregates carry no trigger filter, `needs:`
 the real jobs, and pass when every dependency is `success` **or** `skipped` — the second is what lets a
 fork with no `UNITY_LICENSE` merge, since `unity-tests` is skipped in exactly that case.
 
-Path filtering therefore applies to `push` only. Every pull request runs both workflows, and so does every
-merge-group entry once a queue is turned on — the `merge_group:` keys are there for that, and
-`WorkflowTriggerCoverageTests` fails if either of the two gated triggers goes missing from either workflow,
-or gains a path filter. Skipping work per queue entry is a job-level condition, not a trigger filter: a
-required check that does not start has nothing able to clear it.
+In `test.yml` and `generators.yml`, filtering therefore applies to `push` only, by branch as much as by path — so a pull
+request runs both workflows whether it is based on `main` or on a maintenance branch, and so does every
+merge-group entry once a queue is turned on. The `merge_group:` keys are there for that, and
+`WorkflowTriggerCoverageTests` fails if either of the two gated triggers goes missing from either
+workflow, or gains a child key whose colon follows its name under one of them. Skipping work per queue entry is a job-level condition, not a
+trigger filter: a required check that does not start has nothing able to clear it.
 
 `main` does not require heads to be up to date before merging. That setting serialises the queue — each
 merge invalidates every other branch's run, and the Unity matrix is 21–25 minutes — without testing the
@@ -632,7 +633,10 @@ behaviour a working application would notice changing.
    section empty and every entry of it word for word in the version being closed, and a minor or a
    patch may neither take anything out of it nor leave anything in. So a wording change belongs in a
    change that closes no version — which is also how an entry is reclassified out of the section,
-   deciding it was never breaking, and none of this is asked of one.
+   deciding it was never breaking, and none of this is asked of one. Give the version a row in
+   `SECURITY.md`'s supported-versions table, and decide there what happens to the series it
+   succeeds: `supported_versions_check.py` refuses a release the table does not cover with one row
+   marked supported.
 2. Merge to `main` (the `upm` branch is updated automatically).
 3. Run the **UPM** workflow via *Actions ▸ UPM ▸ Run workflow*, entering the same version.
    This tags `vX.Y.Z` on the `upm` (package-at-root) commit and publishes a GitHub release.
@@ -692,8 +696,12 @@ python3 scripts/release/release_notes.py --version X.Y.Z --repo s4k10503/velvet
 Consumers then install a pinned version with:
 
 ```jsonc
-"com.velvet.core": "https://github.com/s4k10503/velvet.git#v1.0.0"
+"com.velvet.core": "https://github.com/s4k10503/velvet.git#vX.Y.Z"
 ```
+
+The shape rather than a version, because a document naming one is right on the day it is written and
+wrong from the next release: `scripts/release/pin_example_check.py` refuses one inside a `.git` URL's
+fragment, in the tracked markdown and workflow files, and runs in `Test ▸ release-notes`.
 
 ### The maintenance line
 
