@@ -248,7 +248,7 @@ Velvet also ships **DevTools** — the React DevTools equivalent — a real-time
 inspector with time-travel through a component's state-change history, opened via **Window ▸
 Velvet ▸ DevTools Inspector**. In the editor, a successful `V.Mount` registers its root and
 `MountedTree.Dispose` unregisters that root — and only that root, so an interior fiber registered
-by hand is yours to `Unregister`, or it stays for the session as a disabled `[Disposed]` row.
+by hand is yours to `Unregister`, or it stays for the session as a row the inspector greys out.
 `Clear` empties the whole registry. Calling `VelvetDevToolsRegistry.Register(fiber, "Label")` on a
 fiber already registered replaces its entry rather than editing it, so its **Registered At** moves
 to now.
