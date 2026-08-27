@@ -8,13 +8,10 @@ namespace Velvet
     /// Velvet Preview window can mount and live-render without entering Play Mode.
     /// </summary>
     /// <remarks>
-    /// The annotated method must be <c>static</c>, take no parameters, and return a <see cref="VNode"/>
-    /// (typically a <c>V.Component(...)</c> call or any <c>V.*</c> tree). It is invoked once per mount, so it
-    /// may freely construct fresh props; the rendered tree's own hooks then drive any subsequent updates.
+    /// The annotated method must be <c>static</c>, return a <see cref="VNode"/>, and take either no parameters
+    /// or one supported args value. It is invoked whenever the preview host builds the story tree.
     /// <para>
-    /// A story carries no environment of its own. Cross-cutting setup that several stories share — registering
-    /// fonts, seeding a store, wiring a localization resolver — belongs on a
-    /// <see cref="VelvetPreviewSetupAttribute"/> method, which runs once before any story in its assembly mounts.
+    /// Cross-cutting setup shared by stories belongs on a <see cref="VelvetPreviewSetupAttribute"/> method.
     /// </para>
     /// </remarks>
     [AttributeUsage(AttributeTargets.Method, Inherited = false, AllowMultiple = false)]
