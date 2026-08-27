@@ -5,27 +5,6 @@ using NUnit.Framework;
 
 namespace Velvet.Tests.Editor
 {
-    /// <summary>
-    /// Specifies the contract of <see cref="Store{TState}"/>, the state-management foundation that holds an
-    /// immutable state record and notifies subscribers of changes.
-    /// <list type="bullet">
-    /// <item>A new store exposes its construction value through both <c>Current</c> and <c>InitialState</c>, and
-    /// a fresh subscription created with <c>fireImmediately</c> receives that value immediately.</item>
-    /// <item><c>InitialState</c> is fixed at construction time and never changes, even after the state is updated.</item>
-    /// <item><c>SetState</c> updates the state and returns whether it actually changed. For a <c>record class</c>
-    /// snapshot it bails only on the identical instance, so a distinct-but-value-equal one still updates and
-    /// notifies; for a <c>record struct</c> snapshot the comparison is the record's own field-wise equality, so
-    /// an equal-content one bails.</item>
-    /// <item><c>Mutate</c> updates the state and notifies unconditionally, even when the new value equals the old one.</item>
-    /// <item>A selected slice notifies only when the slice changes under the chosen comparer; without a comparer it
-    /// uses <c>Object.is</c>, which compares an array slice by instance, and a sequence comparer bails when a
-    /// fresh list holds the same element instances.</item>
-    /// <item><c>Subscribe</c> delivers each subsequent state, optionally firing immediately with the current value;
-    /// its (current, previous) overload pairs each state with the one before it. A null listener is rejected.</item>
-    /// <item>Disposing runs subclass dispose logic exactly once and cancels the store's cancellation token.</item>
-    /// <item><c>Reset</c> returns the state to its initial value.</item>
-    /// </list>
-    /// </summary>
     [TestFixture]
     internal sealed class StoreTests
     {
@@ -99,7 +78,7 @@ namespace Velvet.Tests.Editor
         [Test]
         public void Given_FireImmediatelyListenerThatMutates_When_Subscribed_Then_ItObservesItsOwnMutation()
         {
-            // Arrange — a listener that mutates the store during its immediate (fireImmediately) invocation.
+            // Arrange
             var calls = 0;
             var lastSeen = -1;
             var sub = _sut.Subscribe(
@@ -111,8 +90,7 @@ namespace Velvet.Tests.Editor
                 },
                 fireImmediately: true);
 
-            // Assert — the subscription must be registered BEFORE the immediate fire, so the listener observes the
-            // mutation it makes during that fire. A fire-before-subscribe order would miss it.
+            // Assert
             sub.Dispose();
             Assert.That(lastSeen, Is.EqualTo(99),
                 "A fireImmediately listener must observe a store mutation it performs during its immediate fire");
@@ -145,7 +123,7 @@ namespace Velvet.Tests.Editor
         [Test]
         public void Given_UpdaterReturnsSameInstance_When_SetState_Then_ReturnsFalse()
         {
-            // Act — only an identical reference is treated as "no change"
+            // Act
             var result = _sut.PublicSetState(s => s);
 
             // Assert
@@ -169,7 +147,7 @@ namespace Velvet.Tests.Editor
         [Test]
         public void Given_UpdaterReturnsValueEqualButDistinctInstance_When_SetState_Then_ReturnsTrue()
         {
-            // Act — a distinct instance with equal field values is a different reference, so it counts as a change
+            // Act
             var result = _sut.PublicSetState(s => s with { Value = 0, Name = "Initial" });
 
             // Assert
@@ -197,7 +175,7 @@ namespace Velvet.Tests.Editor
         [Test]
         public void Given_RecordStructState_When_SetStateReturnsFieldEqualInstance_Then_NoNotification()
         {
-            // Arrange — a value-type snapshot, moved once so a store that notifies nothing at all is ruled out
+            // Arrange
             using var store = new StructStateStore();
             var notifications = 0;
             using var sub = store.Subscribe(_ => notifications++);
@@ -206,7 +184,7 @@ namespace Velvet.Tests.Editor
             // Act
             store.PublicSetState(_ => new StructState(7));
 
-            // Assert — the committed value separates a bail from a store that never applied the first write
+            // Assert
             Assert.That((store.Current.N, notifications), Is.EqualTo((7, 1)));
         }
 
@@ -231,7 +209,7 @@ namespace Velvet.Tests.Editor
             var notifications = 0;
             using var sub = _sut.Subscribe(_ => notifications++);
 
-            // Act — Mutate notifies unconditionally even for an equal value
+            // Act
             _sut.PublicMutate(s => s with { Value = 0, Name = "Initial" });
 
             // Assert
@@ -269,7 +247,7 @@ namespace Velvet.Tests.Editor
                 fireImmediately: true);
             Assume.That(nameNotifications, Is.EqualTo(1), "Precondition: the initial slice was delivered once");
 
-            // Act — leave Name unchanged, only update Value
+            // Act
             _sut.PublicSetState(s => s with { Value = 100 });
 
             // Assert
@@ -279,7 +257,7 @@ namespace Velvet.Tests.Editor
         [Test]
         public void Given_SequenceComparer_When_SameElementsRepackedIntoNewList_Then_ObserverNotNotified()
         {
-            // Arrange — subscribe with a sequence comparer; fireImmediately delivers the current slice once
+            // Arrange
             var a = new Item(1);
             var b = new Item(2);
             _sut.PublicSetState(s => s with { Items = new[] { a, b } });
@@ -292,10 +270,10 @@ namespace Velvet.Tests.Editor
                 fireImmediately: true);
             Assume.That(notifications, Is.EqualTo(1), "Precondition: fireImmediately delivered the current slice");
 
-            // Act — repack the same element instances into a brand-new list reference
+            // Act
             _sut.PublicSetState(s => s with { Items = new[] { a, b } });
 
-            // Assert — the comparer bails on identity-equal elements
+            // Assert
             Assert.That(notifications, Is.EqualTo(1));
         }
 
@@ -314,7 +292,7 @@ namespace Velvet.Tests.Editor
                 fireImmediately: true);
             Assume.That(notifications, Is.EqualTo(1), "Precondition: fireImmediately delivered the current slice");
 
-            // Act — replace the element with a value-equal but distinct instance
+            // Act
             _sut.PublicSetState(s => s with { Items = new[] { new Item(1) } });
 
             // Assert
@@ -333,17 +311,17 @@ namespace Velvet.Tests.Editor
                 (_, _) => notifications++,
                 StoreShallowEqualityComparer.Sequence<Item>());
 
-            // Act — repack the same element instance into a new list reference
+            // Act
             _sut.PublicSetState(s => s with { Items = new[] { a } });
 
-            // Assert — the comparer bails on identity-equal elements
+            // Assert
             Assert.That(notifications, Is.EqualTo(0));
         }
 
         [Test]
         public void Given_PrevWithoutComparer_When_SliceReferenceChanges_Then_ObserverNotified()
         {
-            // Arrange — the default uses identity equality, so a fresh list with the same elements is a change
+            // Arrange
             var a = new Item(1);
             _sut.PublicSetState(s => s with { Items = new[] { a } });
             var notifications = 0;
@@ -487,7 +465,7 @@ namespace Velvet.Tests.Editor
                 (current, prev) => notifications.Add((current, prev)),
                 fireImmediately: true);
 
-            // Assert — at subscribe time there is no prior state, so both arguments are the current state
+            // Assert
             Assert.That(notifications[0].Prev, Is.EqualTo(initial));
         }
 
@@ -517,7 +495,7 @@ namespace Velvet.Tests.Editor
                 s => s.Value,
                 (cur, prev) => notifications.Add((cur, prev)));
 
-            // Act — the middle mutation re-sets the same slice value and is suppressed
+            // Act
             _sut.PublicSetState(s => s with { Value = 1 });
             _sut.PublicSetState(s => s with { Value = 1 });
             _sut.PublicSetState(s => s with { Value = 2 });
@@ -606,11 +584,6 @@ namespace Velvet.Tests.Editor
 
         #region Test Fixtures
 
-        /// <summary>
-        /// Test state record. <c>Items</c> defaults to an empty array so existing callers that
-        /// construct <c>new TestState(value, name)</c> remain compatible while shallow-comparer
-        /// tests can supply a sequence slice.
-        /// </summary>
         public sealed record TestState(
             int Value,
             string Name,
@@ -623,10 +596,6 @@ namespace Velvet.Tests.Editor
 
         public readonly record struct StructState(int N);
 
-        /// <summary>
-        /// Test Store over a value-type snapshot, the <c>SetState</c> bail branch <see cref="TestStore"/>
-        /// does not reach.
-        /// </summary>
         public sealed class StructStateStore : Store<StructState>
         {
             public StructStateStore() : base(new StructState(0))
@@ -642,9 +611,6 @@ namespace Velvet.Tests.Editor
             }
         }
 
-        /// <summary>
-        /// Test Store implementation.
-        /// </summary>
         public sealed class TestStore : Store<TestState>
         {
             private static readonly TestState SeedState = new(0, "Initial");
