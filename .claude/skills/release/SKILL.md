@@ -9,7 +9,12 @@ The `UPM` workflow does the tagging, the `upm` branch split and the GitHub relea
 do is decide what the release contains, so the whole job here is getting `CHANGELOG.md` right and
 then dispatching.
 
-`Packages/com.velvet.core/CHANGELOG.md` is the single source of truth for the release note.
+`Packages/com.velvet.core/CHANGELOG.md` is the single source of truth for the release note — of the
+note, and not of what the release is for. A breaking entry is written for the next major and lives on
+its own branch until that branch merges, so the set a major was assembled to carry is only partly in
+the file. Before closing a major, list the open pull requests adding to `## [Unreleased — breaking]`
+and say in the body which the version carries; `breaking_in_flight_check.py` refuses one that names
+none of them.
 `scripts/release/release_notes.py` turns one version's section into the published body — Highlights, install
 instructions, the long-form entries collapsed, the compare link. Nothing about a release is written
 twice, and nothing is written straight into the GitHub release.
