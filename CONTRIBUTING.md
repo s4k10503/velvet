@@ -686,8 +686,12 @@ python3 scripts/release/release_notes.py --version X.Y.Z --repo s4k10503/velvet
 Consumers then install a pinned version with:
 
 ```jsonc
-"com.velvet.core": "https://github.com/s4k10503/velvet.git#v1.0.0"
+"com.velvet.core": "https://github.com/s4k10503/velvet.git#vX.Y.Z"
 ```
+
+The shape rather than a version, because a document naming one is right on the day it is written and
+wrong from the next release: `scripts/release/pin_example_check.py` refuses one inside a `.git` URL's
+fragment, in the tracked markdown and workflow files, and runs in `Test ▸ release-notes`.
 
 ### The maintenance line
 
