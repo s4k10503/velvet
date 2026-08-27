@@ -130,7 +130,8 @@ namespace Velvet
         /// <summary>
         /// Navigates to the given path. Evaluation order is Guard -&gt; Blocker -&gt; Loader.
         /// A successful Guard redirect records the final target rather than intermediate targets while
-        /// preserving the originating navigation's history effect.
+        /// preserving the originating navigation's history effect. A chain of more than five redirects
+        /// ends the navigation with <see cref="NavigationResult.Error"/>.
         /// </summary>
         /// <param name="path">Target path to navigate to.</param>
         /// <param name="mode">How the destination is recorded in the history stack. Defaults to <see cref="NavigationMode.Push"/>.</param>
@@ -426,7 +427,9 @@ namespace Velvet
             }
             catch (Exception)
             {
-                // Release this attempt's Status claim before propagating; a newer owner remains untouched.
+                // Broad because a Guard delegate's own throw lands here, as does the InvalidOperationException
+                // a route declaring both RedirectTo and Guard raises. Both propagate; what must not survive
+                // is this attempt's Status claim, which a newer owner would otherwise find held.
                 ReleaseClaim(pending, RouterStatus.Error);
                 throw;
             }
