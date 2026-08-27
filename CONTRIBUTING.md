@@ -625,7 +625,12 @@ behaviour a working application would notice changing.
    bullet in `### Highlights` belongs to a major and to no other release; `test_release_notes.py`
    refuses each of those. Give the version a row in `SECURITY.md`'s supported-versions table, and
    decide there what happens to the series it succeeds: `supported_versions_check.py` refuses a
-   release the table does not cover with one row marked supported.
+   release the table does not cover with one row marked supported. A major also answers for the
+   breaking work still in flight: an entry written for it sits on its own branch until that branch
+   merges, so the CHANGELOG holds only the part that has landed. Name every open pull request adding
+   to `## [Unreleased — breaking]` and say which the version carries —
+   `breaking_in_flight_check.py` refuses one that names none of them, and "not this one" is a
+   decision it accepts.
 2. Merge to `main` (the `upm` branch is updated automatically).
 3. Run the **UPM** workflow via *Actions ▸ UPM ▸ Run workflow*, entering the same version.
    This tags `vX.Y.Z` on the `upm` (package-at-root) commit and publishes a GitHub release.
