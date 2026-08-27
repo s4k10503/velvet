@@ -621,8 +621,8 @@ behaviour a working application would notice changing.
    their heading standing with none. A minor or a patch closes only over a section already empty,
    and `published_check.py` refuses one that is not: a release publishes the tree rather than the
    section, and `main` was found carrying the code an entry described while that entry still
-   waited. The maintenance line was cut before the section existed and holds neither it nor that
-   code, so the reading stays silent there. Rename
+   waited. A line that never took those changes has an empty section, which is what keeps the
+   reading silent on the maintenance line. Rename
    `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD` **last**, once nothing further is going into it:
    `changelog_into_closed_version.py` refuses a write into a dated section, and the rename is what
    dates it. The breaking heading itself is never dated and never deleted, and a `**Breaking:**`
@@ -630,7 +630,7 @@ behaviour a working application would notice changing.
    refuses each of those. Where the entries went is read from the change rather than the file, by
    `published_check.py` on the pull request that closes the version: a major has to close with the
    section empty and every entry of it word for word in the version being closed, and a minor or a
-   patch may not take anything out of it or reword what is there. So a wording change belongs in a
+   patch may neither take anything out of it nor leave anything in. So a wording change belongs in a
    change that closes no version — which is also how an entry is reclassified out of the section,
    deciding it was never breaking, and none of this is asked of one.
 2. Merge to `main` (the `upm` branch is updated automatically).

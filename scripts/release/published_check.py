@@ -206,8 +206,9 @@ def drain_reason(base_changelog, result_changelog):
                 f"'## [{BREAKING_SECTION}]' as it found it: {counted(edited)} changed or "
                 f"gone, starting with:\n"
                 f"  {edited[0].splitlines()[0]}\n"
-                f"A minor or a patch leaves that section alone. Close this as a major if it "
-                f"ships the break, or make the edit in a change that closes no version.")
+                f"A minor or a patch carries nothing out of that section. Close this as a major if "
+                f"it ships the break, or make the edit in a change that closes no version — putting "
+                f"the entry back is what this asks for, not emptying the section.")
 
     return None
 
