@@ -24,7 +24,17 @@ from pathlib import Path
 
 TABLE_HEADING = re.compile(r"(?m)^##\s+Supported versions\s*$")
 SECTION_END = re.compile(r"^##\s")
-ROW = re.compile(r"^\s*\|?\s*[*`_]*([0-9]+(?:\.[0-9]+)*)\.x[*`_]*\s*\|([^|]*)(?:\||$)")
+ROW = re.compile(r"^\s*\|?([^|]*)\|([^|]*)(?:\||$)")
+SERIES = re.compile(r"^([0-9]+(?:\.[0-9]+)*)\.x$")
+# Inline spellings GitHub renders away, so the cell a reader sees is the cell the table is read as.
+INLINE = [(re.compile(r"\[\^[^\]]*\]"), ""), (re.compile(r"\[([^\]]*)\]\([^)]*\)"), r"\1"),
+          (re.compile(r"</?[A-Za-z][^>]*>"), ""), (re.compile(r"[*`_~]"), "")]
+
+
+def unmarked(cell):
+    for pattern, replacement in INLINE:
+        cell = pattern.sub(replacement, cell)
+    return cell.strip()
 SUPPORTED = "\u2705"
 VARIATION_SELECTOR = "\ufe0f"
 
@@ -46,8 +56,13 @@ def rows(security_md):
         if not inside:
             continue
         found = ROW.match(line)
-        if found:
-            yield found.group(1), found.group(2).replace(VARIATION_SELECTOR, "").strip()
+        if not found:
+            continue
+        # The version is sought inside the cell rather than anchored to it, so a series wearing a
+        # link, a footnote marker, emphasis or an HTML tag is the row GitHub renders it as.
+        series = SERIES.match(unmarked(found.group(1)))
+        if series:
+            yield series.group(1), found.group(2).replace(VARIATION_SELECTOR, "").strip()
 
 
 def reason(version, security_md):

@@ -164,11 +164,19 @@ class SupportedVersionsCheckTests(unittest.TestCase):
 
     def test_Given_AVersionCellCarryingInlineMarkup_When_ItIsRead_Then_TheRowStillAnswers(self):
         # Arrange
-        table = TABLE.replace("| 2.1.x   | ✅        |", "| **2.1.x** | ✅        |", 1)
+        table = TABLE.replace("| 2.1.x   | ✅        |", "| [`**2.1.x**`](https://x/y)[^1] | ✅        |", 1)
         # Act
         answer = check.reason("2.1.0", table)
         # Assert
         self.assertIsNone(answer)
+
+    def test_Given_AProseLineCarryingAPipe_When_TheSectionIsRead_Then_ItIsNoRow(self):
+        # Arrange
+        table = TABLE.replace("| 1.x     | ❌        |", "| 1.x     | ❌        |\na note about 9.9.x | and more", 1)
+        # Act
+        series = [prefix for prefix, _ in check.rows(table)]
+        # Assert
+        self.assertEqual(["2.1", "2.0", "1"], series)
 
     def test_Given_TheRepositorysOwnTable_When_ItsDeclaredVersionIsRead_Then_NothingIsReported(self):
         # Arrange
