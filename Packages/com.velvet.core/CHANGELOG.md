@@ -5,7 +5,109 @@ All notable changes to this package are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [Unreleased — breaking]
+
+## [3.0.0] - 2026-08-27
+
+### Highlights
+
+- Which container a `V.Component` renders into is now the same question everywhere. A component
+  written under a `V.Portal` kept its hook state only until the first patch of that portal's
+  children, which rebuilt it from scratch, skipped the first instance's effect cleanups and left the
+  element it had rendered behind in the target; declared both inside a portal and at the same
+  position outside it, the two occurrences merged into a single instance; and none of them was
+  disposed when the portal's children left the container, so effects a closing modal opened went on
+  running. A component the reconciler carried into a different container reconciled its own
+  `setState` into the container it had left. And a portal that resolved its target id late
+  reconciled its first child against whatever the container already held, painting an overlay's own
+  backdrop into the portal's content.
+
+- A `V.AnimatePresence` that stops being rendered now takes its bookkeeping with it. Only disposing
+  the component around it retired that record, so a `cond ? V.AnimatePresence(…) : null` flipping to
+  `null` left the committed children and each key's exit anchor behind: rendering the presence again
+  spliced children that had already left back into the tree as exiting ghosts, and ran the enter
+  animation `initial: false` exists to suppress. The record outlived its parent element too, one per
+  mount-and-unmount cycle, and a pooled parent rented back at the same position picked it up again.
+
+- `UseTransition`'s pending flag now follows the transition instead of a proxy for it. An indicator
+  could stay on screen after the work had finished, never appear at all, or come down while the
+  transition was still running — depending on whether the callback parked between time-sliced
+  commits, ran async past the commit it had queued, rendered its own component, or shared that
+  component with a second open slot that was credited with its writes. `startTransition` also defers
+  what its callback schedules on *other* components' state and through a `Store`, which is where the
+  canonical React use lands — a child deferring an expensive update through a setter it took as a
+  prop. Those writes used to take the urgent lane the interaction itself was waiting on.
+
+- An exception raised by application code during teardown no longer takes the rest of the render pass
+  with it. A `refCallback` cleanup, an `IRouteScope.Dispose` and a deferred host mount that cannot
+  resolve where it goes are each reported and stepped over. Before, one throw halted a removal batch
+  and left every row behind it standing, blanked a `V.Outlet` across a route change with neither
+  route mounted, and lost every portal queued behind the failing one — while later patches for those
+  portals warned about a host on a layer that was fine. It also left the committed tree short of what
+  the pass had already put on screen, so each later render appended another copy of the difference.
+
+- A boundary waiting on something now stays up until that something arrives. Nested, a `V.Suspense`
+  lost its fallback the moment the outer boundary resolved; side by side, two of them shared one
+  suspended mark, so the second one rendering its children cleared the mark the first one's fallback
+  stood on — and either way a state update inside the hidden children committed over the slot range
+  the fallback occupied. A `Hooks.Use` resource key rebuilt on each render — a run-time string, or an
+  id boxed on its way to the parameter — restarted the fetch every render and never resolved at all.
+  And a `Router.OnLocationChanged` subscriber that threw while a Suspend-mode loader resolved was
+  recorded as that route's load failure, corrupting the round the loader belonged to.
+
+- A widget out of the element pool no longer arrives wearing what its last consumer wrote. Most of
+  the writable surface of `Button`, `Label`, `Toggle`, `Slider` and `TextField` survived a pool cycle
+  — a placeholder nobody had set, a `Toggle` stuck on mixed, a `Slider` running backwards or showing
+  a numeric input box it denied having, a paint delegate, a data-source binding, a focus or picking
+  configuration — and a `TextField` a `refCallback` had masked came unmasked on the first render that
+  stopped declaring the prop. Spacing is held to the same rule: only the `gap-*`, `divide-*` or
+  `grid-cols-*` container whose write is still on a child may take it back off, so a child handed
+  straight from one container to another keeps what the container it joined wrote.
+
+- `UseMutation` now treats a call in flight the way v5 does. A second `Mutate` no longer cancels the
+  first or drops its callbacks — a double-tapped Buy used to abort a request the server may already
+  have committed and then skip the handler that would have recorded it — `Reset` abandons the call
+  rather than leaving it to write `Success` back over the idle state it asked for, and a handle
+  reporting an error no longer shows the previous call's `Data` underneath it.
+
+- New: `animate-spin` turns an element once a second, linear and forever, with `animate-spin-[<time>]`
+  setting its own loop. `V.TextField` declares `placeholder:`, `maxLength:`, `isReadOnly:` and
+  `isDelayed:`, which until now had to be written onto the element by hand from a `refCallback:` and
+  so sat outside the diff, unable to change with state.
+
+- **Breaking:** twelve changes to read an existing application against, and **one of them stops source
+  compiling**: `V.Portal(null)` no longer builds, because a bare `null` is now ambiguous between the
+  `string` overload and the `VisualElement` one this release adds — name the parameter
+  (`V.Portal(targetId: null)`) or cast the literal. That new overload is the second half of the same
+  change: `V.Portal` takes a container element directly now, the way `createPortal` does, and passing
+  a different target on a later render moves the children rather than keeping them. Close behind it,
+  an exhaustive `switch` expression over `RouteBlockerStatus` needs a new arm, since `Proceeding`
+  joins the enum. The rest change behaviour a working application would notice, in four groups.
+  *State no longer survives a move*: the container a `V.Component` is written into is part of which
+  instance it is, so two sibling containers holding the same component hold two instances and writing
+  one into a different container is a fresh mount there; crossing a `V.Portal`'s boundary is an
+  unmount and a remount in every case; and re-registering a portal target id to a different element
+  moves the live portals into it instead of leaving them writing to an element the UI has replaced.
+  Keeping state across any of those means lifting it above both sides, to a `Store` or to a `UseState`
+  in the component that declares them. *Deferral now stops at the first suspension*: a `UseTransition`
+  covers what its callback runs before it first awaits something that actually suspends, so a
+  post-`await` write takes the lane it would have taken outside a transition unless it is wrapped in
+  the starter again, and an action writing on both sides of such an await commits in two renders where
+  it used to coalesce into one. *Memoization compares differently*: a `[Component(Memoize = true)]`
+  props bail decides a props value whole, so a bare `List` of equal contents re-renders where it used
+  to bail — hold it in a `Hooks.UseMemo`, a `Store` or a field to get the bail back — while a bare
+  `decimal`, `Guid` or collection that used to compare falsely equal now registers as the change it
+  is. *And four things that were quietly wrong now behave*: an unkeyed component among siblings is
+  keyed by the slot it sits in, so a sibling turning to `null` no longer hands its state to the next
+  component of the same identity; a `TabIndex` or `DelegatesFocus` a later render stopped declaring
+  restores what the element was constructed with rather than `0` or `false`, which is what stranded
+  focus on a composite field's own root; `RouteBlockerState.Proceed()` re-runs the blocked navigation,
+  so a confirm dialog's "Leave" reaches the destination — and any hand-rolled re-issue written around
+  the old no-op now runs on top of it; and `animate-pulse` suspends the element's native transitions
+  while it runs, as `V.Motion`'s own drivers already did. Finally, `V.Portal(layer:)` given a `UILayer`
+  naming no layer mounts nothing and reports it, where a cast outside the enum's range used to land
+  silently on `Overlay`. The migration guide, the portals guide and the navigation-blocking guide
+  state each rule.
 
 ### Added
 
@@ -23,6 +125,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   declared and a later one dropped restores the value the field carried before any render declared it.
   The same four arrive on `Velvet.Experimental.VTextField` as `Placeholder`, `MaxLength`, `IsReadOnly`
   and `IsDelayed`.
+
+- `V.Portal(target, …)` takes the element itself, the way `createPortal` does — no registration, no
+  shared name, and an element from a `refCallback` is a valid container. Passing a different target on a
+  later render moves the children — an unmount and a remount, so their state does not survive. The
+  portals guide states which containers a portal of either form may target.
 
 ### Changed
 
@@ -47,6 +154,83 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `StyleVariantClass.BreakpointPx` and `StyleVariantClass.IsResponsive` throw for a `StyleVariantKind`
   value naming no member of the enum, where they returned `0f` and `false`. Both have done so since
   2.0.1.
+
+- The container a `V.Component` is written into is part of which instance it is, as the position of a
+  component is in React. Two sibling containers each holding the same component now hold two instances
+  with their own state, where they used to share one: the shared instance rendered its output into
+  whichever container the reconcile reached last, so the other container held a copy that no later
+  render ever updated, and a control inside that copy drove the surviving instance's state. Giving the
+  two occurrences the same `key:` shared one instance too; a key now makes no difference between
+  containers, because it separates siblings of one container rather than one container from another.
+  The consequence to read before upgrading is the other direction: writing a component into a
+  **different** container than the previous render did is now a fresh mount there and an unmount of
+  the one it left, so its state, refs and effects do not travel. The entry below states the same of a
+  portal's boundary, which holds even where the two sides share a container, so neither rule subsumes
+  the other. Keeping state across such a move means lifting it above both containers, to a `Store` or
+  to a `UseState` in the component that declares them. The migration guide states what a position is.
+- A `UseTransition` transition now covers what its callback runs before that callback first suspends,
+  rather than being inferred from the action still being in flight on the calling component. An update
+  made after an `await` that suspended the action takes the lane it would have taken outside a
+  transition, and an action that wants it deferred wraps it in the starter again, which joins the
+  transition already running and keeps `isPending` lit. React's `startTransition` reference asks for the
+  same wrapping, calling the restriction a known limitation it means to fix rather than the shape it is
+  aiming for. That inference had no way to tell the action's own continuation from a timer tick, a
+  `UseStore` notification or a `UseMutation` callback landing in the same window, so those took the
+  Transition lane too and waited out the delayed tier's 100 ms instead of committing at the next frame
+  boundary. `isPending` itself is unchanged: it
+  stays true across the awaits until the task completes. One consequence to expect where the await does
+  suspend: an action writing both before and after it now leaves two lanes rather than one, so those
+  writes commit in two renders instead of coalescing into a single transition render.
+  Which of the two an `await` is, C# decides at run time. An `await` of a task that had **already
+  completed** does not suspend — the continuation runs inline — so the callback carries on inside the
+  scope and the write after that `await` is a transition too, `isPending` staying lit until it commits on
+  the delayed tier. `await UniTask.CompletedTask` reaches it, as does any `async UniTask` the action
+  awaits that returns without suspending — a cache answering from memory being the shape to expect. One
+  source line therefore takes either schedule depending on the data, and the counter-intuitive way round:
+  the cache hit that answered instantly is the one whose write waits out the delayed tier, where the miss
+  commits at the next frame boundary. Wrapping the post-`await` update in the starter makes the two paths
+  agree, since a joined call is a transition on both. The migration guide's `useTransition` row states the
+  rule and where React's behaviour stops being a guide to it.
+- Moving a component across a `V.Portal`'s boundary is an unmount and a remount in every case now, so
+  its state, refs and effects do not survive the move and the departing instance's cleanups run. A
+  component written into a live portal's children that a previous render had outside them — and the same
+  move back out — used to keep its instance whenever a patch of the portal's children had been the last
+  thing to register the portal-side occurrence, the render that closes the portal included; only an
+  occurrence the portal's own deferred mount had registered mounted fresh. Which of the two a given edit
+  got was decided by which of those two entrances had last put the child in the portal, and neither the
+  guide nor `createPortal` promised the surviving half. The portals guide states the contract that now
+  holds in both directions. Keeping state across such a move means lifting it above the portal — to a
+  `Store`, or to a `UseState` in the component that declares the portal.
+- `V.Portal(null)` no longer compiles: a bare `null` first argument is ambiguous between
+  `Portal(string, …)` and the `Portal(VisualElement, …)` overload this version adds. Naming the
+  parameter — `V.Portal(targetId: null)` — or casting the literal says which was meant.
+- `V.Portal(layer:)` no longer mounts its children for a `UILayer` value naming no layer, where it
+  hosted them at the `Overlay` offset before. Every named layer hosts as it did, and only a cast outside
+  the enum's range reaches this. What such a cast now produces: that portal's children do not mount, and
+  the exception is reported to the console rather than raised out of the render — `UseFallback` does not
+  catch it, and the message names the unmatched number rather than the argument it came from. A silent
+  `Overlay` was how such a cast survived to put a portal on a layer nobody asked for.
+
+- A `[Component(Memoize = true)]` component's props bail decides a props value whole, the way React's
+  shallow-equal comparison decides each key of a props object with `Object.is`. The member walk runs on
+  the props bag and on nothing it finds: a props value that is not a bag — a value type, a string, a
+  collection — is decided whole rather than through a member set, and a value type has the `float` and
+  `double` fields it carries — directly, or inside a value type it holds — compared by raw bit pattern,
+  as a `float` member already was.
+  Before, a bare `decimal` props value compared equal to a different one — `1.0m` against `2.0m` — and
+  so did two distinct `Guid`s, so a price or an identifier driven by that prop alone never changed. A bare
+  `new List<int> { 1, 2 }` compared equal to a bare `new List<int> { 3, 4 }`, both holding two elements.
+  And a `float` or a `double` inside a record struct props member bailed on a sign flip, `0f` becoming `-0f`,
+  where the same flip in a bare `float` member re-renders.
+  **A component handed a `List` prop of equal contents now re-renders where it used to bail.** A
+  collection passed as the props value itself is decided by its instance — the reference check
+  `Object.is` performs on an object, and what a reference-typed props member already got here — so a
+  list the render builds afresh is a change however its elements compare. Holding that list in a
+  `Hooks.UseMemo`, a `Store` or a field is what gives the bail back, and passing it as a member of a
+  props record is unchanged.
+  A bare value type is now decided the way a value-type member is, which runs the other way
+  where a bare struct holds a record class: one of equal content bails where it used to re-render, the
+  member walk having read that record by its instance.
 
 ### Fixed
 
@@ -281,96 +465,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   round stands as the loader left it, with its result recorded and no error. A subscriber throwing out
   of the failure announcement is reported the same way, where it used to be left to whatever observes a
   forgotten task.
-
-## [Unreleased — breaking]
-
-### Added
-
-- `V.Portal(target, …)` takes the element itself, the way `createPortal` does — no registration, no
-  shared name, and an element from a `refCallback` is a valid container. Passing a different target on a
-  later render moves the children — an unmount and a remount, so their state does not survive. The
-  portals guide states which containers a portal of either form may target.
-
-### Changed
-
-- The container a `V.Component` is written into is part of which instance it is, as the position of a
-  component is in React. Two sibling containers each holding the same component now hold two instances
-  with their own state, where they used to share one: the shared instance rendered its output into
-  whichever container the reconcile reached last, so the other container held a copy that no later
-  render ever updated, and a control inside that copy drove the surviving instance's state. Giving the
-  two occurrences the same `key:` shared one instance too; a key now makes no difference between
-  containers, because it separates siblings of one container rather than one container from another.
-  The consequence to read before upgrading is the other direction: writing a component into a
-  **different** container than the previous render did is now a fresh mount there and an unmount of
-  the one it left, so its state, refs and effects do not travel. The entry below states the same of a
-  portal's boundary, which holds even where the two sides share a container, so neither rule subsumes
-  the other. Keeping state across such a move means lifting it above both containers, to a `Store` or
-  to a `UseState` in the component that declares them. The migration guide states what a position is.
-- A `UseTransition` transition now covers what its callback runs before that callback first suspends,
-  rather than being inferred from the action still being in flight on the calling component. An update
-  made after an `await` that suspended the action takes the lane it would have taken outside a
-  transition, and an action that wants it deferred wraps it in the starter again, which joins the
-  transition already running and keeps `isPending` lit. React's `startTransition` reference asks for the
-  same wrapping, calling the restriction a known limitation it means to fix rather than the shape it is
-  aiming for. That inference had no way to tell the action's own continuation from a timer tick, a
-  `UseStore` notification or a `UseMutation` callback landing in the same window, so those took the
-  Transition lane too and waited out the delayed tier's 100 ms instead of committing at the next frame
-  boundary. `isPending` itself is unchanged: it
-  stays true across the awaits until the task completes. One consequence to expect where the await does
-  suspend: an action writing both before and after it now leaves two lanes rather than one, so those
-  writes commit in two renders instead of coalescing into a single transition render.
-  Which of the two an `await` is, C# decides at run time. An `await` of a task that had **already
-  completed** does not suspend — the continuation runs inline — so the callback carries on inside the
-  scope and the write after that `await` is a transition too, `isPending` staying lit until it commits on
-  the delayed tier. `await UniTask.CompletedTask` reaches it, as does any `async UniTask` the action
-  awaits that returns without suspending — a cache answering from memory being the shape to expect. One
-  source line therefore takes either schedule depending on the data, and the counter-intuitive way round:
-  the cache hit that answered instantly is the one whose write waits out the delayed tier, where the miss
-  commits at the next frame boundary. Wrapping the post-`await` update in the starter makes the two paths
-  agree, since a joined call is a transition on both. The migration guide's `useTransition` row states the
-  rule and where React's behaviour stops being a guide to it.
-- Moving a component across a `V.Portal`'s boundary is an unmount and a remount in every case now, so
-  its state, refs and effects do not survive the move and the departing instance's cleanups run. A
-  component written into a live portal's children that a previous render had outside them — and the same
-  move back out — used to keep its instance whenever a patch of the portal's children had been the last
-  thing to register the portal-side occurrence, the render that closes the portal included; only an
-  occurrence the portal's own deferred mount had registered mounted fresh. Which of the two a given edit
-  got was decided by which of those two entrances had last put the child in the portal, and neither the
-  guide nor `createPortal` promised the surviving half. The portals guide states the contract that now
-  holds in both directions. Keeping state across such a move means lifting it above the portal — to a
-  `Store`, or to a `UseState` in the component that declares the portal.
-- `V.Portal(null)` no longer compiles: a bare `null` first argument is ambiguous between
-  `Portal(string, …)` and the `Portal(VisualElement, …)` overload this version adds. Naming the
-  parameter — `V.Portal(targetId: null)` — or casting the literal says which was meant.
-- `V.Portal(layer:)` no longer mounts its children for a `UILayer` value naming no layer, where it
-  hosted them at the `Overlay` offset before. Every named layer hosts as it did, and only a cast outside
-  the enum's range reaches this. What such a cast now produces: that portal's children do not mount, and
-  the exception is reported to the console rather than raised out of the render — `UseFallback` does not
-  catch it, and the message names the unmatched number rather than the argument it came from. A silent
-  `Overlay` was how such a cast survived to put a portal on a layer nobody asked for.
-
-- A `[Component(Memoize = true)]` component's props bail decides a props value whole, the way React's
-  shallow-equal comparison decides each key of a props object with `Object.is`. The member walk runs on
-  the props bag and on nothing it finds: a props value that is not a bag — a value type, a string, a
-  collection — is decided whole rather than through a member set, and a value type has the `float` and
-  `double` fields it carries — directly, or inside a value type it holds — compared by raw bit pattern,
-  as a `float` member already was.
-  Before, a bare `decimal` props value compared equal to a different one — `1.0m` against `2.0m` — and
-  so did two distinct `Guid`s, so a price or an identifier driven by that prop alone never changed. A bare
-  `new List<int> { 1, 2 }` compared equal to a bare `new List<int> { 3, 4 }`, both holding two elements.
-  And a `float` or a `double` inside a record struct props member bailed on a sign flip, `0f` becoming `-0f`,
-  where the same flip in a bare `float` member re-renders.
-  **A component handed a `List` prop of equal contents now re-renders where it used to bail.** A
-  collection passed as the props value itself is decided by its instance — the reference check
-  `Object.is` performs on an object, and what a reference-typed props member already got here — so a
-  list the render builds afresh is a change however its elements compare. Holding that list in a
-  `Hooks.UseMemo`, a `Store` or a field is what gives the bail back, and passing it as a member of a
-  props record is unchanged.
-  A bare value type is now decided the way a value-type member is, which runs the other way
-  where a bare struct holds a record class: one of equal content bails where it used to re-render, the
-  member walk having read that record by its instance.
-
-### Fixed
 
 - Registering a portal target id again with a different element now moves the portals already mounted
   into the old one, instead of leaving them writing into an element the UI has replaced. A
