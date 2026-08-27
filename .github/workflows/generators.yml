@@ -21,7 +21,7 @@ name: Source generators
 # Unity workflow excludes Generators~ outright.
 # A re-include must stay after '!**.md' — the last matching pattern is the one that decides.
 #
-# The list is the push trigger's alone. pull_request and merge_group carry no path filter and must not
+# The list is the push trigger's alone. pull_request and merge_group carry no indented child and must not
 # gain one, and both triggers must stay present, for the reasons test.yml states over its own.
 on:
   push:
@@ -40,7 +40,6 @@ on:
       # editing either started no run at all.
       - 'Packages/com.velvet.core/Generators~/src/**/AnalyzerReleases.*.md'
   pull_request:
-    branches: [main]
   merge_group:
   workflow_dispatch:
 
@@ -198,7 +197,7 @@ jobs:
           ref_include_count=$(jq '[.conditions.ref_name.include[]?] | length' <<<"$ruleset")
           if [ "$ref_include_count" -ne 1 ] || [ "$(jq -r '.conditions.ref_name.include[0] // empty' <<<"$ruleset")" != "refs/heads/main" ]; then
             actual=$(jq -c '.conditions.ref_name.include // []' <<<"$ruleset")
-            echo "::error::protect-main conditions.ref_name.include must be exactly [\"refs/heads/main\"], got ${actual}: only main is protected by design; an extra ref would gate branches this repository does not intend to protect."
+            echo "::error::protect-main conditions.ref_name.include must be exactly [\"refs/heads/main\"], got ${actual}: this ruleset carries the required status checks, and an extra ref would extend that gate to a branch nobody decided to gate."
             failed=1
           fi
 
