@@ -154,6 +154,22 @@ class SupportedVersionsCheckTests(unittest.TestCase):
         # Assert
         self.assertIn("no row covering 9.9.0", answer or "")
 
+    def test_Given_AHeadingSpeltAnotherWay_When_ItIsRead_Then_TheHeadingIsNamedRatherThanARow(self):
+        # Arrange
+        table = TABLE.replace("## Supported versions", "## Supported Versions", 1)
+        # Act
+        answer = check.reason("2.1.0", table)
+        # Assert
+        self.assertIn("no `## Supported versions` heading", answer or "")
+
+    def test_Given_AVersionCellCarryingInlineMarkup_When_ItIsRead_Then_TheRowStillAnswers(self):
+        # Arrange
+        table = TABLE.replace("| 2.1.x   | ✅        |", "| **2.1.x** | ✅        |", 1)
+        # Act
+        answer = check.reason("2.1.0", table)
+        # Assert
+        self.assertIsNone(answer)
+
     def test_Given_TheRepositorysOwnTable_When_ItsDeclaredVersionIsRead_Then_NothingIsReported(self):
         # Arrange
         root = Path(__file__).resolve().parents[2]

@@ -22,9 +22,9 @@ import re
 import sys
 from pathlib import Path
 
-TABLE_HEADING = re.compile(r"^##\s+Supported versions\s*$")
+TABLE_HEADING = re.compile(r"(?m)^##\s+Supported versions\s*$")
 SECTION_END = re.compile(r"^##\s")
-ROW = re.compile(r"^\s*\|?\s*([0-9]+(?:\.[0-9]+)*)\.x\s*\|([^|]*)(?:\||$)")
+ROW = re.compile(r"^\s*\|?\s*[*`_]*([0-9]+(?:\.[0-9]+)*)\.x[*`_]*\s*\|([^|]*)(?:\||$)")
 SUPPORTED = "\u2705"
 VARIATION_SELECTOR = "\ufe0f"
 
@@ -63,6 +63,10 @@ def reason(version, security_md):
             return None
         return ("SECURITY.md marks {}.x as {}, and package.json declares {}. A release marks the "
                 "series it ships as supported.".format(prefix, mark, version))
+    if not TABLE_HEADING.search(security_md):
+        return ("SECURITY.md has no `## Supported versions` heading, so its table was not read at all. "
+                "The heading is matched exactly; a different capitalisation, depth, or anything else on "
+                "the line hides every row under it.")
     return ("SECURITY.md has no row covering {}, which is the version package.json declares. Add one, "
             "and decide what happens to the series it succeeds.".format(version))
 
