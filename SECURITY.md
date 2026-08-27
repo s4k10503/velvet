@@ -16,6 +16,7 @@ coordinated with the reporter.
 
 | Version | Supported |
 | ------- | --------- |
+| 3.0.x   | ✅        |
 | 2.1.x   | ✅        |
 | 2.0.x   | ❌        |
 | 1.x     | ❌        |
