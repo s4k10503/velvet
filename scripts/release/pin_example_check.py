@@ -7,7 +7,8 @@ installs a version the project may no longer support.
 
 Scope is markdown and the workflow files. Code is out of it deliberately, and one line depends on
 that: `test_release_notes.py` asserts the generated note carries the version being released, which is
-a concrete pin the repository means to keep. Widening `documents()` to `.py` reddens that line.
+a concrete pin the repository means to keep. Widening `documents()` to `.py` reddens it and this
+module's own all-numeric-SHA fixture.
 
 The rejected alternative to anchoring on the `.git` suffix is reading the fragment alone, which
 reports an issue reference and a colour as pins.
