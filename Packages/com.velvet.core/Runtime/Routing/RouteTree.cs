@@ -227,9 +227,9 @@ namespace Velvet
         {
             matches = null;
 
-            // Null until the first capture, and threaded by ref for that: Match probes every ranked
-            // branch until one succeeds, and most probes fail on a static segment having captured
-            // nothing, so allocating per attempted branch would allocate for the failures.
+            // Null until the first capture, and threaded by ref for that: Match probes ranked branches
+            // until one succeeds, and a failed probe's dictionary is discarded, so allocating eagerly
+            // pays per branch probed and keeps one.
             Dictionary<string, string>? captured = null;
 
             if (!TryConsume(branch.Pattern, 0, segments, 0, ref captured))
