@@ -187,6 +187,85 @@ namespace Velvet.Tests
             FiberPortalRegistry.Unregister(ModalRootId);
         }
 
+        private static int s_targetAttaches;
+
+        private static int s_reboundAttaches;
+
+        // One instance per callback, reused across renders: a fresh delegate would re-queue the setup where a
+        // patch reaches it, which is a different question than the cases below ask.
+        private static readonly Func<VisualElement, Action> s_clickTheDropTrigger = ClickTheDropTrigger;
+
+        private static readonly Func<VisualElement, Action> s_countTargetAttach = CountTargetAttach;
+
+        private static readonly Func<VisualElement, Action> s_clickTheRebindTrigger = ClickTheRebindTrigger;
+
+        private static readonly Func<VisualElement, Action> s_countReboundAttach = CountReboundAttach;
+
+        private static Action ClickTheDropTrigger(VisualElement element)
+        {
+            element.parent?.Q<UnityEngine.UIElements.Button>("drop-trigger")?.SimulateClick();
+            return null;
+        }
+
+        private static Action CountTargetAttach(VisualElement element)
+        {
+            s_targetAttaches++;
+            return null;
+        }
+
+        private static Action ClickTheRebindTrigger(VisualElement element)
+        {
+            element.parent?.Q<UnityEngine.UIElements.Button>("rebind-trigger")?.SimulateClick();
+            return null;
+        }
+
+        private static Action CountReboundAttach(VisualElement element)
+        {
+            s_reboundAttaches++;
+            return null;
+        }
+
+        // The dropper's setup is queued ahead of the target's, so the write its click commits reaches the
+        // target while the drain is still an entry short of it.
+        [Component]
+        private static VNode RefDroppingHost()
+        {
+            var (dropped, setDropped) = Hooks.UseState(false);
+            return V.Div(children: new VNode[]
+            {
+                V.Button(name: "drop-trigger", onClick: () => setDropped.Invoke(true)),
+                V.Div(name: "dropper", refCallback: s_clickTheDropTrigger),
+                V.Div(name: "target", refCallback: dropped ? null : s_countTargetAttach),
+                V.Label(name: "drop-probe", text: dropped ? "dropped" : "held"),
+            });
+        }
+
+        // The write the setup's click commits re-binds the very element that setup was handed, so the
+        // replacement is queued while the drain is inside the entry it replaces.
+        [Component]
+        private static VNode RebindingHost()
+        {
+            var (binding, setBinding) = Hooks.UseState(0);
+            return V.Div(children: new VNode[]
+            {
+                V.Button(name: "rebind-trigger", onClick: () => setBinding.Invoke(1)),
+                V.Div(name: "rebinding",
+                    refCallback: binding == 0 ? s_clickTheRebindTrigger : s_countReboundAttach),
+                V.Label(name: "rebind-probe", text: binding.ToString()),
+            });
+        }
+
+        private static VNode ListOfThreeRows()
+            => V.VirtualList(items: new[] { "a", "b", "c" }, keySelector: item => item, itemHeight: 50f,
+                renderer: item => V.Label(text: item, key: item), overscan: 0, key: "list");
+
+        // A headless run drives no layout, so the height a geometry change would have measured is written
+        // here instead — without it the refresh a patch triggers renders no range at all.
+        private static void GiveTheListAViewport(FiberVirtualListController controller, float height)
+            => typeof(FiberVirtualListController)
+                .GetField("_viewportHeight", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .SetValue(controller, height);
+
         [Test]
         public void Given_AKeyedLeafReplacedInOnePass_When_TheReplacementCarriesARef_Then_TheDepartingCleanupRunsFirst()
         {
@@ -418,84 +497,6 @@ namespace Velvet.Tests
             // Assert
             Assert.That(FiberPortalRegistry.Get(ModalRootId), Is.SameAs(Root!.ElementAt(0)));
         }
-        private static int s_targetAttaches;
-
-        private static int s_reboundAttaches;
-
-        // One instance per callback, reused across renders: a fresh delegate would re-queue the setup where a
-        // patch reaches it, which is a different question than the cases below ask.
-        private static readonly Func<VisualElement, Action> s_clickTheDropTrigger = ClickTheDropTrigger;
-
-        private static readonly Func<VisualElement, Action> s_countTargetAttach = CountTargetAttach;
-
-        private static readonly Func<VisualElement, Action> s_clickTheRebindTrigger = ClickTheRebindTrigger;
-
-        private static readonly Func<VisualElement, Action> s_countReboundAttach = CountReboundAttach;
-
-        private static Action ClickTheDropTrigger(VisualElement element)
-        {
-            element.parent?.Q<UnityEngine.UIElements.Button>("drop-trigger")?.SimulateClick();
-            return null;
-        }
-
-        private static Action CountTargetAttach(VisualElement element)
-        {
-            s_targetAttaches++;
-            return null;
-        }
-
-        private static Action ClickTheRebindTrigger(VisualElement element)
-        {
-            element.parent?.Q<UnityEngine.UIElements.Button>("rebind-trigger")?.SimulateClick();
-            return null;
-        }
-
-        private static Action CountReboundAttach(VisualElement element)
-        {
-            s_reboundAttaches++;
-            return null;
-        }
-
-        // The dropper's setup is queued ahead of the target's, so the write its click commits reaches the
-        // target while the drain is still an entry short of it.
-        [Component]
-        private static VNode RefDroppingHost()
-        {
-            var (dropped, setDropped) = Hooks.UseState(false);
-            return V.Div(children: new VNode[]
-            {
-                V.Button(name: "drop-trigger", onClick: () => setDropped.Invoke(true)),
-                V.Div(name: "dropper", refCallback: s_clickTheDropTrigger),
-                V.Div(name: "target", refCallback: dropped ? null : s_countTargetAttach),
-                V.Label(name: "drop-probe", text: dropped ? "dropped" : "held"),
-            });
-        }
-
-        // The write the setup's click commits re-binds the very element that setup was handed, so the
-        // replacement is queued while the drain is inside the entry it replaces.
-        [Component]
-        private static VNode RebindingHost()
-        {
-            var (binding, setBinding) = Hooks.UseState(0);
-            return V.Div(children: new VNode[]
-            {
-                V.Button(name: "rebind-trigger", onClick: () => setBinding.Invoke(1)),
-                V.Div(name: "rebinding",
-                    refCallback: binding == 0 ? s_clickTheRebindTrigger : s_countReboundAttach),
-                V.Label(name: "rebind-probe", text: binding.ToString()),
-            });
-        }
-
-        private static VNode ListOfThreeRows()
-            => V.VirtualList(items: new[] { "a", "b", "c" }, keySelector: item => item, itemHeight: 50f,
-                renderer: item => V.Label(text: item, key: item), overscan: 0, key: "list");
-
-        // A headless run drives no layout, so the height a geometry change would have measured is written
-        // here instead — without it the refresh a patch triggers renders no range at all.
-        private static void GiveTheListAViewport(FiberVirtualListController controller, float height)
-            => typeof(FiberVirtualListController)
-                .GetField("_viewportHeight", BindingFlags.NonPublic | BindingFlags.Instance)!
-                .SetValue(controller, height);
 
         [Test]
         public void Given_ASetupsWriteDropsTheRefOfAnElementQueuedBehindIt_When_TheDrainReachesThatEntry_Then_ItsSetupDoesNotRun()
