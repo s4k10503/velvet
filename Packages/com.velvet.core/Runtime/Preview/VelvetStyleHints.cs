@@ -13,8 +13,9 @@ namespace Velvet
     public static class VelvetStyleHints
     {
         /// <summary>
-        /// An additional stylesheet consumed by the next preview-host mount. The host clears the handoff, adds
-        /// the sheet when the target does not already own it, and removes only the sheet it added.
+        /// An additional stylesheet consumed by the next preview-host mount. It is attached after Velvet's
+        /// utility sheet, which the caller puts on the canvas first, so the later source order lets an
+        /// equal-specificity <c>:root</c> override in this sheet win — which is what the channel is for.
         /// </summary>
         public static StyleSheet? PreviewStyleSheet { get; set; }
     }

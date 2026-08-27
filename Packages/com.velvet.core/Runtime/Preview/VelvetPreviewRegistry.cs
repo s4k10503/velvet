@@ -247,8 +247,8 @@ namespace Velvet
             };
         }
 
-        // Value types use their default value; supported reference types must be concrete and publicly
-        // default-constructible.
+        // The scalar rejections come first so a single-parameter story always means a real args object;
+        // an int or an enum would otherwise pass the value-type arm below.
         private static bool IsValidArgsType(Type type)
         {
             if (type.IsByRef || type.IsPointer || type.IsPrimitive || type.IsEnum || type == typeof(string)) return false;

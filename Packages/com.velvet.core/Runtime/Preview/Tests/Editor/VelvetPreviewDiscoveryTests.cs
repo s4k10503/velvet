@@ -33,6 +33,8 @@ namespace Velvet.Tests
             public string Text = "default";
         }
 
+        // The public constructor is what leaves IsAbstract, rather than the ctor-presence check, as the
+        // only term that can exclude this.
         internal abstract class AbstractArgs
         {
             public AbstractArgs() { }

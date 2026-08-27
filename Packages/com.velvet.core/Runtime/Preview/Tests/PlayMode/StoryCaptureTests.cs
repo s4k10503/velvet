@@ -51,6 +51,7 @@ namespace Velvet.Tests
             yield return null;
         }
 
+        // GREEN_ON_BASE(refactor): the capture behavior this helper rename preserves.
         [UnityTest]
         public IEnumerator Given_EveryRegisteredStory_When_CapturedOnARealPanel_Then_NoneRendersAnEmptyFrame()
         {
