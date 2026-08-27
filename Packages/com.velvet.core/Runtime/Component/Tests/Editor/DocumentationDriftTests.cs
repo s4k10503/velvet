@@ -732,10 +732,10 @@ namespace Velvet.Tests
         }
 
         // Comments are prose in every format that has them, so a name surviving only in one is a deleted
-        // name as far as any caller is concerned. Strings are not: in C# and Python a string is a label for
-        // code, while in USS, YAML, JSON and an asmdef the string IS the content, and the CI variable names
-        // a document cites live in exactly those. So C# and Python lose both, USS and YAML lose their
-        // comments, and nothing is taken from JSON or an asmdef.
+        // name as far as any caller is concerned. C# and Python lose their strings besides, USS and YAML
+        // lose only their comments, and nothing is taken from JSON or an asmdef -- which is where the CI
+        // variable names a document cites live. Python's strings are the loose end: this repository holds
+        // at least one name whose only source is one of them, so a document citing it resolves nowhere.
         private static string StripProse(string entry, string text)
         {
             if (entry.EndsWith(".cs", StringComparison.Ordinal))
