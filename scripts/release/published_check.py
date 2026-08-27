@@ -166,8 +166,13 @@ def read_at(project, rev, path):
     return git(project, "show", f"{rev}:{path}")
 
 
-def unpublished_reason(project, rev="origin/main", remote="origin", fetch=False):
+def unpublished_reason(project, rev="origin/main", remote="origin", fetch=False, result=None):
     """publication_reason for one revision of a repository, or None when it reads clean.
+
+    `result` is the revision the change would produce. A base closing a version no tag answers for
+    refuses everything merged onto it, and the change that reopens the section is the repair — so it
+    refuses itself, and every merge waiting behind it. Naming the result lets that one through, and
+    only that one: reopening some of several unpublished versions leaves the rest unanswered.
 
     A git failure answers None rather than refusing: an absent revision, an absent remote and an
     unreachable network are ordinary states on a developer's machine, and refusing in them would
@@ -178,9 +183,14 @@ def unpublished_reason(project, rev="origin/main", remote="origin", fetch=False)
     try:
         if fetch:
             git(project, "fetch", remote, rev.split("/", 1)[-1], "--quiet")
-        return publication_reason(read_at(project, rev, CHANGELOG_PATH),
-                                  read_at(project, rev, PACKAGE_JSON_PATH),
-                                  remote_tags(project, remote))
+        base_changelog = read_at(project, rev, CHANGELOG_PATH)
+        tags = remote_tags(project, remote)
+        reason = publication_reason(base_changelog,
+                                    read_at(project, rev, PACKAGE_JSON_PATH), tags)
+        if reason and result and reopened_by(base_changelog, tags,
+                                             read_at(project, result, CHANGELOG_PATH)):
+            return None
+        return reason
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired,
             json.JSONDecodeError, OSError) as failure:
         print(f"could not read {rev} to check it against the published releases: {failure}",
