@@ -125,8 +125,13 @@ DROPPED = DRAINED.replace("- An API a caller has to edit around.\n", "")
 # A minor that takes a waiting break with it.
 SHIPPED_BY_A_MINOR = DRAINED.replace("## [3.0.0] - 2026-09-01", "## [2.2.0] - 2026-09-01")
 
-# The ordinary minor: the section is where the change found it.
+# A minor closing with the section untouched. The trunk carries the code those entries describe,
+# so this ships them.
 MINOR = WAITING.replace("## [Unreleased]", "## [2.2.0] - 2026-09-01")
+
+# A line cut before the breaking section existed, which is what the maintenance line is.
+NO_BREAKING_SECTION = WAITING[:WAITING.index("## [Unreleased — breaking]")] + "## [2.0.1] - 2026-08-08\n"
+NO_BREAKING_SECTION_MINOR = NO_BREAKING_SECTION.replace("## [Unreleased]", "## [2.2.0] - 2026-09-01")
 
 # The same drain with one entry copy-edited on the way instead of carried across unchanged.
 REWORDED_ON_THE_WAY = DRAINED.replace("- An API a caller has to edit around.",
@@ -221,10 +226,18 @@ class DrainDecisionTests(unittest.TestCase):
         # Assert
         self.assertIn("2.2.0 is not a major", reason)
 
-    def test_Given_AMinorClosingWithTheSectionAsItFoundIt_When_Decided_Then_ThereIsNoReason(self):
-        # Arrange — the ordinary release. A rule reading the result alone refuses this one, since
-        # what it sees is a minor closing with breaks listed above it.
+    def test_Given_AMinorClosingOverAFullSection_When_Decided_Then_ItIsRefused(self):
+        # Arrange — the section is exactly where the change found it, and the tree it releases holds
+        # the code those entries describe, so the minor ships every one of them undescribed.
         reason = drain_reason(WAITING, MINOR)
+
+        # Assert
+        self.assertIn("2.2.0 is not a major and '## [Unreleased — breaking]' still lists", reason)
+
+    def test_Given_AMinorOnALineWithNoBreakingSection_When_Decided_Then_ThereIsNoReason(self):
+        # Arrange — the maintenance line, which was cut before the section existed and so carries
+        # neither the section nor the code its entries describe.
+        reason = drain_reason(NO_BREAKING_SECTION, NO_BREAKING_SECTION_MINOR)
 
         # Assert
         self.assertIsNone(reason)

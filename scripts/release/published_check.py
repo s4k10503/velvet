@@ -192,6 +192,15 @@ def drain_reason(base_changelog, result_changelog):
                for entry in section_entries(result_changelog, version)]
     edited = entries_missing_from(waiting_before, waiting_after + carried)
     others = [named for named in closing if named not in majors]
+    if others and waiting_after:
+        return (f"{others[0]} is not a major and '## [{BREAKING_SECTION}]' still lists "
+                f"{counted(waiting_after)}, starting with:\n"
+                f"  {waiting_after[0].splitlines()[0]}\n"
+                f"A release publishes the tree rather than the section, so each of those the tree "
+                f"already carries ships here with nothing describing it. Close this as a major, or "
+                f"take the entries out in a change that closes no version if this line never took "
+                f"their code.")
+
     if edited and others:
         return (f"{others[0]} is not a major, and this change does not leave "
                 f"'## [{BREAKING_SECTION}]' as it found it: {counted(edited)} changed or "
