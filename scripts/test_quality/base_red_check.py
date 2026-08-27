@@ -9,9 +9,11 @@ had a case that passed on the base and had been reported as pinning something.
 
 What runs is the branch's test file over the base's production code: the base commit is checked out,
 the branch's test-side files are copied onto it, and the changed cases are executed there. Which cases
-those are is settled by each case's own text against the base's, not by which lines a diff calls
-changed: over a large rewrite the aligner describes untouched text as re-added, and `rewritten` is
-what keeps those cases out of a gate their authors never asked for.
+those are is settled by each case's own code against the base's, not by which lines a diff calls
+changed: over a large rewrite the aligner describes untouched text as re-added, and a comment edited
+inside a case body is a changed line there. `authored` keeps both out of a gate their authors never
+asked for, and `kept_out` is what stops that being silent -- otherwise a branch that changed no test
+file and one that rewrote a fixture's remarks end to end leave the same empty plan.
 
 **Success here means every changed case was measured on a base tree that demonstrably answers.** Not
 that nothing failed: most of what can go wrong with a run like this ends in a reading nobody took,
@@ -325,20 +327,25 @@ def is_test_side(relative):
     return kind_of(relative) is not None or "/TestUtilities/" in "/" + relative
 
 
-def code_lines(text):
-    """Each line with every comment, string and character literal blanked to spaces.
+def masked_lines(text, mask):
+    """Each line with every offset the mask reads as blank spaced out.
 
-    Blanked rather than removed, so a code line is as long as the raw one and the two can be indexed
-    together -- which they are, since a declaration lives in a comment and everything else does not,
-    and `MaskedLineTests` fails when one stops matching. Stripping the terminator off the end instead
-    of cutting at the raw line's length does not hold that: a mask that swallows the terminator -- a
-    line comment on a CRLF file, or a verbatim string or block comment crossing to the next line --
-    leaves a space in its place, which no strip removes and which moves every offset after it.
+    Blanked rather than removed, so a masked line is as long as the raw one and the two can be
+    indexed together -- which `csharp_cases` and `assume_gate_check.py` do, a declaration living in a
+    comment and everything else not, and `MaskedLineTests` fails when one stops matching. Stripping
+    the terminator off the end instead of cutting at the raw line's length does not hold that: a mask
+    that swallows the terminator -- a line comment on a CRLF file, or a verbatim string or block
+    comment crossing to the next line -- leaves a space in its place, which no strip removes and
+    which moves every offset after it.
     """
-    mask = code_mask(text)
     return ["".join(text[start + offset] if mask[start + offset] else " "
                     for offset in range(len(raw)))
             for raw, (start, _) in zip(text.splitlines(), line_spans(text))]
+
+
+def code_lines(text):
+    """Each line with every comment, string and character literal blanked to spaces."""
+    return masked_lines(text, code_mask(text))
 
 
 def brace_profile(text):
@@ -625,20 +632,59 @@ def case_text(text, case):
     return "\n".join(text.splitlines()[case.first_line - 1:case.last_line])
 
 
-def rewritten(relative, cases, before, after):
-    """Out of the cases a line reading attributed to the branch, the ones whose own text it changed.
+def outside_comments(relative, text):
+    """Each line with its comments blanked to spaces and its literals left standing.
 
-    A changed line is a proxy for authorship, and which lines a diff calls changed is git's choice
-    rather than the file's: over a large rewrite the aligner is free to describe an untouched tail as
-    deleted and re-added, and every case in it then reads as this branch's. `AuthorshipTests` holds
-    the smallest form of that. The cost of believing it is a green-on-base verdict asking an author to
-    sharpen a case they did not write. `touched` says a case the branch left alone is not a claim
-    about it whatever else in the file moved; this is what holds that when what moved is the case.
+    `code_lines` blanks the literals along with them, and a case whose only change is the value it
+    compares against would read there as untouched.
+    """
+    mask = [True] * len(text)
+    for start, end in comment_spans_of(relative, text):
+        for offset in range(start, end):
+            mask[offset] = False
+    return masked_lines(text, mask)
+
+
+def spanned_code(lines, case):
+    """A case's own lines out of a blanked file, empty ones dropped and trailing spaces cut.
+
+    Both are what a blanked comment leaves behind: one taken off the end of a statement leaves the
+    spaces it occupied, and one that grew by a line leaves a line that is only spaces. Keeping
+    either makes a comment edit read as a changed case.
+    """
+    return "\n".join(line.rstrip() for line in lines[case.first_line - 1:case.last_line]
+                     if line.strip())
+
+
+def authored(relative, cases, before, after):
+    """(the cases whose code this branch changed, the ones it left standing while editing their text).
+
+    Two readings a line number does not carry. A changed line is a proxy for authorship, and which
+    lines a diff calls changed is git's choice rather than the file's: over a large rewrite the
+    aligner is free to describe an untouched tail as deleted and re-added, and every case in it then
+    reads as this branch's. `AuthorshipTests` holds the smallest form of that. And a comment inside a
+    case is not what its run decides on, so a branch that only rewrote one wrote nothing separating
+    that case from its absence.
+
+    The cost of believing either is a green-on-base verdict asking an author to sharpen a case they
+    did not write. `touched` says a case the branch left alone is not a claim about it whatever else
+    in the file moved; this is what holds that when what moved is the case, or only the text in it.
+
+    A case whose text the branch left alone as well is in neither list. The second list is what an
+    empty plan gets explained by, and a case nobody wrote over explains nothing.
     """
     if before is None:
-        return list(cases)
-    held = {case.name: case_text(before, case) for case in cases_in(relative, before)}
-    return [case for case in cases if held.get(case.name) != case_text(after, case)]
+        return list(cases), []
+    held = {case.name: case for case in cases_in(relative, before)}
+    was, here = outside_comments(relative, before), outside_comments(relative, after)
+    written, aside = [], []
+    for case in cases:
+        earlier = held.get(case.name)
+        if earlier is None or spanned_code(was, earlier) != spanned_code(here, case):
+            written.append(case)
+        elif case_text(before, earlier) != case_text(after, case):
+            aside.append(case)
+    return written, aside
 
 
 def outside(cases, changed_lines):
@@ -1782,6 +1828,37 @@ def corpus_of(project):
             if kind_of(relative) == "csharp" and (project / relative).exists()}
 
 
+def changed_test_files(project, by_file, lane):
+    """(path, the lines the branch wrote there, its text) for each test file of the lane it changed.
+
+    Shared with `kept_out` so the report and the plan do not come to answer over different files: a
+    case named as kept out while the plan posed it would be advice to sharpen a case about to run.
+    """
+    for relative, lines in sorted(by_file.items()):
+        if kind_of(relative) is None or (lane != "both" and kind_of(relative) != lane):
+            continue
+        source = project / relative
+        if source.exists():
+            yield relative, lines, source.read_text()
+
+
+def kept_out(project, since, lane):
+    """Path -> how many of its cases a line reading gave the branch and a reading of their code took.
+
+    Without this, a run that plans nothing prints the same lines whether the branch changed no test
+    file at all or rewrote a fixture's remarks end to end -- two states an author reads differently,
+    and nothing else in the output separates them.
+    """
+    found = {}
+    for relative, lines, text in changed_test_files(project,
+                                                    changed_lines_by_file(project, since), lane):
+        aside = authored(relative, touched(cases_in(relative, text), lines),
+                         held_at(project, since, relative), text)[1]
+        if aside:
+            found[relative] = len(aside)
+    return found
+
+
 def collect(project, base, lane):
     """(merge base, changed cases, control cases, shared lines by file, carried helpers) for a branch."""
     since = merge_base(project, base)
@@ -1794,19 +1871,13 @@ def collect(project, base, lane):
     shared_helper = sorted(name for name in by_file
                            if kind_of(name) is None and is_test_side(name))
     changed, control, shared = [], [], {}
-    for relative, lines in sorted(by_file.items()):
-        if kind_of(relative) is None or (lane != "both" and kind_of(relative) != lane):
-            continue
-        source = project / relative
-        if not source.exists():
-            continue
-        text = source.read_text()
+    for relative, lines, text in changed_test_files(project, by_file, lane):
         cases = cases_in(relative, text)
         for case in cases:
             if case.declaration is not None and lines is not None:
                 case.declaration.written_here = case.declaration.written_in(lines)
-        wanted = {case.name for case in rewritten(relative, touched(cases, lines),
-                                                  held_at(project, since, relative), text)}
+        wanted = {case.name for case in authored(relative, touched(cases, lines),
+                                                 held_at(project, since, relative), text)[0]}
         changed.extend(as_the_runner_names_them(
             [case for case in cases if case.name in wanted], heirs))
         loose = outside(cases, lines)
@@ -1862,11 +1933,14 @@ def main():
 
     project = Path(args.project).resolve()
     since, cases, control, shared, shared_helper = collect(project, args.base, args.lane)
+    print("merge base {}".format(since[:12]))
+    for relative, count in sorted(kept_out(project, since, args.lane).items()):
+        print("  out of scope: {} case(s) of {} hold a line this branch changed and no code it "
+              "changed".format(count, relative))
     if not cases:
         print("no changed test case in scope of --lane {}".format(args.lane))
         return 0
 
-    print("merge base {}".format(since[:12]))
     for case in cases:
         print("  {}{}".format(case.name,
                               " [{}]".format(case.declaration.category)
