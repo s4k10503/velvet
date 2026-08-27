@@ -3336,11 +3336,15 @@ class BranchReadingTests(unittest.TestCase):
         # Assert
         self.assertFalse(case_named(cases, "Given_A_When_B_Then_C").declaration.written_here)
 
+    # GREEN_ON_BASE(refactor): the declaration reading this holds is the base's own.
+    # What moved is the arrangement: the branch now edits the case as well as declaring it, since a
+    # branch that wrote nothing but a comment no longer has the case in scope to read a declaration
+    # off. The evidence is that edit taken back out, measured: the case is not selected at all.
     def test_Given_ADeclarationTheBranchWrote_When_TheCaseIsRead_Then_ItIsThisBranchs(self):
         # Arrange -- the counterpart, so the case above is not passing for want of reading any
         # declaration at all.
         declared = "        // " + MARKER + "(refactor): a pure rename of the applier.\n"
-        root = self.repository(self.source(), self.source(declared))
+        root = self.repository(self.source(), self.source(declared, first="Assert.Fail()"))
 
         # Act
         _, cases, _, _, _ = base_red_check.collect(root, "HEAD~1", "csharp")
@@ -3348,6 +3352,9 @@ class BranchReadingTests(unittest.TestCase):
         # Assert
         self.assertTrue(case_named(cases, "Given_A_When_B_Then_C").declaration.written_here)
 
+    # GREEN_ON_BASE(refactor): the wrapped-reason reading this holds is the base's own.
+    # Its arrangement moved for the same reason the case above it did, and the evidence is the same
+    # one: the code edit taken back out leaves the case unselected.
     def test_Given_ABranchThatRewroteTheWrappedHalfOfAReason_When_ItIsRead_Then_TheDeclarationIsIts(self):
         # Arrange -- the reason spans both comment lines, and this branch rewrote the second. Asking
         # only whether the marker's own line moved answers "the base's own" for a declaration this
@@ -3356,7 +3363,7 @@ class BranchReadingTests(unittest.TestCase):
                   "        // of the applier the base already carries.\n")
         after = ("        // " + MARKER + "(refactor): a pure rename\n"
                  "        // of the applier this branch performs.\n")
-        root = self.repository(self.source(before), self.source(after))
+        root = self.repository(self.source(before), self.source(after, first="Assert.Fail()"))
 
         # Act
         _, cases, _, _, _ = base_red_check.collect(root, "HEAD~1", "csharp")
@@ -3375,6 +3382,146 @@ class BranchReadingTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(dropped, [self.FIXTURE])
+
+
+class CommentOnlyBranchTests(unittest.TestCase):
+    """A branch whose edit inside a case body is not code, which a line reading cannot separate.
+
+    Nothing separating such a case from its absence moved, so it is not a claim the branch is making.
+    A line reading poses it anyway, and an audit of one fixture's remarks then arrives at the gate
+    with every case those remarks landed in. Which of a line is code is read per language, so each
+    lane is asked here.
+    """
+
+    CSHARP = "Packages/p/Runtime/A/Tests/Editor/ProbeTests.cs"
+    PYTHON = "scripts/test_probe.py"
+    BODY = ('            var value = "one";\n'
+            '            Assert.That(value, Is.EqualTo("one"));\n')
+
+    def csharp(self, body):
+        return ("namespace N\n{\n    class ProbeTests\n    {\n"
+                "        [Test]\n        public void Given_A_When_B_Then_C()\n        {\n"
+                + body + "        }\n    }\n}\n")
+
+    def block(self, name):
+        return ('        [Test]\n        public void Given_A_When_B_Then_{0}()\n        {{\n'
+                '            Assert.That("{0}", Is.EqualTo("{0}"));\n        }}\n\n').format(name)
+
+    def swapped(self, blocks):
+        return "namespace N\n{\n    class ProbeTests\n    {\n" + blocks + "    }\n}\n"
+
+    def python(self, body):
+        return ("import unittest\n\n\nclass ProbeTests(unittest.TestCase):\n"
+                "    def test_Given_A_When_B_Then_C(self):\n" + body)
+
+    def scope(self, relative, lane, before, after):
+        root, _ = two_commit_repo(self, {relative: before}, {relative: after})
+        _, cases, _, _, _ = base_red_check.collect(root, "HEAD~1", lane)
+        return [case.name for case in cases]
+
+    def planned(self, root):
+        return subprocess.run(
+            [sys.executable, str(REPO_ROOT / "scripts/test_quality/base_red_check.py"),
+             "--project", str(root), "--base", "HEAD~1", "--lane", "csharp", "--plan"],
+            capture_output=True, text=True).stdout
+
+    def test_Given_ARemarkRewrittenInACase_When_TheBranchIsRead_Then_TheCaseIsNotInScope(self):
+        # Arrange -- the replacement is as long as what it replaces and sits on its own line, so
+        # nothing but the blanking of comments separates the two readings of this branch.
+        before = self.csharp("            // aaa\n" + self.BODY)
+        after = self.csharp("            // bbb\n" + self.BODY)
+
+        # Act
+        scope = self.scope(self.CSHARP, "csharp", before, after)
+
+        # Assert
+        self.assertEqual(scope, [])
+
+    def test_Given_ARemarkThatGrewByALine_When_TheBranchIsRead_Then_TheCaseIsNotInScope(self):
+        # Arrange -- blanking keeps the line count, so the branch's copy of the case carries a line of
+        # spaces the base's copy has not got.
+        before = self.csharp("            // one\n" + self.BODY)
+        after = self.csharp("            // one\n            // and another\n" + self.BODY)
+
+        # Act
+        scope = self.scope(self.CSHARP, "csharp", before, after)
+
+        # Assert
+        self.assertEqual(scope, [])
+
+    def test_Given_ARemarkTakenOffAStatement_When_TheBranchIsRead_Then_TheCaseIsNotInScope(self):
+        # Arrange -- the shape a comment audit here produces: the statement is byte-identical and the
+        # diff calls its line changed. Blanking leaves the spaces the remark occupied standing after it.
+        before = self.csharp('            var value = "one"; // the value under test\n'
+                             '            Assert.That(value, Is.EqualTo("one"));\n')
+
+        # Act
+        scope = self.scope(self.CSHARP, "csharp", before, self.csharp(self.BODY))
+
+        # Assert
+        self.assertEqual(scope, [])
+
+    # GREEN_ON_BASE(characterization): the base selects a case whose compared value moved.
+    # It selects it because the text moved with the value; what this holds is the narrowing beside
+    # it not taking that back, and the evidence is the mask swapped for the one that blanks literals
+    # as well, measured: this case alone goes red.
+    def test_Given_ACaseWhoseComparedValueChanged_When_TheBranchIsRead_Then_ItIsInScope(self):
+        # Arrange -- the expected value is all that moves here, and a reading that blanked literals
+        # along with comments would call the case untouched.
+        after = ('            var value = "one";\n'
+                 '            Assert.That(value, Is.EqualTo("two"));\n')
+
+        # Act
+        scope = self.scope(self.CSHARP, "csharp", self.csharp(self.BODY), self.csharp(after))
+
+        # Assert
+        self.assertEqual(scope, ["N.ProbeTests.Given_A_When_B_Then_C"])
+
+    def test_Given_APythonCaseWhoseRemarkChanged_When_TheBranchIsRead_Then_ItIsNotInScope(self):
+        # Arrange -- `#` and `//` are two readings, and the lane that answers for one answers nothing
+        # about the other. The replacement is as long as what it replaces, as above.
+        tail = "        value = 1\n        self.assertEqual(value, 1)\n"
+
+        # Act
+        scope = self.scope(self.PYTHON, "python", self.python("        # aaa\n" + tail),
+                           self.python("        # bbb\n" + tail))
+
+        # Assert
+        self.assertEqual(scope, [])
+
+    def test_Given_ABranchThatPlannedNothing_When_ItIsRead_Then_ItNamesWhatItKeptOut(self):
+        # Arrange -- an empty plan is what a branch that changed no test file at all leaves too, and
+        # nothing else in the output separates them. Both halves in one comparison, because a
+        # case named as kept out while the plan also poses it is the report and the plan reading the
+        # branch differently, and the naming on its own does not show that.
+        root, _ = two_commit_repo(
+            self, {self.CSHARP: self.csharp("            // aaa\n" + self.BODY)},
+            {self.CSHARP: self.csharp("            // bbb\n" + self.BODY)})
+
+        # Act
+        printed = self.planned(root)
+
+        # Assert
+        self.assertEqual([line.strip() for line in printed.splitlines()[1:]],
+                         ["out of scope: 1 case(s) of {} hold a line this branch changed and no "
+                          "code it changed".format(self.CSHARP),
+                          "no changed test case in scope of --lane csharp"])
+
+    # GREEN_ON_BASE(characterization): the base names no kept-out case at all, so it satisfies this
+    # by printing nothing rather than by holding what it says. The evidence is the reporting arm
+    # widened to every case with unchanged code, measured: this case alone goes red.
+    def test_Given_ACaseTheBranchOnlyMoved_When_ItIsRead_Then_ItIsNotNamedAsKeptOut(self):
+        # Arrange -- git aligns the swap line by line, so both cases hold changed lines while each
+        # one's own text is the base's. Naming those reports as kept out a case nobody wrote over.
+        first, second = self.block("C"), self.block("F")
+        root, _ = two_commit_repo(self, {self.CSHARP: self.swapped(first + second)},
+                                  {self.CSHARP: self.swapped(second + first)})
+
+        # Act
+        printed = self.planned(root)
+
+        # Assert
+        self.assertNotIn("out of scope", printed)
 
 
 class RepositoryTests(unittest.TestCase):
