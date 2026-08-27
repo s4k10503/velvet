@@ -26,8 +26,9 @@ internal static class MyPreviews
 }
 ```
 
-The method is invoked once per mount, so it may freely construct fresh props; the rendered
-tree's own hooks then drive any subsequent updates. The annotated method must be `static`,
+The method is invoked whenever the host builds the story tree — at mount, and again for each
+args change, which disposes the mounted tree first. So state held in the story's own hooks does not
+survive a knob edit, and the method runs once per keystroke on an edited field. The annotated method must be `static`,
 non-generic, return `VNode`, and take either no parameters or a single args object. An invalid
 signature is skipped with a console warning rather than silently dropped, so a mistyped story
 is noticed.
@@ -53,9 +54,10 @@ one a fixed viewport can simulate — see [Viewport](#viewport)).
 ## Shared environment — `[VelvetPreviewSetup]`
 
 Cross-cutting setup that several stories share — registering fonts, seeding a store, wiring a
-localization resolver — belongs on a `[VelvetPreviewSetup]` method. It runs **once before any
-story in its assembly mounts**, and whatever it sets up is torn down symmetrically when
-previewing stops or the source is rescanned, so previewing leaves no global state behind.
+localization resolver — belongs on a `[VelvetPreviewSetup]` method. Each full story mount runs
+the setup for its assembly before building the tree, then tears it down when that story is
+replaced or its host is disposed. Args-control updates rebuild only the tree and retain the
+current environment.
 
 The method must be `static`, parameterless, and return one of three teardown shapes:
 
@@ -132,8 +134,8 @@ internal static class AppPreviews
 }
 ```
 
-Because the screens mount through the same registry the live window uses, the headless capture
-harness renders them identically — a story authored once is the single source for both.
+The live window and headless capture use the same story definitions and mount lifecycle. Their
+panel, viewport, font, backdrop, and theme conditions can differ, so their pixels need not match.
 
 ## Addons
 
@@ -143,12 +145,13 @@ it survives remounts and domain reloads.
 
 ### Controls / Args
 
-The **Controls** addon is the Storybook "controls" equivalent. If a story takes a single
-**args object** — a class / struct / record of editable props — the window reflects that type
-into a column of typed editor knobs and holds one live args instance. Editing a knob writes
-back into the instance and re-renders the story with the edited args **without tearing down the
-assembly environment**, so a knob edited per keystroke does not re-register fonts, re-seed the
-store, or recreate the dummy API each time.
+The **Controls** addon is the Storybook "controls" equivalent. If a story takes one supported
+args value, the window creates typed editor knobs for its supported public, writable members.
+Editing a knob updates the current args value and rebuilds the story from it, **without tearing down
+the assembly environment** — so a knob edited per keystroke does not re-register fonts, re-seed the
+store, or recreate the dummy API each time. What the rebuild does to the tree is above, under
+[Declaring a story](#declaring-a-story--velvetpreview). An args type with no supported writable members
+shows no editable knobs.
 
 Public, writable fields and properties are turned into controls; supported member types map to
 these controls:
@@ -162,10 +165,10 @@ these controls:
 | `enum` | `EnumField` |
 | `Color` (`UnityEngine.Color`) | `ColorField` |
 
-An unsupported member type shows a read-only note rather than crashing. The args type must be
-default-constructible (a struct, or a class / record with a public parameterless constructor)
-so the window can seed control state from the declared defaults; the first mount and the
-capture harness both render the story at those defaults.
+An unsupported member type shows a read-only note rather than crashing. Value-type args begin
+at `default(T)`; a class or record needs a public parameterless constructor. The first
+mount and the capture harness both use that initial value, which may be `null` for a
+nullable value type.
 
 ### Viewport
 
@@ -240,7 +243,7 @@ render it into a `RenderTexture` on an instantiated `PanelSettings` with a real
 `referenceResolution`, writing one PNG per story — scale-accurate where the live window is not
 (see [Scale caveat](#scale-caveat) above). Velvet does not ship a prebuilt capture harness;
 `VelvetPreviewRegistry` and `VelvetPreviewHost` are the two public pieces it exposes for one, so
-that a hand-rolled harness and the live window drive off the same registry and never drift apart.
+a hand-rolled harness can share story discovery and mount lifecycle with the live window.
 
 ## Related tooling
 
