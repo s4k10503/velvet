@@ -8,19 +8,11 @@ using Velvet.TestUtilities;
 
 namespace Velvet.Tests
 {
-    /// <summary>
-    /// Environment contract for <see cref="VelvetPreviewRegistry.RunSetupFor"/>: the assembly's
-    /// <c>[VelvetPreviewSetup]</c> runs when previewing starts and its teardown runs symmetrically on dispose, so
-    /// previewing leaves no global state behind. Also covers that a controls-driven args update re-renders the
-    /// tree WITHOUT re-running the environment (no per-keystroke font/store/CTS rebuild).
-    /// </summary>
     internal sealed class VelvetPreviewSetupTests
     {
-        // Process-static so the setup method (which must be static) can record that it ran / tore down.
         private static int s_setupRuns;
         private static int s_teardownRuns;
 
-        // An args-story declared in THIS assembly so a host mount runs the setup above; UpdateArgs must not.
         internal sealed class Args { public string Text = "a"; }
 
         [VelvetPreview(Name = "SetupArgs", Group = "SetupFixture")]
@@ -81,7 +73,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_AMountedArgsStory_When_ArgsUpdated_Then_TheEnvironmentIsNotReRun()
         {
-            // Arrange — a real panel and an args-story mounted once (the setup runs exactly once).
+            // Arrange
             TestGraphics.IgnoreIfHeadless("an EditorWindow panel");
             var window = ScriptableObject.CreateInstance<SetupHostWindow>();
             window.Show();
@@ -91,10 +83,10 @@ namespace Velvet.Tests
                 host.Mount(ArgsStoryHandle(), new Args { Text = "a" });
                 Assume.That(s_setupRuns, Is.EqualTo(1), "Precondition: the mount ran the environment once");
 
-                // Act — a controls edit updates the args (re-renders the tree only).
+                // Act
                 host.UpdateArgs(new Args { Text = "b" });
 
-                // Assert — the environment was NOT torn down and rebuilt (fonts/store/CTS stay open per keystroke).
+                // Assert
                 Assert.That(s_setupRuns, Is.EqualTo(1));
             }
             finally
