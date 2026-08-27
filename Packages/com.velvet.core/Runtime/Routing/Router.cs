@@ -487,7 +487,7 @@ namespace Velvet
             _ => _historyIndex,
         };
 
-        // Sound because of the ordering RouteLoaderRunner.CurrentRound states.
+        // Sound because of the ownership rule RouteLoaderRunner.OnSuspendLoaderCompleted states.
         private bool ResolvedIntoTheCommittedRound() =>
             ReferenceEquals(_loaderRunner.CurrentRound, _committedRound);
 
