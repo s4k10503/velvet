@@ -21,6 +21,8 @@ namespace Velvet
             get
             {
                 var count = 0;
+                // MUTANT_SURVIVES(equivalent): no lane maps to bit 3, so a scan one bit wider counts a
+                // bit Add never sets.
                 for (var bit = 0; bit < 3; bit++)
                 {
                     if ((_mask & (1 << bit)) != 0)
@@ -42,6 +44,8 @@ namespace Velvet
         {
             get
             {
+                // MUTANT_SURVIVES(equivalent): reaching bit 3 means bits 0-2 were all clear, and only a
+                // lane is ever added, so the mask is empty and a wider scan still falls through to default.
                 for (var bit = 0; bit < 3; bit++)
                 {
                     if ((_mask & (1 << bit)) != 0)
