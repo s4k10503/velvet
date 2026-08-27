@@ -305,12 +305,16 @@ platform, Python cases for that lane — and at least one has to pass. A lane wi
 that wrote no results file at all, rather than reading either as a base that built none of the branch's
 tests.
 
-Which cases are the branch's own is decided by comparing each case's text with the base's, since a diff
-over a large rewrite describes untouched text as re-added and a case nobody here wrote then arrives at
-the gate. Alongside that, the cases the branch left alone in a file it changed nothing shared in are the base's own
-text, so one of those going red means the tree is answering about itself and that fixture's verdicts are
-withdrawn. Change a `[SetUp]`, a field, a private helper or anything under `TestUtilities/`, and those
-cases stop being the base's text and stop being read as the instrument — the run says which and why.
+Which cases are the branch's own is decided by comparing each case's code — its own text with the
+comments blanked out — against the base's, since a diff over a large rewrite describes untouched text
+as re-added, and a comment edited inside a case body is a changed line there. So a change that edits
+only comments poses nothing, and the cases kept out are named on a line of their own — `out of scope:
+12 case(s) of <file> hold a line this branch changed and no code it changed` — because an empty plan
+is equally what a branch that changed no test file at all leaves. Alongside that, the cases the branch
+left alone in a file it changed nothing shared in are the base's own text, so one of those going red
+means the tree is answering about itself and that fixture's verdicts are withdrawn. Change a
+`[SetUp]`, a field, a private helper or anything under `TestUtilities/`, and those cases stop being
+the base's text and stop being read as the instrument — the run says which and why.
 
 Red on the base means the base ran the case and the case said no, and only that. Except for a
 statically proven branch-only Python surface or a C# compile failure, a case that dies before it
@@ -566,15 +570,16 @@ on every platform.
 
 The two required checks are aggregates, and the real jobs are not required themselves. A required check
 that does not run stays `Pending` and blocks the pull request with nothing able to clear it, which is what
-a path filter, a matrix change or a rename would each cause. The aggregates carry no path filter, `needs:`
+a trigger filter, a matrix change or a rename would each cause. The aggregates carry no trigger filter, `needs:`
 the real jobs, and pass when every dependency is `success` **or** `skipped` — the second is what lets a
 fork with no `UNITY_LICENSE` merge, since `unity-tests` is skipped in exactly that case.
 
-Path filtering therefore applies to `push` only. Every pull request runs both workflows, and so does every
-merge-group entry once a queue is turned on — the `merge_group:` keys are there for that, and
-`WorkflowTriggerCoverageTests` fails if either of the two gated triggers goes missing from either workflow,
-or gains a path filter. Skipping work per queue entry is a job-level condition, not a trigger filter: a
-required check that does not start has nothing able to clear it.
+In `test.yml` and `generators.yml`, filtering therefore applies to `push` only, by branch as much as by path — so a pull
+request runs both workflows whether it is based on `main` or on a maintenance branch, and so does every
+merge-group entry once a queue is turned on. The `merge_group:` keys are there for that, and
+`WorkflowTriggerCoverageTests` fails if either of the two gated triggers goes missing from either
+workflow, or gains a child key whose colon follows its name under one of them. Skipping work per queue entry is a job-level condition, not a
+trigger filter: a required check that does not start has nothing able to clear it.
 
 `main` does not require heads to be up to date before merging. That setting serialises the queue — each
 merge invalidates every other branch's run, and the Unity matrix is 21–25 minutes — without testing the
@@ -619,7 +624,9 @@ behaviour a working application would notice changing.
    `changelog_into_closed_version.py` refuses a write into a dated section, and the rename is what
    dates it. The breaking heading itself is never dated and never deleted, and a `**Breaking:**`
    bullet in `### Highlights` belongs to a major and to no other release; `test_release_notes.py`
-   refuses each of those.
+   refuses each of those. Give the version a row in `SECURITY.md`'s supported-versions table, and
+   decide there what happens to the series it succeeds: `supported_versions_check.py` refuses a
+   release the table does not cover with one row marked supported.
 2. Merge to `main` (the `upm` branch is updated automatically).
 3. Run the **UPM** workflow via *Actions ▸ UPM ▸ Run workflow*, entering the same version.
    This tags `vX.Y.Z` on the `upm` (package-at-root) commit and publishes a GitHub release.
@@ -679,8 +686,67 @@ python3 scripts/release/release_notes.py --version X.Y.Z --repo s4k10503/velvet
 Consumers then install a pinned version with:
 
 ```jsonc
-"com.velvet.core": "https://github.com/s4k10503/velvet.git#v1.0.0"
+"com.velvet.core": "https://github.com/s4k10503/velvet.git#vX.Y.Z"
 ```
+
+The shape rather than a version, because a document naming one is right on the day it is written and
+wrong from the next release: `scripts/release/pin_example_check.py` refuses one inside a `.git` URL's
+fragment, in the tracked markdown and workflow files, and runs in `Test ▸ release-notes`.
+
+### The maintenance line
+
+A maintenance branch is named `<major>.x` and cut from that series' last release; `main` is where the
+next major is built. **One line is maintained at a time — the series immediately before `main`'s.**
+
+**The line takes fixes, and the CI its own pull requests need. It does not take features.**
+
+**A commit that carries a breaking change does not come, even when it also carries a fix.** What makes
+one unsplittable is the code: the fix can name a symbol that arrives with the breaking half, so the
+pick auto-merges and then does not compile. If the fix is wanted on the line it is written fresh there
+— and a change written first on the line may need to come forward to `main`. Nothing checks either
+direction, and `main` may already carry its own; ask before opening one.
+
+**Decide per commit, not per `[Unreleased]` entry.** The mapping runs many-to-many, and a commit may
+write no bullet at all. Where one did, ask which section its bullets sit in on `main` today — reading
+the nearest heading out of a diff's context answers the wrong question.
+
+**Cherry-pick with `-x`, in the order the commits landed, and compile after each one.** A clean
+cherry-pick is not evidence the tree still builds: a pick can name a helper that arrives with a commit
+that stayed behind. Nor is the absence of a conflict evidence the pick is right — where a change both
+adds and removes and the line has nothing to remove, the merge keeps the addition and compiles.
+
+**Take the CHANGELOG hunk out of the pick and write the entry on the line by hand.** Picked as it
+stands it applies clean and lands in the *released* section, and reopening `## [Unreleased]` does not
+attract it. `changelog_into_closed_version.py`, which step 1 above relies on, is registered against
+`Edit|Write`, so a cherry-pick does not reach it — and the line does not carry that hook at all.
+
+**The record is the `-x` trailer.** Squash as everywhere else, and put the `(cherry picked from commit
+…)` lines **in the pull request body**. Do not reach for
+`git cherry`: measured here, it reported every commit it walked as absent from the line, including the
+ones whose fix the line carries.
+
+A new line needs no change to the merge and release guards — they judge the pull request rather than a
+branch name, and `### Repository scripts` above says how that is held. What a cut does cost is
+everything else written for one branch:
+
+- each required workflow's `pull_request` trigger must filter by no branch, or a pull request based on
+  the line starts neither workflow — and since no ruleset covers the line either, it reads as one that
+  had nothing to run and merges with no evidence behind it;
+- `.github/dependabot.yml`'s `target-branch`, which names the line rather than `main`, so a new one
+  needs its own entry;
+- the `protect-main` ruleset, which covers `main` and nothing else, so a new line starts unprotected —
+  and `generators.yml` asserts that ruleset's ref list is exactly `main`, so widening it to reach the
+  line reds every pull request in the repository until that assertion moves too;
+- `upm.yml`, whose force-push of the split and whose repo-wide `PREV_MAIN_TAG` both assume a single
+  series is publishing.
+
+A line inherits neither the scripts nor the hooks `main` grew after it was cut. Run a script from `main`'s copy: `assert_results_from_this_tree.py` with
+`--project` at a checkout the suite has run in, `base_red_check.py` with `--base origin/<line>` besides
+since its default is `origin/main`, and `assume_gate_check.py` with an absolute `--baseline`, which is
+what escapes `--project`, since the line carries no record of its own — that comparison is cross-tree,
+so it reds on the line's own un-folded gates as well as on anything the backport adds. A hook has no such choice: it runs from whichever tree `CLAUDE_PROJECT_DIR` names, so a worktree
+rooted on the line runs the line's copies, and those predate the fix that made a merge guard read the
+pull request's own base.
 
 ## API documentation
 
