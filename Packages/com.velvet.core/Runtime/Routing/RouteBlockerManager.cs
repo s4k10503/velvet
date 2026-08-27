@@ -42,7 +42,10 @@ namespace Velvet
             CancellationToken cancellationToken = default)
         {
             var anyBlocked = false;
-            // Decisions may unregister later entries, so iteration must use the pass's original ordering.
+            // Snapshotted rather than iterated live: a decision taken in this loop reaches Unregister or
+            // RemoveSettledRegistrations, both of which remove from _blockers. Over the live list the entry
+            // after a removed one is skipped and never consulted; over the snapshot it is visited, and the
+            // IsRegistered guards are what decide whether it may still act.
             foreach (var entry in _blockers.ToArray())
             {
                 if (!entry.IsRegistered)
@@ -69,6 +72,10 @@ namespace Velvet
                     continue;
                 }
 
+                // After the await and before Block: the token is this navigation's own, so a newer
+                // navigation taking over mid-await means the caller discards this result as Cancelled,
+                // and a Blocked written here would strand a confirm UI until some unrelated later
+                // navigation resets it.
                 if (cancellationToken.IsCancellationRequested)
                 {
                     return anyBlocked;
