@@ -7,6 +7,9 @@ cases that matter most are the silences — a `main` full of entries, a feature 
 and a line whose section is empty — because a report that fires on those is one a reader learns to
 skip, and the one case it exists for goes past with them.
 
+Each silence is asserted beside the exit code. An empty stdout is also what a tree without the hook
+produces, so the three would pass on a base that does not carry it and separate nothing.
+
 Run: python3 scripts/hooks/test_unreleased_maintenance_line.py
 """
 
@@ -102,7 +105,7 @@ class MaintenanceLineReport(unittest.TestCase):
         done = run(clone)
 
         # Assert
-        self.assertEqual(done.stdout, "")
+        self.assertEqual((done.returncode, done.stdout), (0, ""))
 
     def test_Given_MainHoldingEntries_When_Reported_Then_NothingIsSaid(self):
         # Arrange — the ordinary state between releases, and the reason main is not read.
@@ -112,7 +115,7 @@ class MaintenanceLineReport(unittest.TestCase):
         done = run(clone)
 
         # Assert
-        self.assertEqual(done.stdout, "")
+        self.assertEqual((done.returncode, done.stdout), (0, ""))
 
     def test_Given_AFeatureBranchHoldingEntries_When_Reported_Then_NothingIsSaid(self):
         # Arrange — a branch holds unreleased entries by design; reporting those buries the one case.
@@ -122,7 +125,7 @@ class MaintenanceLineReport(unittest.TestCase):
         done = run(clone)
 
         # Assert
-        self.assertEqual(done.stdout, "")
+        self.assertEqual((done.returncode, done.stdout), (0, ""))
 
     def test_Given_ATreeThatIsNoRepository_When_Reported_Then_ItExitsZero(self):
         # Arrange
