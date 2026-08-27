@@ -1,0 +1,192 @@
+#!/usr/bin/env python3
+"""Holds `supported_versions_check.py` against the four answers it has: supported, marked otherwise,
+covered by two rows, and named nowhere."""
+
+import json
+import subprocess
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import supported_versions_check as check  # noqa: E402
+
+TABLE = """## Supported versions
+
+| Version | Supported |
+| ------- | --------- |
+| 2.1.x   | ✅        |
+| 2.0.x   | ❌        |
+| 1.x     | ❌        |
+"""
+
+SUPPORTED_ROW = "| 2.1.x   | ✅        |"
+
+
+class SupportedVersionsCheckTests(unittest.TestCase):
+    def test_Given_AVersionTheTableMarksSupported_When_ItIsRead_Then_NothingIsReported(self):
+        # Act
+        answer = check.reason("2.1.0", TABLE)
+        # Assert
+        self.assertIsNone(answer)
+
+    def test_Given_AVersionOnASeriesTheTableMarksOtherwise_When_ItIsRead_Then_TheMarkIsNamed(self):
+        # Act
+        answer = check.reason("2.0.9", TABLE)
+        # Assert
+        self.assertIn("marks 2.0.x as", answer or "")
+
+    def test_Given_AMinorTheTableHasNoRowFor_When_ItIsRead_Then_TheMissingRowIsNamed(self):
+        # Act
+        answer = check.reason("2.2.0", TABLE)
+        # Assert
+        self.assertIn("no row covering 2.2.0", answer or "")
+
+    def test_Given_AMajorTheTableHasNoRowFor_When_ItIsRead_Then_TheMissingRowIsNamed(self):
+        # Act
+        answer = check.reason("3.0.0", TABLE)
+        # Assert
+        self.assertIn("no row covering 3.0.0", answer or "")
+
+    def test_Given_ARowNamingAWholeMajor_When_AVersionOfItIsRead_Then_ThatRowAnswers(self):
+        # Act
+        answer = check.reason("1.6.0", TABLE)
+        # Assert
+        self.assertIn("marks 1.x as", answer or "")
+
+    def test_Given_AMinorThatOnlySharesADigitWithARow_When_ItIsRead_Then_TheMissingRowIsNamed(self):
+        # Act
+        answer = check.reason("2.10.0", TABLE)
+        # Assert
+        self.assertIn("no row covering 2.10.0", answer or "")
+
+    def test_Given_ASupportedSummaryRowAboveASupportedMinorRow_When_ItIsRead_Then_BothRowsAreNamed(self):
+        # Arrange
+        table = TABLE.replace(SUPPORTED_ROW, "| 2.x     | ✅        |\n" + SUPPORTED_ROW)
+        # Act
+        answer = check.reason("2.1.2", table)
+        # Assert
+        self.assertIn("2 rows covering 2.1.2: 2.x, 2.1.x", answer or "")
+
+    def test_Given_AMarkCarryingAnInvisibleVariationSelector_When_ItIsRead_Then_ItStillReadsAsSupported(self):
+        # Act
+        answer = check.reason("2.1.0", TABLE.replace("✅", "✅️"))
+        # Assert
+        self.assertIsNone(answer)
+
+    def test_Given_AMarkWrittenAsAShortcode_When_ItIsRead_Then_ItIsNamedRatherThanAccepted(self):
+        # Act
+        answer = check.reason("2.1.0", TABLE.replace("✅", ":white_check_mark:"))
+        # Assert
+        self.assertIn("marks 2.1.x as :white_check_mark:", answer or "")
+
+    def test_Given_AMarkTheRowAnnotates_When_ItIsRead_Then_TheWholeCellIsNamed(self):
+        # Arrange
+        table = TABLE.replace(SUPPORTED_ROW, "| 2.1.x   | ✅ until 2027 |")
+        # Act
+        answer = check.reason("2.1.0", table)
+        # Assert
+        self.assertIn("marks 2.1.x as ✅ until 2027", answer or "")
+
+    def test_Given_ARowIndentedUnderItsHeading_When_ItIsRead_Then_ThatRowAnswers(self):
+        # Arrange
+        table = TABLE.replace(SUPPORTED_ROW, "  " + SUPPORTED_ROW)
+        # Act
+        answer = check.reason("2.1.0", table)
+        # Assert
+        self.assertIsNone(answer)
+
+    def test_Given_ARowClosedByNoTrailingPipe_When_ItIsRead_Then_ThatRowAnswers(self):
+        # Arrange
+        table = TABLE.replace(SUPPORTED_ROW, SUPPORTED_ROW.rstrip("| "))
+        # Act
+        answer = check.reason("2.1.0", table)
+        # Assert
+        self.assertIsNone(answer)
+
+    def test_Given_AVersionWithNoRow_When_TheScriptIsRun_Then_ItExitsNonZero(self):
+        # Arrange
+        project = Path(tempfile.mkdtemp())
+        (project / "Packages/com.velvet.core").mkdir(parents=True)
+        (project / "Packages/com.velvet.core/package.json").write_text(json.dumps({"version": "2.2.0"}))
+        (project / "SECURITY.md").write_text(TABLE)
+        # Act
+        run = subprocess.run([sys.executable, str(Path(__file__).resolve().parent / "supported_versions_check.py"),
+                              "--project", str(project)], capture_output=True, text=True)
+        # Assert
+        self.assertEqual((1, True), (run.returncode, "no row covering 2.2.0" in run.stdout))
+
+    def test_Given_AVersionTheTableMarksSupported_When_TheScriptIsRun_Then_ItExitsZero(self):
+        # Arrange
+        project = Path(tempfile.mkdtemp())
+        (project / "Packages/com.velvet.core").mkdir(parents=True)
+        (project / "Packages/com.velvet.core/package.json").write_text(json.dumps({"version": "2.1.0"}))
+        (project / "SECURITY.md").write_text(TABLE)
+        # Act
+        run = subprocess.run([sys.executable, str(Path(__file__).resolve().parent / "supported_versions_check.py"),
+                              "--project", str(project)], capture_output=True, text=True)
+        # Assert
+        self.assertEqual((0, ""), (run.returncode, run.stdout))
+
+    def test_Given_ARowClosedByNoLeadingPipe_When_ItIsRead_Then_ThatRowAnswers(self):
+        # Arrange -- GitHub renders it as a row
+        table = TABLE.replace("| 2.1.x   | ✅        |", "2.1.x   | ✅        |")
+        # Act
+        answer = check.reason("2.1.0", table)
+        # Assert
+        self.assertIsNone(answer)
+
+    def test_Given_AVersionLineAboveTheHeading_When_TheTableIsRead_Then_ItIsNoRow(self):
+        # Arrange -- the reporting section comes first in the real file
+        table = "## Reporting\n\n9.9.x | ✅        |\n\n" + TABLE
+        # Act
+        answer = check.reason("9.9.0", table)
+        # Assert
+        self.assertIn("no row covering 9.9.0", answer or "")
+
+    def test_Given_AVersionLineBelowTheNextHeading_When_TheTableIsRead_Then_ItIsNoRow(self):
+        # Arrange -- the section bound is what lets the leading pipe be optional
+        table = TABLE + "\n## Reporting\n\n9.9.x | ✅        |\n"
+        # Act
+        answer = check.reason("9.9.0", table)
+        # Assert
+        self.assertIn("no row covering 9.9.0", answer or "")
+
+    def test_Given_AHeadingSpeltAnotherWay_When_ItIsRead_Then_TheHeadingIsNamedRatherThanARow(self):
+        # Arrange
+        table = TABLE.replace("## Supported versions", "## Supported Versions", 1)
+        # Act
+        answer = check.reason("2.1.0", table)
+        # Assert
+        self.assertIn("no `## Supported versions` heading", answer or "")
+
+    def test_Given_AVersionCellCarryingInlineMarkup_When_ItIsRead_Then_TheRowStillAnswers(self):
+        # Arrange
+        table = TABLE.replace("| 2.1.x   | ✅        |", "| [`**2.1.x**`](https://x/y)[^1] | ✅        |", 1)
+        # Act
+        answer = check.reason("2.1.0", table)
+        # Assert
+        self.assertIsNone(answer)
+
+    def test_Given_AProseLineCarryingAPipe_When_TheSectionIsRead_Then_ItIsNoRow(self):
+        # Arrange
+        table = TABLE.replace("| 1.x     | ❌        |", "| 1.x     | ❌        |\na note about 9.9.x | and more", 1)
+        # Act
+        series = [prefix for prefix, _ in check.rows(table)]
+        # Assert
+        self.assertEqual(["2.1", "2.0", "1"], series)
+
+    def test_Given_TheRepositorysOwnTable_When_ItsDeclaredVersionIsRead_Then_NothingIsReported(self):
+        # Arrange
+        root = Path(__file__).resolve().parents[2]
+        version = json.loads((root / "Packages/com.velvet.core/package.json").read_text())["version"]
+        # Act
+        answer = check.reason(version, (root / "SECURITY.md").read_text())
+        # Assert
+        self.assertIsNone(answer)
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)

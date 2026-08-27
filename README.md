@@ -78,10 +78,10 @@ some UniTask present in the project.
 }
 ```
 
-The UniTask git URL above tracks its latest release; pin a version by appending a tag (e.g.
-`...UniTask#2.5.0`), and pin Velvet with `...velvet.git#v1.0.0`. Velvet's remaining dependencies
-(`com.unity.addressables`, `com.unity.nuget.mono-cecil`) are on the Unity registry and resolve
-automatically.
+Neither URL above is pinned. Append a tag to UniTask's — `...UniTask#<tag>` — and replace Velvet's
+`#upm` with a [release](https://github.com/s4k10503/velvet/releases) tag — `...velvet.git#vX.Y.Z`.
+Velvet's remaining dependencies (`com.unity.addressables`, `com.unity.nuget.mono-cecil`) are on the
+Unity registry and resolve automatically.
 
 One more step before anything renders styled: attach the bundled utility stylesheet to the panel you
 mount onto. Most utility classes are USS rules, and a panel without the sheet resolves every class the
