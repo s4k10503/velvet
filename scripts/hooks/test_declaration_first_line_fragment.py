@@ -544,6 +544,9 @@ class ReaderFloorTests(unittest.TestCase):
         # Assert
         self.assertEqual(complaints, [self.UNDER_THE_FLOOR] * len(READERS))
 
+    # GREEN_ON_BASE(characterization): every pattern stopped at the wrap before and stops at it now.
+    # What moved is how this reads the reason out — by the last group rather than by number — so a
+    # pattern gaining a group does not silently start comparing something else.
     def test_Given_AReasonWrappedOntoASecondLine_When_EachPatternReadsIt_Then_EachStopsAtTheWrap(self):
         # Arrange — the guard judges the first line because that is the whole of what the readers
         # take as the claim. A reader that folded the continuation in would be measuring a reason
@@ -552,10 +555,11 @@ class ReaderFloorTests(unittest.TestCase):
         blocks = {"base_red_check": f"// {BASE}(characterization): {first}\n// the rest of it.\n",
                   "mutation_check": f"// {SURVIVES}(equivalent): {first}\n// the rest of it.\n"}
 
-        # Act
-        read = {name: reader.DECLARATION.search(blocks[name]).group(2)
+        # Act — the reason is each pattern's last group, which is what it is whether or not the
+        # pattern carries an operator group between the category and it.
+        read = {name: reader.DECLARATION.search(blocks[name]).groups()[-1]
                 for name, reader in READERS.items()}
-        read.update((f"guard/{name}", guard.DECLARATION.search(block).group(2))
+        read.update((f"guard/{name}", guard.DECLARATION.search(block).groups()[-1])
                     for name, block in blocks.items())
 
         # Assert

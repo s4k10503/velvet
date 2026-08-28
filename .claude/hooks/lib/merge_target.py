@@ -16,6 +16,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from pr_body import merges_nothing  # noqa: E402
 from shell_commands import program_invocations, unexpanded  # noqa: E402
 
 # What an operand the shell has not expanded resolves to. It is not a pull request number and it is
@@ -38,6 +39,8 @@ def merge_targets(command):
     """
     targets = []
     for operands in program_invocations(command, "gh", ("pr", "merge")):
+        if merges_nothing(operands):
+            continue
         named = [token for token in operands if not token.startswith("-")]
         if any(unexpanded(token) for token in named):
             targets.append(UNRESOLVED)
