@@ -221,6 +221,21 @@ jobs:
           python3 scripts/release/published_check.py --result HEAD \
             ${BASE:+--base "$BASE"}
 
+      - run: python3 scripts/release/test_breaking_in_flight_check.py
+
+      # Every other reading here is of one tree, so a branch carrying a breaking entry is invisible
+      # to all of them — which is how v3.0.0 shipped twelve of the thirteen written for it. Skipped
+      # on merge_group, where no body is left to name anything: the pull request already answered.
+      - if: github.event_name == 'pull_request'
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          BODY: ${{ github.event.pull_request.body }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          printf '%s' "$BODY" > /tmp/pr-body.md
+          python3 scripts/release/breaking_in_flight_check.py \
+            --base "$BASE" --result HEAD --body-file /tmp/pr-body.md
+
   # ---------------------------------------------------------------------------
   # A test written to pin a change has to be red without it, and nothing here asked. The Python half
   # of that question is answered outright: base_red_check.py checks out the merge base, copies this
