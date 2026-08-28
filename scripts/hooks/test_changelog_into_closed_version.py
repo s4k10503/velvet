@@ -63,6 +63,10 @@ class Verdicts(unittest.TestCase):
                               env=dict(os.environ, CLAUDE_PROJECT_DIR=str(self.root)))
         return done.returncode, done.stderr
 
+    # GREEN_ON_BASE(characterization): the guard is unchanged here. Every case is green on
+    # both sides by construction, which is what a suite for existing behaviour is — and the
+    # behaviour had no suite at all, so a guard that stopped matching read as one with
+    # nothing to say.
     def test_Given_AnEntryFiledIntoAReleasedSection_When_Judged_Then_ItIsRefused(self):
         # Arrange — the version shipped without the line, and would ship missing it.
         code, said = self.edit("- A thing that shipped.\n",
@@ -71,6 +75,10 @@ class Verdicts(unittest.TestCase):
         # Act / Assert
         self.assertEqual((code, "2.0.0" in said), (2, True))
 
+    # GREEN_ON_BASE(characterization): the guard is unchanged here. Every case is green on
+    # both sides by construction, which is what a suite for existing behaviour is — and the
+    # behaviour had no suite at all, so a guard that stopped matching read as one with
+    # nothing to say.
     def test_Given_AReleasedHeadingLosingItsDate_When_Judged_Then_ItIsRefused(self):
         # Arrange — renaming, stripping the date and deleting the section are one edit reached three
         # ways: whatever sits under an undated heading is not compared at all.
@@ -79,6 +87,10 @@ class Verdicts(unittest.TestCase):
         # Act / Assert
         self.assertEqual((code, "no released section" in said), (2, True))
 
+    # GREEN_ON_BASE(characterization): the guard is unchanged here. Every case is green on
+    # both sides by construction, which is what a suite for existing behaviour is — and the
+    # behaviour had no suite at all, so a guard that stopped matching read as one with
+    # nothing to say.
     def test_Given_AnEditWritingASecondHeadingForOneVersion_When_Judged_Then_ItIsRefused(self):
         # Arrange — a note is rebuilt from the first heading matching its version, so only one of the
         # two is ever published and their order decides which.
@@ -87,6 +99,10 @@ class Verdicts(unittest.TestCase):
         # Act / Assert
         self.assertEqual((code, "second" in said), (2, True))
 
+    # GREEN_ON_BASE(characterization): the guard is unchanged here. Every case is green on
+    # both sides by construction, which is what a suite for existing behaviour is — and the
+    # behaviour had no suite at all, so a guard that stopped matching read as one with
+    # nothing to say.
     def test_Given_AnEntryFiledUnderUnreleased_When_Judged_Then_ItIsLetThrough(self):
         # Arrange — the ordinary edit, and the one a guard that stopped matching would also pass.
         code, said = self.edit("- Something not yet shipped.\n",
@@ -95,6 +111,10 @@ class Verdicts(unittest.TestCase):
         # Act / Assert
         self.assertEqual((code, said), (0, ""))
 
+    # GREEN_ON_BASE(characterization): the guard is unchanged here. Every case is green on
+    # both sides by construction, which is what a suite for existing behaviour is — and the
+    # behaviour had no suite at all, so a guard that stopped matching read as one with
+    # nothing to say.
     def test_Given_TheBreakingSectionDrainedIntoTheVersionClosing_When_Judged_Then_ItIsLetThrough(self):
         # Arrange — the release-time edit this guard has already been measured refusing. The version
         # being closed is not released yet, so nothing under it is compared.
@@ -105,6 +125,10 @@ class Verdicts(unittest.TestCase):
         # Act / Assert
         self.assertEqual((code, said), (0, ""))
 
+    # GREEN_ON_BASE(characterization): the guard is unchanged here. Every case is green on
+    # both sides by construction, which is what a suite for existing behaviour is — and the
+    # behaviour had no suite at all, so a guard that stopped matching read as one with
+    # nothing to say.
     def test_Given_AHighlightsBlockOnTheVersionClosing_When_Judged_Then_ItIsLetThrough(self):
         # Arrange — the other half of closing a version, and the order CONTRIBUTING.md prescribes:
         # everything written into the open section first, the rename last.
@@ -114,6 +138,10 @@ class Verdicts(unittest.TestCase):
         # Act / Assert
         self.assertEqual((code, said), (0, ""))
 
+    # GREEN_ON_BASE(characterization): the guard is unchanged here. Every case is green on
+    # both sides by construction, which is what a suite for existing behaviour is — and the
+    # behaviour had no suite at all, so a guard that stopped matching read as one with
+    # nothing to say.
     def test_Given_AChangelogInAnotherRepository_When_Judged_Then_ItIsNotThisGuardsToRefuse(self):
         # Arrange — a genuinely foreign checkout, which is what separates out-of-scope from the
         # worktrees this repository does its branch work in.
