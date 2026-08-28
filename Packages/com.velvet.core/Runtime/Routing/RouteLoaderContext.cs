@@ -2,15 +2,12 @@ using System.Collections.Generic;
 
 namespace Velvet
 {
-    /// <summary>
-    /// Context passed to Guard / Loader functions.
-    /// Provides path parameters and the resolved path of the matched route.
-    /// </summary>
+    /// <summary>Describes the route matched for a Guard or Loader.</summary>
     public sealed class RouteLoaderContext
     {
-        /// <summary>Path parameters extracted from this route segment.</summary>
+        /// <summary>Parameters captured across the full matched route branch.</summary>
         public IReadOnlyDictionary<string, string> Params { get; init; } = null!;
-        /// <summary>Matched path segment string (same value as <see cref="RouteMatch.MatchedPath"/>).</summary>
+        /// <summary>The matched route pattern, equal to <see cref="RouteMatch.MatchedPath"/>.</summary>
         public string? Path { get; init; }
     }
 }
