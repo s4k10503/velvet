@@ -95,14 +95,25 @@ def code_parens(fragment):
     return seen.count("(") - seen.count(")")
 
 
-def survivor(path, line, verdict=None):
-    mutant = mutation_check.Mutant(path, line, 0, "a", "b", "equality")
+def survivor(path, line, verdict=None, operator="equality"):
+    mutant = mutation_check.Mutant(path, line, 0, "a", "b", operator)
     mutant.verdict = verdict or mutation_check.SURVIVED
     return mutant
 
 
-def declaration(line, category="equivalent", reason="a reason of four words", written_here=True):
-    return mutation_check.Declaration(category, reason, line, written_here=written_here)
+def declaration(line, category="equivalent", reason="a reason of four words", written_here=True,
+                operator=None):
+    """A declaration, naming an operator where the tree under test can carry one.
+
+    A tree whose `Declaration` takes no operator gets one that answers for its whole line, which is
+    the state the cases below exist to separate — so they compare against it and fail, rather than
+    raising and separating nothing.
+    """
+    try:
+        return mutation_check.Declaration(category, reason, line, written_here=written_here,
+                                          operator=operator)
+    except TypeError:
+        return mutation_check.Declaration(category, reason, line, written_here=written_here)
 
 
 class CodeMaskTests(unittest.TestCase):
@@ -225,9 +236,9 @@ class GenerationAcrossLinesTests(unittest.TestCase):
         # Assert
         self.assertEqual(lines, [1, 2, 3, 4, 5, 6, 7, 8, 9])
 
-    # GREEN_ON_BASE(characterization): the total already cleared its floor, and the per-operator one
-    # this adds beside it is cleared by the shipped generator too. What either separates is a later
-    # narrowing, which only running them says anything about.
+    # GREEN_ON_BASE(characterization): both floors clear on either corpus, which is the point — what
+    # the widening changes is which edits can move them, and no edit here is one. Only running it says
+    # whether the larger corpus still clears, and it is 12132 against 8000 and 3284 against 2500.
     def test_Given_TheRepositorysOwnSources_When_MutantsAreGenerated_Then_EachTotalHoldsItsFloor(self):
         # Arrange — floors rather than the exact numbers, which every edit to the package moves.
         #
@@ -235,8 +246,14 @@ class GenerationAcrossLinesTests(unittest.TestCase):
         # `line removed` down by more than a third and leaves the total above 8000, so the aggregate
         # clears while the operator that fell has gone quiet. 2500 is under what the generator
         # produces today with room for ordinary drift, and above what that narrowing leaves.
-        sources = [path for path in RUNTIME.rglob("*.cs")
-                   if "/Tests/" not in path.as_posix() and "/Plugins/" not in path.as_posix()]
+        #
+        # The corpus is what a campaign mutates rather than Runtime alone, which the name and the
+        # sentence above both claimed and the reading did not: 337 removal lines sat outside it — 280
+        # under Editor/, 52 under CodeGen/, 5 under Samples~/ — so an edit there that stopped the
+        # generator moved neither floor. `mutable` is the same predicate `--emit-lines` hands the C#
+        # guards, so this holds over what they are given.
+        sources = [path for path in (REPO_ROOT / "Packages/com.velvet.core").rglob("*.cs")
+                   if mutation_check.mutable(path, REPO_ROOT)]
 
         # Act — one scan for both, since a second would only re-read the same files.
         mutants = [mutant
@@ -1394,6 +1411,75 @@ class VerdictTests(unittest.TestCase):
         self.assertEqual(stale, [])
 
 
+class NamedDeclarationTests(unittest.TestCase):
+    """A declaration that names the operator it answers for, and what it stops answering for.
+
+    A line carries more than one mutant, and one keyed by line alone answers for every one. Where
+    only one of them survives today the answer is unambiguous now and widens the moment a sibling
+    starts surviving — and the staleness guard cannot report that, because it asks whether the line
+    still produces a survivor and the one already answered for keeps it non-stale.
+    """
+
+    def decide(self, mutants, declared, deferred=frozenset()):
+        unanswered, stale = mutation_check.answered(mutants, set(deferred), declared)
+        return ([complaint for _, complaint in unanswered],
+                [held.line for _, _, held in stale])
+
+    def test_Given_ADeclarationNamingAnotherOperator_When_ASurvivorLands_Then_ItIsUnanswered(self):
+        # Arrange — the shape the naming exists for: the removal is answered, and the boundary flip
+        # beside it starts surviving.
+        mutants = [survivor(Path("probe.cs"), 12, operator="boundary")]
+        declared = {(Path("probe.cs"), 12): declaration(12, operator="line removed")}
+
+        # Act
+        unanswered, _ = self.decide(mutants, declared)
+
+        # Assert
+        self.assertEqual(unanswered,
+                         ["the declaration above answers for 'line removed', not for this"])
+
+    # GREEN_ON_BASE(characterization): the base answers this too, by reading the line whole. It is
+    # the control the two red cases need: a reading that refused every named declaration would
+    # satisfy them both.
+    def test_Given_ADeclarationNamingThisOperator_When_ASurvivorLands_Then_ItIsAnswered(self):
+        # Arrange — the control, without which a reading that refused every named declaration would
+        # satisfy the case above.
+        mutants = [survivor(Path("probe.cs"), 12, operator="boundary")]
+        declared = {(Path("probe.cs"), 12): declaration(12, operator="boundary")}
+
+        # Act
+        unanswered, stale = self.decide(mutants, declared)
+
+        # Assert
+        self.assertEqual((unanswered, stale), ([], []))
+
+    # GREEN_ON_BASE(characterization): the unnamed form is what every declaration written before
+    # this uses, and the change must not move it.
+    def test_Given_ADeclarationNamingNoOperator_When_ASurvivorLands_Then_ItStillAnswers(self):
+        # Arrange — every declaration written before this reads the line whole, and none of them
+        # changes meaning.
+        mutants = [survivor(Path("probe.cs"), 12, operator="boundary")]
+        declared = {(Path("probe.cs"), 12): declaration(12)}
+
+        # Act
+        unanswered, stale = self.decide(mutants, declared)
+
+        # Assert
+        self.assertEqual((unanswered, stale), ([], []))
+
+    def test_Given_ANamedDeclarationWhoseOwnMutantDied_When_ASiblingSurvives_Then_ItIsStale(self):
+        # Arrange — the same widening read from the other side: a sibling still surviving would keep
+        # a stale named declaration from being reported if staleness read the line whole.
+        mutants = [survivor(Path("probe.cs"), 12, operator="boundary")]
+        declared = {(Path("probe.cs"), 12): declaration(12, operator="line removed")}
+
+        # Act
+        _, stale = self.decide(mutants, declared)
+
+        # Assert
+        self.assertEqual(stale, [12])
+
+
 class DeclarationFormatTests(unittest.TestCase):
     """What the guide shows and what the tree holds, against what the script will actually accept.
 
@@ -1401,9 +1487,16 @@ class DeclarationFormatTests(unittest.TestCase):
     approved exemption, so the two have to agree.
     """
 
+    # GREEN_ON_BASE(characterization): the guide and the script agreed before and agree after. What
+    # this change adds is a second example in the guide, and green on both sides is what says the
+    # pattern reads it — a case that went red would mean the guide had stopped being readable.
     def test_Given_TheDeclarationTheGuideShows_When_TheScriptsOwnPatternReadsIt_Then_ItIsAccepted(self):
         # Arrange
-        shown = [mutation_check.Declaration(match.group(1), match.group(2).strip(), 0)
+        # The reason is the pattern's last group whether or not it carries an operator group, so this
+        # reads the same on a tree that has one and a tree that has not.
+        shown = [declaration(0, category=match.group(1), reason=match.groups()[-1].strip(),
+                             operator=(match.groups()[1] or "").strip() or None
+                             if len(match.groups()) > 2 else None)
                  for match in mutation_check.DECLARATION.finditer(GUIDE.read_text())]
 
         # Act
@@ -1960,6 +2053,34 @@ class EmitLinesTests(unittest.TestCase):
         self.assertEqual(campaign.seen, [])
 
 
+PROBE_WITH_VERBATIM = """\
+namespace Velvet
+{
+    internal static class Probe
+    {
+        internal static bool Ready(int a, int b) => a <= b && Name().Length > 0;
+
+        internal static string Name() => @"a
+
+b";
+    }
+}
+"""
+
+
+PROBE_WITH_LITERAL = """\
+namespace Velvet
+{
+    internal static class Probe
+    {
+        internal static bool Ready(int a, int b) => a <= b && Name() == "ready";
+
+        internal static string Name() => "ready";
+    }
+}
+"""
+
+
 class ReceiptTests(unittest.TestCase):
     """What asks whether the campaign was run at all.
 
@@ -2059,11 +2180,57 @@ class ReceiptTests(unittest.TestCase):
         # Assert
         self.assertEqual(code, mutation_check.RECEIPT_REFUSAL)
 
+    # GREEN_ON_BASE(refactor): the byte hash refused a code edit too; what moves is the comment case beside it.
     def test_Given_APassingCampaign_When_AMutatedFileIsEditedWithoutCommitting_Then_ItIsRefusedAgain(self):
         # Arrange — the reading the head tree sha cannot take: this edit moves no tree sha at all.
         campaign = StubbedCampaign()
         campaign.write_receipt("pass")
+        campaign.source.write_text(
+            campaign.source.read_text().replace("a <= b", "a < b"))
+
+        # Act
+        code = campaign.run_over_diff("--receipt")
+
+        # Assert
+        self.assertEqual(code, mutation_check.RECEIPT_REFUSAL)
+
+    def test_Given_APassingCampaign_When_OnlyACommentIsAdded_Then_TheReceiptStillCovers(self):
+        # Arrange — a comment carries no mutant, so voiding on one asks for a fresh campaign over a
+        # byte-identical mutant set.
+        campaign = StubbedCampaign()
+        campaign.write_receipt("pass")
         campaign.source.write_text(campaign.source.read_text() + "// an edit after the run\n")
+
+        # Act
+        code = campaign.run_over_diff("--receipt")
+
+        # Assert
+        self.assertEqual(code, 0)
+
+    # GREEN_ON_BASE(refactor): the byte hash refused this too. It is the shape the line-dropping
+    # this change adds could reach and must not, and only running it says whether it did.
+    def test_Given_APassingCampaign_When_ABlankLineInsideAVerbatimStringGoes_Then_ItIsRefusedAgain(self):
+        # Arrange — an empty line inside a verbatim string is part of the value, and it is the one
+        # place where removing a line changes behaviour. The digest drops the lines a comment
+        # emptied, so this is the shape that drop must not reach.
+        campaign = StubbedCampaign(PROBE_WITH_VERBATIM)
+        campaign.write_receipt("pass")
+        campaign.source.write_text(campaign.source.read_text().replace("a\n\nb", "a\nb"))
+
+        # Act
+        code = campaign.run_over_diff("--receipt")
+
+        # Assert
+        self.assertEqual(code, mutation_check.RECEIPT_REFUSAL)
+
+    # GREEN_ON_BASE(refactor): the byte hash refused a literal edit too, and this pins that the narrower keying still does.
+    def test_Given_APassingCampaign_When_AStringLiteralIsEdited_Then_ItIsRefusedAgain(self):
+        # Arrange — a literal is masked for generation and kept in the digest: editing one changes
+        # behaviour a mutant could have covered, so the receipt does not carry across it.
+        campaign = StubbedCampaign(body=PROBE_WITH_LITERAL)
+        campaign.write_receipt("pass")
+        campaign.source.write_text(
+            campaign.source.read_text().replace('"ready"', '"steady"'))
 
         # Act
         code = campaign.run_over_diff("--receipt")
