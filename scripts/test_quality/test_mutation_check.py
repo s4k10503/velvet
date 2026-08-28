@@ -1487,6 +1487,9 @@ class DeclarationFormatTests(unittest.TestCase):
     approved exemption, so the two have to agree.
     """
 
+    # GREEN_ON_BASE(characterization): the guide and the script agreed before and agree after. What
+    # this change adds is a second example in the guide, and green on both sides is what says the
+    # pattern reads it — a case that went red would mean the guide had stopped being readable.
     def test_Given_TheDeclarationTheGuideShows_When_TheScriptsOwnPatternReadsIt_Then_ItIsAccepted(self):
         # Arrange
         # The reason is the pattern's last group whether or not it carries an operator group, so this
