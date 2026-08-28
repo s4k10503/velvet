@@ -21,6 +21,7 @@ from published_check import (
     PACKAGE_JSON_PATH,
     consistency_reason,
     publication_reason,
+    reopened_by,
     unpublished_reason,
 )
 
@@ -106,6 +107,32 @@ class PublicationDecisionTests(unittest.TestCase):
 
         # Assert
         self.assertIn("gh workflow run upm.yml --ref release/2.0.1 -f version=2.0.1", reason)
+
+    def test_Given_AResultReopeningTheUnpublishedVersion_When_Decided_Then_ItAnswersForIt(self):
+        # Arrange — a withdrawn release leaves its base closing a version no tag answers for. The
+        # change that reopens the section is the repair, and asked of the base alone it refuses
+        # itself and every merge waiting behind it.
+        reopened = PUBLISHED.replace("## [2.0.1] - 2026-08-08", "## [Unreleased]")
+
+        # Act / Assert
+        self.assertTrue(reopened_by(PUBLISHED, {"v2.0.0", "v2.0.0-main"}, reopened))
+
+    def test_Given_AResultStillClosingIt_When_Decided_Then_TheRefusalStands(self):
+        # Arrange — the ordinary change on top of an unpublished release, which is what the refusal
+        # is for and has to keep refusing.
+        # Act / Assert
+        self.assertFalse(reopened_by(PUBLISHED, {"v2.0.0", "v2.0.0-main"}, PUBLISHED))
+
+    def test_Given_AResultReopeningOnlyOneOfTwo_When_Decided_Then_TheRefusalStands(self):
+        # Arrange — two dated sections and no tag for either. Reopening the newer leaves the older
+        # closed and unanswered, which a reading of "did anything change" would let through.
+        two = PUBLISHED.replace(
+            "## [2.0.1] - 2026-08-08",
+            "## [2.0.1] - 2026-08-08\n\n### Highlights\n\n- A fix.\n\n## [2.0.0] - 2026-08-02")
+        reopened = two.replace("## [2.0.1] - 2026-08-08", "## [Unreleased — again]")
+
+        # Act / Assert
+        self.assertFalse(reopened_by(two, {"v1.0.0", "v1.0.0-main"}, reopened))
 
     def test_Given_TheTagsCarryANameThatMerelyStartsTheSame_When_Decided_Then_ItIsStillUnpublished(self):
         # Arrange — a prefix match would read v2.0.1-main as the release tag it is not.
