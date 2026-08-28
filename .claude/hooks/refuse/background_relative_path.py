@@ -16,6 +16,7 @@ command runs. The foreground is left alone: its directory is whatever the previo
 is knowable, and blocking it would refuse the ordinary shape of every other command in a session.
 """
 
+import fnmatch
 import json
 import re
 import sys
@@ -48,14 +49,27 @@ def repo_roots(project):
             if entry.is_dir() and not entry.name.startswith(".")}
 
 
+# A glob is a selector the shell rewrites into a path, so a token carrying one names the same
+# directory a plain spelling would. Read here rather than in `unexpanded`, which several guards share
+# and one of them -- `shared_git_state` -- deliberately treats `git checkout '*.cs'` as an ordinary
+# restore. Measured before this: backgrounded, `python3 script?/pr/settle.py watch` was allowed while
+# `python3 scripts/pr/settle.py watch` was refused, so one character routed around the guard.
+GLOB = re.compile(r"[*?\[]")
+
+
 def relative_repo_tokens(command, roots):
     """Tokens naming a repo directory relatively, in a command that never says where it runs."""
     found = []
-    for token in re.findall(r"[A-Za-z0-9_.~/-]+", command):
+    for token in re.findall(r"[A-Za-z0-9_.~/*?\[\]-]+", command):
         if token.startswith("/") or unexpanded(token):
             continue
+        if "/" not in token:
+            continue
         head = token.split("/", 1)[0]
-        if "/" in token and head in roots:
+        # By glob where the head carries one, so `script?` reaches `scripts`. A head with no glob is
+        # compared as itself, which is what it was.
+        if head in roots or (GLOB.search(head)
+                             and any(fnmatch.fnmatch(root, head) for root in roots)):
             found.append(token)
     return sorted(set(found))
 
