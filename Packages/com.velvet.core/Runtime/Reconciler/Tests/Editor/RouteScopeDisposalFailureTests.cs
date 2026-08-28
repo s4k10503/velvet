@@ -12,8 +12,9 @@ namespace Velvet.Tests
     /// entrance below reaches the caller's code, and each contains it the way a <c>refCallback</c>
     /// cleanup is contained.
     /// <list type="bullet">
-    /// <item>Changing route: the Outlet still mounts the route it navigated to, and the scope it left
-    /// behind is disposed once rather than again by the teardown sweep.</item>
+    /// <item>Changing route: the Outlet still mounts the route it navigated to, the incoming route's own
+    /// scope is built regardless of the failure, and the scope it left behind is disposed once rather
+    /// than again by the teardown sweep.</item>
     /// <item>Removing the Outlet: the removal batch continues, so the rows the walk had not reached yet
     /// leave too.</item>
     /// <item>An AnimatePresence beside the Outlet renders at its position exactly as it does with no
@@ -109,6 +110,26 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((escaped, LabelTextsUnder(_root)), Is.EqualTo((false, "other")));
+        }
+
+        // GREEN_ON_BASE(characterization): the shipped patch already builds the replacement scope.
+        // Nothing read that. Measured, conditioning the build on a clean dispose reddens this case on the
+        // count it asserts, and the case below it only through the sweep log it arms and then never gets.
+        [Test]
+        public void Given_ARouteScopeDisposeThatThrows_When_TheRouteChanges_Then_TheIncomingRouteStillGetsAScope()
+        {
+            // Arrange — the case above reads that the incoming route mounts, which it does with no scope at
+            // all; this one reads that the factory was asked for the replacement anyway. Conditioning the
+            // build on a clean disposal is the change it exists to catch.
+            var mounted = MountRoutedApp();
+            _router.NavigateAsync("/other").GetAwaiter().GetResult();
+            ContainedFailureLog.Expect<InvalidOperationException>("FiberNodePatcher", DisposeFailureMessage);
+
+            // Act
+            var escaped = EscapesFrom(() => ReRenderAppAtCurrentLocation(mounted));
+
+            // Assert
+            Assert.That((escaped, _scopeFactory.Scopes.Count), Is.EqualTo((false, 2)));
         }
 
         [Test]

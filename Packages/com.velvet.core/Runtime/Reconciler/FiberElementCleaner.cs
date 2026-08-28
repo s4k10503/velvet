@@ -201,6 +201,10 @@ namespace Velvet
         // arbitrary values).
         private void CleanupEffectAndStyleBindingResources(VisualElement element)
         {
+            // An element leaving inside the pass that created it — a row removed after being created, a
+            // speculative orphan rolled back — still owes the setup the walk queued for it. Cancelling it
+            // is what keeps the drain from installing a ref on an element no tree holds.
+            _ctx.DropPendingRefAttach(element);
             if (_ctx.RefCallbacks.TryGetValue(element, out var installedRef))
             {
                 _ctx.RefCallbacks.Remove(element);
