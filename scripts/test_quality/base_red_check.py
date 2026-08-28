@@ -746,6 +746,21 @@ def changed_lines_by_file(project, since):
     return changed
 
 
+def asked_about_nothing(derived, wanted):
+    """Whether `--platform` names none of the platforms the branch's own cases are on.
+
+    Nothing asked and nothing able to answer are opposite states, and the run cannot tell them apart:
+    a platform with no case writes no result, which `decide` reads as a base that could not be read —
+    the verdict reserved for a run that happened and produced nothing usable. So the empty
+    intersection is answered before the run, where the reason is still in hand.
+
+    Both halves are required. Without `wanted` this fires on every run that names no platform, and
+    without `derived` it fires on a branch with no C# case at all, where the Python lane is the
+    answer and this would talk over it.
+    """
+    return bool(wanted) and bool(derived) and not [name for name in derived if name in wanted]
+
+
 def deleted_files(project, since):
     """The paths the base holds and the branch does not, so the base tree stops holding them either.
 
@@ -2024,10 +2039,14 @@ def main():
                 len(python_lane) + len(guards)))
             reported.update(run_python(base_tree, project, python_lane + guards, transcript))
 
-        platforms = sorted({platform_of(case.path) for case in cases
-                            if kind_of(case.path) == "csharp"})
-        if args.platform:
-            platforms = [name for name in platforms if name in args.platform]
+        derived = sorted({platform_of(case.path) for case in cases
+                          if kind_of(case.path) == "csharp"})
+        platforms = [name for name in derived if name in args.platform] if args.platform else derived
+        if asked_about_nothing(derived, args.platform):
+            print("No changed case is on {}; the ones this branch wrote are {}.".format(
+                ", ".join(sorted(args.platform)), ", ".join(derived)))
+            print("Nothing was asked here, so nothing could answer. Run the lane those cases are on.")
+            return 0
         if platforms and not wait_for_quiet(args.busy_timeout):
             raise SystemExit("another Unity test run is still in flight")
         canaries.update(canaries_for(base_tree, cases, carry, platforms))

@@ -2814,6 +2814,36 @@ class ResultLabelTests(unittest.TestCase):
         self.assertEqual(base_red_check.outcome_for("N.C.Given_A_When_B_Then_C", reported), "Error")
 
 
+class PlatformSelectionTests(unittest.TestCase):
+    """Whether `--platform` named a lane the branch has a case on.
+
+    Reachable only by running a platform lane directly: CI's `--emit` step prints no fixtures and
+    skips the editor. That is what a contributor reproducing a lane by hand does, and what they got
+    was every case reporting "the base tree cannot answer" — the verdict for a run that happened and
+    produced nothing usable.
+    """
+
+    def test_Given_APlatformNoChangedCaseIsOn_When_TheSelectionIsRead_Then_NothingWasAsked(self):
+        # Act / Assert
+        self.assertTrue(base_red_check.asked_about_nothing(["EditMode"], ["PlayMode"]))
+
+    def test_Given_APlatformOneChangedCaseIsOn_When_TheSelectionIsRead_Then_SomethingWasAsked(self):
+        # Arrange — the control, without which a reading that answered yes to everything would
+        # satisfy the case above.
+        # Act / Assert
+        self.assertFalse(base_red_check.asked_about_nothing(["EditMode", "PlayMode"], ["PlayMode"]))
+
+    def test_Given_NoPlatformNamed_When_TheSelectionIsRead_Then_SomethingWasAsked(self):
+        # Arrange — the ordinary run, which names none and asks about both.
+        # Act / Assert
+        self.assertFalse(base_red_check.asked_about_nothing(["EditMode"], []))
+
+    def test_Given_ABranchWithNoCsharpCaseAtAll_When_TheSelectionIsRead_Then_SomethingWasAsked(self):
+        # Arrange — the Python lane is the answer there, and this would talk over it.
+        # Act / Assert
+        self.assertFalse(base_red_check.asked_about_nothing([], ["PlayMode"]))
+
+
 class PlatformInstrumentTests(unittest.TestCase):
     def test_Given_ACanaryThatPassed_When_ThePlatformIsRead_Then_ItIsNotWithdrawn(self):
         # Arrange -- one passing case is the bar: the question is whether anything built and ran.
