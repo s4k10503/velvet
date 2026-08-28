@@ -24,7 +24,13 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-from shell_commands import COMMIT_VALUE_FLAGS, git_invocations, unexpanded
+from shell_commands import (  # noqa: E402
+    COMMIT_VALUE_FLAGS,
+    UNRESOLVED_CD,
+    git_invocations,
+    leading_cd,
+    unexpanded,
+)
 import repository
 
 
@@ -309,7 +315,14 @@ def main():
     if not isinstance(command, str) or not command:
         return 0
 
-    found = findings(command, event.get("cwd") or ".")
+    where = leading_cd(command)
+    if where is UNRESOLVED_CD:
+        sys.stderr.write(
+            "Refusing `git commit --amend`: the command changes into a directory the shell has not "
+            "expanded yet, so which tree this amends cannot be read.\n\n"
+            "Spell the path out, or run the amend from the worktree itself.\n")
+        return 2
+    found = findings(command, where or event.get("cwd") or ".")
     if found is None:
         return 0
 
