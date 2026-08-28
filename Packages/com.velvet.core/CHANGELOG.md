@@ -506,6 +506,203 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   flow, including what changes with more than one Blocker registered, where React Router supports a
   single one.
 
+## [2.1.3] - 2026-08-27
+
+### Highlights
+
+- Hiding a `V.AnimatePresence` and rendering it again no longer brings back the children that had
+  already left. The record a presence keeps outlived the node that owned it, so the second render
+  started from a set naming elements the tree had let go — they spliced back in as ghosts already
+  exiting, and the enter animation `initial: false` exists to suppress ran anyway. The record also
+  outlived the element it expanded into, one per removal, and a pooled parent rented back at the
+  same position adopted the one left behind.
+
+### Fixed
+
+- A `V.AnimatePresence` that stops being rendered takes its bookkeeping with it. That bookkeeping is
+  keyed by three terms — the fiber the expansion ran under, the parent element its children expand
+  into, and the presence's position — and only that fiber being unregistered or the whole tree being
+  unmounted retired it. So a `cond ? V.AnimatePresence(…) : null` flipping to `null` left an entry
+  holding the committed children, and per key the exit anchor and the Motion element it had
+  recorded, well after the removal had taken those elements out of the tree: measured on a presence
+  under a `V.Button`, the entry left behind named both the departed child's element and the Button,
+  which had already gone back to the element pool. Rendering the presence again at that position
+  then started from that stale set — children that had left were spliced back into the DOM as
+  exiting ghosts, and `initial: false` no longer suppressed the enter, since the second mount was
+  not taken for a first render. The entry also survived its parent element being torn down, one left
+  behind per removal, and a poolable parent rented back for a fresh presence at the same position
+  picked the stale entry up again.
+  A presence written directly in a `V.Portal`'s own children — so its children expand straight into
+  the registered target element — is outside what this release answers for. Closing the portal
+  empties the target and leaves the entry behind, and the fiber term the first reopen records is not
+  the term the mount recorded, so it starts a second entry rather than finding the mount's, which
+  stays behind unchanged; that reopen shows only the new child. The second reopen brings a child
+  whose key changed between opens back beside the new one, while one stable child key was measured
+  holding exactly one child after each of three reopens. Leaving the portal open and hiding only the
+  presence reads differently again: the departed child stays in the target straight away, and is
+  beside the new one on the next show. Placing the presence under an element inside the portal's
+  children covers the close, not that hide, which leaves the departed child under the wrapper the
+  same way. `Documentation~/motion.md` owns the placement advice.
+
+## [2.1.2] - 2026-08-23
+
+### Highlights
+
+- A `Hooks.Use` resource key rebuilt on each render — a run-time string, or an id boxed on its way to
+  the parameter — named a resource nothing had loaded yet, so the fetch was torn down and started
+  again every render. Under a `V.Suspense` the boundary never came out of its fallback: the render a
+  landing loader asked for restarted that loader and suspended on it again.
+
+- A `Router.OnLocationChanged` subscriber that threw while a Suspend-mode loader was resolving had
+  its exception recorded as that route's load failure. The route reported an error no loader had
+  raised, and filing it as a failure ran the router's failure handler, which rewrites the history
+  entry's snapshot from a round the same mistake had miscounted — so a Back to that entry re-ran the
+  loader instead of being served from the cache.
+
+### Fixed
+
+- `Hooks.Use(factory, resourceKey)` compares the resource key by value, so a key a render builds names
+  the resource the previous render named instead of starting a new one. The comparison closed over the
+  parameter's own `object` type and took the reference branch for every key whatever it held, so a
+  string built at run time — the query id the parameter's documentation recommends — and an id boxed at
+  the call boundary each tore the resource down and restarted it on every render. Under a `V.Suspense`
+  that cost the boundary its resolve, since the render a landing loader asks for restarted the loader
+  and suspended again. Nothing said so either: the warning about a resource restarting every render is
+  gated on the key being omitted, and an omitted key is the factory delegate, which a delegate's own
+  identity comparison covers either way. A key of any other reference type is still compared by
+  instance, so that omitted-key behaviour is unchanged.
+- A subscriber that throws while a `LoaderMode.Suspend` loader is resolving no longer corrupts the
+  round that loader belonged to. The router answers a resolution by re-emitting the location, so a
+  `Router.OnLocationChanged` subscriber can run behind that announcement — and a throw from one was
+  caught by the clauses that exist for the loader itself. That counted the round's outstanding loader
+  off a second time and recorded the throw as that route's loader error. So a caller reading the route's
+  loader error saw a load failure that had not happened. Filing it as a failure also ran the router's failure
+  handler, which writes the history entry's snapshot again — this time from a round the second count
+  had corrupted — so the entry stayed unsettled and a Back or Forward to it re-ran the loader instead
+  of being served from the cache. What that second count costs the round itself depends on how many
+  loaders it holds: one leaves it permanently short of settling, and two leave it reporting itself
+  settled while the second loader is still outstanding. The throw is now reported as the subscriber's own and the
+  round stands as the loader left it, with its result recorded and no error. A subscriber throwing out
+  of the failure announcement is reported the same way, where it used to be left to whatever observes a
+  forgotten task.
+
+## [2.1.1] - 2026-08-21
+
+### Highlights
+
+- A widget taken from the pool arrived carrying what the last consumer had written on it. The reset
+  helper covered a fraction of the writable surface of `Button`, `Label`, `Toggle`, `Slider` and
+  `TextField`, so a recycled one could show a placeholder nobody had written, a `Toggle` stuck on a
+  mixed value, a `Slider` running backwards, or a paint delegate belonging to a component that had
+  already unmounted — and could stop delegating focus, or start taking pointer picks on its own root.
+  The whole surface is scrubbed now, and a `Slider` still holding its numeric input field is kept out
+  of the pool entirely.
+
+- Two `V.Suspense` boundaries could not tell each other apart, and a fallback vanished either way. One
+  nested inside another's children lost its fallback when the outer boundary resolved; two in a single
+  render shared one suspended mark, so a second boundary rendering its children cleared the mark the
+  first one's fallback was standing on. Both let a state update inside hidden children stop being
+  deferred and commit over the slot range the fallback occupied. Each boundary now keeps its own
+  answer.
+
+- A child moved from one `gap-*`, `divide-*` or `grid-cols-*` container to another lost the spacing,
+  divider or column sizing the container it joined had just written. Each of the three tracked the
+  children it had written to by raw reference, and the element pool hands a child straight from one
+  container to the next, so the container a child had left could still reset a write that was no
+  longer its own. Only the container whose write is still on the child may take it back off now.
+
+- `UseMutation`'s `Reset` cleared what the call had written so far and left the call itself in flight,
+  still owning the handle — so when it landed it wrote `Success` and its result back over the idle
+  state the reset had asked for. `Reset` now abandons the call. A handle also no longer shows `Data`
+  for a call it reports as failed.
+
+- A second `Mutate` call no longer cancels the first or drops its callbacks. Both run and each
+  delivers its own `OnSuccess` / `OnError`. A double-tapped Buy used to abort a request the server may
+  already have committed, and then skip the handler that would have recorded it.
+
+### Fixed
+
+- A child that moves from one `gap-*`, `divide-*` or `grid-cols-*` container to another keeps the
+  spacing, divider or column sizing the container it joined wrote. Each of the three tracked the children
+  it had written to by raw reference and reset the value on one no longer in the container, and the
+  element pool hands a child straight from one container to another — so the container a child left could
+  still be tracking it after the container it joined had written to it, and reset that write on its next
+  pass. A row that took a pooled `Label` from a sibling `gap-4` row lost one gap, a `divide-x` row lost
+  one rule, and a grid child lost its column gap and its width. Which container won was decided by the
+  order their re-applies landed in: a reconcile pass re-applies a container right after reconciling that
+  container's children and so never loses the race, and what reached this was the panel's own re-apply
+  sources — a `GeometryChangedEvent` or an `AttachToPanelEvent` arriving after the other container had
+  written. Each turn-off now asks a claim first, so only the container whose write is still on the child
+  may take it back off. Gap and grid share one claim, since both write a child's margins: a child moving
+  between a gap container and a grid one is one owner's or the other's.
+  One case moves the other way with it. A child the reconciler *removes* now keeps the spacing its
+  container wrote, where before the container's next pass cleared it: element cleanup drops the child's
+  claim, and the container then finds no claim to release against. This is every reconciler-driven child
+  removal, not an edge case. A removed element is either discarded with its subtree or scrubbed on its
+  way into the element pool, so what this changes is the inline state of an element an application has
+  kept a reference to and re-parented itself.
+
+- A `V.Suspense` nested inside another one's children no longer loses its fallback when the outer
+  boundary resolves. The outer boundary's expansion wrote its own answer over every fiber it had
+  created, the inner boundary's hidden children included, so a state update inside content the inner
+  boundary was still waiting on stopped being deferred and committed into the slot range the inner
+  fallback occupied — the fallback left the tree and the half-loaded content took its place. Each
+  boundary now keeps the answer it gave for the children it suspended over, so an outer boundary
+  resolving says nothing about an inner one that has not. An outer boundary that suspends still hides
+  the inner boundary's fallback, and releases it again on resolve.
+
+- Two `V.Suspense` boundaries in one component's render no longer share a single suspended mark. One
+  showing its fallback while a second, placed after it, rendered its children left the component
+  unmarked, so a state update inside the first one's hidden children stopped being deferred and
+  committed into the slot range its fallback occupied — the fallback disappeared from the tree.
+  Whether a boundary is showing a fallback is now read off the per-boundary record each `V.Suspense`
+  writes under its own position, so a sibling that resolves cannot clear it. Ordering decided it:
+  the same two boundaries with the resolved one placed first were unaffected.
+
+- A second `Mutate` call no longer cancels the first or drops its callbacks. Both run, each delivers
+  its own `OnSuccess` / `OnError`, and `Status` / `Data` / `Variables` show the most recent — which
+  is what TanStack Query does, and it hands `mutationFn` no signal at all. A double-tapped Buy used to
+  abort a request the server may already have committed and then skip the `OnSuccess` that records
+  it. The token survives for unmount, where a request does want cancelling. A starting call also
+  clears `Data` along with `Error`, so a result belonging to the previous call is not read as this
+  one's while it is still pending.
+
+- A pooled widget carried far more than its reset helper named. Most of the writable surface of
+  `Button`, `Label`, `Toggle`, `Slider` and `TextField` survived a pool cycle and arrived on whatever
+  mounted next: a read-only or multiline `TextField`, a placeholder string the next consumer had not
+  written, a `Toggle` stuck showing a mixed value, a `Slider` whose direction was inverted, the
+  rich-text and emoji-fallback flags on `Button` and `Label`, text-selection colours and behaviour on
+  `Button`, `Label` and `TextField`, and a data-source binding on all five. A `TextField`'s stale
+  placeholder is the sharp end: the pool's own contract is that the next consumer cannot observe the
+  previous one's text.
+
+- A recycled composite field stopped delegating focus, and a recycled `Slider` or `TextField` also
+  started taking pointer picks on its own root. The shared reset writes the plain `VisualElement`
+  defaults for both, and only `focusable` was written back afterwards. A recycled `Label` carried
+  tab index 0 where its constructor sets -1, which shows once a consumer declares it focusable.
+
+- A `Slider` still carrying its numeric input field is no longer pooled at all. That sub-element only
+  tears down while the slider is on a panel, and a pool return has already detached it, so a recycled
+  slider showed a stray input box that its own `showInputField` denied.
+
+- A `Button` or `Label` no longer carries a paint delegate a consumer added onto whatever mounts next.
+
+- A composite field pooled without a label lost the class its constructor adds for that case, so a
+  recycled one no longer matched a fresh one's class list.
+
+- `UseMutation`'s `Reset` now abandons the call in flight instead of only clearing what it had written
+  so far. Pressing Save and then Reset used to leave the save owning the handle, so when it landed it
+  wrote `Success` and its result straight back over the idle state the user had asked for. The
+  abandoned call is still not cancelled and still delivers its own `OnSuccess` / `OnError` — what it
+  no longer does is write the handle, which is what v5's `reset()` detaching the observer amounts to.
+
+- A `UseMutation` handle no longer shows `Data` for a call it reports as failed. The result was
+  written before `OnSuccess` ran, so a handler that threw — which correctly makes the mutation an
+  error — left that result on show underneath the error, and a view rendering `Data` without checking
+  `Status` first showed it. The outcome is now committed after the handlers on both paths, which is
+  where v5 dispatches it, so a handler no longer reads its own call's outcome and `Data` stands only
+  under `Status == Success`.
+
 ## [2.1.0] - 2026-08-09
 
 ### Highlights
