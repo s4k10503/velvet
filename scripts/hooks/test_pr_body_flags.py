@@ -132,8 +132,9 @@ class ExemptionScopeTests(unittest.TestCase):
         if ("pr", "create") in taking:
             taking.add(("pr", "new"))
 
-        # Act
-        claimed = pr_body.EXEMPT_WHERE["--dry-run"]
+        # Act — read as a value rather than reached for, so a tree without the table fails the
+        # comparison instead of raising out of the case, which separates nothing.
+        claimed = getattr(pr_body, "EXEMPT_WHERE", {}).get("--dry-run", set())
 
         # Assert — the emptiness rides along, since an empty reading agrees with any claim in one
         # direction and this exists to refuse exactly that.
