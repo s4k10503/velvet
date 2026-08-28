@@ -88,6 +88,47 @@ class BlockSetTests(unittest.TestCase):
         self.assertEqual(len(changed), 2)
 
 
+class BlockIdReadingTests(unittest.TestCase):
+    """What separates a block that started repeating from one that gained or lost a file.
+
+    Both leave an entry on each side of the comparison, and reading the arrival alone says a block
+    started repeating — measured, as a design question raised on a pull request over a block that had
+    repeated in ten files for as long as the baseline existed.
+    """
+
+    def test_Given_AnEntry_When_ItsBlockIsRead_Then_ItIsTheHashAndNotTheFiles(self):
+        # Act / Assert
+        self.assertEqual(duplication_check.block_id("035c4cad19e4\ta.cs,b.cs"), "035c4cad19e4")
+
+    def test_Given_ABlockMovedBetweenFiles_When_TheSidesAreRead_Then_NeitherBlockStarted(self):
+        # Arrange — the same block on both sides, so its arrival is not a block that started.
+        before = duplication_check.repeated_blocks(package(Alpha=block("a"), Beta=block("a")))
+        after = duplication_check.repeated_blocks(package(Alpha=block("a"), Delta=block("a")))
+        arrived, departed = after - before, before - after
+
+        # Act
+        started = [e for e in arrived
+                   if duplication_check.block_id(e) not in {duplication_check.block_id(d)
+                                                            for d in departed}]
+
+        # Assert
+        self.assertEqual(started, [])
+
+    def test_Given_ABlockThatDidNotRepeatBefore_When_TheSidesAreRead_Then_ItStarted(self):
+        # Arrange — a second home for a block that had none, which is what the sentence is for.
+        before = duplication_check.repeated_blocks(package(Alpha=block("a"), Beta=block("b")))
+        after = duplication_check.repeated_blocks(package(Alpha=block("a"), Beta=block("a")))
+        arrived, departed = after - before, before - after
+
+        # Act
+        started = [e for e in arrived
+                   if duplication_check.block_id(e) not in {duplication_check.block_id(d)
+                                                            for d in departed}]
+
+        # Assert
+        self.assertEqual(len(started), 1)
+
+
 class BaselineTests(unittest.TestCase):
     def test_Given_ThisRepositorysPackage_When_ComparedToItsBaseline_Then_TheSetsAgree(self):
         # Arrange
