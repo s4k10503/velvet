@@ -92,22 +92,48 @@ def waiting(text):
     return [line for line in body.splitlines() if line.startswith("- ")]
 
 
-def unmerged_into_main(cwd, line):
-    """Whether `main` has not taken this line, and by how much.
+def items(text):
+    """Every CHANGELOG item in the text, with its runs of whitespace flattened.
 
-    Asked of the ancestry rather than of each commit: a merge is what the practice prescribes, and
-    once it has happened there is nothing left to interpret. A line `main` already contains answers
-    None however many commits it carries.
+    A wrapped item is one item however the paragraph was rewrapped on the way across, and the first
+    line alone would call a rewrapped one missing.
     """
-    contained = subprocess.run(
-        ["git", "-C", str(cwd), "merge-base", "--is-ancestor", line, "origin/main"],
-        capture_output=True, text=True)
-    if contained.returncode == 0:
+    found, held = [], None
+    for line in (text or "").splitlines():
+        if line.startswith("- "):
+            if held is not None:
+                found.append(" ".join(held.split()))
+            held = line[2:]
+        elif held is not None:
+            if not line.strip():
+                found.append(" ".join(held.split()))
+                held = None
+            else:
+                held += " " + line
+    if held is not None:
+        found.append(" ".join(held.split()))
+    return found
+
+
+def unmerged_into_main(cwd, line):
+    """The items this line's CHANGELOG carries that `main`'s does not, or None.
+
+    Read of the content rather than of the ancestry, because nothing that reaches `main` here can
+    leave an ancestry: both branches refuse a direct push, so every change arrives through a pull
+    request and `settle.py` squashes it, which writes a commit whose only parent is `main`. Measured
+    after the line was merged forward -- `merge-base --is-ancestor` was still false, and `git cherry`
+    reported all eight commits outstanding, the squash having combined their patches into one whose
+    id matches none of them.
+
+    Weaker than an ancestry: an item reworded on the way across reads as missing. That is a line too
+    many on a report, where the ancestry reading was a report nobody could ever clear.
+    """
+    there = answer(["show", f"origin/main:{CHANGELOG}"], cwd, READ_TIMEOUT)
+    here = answer(["show", f"{line}:{CHANGELOG}"], cwd, READ_TIMEOUT)
+    if there is None or here is None:
         return None
-    counted = answer(["rev-list", "--count", f"origin/main..{line}"], cwd, READ_TIMEOUT)
-    if counted is None:
-        return None
-    return counted.strip()
+    outstanding = [item for item in items(here) if item not in set(items(there))]
+    return outstanding or None
 
 
 def report(cwd):
@@ -134,13 +160,15 @@ def main():
     answer(["fetch", "--quiet", "origin", "+refs/heads/*:refs/remotes/origin/*"], cwd, FETCH_TIMEOUT)
     said = list(report(cwd))
     for line in lines(cwd):
-        behind = unmerged_into_main(cwd, line)
-        if behind:
+        outstanding = unmerged_into_main(cwd, line)
+        if outstanding:
             said.append(
-                "main does not contain {}: {} commit(s) of it sit outside.\n"
+                "main does not carry {} CHANGELOG {} that {} does, starting with:\n"
+                "  {}{}\n"
                 "A fix made on the line has to reach main, or a branch cut from main reproduces what\n"
-                "it fixed. Merge the line forward — git then records that it did, and this stops\n"
-                "asking.".format(line, behind))
+                "it fixed. Carry them across — `cherry-pick -x` names where each came from.".format(
+                    len(outstanding), "entry" if len(outstanding) == 1 else "entries", line,
+                    outstanding[0][:96], "…" if len(outstanding[0]) > 96 else ""))
     if said:
         print("\n\n".join(said))
     return 0
