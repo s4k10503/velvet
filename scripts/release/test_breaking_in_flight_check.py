@@ -164,6 +164,25 @@ class Decisions(unittest.TestCase):
         # Assert
         self.assertEqual(done.returncode, UNREADABLE)
 
+    def test_Given_AHeadPushedSinceTheCheckout_When_Read_Then_ItIsFetchedRatherThanReported(self):
+        # Arrange — the shas come from a live listing and the objects from a checkout taken before
+        # it, so any pull request pushed while a queue drains names a commit this tree does not
+        # hold. A clone of main alone is that tree.
+        root, base, branch = repository()
+        clone = Path(tempfile.mkdtemp()) / "clone"
+        subprocess.run(["git", "clone", "--quiet", "--no-local", "--branch", "main", "--single-branch",
+                        str(root), str(clone)], check=True, capture_output=True)
+        absent = subprocess.run(["git", "-C", str(clone), "cat-file", "-e", branch],
+                                capture_output=True).returncode != 0
+
+        # Act
+        done = run(clone, base, listing(377, branch), body="A release.")
+
+        # Assert — the absence rides along, because a clone that happened to hold the head would
+        # reach this outcome without the fetch under test running at all.
+        self.assertEqual((absent, done.returncode, "went unread" in done.stderr),
+                         (True, UNNAMED, False))
+
     def test_Given_AChangeClosingNoVersion_When_Decided_Then_NothingIsAsked(self):
         # Arrange
         root, base, branch = repository()
