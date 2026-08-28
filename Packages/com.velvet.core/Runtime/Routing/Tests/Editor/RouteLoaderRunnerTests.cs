@@ -13,32 +13,6 @@ using static Velvet.Tests.RouteTestStubs;
 
 namespace Velvet.Tests
 {
-    /// <summary>
-    /// Specifies the loader execution contract of <see cref="RouteLoaderRunner"/>.
-    /// <list type="bullet">
-    /// <item>Matches without loaders complete immediately with empty results.</item>
-    /// <item>An Await loader must be already-completed; its result is collected synchronously keyed by
-    /// <see cref="RouteMatch.RouteId"/>, and <c>allCompleted</c> is true.</item>
-    /// <item>A Suspend loader returns immediately with <c>allCompleted</c> false and runs in the background,
-    /// firing <c>OnSuspendLoaderCompleted</c> on success or <c>OnSuspendLoaderFailed</c> on failure; a failure
-    /// is also recorded per-path in the round's errors, symmetrically with the Await path.</item>
-    /// <item><see cref="RouteLoaderRunner.ActiveSuspendTaskCount"/> is incremented while a Suspend task is live
-    /// and returned to zero in the finally block on success, failure, and honored cancellation alike.</item>
-    /// <item>The loader receives a cancelable token that <c>CancelPending</c> cancels, and a loader that
-    /// answers that token by succeeding rather than throwing is still treated as a torn-down round.</item>
-    /// <item>An Await loader that throws records the error in <c>Errors</c> and reports <c>allCompleted</c> false.</item>
-    /// <item>Each round tracks its own outstanding Suspend loaders, so a round asked after a later one has
-    /// started still answers for itself.</item>
-    /// <item>A round's loaders all launch under that round's own token, so a loader that starts another round
-    /// mid-run does not lend the next round's currency to the leftovers of the one it superseded.</item>
-    /// <item>A round's errors are its own, so a nested round neither wipes the errors already recorded by the
-    /// round it started from nor collects the ones that round records afterwards.</item>
-    /// <item>A superseded round still records both a late success and a late failure; supersession withholds
-    /// the announcement, not the record.</item>
-    /// <item>A subscriber that throws out of either announcement is reported by the runner, and leaves the
-    /// round's own accounting — its pending count and what it recorded for the route — as the loader left it.</item>
-    /// </list>
-    /// </summary>
     [TestFixture]
     internal sealed class RouteLoaderRunnerTests
     {
