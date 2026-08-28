@@ -963,8 +963,9 @@ namespace Velvet
         // post-commit drain. The DOM mutation + ref attachment must complete before layout effect
         // setup runs. Velvet's inline-mount path defers child reconcile via
         // RenderAndReconcile(deferReconcile: true) so the parent expansion calls
-        // CreateElement + InvokeRefCallback for child elements AFTER MountInline
-        // returns; running LayoutEffects inside MountInline would observe stale (null) refs.
+        // CreateElement for child elements AFTER MountInline returns, and their ref setups run at that
+        // pass's own boundary (DrainRefAttaches) later still;
+        // running LayoutEffects inside MountInline would observe stale (null) refs.
         // The top-level reconcile entry drains this stack before its own layout-effect commit so
         // every layout effect runs once all child refs are attached. A Stack (LIFO) is used so
         // the drain runs deepest-first — layout effects commit children
@@ -1050,25 +1051,209 @@ namespace Velvet
         public Dictionary<VisualElement, (System.Func<VisualElement, System.Action> Callback, System.Action? Cleanup)>
             RefCallbacks { get; } = new();
 
-        // Invokes a callback ref and records (identity, cleanup) in RefCallbacks. A patch carrying
-        // the SAME callback delegate is a no-op: unconditionally re-invoking made any state write in
-        // a ref cleanup a per-patch mid-flush write, forcing consumers into deferred-correction
-        // workarounds. An entry is stored even when the setup returns no cleanup — the identity is
-        // what makes the stable-ref skip possible.
-        internal void InvokeRefCallback(VisualElement element, System.Func<VisualElement, System.Action>? refCallback)
+        // Ref setups queued and not yet run, in the order the walks reached them, keyed for replacement
+        // so one element contributes one setup however many times a pass syncs it. Drained by
+        // DrainRefAttaches, which both entrances go through; a hole (a default entry) is one an element's
+        // departure cancelled or one already run, left in place so the indices either side of it stay
+        // addressable until the compaction that ends the drain.
+        private readonly List<(VisualElement? Element, System.Func<VisualElement, System.Action>? Callback,
+            ComponentFiber? Owner, Reconciler? Pass)> _pendingRefAttaches = new();
+
+        private readonly Dictionary<VisualElement, int> _pendingRefAttachIndex = new();
+
+        private bool _drainingRefAttaches;
+
+        // The Reconciler whose Reconcile / ContinueReconcile bracket is innermost on the stack, and null
+        // outside every pass — the VirtualList controller's scroll-driven item loop reaches the queue
+        // below from there. Stamped onto each setup it queues so the drain asks the pass that created the
+        // element, rather than the context, whether the removals that setup has to follow have run.
+        internal Reconciler? CurrentPass { get; set; }
+
+        // Where a user callback the reconciler invokes goes when it throws. Two shapes are picked between
+        // here, so a site does not pick its own: the teardown funnels —
+        // FiberElementCleaner, Reconciler's disposal sweeps, and the route-scope release at
+        // FiberNodePatcher that mirrors them — report to the console; a callback the reconciler makes for
+        // an owner that is still live comes here instead, to the nearest error boundary. A third shape is
+        // chosen against this rule rather than by it: ChildReconciler.DrainPendingPortalMounts leaves its
+        // ZLayerMountNode arm's throw on the render's own escape path, and argues that there. Reporting was
+        // rejected for the live case because a boundary is the mechanism a component has for its own
+        // failures, and an effect cleanup — the same kind of callback — already reaches one
+        // (HookEffectExecutor.RunCleanups).
+        //
+        // owner is the component the failing callback belongs to, and the search starts ABOVE it: a host
+        // element's callback is attributed to the component that rendered the element, so a boundary
+        // catches its children's ref failures on the same terms it catches their render failures.
+        internal static void ContainUserCallbackFailure(ComponentFiber? owner, System.Exception exception)
+            => ComponentBoundarySearch.PropagateException(owner, exception);
+
+        // Cycles the ref installed on an element to match the node being committed: the old cleanup now,
+        // the new setup at the pass boundary. A patch carrying the SAME callback delegate is a no-op —
+        // unconditionally re-invoking made any state write in a ref cleanup a per-patch mid-flush write,
+        // forcing consumers into deferred-correction workarounds.
+        internal void SyncRefCallback(VisualElement element, System.Func<VisualElement, System.Action>? refCallback)
         {
-            if (RefCallbacks.TryGetValue(element, out var installed))
+            if (RefCallbacks.TryGetValue(element, out var installed)
+                && refCallback != null && ReferenceEquals(installed.Callback, refCallback))
             {
-                if (refCallback != null && ReferenceEquals(installed.Callback, refCallback)) return;
-                // Remove first: if a user-defined cleanup throws, leaving a stale entry would cause
-                // a double-fire on the next reconcile. Remove → Invoke order preserves exception safety.
-                RefCallbacks.Remove(element);
+                return;
+            }
+            DetachRefCallback(element);
+            if (refCallback == null)
+            {
+                DropPendingRefAttach(element);
+                return;
+            }
+            var entry = (Element: (VisualElement?)element, Callback: refCallback,
+                Owner: FiberStack.Current, Pass: CurrentPass);
+            if (_pendingRefAttachIndex.TryGetValue(element, out var queued))
+            {
+                _pendingRefAttaches[queued] = entry;
+                return;
+            }
+            _pendingRefAttachIndex[element] = _pendingRefAttaches.Count;
+            _pendingRefAttaches.Add(entry);
+        }
+
+        // The detach half. Remove first: if a user-defined cleanup throws, leaving a stale entry would
+        // cause a double-fire on the next reconcile. Remove → Invoke order preserves exception safety.
+        internal void DetachRefCallback(VisualElement element)
+        {
+            if (!RefCallbacks.TryGetValue(element, out var installed)) return;
+            RefCallbacks.Remove(element);
+            try
+            {
                 installed.Cleanup?.Invoke();
             }
-            if (refCallback == null) return;
-            var cleanup = refCallback(element);
-            RefCallbacks[element] = (refCallback, cleanup);
+            catch (System.Exception exception)
+            {
+                ContainUserCallbackFailure(FiberStack.Current, exception);
+            }
         }
+
+        // Cancels a setup queued for an element that is leaving before the drain reaches it. The setup
+        // never ran, so there is no cleanup owed and nothing to undo — running it would install a ref
+        // pointing at an element no tree holds.
+        internal void DropPendingRefAttach(VisualElement element)
+        {
+            if (_pendingRefAttachIndex.Remove(element, out var queued))
+            {
+                _pendingRefAttaches[queued] = default;
+            }
+        }
+
+        // Runs the queued setups in walk order. An entry is recorded whether or not the setup completed —
+        // the identity is what makes the stable-ref skip possible, so a setup that throws is attempted
+        // once rather than again on every later patch carrying the same delegate.
+        internal void DrainRefAttaches()
+        {
+            // A nested caller — the VirtualList controller's item loop, reached from a patch as well as
+            // from a scroll callback — hands its entries to the enclosing pass's own boundary, which is
+            // the point where every removal of that pass is behind them.
+            if (SharedReconcileDepth > 0) return;
+            // A setup that re-enters a top-level pass leaves its own entries to the loop below, which
+            // re-reads the count; draining them from inside would run the ones already run a second time.
+            if (_drainingRefAttaches) return;
+            _drainingRefAttaches = true;
+            try
+            {
+                for (var i = 0; i < _pendingRefAttaches.Count; i++)
+                {
+                    var (element, callback, owner, pass) = _pendingRefAttaches[i];
+                    // MUTANT_SURVIVES(equivalent): an entry's element and callback are written together —
+                    // SyncRefCallback queues one only with both set, and a cancelled or consumed one is
+                    // overwritten with default — so neither is null without the other and both spellings
+                    // skip exactly the holes.
+                    if (element == null || callback == null) continue;
+                    // The queue is the context's while a pass belongs to one Reconciler, so the pass that
+                    // reached this boundary is not necessarily the one that queued this entry. A parked
+                    // pass holds back the entries it queued and no others — Reconciler.FinishTopLevelPass
+                    // owns why it has to hold those.
+                    if (pass is { HasPendingWork: true }) continue;
+                    // Ahead of the setup, so a setup that re-queues this same element appends a fresh
+                    // entry instead of overwriting the one being run.
+                    _pendingRefAttachIndex.Remove(element);
+                    _pendingRefAttaches[i] = default;
+                    // Ahead of the setup too, so an element the setup itself takes out of the tree is one
+                    // FiberElementCleaner finds an entry for and removes. A setup CAN reach that: it runs
+                    // at depth zero now, where a discrete event it dispatches commits synchronously instead
+                    // of being held back. Recorded only afterwards, the removal would find no entry and the
+                    // write below would then add one for an element no tree holds, past the removal that
+                    // would have taken it.
+                    RefCallbacks[element] = (callback, null);
+                    System.Action? cleanup = null;
+                    try
+                    {
+                        cleanup = callback(element);
+                    }
+                    catch (System.Exception exception)
+                    {
+                        ContainUserCallbackFailure(owner, exception);
+                        ConsumeAbortRaisedByASetup();
+                    }
+                    if (RefCallbacks.ContainsKey(element))
+                    {
+                        RefCallbacks[element] = (callback, cleanup);
+                    }
+                    else if (cleanup != null)
+                    {
+                        // Its entry is gone, so nothing is left holding this cleanup. Firing it here is
+                        // what keeps a setup that acquires a resource from leaking it.
+                        try
+                        {
+                            cleanup();
+                        }
+                        catch (System.Exception exception)
+                        {
+                            ContainUserCallbackFailure(owner, exception);
+                            ConsumeAbortRaisedByASetup();
+                        }
+                    }
+                }
+            }
+            finally
+            {
+                CompactPendingRefAttaches();
+                _drainingRefAttaches = false;
+                // Repeated from the catch above so this loop leaves the flag clear whichever entrance ran
+                // it. Dropping it would rest on that catch being the only raise a setup can reach, which
+                // nothing here establishes.
+                IsAborted = false;
+            }
+        }
+
+        // Clearing the list outright is no longer available: the entries a parked pass queued have to
+        // survive the drain that skipped them. What is left is compacted instead, so the list does not
+        // keep a slot per entry already run.
+        private void CompactPendingRefAttaches()
+        {
+            var kept = 0;
+            for (var i = 0; i < _pendingRefAttaches.Count; i++)
+            {
+                var entry = _pendingRefAttaches[i];
+                // MUTANT_SURVIVES(equivalent): an entry's two members are null together for the reason
+                // DrainRefAttaches's own skip gives, so this reaches the same entries either way.
+                if (entry.Element == null || entry.Callback == null) continue;
+                _pendingRefAttaches[kept++] = entry;
+            }
+            _pendingRefAttaches.RemoveRange(kept, _pendingRefAttaches.Count - kept);
+            // MUTANT_SURVIVES(equivalent): every key here belongs to an entry the loop above kept, because
+            // a hole's key is removed where the hole is made — so the rebuild below rewrites each of them
+            // and leaves none behind for this to have removed.
+            _pendingRefAttachIndex.Clear();
+            for (var i = 0; i < _pendingRefAttaches.Count; i++)
+            {
+                _pendingRefAttachIndex[_pendingRefAttaches[i].Element!] = i;
+            }
+        }
+
+        // A boundary that caught a setup's failure raised the abort with no walk left on the stack for it
+        // to stop. Consuming it here rather than once the loop ends is what leaves the setups queued behind
+        // it a context they can still work in: a later boundary's own TryShowFallback reconciles through
+        // ChildReconciler.Reconcile, and so does a state write a later setup commits synchronously, and
+        // its entry guard returns out of either having touched nothing. Not inside
+        // ContainUserCallbackFailure, which the create-path callbacks and DetachRefCallback reach as
+        // well: an abort raised through one of those is not this loop's to consume.
+        private void ConsumeAbortRaisedByASetup() => IsAborted = false;
 
         // Wrapper-less Suspense fallback state: per boundary fiber, the scoped position keys of the
         // Suspense nodes that are currently showing their fallback subtree instead of their children. The
