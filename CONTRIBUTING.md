@@ -704,11 +704,12 @@ next major is built. **One line is maintained at a time — the series immediate
 
 **The line takes fixes, and the CI its own pull requests need. It does not take features.**
 
-**A fix written there is owed `main` a pull request of its own**, and a fix that lands there is owed
-a release. The first is not optional: a fix that stays on the line is one a branch cut from `main`
-reproduces in full — #732 removed a `branches:` filter `main` still carried, and stayed for three
-days. `unreleased_maintenance_line.py` reports both at session start, telling a backport apart from
-work that originated on the line by whether its pull request cites a `main`-side one.
+**The line is merged forward into `main`, not picked back out of it**, and a fix that lands there is
+owed a release. The first is not optional: a fix that stays on the line is one a branch cut from
+`main` reproduces in full — #732 removed a `branches:` filter `main` still carried, and stayed for
+three days. Merging forward is also what makes it checkable, because git then records the ancestry
+and `merge-base --is-ancestor` answers it without anyone reading a pull request;
+`unreleased_maintenance_line.py` reports both at session start.
 
 **A fix that lands there is owed a release.** `main` between releases is expected to hold unreleased
 entries; a maintenance line holding them is a backport nobody shipped, and the release readings do
@@ -719,8 +720,8 @@ found the line holding one entry for four days, which no session had noticed.
 **A commit that carries a breaking change does not come, even when it also carries a fix.** What makes
 one unsplittable is the code: the fix can name a symbol that arrives with the breaking half, so the
 pick auto-merges and then does not compile. If the fix is wanted on the line it is written fresh there
-— and a change written first on the line comes forward to `main` as its own pull request, which the
-session-start report above names when it has not. `main` may already carry its own; ask before
+— and the line is merged forward into `main`, which the session-start report above names when it has
+not been. `main` may already carry its own; ask before
 opening one.
 
 **Decide per commit, not per `[Unreleased]` entry.** The mapping runs many-to-many, and a commit may

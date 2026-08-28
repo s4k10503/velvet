@@ -65,8 +65,13 @@ def git(cwd, *args):
                    capture_output=True, text=True)
 
 
-def repository(branch, changelog):
-    """An origin holding one branch, cloned so the clone carries it as a remote-tracking ref."""
+def repository(branch, changelog, merged=True):
+    """An origin holding one branch, cloned so the clone carries it as a remote-tracking ref.
+
+    `merged` is whether main has taken the branch. A line main has not taken is the state the second
+    reading is for, and the default is the settled one so a case about the first reading says nothing
+    about the second.
+    """
     root = Path(tempfile.mkdtemp())
     origin = root / "origin"
     origin.mkdir()
@@ -85,41 +90,42 @@ def repository(branch, changelog):
     else:
         (origin / CHANGELOG).write_text(changelog)
         git(origin, "commit", "--quiet", "--allow-empty", "-am", "more")
+    if merged and branch != "main":
+        git(origin, "merge", "--quiet", "--no-edit", "-m", "merge forward", branch)
     clone = root / "clone"
     subprocess.run(["git", "clone", "--quiet", str(origin), str(clone)],
                    check=True, capture_output=True, text=True)
     return clone
 
 
-class CommitThatStayed(unittest.TestCase):
-    """The second reading, tested through its own functions.
+class LineMainHasNotTaken(unittest.TestCase):
+    """The second reading, asked of git's ancestry rather than of what a pull request says.
 
-    It asks the API what a cited pull request is based on, and a case that stubs `gh` well enough to
-    answer that is testing the stub. What the functions decide from an answer is the part that can be
-    wrong.
+    #777 measured two per-commit readings failing, and a third that works by reading prose. This one
+    is the question the practice already answers: merge the line forward, and git records that it did.
     """
 
-    def test_Given_AReleaseSquash_When_Read_Then_ItIsExcludedBeforeAnyApiRead(self):
-        # Act / Assert — a release carries pull requests already on main, and its subject says so.
-        self.assertIsNotNone(report_module.RELEASE.match("chore(velvet): release v2.1.3 (#807)"))
+    def test_Given_ALineMainHasNotMerged_When_Reported_Then_ItIsNamedWithACount(self):
+        # Arrange — a line carrying a commit main cannot reach, which is what a fix made there and
+        # never carried forward looks like.
+        clone = repository("2.x", EMPTY, merged=False)
 
-    def test_Given_AnOrdinaryFix_When_Read_Then_ItIsNotTakenForARelease(self):
-        # Act / Assert
-        self.assertIsNone(report_module.RELEASE.match(
-            "ci(velvet): stop a branch filter deciding which pull requests get checks (#732)"))
+        # Act
+        done = run(clone)
 
-    def test_Given_ASubjectCitingAnotherNumber_When_Read_Then_TheTrailingOneIsTheMerge(self):
-        # Arrange — a body citing what it carries must not be read out of the subject; only the
-        # trailing parenthesis records the pull request this commit is.
-        # Act / Assert
-        self.assertEqual(
-            report_module.named_pull_request("fix(velvet): carry #643's finding to the line (#770)"),
-            "770")
+        # Assert
+        self.assertIn("main does not contain origin/2.x: 1 commit(s)", done.stdout)
 
-    def test_Given_ASubjectWithNoTrailingNumber_When_Read_Then_NoneIsNamed(self):
-        # Arrange — undecidable rather than owed: this reading is built on what a pull request names.
-        # Act / Assert
-        self.assertIsNone(report_module.named_pull_request("fix(velvet): written by hand"))
+    def test_Given_ALineMainHasMerged_When_Reported_Then_NothingIsSaid(self):
+        # Arrange — once the merge has happened there is nothing left to interpret, and a report that
+        # keeps asking is one a reader learns to skip.
+        clone = repository("2.x", EMPTY, merged=True)
+
+        # Act
+        done = run(clone)
+
+        # Assert
+        self.assertEqual((done.returncode, done.stdout), (0, ""))
 
 
 class MaintenanceLineReport(unittest.TestCase):
