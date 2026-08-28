@@ -523,6 +523,9 @@ namespace Velvet.Tests
             Assert.That(result[0].Params.ContainsKey("id"), Is.False);
         }
 
+        // GREEN_ON_BASE(characterization): the restore is already there, and this says what it
+        // restores — the capture the abandoned present path made, rather than merely that the match
+        // succeeded.
         [Test]
         public void Given_AnOptionalParamTheSkipPathMatchesPast_When_Matched_Then_TheAbandonedCaptureIsGone()
         {
@@ -540,6 +543,9 @@ namespace Velvet.Tests
                         Is.EqualTo((true, false)));
         }
 
+        // GREEN_ON_BASE(characterization): a route neither reading reaches already matches nothing.
+        // Measured: making the optional arm report a match when both fail leaves the fixture green
+        // apart from this case.
         [Test]
         public void Given_AnOptionalParamWhosePresentAndSkipPathsBothFail_When_Matched_Then_NothingMatches()
         {
@@ -554,6 +560,9 @@ namespace Velvet.Tests
             Assert.That(result, Is.Null);
         }
 
+        // GREEN_ON_BASE(characterization): the restore is already gated on the segment being a param.
+        // Measured: widening that gate to `||` leaves the fixture green apart from this case, and the
+        // gate is what this change's `Taken` bookkeeping sits next to.
         [Test]
         public void Given_AnOptionalLiteralSharingAParamsName_When_ItsPresentPathFails_Then_TheParamSurvives()
         {
@@ -570,6 +579,8 @@ namespace Velvet.Tests
                         Is.EqualTo((true, "a")));
         }
 
+        // GREEN_ON_BASE(characterization): an empty capture is already left out of the base. Measured:
+        // widening the emptiness test to admit it leaves the fixture green apart from this case.
         [Test]
         public void Given_AUrlWithAnEmptySegment_When_ItIsCaptured_Then_TheBaseDoesNotCarryIt()
         {
@@ -587,6 +598,9 @@ namespace Velvet.Tests
                         Is.EqualTo(("", "/docs/edit")));
         }
 
+        // GREEN_ON_BASE(characterization): the control for the skip. A base built from every declared
+        // segment gives the same answer here as one built from the segments taken, which is what makes
+        // it the case that fails if the skip is applied to an optional the URL did carry.
         [Test]
         public void Given_AnOptionalLiteralTakingTheFirstSegment_When_Matched_Then_TheBaseCarriesIt()
         {
@@ -641,6 +655,8 @@ namespace Velvet.Tests
             Assert.That(result[0].PathnameBase, Is.EqualTo("/docs"));
         }
 
+        // GREEN_ON_BASE(characterization): the present half of the pair below, unchanged by this fix
+        // and here so a skip that fired unconditionally could not pass as one that fired correctly.
         [Test]
         public void Given_OptionalLiteralRoute_When_SegmentPresent_Then_TheBaseCarriesIt()
         {
