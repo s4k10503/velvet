@@ -3,13 +3,8 @@ using System.Collections.Generic;
 
 namespace Velvet
 {
-    /// <summary>
-    /// Static contexts that propagate router information through the Velvet component tree.
-    /// <c>Router</c> writes to them as the Provider; child components read via UseContext.
-    /// </summary>
     public static class RouterContext
     {
-        /// <summary>Current navigation location (path, parameters, match information).</summary>
         public static readonly ComponentContext<RouterLocation> Location =
             ComponentContext<RouterLocation>.Create(null);
 
@@ -23,7 +18,7 @@ namespace Velvet
             ComponentContext<IReadOnlyDictionary<string, Exception>>.Create(
                 new Dictionary<string, Exception>());
 
-        /// <summary>Nested-route depth. Used during Outlet rendering to pick the correct match.</summary>
+        /// <summary>Tracks Outlet depth for match selection and route-relative navigation.</summary>
         public static readonly ComponentContext<int> Depth =
             ComponentContext<int>.Create(0);
 

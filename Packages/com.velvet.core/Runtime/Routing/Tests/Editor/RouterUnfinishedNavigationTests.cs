@@ -9,35 +9,12 @@ using static Velvet.Tests.RouteTestStubs;
 
 namespace Velvet.Tests
 {
-    /// <summary>
-    /// Specifies what a navigation that has not finished may leave in the router's shared state — the history
-    /// list, the history index, and <see cref="RouterStatus"/> — while a second navigation reads it.
-    /// <list type="bullet">
-    /// <item>An attempt parked in a Blocker leaves the index and the history list describing the entry the
-    /// user is still on, so a navigation started meanwhile builds on that entry rather than on the parked
-    /// attempt's destination.</item>
-    /// <item>A Back or Forward resolves the slot it will commit into before those phases run, so a Push
-    /// committing meanwhile can take that slot over. Such an attempt commits nothing at all: the Blocker
-    /// check refuses a superseded attempt before the loader phase reads the slot.</item>
-    /// <item>A Guard redirect appends nothing before its target commits, so an attempt that never gets there
-    /// leaves no entry for a path the user did not arrive at.</item>
-    /// <item>A navigation that dies on an exception leaves no in-flight <see cref="RouterStatus"/> behind,
-    /// whether it died in a phase or in the commit that follows them.</item>
-    /// <item>A history entry committed while a Suspend loader is still running is not served from the
-    /// Back/Forward cache, since the snapshot it holds is not the data the route asked for. Stepping onto it
-    /// runs the loaders again, and once a round of them finishes the entry is servable, including when they
-    /// all finished before that step committed.</item>
-    /// <item>An attempt cancelled by a loader that navigated leaves the loader data and the status of the
-    /// location that navigation committed, rather than clearing state it never owned.</item>
-    /// </list>
-    /// </summary>
     // Bounded for the cases here that await a blocker stub's Entered signal;
     // RouteTestStubs.MakeOneShotBlocker states what an unbounded fixture costs.
     [Timeout(30000)]
     [TestFixture]
     internal sealed class RouterUnfinishedNavigationTests
     {
-        // Same isolation rule as RouterTests: Router.Current is a global that each new Router() overwrites.
         [TearDown]
         public void TearDown()
         {
@@ -142,9 +119,7 @@ namespace Velvet.Tests
         public IEnumerator Given_AGuardThatThrows_When_TheExceptionReachesTheCaller_Then_TheRouterIsNoLongerInFlight()
             => UniTask.ToCoroutine(async () =>
         {
-            // A Guard is an application delegate invoked with nothing between it and the caller. Leaving the
-            // in-flight Status behind would make every UseNavigation consumer render its pending branch for
-            // the rest of the session, including components mounted after the throw.
+            // The exception propagates, but the attempt must release its in-flight Status first.
             // Arrange
             var router = BuildRouter("/home",
                 Route("/", children: new[]
