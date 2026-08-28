@@ -4,11 +4,6 @@ using System.Diagnostics.CodeAnalysis;
 
 namespace Velvet
 {
-    /// <summary>
-    /// Pure query-string utilities shared by the routing hooks and the search-params setter: parsing a query
-    /// into <see cref="ISearchParams"/>, stripping the query from a path, and building a query string back.
-    /// These have no fiber or hook state.
-    /// </summary>
     internal static class RouteQuery
     {
         internal static ISearchParams ParseQuery(string path)
@@ -31,7 +26,6 @@ namespace Velvet
                 var eq = pair.IndexOf('=');
                 if (eq < 0)
                 {
-                    // Repeated keys are preserved (getAll parity); Get returns the first value.
                     result.Append(DecodeQueryComponent(pair), string.Empty);
                 }
                 else
@@ -44,9 +38,7 @@ namespace Velvet
             return result;
         }
 
-        // Decodes one application/x-www-form-urlencoded query component: a literal '+' denotes a space
-        // and is converted before percent-escapes are resolved, so an encoded
-        // plus ('%2B') round-trips back to '+' rather than collapsing to a space.
+        // Replace literal '+' before unescaping so "%2B" remains '+'.
         private static string DecodeQueryComponent(string component) =>
             Uri.UnescapeDataString(component.Replace('+', ' '));
 
@@ -72,7 +64,6 @@ namespace Velvet
             foreach (var key in values.Keys)
             {
                 var escapedKey = Uri.EscapeDataString(key);
-                // Emit one key=value pair per value so multi-value keys round-trip.
                 foreach (var value in values.GetAll(key))
                 {
                     parts.Add($"{escapedKey}={Uri.EscapeDataString(value ?? string.Empty)}");
