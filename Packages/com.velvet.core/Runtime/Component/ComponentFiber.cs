@@ -4,8 +4,8 @@ using System.Collections.Generic;
 namespace Velvet
 {
     /// <summary>
-    /// Bitmask over the four <see cref="FiberUpdatePriority"/> values, used as the per-fiber pending-lane
-    /// set. The priority space is fixed at exactly 4 members (Urgent=0 .. Transition=3), and this type sits
+    /// Bitmask over the three <see cref="FiberUpdatePriority"/> values, used as the per-fiber pending-lane
+    /// set. The priority space is fixed at exactly 3 members (Urgent=0 .. Transition=2), and this type sits
     /// on the scheduler's hottest path (<see cref="FiberWorkLoop.ScheduleRerender"/> /
     /// <see cref="FiberWorkLoop.FlushState"/> run on every hook-driven update), so membership is tracked with
     /// a single byte rather than a general-purpose ordered-set container: no per-enrollment node allocation,
@@ -15,13 +15,15 @@ namespace Velvet
     {
         private byte _mask;
 
-        /// <summary>Number of lanes currently enrolled (0-4).</summary>
+        /// <summary>Number of lanes currently enrolled (0-3).</summary>
         internal readonly int Count
         {
             get
             {
                 var count = 0;
-                for (var bit = 0; bit < 4; bit++)
+                // MUTANT_SURVIVES(equivalent): no lane maps to bit 3, so a scan one bit wider counts a
+                // bit Add never sets.
+                for (var bit = 0; bit < 3; bit++)
                 {
                     if ((_mask & (1 << bit)) != 0)
                     {
@@ -42,7 +44,9 @@ namespace Velvet
         {
             get
             {
-                for (var bit = 0; bit < 4; bit++)
+                // MUTANT_SURVIVES(equivalent): reaching bit 3 means bits 0-2 were all clear, and only a
+                // lane is ever added, so the mask is empty and a wider scan still falls through to default.
+                for (var bit = 0; bit < 3; bit++)
                 {
                     if ((_mask & (1 << bit)) != 0)
                     {
