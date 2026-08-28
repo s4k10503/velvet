@@ -225,20 +225,36 @@ class GenerationAcrossLinesTests(unittest.TestCase):
         # Assert
         self.assertEqual(lines, [1, 2, 3, 4, 5, 6, 7, 8, 9])
 
-    def test_Given_TheRepositorysOwnSources_When_MutantsAreGenerated_Then_TheTotalHoldsAFloor(self):
-        # Arrange — the count is what moved: 2097 across these files before the loop variable stopped
-        # rebinding the file's source, and over eleven thousand after. A floor rather than the exact
-        # number, which every edit to the package moves.
-        sources = [path for path in (RUNTIME).rglob("*.cs")
-                   if "/Tests/" not in path.as_posix() and "/Plugins/" not in path.as_posix()]
+    # GREEN_ON_BASE(characterization): both floors clear on either corpus, which is the point — what
+    # the widening changes is which edits can move them, and no edit here is one. Only running it says
+    # whether the larger corpus still clears, and it is 12132 against 8000 and 3284 against 2500.
+    def test_Given_TheRepositorysOwnSources_When_MutantsAreGenerated_Then_EachTotalHoldsItsFloor(self):
+        # Arrange — floors rather than the exact numbers, which every edit to the package moves.
+        #
+        # The second floor is why there are two: dropping "{" and ":" from STATEMENT_BOUNDARY takes
+        # `line removed` down by more than a third and leaves the total above 8000, so the aggregate
+        # clears while the operator that fell has gone quiet. 2500 is under what the generator
+        # produces today with room for ordinary drift, and above what that narrowing leaves.
+        #
+        # The corpus is what a campaign mutates rather than Runtime alone, which the name and the
+        # sentence above both claimed and the reading did not: 337 removal lines sat outside it — 280
+        # under Editor/, 52 under CodeGen/, 5 under Samples~/ — so an edit there that stopped the
+        # generator moved neither floor. `mutable` is the same predicate `--emit-lines` hands the C#
+        # guards, so this holds over what they are given.
+        sources = [path for path in (REPO_ROOT / "Packages/com.velvet.core").rglob("*.cs")
+                   if mutation_check.mutable(path, REPO_ROOT)]
 
-        # Act
-        total = sum(len(mutation_check.mutations_for(
-            path, path.read_text(), set(range(1, len(path.read_text().splitlines()) + 1))))
-            for path in sources)
+        # Act — one scan for both, since a second would only re-read the same files.
+        mutants = [mutant
+                   for path in sources
+                   for mutant in mutation_check.mutations_for(
+                       path, path.read_text(),
+                       set(range(1, len(path.read_text().splitlines()) + 1)))]
+        removed = sum(1 for mutant in mutants if mutant.operator == "line removed")
 
         # Assert — the source count rides along because an empty scan clears any floor by arithmetic.
-        self.assertEqual((len(sources) > 200, total > 8000), (True, True))
+        self.assertEqual((len(sources) > 200, len(mutants) > 8000, removed > 2500),
+                         (True, True, True))
 
 
 class StatementChainCutTests(unittest.TestCase):
