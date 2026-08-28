@@ -141,7 +141,12 @@ def main():
         "  python3 scripts/pr/settle.py merge <pr>\n\n"
         "That reports what still blocks it, if anything does. If one is held on purpose, say what "
         f"clears it — the reason expires, so it gets re-read rather than forgotten:\n\n"
-        f'  echo "<pr> <what clears it> {int(now)}" >> {DEFERRALS}\n')
+        f'  echo "<pr> <what clears it> {int(now)}" >> {DEFERRALS}\n\n'
+        "A deferral claims somebody read the hold and judged it deliberate, so a cause invented for a "
+        "pull request you have never opened is the one shape of it that is false. Not owning it is "
+        "itself a reason, and it is one you can state truthfully — with the telling done rather than "
+        "intended, since that is the only part that moves the pull request:\n\n"
+        f'  echo "<pr> held by <owner>, who has been asked to settle it {int(now)}" >> {DEFERRALS}\n')
     return 2
 
 
