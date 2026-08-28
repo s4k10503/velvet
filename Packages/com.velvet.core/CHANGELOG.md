@@ -54,6 +54,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A `refCallback` setup, a `refCallback` cleanup cycled by a changed callback identity, an `onCreated:`,
+  a `wrapElement:` and a `V.Motion` `onEnterComplete:` that throw reach the nearest error boundary
+  instead of leaving the reconcile call — the containment a `UseEffect` cleanup and
+  `V.AnimatePresence`'s own `onExitComplete:` already had. Each is application code the reconciler
+  invokes for a component that is still live; with no boundary above it the exception is reported to
+  the console and the pass carries on. The `wrapElement:` escape left an orphan: the element was fully
+  built and its ref already queued, then dropped, so the ref was about to point at an element no tree
+  held — it now takes the slot unwrapped. A ref setup that throws no longer strands the setups queued
+  behind it, and a replacement setup still runs when the cleanup it replaced threw — React's own
+  independence between `safelyDetachRef` and `safelyAttachRef`.
+
 - A `V.AnimatePresence` that stops being rendered takes its bookkeeping with it. That bookkeeping is
   keyed by the component the presence renders in, the parent element its children expand into, and the
   presence's position — and only the component being disposed, or the whole tree being unmounted,

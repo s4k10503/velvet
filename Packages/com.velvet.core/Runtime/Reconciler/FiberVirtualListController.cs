@@ -187,6 +187,11 @@ namespace Velvet
             _renderedElements = newElements;
             _firstRenderedIndex = newFirst;
             _lastRenderedIndex = newLast;
+
+            // After DisposeScrolledOutItems, so a recycled item's ref cleanup runs before the setup of
+            // whatever took its place, and after the container rebuild, so a setup reads an item that is
+            // already in the list.
+            _reconciler.DrainRefAttachesForController();
         }
 
         // Indexes the still-rendered items by key into _oldNodesByKey, for RenderRange's reuse/patch
