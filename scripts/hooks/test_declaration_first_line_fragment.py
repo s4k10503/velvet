@@ -552,10 +552,11 @@ class ReaderFloorTests(unittest.TestCase):
         blocks = {"base_red_check": f"// {BASE}(characterization): {first}\n// the rest of it.\n",
                   "mutation_check": f"// {SURVIVES}(equivalent): {first}\n// the rest of it.\n"}
 
-        # Act
-        read = {name: reader.DECLARATION.search(blocks[name]).group(2)
+        # Act — the reason is each pattern's last group, which is what it is whether or not the
+        # pattern carries an operator group between the category and it.
+        read = {name: reader.DECLARATION.search(blocks[name]).groups()[-1]
                 for name, reader in READERS.items()}
-        read.update((f"guard/{name}", guard.DECLARATION.search(block).group(2))
+        read.update((f"guard/{name}", guard.DECLARATION.search(block).groups()[-1])
                     for name, block in blocks.items())
 
         # Assert
