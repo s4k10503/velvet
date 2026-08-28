@@ -52,11 +52,15 @@ class LeadingWordTests(unittest.TestCase):
         # Act / Assert
         self.assertEqual(self.subcommands("until git commit --amend; do sleep 1; done"), ["commit"])
 
+    # GREEN_ON_BASE(characterization): the base sees this one, which is the half a widening
+    # could take with it — the same table decides both.
     def test_Given_AGitCallContinuingAConditional_When_TheInvocationsAreRead_Then_ItIsStillSeen(self):
         # Arrange — the half that already worked, and the one a widening must not take with it.
         # Act / Assert
         self.assertEqual(self.subcommands("then git commit --amend"), ["commit"])
 
+    # GREEN_ON_BASE(characterization): the base sees this one, which is the half a widening
+    # could take with it — the same table decides both.
     def test_Given_TheKeywordInsideAQuotedString_When_TheInvocationsAreRead_Then_NothingIsSeen(self):
         # Arrange — the control on the other side: a word the shell will not run is not a command,
         # and a reading that answered yes here would refuse an `echo`.
