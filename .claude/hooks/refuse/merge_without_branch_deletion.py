@@ -21,6 +21,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+from pr_body import merges_nothing  # noqa: E402
 from shell_commands import program_invocations
 
 
@@ -41,6 +42,8 @@ def merges_without_deletion(command):
     """The pull requests this command merges while leaving their branches behind."""
     left = []
     for operands in program_invocations(command, "gh", ("pr", "merge")):
+        if merges_nothing(operands):
+            continue
         if any(token.partition("=")[0] in DELETE_FLAGS for token in operands):
             continue
         left.append(next((token for token in operands if token.isdigit()), ""))
