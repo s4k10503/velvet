@@ -30,6 +30,13 @@ def load_module():
 mutation_check = load_module()
 
 
+def code_parens(fragment):
+    """How far the fragment's parentheses are out of balance, counting only what the compiler sees."""
+    mask = mutation_check.code_mask(fragment)
+    seen = [fragment[offset] for offset in range(len(fragment)) if mask[offset]]
+    return seen.count("(") - seen.count(")")
+
+
 def mutants_of(text, operator=None):
     lines = set(range(1, len(text.splitlines()) + 1))
     found = mutation_check.mutations_for(Path("probe.cs"), text, lines)
@@ -158,12 +165,14 @@ class GenerationHealthTests(unittest.TestCase):
         # Arrange — an unbalanced cut compiles nowhere, and uncompilable noise hides real survivors.
         sources = [path for path in RUNTIME.rglob("*.cs") if "/Tests/" not in path.as_posix()]
 
-        # Act
+        # Act — counted through the mask rather than over the raw text. A cut carrying
+        # `StartsWith("rgb(", ...)` holds a parenthesis the compiler never sees, and reading it raw
+        # reports a balanced cut as broken; every operator here reads code the same way.
         unbalanced = []
         for path in sources:
             text = path.read_text()
             for mutant in mutants_of(text, "clause removed"):
-                if mutant.before.count("(") != mutant.before.count(")"):
+                if code_parens(mutant.before) != 0:
                     unbalanced.append(f"{path.name}:{mutant.line} {mutant.before.strip()}")
 
         # Assert — the source count rides along because an empty scan satisfies "none unbalanced".
