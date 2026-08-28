@@ -822,6 +822,66 @@ namespace Velvet.Tests
             Assert.That((blocked, laterState.Status), Is.EqualTo((false, RouteBlockerStatus.Idle)));
         }
 
+        // GREEN_ON_BASE(characterization): the snapshot is already taken, and this is what says what it
+        // is for. Measured: two cases beside it also fail when the walk goes back to the live list — but
+        // both assert a state that stays Idle, where this one asserts a later blocker ran.
+        [Test]
+        public void Given_AnEarlierBlockerUnregistersItself_When_ThePassContinues_Then_TheNextOneIsStillConsulted()
+        {
+            // Arrange — the pass walks a snapshot, so an entry removed mid-pass is still visited and the
+            // entries behind it do not shift under the walk. Three blockers, because with two the removal
+            // empties the list and the loop ends either way.
+            var manager = new RouteBlockerManager();
+            var secondSaw = false;
+            IDisposable first = null;
+            first = manager.Register(_ =>
+            {
+                first.Dispose();
+                return false;
+            }, new RouteBlockerState());
+            using var second = manager.Register(_ =>
+            {
+                secondSaw = true;
+                return true;
+            }, new RouteBlockerState());
+            using var third = manager.Register(_ => false, new RouteBlockerState());
+
+            // Act
+            var blocked = manager.CheckAsync(Attempt(), NoResume).GetAwaiter().GetResult();
+
+            // Assert — the decision rides along because a second that was consulted and a second that
+            // was skipped both leave every state Idle.
+            Assert.That((secondSaw, blocked), Is.EqualTo((true, true)));
+        }
+
+        // GREEN_ON_BASE(characterization): the superseded read already happens after the check returns,
+        // and this is what says so. Measured: hoisting it to the top of the loop body — where a reader
+        // expects a cancellation check — fails this case and no other in the suite.
+        [Test]
+        public void Given_AnAttemptTheCheckItselfSupersedes_When_ItWouldBlock_Then_NoStateIsFlipped()
+        {
+            // Arrange — the cancellation is read after the check returns rather than at the top of
+            // the loop body, so a token the check itself cancelled is still seen. Hoisting the read is
+            // the ordinary refactor, and it leaves Blocked wired to an attempt the caller discards.
+            //
+            // The check completes synchronously: yielding first would leave the pass mid-await, and
+            // the fixture drives it with GetResult rather than an await of its own.
+            var manager = new RouteBlockerManager();
+            var state = new RouteBlockerState();
+            using var cts = new CancellationTokenSource();
+            using var registration = manager.Register((attempt, token) =>
+            {
+                cts.Cancel();
+                return UniTask.FromResult(true);
+            }, state);
+
+            // Act
+            manager.CheckAsync(Attempt(), NoResume, cts.Token).GetAwaiter().GetResult();
+
+            // Assert
+            Assert.That(state.Status, Is.EqualTo(RouteBlockerStatus.Idle));
+        }
+
         [Test]
         public void Given_AnAlreadySupersededAttempt_When_ABlockerWouldBlock_Then_NoStateIsFlipped()
         {

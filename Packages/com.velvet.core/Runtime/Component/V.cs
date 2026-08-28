@@ -2400,7 +2400,8 @@ namespace Velvet
         /// <summary>
         /// Adds current-location active styling to <see cref="Link"/>.
         /// </summary>
-        /// <param name="to">Absolute or route-relative navigation target.</param>
+        /// <param name="to">Absolute or route-relative navigation target. A relative one takes the
+        /// same resolution for the active comparison that it takes to navigate.</param>
         /// <param name="activeClass">Appended to <paramref name="className"/> while non-empty and active.</param>
         /// <param name="end">Restricts active state to an exact path match instead of a segment-prefix match.</param>
         /// <param name="replace">Selects replacement instead of push navigation.</param>

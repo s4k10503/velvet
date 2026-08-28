@@ -128,6 +128,16 @@
             "type": "command",
             "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse/pr_body_of_another_branch.py\"",
             "timeout": 15000
+          },
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse/message_outside_its_worktree.py\"",
+            "timeout": 15000
+          },
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse/library_seed_without_room.py\"",
+            "timeout": 20000
           }
         ]
       },

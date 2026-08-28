@@ -419,6 +419,152 @@ class StatementChainCutTests(unittest.TestCase):
         self.assertEqual((len(sources) > 200, dropped), (True, []))
 
 
+class DoLoopTailTests(unittest.TestCase):
+    """The one `while` the removal must not take, and the one it must.
+
+    `while (more);` is an identifier, a parenthesised head and a semicolon, so the pattern reads it —
+    and what the removal leaves, `do { ... } ;`, the C# parser refuses with `'while' expected`. An
+    empty-bodied `while` loop is spelled identically and its removal compiles, so the two are
+    separated by what the code above closes rather than by the line itself.
+
+    Not live in this package today: the only `do` sits in a file `mutable()` excludes. What would
+    have fired is `MutantParseabilityTests` and `MutantLineRemovalTests`, on the day somebody writes
+    an ordinary `do` loop — reporting a red that reads as theirs.
+    """
+
+    def method(self, body):
+        return ("namespace N\n{\n    class C\n    {\n        void M()\n        {\n"
+                + body + "        }\n    }\n}\n")
+
+    def test_Given_ADoLoopTailBelowAOneLineBlock_When_MutantsAreGenerated_Then_ItIsNotRemoved(self):
+        # Arrange — the `do` and its whole block on one line, so the code above the tail is a `}` with
+        # the `do` in front of it on the same line.
+        body = "            do { Step(); }\n            while (more);\n"
+
+        # Act
+        deletions = mutants_of(self.method(body), "line removed")
+
+        # Assert
+        self.assertEqual([mutant.before for mutant in deletions if "while" in mutant.before], [])
+
+    def test_Given_ADoLoopTailBelowABlock_When_MutantsAreGenerated_Then_ItIsNotRemoved(self):
+        # Arrange — the `do` and the brace it opens on different lines, with the block holding braces
+        # of its own, which is what the depth walk is for.
+        body = ("            do\n            {\n                if (ready) { Step(); }\n"
+                "            }\n            while (more);\n")
+
+        # Act
+        deletions = mutants_of(self.method(body), "line removed")
+
+        # Assert
+        self.assertEqual([mutant.before for mutant in deletions if "while" in mutant.before], [])
+
+    # GREEN_ON_BASE(characterization): the base removes it too, and it is the half the refusal must
+    # not take with it — the two spellings are identical on the line itself.
+    def test_Given_AnEmptyBodiedWhileLoop_When_MutantsAreGenerated_Then_ItIsStillRemoved(self):
+        # Arrange — the control: the same spelling, closing no `do`, and its removal compiles. Without
+        # it a reading that refused every `while` would satisfy the two cases above.
+        body = "            Prepare();\n            while (Poll());\n"
+
+        # Act
+        deletions = mutants_of(self.method(body), "line removed")
+
+        # Assert
+        self.assertEqual([mutant.before for mutant in deletions if "while" in mutant.before],
+                         ["while (Poll());"])
+
+
+class MutableScopeTests(unittest.TestCase):
+    """What a campaign may mutate, which has to be what a Unity build compiles.
+
+    Unity's asset database does not import a `~`-suffixed directory, so a source under one compiles
+    into nothing: mutating a line there leaves every assembly byte-identical, the run scores
+    `NOT_BUILT`, and no receipt can be written. A branch editing one could therefore never earn a
+    passing campaign, and what it was told named a build state rather than a scope rule.
+    """
+
+    def test_Given_ASourceUnderATildeDirectory_When_TheScopeIsRead_Then_ItIsNotMutable(self):
+        # Arrange — the live case: the starter sample exists twice, and this is the copy nothing
+        # compiles.
+        path = REPO_ROOT / "Packages/com.velvet.core/Samples~/StarterApp/StarterApp.cs"
+
+        # Act / Assert — the file's presence rides along, because a path that is not there is not
+        # mutable either and would satisfy this having read nothing.
+        self.assertEqual((path.exists(), mutation_check.mutable(path, REPO_ROOT)), (True, False))
+
+    # GREEN_ON_BASE(characterization): the base mutates this too, and it is the half a widened exclusion could take with it.
+    def test_Given_ASourceUnderTheRuntime_When_TheScopeIsRead_Then_ItIsStillMutable(self):
+        # Arrange — the control: a rule that excluded everything would satisfy the case above.
+        path = REPO_ROOT / "Packages/com.velvet.core/Runtime/Routing/RouteTree.cs"
+
+        # Act / Assert
+        self.assertEqual((path.exists(), mutation_check.mutable(path, REPO_ROOT)), (True, True))
+
+    # GREEN_ON_BASE(characterization): the base excludes these by name, and this says the rule that replaced the name still does.
+    def test_Given_TheGeneratorSources_When_TheScopeIsRead_Then_TheyAreStillOut(self):
+        # Arrange — named one directory at a time before, which is the same rule read off one
+        # instance of it.
+        path = REPO_ROOT / "Packages/com.velvet.core/Generators~/src/Velvet.StyleTable/StyleTable.cs"
+
+        # Act / Assert
+        self.assertFalse(mutation_check.mutable(path, REPO_ROOT))
+
+
+class GenericCallRemovalTests(unittest.TestCase):
+    """A call whose name carries type arguments, which the removal pattern could not read.
+
+    `target.RegisterCallback<GeometryChangedEvent>(OnGeometry);` is a call whose deletion the tests
+    should notice, and it matched nothing: 109 whole statements in this package passed every other
+    reading and generated no mutant. The loss was silent — a line no operator reaches is reported the
+    same way as a line with nothing to mutate.
+    """
+
+    def test_Given_ACallCarryingTypeArguments_When_MutantsAreGenerated_Then_ItIsRemovable(self):
+        # Arrange
+        text = "Prepare();\ntarget.RegisterCallback<GeometryChangedEvent>(OnGeometry);\n"
+
+        # Act
+        deletions = [mutant.before for mutant in mutants_of(text, "line removed")]
+
+        # Assert
+        self.assertIn("target.RegisterCallback<GeometryChangedEvent>(OnGeometry);", deletions)
+
+    def test_Given_ANestedTypeArgument_When_MutantsAreGenerated_Then_ItIsStillRemovable(self):
+        # Arrange — the argument list is read as a character class, so a generic inside it is inside
+        # the class rather than outside the match.
+        text = "Prepare();\nRegister<Dictionary<string, int>>(store);\n"
+
+        # Act
+        deletions = [mutant.before for mutant in mutants_of(text, "line removed")]
+
+        # Assert
+        self.assertIn("Register<Dictionary<string, int>>(store);", deletions)
+
+    # GREEN_ON_BASE(characterization): the base does not read this as a call either, and it is what the widened class could start
+    # reading — only running it says whether it did.
+    def test_Given_AComparisonThatLooksLikeOne_When_MutantsAreGenerated_Then_ItIsNotRemoved(self):
+        # Arrange — the control: `;` and `(` are deliberately outside the character class, so a
+        # statement whose angle brackets are comparisons is not read as a call.
+        text = "Prepare();\nvar ok = a < b && c > (d);\n"
+
+        # Act
+        deletions = [mutant.before for mutant in mutants_of(text, "line removed")]
+
+        # Assert
+        self.assertNotIn("var ok = a < b && c > (d);", deletions)
+
+    # GREEN_ON_BASE(characterization): the base removes this, and it is the half the widening must not lose.
+    def test_Given_APlainCall_When_MutantsAreGenerated_Then_ItIsStillRemovable(self):
+        # Arrange — the half that already worked, and what the widened pattern must not lose.
+        text = "Prepare();\nStep(now);\n"
+
+        # Act
+        deletions = [mutant.before for mutant in mutants_of(text, "line removed")]
+
+        # Assert
+        self.assertIn("Step(now);", deletions)
+
+
 class LineRemovalReadingTests(unittest.TestCase):
     """What the removal reads a line as, and what it puts back in place of it.
 
@@ -2053,6 +2199,34 @@ class EmitLinesTests(unittest.TestCase):
         self.assertEqual(campaign.seen, [])
 
 
+PROBE_WITH_VERBATIM = """\
+namespace Velvet
+{
+    internal static class Probe
+    {
+        internal static bool Ready(int a, int b) => a <= b && Name().Length > 0;
+
+        internal static string Name() => @"a
+
+b";
+    }
+}
+"""
+
+
+PROBE_WITH_LITERAL = """\
+namespace Velvet
+{
+    internal static class Probe
+    {
+        internal static bool Ready(int a, int b) => a <= b && Name() == "ready";
+
+        internal static string Name() => "ready";
+    }
+}
+"""
+
+
 class ReceiptTests(unittest.TestCase):
     """What asks whether the campaign was run at all.
 
@@ -2152,11 +2326,57 @@ class ReceiptTests(unittest.TestCase):
         # Assert
         self.assertEqual(code, mutation_check.RECEIPT_REFUSAL)
 
+    # GREEN_ON_BASE(refactor): the byte hash refused a code edit too; what moves is the comment case beside it.
     def test_Given_APassingCampaign_When_AMutatedFileIsEditedWithoutCommitting_Then_ItIsRefusedAgain(self):
         # Arrange — the reading the head tree sha cannot take: this edit moves no tree sha at all.
         campaign = StubbedCampaign()
         campaign.write_receipt("pass")
+        campaign.source.write_text(
+            campaign.source.read_text().replace("a <= b", "a < b"))
+
+        # Act
+        code = campaign.run_over_diff("--receipt")
+
+        # Assert
+        self.assertEqual(code, mutation_check.RECEIPT_REFUSAL)
+
+    def test_Given_APassingCampaign_When_OnlyACommentIsAdded_Then_TheReceiptStillCovers(self):
+        # Arrange — a comment carries no mutant, so voiding on one asks for a fresh campaign over a
+        # byte-identical mutant set.
+        campaign = StubbedCampaign()
+        campaign.write_receipt("pass")
         campaign.source.write_text(campaign.source.read_text() + "// an edit after the run\n")
+
+        # Act
+        code = campaign.run_over_diff("--receipt")
+
+        # Assert
+        self.assertEqual(code, 0)
+
+    # GREEN_ON_BASE(refactor): the byte hash refused this too. It is the shape the line-dropping
+    # this change adds could reach and must not, and only running it says whether it did.
+    def test_Given_APassingCampaign_When_ABlankLineInsideAVerbatimStringGoes_Then_ItIsRefusedAgain(self):
+        # Arrange — an empty line inside a verbatim string is part of the value, and it is the one
+        # place where removing a line changes behaviour. The digest drops the lines a comment
+        # emptied, so this is the shape that drop must not reach.
+        campaign = StubbedCampaign(PROBE_WITH_VERBATIM)
+        campaign.write_receipt("pass")
+        campaign.source.write_text(campaign.source.read_text().replace("a\n\nb", "a\nb"))
+
+        # Act
+        code = campaign.run_over_diff("--receipt")
+
+        # Assert
+        self.assertEqual(code, mutation_check.RECEIPT_REFUSAL)
+
+    # GREEN_ON_BASE(refactor): the byte hash refused a literal edit too, and this pins that the narrower keying still does.
+    def test_Given_APassingCampaign_When_AStringLiteralIsEdited_Then_ItIsRefusedAgain(self):
+        # Arrange — a literal is masked for generation and kept in the digest: editing one changes
+        # behaviour a mutant could have covered, so the receipt does not carry across it.
+        campaign = StubbedCampaign(body=PROBE_WITH_LITERAL)
+        campaign.write_receipt("pass")
+        campaign.source.write_text(
+            campaign.source.read_text().replace('"ready"', '"steady"'))
 
         # Act
         code = campaign.run_over_diff("--receipt")

@@ -392,10 +392,22 @@ OPERATORS = [
 
 WORD_OPERATORS = [("true", "false", "literal"), ("false", "true", "literal")]
 
-# An identifier, a parenthesised head, a semicolon-terminated tail. The word in front of the
-# parenthesis is no part of that, so what the removal takes is everything the line runs rather than
-# one call -- which is what its verdict is named for.
-REMOVABLE_LINE = re.compile(r"^[A-Za-z_][A-Za-z0-9_.]*(\.[A-Za-z_][A-Za-z0-9_]*)*\s*\([^;]*\)\s*;$")
+# An identifier, an optional type argument list, a parenthesised head, a semicolon-terminated tail.
+# The word in front of the parenthesis is no part of that, so what the removal takes is everything the
+# line runs rather than one call -- which is what its verdict is named for.
+#
+# The type arguments are read because `target.RegisterCallback<GeometryChangedEvent>(OnGeometry);` is
+# a call whose deletion the tests should notice, and without them it matched nothing: 109 whole
+# statements in this package passed every other reading and generated no mutant. The loss was silent,
+# because a line no operator reaches is reported the same way as a line with nothing to mutate.
+#
+# The argument list is a character class rather than a balanced read: a nested generic is inside it,
+# and what is deliberately not inside it is `;` or `(`, so a comparison -- `a < b && c > (d);` -- is
+# not read as one.
+REMOVABLE_LINE = re.compile(
+    r"^[A-Za-z_][A-Za-z0-9_.]*(\.[A-Za-z_][A-Za-z0-9_]*)*"
+    r"(<[A-Za-z0-9_.,<>\[\]?\s]*>)?"
+    r"\s*\([^;]*\)\s*;$")
 
 # `return (value, done);` has the shape above and is not a line whose code can go: what replaces it
 # is an empty statement, so what the line returns goes with it. A word rather than a prefix, because
@@ -585,16 +597,51 @@ def code_below(text, mask, spans, number):
     return ""
 
 
+# A `do` loop's tail. `while (more);` is an identifier, a parenthesised head and a semicolon, which
+# is what the removal pattern reads -- and the head it would leave, `do { ... } ;`, is not a
+# statement: the C# parser says `'while' expected`. An empty-bodied `while` loop is spelled the same
+# and its removal compiles, so the two are separated by what the code above closes.
+WHILE_TAIL = re.compile(r"^while\s*\(")
+
+
+def closes_a_do_block(text, mask, spans, number):
+    """Whether the code above line `number` closes a `do` block.
+
+    Walked up by brace depth rather than by pattern, because the `do` and the brace it opens may sit
+    on different lines and the block between them holds braces of its own.
+    """
+    if not code_above(text, mask, spans, number).endswith("}"):
+        return False
+    depth = 0
+    for above in range(number - 2, -1, -1):
+        seen = code_only(text, mask, *spans[above]).strip()
+        if not seen:
+            continue
+        depth += seen.count("}") - seen.count("{")
+        if depth > 0:
+            continue
+        cut = seen.rfind("{")
+        head = seen[:cut].rstrip() if cut >= 0 else ""
+        if head:
+            return head.endswith("do")
+        # The brace stands alone, so the `do` is whatever code sits above it.
+        return code_above(text, mask, spans, above + 1).rstrip().endswith("do")
+    return False
+
+
 def deletable_line(text, mask, spans, number):
     """Whether removing line `number`'s code leaves what surrounds it standing.
 
-    Two ways it is not, both measured with the C# parser over every mutant this package generates.
-    The code above has to have ended a statement -- `=> Fragment(...)` and `= new(...)` both match
-    the removal pattern and are the tail of a declaration, so deleting them leaves a member with no
-    body, which was 77 mutants. And an `if (...) Call();` whose next line is an `else` takes the
-    `if` with it and strands the `else`, which was six more.
+    Three ways it is not, each measured with the C# parser. The code above has to have ended a
+    statement -- `=> Fragment(...)` and `= new(...)` both match the removal pattern and are the tail
+    of a declaration, so deleting them leaves a member with no body, which was 77 mutants. An
+    `if (...) Call();` whose next line is an `else` takes the `if` with it and strands the `else`,
+    which was six more. And a `do` loop's `while` tail leaves a `do` block with no tail at all.
     """
     if not code_above(text, mask, spans, number).endswith(STATEMENT_BOUNDARY):
+        return False
+    if WHILE_TAIL.match(code_only(text, mask, *spans[number - 1]).strip()) \
+            and closes_a_do_block(text, mask, spans, number):
         return False
     return not code_below(text, mask, spans, number).startswith("else")
 
@@ -897,8 +944,14 @@ def mutable(path, project):
         return False
     if not relative.startswith(PACKAGE + "/"):
         return False
-    # Generators~ is outside the Unity build and has its own mutation run; see its README.
-    if "/Generators~/" in relative:
+    # Unity's asset database does not import a `~`-suffixed directory, so a source under one compiles
+    # into nothing here: mutating a line there leaves every assembly byte-identical, the run scores
+    # NOT_BUILT, and no receipt can be written -- so a branch that edits one can never earn a passing
+    # campaign, and what it is told names a build state rather than a scope rule. The starter sample
+    # is the live case: `Samples~/StarterApp` is the copy nothing compiles, and `sync_starter_sample.py`
+    # keeps `Assets/VelvetStarterSample` beside it as the copy that does. `Generators~` was named here
+    # one directory at a time, which is the same rule read off one instance of it.
+    if any(part.endswith("~") for part in relative.split("/")):
         return False
     # A mutation inside a test asserts nothing about the code the test covers.
     return "/Tests/" not in relative and "/TestUtilities/" not in relative
@@ -1097,6 +1150,43 @@ def refusal(code, message):
     return code
 
 
+def digestible(text):
+    """The file with its comments removed, and the lines they emptied with them.
+
+    What a receipt is keyed on has to move when what a campaign measured moves, and no further. A
+    comment carries no mutant -- `mask_spans` reads it as something other than code, and the
+    generator skips it -- so an edit to one voids a receipt over a change no operator could have
+    seen, and a review round here is largely prose.
+
+    A string literal is masked for generation and kept here, because editing one changes behaviour a
+    mutant could have covered. A directive is kept for the same reason: it decides what compiles. A
+    blank line inside a verbatim string is part of the value, and a verbatim span is the only one
+    `mask_spans` reads across lines, so a line holding one is never dropped as empty.
+    """
+    keep = [True] * len(text)
+    quoted = [False] * len(text)
+    for start, end, kind in mask_spans(text):
+        for offset in range(start, min(end, len(text))):
+            if kind in (LINE_COMMENT, BLOCK_COMMENT):
+                keep[offset] = False
+            elif kind == VERBATIM:
+                quoted[offset] = True
+
+    lines, held, spans = [], [], False
+    for offset, character in enumerate(text):
+        if character == "\n":
+            # The newline too: a line that is empty inside a verbatim string holds nothing else to
+            # ask, and it is the one this has to keep.
+            lines.append(("".join(held), spans or quoted[offset]))
+            held, spans = [], False
+            continue
+        spans = spans or quoted[offset]
+        if keep[offset]:
+            held.append(character)
+    lines.append(("".join(held), spans))
+    return "\n".join(line for line, held_a_span in lines if line.strip() or held_a_span)
+
+
 def scope_digest(base, targets, project, platform):
     """What a campaign measured, in a form a later check can compare a tree against.
 
@@ -1109,13 +1199,19 @@ def scope_digest(base, targets, project, platform):
     What it does not cover is a test-side change. Removing a test can make a killed mutant survive,
     and this stays valid across it; including tests would void the receipt on the ordinary act of
     adding one after the run, which is most of a branch's commits.
+
+    Nor a comment: `digestible` takes them out before the hash, so a receipt survives the prose
+    correction a review round leaves behind. Anything narrower than the whole bytes has to be
+    checked for what it stops voiding on, and this stops on exactly the spans the generator already
+    refuses to mutate.
     """
     parts = [base, platform]
     for path in sorted(targets, key=str):
         # Repository-relative, so a receipt does not depend on where the checkout sits: a resolved
         # path and an unresolved one reach the same file and digest differently.
-        parts.append("{}:{}".format(relative_to(path, project).as_posix(),
-                                    hashlib.sha256(path.read_bytes()).hexdigest()))
+        parts.append("{}:{}".format(
+            relative_to(path, project).as_posix(),
+            hashlib.sha256(digestible(path.read_text(encoding="utf-8")).encode()).hexdigest()))
     return hashlib.sha256("\n".join(parts).encode()).hexdigest()
 
 

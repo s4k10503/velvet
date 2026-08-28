@@ -131,7 +131,8 @@ def judge_inline(text, command):
             command,
             "the body is assembled by the shell, so the description this\n"
             "can read is not the one that will be posted.\n\n"
-            "Write it to a file in a step of its own and pass `--body-file <path>`.")
+            "Write it to a file in a step of its own, inside the worktree it describes, and pass\n"
+            "`--body-file <path>`.")
     return refuse_command(command, NO_ANSWER)
 
 
@@ -161,9 +162,9 @@ UNREADABLE_BODY = {
 }
 
 
-def check(operands, cwd, after_a_move, command="gh pr create"):
+def check(operands, cwd, after_a_move, command="gh pr create", words=None):
     """0, or 2 with the reason written to stderr."""
-    text, obstruction, path = effective_body(operands, cwd, after_a_move)
+    text, obstruction, path = effective_body(operands, cwd, after_a_move, words)
     if obstruction is not None:
         return refuse_command(command, UNREADABLE_BODY[obstruction].replace("{path}", path))
     if text is None:
@@ -194,7 +195,7 @@ def main():
             return 0
         for words, operands, moved in invocations(
                 command, ("pr", "create"), ("pr", "new"), ("pr", "edit")):
-            verdict = check(operands, cwd, moved, "gh pr " + words[1])
+            verdict = check(operands, cwd, moved, "gh pr " + words[1], words)
             if verdict:
                 return verdict
         return 0

@@ -121,9 +121,17 @@ def staged_paths(cwd):
 
 
 def worktree_paths(cwd, pathspecs):
+    """The paths a commit would take from the worktree, narrowed by `pathspecs`.
+
+    `~` is expanded before git sees it. The shell expands one and git does not, so a pathspec spelled
+    that way reached git literally, matched nothing, and left the checks below reading no content at
+    all -- measured, `git commit -m x -- ~/velvet/a.cs` passed every one of them. Expanded, it is an
+    absolute path outside the repository and git refuses it, which reaches the refusal above rather
+    than the silence.
+    """
     args = ["diff", "--name-only", "--diff-filter=ACMR"]
     if pathspecs:
-        args += ["--", *pathspecs]
+        args += ["--", *(os.path.expanduser(spec) for spec in pathspecs)]
     result = git(cwd, *args)
     if result is None or result.returncode != 0:
         return UNREADABLE
