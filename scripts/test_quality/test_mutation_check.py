@@ -419,6 +419,61 @@ class StatementChainCutTests(unittest.TestCase):
         self.assertEqual((len(sources) > 200, dropped), (True, []))
 
 
+class DoLoopTailTests(unittest.TestCase):
+    """The one `while` the removal must not take, and the one it must.
+
+    `while (more);` is an identifier, a parenthesised head and a semicolon, so the pattern reads it —
+    and what the removal leaves, `do { ... } ;`, the C# parser refuses with `'while' expected`. An
+    empty-bodied `while` loop is spelled identically and its removal compiles, so the two are
+    separated by what the code above closes rather than by the line itself.
+
+    Not live in this package today: the only `do` sits in a file `mutable()` excludes. What would
+    have fired is `MutantParseabilityTests` and `MutantLineRemovalTests`, on the day somebody writes
+    an ordinary `do` loop — reporting a red that reads as theirs.
+    """
+
+    def method(self, body):
+        return ("namespace N\n{\n    class C\n    {\n        void M()\n        {\n"
+                + body + "        }\n    }\n}\n")
+
+    def test_Given_ADoLoopTailBelowAOneLineBlock_When_MutantsAreGenerated_Then_ItIsNotRemoved(self):
+        # Arrange — the `do` and its whole block on one line, so the code above the tail is a `}` with
+        # the `do` in front of it on the same line.
+        body = "            do { Step(); }\n            while (more);\n"
+
+        # Act
+        deletions = mutants_of(self.method(body), "line removed")
+
+        # Assert
+        self.assertEqual([mutant.before for mutant in deletions if "while" in mutant.before], [])
+
+    def test_Given_ADoLoopTailBelowABlock_When_MutantsAreGenerated_Then_ItIsNotRemoved(self):
+        # Arrange — the `do` and the brace it opens on different lines, with the block holding braces
+        # of its own, which is what the depth walk is for.
+        body = ("            do\n            {\n                if (ready) { Step(); }\n"
+                "            }\n            while (more);\n")
+
+        # Act
+        deletions = mutants_of(self.method(body), "line removed")
+
+        # Assert
+        self.assertEqual([mutant.before for mutant in deletions if "while" in mutant.before], [])
+
+    # GREEN_ON_BASE(characterization): the base removes it too, and it is the half the refusal must
+    # not take with it — the two spellings are identical on the line itself.
+    def test_Given_AnEmptyBodiedWhileLoop_When_MutantsAreGenerated_Then_ItIsStillRemoved(self):
+        # Arrange — the control: the same spelling, closing no `do`, and its removal compiles. Without
+        # it a reading that refused every `while` would satisfy the two cases above.
+        body = "            Prepare();\n            while (Poll());\n"
+
+        # Act
+        deletions = mutants_of(self.method(body), "line removed")
+
+        # Assert
+        self.assertEqual([mutant.before for mutant in deletions if "while" in mutant.before],
+                         ["while (Poll());"])
+
+
 class LineRemovalReadingTests(unittest.TestCase):
     """What the removal reads a line as, and what it puts back in place of it.
 

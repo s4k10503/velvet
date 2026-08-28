@@ -585,16 +585,51 @@ def code_below(text, mask, spans, number):
     return ""
 
 
+# A `do` loop's tail. `while (more);` is an identifier, a parenthesised head and a semicolon, which
+# is what the removal pattern reads -- and the head it would leave, `do { ... } ;`, is not a
+# statement: the C# parser says `'while' expected`. An empty-bodied `while` loop is spelled the same
+# and its removal compiles, so the two are separated by what the code above closes.
+WHILE_TAIL = re.compile(r"^while\s*\(")
+
+
+def closes_a_do_block(text, mask, spans, number):
+    """Whether the code above line `number` closes a `do` block.
+
+    Walked up by brace depth rather than by pattern, because the `do` and the brace it opens may sit
+    on different lines and the block between them holds braces of its own.
+    """
+    if not code_above(text, mask, spans, number).endswith("}"):
+        return False
+    depth = 0
+    for above in range(number - 2, -1, -1):
+        seen = code_only(text, mask, *spans[above]).strip()
+        if not seen:
+            continue
+        depth += seen.count("}") - seen.count("{")
+        if depth > 0:
+            continue
+        cut = seen.rfind("{")
+        head = seen[:cut].rstrip() if cut >= 0 else ""
+        if head:
+            return head.endswith("do")
+        # The brace stands alone, so the `do` is whatever code sits above it.
+        return code_above(text, mask, spans, above + 1).rstrip().endswith("do")
+    return False
+
+
 def deletable_line(text, mask, spans, number):
     """Whether removing line `number`'s code leaves what surrounds it standing.
 
-    Two ways it is not, both measured with the C# parser over every mutant this package generates.
-    The code above has to have ended a statement -- `=> Fragment(...)` and `= new(...)` both match
-    the removal pattern and are the tail of a declaration, so deleting them leaves a member with no
-    body, which was 77 mutants. And an `if (...) Call();` whose next line is an `else` takes the
-    `if` with it and strands the `else`, which was six more.
+    Three ways it is not, each measured with the C# parser. The code above has to have ended a
+    statement -- `=> Fragment(...)` and `= new(...)` both match the removal pattern and are the tail
+    of a declaration, so deleting them leaves a member with no body, which was 77 mutants. An
+    `if (...) Call();` whose next line is an `else` takes the `if` with it and strands the `else`,
+    which was six more. And a `do` loop's `while` tail leaves a `do` block with no tail at all.
     """
     if not code_above(text, mask, spans, number).endswith(STATEMENT_BOUNDARY):
+        return False
+    if WHILE_TAIL.match(code_only(text, mask, *spans[number - 1]).strip()) \
+            and closes_a_do_block(text, mask, spans, number):
         return False
     return not code_below(text, mask, spans, number).startswith("else")
 
