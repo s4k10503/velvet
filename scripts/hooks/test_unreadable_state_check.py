@@ -639,6 +639,8 @@ class ZeroCheckTests(unittest.TestCase):
         # Act / Assert
         self.assertEqual((check.SELF_REPORT in said, "its merge state" in said), (True, True))
 
+    # GREEN_ON_BASE(refactor): only the sentence these name the absence of is renamed here. What
+    # they hold either side of it is that the unread-state guard speaks instead of it.
     def test_Given_AnEmptyAnswerFromTheCheckRead_When_Judged_Then_ItIsNotTakenForNone(self):
         # Arrange — the exit code is 0 and the output is empty, so nothing about the exit says the
         # read failed; the rollup naming a check is what says the empty answer was not one.
@@ -647,6 +649,8 @@ class ZeroCheckTests(unittest.TestCase):
         # Act / Assert
         self.assertEqual((check.SELF_REPORT in said, "no check ever ran for its head" in said), (True, False))
 
+    # GREEN_ON_BASE(refactor): only the sentence these name the absence of is renamed here. What
+    # they hold either side of it is that the unread-state guard speaks instead of it.
     def test_Given_AnEmptyListFromTheCheckRead_When_Judged_Then_ItIsNotTakenForNone(self):
         # Arrange — the same question as the case above with the other spelling of empty, so the
         # rollup is what decides however the emptiness arrives rather than for one shape of it.
@@ -655,6 +659,8 @@ class ZeroCheckTests(unittest.TestCase):
         # Act / Assert
         self.assertEqual((check.SELF_REPORT in said, "no check ever ran for its head" in said), (True, False))
 
+    # GREEN_ON_BASE(refactor): only the sentence these name the absence of is renamed here. What
+    # they hold either side of it is that the unread-state guard speaks instead of it.
     def test_Given_ARollupThatIsNotAList_When_ItIsRead_Then_ItIsNotTakenForNone(self):
         # Arrange — the merge state answers CLEAN, so a rollup misread as empty produces the
         # run-did-not-start sentence about a list nothing here understood.
@@ -663,6 +669,8 @@ class ZeroCheckTests(unittest.TestCase):
         # Act / Assert
         self.assertEqual((check.SELF_REPORT in said, "no check ever ran for its head" in said), (True, False))
 
+    # GREEN_ON_BASE(refactor): only the sentence these name the absence of is renamed here. What
+    # they hold either side of it is that the unread-state guard speaks instead of it.
     def test_Given_AnUnreadCheckListBesideAReadableMergeState_When_Judged_Then_NoneIsNotReportedAsZero(self):
         # Arrange — the merge state answers CLEAN, so a check read taken for an empty one produces
         # the run-did-not-start sentence, about a list nothing here read.
