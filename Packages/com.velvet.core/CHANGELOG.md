@@ -54,6 +54,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `SearchParams.Empty` hands back a new instance on each read. It was a `static readonly` field
+  holding one instance for the whole process, and `SearchParams.Append` mutates the instance it is
+  called on, so the shape the member invites — `var next = SearchParams.Empty; next.Append("q",
+  term);` — wrote into that one instance, and a read of `SearchParams.Empty` anywhere else in the
+  process carried `q` from then on. `SearchParams` declares no member that removes a value, so the
+  written-into instance stayed that way. Reading the member is spelled the same and still yields an
+  empty `SearchParams`; what two reads no longer share is the object. A reference comparison against
+  `SearchParams.Empty` therefore no longer recognises an instance taken from an earlier read, and
+  binding a readonly reference to the member — an argument written with an explicit `in`, a
+  `ref readonly` local, a `ref readonly` return — stops compiling. Reaching that last one takes a
+  declaration over the concrete `SearchParams` type, and no Velvet signature declares a
+  `SearchParams` parameter.
+
 - A `refCallback` setup, a `refCallback` cleanup cycled by a changed callback identity, an `onCreated:`,
   a `wrapElement:` and a `V.Motion` `onEnterComplete:` that throw reach the nearest error boundary
   instead of leaving the reconcile call — the containment a `UseEffect` cleanup and
