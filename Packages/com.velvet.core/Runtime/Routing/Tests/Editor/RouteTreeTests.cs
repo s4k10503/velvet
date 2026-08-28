@@ -528,7 +528,7 @@ namespace Velvet.Tests
         {
             // Arrange — the present path captures `id` as "end" and then fails, having nothing left for
             // the segment behind it; the skip path is what matches. `users/:id?` cannot reach this: the
-            // optional is last there, so the present path never runs.
+            // optional is last there, so the present path either succeeds or is never tried.
             var tree = new RouteTree(new[] { Route(":id?/end") });
 
             // Act
@@ -552,6 +552,39 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(result, Is.Null);
+        }
+
+        [Test]
+        public void Given_AnOptionalLiteralSharingAParamsName_When_ItsPresentPathFails_Then_TheParamSurvives()
+        {
+            // Arrange — the optional is a literal spelled `p`, and the param before it is named `p` too.
+            // The present path tries the literal against "a", fails, and runs the restore on its way out.
+            var tree = new RouteTree(new[] { Route(":p/p?/a") });
+
+            // Act
+            var result = tree.Match("/a/a");
+
+            // Assert — a restore that ran for a literal would read the segment's text as a capture key
+            // and take `p` with it.
+            Assert.That((result != null, result != null ? result[0].Params["p"] : null),
+                        Is.EqualTo((true, "a")));
+        }
+
+        [Test]
+        public void Given_AUrlWithAnEmptySegment_When_ItIsCaptured_Then_TheBaseDoesNotCarryIt()
+        {
+            // Arrange — the split that produces path segments does not drop empty entries, so `//`
+            // arrives as a segment and a param captures it.
+            var tree = new RouteTree(new[] { Route("docs/:slug/edit") });
+
+            // Act
+            var result = tree.Match("/docs//edit");
+
+            // Assert — the capture rides along, because a URL that matched nothing would satisfy the
+            // base half having captured nothing.
+            Assert.That((result != null ? result[0].Params["slug"] : null,
+                         result != null ? result[0].PathnameBase : null),
+                        Is.EqualTo(("", "/docs/edit")));
         }
 
         [Test]

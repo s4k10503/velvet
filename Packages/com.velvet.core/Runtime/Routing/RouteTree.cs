@@ -55,9 +55,6 @@ namespace Velvet
 
         private sealed class RouteBranch
         {
-            // Set together at construction, so neither is nullable and neither reading has a branch for
-            // an absence that cannot happen. The two null checks that were here survived every mutant
-            // that removed them, which is what an unreachable branch does.
             public readonly RouteDefinition[] Chain;
             public readonly List<RouteSegment> Pattern;
             public int Score;
@@ -232,10 +229,6 @@ namespace Velvet
 
         /// <summary>One branch probe's state: everything the walk carries that does not change as it
         /// descends, plus the two things it fills in.</summary>
-        /// <remarks>
-        /// A ref struct so the dictionary stays lazy. Match probes ranked branches until one succeeds
-        /// and discards a failed probe's captures, so allocating eagerly pays per branch and keeps one.
-        /// </remarks>
         private ref struct Walk
         {
             public readonly List<RouteSegment> Pattern;
@@ -283,12 +276,10 @@ namespace Velvet
         }
 
         /// <remarks>
-        /// Writes into `taken` as it walks and never unwrites. A failed probe's entries are not the
-        /// capture dictionary's problem one level up: `taken` is indexed by pattern position, and the
-        /// walk that succeeds decides every position it passes, so nothing it did not decide is read.
-        /// Undoing them was written here anyway, on the strength of the capture snapshot below being
-        /// the same discipline -- and it is not, a dictionary keyed by name having no such property.
-        /// Three mutants removing the undo all survived, and the suite is green without it.
+        /// Writes into `taken` as it walks and never unwrites. Undoing a failed probe's entries was
+        /// written here at first, on the strength of the capture snapshot below being the same
+        /// discipline -- and it is not: `taken` is indexed by pattern position, which the next probe
+        /// overwrites as it passes, where a dictionary keyed by name has no such property.
         /// </remarks>
         private static bool TryConsume(ref Walk walk, int pi, int si)
         {
@@ -363,10 +354,9 @@ namespace Velvet
             }
 
             // The failed attempt may have been what created the dictionary, so it can be non-null here
-            // even when the snapshot above saw null.
-            // MUTANT_SURVIVES(equivalent): the body restores or removes the key this segment named, and
-            // a segment that named none has nothing under that key to disturb -- so a mutation that
-            // widens the guard reaches a body with nothing to do.
+            // even when the snapshot above saw null. `seg.IsParam` is not redundant with that: for a
+            // literal, `seg.Value` is its text, and removing under it takes whatever param happens to
+            // share the spelling.
             if (seg.IsParam && walk.Captured != null)
             {
                 if (keyExisted)
@@ -454,8 +444,7 @@ namespace Velvet
 
                 // `taken` is not read for a splat or a param: the first resolves from the captured
                 // tail and the second from its capture, and only a literal has nothing else to say
-                // whether the URL held it. A mutant that changed what the splat branch wrote there
-                // survived every test, which is what a write nobody reads does.
+                // whether the URL held it.
                 if (seg.IsSplat)
                 {
                     if (captured.TryGetValue("*", out var splat) && splat.Length > 0)
@@ -467,8 +456,9 @@ namespace Velvet
 
                 if (seg.IsParam)
                 {
-                    // MUTANT_SURVIVES(unreachable): a capture is a URL segment, and the split that
-                    // produces them drops the empty ones, so no captured value is empty here.
+                    // A captured segment can be empty -- the split that produces path segments keeps
+                    // empty entries, so `//` reaches a param -- and a base carrying it would double the
+                    // separator in every relative target resolved against it.
                     if (captured.TryGetValue(seg.Value, out var value) && value.Length > 0)
                     {
                         resolved.Add(value);
