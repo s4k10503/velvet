@@ -9,7 +9,8 @@ namespace Velvet.Tests
     /// <summary>
     /// Specifies the callback-ref and creation-callback contract of element reconciliation.
     /// <list type="bullet">
-    /// <item>A callback ref runs on element creation, receiving the live element. On a patch it is
+    /// <item>A callback ref runs once for the pass that created its element, receiving the live element
+    /// (RefAttachOrderingTests states where in the pass). On a patch it is
     /// identity-gated (React's contract): the same callback delegate leaves the installed ref
     /// untouched, while a changed identity cycles it — the old cleanup fires, then the new callback
     /// runs as setup against the same reused instance. (The per-render lambdas these tests pass are
