@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Text.RegularExpressions;
 using NUnit.Framework;
 using Velvet.Editor.DevTools;
 using Velvet.TestUtilities;
@@ -253,6 +254,45 @@ namespace Velvet.Tests
             }
         }
 
+        /// <summary>A public generic with a nested type, which the repository's own surface gains with
+        /// `VelvetTask` and did not carry when this rendering was written.</summary>
+        private sealed class OwnerWithNested<T>
+        {
+            internal struct Nested
+            {
+                internal T Held;
+            }
+        }
+
+        [Test]
+        public void Given_ATypeNestedInsideAGeneric_When_Rendered_Then_ItIsNotItsOwner()
+        {
+            // Arrange — the two rendered the same line, so the nested type's members were recorded
+            // against its owner and an addition to either produced the same diff.
+            var owner = FormatType(typeof(OwnerWithNested<>));
+            var nested = FormatType(typeof(OwnerWithNested<>.Nested));
+
+            // Act / Assert — the owner naming itself rides along, because two renderings that both
+            // collapsed to something else would differ from each other and be no more use.
+            Assert.That((owner.Contains("OwnerWithNested"), nested.Contains("Nested"), owner != nested),
+                        Is.EqualTo((true, true, true)));
+        }
+
+        [Test]
+        public void Given_ATypeNestedInsideAGeneric_When_Rendered_Then_ItsOwnerIsNamedInIt()
+        {
+            // Arrange — the non-generic case already rendered the owner in front of the `+`, and this
+            // is the same spelling one arity marker along. What the marker looked like is read off the
+            // owner rather than written down, so this says nothing about how the runtime spells one.
+            var owner = FormatType(typeof(OwnerWithNested<>));
+            var nested = FormatType(typeof(OwnerWithNested<>.Nested));
+
+            // Act / Assert
+            Assert.That(nested.StartsWith(owner.Substring(0, owner.IndexOf('`')), StringComparison.Ordinal)
+                        && nested.Contains("+Nested"),
+                        Is.True, $"owner={owner} nested={nested}");
+        }
+
         private static string RenderType(Type type) => "type " + FormatType(type);
 
         private static string RenderConstructor(
@@ -459,6 +499,10 @@ namespace Velvet.Tests
             return formatted;
         }
 
+        // `Owner`1+Nested`2` carries one per segment, and the arity below is read off the type rather
+        // than off the name.
+        private static readonly Regex ArityMarker = new(@"`\d+", RegexOptions.Compiled);
+
         private static string FormatType(Type type) => FormatType(type, null);
 
         private static string FormatType(Type type, NullableAnnotationProbe.AnnotationReader reader)
@@ -487,9 +531,14 @@ namespace Velvet.Tests
             {
                 var annotation = Annotate(type, reader);
                 var definition = type.IsGenericTypeDefinition ? type : type.GetGenericTypeDefinition();
-                var definitionName = definition.FullName ?? definition.Name;
-                var tickIndex = definitionName.IndexOf('`', StringComparison.Ordinal);
-                var baseName = tickIndex >= 0 ? definitionName[..tickIndex] : definitionName;
+                // Every arity marker rather than the text before the first one. A type nested inside a
+                // generic spells its FullName `Owner`1+Nested`, so cutting at the first backtick dropped
+                // `+Nested` and rendered the nested type as its owner -- same line, same members recorded
+                // against the wrong type, and a reviewer's diff unable to tell an addition on one from an
+                // addition on the other. The non-generic owner was already correct, which is why nothing
+                // reported it.
+                var definitionName = ArityMarker.Replace(definition.FullName ?? definition.Name, "");
+                var baseName = definitionName;
                 var arity = definition.GetGenericArguments().Length;
 
                 // A signature written in terms of the declaring type's own parameters arrives here as the
