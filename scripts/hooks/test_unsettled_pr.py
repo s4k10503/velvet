@@ -81,8 +81,8 @@ class PendingBehindAWatcher(unittest.TestCase):
     """A pending check is forgiven while something is demonstrably watching.
 
     `alive` answers False for any fresh heartbeat that is not exactly two fields, which is what a
-    watcher launched from a checkout predating the pid field writes — five commits in this
-    repository's history write one. Something is watching there, and the reading is what failed.
+    watcher launched from a checkout predating the pid field writes. Something is watching there, and
+    the reading is what failed — which is the state `unreadable_beat` exists to name.
     """
 
     def judge_with(self, beat):
