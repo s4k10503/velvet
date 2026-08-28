@@ -11,47 +11,9 @@ using static Velvet.Tests.RouteTestStubs;
 
 namespace Velvet.Tests
 {
-    /// <summary>
-    /// Specifies the navigation blocking contract of <see cref="RouteBlockerManager"/>, its integration with
-    /// <see cref="Router"/>, and the <c>UseBlocker</c> hook.
-    /// <list type="bullet">
-    /// <item>With no blockers registered a check reports not-blocked; a registered predicate returning true
-    /// blocks and transitions its <see cref="RouteBlockerState"/> to Blocked, while false leaves it Idle.</item>
-    /// <item>Registered blockers are evaluated with no short-circuit, so a single blocking predicate blocks
-    /// regardless of the others.</item>
-    /// <item>Registration returns a disposable that unregisters the blocker on dispose.</item>
-    /// <item><c>ResetAllBlocked</c> returns every Blocked state to Idle.</item>
-    /// <item>A Blocker left <see cref="RouteBlockerStatus.Proceeding"/> by <c>Proceed</c> is passed over by
-    /// <c>CheckAsync</c> and keeps that status; <c>SettleProceeding</c> puts it back in the way, and defers
-    /// doing so while another Blocker is Blocked.</item>
-    /// <item><c>CheckAsync</c> evaluates sync and async entries alike.</item>
-    /// <item>A blocking blocker on a router navigation yields <see cref="NavigationResult.Blocked"/> and keeps
-    /// the current location — and, on a Back/Forward step, the history index describing it; an allowing
-    /// blocker yields <see cref="NavigationResult.Success"/>.</item>
-    /// <item>A re-attempt after being blocked resets the prior block and navigates.</item>
-    /// <item><c>UseBlocker</c> registers the committed predicate at settle and survives a render-phase re-run
-    /// without registering a discarded attempt's transient predicate.</item>
-    /// <item><c>UseBlocker</c> called without a deps argument re-registers every render, so the predicate
-    /// answers with the state it captured on the render that registered it — on both the synchronous and
-    /// the asynchronous overload.</item>
-    /// <item>A blocker's Block() side effect lands only for live registrations on a live attempt: an entry
-    /// disposed mid-pass (by its own check, or by an earlier blocker's decision) stays Idle, and a pass whose
-    /// attempt token is already cancelled flips no state at all.</item>
-    /// <item><c>Reset</c> returns a Blocker to Idle even where its registration was disposed while it was
-    /// blocked, because the manager-wide release it reaches walks entries that a disposal leaves in place
-    /// until their state settles.</item>
-    /// <item>A re-render re-registers a <c>UseBlocker</c> without the departure it is holding going unheld
-    /// in between, so a second Blocker that released the same departure stays out of its way and the
-    /// departure lands once both have answered.</item>
-    /// <item>An entry leaves the manager's list once it is both unregistered and settled: at the disposal
-    /// where it is already Idle, and at the release that settles one disposed while Blocked or
-    /// Proceeding.</item>
-    /// </list>
-    /// </summary>
     [TestFixture]
     internal sealed class BlockerTests
     {
-        // Router.Current is global singleton state; dispose between tests.
         [TearDown]
         public void TearDown()
         {
@@ -396,7 +358,6 @@ namespace Velvet.Tests
         [Test]
         public void Given_PreviouslyBlockedNavigation_When_NavigatingAgain_Then_ResetsAndCommits()
         {
-            // The blocker blocks only its first invocation, so a second navigation lifts the prior block.
             // Arrange
             var blockCount = 0;
             var router = BuildRouter("/home", Route("home"), Route("a"), Route("b"));
@@ -462,7 +423,6 @@ namespace Velvet.Tests
         [Test]
         public void Given_BlockerRegisteredAfterArriving_When_GoBackBlocked_Then_HistoryIndexIsUnchanged()
         {
-            // A blocked step never commits, so the history keeps describing the entry the user is on.
             // Arrange
             var router = BuildRouter("/home", Route("home"), Route("other"));
             router.NavigateSync("/other");
@@ -560,7 +520,6 @@ namespace Velvet.Tests
         [Test]
         public void Given_MountedUseBlocker_When_Navigate_Then_CommittedPredicateBlocks()
         {
-            // The deferred registration is applied at settle, so the committed predicate blocks the navigation.
             // Arrange
             var router = BuildRouter("/home", Route("home"), Route("other"));
             ResetBlockerComponent();
@@ -576,8 +535,6 @@ namespace Velvet.Tests
         [Test]
         public void Given_RenderPhaseReRun_When_SettingOddPhase_Then_NormalizesToNextEvenInOneReRun()
         {
-            // Setting phase to 1 triggers exactly one render-phase re-run that normalizes it to 2: a total of
-            // 1 mount + 2 attempts.
             // Arrange
             var router = BuildRouter("/home", Route("home"), Route("other"));
             ResetBlockerComponent();
@@ -595,8 +552,6 @@ namespace Velvet.Tests
         [Test]
         public void Given_RenderPhaseReRun_When_NavigatingAfterSettle_Then_CommittedBlockerStaysRegistered()
         {
-            // The discarded attempt never registers a "transient" predicate (registration is deferred to
-            // settle) and the settled dep equals the committed dep, so the committed blocker stays functional.
             // Arrange
             var router = BuildRouter("/home", Route("home"), Route("other"));
             ResetBlockerComponent();
@@ -763,8 +718,6 @@ namespace Velvet.Tests
 
         #region Registration bookkeeping
 
-        // A registration the manager keeps is one every later check walks and copies, so an entry nothing
-        // can reach again has to leave the list rather than merely stop answering.
         private static int EntryCountOf(RouteBlockerManager manager) =>
             ((ICollection)typeof(RouteBlockerManager)
                 .GetField("_blockers", BindingFlags.NonPublic | BindingFlags.Instance)
@@ -831,8 +784,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_ABlockerThatUnregistersItselfWhileBlocking_When_ThePassCompletes_Then_ItsStateStaysIdle()
         {
-            // Arrange — the blocker's own check disposes its registration before answering true,
-            // the synchronous shape of an owner unmounting mid-check.
+            // Arrange — the Blocker disposes its own registration before answering true.
             var manager = new RouteBlockerManager();
             var state = new RouteBlockerState();
             IDisposable registration = null;
@@ -852,8 +804,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_AnEarlierBlockerUnregistersALaterOne_When_ThePassContinues_Then_TheLaterStateStaysIdle()
         {
-            // Arrange — the first blocker's decision tears down the second's registration (e.g. it
-            // unmounts the subtree owning it) before the snapshot loop reaches it.
+            // Arrange — the earlier Blocker removes the later one before the snapshot loop reaches it.
             var manager = new RouteBlockerManager();
             var laterState = new RouteBlockerState();
             IDisposable laterRegistration = null;
@@ -874,8 +825,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_AnAlreadySupersededAttempt_When_ABlockerWouldBlock_Then_NoStateIsFlipped()
         {
-            // Arrange — the attempt's token is already cancelled (a newer navigation took over);
-            // the caller is about to discard this result as Cancelled.
+            // Arrange — the attempt's token is cancelled before the pass begins.
             var manager = new RouteBlockerManager();
             var state = new RouteBlockerState();
             using var registration = manager.Register(_ => true, state);
@@ -892,8 +842,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_ABlockedBlockerWhoseRegistrationDied_When_Reset_Then_ItStillReturnsToIdle()
         {
-            // Arrange — the registration is disposed after the block, the shape of an owner unmounting
-            // while the dialog bound to its state is still up.
+            // Arrange
             var manager = new RouteBlockerManager();
             var state = new RouteBlockerState();
             var registration = manager.Register(_ => true, state);
