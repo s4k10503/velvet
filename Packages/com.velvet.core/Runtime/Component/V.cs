@@ -2359,18 +2359,10 @@ namespace Velvet
             => routes;
 
         /// <summary>
-        /// Clickable navigation primitive. Navigates to <paramref name="to"/> via the active
-        /// <see cref="Router"/> on click. The target may
-        /// be absolute or relative (resolved against the current location).
+        /// Renders a button whose activation requests navigation.
         /// </summary>
-        /// <param name="to">Navigation target path (absolute or relative).</param>
-        /// <param name="text">Link label text.</param>
-        /// <param name="className">CSS-like utility class string applied to the link element.</param>
-        /// <param name="name">Element name for query/debug.</param>
-        /// <param name="children">Optional child nodes rendered inside the link.</param>
-        /// <param name="replace">When true, replaces the current history entry instead of pushing.</param>
-        /// <param name="key">Key used to disambiguate siblings at the same position.</param>
-        /// <returns>A <see cref="ComponentNode"/> rendering the link.</returns>
+        /// <param name="to">Absolute or route-relative navigation target.</param>
+        /// <param name="replace">Selects replacement instead of push navigation.</param>
         public static ComponentNode Link(
             string to,
             string? text = null,
@@ -2406,20 +2398,13 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Clickable navigation primitive that derives an active state from the current location.
-        /// Applies <paramref name="activeClass"/> when the link is active.
+        /// Adds current-location active styling to <see cref="Link"/>.
         /// </summary>
-        /// <param name="to">Navigation target path (absolute or relative).</param>
-        /// <param name="activeClass">CSS-like class string appended when the link is active.</param>
-        /// <param name="text">Link label text.</param>
-        /// <param name="className">CSS-like utility class string applied always.</param>
-        /// <param name="name">Element name for query/debug.</param>
-        /// <param name="children">Optional child nodes rendered inside the link.</param>
-        /// <param name="end">When true, the link is active only on an exact path match (otherwise a prefix match counts as active).</param>
-        /// <param name="replace">When true, replaces the current history entry instead of pushing.</param>
-        /// <param name="caseSensitive">When true, the active-state comparison is Ordinal (case-sensitive). Defaults to false.</param>
-        /// <param name="key">Key used to disambiguate siblings at the same position.</param>
-        /// <returns>A <see cref="ComponentNode"/> rendering the active-aware link.</returns>
+        /// <param name="to">Absolute or route-relative navigation target.</param>
+        /// <param name="activeClass">Appended to <paramref name="className"/> while non-empty and active.</param>
+        /// <param name="end">Restricts active state to an exact path match instead of a segment-prefix match.</param>
+        /// <param name="replace">Selects replacement instead of push navigation.</param>
+        /// <param name="caseSensitive">Uses ordinal matching instead of the case-insensitive default.</param>
         public static ComponentNode NavLink(
             string to,
             string activeClass,
