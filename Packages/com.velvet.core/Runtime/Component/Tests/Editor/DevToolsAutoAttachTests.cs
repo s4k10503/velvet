@@ -6,11 +6,6 @@ using Velvet.DevTools;
 
 namespace Velvet.Tests
 {
-    /// <summary>
-    /// Specifies the DevTools auto-attach: a <c>V.Mount</c> registers its root with
-    /// <see cref="VelvetDevToolsRegistry"/> so the inspector shows the live tree with no manual
-    /// <c>Register</c> call, and disposing the tree removes it again.
-    /// </summary>
     [TestFixture]
     internal sealed class DevToolsAutoAttachTests
     {
@@ -20,8 +15,6 @@ namespace Velvet.Tests
         public void SetUp()
         {
             _root = new VisualElement();
-            // The registry is a global static shared across the editor session; start each test from empty
-            // so an assertion observes only this test's mount.
             VelvetDevToolsRegistry.Clear();
         }
 
