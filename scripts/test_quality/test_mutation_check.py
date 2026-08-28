@@ -2100,6 +2100,8 @@ class ReceiptTests(unittest.TestCase):
         # Assert
         self.assertEqual(code, 0)
 
+    # GREEN_ON_BASE(refactor): the byte hash refused this too. It is the shape the line-dropping
+    # this change adds could reach and must not, and only running it says whether it did.
     def test_Given_APassingCampaign_When_ABlankLineInsideAVerbatimStringGoes_Then_ItIsRefusedAgain(self):
         # Arrange — an empty line inside a verbatim string is part of the value, and it is the one
         # place where removing a line changes behaviour. The digest drops the lines a comment
