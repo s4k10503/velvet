@@ -123,7 +123,11 @@ def main():
     if not isinstance(event, dict) or event.get("tool_name") not in HOOK_TOOLS:
         return 0
     command = event.get("tool_input", {}).get("command", "")
-    invocations = program_invocations(command, "gh", ("pr", "create"))
+    # `new` is gh's own alias for `create` -- measured, `gh pr new --help` prints a usage. This gate
+    # is asked once and nowhere else: not by CI, and not by `settle.py`, which merges over the REST
+    # API. An alias that skips it removes the only place it is ever posed.
+    invocations = (program_invocations(command, "gh", ("pr", "create"))
+                   + program_invocations(command, "gh", ("pr", "new")))
     if not invocations:
         return 0
 

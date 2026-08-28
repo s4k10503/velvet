@@ -225,9 +225,9 @@ class GenerationAcrossLinesTests(unittest.TestCase):
         # Assert
         self.assertEqual(lines, [1, 2, 3, 4, 5, 6, 7, 8, 9])
 
-    # GREEN_ON_BASE(characterization): the total already cleared its floor, and the per-operator one
-    # this adds beside it is cleared by the shipped generator too. What either separates is a later
-    # narrowing, which only running them says anything about.
+    # GREEN_ON_BASE(characterization): both floors clear on either corpus, which is the point — what
+    # the widening changes is which edits can move them, and no edit here is one. Only running it says
+    # whether the larger corpus still clears, and it is 12132 against 8000 and 3284 against 2500.
     def test_Given_TheRepositorysOwnSources_When_MutantsAreGenerated_Then_EachTotalHoldsItsFloor(self):
         # Arrange — floors rather than the exact numbers, which every edit to the package moves.
         #
@@ -235,8 +235,14 @@ class GenerationAcrossLinesTests(unittest.TestCase):
         # `line removed` down by more than a third and leaves the total above 8000, so the aggregate
         # clears while the operator that fell has gone quiet. 2500 is under what the generator
         # produces today with room for ordinary drift, and above what that narrowing leaves.
-        sources = [path for path in RUNTIME.rglob("*.cs")
-                   if "/Tests/" not in path.as_posix() and "/Plugins/" not in path.as_posix()]
+        #
+        # The corpus is what a campaign mutates rather than Runtime alone, which the name and the
+        # sentence above both claimed and the reading did not: 337 removal lines sat outside it — 280
+        # under Editor/, 52 under CodeGen/, 5 under Samples~/ — so an edit there that stopped the
+        # generator moved neither floor. `mutable` is the same predicate `--emit-lines` hands the C#
+        # guards, so this holds over what they are given.
+        sources = [path for path in (REPO_ROOT / "Packages/com.velvet.core").rglob("*.cs")
+                   if mutation_check.mutable(path, REPO_ROOT)]
 
         # Act — one scan for both, since a second would only re-read the same files.
         mutants = [mutant
