@@ -812,6 +812,9 @@ namespace Velvet.Tests
         }
 
         [Test]
+        // GREEN_ON_BASE(characterization): this one is green either way here — the checkout it runs in
+        // holds no untracked markdown at the top level on a runner, which is the whole asymmetry. What
+        // separates the readings is the case below, and only running it says whether it does.
         public void Given_EveryTopLevelDirectoryHoldingMarkdown_When_TheWalkIsRead_Then_TheWalkReachesIt()
         {
             // Arrange — the walk is rooted, so a document under a root nobody added is scanned by nothing
@@ -831,6 +834,9 @@ namespace Velvet.Tests
         }
 
         [Test]
+        // GREEN_ON_BASE(characterization): the reading under test sits in `DocumentationCorpus`, a
+        // test-side file the base lane carries with the cases, so no base run can separate them.
+        // Restoring the filesystem walk by hand and re-running the fixture fails this one.
         public void Given_MarkdownGitDoesNotTrack_When_TheUnwalkedRootsAreRead_Then_ItNamesNoRoot()
         {
             // Arrange — a developer machine carries untracked directories a runner does not, and the two
