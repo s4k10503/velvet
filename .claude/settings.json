@@ -17,6 +17,11 @@
             "type": "command",
             "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/report/repository_litter.py\"",
             "timeout": 10000
+          },
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/report/unreleased_maintenance_line.py\"",
+            "timeout": 10000
           }
         ]
       }

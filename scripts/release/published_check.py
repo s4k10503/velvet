@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Hold a repository to two things about the version it names, each asked of a different tree.
+"""Hold a repository to three things about the version it names.
 
 CONTRIBUTING.md's release section owns what goes wrong when nothing asks. What is decided here is
-which question is posed of which tree, and both answers follow from what repairs the state.
+which question is posed of which tree.
 
 **Publication**, asked of the BASE: every version the CHANGELOG has closed is tagged. A dispatch
 repairs it, so refusing merges is pressure toward one, and reading the base leaves the pull request
@@ -13,7 +13,34 @@ exists, carries a date, and has no dated section above it. A commit repairs each
 must fail whoever would introduce them. Read of the base too, they would leave the repair itself
 unmergeable, with no direct push to main to escape through.
 
-Run: python3 scripts/release/published_check.py --base origin/main --result HEAD
+**Drain**, asked of BOTH: a release leaves `## [Unreleased — breaking]` the way the version it closes
+requires. Neither tree answers that, because one file is right or wrong depending on the change that
+produced it — a section still holding entries under a freshly closed major is a release that forgot to
+move them, and under an older major it is the ordinary state of collecting breaks for the next one. So
+the question is posed of the edit rather than of either tree's contents, and only of an edit that
+closes a version: an entry leaves that section reclassified, reworded, or dropped as untrue, and a
+change closing nothing is free to do any of those.
+
+Run, locally, both of these, after a fetch, with BASE naming the branch the pull request targets --
+origin/main for most, origin/2.x for one onto the maintenance line:
+
+    python3 scripts/release/published_check.py --base "$BASE"
+    python3 scripts/release/published_check.py \
+        --base "$(git merge-base "$BASE" HEAD)" --result HEAD
+
+The branch rather than a constant: a version-closing pull request targets either. A constant breaks the
+publication question first -- merge_onto_unpublished_release.py carries the record of one refusing the
+line's release for a version main had left open -- and reaches the drain question as well, since the
+second command derives its own base from the same value.
+
+--base drives two questions and one value cannot be relied on to serve both. The publication question
+wants the base, where an unpublished release sits, and reads whatever the local ref holds, so a checkout
+that has not fetched answers clean. The drain question wants the merge base, because a base that has
+moved on charges this change with breaking entries it never saw. Asking it only in the second command
+is what keeps a refusal a reader should act on apart from one they should not.
+
+CI needs one invocation rather than two: actions/checkout takes the merge ref for a pull_request event,
+so --result there contains the base tip and the two values coincide.
 """
 
 import argparse
@@ -23,7 +50,16 @@ import subprocess
 import sys
 from pathlib import Path
 
-from release_notes import DEFAULT_CHANGELOG, DEFAULT_PACKAGE_JSON, VERSION_HEADING
+from release_notes import (
+    BREAKING_SECTION,
+    DEFAULT_CHANGELOG,
+    DEFAULT_PACKAGE_JSON,
+    ReleaseNotesError,
+    VERSION_HEADING,
+    extract_version_section,
+    normalize,
+    split_entries,
+)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
@@ -41,6 +77,39 @@ def version_headings(changelog_text):
     return [(match.group("version"), line)
             for line in changelog_text.splitlines()
             if (match := VERSION_HEADING.match(line))]
+
+
+def released_versions(changelog_text):
+    """Every version the CHANGELOG has closed, in file order."""
+    return [version for version, line in version_headings(changelog_text)
+            if RELEASE_DATE.search(line)]
+
+
+def is_major_bump(released, version):
+    """Whether `version` opens a new major against the release below it in `released`.
+
+    The last of them has nothing below it and is nobody's bump.
+    """
+    below = released.index(version) + 1
+    return below < len(released) and version.split(".")[0] != released[below].split(".")[0]
+
+
+def section_entries(changelog_text, version):
+    """The top-level entries under `## [version]`, or none where the CHANGELOG has no such section."""
+    try:
+        return split_entries(extract_version_section(changelog_text, version))
+    except ReleaseNotesError:
+        return []
+
+
+def entries_missing_from(entries, elsewhere):
+    """Those of `entries` that `elsewhere` does not also list, in the order `entries` gives."""
+    present = {normalize(entry) for entry in elsewhere}
+    return [entry for entry in entries if normalize(entry) not in present]
+
+
+def counted(entries, noun="entry", plural="entries"):
+    return f"{len(entries)} {noun if len(entries) == 1 else plural}"
 
 
 def declared_version(package_json_text):
@@ -98,6 +167,73 @@ def reopened_by(changelog_text, tags, result_changelog):
         return False
     still = {version for version, _ in version_headings(result_changelog)}
     return not any(version in still for version in unpublished)
+
+
+def drain_reason(base_changelog, result_changelog):
+    """Why this change may not close the version it closes, or None.
+
+    Read of the two trees rather than one, for the reason the module docstring gives. A change that
+    closes nothing is nobody's release and is asked nothing here — that is what leaves an entry free
+    to be reclassified, reworded or dropped on its own.
+
+    A major's entries are compared by text, so a drain that reworded one on the way is refused too.
+    Counting them instead permits the reword and still catches a drop, until the release writes an
+    entry of its own and the counts agree again; and a count reads two entries merged into one
+    exactly as it reads one of the two dropped. The refusal is loud and repaired by making the
+    wording change in a change that closes no version; the miss is a break published in a major with
+    nothing describing it.
+    """
+    before = released_versions(base_changelog)
+    after = released_versions(result_changelog)
+    closing = [named for named in after if named not in before]
+    waiting_before = section_entries(base_changelog, BREAKING_SECTION)
+    waiting_after = section_entries(result_changelog, BREAKING_SECTION)
+
+    majors = [version for version in closing if is_major_bump(after, version)]
+    for version in majors:
+        if waiting_after:
+            return (f"{version} is a major and '## [{BREAKING_SECTION}]' still lists "
+                    f"{counted(waiting_after)}, starting with:\n"
+                    f"  {waiting_after[0].splitlines()[0]}\n"
+                    f"A major moves them into the section it closes and leaves the heading standing "
+                    f"with none. The note is built from that section alone, so a break left here "
+                    f"ships in {version} with nothing describing it.")
+
+        lost = entries_missing_from(waiting_before, section_entries(result_changelog, version))
+        if lost:
+            return (f"{counted(lost)} left '## [{BREAKING_SECTION}]' and no entry of {version} "
+                    f"carries that text, starting with:\n"
+                    f"  {lost[0].splitlines()[0]}\n"
+                    f"A major carries the section into the version it closes. This reading compares "
+                    f"the entry's text, so it cannot tell one reworded on the way from one dropped "
+                    f"on the way, and a dropped one ships the break in {version} with nothing "
+                    f"describing it. Carry the entry across as it stands, and make any wording "
+                    f"change in a change that closes no version.")
+
+    # A minor closing beside a major is answerable for what that drain left, not for the drain.
+    carried = [entry for version in majors
+               for entry in section_entries(result_changelog, version)]
+    edited = entries_missing_from(waiting_before, waiting_after + carried)
+    others = [named for named in closing if named not in majors]
+    if others and waiting_after:
+        return (f"{others[0]} is not a major and '## [{BREAKING_SECTION}]' still lists "
+                f"{counted(waiting_after)}, starting with:\n"
+                f"  {waiting_after[0].splitlines()[0]}\n"
+                f"A release publishes the tree rather than the section, so each of those the tree "
+                f"already carries ships here with nothing describing it. Close this as a major, or "
+                f"take the entries out in a change that closes no version if this line never took "
+                f"their code.")
+
+    if edited and others:
+        return (f"{others[0]} is not a major, and this change does not leave "
+                f"'## [{BREAKING_SECTION}]' as it found it: {counted(edited)} changed or "
+                f"gone, starting with:\n"
+                f"  {edited[0].splitlines()[0]}\n"
+                f"A minor or a patch carries nothing out of that section. Close this as a major if "
+                f"it ships the break, or make the edit in a change that closes no version — putting "
+                f"the entry back is what this asks for, not emptying the section.")
+
+    return None
 
 
 def publication_reason(changelog_text, package_json_text, tags):
@@ -240,6 +376,13 @@ def main():
                consistency_reason(read_at(project, args.result, CHANGELOG_PATH),
                                   read_at(project, args.result, PACKAGE_JSON_PATH)),
                "could not be released as it stands", "package.json and the CHANGELOG agree")
+
+    if args.base and args.result:
+        report(f"{args.base}..{args.result}",
+               drain_reason(read_at(project, args.base, CHANGELOG_PATH),
+                            read_at(project, args.result, CHANGELOG_PATH)),
+               "leaves the breaking section wrong for the version it closes",
+               "the breaking section suits whatever this closes")
 
     return 1 if failed else 0
 

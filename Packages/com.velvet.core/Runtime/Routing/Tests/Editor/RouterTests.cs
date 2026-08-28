@@ -11,41 +11,6 @@ using static Velvet.Tests.RouteTestStubs;
 
 namespace Velvet.Tests
 {
-    /// <summary>
-    /// Specifies the navigation, history, loader-cache, and event contract of <see cref="Router"/>.
-    /// <list type="bullet">
-    /// <item>A fresh router is Idle; a valid navigation becomes Ready and exposes the committed location, while
-    /// an unmatched path returns <see cref="NavigationResult.NotFound"/> and the NotFound status.</item>
-    /// <item>An Await loader's result is committed before navigation completes and is keyed by
-    /// <see cref="RouteMatch.RouteId"/>.</item>
-    /// <item>Each successful navigation pushes a history entry; GoBack/GoForward restore the previous/next
-    /// location, and stepping past either end returns <see cref="NavigationResult.Cancelled"/> — including a
-    /// Back or Forward asked for directly through <c>NavigateAsync</c>, which those two never reach, and with
-    /// the same absence of any effect on <see cref="RouterStatus"/>.</item>
-    /// <item>The history stack is FIFO-capped: pushing beyond the cap evicts the oldest entry while the
-    /// Back/Forward index keeps pointing at the same locations.</item>
-    /// <item>GoBack/GoForward serve loader data and loader errors from the history cache without re-running the
-    /// loader.</item>
-    /// <item>A Suspend loader commits navigation immediately and resolves later; on resolution or failure the
-    /// router writes the post-resolution value into the current history entry and re-emits the location with a
-    /// fresh identity, but a resolution arriving after the user navigated away does not churn the current
-    /// location — including when the exit was a Back/Forward served from the cache, which commits without
-    /// running the loaders.</item>
-    /// <item>A Suspend loader whose task is already complete resolves before its own navigation commits: its
-    /// result still reaches that navigation's loader data, and it is not recorded against the location being
-    /// navigated away from.</item>
-    /// <item><c>CurrentLoaderData</c> is a snapshot rather than a live view, so a Suspend loader resolving
-    /// afterwards leaves the dictionary an earlier caller is holding untouched.</item>
-    /// <item><c>OnLocationChanged</c> fires once per navigation with the committed location.</item>
-    /// <item>A subscriber that throws out of the re-emit a Suspend resolution drives leaves the entry settled,
-    /// so the Back cache still serves it.</item>
-    /// <item>An optional <see cref="IRouteScopeFactory"/> is exposed through <c>ScopeFactory</c> and is null
-    /// when not supplied.</item>
-    /// <item>A concurrent navigation arriving during an async Blocker await cancels the in-flight navigation
-    /// (which returns <see cref="NavigationResult.Cancelled"/>) and adopts the latest; a caller token cancelled
-    /// during that window also maps to Cancelled rather than throwing.</item>
-    /// </list>
-    /// </summary>
     // Bounded for the cases here that await a blocker stub's Entered signal;
     // RouteTestStubs.MakeOneShotBlocker states what an unbounded fixture costs.
     [Timeout(30000)]
@@ -67,8 +32,6 @@ namespace Velvet.Tests
             };
         }
 
-        // Router.Current is a global singleton; each new Router() overwrites it, so disposing in TearDown
-        // returns it to null and isolates tests.
         [TearDown]
         public void TearDown()
         {
@@ -80,7 +43,9 @@ namespace Velvet.Tests
         [Test]
         public void Given_FreshRouter_When_NotYetNavigated_Then_StatusIsIdle()
         {
-            // Arrange + Act
+            // Arrange
+
+            // Act
             var router = new Router(_routes);
 
             // Assert
@@ -179,7 +144,6 @@ namespace Velvet.Tests
         [Test]
         public void Given_AwaitLoader_When_Navigating_Then_LoaderDataIsCommittedKeyedByRouteId()
         {
-            // The loader data is keyed by RouteId (the cumulative pattern path from the root).
             // Arrange
             var router = new Router(new[]
             {
@@ -331,16 +295,11 @@ namespace Velvet.Tests
 
         #region History FIFO cap
 
-        // The history cap is a private constant; read it via reflection so these tests stay in
-        // lockstep with the production value instead of hard-coding it.
+        // Derive the private cap so the boundary arrangements move with production.
         private static int HistoryCap => (int)typeof(Router)
             .GetField("MaxHistoryEntries", BindingFlags.NonPublic | BindingFlags.Static)
             .GetRawConstantValue();
 
-        /// <summary>
-        /// Pushes one navigation more than the history cap ("/p1" .. "/p{cap+1}"), so the head
-        /// entry ("/p1") has been evicted and the router sits on the latest entry.
-        /// </summary>
         private static Router BuildRouterAtCapOverflow(out string lastPath)
         {
             var router = new Router(new[] { Route(":page") });
@@ -375,14 +334,15 @@ namespace Velvet.Tests
             // Arrange
             var router = BuildRouterAtCapOverflow(out _);
 
-            // Act: walk to the oldest reachable entry (bounded so a broken CanGoBack cannot hang).
+            // Act
+            // Bound the walk so a broken CanGoBack cannot hang the fixture.
             var steps = 0;
             while (router.CanGoBack && steps++ < HistoryCap * 2)
             {
                 router.GoBackSync();
             }
 
-            // Assert: "/p1" was dropped by the FIFO cap, so the walk bottoms out on "/p2".
+            // Assert
             Assert.That(router.CurrentLocation.Path, Is.EqualTo("/p2"));
         }
 
@@ -392,8 +352,8 @@ namespace Velvet.Tests
             // Arrange
             var router = BuildRouterAtCapOverflow(out _);
 
-            // Act: the number of possible Back steps observably measures the history length
-            // (bounded so a broken CanGoBack cannot hang).
+            // Act
+            // Bound the walk so a broken CanGoBack cannot hang the fixture.
             var backSteps = 0;
             while (router.CanGoBack && backSteps < HistoryCap * 2)
             {
@@ -401,7 +361,7 @@ namespace Velvet.Tests
                 backSteps++;
             }
 
-            // Assert: a capped history holds exactly the cap's worth of entries.
+            // Assert
             Assert.That(backSteps, Is.EqualTo(HistoryCap - 1));
         }
 
@@ -1089,7 +1049,9 @@ namespace Velvet.Tests
         [Test]
         public void Given_NoScopeFactory_When_Constructed_Then_ScopeFactoryIsNull()
         {
-            // Arrange + Act
+            // Arrange
+
+            // Act
             var router = new Router(_routes);
 
             // Assert
