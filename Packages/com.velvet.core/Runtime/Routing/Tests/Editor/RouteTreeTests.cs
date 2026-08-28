@@ -445,6 +445,26 @@ namespace Velvet.Tests
             Assert.Throws<ArgumentException>(() => new RouteTree(new[] { Route("files/*/download") }));
         }
 
+        [Test]
+        public void Given_ASplatRouteWithChildren_When_Constructing_Then_ThrowsArgumentException()
+        {
+            // Act + Assert — the same swallowing one route path away, where the refusal above did not
+            // reach: the splat and the segment behind it arrive from different routes.
+            Assert.Throws<ArgumentException>(() => new RouteTree(new[]
+            {
+                Route("files/*", children: new[] { Route("download") }),
+            }));
+        }
+
+        // GREEN_ON_BASE(characterization): the control for the refusal above, and the shape it is
+        // asking the author to write instead. Green on both sides is the whole point of it.
+        [Test]
+        public void Given_ASplatRouteWithNoChildren_When_Constructing_Then_ItIsAccepted()
+        {
+            // Act + Assert
+            Assert.DoesNotThrow(() => new RouteTree(new[] { Route("files/*") }));
+        }
+
         #endregion
 
         #region Splat
