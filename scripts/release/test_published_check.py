@@ -119,6 +119,8 @@ class TagListingBound(unittest.TestCase):
             published_check.git = original
         return seen
 
+    # GREEN_ON_BASE(characterization): the default was already five, and this pins it against the
+    # change that adds a way to name another.
     def test_Given_NoBoundNamed_When_TheTagsAreListed_Then_TheHooksOwnIsUsed(self):
         # Act / Assert — five seconds is what a killed hook cannot report from.
         self.assertEqual(self.bound_seen()["timeout"], 5)
