@@ -151,6 +151,12 @@ jobs:
       - name: Fast-checks commit guard tests
         run: python3 scripts/hooks/test_commit_failing_fast_checks.py
 
+      # A refuse guard that stops matching exits 0 and says nothing, which is what it does when it has
+      # nothing to say. The release-time edits it must let through are the half it was measured wrong
+      # about, by somebody walking the procedure by hand.
+      - name: Closed-version CHANGELOG guard tests
+        run: python3 scripts/hooks/test_changelog_into_closed_version.py
+
       # Silent when it stops matching, like every refuse guard, and the shapes it must let through
       # are as much of the subject as the ones it refuses.
       - name: Message-location guard tests
