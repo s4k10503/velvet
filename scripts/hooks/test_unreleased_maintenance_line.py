@@ -13,6 +13,7 @@ produces, so the three would pass on a base that does not carry it and separate 
 Run: python3 scripts/hooks/test_unreleased_maintenance_line.py
 """
 
+import importlib.util
 import subprocess
 import sys
 import tempfile
@@ -21,6 +22,10 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 HOOK = REPO_ROOT / ".claude/hooks/report/unreleased_maintenance_line.py"
+
+_spec = importlib.util.spec_from_file_location("maintenance_line_report", HOOK)
+report_module = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(report_module)
 CHANGELOG = "Packages/com.velvet.core/CHANGELOG.md"
 
 EMPTY = """# Changelog
@@ -84,6 +89,37 @@ def repository(branch, changelog):
     subprocess.run(["git", "clone", "--quiet", str(origin), str(clone)],
                    check=True, capture_output=True, text=True)
     return clone
+
+
+class CommitThatStayed(unittest.TestCase):
+    """The second reading, tested through its own functions.
+
+    It asks the API what a cited pull request is based on, and a case that stubs `gh` well enough to
+    answer that is testing the stub. What the functions decide from an answer is the part that can be
+    wrong.
+    """
+
+    def test_Given_AReleaseSquash_When_Read_Then_ItIsExcludedBeforeAnyApiRead(self):
+        # Act / Assert — a release carries pull requests already on main, and its subject says so.
+        self.assertIsNotNone(report_module.RELEASE.match("chore(velvet): release v2.1.3 (#807)"))
+
+    def test_Given_AnOrdinaryFix_When_Read_Then_ItIsNotTakenForARelease(self):
+        # Act / Assert
+        self.assertIsNone(report_module.RELEASE.match(
+            "ci(velvet): stop a branch filter deciding which pull requests get checks (#732)"))
+
+    def test_Given_ASubjectCitingAnotherNumber_When_Read_Then_TheTrailingOneIsTheMerge(self):
+        # Arrange — a body citing what it carries must not be read out of the subject; only the
+        # trailing parenthesis records the pull request this commit is.
+        # Act / Assert
+        self.assertEqual(
+            report_module.named_pull_request("fix(velvet): carry #643's finding to the line (#770)"),
+            "770")
+
+    def test_Given_ASubjectWithNoTrailingNumber_When_Read_Then_NoneIsNamed(self):
+        # Arrange — undecidable rather than owed: this reading is built on what a pull request names.
+        # Act / Assert
+        self.assertIsNone(report_module.named_pull_request("fix(velvet): written by hand"))
 
 
 class MaintenanceLineReport(unittest.TestCase):
