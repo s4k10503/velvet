@@ -40,7 +40,7 @@ sys.path.insert(0, str(HOOK_DIRECTORY.parent.parent / "scripts" / "pr"))
 
 from deferrals import DEFERRALS, deferred, unusable  # noqa: E402
 from repository import SELF_REPORT, open_pull_requests, unreadable_report  # noqa: E402
-from watcher_state import HEARTBEAT, alive  # noqa: E402
+from watcher_state import HEARTBEAT, alive, unreadable_beat  # noqa: E402
 
 UNREADABLE_POLICY = "refuse"
 
@@ -194,7 +194,11 @@ def judge(pr):
                 "cannot go green on\n    its own. Rebase it, take it out of draft, or say what it is "
                 "waiting on.")
 
-    if alive():
+    # Both halves, as `edit_while_a_ready_pr_sits` reads them: `alive` is False for any fresh
+    # heartbeat that is not exactly two fields, which is what a watcher launched from a checkout
+    # predating the pid field writes. Something is watching there; what failed is the reading, and
+    # reading only the first half blocks a turn this would otherwise let through.
+    if alive() or unreadable_beat():
         return None
 
     names = ", ".join(check.get("name", "") for check in pending)
