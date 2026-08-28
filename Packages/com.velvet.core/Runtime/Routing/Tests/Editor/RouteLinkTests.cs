@@ -213,9 +213,11 @@ namespace Velvet.Tests
                 V.NavLink(to: "..", activeClass: "is-active", text: "Settings"));
 
             // Assert
+            // The button's presence rides along: it gates the class read beside it, so an Assume
+            // over it turns a regression that renders nothing into an Inconclusive nothing counts.
             var button = FindButton(_root);
-            Assume.That(button, Is.Not.Null, "Precondition: the nav link rendered a button");
-            Assert.That(button!.ClassListContains("is-active"), Is.True);
+            Assert.That((button != null, button?.ClassListContains("is-active")),
+                        Is.EqualTo((true, true)));
         }
 
         [Test]
@@ -230,9 +232,11 @@ namespace Velvet.Tests
                 }));
 
             // Assert
+            // The button's presence rides along: it gates the class read beside it, so an Assume
+            // over it turns a regression that renders nothing into an Inconclusive nothing counts.
             var button = FindButton(_root);
-            Assume.That(button, Is.Not.Null, "Precondition: the nav link rendered a button");
-            Assert.That(button!.ClassListContains("is-active"), Is.True);
+            Assert.That((button != null, button?.ClassListContains("is-active")),
+                        Is.EqualTo((true, true)));
         }
 
         // GREEN_ON_BASE(characterization): the absolute target a location without a router already matches,
@@ -253,10 +257,10 @@ namespace Velvet.Tests
             // Assert — the absent router is folded in: with one mounted, an absolute target resolves to
             // itself, so the active class alone would hold either way.
             var button = FindButton(_root);
-            Assume.That(button, Is.Not.Null, "Precondition: the nav link rendered a button");
             Assert.That(
-                (routerAbsent: Router.Current == null, active: button!.ClassListContains("is-active")),
-                Is.EqualTo((routerAbsent: true, active: true)));
+                (routerAbsent: Router.Current == null, rendered: button != null,
+                 active: button?.ClassListContains("is-active")),
+                Is.EqualTo((routerAbsent: true, rendered: true, active: true)));
         }
 
         [Test]
