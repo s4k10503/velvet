@@ -532,6 +532,24 @@ class RetirementTests(unittest.TestCase):
                           "blocks a Stop again" in said,
                           "python3 scripts/pr/settle.py watch" in said), (True, True, True))
 
+    def test_Given_NothingEverStamped_When_ItRetires_Then_ItNamesTheReaderThatCouldNotRecord(self):
+        # Arrange — a guard resolves the stamping code from its own checkout, so one at a commit
+        # predating it reads the watcher every turn and cannot record having done it. Measured on
+        # this machine, on the first watcher started after that merge: the file never existed while
+        # the guards ran for two hours.
+        said = watch_until().output
+
+        # Act / Assert
+        self.assertIn("has never carried a stamp", said)
+
+    def test_Given_AStampThatWentStale_When_ItRetires_Then_ItSaysNothingAboutTheThirdState(self):
+        # Arrange — a file that exists and is old is the reader having stopped, which the sentence
+        # above would misdescribe as a checkout that cannot record.
+        said = watch_until(seed_asked=0).output
+
+        # Act / Assert
+        self.assertNotIn("has never carried a stamp", said)
+
     def test_Given_ARetiringWatcher_When_ItStops_Then_ItLetsGoOfTheLock(self):
         # Act
         watched = watch_until()
