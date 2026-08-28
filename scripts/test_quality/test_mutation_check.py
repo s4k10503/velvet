@@ -103,8 +103,17 @@ def survivor(path, line, verdict=None, operator="equality"):
 
 def declaration(line, category="equivalent", reason="a reason of four words", written_here=True,
                 operator=None):
-    return mutation_check.Declaration(category, reason, line, written_here=written_here,
-                                      operator=operator)
+    """A declaration, naming an operator where the tree under test can carry one.
+
+    A tree whose `Declaration` takes no operator gets one that answers for its whole line, which is
+    the state the cases below exist to separate — so they compare against it and fail, rather than
+    raising and separating nothing.
+    """
+    try:
+        return mutation_check.Declaration(category, reason, line, written_here=written_here,
+                                          operator=operator)
+    except TypeError:
+        return mutation_check.Declaration(category, reason, line, written_here=written_here)
 
 
 class CodeMaskTests(unittest.TestCase):
@@ -1429,6 +1438,9 @@ class NamedDeclarationTests(unittest.TestCase):
         self.assertEqual(unanswered,
                          ["the declaration above answers for 'line removed', not for this"])
 
+    # GREEN_ON_BASE(characterization): the base answers this too, by reading the line whole. It is
+    # the control the two red cases need: a reading that refused every named declaration would
+    # satisfy them both.
     def test_Given_ADeclarationNamingThisOperator_When_ASurvivorLands_Then_ItIsAnswered(self):
         # Arrange — the control, without which a reading that refused every named declaration would
         # satisfy the case above.
@@ -1441,6 +1453,8 @@ class NamedDeclarationTests(unittest.TestCase):
         # Assert
         self.assertEqual((unanswered, stale), ([], []))
 
+    # GREEN_ON_BASE(characterization): the unnamed form is what every declaration written before
+    # this uses, and the change must not move it.
     def test_Given_ADeclarationNamingNoOperator_When_ASurvivorLands_Then_ItStillAnswers(self):
         # Arrange — every declaration written before this reads the line whole, and none of them
         # changes meaning.
@@ -1475,8 +1489,11 @@ class DeclarationFormatTests(unittest.TestCase):
 
     def test_Given_TheDeclarationTheGuideShows_When_TheScriptsOwnPatternReadsIt_Then_ItIsAccepted(self):
         # Arrange
-        shown = [mutation_check.Declaration(match.group(1), match.group(3).strip(), 0,
-                                            operator=(match.group(2) or "").strip() or None)
+        # The reason is the pattern's last group whether or not it carries an operator group, so this
+        # reads the same on a tree that has one and a tree that has not.
+        shown = [declaration(0, category=match.group(1), reason=match.groups()[-1].strip(),
+                             operator=(match.groups()[1] or "").strip() or None
+                             if len(match.groups()) > 2 else None)
                  for match in mutation_check.DECLARATION.finditer(GUIDE.read_text())]
 
         # Act
