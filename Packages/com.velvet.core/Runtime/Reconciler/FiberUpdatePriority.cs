@@ -26,12 +26,6 @@ namespace Velvet
         /// </summary>
         Normal = 1,
         /// <summary>
-        /// Low priority. Its flush is delayed by a fixed delay. Belongs to <c>FiberBatchScheduler</c>'s
-        /// Delayed tier (drained by <c>DrainDelayed</c> / registered via <c>ScheduleDelayed</c>), alongside
-        /// <see cref="Transition"/>.
-        /// </summary>
-        Deferred = 2,
-        /// <summary>
         /// Lowest priority. Taken by the updates a <c>StartTransition</c> callback schedules before it first
         /// suspends, and by <c>UseDeferredValue</c> derivations.
         /// Its flush is delayed so higher-priority lanes commit first, and once it has been starved for a
@@ -40,6 +34,6 @@ namespace Velvet
         /// to <c>FiberBatchScheduler</c>'s Delayed tier (drained by <c>DrainDelayed</c> / registered via
         /// <c>ScheduleDelayed</c>) until a starvation promotion moves it to the Immediate tier.
         /// </summary>
-        Transition = 3,
+        Transition = 2,
     }
 }
