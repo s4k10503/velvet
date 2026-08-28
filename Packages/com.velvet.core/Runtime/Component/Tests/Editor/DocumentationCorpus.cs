@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
@@ -33,39 +34,82 @@ namespace Velvet.Tests
         internal static IReadOnlyList<string> RepoEntries(bool includeClaude) =>
             (includeClaude ? ClaudeAwareWalk : DocumentationWalk).Value;
 
-        /// <summary>Top-level directories holding markdown that the walk does not reach.</summary>
+        /// <summary>Top-level directories holding tracked markdown that the walk does not reach.</summary>
         /// <remarks>
         /// The walk is rooted, so a document under a directory nobody added to the roots is scanned by
-        /// nothing and no drift guard sees it. Asking the question over every top-level directory cannot be
-        /// done: a developer machine carries untracked ones a runner does not, so such a check would be red
-        /// here and green in CI — which is the asymmetry the rooting exists to avoid, one level up.
+        /// nothing and no drift guard sees it.
         /// <para>
-        /// The population is therefore the directories that hold markdown, minus what .gitignore already
-        /// excludes. Both halves are read off the repository: the ignore file is where a machine-local
-        /// directory is already declared, so one appearing tomorrow excuses itself, and a root holding a
-        /// document does not.
+        /// Asked of what git tracks rather than of the filesystem. A developer machine carries untracked
+        /// directories a runner does not — a scratch note, a vendored tool, an agent harness — and the
+        /// filesystem reading reported one of those exactly as it reports a documentation root somebody
+        /// forgot, which are the two answers that must differ. Measured: an untracked `.agents/` holding
+        /// two documents reddened this here and left it green in CI, where only tracked files exist.
+        /// </para>
+        /// <para>
+        /// Nothing is lost by the narrowing. A documentation directory is tracked by the commit that adds
+        /// it, which is before CI and before review, so the guard still meets every case it is for on that
+        /// commit. The `.gitignore` reading it used to need goes with the filesystem walk: an ignored
+        /// directory is untracked by construction. `IgnoredRoots` stays for its other reader.
         /// </para>
         /// </remarks>
         internal static IReadOnlyList<string> UnwalkedMarkdownRoots()
         {
-            var ignored = IgnoredRoots();
             var walked = new HashSet<string>(WalkedRoots(includeClaude: true), StringComparer.Ordinal);
-            var found = new List<string>();
-            foreach (var directory in Directory.EnumerateDirectories(Path.GetFullPath(".")))
+            var found = new SortedSet<string>(StringComparer.Ordinal);
+            foreach (var tracked in TrackedMarkdown())
             {
-                var name = Path.GetFileName(directory);
-                if (walked.Contains(name) || BaseUnwalkedDirectories.Contains(name) || ignored.Contains(name))
+                var cut = tracked.IndexOf('/');
+                if (cut <= 0)
+                {
+                    // A document at the top level sits under no directory, so it names no unwalked root.
+                    continue;
+                }
+                var root = tracked.Substring(0, cut);
+                if (walked.Contains(root) || BaseUnwalkedDirectories.Contains(root))
                 {
                     continue;
                 }
-                if (Directory.EnumerateFiles(directory, "*.md", SearchOption.AllDirectories).Any())
-                {
-                    found.Add(name);
-                }
+                found.Add(root);
             }
 
-            found.Sort(StringComparer.Ordinal);
-            return found;
+            return found.ToList();
+        }
+
+        /// <summary>Every markdown path git tracks, repo-relative and slash-separated.</summary>
+        /// <remarks>
+        /// A git that does not answer leaves the reading with nothing rather than with an empty
+        /// repository, and an empty list would make every caller pass for want of anything to compare —
+        /// so it is reported as the check failing, the way an unreadable workflow is next door.
+        /// </remarks>
+        internal static IReadOnlyList<string> TrackedMarkdown()
+        {
+            var start = new ProcessStartInfo("git")
+            {
+                WorkingDirectory = Path.GetFullPath("."),
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            start.ArgumentList.Add("ls-files");
+            start.ArgumentList.Add("-z");
+            start.ArgumentList.Add("--");
+            start.ArgumentList.Add("*.md");
+
+            using var process = Process.Start(start);
+            if (process == null)
+            {
+                throw new InvalidOperationException("git ls-files did not start, so no corpus could be read");
+            }
+            var output = process.StandardOutput.ReadToEnd();
+            process.WaitForExit();
+            if (process.ExitCode != 0)
+            {
+                throw new InvalidOperationException(
+                    $"git ls-files exited {process.ExitCode}, so no corpus could be read");
+            }
+
+            return output.Split('\0').Where(entry => entry.Length > 0).ToList();
         }
 
         // Unity's own template writes /[Ll]ibrary/, so a root is a character class rather than a name;

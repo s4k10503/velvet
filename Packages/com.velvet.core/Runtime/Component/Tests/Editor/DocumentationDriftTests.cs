@@ -825,7 +825,35 @@ namespace Velvet.Tests
             // this reporting no unwalked root either.
             Assert.That((scanned.Count > 20, string.Join(", ", unwalked)), Is.EqualTo((true, string.Empty)),
                 "markdown under a root the walk does not reach is checked by nothing; add the root to the "
-                + "walk, or to .gitignore if it is machine-local");
+                + "walk, or leave it untracked if it is machine-local");
+        }
+
+        [Test]
+        public void Given_MarkdownGitDoesNotTrack_When_TheUnwalkedRootsAreRead_Then_ItNamesNoRoot()
+        {
+            // Arrange — a developer machine carries untracked directories a runner does not, and the two
+            // answers must differ: a documentation root somebody forgot is tracked by the commit that adds
+            // it. Measured before this reading was narrowed, an untracked `.agents/` holding two documents
+            // reddened the case above here and left it green in CI.
+            var stray = Path.Combine(Path.GetFullPath("."), ".velvet-untracked-probe");
+            Directory.CreateDirectory(stray);
+            File.WriteAllText(Path.Combine(stray, "note.md"), "# a note nobody committed\n");
+
+            try
+            {
+                // Act
+                var unwalked = DocumentationCorpus.UnwalkedMarkdownRoots();
+
+                // Assert — the corpus size rides along, because a reading that answered nothing would name
+                // no root either.
+                Assert.That((DocumentationCorpus.TrackedMarkdown().Count > 20,
+                             string.Join(", ", unwalked)),
+                            Is.EqualTo((true, string.Empty)));
+            }
+            finally
+            {
+                Directory.Delete(stray, recursive: true);
+            }
         }
 
         // The case above enumerates top-level directories, so it answers only for a root nobody walks. The
