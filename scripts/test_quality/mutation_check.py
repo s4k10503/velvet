@@ -1097,6 +1097,43 @@ def refusal(code, message):
     return code
 
 
+def digestible(text):
+    """The file with its comments removed, and the lines they emptied with them.
+
+    What a receipt is keyed on has to move when what a campaign measured moves, and no further. A
+    comment carries no mutant -- `mask_spans` reads it as something other than code, and the
+    generator skips it -- so an edit to one voids a receipt over a change no operator could have
+    seen, and a review round here is largely prose.
+
+    A string literal is masked for generation and kept here, because editing one changes behaviour a
+    mutant could have covered. A directive is kept for the same reason: it decides what compiles. A
+    blank line inside a verbatim string is part of the value, and a verbatim span is the only one
+    `mask_spans` reads across lines, so a line holding one is never dropped as empty.
+    """
+    keep = [True] * len(text)
+    quoted = [False] * len(text)
+    for start, end, kind in mask_spans(text):
+        for offset in range(start, min(end, len(text))):
+            if kind in (LINE_COMMENT, BLOCK_COMMENT):
+                keep[offset] = False
+            elif kind == VERBATIM:
+                quoted[offset] = True
+
+    lines, held, spans = [], [], False
+    for offset, character in enumerate(text):
+        if character == "\n":
+            # The newline too: a line that is empty inside a verbatim string holds nothing else to
+            # ask, and it is the one this has to keep.
+            lines.append(("".join(held), spans or quoted[offset]))
+            held, spans = [], False
+            continue
+        spans = spans or quoted[offset]
+        if keep[offset]:
+            held.append(character)
+    lines.append(("".join(held), spans))
+    return "\n".join(line for line, held_a_span in lines if line.strip() or held_a_span)
+
+
 def scope_digest(base, targets, project, platform):
     """What a campaign measured, in a form a later check can compare a tree against.
 
@@ -1109,13 +1146,19 @@ def scope_digest(base, targets, project, platform):
     What it does not cover is a test-side change. Removing a test can make a killed mutant survive,
     and this stays valid across it; including tests would void the receipt on the ordinary act of
     adding one after the run, which is most of a branch's commits.
+
+    Nor a comment: `digestible` takes them out before the hash, so a receipt survives the prose
+    correction a review round leaves behind. Anything narrower than the whole bytes has to be
+    checked for what it stops voiding on, and this stops on exactly the spans the generator already
+    refuses to mutate.
     """
     parts = [base, platform]
     for path in sorted(targets, key=str):
         # Repository-relative, so a receipt does not depend on where the checkout sits: a resolved
         # path and an unresolved one reach the same file and digest differently.
-        parts.append("{}:{}".format(relative_to(path, project).as_posix(),
-                                    hashlib.sha256(path.read_bytes()).hexdigest()))
+        parts.append("{}:{}".format(
+            relative_to(path, project).as_posix(),
+            hashlib.sha256(digestible(path.read_text(encoding="utf-8")).encode()).hexdigest()))
     return hashlib.sha256("\n".join(parts).encode()).hexdigest()
 
 
