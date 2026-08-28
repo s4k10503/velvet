@@ -20,6 +20,7 @@ from published_check import (
     CHANGELOG_PATH,
     PACKAGE_JSON_PATH,
     consistency_reason,
+    drain_reason,
     publication_reason,
     reopened_by,
     unpublished_reason,
@@ -57,6 +58,99 @@ MISSING = """# Changelog
 
 TAGS = {"v2.0.0", "v2.0.0-main", "v2.0.1", "v2.0.1-main"}
 
+# Two open sections with a break waiting in each of two subsections. The `### Changed` one is last in
+# its subsection here and is not last in DRAINED, so the drain readings compare two spellings of one
+# entry and only a split that ends an entry at the heading below it matches them.
+WAITING = """# Changelog
+
+## [Unreleased]
+
+### Added
+
+- Something a minor may ship.
+
+### Changed
+
+- Something else a minor may ship.
+
+## [Unreleased — breaking]
+
+### Changed
+
+- An API a caller has to edit around.
+
+### Fixed
+
+- Behaviour a working application would notice.
+
+## [2.0.1] - 2026-08-08
+
+### Highlights
+
+- A fix.
+"""
+
+# The release CONTRIBUTING.md prescribes: entries moved up, heading left standing with none, rename last.
+DRAINED = """# Changelog
+
+## [3.0.0] - 2026-09-01
+
+### Added
+
+- Something a minor may ship.
+
+### Changed
+
+- An API a caller has to edit around.
+- Something else a minor may ship.
+
+### Fixed
+
+- Behaviour a working application would notice.
+
+## [Unreleased — breaking]
+
+## [2.0.1] - 2026-08-08
+
+### Highlights
+
+- A fix.
+"""
+
+# A major closed with the section untouched, which is what forgetting to drain it looks like.
+LEFT_BEHIND = WAITING.replace("## [Unreleased]", "## [3.0.0] - 2026-09-01")
+
+# The same drain with one entry dropped on the way instead of carried.
+DROPPED = DRAINED.replace("- An API a caller has to edit around.\n", "")
+
+# A minor that takes a waiting break with it.
+SHIPPED_BY_A_MINOR = DRAINED.replace("## [3.0.0] - 2026-09-01", "## [2.2.0] - 2026-09-01")
+
+# A minor closing with the section untouched. The trunk carries the code those entries describe,
+# so this ships them.
+MINOR = WAITING.replace("## [Unreleased]", "## [2.2.0] - 2026-09-01")
+
+# A line cut before the breaking section existed, which is what the maintenance line is.
+NO_BREAKING_SECTION = WAITING[:WAITING.index("## [Unreleased — breaking]")] + "## [2.0.1] - 2026-08-08\n"
+NO_BREAKING_SECTION_MINOR = NO_BREAKING_SECTION.replace("## [Unreleased]", "## [2.2.0] - 2026-09-01")
+
+# The same drain with one entry copy-edited on the way instead of carried across unchanged.
+REWORDED_ON_THE_WAY = DRAINED.replace("- An API a caller has to edit around.",
+                                      "- An API that callers have to edit around.")
+
+# The major above, closing in the same change as a patch cut off the maintenance line. The whole
+# section moved into 3.0.0, which is what a rule reading only the section's before and after charges
+# to 2.1.1.
+MAJOR_BESIDE_A_PATCH = DRAINED.replace(
+    "## [2.0.1] - 2026-08-08",
+    "## [2.1.1] - 2026-08-30\n\n### Highlights\n\n- A backported fix.\n\n## [2.0.1] - 2026-08-08")
+
+# One entry decided not to be breaking after all, in a change that closes nothing.
+RECLASSIFIED = WAITING.replace(
+    "### Changed\n\n- Something else a minor may ship.",
+    "### Changed\n\n- An API a caller has to edit around.\n- Something else a minor may ship.",
+).replace("### Changed\n\n- An API a caller has to edit around.\n\n### Fixed", "### Fixed")
+
 
 def package_json(version="2.0.1"):
     return json.dumps({"name": "com.velvet.core", "version": version} if version
@@ -93,6 +187,86 @@ class ConsistencyDecisionTests(unittest.TestCase):
     def test_Given_PackageJsonDeclaresNoVersion_When_Decided_Then_ThatIsTheReason(self):
         # Act / Assert
         self.assertIn("declares no version", consistency_reason(PUBLISHED, package_json(version=None)))
+
+
+class DrainDecisionTests(unittest.TestCase):
+    """What a release may do to the section that holds what waits for a major."""
+
+    def test_Given_AMajorClosingOverItsWaitingBreaks_When_Decided_Then_TheOnesLeftBehindAreNamed(self):
+        # Arrange — the version closes, package.json bumps, and the entries stay put. The note is
+        # built from the closed section alone, so each one ships described by nothing.
+        reason = drain_reason(WAITING, LEFT_BEHIND)
+
+        # Assert
+        self.assertIn("3.0.0 is a major and '## [Unreleased — breaking]' still lists 2 entries",
+                      reason)
+
+    def test_Given_AMajorThatMovesTheWholeSectionIntoItself_When_Decided_Then_ThereIsNoReason(self):
+        # Arrange — the entry moved out of `### Changed` is last in its subsection at the base and
+        # not at the result, so the two spellings match only for a reader that ends an entry at the
+        # heading below it.
+        reason = drain_reason(WAITING, DRAINED)
+
+        # Assert
+        self.assertIsNone(reason)
+
+    def test_Given_AMajorThatDropsAnEntryInsteadOfCarryingIt_When_Decided_Then_TheLostOneIsNamed(self):
+        # Arrange — the section is empty at the result either way, so emptiness cannot separate this
+        # from the case above.
+        reason = drain_reason(WAITING, DROPPED)
+
+        # Assert
+        self.assertIn("1 entry left '## [Unreleased — breaking]' and no entry of 3.0.0 carries "
+                      "that text", reason)
+
+    def test_Given_AMinorClosingOverAnEntryItTakesWithIt_When_Decided_Then_ItIsRefused(self):
+        # Arrange — the same drain under a version that is not a major, which is a break shipped to
+        # callers who read the range as compatible.
+        reason = drain_reason(WAITING, SHIPPED_BY_A_MINOR)
+
+        # Assert
+        self.assertIn("2.2.0 is not a major", reason)
+
+    def test_Given_AMinorClosingOverAFullSection_When_Decided_Then_ItIsRefused(self):
+        # Arrange — the section is exactly where the change found it, and the tree it releases holds
+        # the code those entries describe, so the minor ships every one of them undescribed.
+        reason = drain_reason(WAITING, MINOR)
+
+        # Assert
+        self.assertIn("2.2.0 is not a major and '## [Unreleased — breaking]' still lists", reason)
+
+    def test_Given_AMinorOnALineWithNoBreakingSection_When_Decided_Then_ThereIsNoReason(self):
+        # Arrange — the maintenance line, which was cut before the section existed and so carries
+        # neither the section nor the code its entries describe.
+        reason = drain_reason(NO_BREAKING_SECTION, NO_BREAKING_SECTION_MINOR)
+
+        # Assert
+        self.assertIsNone(reason)
+
+    def test_Given_AMajorDrainThatRewordedAnEntryOnTheWay_When_Decided_Then_TheRepairIsNamed(self):
+        # Arrange — the entry arrived, so the break is described and this refusal is a false one. It
+        # stands because the reading sees only that the text is gone, which a drop leaves too; what
+        # the message owes the reader is the way out.
+        reason = drain_reason(WAITING, REWORDED_ON_THE_WAY)
+
+        # Assert
+        self.assertIn("make any wording change in a change that closes no version", reason)
+
+    def test_Given_AMajorClosingBesideAPatchInOneChange_When_Decided_Then_ThereIsNoReason(self):
+        # Arrange — 3.0.0 drains the section correctly and 2.1.1 closes below it. Both are new here,
+        # so both are asked, and the section's own before and after cannot say which one emptied it.
+        reason = drain_reason(WAITING, MAJOR_BESIDE_A_PATCH)
+
+        # Assert
+        self.assertIsNone(reason)
+
+    def test_Given_AnEntryReclassifiedByAChangeThatClosesNothing_When_Decided_Then_ThereIsNoReason(self):
+        # Arrange — deciding an entry was never breaking is an edit of its own, and the file it
+        # leaves is the file a minor that shipped the break would leave.
+        reason = drain_reason(WAITING, RECLASSIFIED)
+
+        # Assert
+        self.assertIsNone(reason)
 
 
 class PublicationDecisionTests(unittest.TestCase):
