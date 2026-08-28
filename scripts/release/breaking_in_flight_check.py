@@ -170,7 +170,8 @@ def main():
     sys.stderr.write(
         "\nA breaking entry is written for the next major, so the major closing here is the one it\n"
         "was written for. Say in the body which of these the version carries and which it does not —\n"
-        "'not this one' is a decision, and going without one is what this refuses.\n")
+        "'not this one' is a decision, and going without one is what this refuses. The body is read\n"
+        "when this runs, so re-running it after the edit is enough.\n")
     return UNNAMED
 
 

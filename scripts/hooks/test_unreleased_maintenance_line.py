@@ -90,7 +90,11 @@ def repository(branch, changelog, merged=True):
     else:
         (origin / CHANGELOG).write_text(changelog)
         git(origin, "commit", "--quiet", "--allow-empty", "-am", "more")
-    if merged and branch != "main":
+    if merged == "squash" and branch != "main":
+        # What every merge onto main here actually is: the content arrives, the parent does not.
+        git(origin, "merge", "--quiet", "--squash", branch)
+        git(origin, "commit", "--quiet", "-m", "carry the line forward")
+    elif merged and branch != "main":
         git(origin, "merge", "--quiet", "--no-edit", "-m", "merge forward", branch)
     clone = root / "clone"
     subprocess.run(["git", "clone", "--quiet", str(origin), str(clone)],
@@ -99,22 +103,37 @@ def repository(branch, changelog, merged=True):
 
 
 class LineMainHasNotTaken(unittest.TestCase):
-    """The second reading, asked of git's ancestry rather than of what a pull request says.
+    """The second reading, asked of the CHANGELOG rather than of git's ancestry.
 
-    #777 measured two per-commit readings failing, and a third that works by reading prose. This one
-    is the question the practice already answers: merge the line forward, and git records that it did.
+    Every merge onto main here is a squash, which writes a commit whose only parent is main — so an
+    ancestry reading is false forever whatever anyone does, and a patch-id reading is too, the squash
+    having combined the line's patches into one whose id matches none of them.
     """
 
-    def test_Given_ALineMainHasNotMerged_When_Reported_Then_ItIsNamedWithACount(self):
-        # Arrange — a line carrying a commit main cannot reach, which is what a fix made there and
-        # never carried forward looks like.
-        clone = repository("2.x", EMPTY, merged=False)
+    def test_Given_ALineMainHasNotTaken_When_Reported_Then_ItsOutstandingEntriesAreNamed(self):
+        # Arrange — a line carrying an entry main does not, which is what a fix made there and never
+        # carried forward looks like.
+        clone = repository("2.x", WAITING, merged=False)
 
         # Act
         done = run(clone)
 
         # Assert
-        self.assertIn("main does not contain origin/2.x: 1 commit(s)", done.stdout)
+        self.assertIn("main does not carry 1 CHANGELOG entry that origin/2.x does", done.stdout)
+
+    def test_Given_ALineCarriedForwardBySquash_When_Reported_Then_NothingIsSaidAboutIt(self):
+        # Arrange — the content is on main and the ancestry is not, which is every forward merge this
+        # repository can perform.
+        clone = repository("2.x", WAITING, merged="squash")
+
+        # Act
+        done = run(clone)
+
+        # Assert — the first reading rides along, because a run that printed nothing at all satisfies
+        # the absence too. "main does not" covers the ancestry wording as well as this one, which is
+        # what the base prints here.
+        self.assertEqual(("holds 1 unreleased CHANGELOG entry" in done.stdout,
+                          "main does not" in done.stdout), (True, False))
 
     def test_Given_ALineMainHasMerged_When_Reported_Then_NothingIsSaid(self):
         # Arrange — once the merge has happened there is nothing left to interpret, and a report that
