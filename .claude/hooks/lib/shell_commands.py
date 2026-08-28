@@ -15,11 +15,15 @@ import shlex
 
 SEPARATORS = set(";&|\n")
 
-# Words that may precede the command without changing which command it is. `then`/`do`/`else`
-# because a command inside a conditional or a loop is still that command; `builtin` alongside
-# `command` because a guard reading the word after it saw `builtin cd` as neither a move nor a
-# command word, and answered about a file in the directory the move had left.
-LEADING_WORDS = {"then", "do", "else", "elif", "!", "time", "command", "builtin", "nohup", "exec"}
+# Words that may precede the command without changing which command it is. `then`/`do`/`else` because
+# a command inside a conditional or a loop is still that command, and `if`/`while`/`until` for the same
+# reason one word earlier: the keyword that OPENS the construct was missing while the ones that
+# continue it were there, so `if git commit --amend; then ...` was seen by no guard and
+# `then git commit --amend` by all of them. `builtin` alongside `command` because a guard reading the
+# word after it saw `builtin cd` as neither a move nor a command word, and answered about a file in the
+# directory the move had left.
+LEADING_WORDS = {"if", "while", "until", "then", "do", "else", "elif",
+                 "!", "time", "command", "builtin", "nohup", "exec"}
 ENV_ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 REDIRECTION = re.compile(r"^\d*(?:>>|>&|<&|>|<)")
 

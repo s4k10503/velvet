@@ -381,8 +381,20 @@ def main():
 
     cwd = event.get("cwd") or "."
     for directory, commits_all, pathspecs in commits:
-        unresolved = [token for token in list(pathspecs) + ([directory] if directory else [])
-                      if unexpanded(token)]
+        # The two operand kinds are refused apart, because the remedy for one does not reach the
+        # other: naming the paths leaves a `-C` unresolved, and the reader told to do it tries
+        # something that cannot help. Measured on an agent's own `git -C "$SP" commit`.
+        if directory and unexpanded(directory):
+            sys.stderr.write(
+                "Refusing `git commit`: the tree it runs in is named by an operand the shell has "
+                "not\nexpanded yet.\n\n"
+                f"  -C {directory}\n\n"
+                "Every check below reads the content the commit would record, and which repository "
+                "holds\nthat content is what `-C` decides — so this cannot read the tree at all, "
+                "rather than reading\nthe wrong one.\n\n"
+                "Spell the directory out.\n")
+            return 2
+        unresolved = [token for token in pathspecs if unexpanded(token)]
         if unresolved:
             sys.stderr.write(
                 "Refusing `git commit`: it is scoped by an operand the shell has not expanded yet.\n\n"
