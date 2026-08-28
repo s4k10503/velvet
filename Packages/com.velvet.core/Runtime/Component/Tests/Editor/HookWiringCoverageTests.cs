@@ -582,6 +582,8 @@ namespace Velvet.Tests
              "\"cwd\":\"%SCRATCH%\",\"tool_input\":{\"command\":\"git stash\"}"),
             ("a branch creation",
              "\"cwd\":\"%SCRATCH%\",\"tool_input\":{\"command\":\"git checkout -b probe\"}"),
+            ("a Library seed whose source is unexpanded",
+             "\"cwd\":\"%SCRATCH%\",\"tool_input\":{\"command\":\"rsync -a $OTHER/Library/ Library/\"}"),
             ("a commit scoped by an unexpanded pathspec",
              "\"cwd\":\"%SCRATCH%\",\"tool_input\":{\"command\":\"git commit -m probe -- $PATHS\"}"),
             ("an issue creation carrying no metadata",
