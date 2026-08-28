@@ -523,17 +523,6 @@ namespace Velvet.Tests
         }
     }
 
-    /// <summary>
-    /// Specifies <c>Hooks.UseNavigation</c> and the
-    /// declarative <c>V.Navigate</c> redirect element.
-    /// <list type="bullet">
-    /// <item><c>UseNavigation</c> reports <see cref="NavigationLifecycle.Idle"/> when no navigation is in
-    /// flight and exposes the current location.</item>
-    /// <item><c>UseNavigation</c> re-renders the component and reflects the latest state as the router's
-    /// status transitions.</item>
-    /// <item><c>V.Navigate</c> navigates to its target once on mount and renders nothing.</item>
-    /// </list>
-    /// </summary>
     [TestFixture]
     internal sealed class RouteNavigationStateTests
     {
@@ -574,8 +563,6 @@ namespace Velvet.Tests
             }
         }
 
-        // Hosts a V.Navigate whose target lives in state, so a test can change the `to` prop by driving the
-        // setter and re-rendering this wrapper.
         private static class NavCapture
         {
             public static System.Action<string> SetTarget;
@@ -635,12 +622,11 @@ namespace Velvet.Tests
             });
             router.NavigateSync("/home");
             using var mounted = MountWith(router, V.Component(Capture.Render, key: "cap"));
-            // The status/location subscription is wired in a UseEffect, so it must be flushed before the
-            // navigation below can reach the hook.
+            // The subscription must be committed before the navigation under test.
             mounted.FlushEffectsForTest();
             var rendersBefore = Capture.RenderCount;
 
-            // Act: a settled navigation fires the status/location events, scheduling a re-render.
+            // Act
             router.NavigateSync("/about");
             mounted.FlushStateForTest();
 
@@ -661,7 +647,7 @@ namespace Velvet.Tests
             });
             router.NavigateSync("/start");
 
-            // Act: mounting V.Navigate fires the redirect as a mount-time effect.
+            // Act
             using var mounted = MountWith(router, V.Navigate("/dest", key: "nav"));
             mounted.FlushEffectsForTest();
 
@@ -684,7 +670,7 @@ namespace Velvet.Tests
             using var mounted = MountWith(router, V.Navigate("/dest", replace: true, key: "nav"));
             mounted.FlushEffectsForTest();
 
-            // Assert: replace overwrites the single starting entry, leaving nothing to go back to.
+            // Assert
             Assert.That(router.CurrentLocation.Path, Is.EqualTo("/dest"));
             Assert.That(router.CanGoBack, Is.False);
         }
@@ -692,9 +678,6 @@ namespace Velvet.Tests
         [Test]
         public void Given_SettledNavigation_When_UseNavigation_Then_ReRendersExactlyOnce()
         {
-            // The status and location events fired during one synchronous navigation collapse to a single
-            // distinct state value ({Idle, newLocation}); UseState bails on the equal duplicates, so the
-            // component re-renders exactly once rather than flickering through the transient Loading state.
             // Arrange
             var router = new Router(new[]
             {
@@ -729,8 +712,7 @@ namespace Velvet.Tests
             mounted.FlushEffectsForTest();
             Assert.That(router.CurrentLocation.Path, Is.EqualTo("/a"));
 
-            // Act: change the target prop; the Navigate element re-renders with a new `to`, and its effect
-            // keyed on To re-runs the redirect.
+            // Act
             NavCapture.SetTarget!("/b");
             mounted.FlushStateForTest();
             mounted.FlushEffectsForTest();
