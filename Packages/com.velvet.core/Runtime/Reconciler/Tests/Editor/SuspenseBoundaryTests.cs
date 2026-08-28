@@ -43,6 +43,8 @@ namespace Velvet.Tests
     /// <item>The boundary emits no host node: its fallback and resolved content sit at the same VisualElement depth
     /// as the equivalent content without a boundary, and a boundary placed directly inside AnimatePresence renders
     /// wrapper-less inside that container.</item>
+    /// <item>A ref the rolled-back primary's leaf carried never has its setup run: the setup is queued for
+    /// the end of the pass and the rollback cancels it, so nothing points at the discarded element.</item>
     /// <item>A primary that suspends rolls back cleanly: a childless poolable leaf it created is reclaimed into the
     /// pool, a child-bearing container orphan is left for GC (not pooled), and a container orphan's deferred child
     /// layout effect never runs against the dead orphan; on resume the primary subtree is rebuilt and its effect
@@ -677,6 +679,23 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_SuspendedPrimaryWithARefCarryingLeaf_When_RolledBack_Then_TheRefSetupNeverRuns()
+        {
+            // Arrange — the primary created the ref-carrying leaf before its sibling suspended, so the
+            // rollback discards an element whose setup the pass had queued and not yet run.
+            s_rolledBackLeafRef = null;
+            var source = new UniTaskCompletionSource<string>();
+            s_asyncChildFactory = _ => source.Task;
+
+            // Act
+            using var mounted = V.Mount(_root, V.Component(RefLeafSuspenseHostRender, key: "host"));
+
+            // Assert — the fallback term separates a rollback that happened from a primary that never
+            // suspended, which would leave the ref legitimately set.
+            Assert.That((s_rolledBackLeafRef == null, _root.Q<Button>()?.text), Is.EqualTo((true, "loading")));
+        }
+
+        [Test]
         public void Given_SuspendedPrimaryWithPoolableLeaf_When_Resolved_Then_PrimarySiblingLeafIsRecommitted()
         {
             // Arrange
@@ -828,6 +847,19 @@ namespace Velvet.Tests
                 children: new VNode[]
                 {
                     V.Label(text: "primary-leaf"),
+                    V.Component(SuspenseAsyncChildRender, key: "child"),
+                });
+
+        private static VisualElement s_rolledBackLeafRef;
+
+        [Component]
+        private static VNode RefLeafSuspenseHostRender()
+            => V.Suspense(
+                fallback: V.Button(text: "loading"),
+                children: new VNode[]
+                {
+                    V.Label(text: "primary-leaf",
+                        refCallback: element => { s_rolledBackLeafRef = element; return null; }),
                     V.Component(SuspenseAsyncChildRender, key: "child"),
                 });
 

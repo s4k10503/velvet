@@ -29,9 +29,6 @@ namespace Velvet
         // the layout-passthrough class keeps it transparent to layout.
         internal const string ContextProviderClassName = "velvet-context-provider";
 
-        private void InvokeRefCallback(Func<VisualElement, Action>? refCallback, VisualElement element)
-            => _ctx.InvokeRefCallback(element, refCallback);
-
         public FiberNodeFactory(ReconcilerContext ctx, FiberNodePatcher patcher)
         {
             _ctx = ctx;
@@ -114,8 +111,15 @@ namespace Velvet
                 // symmetric — both omit the per-Component wrapper VE.
                 _host.ReconcileChildren(childContainer, Array.Empty<VNode>(), elementNode.Children);
             }
-            elementNode.OnCreated?.Invoke(element);
-            InvokeRefCallback(elementNode.RefCallback, element);
+            try
+            {
+                elementNode.OnCreated?.Invoke(element);
+            }
+            catch (Exception exception)
+            {
+                ReconcilerContext.ContainUserCallbackFailure(_ctx.FiberStack.Current, exception);
+            }
+            _ctx.SyncRefCallback(element, elementNode.RefCallback);
             _patcher.Appliers.ApplyGestureManipulator(element, elementNode.WhileHoverClass, elementNode.WhileTapClass, elementNode.WhileFocusClass);
             _patcher.ApplyVariantManipulators(element, elementNode.ClassNames);
             // After ApplyVariantManipulators (which registers the data-/aria- variant rules): seed the
@@ -182,7 +186,18 @@ namespace Velvet
             VisualElement outer;
             if (elementNode.WrapElement != null)
             {
-                var wrapper = elementNode.WrapElement(element);
+                VisualElement? wrapper = null;
+                try
+                {
+                    wrapper = elementNode.WrapElement(element);
+                }
+                catch (Exception exception)
+                {
+                    // The element itself takes the slot when the wrap fails. Leaving the throw here
+                    // left the slot empty instead, with the element fully built and its ref already
+                    // queued against it by the sync above.
+                    ReconcilerContext.ContainUserCallbackFailure(_ctx.FiberStack.Current, exception);
+                }
                 if (wrapper != null && wrapper != element)
                 {
                     _ctx.WrapperToInnerMap[wrapper] = element;
@@ -287,7 +302,7 @@ namespace Velvet
                     _host.ReconcileChildren(childContainer, Array.Empty<VNode>(), motionNode.Children);
                 }
             }
-            InvokeRefCallback(motionNode.RefCallback, element);
+            _ctx.SyncRefCallback(element, motionNode.RefCallback);
             _patcher.Appliers.ApplyGestureManipulator(element, motionNode.WhileHoverClass, motionNode.WhileTapClass, motionNode.WhileFocusClass);
             _patcher.ApplyVariantManipulators(element, appliedClasses);
             _patcher.ApplyAttributes(element, motionNode.Props);
@@ -331,8 +346,11 @@ namespace Velvet
                         motionNode, out var standaloneFromClasses, out var standaloneToClasses))
                 {
                     var t = motionNode.Transition;
+                    // Contained on the same terms the presence expansion's own enters are, and attributed
+                    // to the component whose render reached this create — the owner SyncRefCallback reads
+                    // for the same element, captured here because the callback can fire frames later.
                     _ctx.StyleAnimationScheduler.PlayVariantEnter(element, standaloneFromClasses, standaloneToClasses,
-                        t, motionNode.OnEnterComplete);
+                        t, GeneralPathReconciler.ContainedEnterComplete(motionNode, _ctx.FiberStack.Current));
                 }
                 else
                 {
