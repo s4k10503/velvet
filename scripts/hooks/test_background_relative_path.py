@@ -33,16 +33,22 @@ class PathSpellingTests(unittest.TestCase):
         # Act / Assert
         self.assertEqual(self.judge("python3 script?/pr/settle.py watch"), 2)
 
+    # GREEN_ON_BASE(characterization): the base answers this too, and it is the half the
+    # widened reading could take with it — only running it says whether it did.
     def test_Given_ThePlainSpellingOfTheSamePath_When_Backgrounded_Then_ItIsStillRefused(self):
         # Arrange — the half that already worked, and what the glob reading must not lose.
         # Act / Assert
         self.assertEqual(self.judge("python3 scripts/pr/settle.py watch"), 2)
 
+    # GREEN_ON_BASE(characterization): the base answers this too, and it is the half the
+    # widened reading could take with it — only running it says whether it did.
     def test_Given_AnAbsolutePath_When_Backgrounded_Then_ItIsLetThrough(self):
         # Arrange — it says where it runs, which is the whole of what this asks.
         # Act / Assert
         self.assertEqual(self.judge("python3 /elsewhere/scripts/pr/settle.py watch"), 0)
 
+    # GREEN_ON_BASE(characterization): the base answers this too, and it is the half the
+    # widened reading could take with it — only running it says whether it did.
     def test_Given_ACommandNamingNoRepoDirectory_When_Backgrounded_Then_ItIsLetThrough(self):
         # Arrange — the control: a reading that refused every glob would refuse this too.
         # Act / Assert

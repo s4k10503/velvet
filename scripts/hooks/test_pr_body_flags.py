@@ -120,6 +120,8 @@ class BodyPathReadingTests(unittest.TestCase):
         # Assert
         self.assertEqual((text, obstruction), ("a body that answers", None))
 
+    # GREEN_ON_BASE(characterization): the base answers this too, and it is the half the
+    # widened reading could take with it — only running it says whether it did.
     def test_Given_ATildeSpelledBodyThatIsNotThere_When_Read_Then_ItIsStillMissing(self):
         # Arrange — the control: expanding the selector must not make an absent file readable.
         # Act
@@ -128,6 +130,8 @@ class BodyPathReadingTests(unittest.TestCase):
         # Assert
         self.assertEqual(obstruction, pr_body.MISSING)
 
+    # GREEN_ON_BASE(characterization): the base answers this too, and it is the half the
+    # widened reading could take with it — only running it says whether it did.
     def test_Given_AVariableSpelledBody_When_Read_Then_ItIsStillUnexpanded(self):
         # Arrange — the other selector, which names no path this can resolve and is refused as before.
         # Act
