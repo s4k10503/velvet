@@ -249,7 +249,9 @@ a hand-rolled harness can share story discovery and mount lifecycle with the liv
 
 Velvet also ships **DevTools** — the React DevTools equivalent — a real-time VNode-tree
 inspector with time-travel through a component's state-change history, opened via **Window ▸
-Velvet ▸ DevTools Inspector**. Like React DevTools it **auto-attaches**: every `V.Mount` registers
-its root (and unregisters on dispose), so the running app's tree appears with no manual call. Manual
-`VelvetDevToolsRegistry.Register(fiber, "Label")` remains available for surfacing a specific interior
-sub-tree under a custom label.
+Velvet ▸ DevTools Inspector**. In the editor, a successful `V.Mount` registers its root and
+`MountedTree.Dispose` unregisters that root — and only that root, so an interior fiber registered
+by hand is yours to `Unregister`, or it stays for the session as a row the inspector greys out.
+`Clear` empties the whole registry. Calling `VelvetDevToolsRegistry.Register(fiber, "Label")` on a
+fiber already registered replaces its entry rather than editing it, so its **Registered At** moves
+to now.
