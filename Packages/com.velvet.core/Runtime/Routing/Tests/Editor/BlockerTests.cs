@@ -852,19 +852,21 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AnAttemptSupersededDuringTheAwait_When_ABlockerWouldBlock_Then_NoStateIsFlipped()
+        public void Given_AnAttemptTheCheckItselfSupersedes_When_ItWouldBlock_Then_NoStateIsFlipped()
         {
-            // Arrange — the cancellation is read after the await rather than at the top of the loop
-            // body, so a token cancelled while the check was running is still seen. Hoisting the read
-            // is the ordinary refactor, and it leaves Blocked wired to an attempt the caller discards.
+            // Arrange — the cancellation is read after the check returns rather than at the top of
+            // the loop body, so a token the check itself cancelled is still seen. Hoisting the read is
+            // the ordinary refactor, and it leaves Blocked wired to an attempt the caller discards.
+            //
+            // The check completes synchronously: yielding first would leave the pass mid-await, and
+            // the fixture drives it with GetResult rather than an await of its own.
             var manager = new RouteBlockerManager();
             var state = new RouteBlockerState();
             using var cts = new CancellationTokenSource();
-            using var registration = manager.Register(async (attempt, token) =>
+            using var registration = manager.Register((attempt, token) =>
             {
                 cts.Cancel();
-                await UniTask.Yield();
-                return true;
+                return UniTask.FromResult(true);
             }, state);
 
             // Act
