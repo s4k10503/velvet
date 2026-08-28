@@ -5,26 +5,9 @@ using static Velvet.Tests.RouteTestStubs;
 
 namespace Velvet.Tests
 {
-    /// <summary>
-    /// Specifies how <see cref="Router"/> resolves declarative redirects and route Guards.
-    /// <list type="bullet">
-    /// <item>A route's <c>RedirectTo</c> sends navigation on to the target, following a chain of redirects
-    /// to its final target and recording only where that chain arrived; a cycle yields
-    /// <see cref="NavigationResult.Error"/>.</item>
-    /// <item>A Guard returning null lets navigation pass; returning a path redirects there; the Guard receives
-    /// the matched route's params.</item>
-    /// <item>A Guard redirect during Back replaces the previous history entry (the index lands on it and
-    /// forward navigation remains available), while a failed Guard redirect leaves the history index alone.</item>
-    /// <item>A Guard redirect during Forward redirects to the Guard target.</item>
-    /// <item>A redirect route reached by Forward replaces its history entry, so the forward target becomes the
-    /// redirect destination.</item>
-    /// <item>A pushed redirect records a step even when its target is the path the user is already on.</item>
-    /// </list>
-    /// </summary>
     [TestFixture]
     internal sealed class RedirectTests
     {
-        // Router.Current is global singleton state; dispose between tests.
         [TearDown]
         public void TearDown()
         {
@@ -172,9 +155,6 @@ namespace Velvet.Tests
         [Test]
         public void Given_GuardRedirectDuringBack_When_LandedOnTarget_Then_ReplacesPreviousEntry()
         {
-            // A Back step's redirect overwrites the entry that step resolved to, so /login takes history[0]
-            // and the index lands on it with no further back step but a forward step still available to the
-            // untouched /other entry.
             // Arrange
             var router = new Router(new[]
             {
@@ -189,7 +169,7 @@ namespace Velvet.Tests
             enableGuard();
             router.GoBackSync();
 
-            // Assert
+            // Assert — the index and adjacent-step flags distinguish replacement from a push.
             Assert.That(
                 (router.HistoryIndex, router.CanGoBack, router.CanGoForward),
                 Is.EqualTo((0, false, true)));
@@ -218,7 +198,6 @@ namespace Velvet.Tests
         [Test]
         public void Given_FailedGuardRedirectDuringBack_When_Rejected_Then_HistoryIndexIsUnchanged()
         {
-            // The Back step commits nothing once its guard redirect fails, leaving the router on /a at index 1.
             // Arrange
             var router = new Router(new[]
             {
@@ -292,9 +271,6 @@ namespace Velvet.Tests
         [Test]
         public void Given_PushRedirectFailsWithForwardHistory_When_RolledBack_Then_ForwardEntryIsPreserved()
         {
-            // history = [/home, /page]; GoBack to /home leaves /page available forward. Pushing /admin would
-            // truncate the forward /page (Push semantics), but its guard redirects to a missing route and the
-            // push FAILS. Nothing may be truncated for an entry that never arrives, so /page stays reachable.
             // Arrange
             var router = new Router(new[]
             {
@@ -314,7 +290,7 @@ namespace Velvet.Tests
             Assume.That(pushResult, Is.EqualTo(NavigationResult.NotFound),
                 "Precondition: the push's guard redirect failed");
 
-            // Assert — forward navigation reaches the preserved /page, not the rolled-back ghost /admin.
+            // Assert
             router.GoForwardSync();
             Assert.That(router.CurrentLocation.Path, Is.EqualTo("/page"),
                 "A push that never arrives must not truncate the forward entry it would have replaced");
@@ -327,9 +303,6 @@ namespace Velvet.Tests
         [Test]
         public void Given_AGuardRedirectingToTheCurrentPath_When_Pushed_Then_TheTargetIsAppendedAsItsOwnEntry()
         {
-            // A pushed redirect commits its target the way the Push would have committed the originating
-            // path, so a guard that normalises a path to the one the user is already on still records a step
-            // and Back returns to that path — rather than the push resolving to nothing at all.
             // Arrange
             var router = BuildRouter("/target", Route("guarded", guard: _ => "/target"), Route("target"));
             Assume.That(router.CanGoBack, Is.False, "Precondition: the start entry is the only one on the stack");
@@ -345,9 +318,6 @@ namespace Velvet.Tests
         [Test]
         public void Given_APushedGuardRedirect_When_TheBlockerIsAsked_Then_ItIsToldTheStepIsAPush()
         {
-            // The Blocker check runs inside the redirect target's own navigation, and what it reports is what
-            // a leave-confirmation tells the user about the step: this one appends an entry, so Push is what
-            // describes it.
             // Arrange
             var router = BuildRouter("/home",
                 Route("home"), Route("guarded", guard: _ => "/target"), Route("target"));
@@ -374,8 +344,6 @@ namespace Velvet.Tests
         [Test]
         public void Given_ForwardEntryIsRedirectRoute_When_GoForward_Then_LandsOnRedirectTarget()
         {
-            // Navigating to /old records only where the redirect arrived, so the pushed entry is /new and a
-            // later GoForward from /home resolves to it.
             // Arrange
             var router = new Router(new[]
             {
