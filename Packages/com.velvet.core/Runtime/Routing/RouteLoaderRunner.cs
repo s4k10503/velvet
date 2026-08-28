@@ -5,33 +5,25 @@ using Cysharp.Threading.Tasks;
 
 namespace Velvet
 {
-    // LoaderMode.Await loaders must complete synchronously; LoaderMode.Suspend loaders run
-    // asynchronously in the background.
     internal sealed class RouteLoaderRunner : IDisposable
     {
         private CancellationTokenSource? _cts;
 
-        // Notification event fired with (routeId, result) when a Suspend loader of the CURRENT round
-        // succeeds. A loader that ignores the CancellationToken and resolves after a newer RunLoadersSync
-        // (or after disposal) belongs to a superseded round; its result is recorded on that round but not
-        // announced, so a navigated-away route cannot pollute the live state.
+        // Late results stay on their superseded round; only the active runner round emits announcements.
         public event Action<string?, object>? OnSuspendLoaderCompleted;
 
-        // Notification event fired with (routeId, exception) when a Suspend loader of the current round
-        // fails. The failure is recorded in the round's Errors either way; only the announcement is withheld
-        // from a superseded round, as on OnSuspendLoaderCompleted.
+        // Failures follow the same ownership rule as OnSuspendLoaderCompleted.
         public event Action<string?, Exception>? OnSuspendLoaderFailed;
 
         private int _activeSuspendTaskCount;
 
-        // One RunLoadersSync call's results, errors, outstanding-loader count and completion flag. They live
-        // on the round rather than on the runner so that a round asked anything answers for itself: a loader
-        // delegate is free to start a navigation, which begins another round from inside the one still
-        // launching, and runner-wide state would be cleared and then written under it.
+        // Per-round state prevents a navigation started inside a Loader from overwriting the outer run.
         internal sealed class LoaderRound
         {
-            // Loader results and errors are keyed by RouteId (stable per-route identity) so sibling index
-            // routes, whose MatchedPath is the empty string, do not collide.
+            // Keyed on RouteId rather than MatchedPath, which is the route's own trimmed path and so is
+            // shared by two levels of one chain whenever their paths trim alike — a pathless layout above
+            // an index child, both "", or a segment repeated as in "users" under "users". RouteId is
+            // cumulative and keeps them apart; one key would let the second loader's result win.
             internal readonly Dictionary<string?, object> Results = new();
 
             internal readonly Dictionary<string?, Exception> Errors = new();
@@ -40,28 +32,17 @@ namespace Velvet
 
             internal bool AllCompleted = true;
 
-            // False while a Suspend loader of this round has not terminated. The router records it on the
-            // history entry it commits, which is what separates an unfinished round's data from the data a
-            // finished one produced.
             internal bool Settled => Pending == 0;
         }
 
         private LoaderRound _currentRound = new();
 
-        // The round a Suspend completion belongs to: the events fire only after the supersession check, so a
-        // subscriber reading this from inside one of them is reading its own round.
         internal LoaderRound CurrentRound => _currentRound;
 
-        // Number of live Suspend loader tasks. Incremented at the start of RunSuspendLoader and
-        // decremented in the finally block at completion (success / failure / cancel alike).
-        // Internal accessor used for test verification.
-        // When RunLoadersSync is invoked back-to-back in quick succession, tasks from the previous
-        // round that are still cancelling can temporarily coexist with tasks from the new round.
-        // This counter therefore tracks "all live tasks across rounds", not "tasks of the current round".
+        // Cancellation can overlap rounds, so this counts live tasks across all rounds.
         internal int ActiveSuspendTaskCount => _activeSuspendTaskCount;
 
-        // The round is handed back rather than read off CurrentRound afterwards, because a loader that
-        // navigates has by then made a nested round current.
+        // A Loader may make a nested round current before its outer RunLoadersSync returns.
         public LoaderRound RunLoadersSync(
             IReadOnlyList<RouteMatch> matches,
             CancellationToken externalToken)
@@ -69,10 +50,7 @@ namespace Velvet
             CancelPending();
             var cts = CancellationTokenSource.CreateLinkedTokenSource(externalToken);
             _cts = cts;
-            // A loader delegate is free to navigate, which reaches this method again and replaces _cts. The
-            // source and the token are therefore read once for the round rather than per loader: a round that
-            // the nested one superseded must launch its remaining loaders under its own cancelled token, not
-            // lend them the currency of the round that superseded it.
+            // Capture once to keep a nested navigation's token out of the outer round's later Loaders.
             var roundToken = cts.Token;
             var round = new LoaderRound();
             _currentRound = round;
@@ -154,11 +132,6 @@ namespace Velvet
             {
                 _activeSuspendTaskCount++;
                 object result;
-                // Only the await is inside: an announcement made from within it is taken for the loader by
-                // the clauses that follow — the round's pending loader counted off a second time, and the
-                // general clause filing the throw as the route's load error besides. What the second count
-                // costs depends on how many loaders the round holds: one leaves it at -1 and permanently
-                // unsettled, two leave it at 0 and settled while the second loader is still outstanding.
                 try
                 {
                     result = await task;
@@ -171,26 +144,18 @@ namespace Velvet
                 catch (Exception ex)
                 {
                     round.Pending--;
-                    // Recorded ahead of the supersession guard, as the success path records its result: Pending
-                    // is counted off whatever the round's currency, so a round that recorded nothing for a route
-                    // it counted off would report itself settled holding neither a result nor a failure for it.
+                    // Supersession suppresses announcements, not the owning round's accounting.
                     round.Errors[routeId] = ex;
                     if (ownCts != _cts) return;
                     Announce(OnSuspendLoaderFailed, routeId, ex);
                     return;
                 }
 
-                // Counted off before the supersession check and before the event, not in the finally below: a
-                // superseded round is still owed this task's departure, and a subscriber reading the round
-                // from inside the callback — the router's history write-back does — must see it already gone.
+                // Above the supersession return: Settled is Pending == 0, and a round that never settles
+                // is one HistoryEntry.LoadersSettled keeps unservable, so Back onto that entry re-runs its
+                // loaders every time.
                 round.Pending--;
-                // Written into the round's results and not only announced through the event: a loader may hand
-                // back a task that is already complete, and the caller assigns these results over whatever the
-                // event wrote.
                 round.Results[routeId] = result;
-                // A loader that ignored its token can resolve after CancelPending replaced (or nulled) _cts.
-                // That makes this a superseded round: its own record above stands, and what must not happen
-                // is announcing it into the live state of an unrelated current location.
                 if (ownCts != _cts) return;
                 Announce(OnSuspendLoaderCompleted, routeId, result);
             }
@@ -200,8 +165,7 @@ namespace Velvet
             }
         }
 
-        // Reported rather than left to escape, because RunLoadersSync forgets this task: escaping hands the
-        // report to whoever observes a forgotten one instead of to the runner that made the call.
+        // The runner must report subscriber failures because it forgets the Suspend task.
         private static void Announce<T>(Action<string?, T>? subscribers, string? routeId, T payload)
         {
             try
@@ -214,28 +178,18 @@ namespace Velvet
             }
         }
 
-        // This also runs automatically at the start of the next RunLoadersSync call.
         public void CancelPending()
         {
-            // A fresh round rather than a reset of the outgoing one: whoever holds the outgoing round is
-            // asking whether it finished, and it did not.
+            // Keep the outgoing round intact for callers still holding it.
             _currentRound = new LoaderRound();
             if (_cts != null)
             {
-                // Cleared before the Cancel, not after: a loader continuation that resumes synchronously
-                // inside Cancel() and completes successfully would otherwise still read _cts as its own
-                // and fire its completion event for a round that is being torn down.
+                // Clear before cancellation because it may synchronously complete and announce a Loader.
                 var cancelling = _cts;
                 _cts = null;
                 cancelling.Cancel();
                 cancelling.Dispose();
             }
-
-            // _activeSuspendTaskCount is decremented in the finally block of RunSuspendLoader.
-            // If the loader honors the CancellationToken, the awaited task ends with
-            // OperationCanceledException and the counter naturally returns to 0.
-            // If the loader ignores the ct, the async state machine remains alive and the counter
-            // does not drop until it eventually completes (see the ActiveSuspendTaskCount comment).
         }
 
         public void Dispose() => CancelPending();
