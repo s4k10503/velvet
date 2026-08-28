@@ -520,13 +520,12 @@ def retire(lock, unasked, ever_asked=None):
     """The lock goes back here rather than at the exit: `watch` returns to a caller, and one that
     went on to other work would hold it while nothing was watching.
 
-    `ever_asked` is whether the file has ever carried a stamp. Never is a third state, and it is the
-    one a reader cannot act on from the interval alone: a guard resolves `watcher_state` from its own
-    checkout, so one at a commit predating `note_asked` reads this watcher on every turn and cannot
-    record having done it. Measured on this machine, on the first watcher started after that merge.
+    `ever_asked` is whether a stamp is readable there at all. None is a third state the interval
+    cannot express: a guard resolves `watcher_state` from its own checkout, so one at a commit
+    predating `note_asked` reads this watcher on every turn and cannot record having done it.
     """
     lock.close()
-    never = ("\nThat file has never carried a stamp. A guard resolves the stamping code from its own "
+    never = ("\nThat file carries no stamp at all. A guard resolves the stamping code from its own "
              "checkout,\nso one at a commit predating it reads this watcher every turn and cannot "
              "record having done it —\npull there before reading this as nobody watching."
              if ever_asked is False else "")
