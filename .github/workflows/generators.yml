@@ -141,6 +141,11 @@ jobs:
       - name: Maintenance line report tests
         run: python3 scripts/hooks/test_unreleased_maintenance_line.py
 
+      # The zero-checks reading, which had no suite. It used to say "merge it" for a pull request
+      # nothing had tested, on a path filter `pull_request` does not carry.
+      - name: Unsettled pull request guard tests
+        run: python3 scripts/hooks/test_unsettled_pr.py
+
       # Holds the body guards' record of which gh options take a value against the gh on the runner,
       # which needs no licence and no token, only `--help`. The script owns what a disagreement
       # costs in either direction.

@@ -605,8 +605,8 @@ class ZeroCheckTests(unittest.TestCase):
         # Arrange — the rollup says zero, so the answer was "none" and the reading did not fail.
         said = self.said(NO_CHECKS_AND_A_ROLLUP)
 
-        # Act / Assert — the zero-check reminder, and not the sentence for a guard that read nothing.
-        self.assertEqual(("no checks apply to it" in said, check.SELF_REPORT in said), (True, False))
+        # Act / Assert — the run-did-not-start sentence, not the one for a guard that read nothing.
+        self.assertEqual(("no check ever ran for its head" in said, check.SELF_REPORT in said), (True, False))
 
     def test_Given_TheSameFailureWithNoRollupEither_When_ItIsJudged_Then_ThePullRequestIsNamed(self):
         # Arrange — nothing answered at all. This one carries the per-pull-request half rather than
@@ -639,37 +639,45 @@ class ZeroCheckTests(unittest.TestCase):
         # Act / Assert
         self.assertEqual((check.SELF_REPORT in said, "its merge state" in said), (True, True))
 
+    # GREEN_ON_BASE(refactor): only the sentence these name the absence of is renamed here. What
+    # they hold either side of it is that the unread-state guard speaks instead of it.
     def test_Given_AnEmptyAnswerFromTheCheckRead_When_Judged_Then_ItIsNotTakenForNone(self):
         # Arrange — the exit code is 0 and the output is empty, so nothing about the exit says the
         # read failed; the rollup naming a check is what says the empty answer was not one.
         said = self.said(AN_EMPTY_ANSWER_AND_A_ROLLUP_WITH_CHECKS)
 
         # Act / Assert
-        self.assertEqual((check.SELF_REPORT in said, "no checks apply to it" in said), (True, False))
+        self.assertEqual((check.SELF_REPORT in said, "no check ever ran for its head" in said), (True, False))
 
+    # GREEN_ON_BASE(refactor): only the sentence these name the absence of is renamed here. What
+    # they hold either side of it is that the unread-state guard speaks instead of it.
     def test_Given_AnEmptyListFromTheCheckRead_When_Judged_Then_ItIsNotTakenForNone(self):
         # Arrange — the same question as the case above with the other spelling of empty, so the
         # rollup is what decides however the emptiness arrives rather than for one shape of it.
         said = self.said(AN_EMPTY_LIST_AND_A_ROLLUP_WITH_CHECKS)
 
         # Act / Assert
-        self.assertEqual((check.SELF_REPORT in said, "no checks apply to it" in said), (True, False))
+        self.assertEqual((check.SELF_REPORT in said, "no check ever ran for its head" in said), (True, False))
 
+    # GREEN_ON_BASE(refactor): only the sentence these name the absence of is renamed here. What
+    # they hold either side of it is that the unread-state guard speaks instead of it.
     def test_Given_ARollupThatIsNotAList_When_ItIsRead_Then_ItIsNotTakenForNone(self):
         # Arrange — the merge state answers CLEAN, so a rollup misread as empty produces the
-        # zero-check reminder about a list nothing here understood.
+        # run-did-not-start sentence about a list nothing here understood.
         said = self.said(NO_CHECKS_AND_A_NULL_ROLLUP)
 
         # Act / Assert
-        self.assertEqual((check.SELF_REPORT in said, "no checks apply to it" in said), (True, False))
+        self.assertEqual((check.SELF_REPORT in said, "no check ever ran for its head" in said), (True, False))
 
+    # GREEN_ON_BASE(refactor): only the sentence these name the absence of is renamed here. What
+    # they hold either side of it is that the unread-state guard speaks instead of it.
     def test_Given_AnUnreadCheckListBesideAReadableMergeState_When_Judged_Then_NoneIsNotReportedAsZero(self):
         # Arrange — the merge state answers CLEAN, so a check read taken for an empty one produces
-        # the zero-check reminder: "no checks apply to it", about a list nothing here read.
+        # the run-did-not-start sentence, about a list nothing here read.
         said = self.said(NO_CHECKS_AND_A_MERGE_STATE)
 
         # Act / Assert
-        self.assertEqual((check.SELF_REPORT in said, "no checks apply to it" in said), (True, False))
+        self.assertEqual((check.SELF_REPORT in said, "no check ever ran for its head" in said), (True, False))
 
 
 # Two open pull requests, neither carrying a check, both readable. What varies between the cases
