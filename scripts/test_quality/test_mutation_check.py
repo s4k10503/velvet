@@ -2137,6 +2137,8 @@ class CampaignVerdictTests(unittest.TestCase):
         # Assert
         self.assertEqual(code, 0)
 
+    # GREEN_ON_BASE(characterization): the base refuses every timeout, so it refuses this one
+    # too. What this pins is that the half still refused stays refused.
     def test_Given_AMutantTheEditorNeverRan_When_TheBaselineWasAlsoSlow_Then_ItFails(self):
         # Arrange — a mutant nobody asked about must never be a pass, and a baseline already near the
         # bound is what makes a mutant reaching it say nothing about the mutation.
