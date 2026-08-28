@@ -392,10 +392,22 @@ OPERATORS = [
 
 WORD_OPERATORS = [("true", "false", "literal"), ("false", "true", "literal")]
 
-# An identifier, a parenthesised head, a semicolon-terminated tail. The word in front of the
-# parenthesis is no part of that, so what the removal takes is everything the line runs rather than
-# one call -- which is what its verdict is named for.
-REMOVABLE_LINE = re.compile(r"^[A-Za-z_][A-Za-z0-9_.]*(\.[A-Za-z_][A-Za-z0-9_]*)*\s*\([^;]*\)\s*;$")
+# An identifier, an optional type argument list, a parenthesised head, a semicolon-terminated tail.
+# The word in front of the parenthesis is no part of that, so what the removal takes is everything the
+# line runs rather than one call -- which is what its verdict is named for.
+#
+# The type arguments are read because `target.RegisterCallback<GeometryChangedEvent>(OnGeometry);` is
+# a call whose deletion the tests should notice, and without them it matched nothing: 109 whole
+# statements in this package passed every other reading and generated no mutant. The loss was silent,
+# because a line no operator reaches is reported the same way as a line with nothing to mutate.
+#
+# The argument list is a character class rather than a balanced read: a nested generic is inside it,
+# and what is deliberately not inside it is `;` or `(`, so a comparison -- `a < b && c > (d);` -- is
+# not read as one.
+REMOVABLE_LINE = re.compile(
+    r"^[A-Za-z_][A-Za-z0-9_.]*(\.[A-Za-z_][A-Za-z0-9_]*)*"
+    r"(<[A-Za-z0-9_.,<>\[\]?\s]*>)?"
+    r"\s*\([^;]*\)\s*;$")
 
 # `return (value, done);` has the shape above and is not a line whose code can go: what replaces it
 # is an empty statement, so what the line returns goes with it. A word rather than a prefix, because
@@ -585,16 +597,51 @@ def code_below(text, mask, spans, number):
     return ""
 
 
+# A `do` loop's tail. `while (more);` is an identifier, a parenthesised head and a semicolon, which
+# is what the removal pattern reads -- and the head it would leave, `do { ... } ;`, is not a
+# statement: the C# parser says `'while' expected`. An empty-bodied `while` loop is spelled the same
+# and its removal compiles, so the two are separated by what the code above closes.
+WHILE_TAIL = re.compile(r"^while\s*\(")
+
+
+def closes_a_do_block(text, mask, spans, number):
+    """Whether the code above line `number` closes a `do` block.
+
+    Walked up by brace depth rather than by pattern, because the `do` and the brace it opens may sit
+    on different lines and the block between them holds braces of its own.
+    """
+    if not code_above(text, mask, spans, number).endswith("}"):
+        return False
+    depth = 0
+    for above in range(number - 2, -1, -1):
+        seen = code_only(text, mask, *spans[above]).strip()
+        if not seen:
+            continue
+        depth += seen.count("}") - seen.count("{")
+        if depth > 0:
+            continue
+        cut = seen.rfind("{")
+        head = seen[:cut].rstrip() if cut >= 0 else ""
+        if head:
+            return head.endswith("do")
+        # The brace stands alone, so the `do` is whatever code sits above it.
+        return code_above(text, mask, spans, above + 1).rstrip().endswith("do")
+    return False
+
+
 def deletable_line(text, mask, spans, number):
     """Whether removing line `number`'s code leaves what surrounds it standing.
 
-    Two ways it is not, both measured with the C# parser over every mutant this package generates.
-    The code above has to have ended a statement -- `=> Fragment(...)` and `= new(...)` both match
-    the removal pattern and are the tail of a declaration, so deleting them leaves a member with no
-    body, which was 77 mutants. And an `if (...) Call();` whose next line is an `else` takes the
-    `if` with it and strands the `else`, which was six more.
+    Three ways it is not, each measured with the C# parser. The code above has to have ended a
+    statement -- `=> Fragment(...)` and `= new(...)` both match the removal pattern and are the tail
+    of a declaration, so deleting them leaves a member with no body, which was 77 mutants. An
+    `if (...) Call();` whose next line is an `else` takes the `if` with it and strands the `else`,
+    which was six more. And a `do` loop's `while` tail leaves a `do` block with no tail at all.
     """
     if not code_above(text, mask, spans, number).endswith(STATEMENT_BOUNDARY):
+        return False
+    if WHILE_TAIL.match(code_only(text, mask, *spans[number - 1]).strip()) \
+            and closes_a_do_block(text, mask, spans, number):
         return False
     return not code_below(text, mask, spans, number).startswith("else")
 
@@ -897,8 +944,14 @@ def mutable(path, project):
         return False
     if not relative.startswith(PACKAGE + "/"):
         return False
-    # Generators~ is outside the Unity build and has its own mutation run; see its README.
-    if "/Generators~/" in relative:
+    # Unity's asset database does not import a `~`-suffixed directory, so a source under one compiles
+    # into nothing here: mutating a line there leaves every assembly byte-identical, the run scores
+    # NOT_BUILT, and no receipt can be written -- so a branch that edits one can never earn a passing
+    # campaign, and what it is told names a build state rather than a scope rule. The starter sample
+    # is the live case: `Samples~/StarterApp` is the copy nothing compiles, and `sync_starter_sample.py`
+    # keeps `Assets/VelvetStarterSample` beside it as the copy that does. `Generators~` was named here
+    # one directory at a time, which is the same rule read off one instance of it.
+    if any(part.endswith("~") for part in relative.split("/")):
         return False
     # A mutation inside a test asserts nothing about the code the test covers.
     return "/Tests/" not in relative and "/TestUtilities/" not in relative
