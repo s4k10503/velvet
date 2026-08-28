@@ -5,37 +5,28 @@ using System.Collections.Generic;
 namespace Velvet.DevTools
 {
     /// <summary>
-    /// Global registry of fibers observed by the DevTools window. Every <see cref="V.Mount"/> auto-registers
-    /// its root here (and unregisters on dispose), so opening <b>Window ▸ Velvet ▸ DevTools Inspector</b>
-    /// shows the running app's component tree with no manual setup — observation attaches to whatever app is
-    /// already running.
+    /// Registry of fibers observed by the DevTools window. <see cref="V.Mount"/> registers its root, and
+    /// disposing the mounted tree unregisters it.
     /// <para>
-    /// Manual registration stays available for labelling an interior sub-tree (e.g. a specific page fiber):
+    /// Register and unregister an interior subtree explicitly when it needs its own label:
     /// <code>
     ///   VelvetDevToolsRegistry.Register(myFiber, "MyPage");
     ///   VelvetDevToolsRegistry.Unregister(myFiber);
     /// </code>
     /// </para>
-    /// Lives in the runtime assembly (so <see cref="V.Mount"/> can reach it) but is editor-only behaviour,
-    /// hence the surrounding <c>#if UNITY_EDITOR</c>: player builds exclude it entirely.
+    /// It lives in the runtime assembly rather than beside the window in <c>Editor/DevTools/</c> because
+    /// <see cref="V.Mount"/> calls it and Velvet.Editor references Velvet, not the other way round.
     /// </summary>
     public static class VelvetDevToolsRegistry
     {
-        /// <summary>
-        /// Entry for a registered fiber.
-        /// </summary>
         public sealed class ComponentEntry
         {
-            /// <summary>The fiber being observed.</summary>
             public ComponentFiber Fiber { get; }
 
-            /// <summary>Display label (e.g. page name or component type name).</summary>
             public string Label { get; }
 
-            /// <summary>Component function name (taken from Body's MethodInfo and cached to avoid reflection inside the OnGUI loop).</summary>
             public string TypeName { get; }
 
-            /// <summary>Registration timestamp.</summary>
             public DateTime RegisteredAt { get; } = DateTime.Now;
 
             internal ComponentEntry(ComponentFiber fiber, string label)
@@ -48,16 +39,12 @@ namespace Velvet.DevTools
 
         private static readonly List<ComponentEntry> s_entries = new();
 
-        /// <summary>Event raised when a fiber is registered or unregistered.</summary>
         public static event Action? RegistryChanged;
 
-        /// <summary>Read-only list of currently registered fiber entries.</summary>
         public static IReadOnlyList<ComponentEntry> Entries => s_entries;
 
         /// <summary>
-        /// Registers a fiber with DevTools.
-        /// Re-registering the same fiber overwrites the existing entry (its label is updated), so the call is
-        /// idempotent: the same fiber never appears twice.
+        /// Adds a fiber, or replaces its existing entry when registered again.
         /// </summary>
         /// <param name="fiber">The fiber to observe.</param>
         /// <param name="label">Display name in the EditorWindow. Defaults to Body's function name when omitted.</param>
@@ -83,10 +70,6 @@ namespace Velvet.DevTools
             RegistryChanged?.Invoke();
         }
 
-        /// <summary>
-        /// Unregisters a fiber from DevTools.
-        /// </summary>
-        /// <param name="fiber">The fiber to unregister.</param>
         public static void Unregister(ComponentFiber fiber)
         {
             if (fiber == null)
@@ -105,9 +88,6 @@ namespace Velvet.DevTools
             }
         }
 
-        /// <summary>
-        /// Clears all entries. Call this on play-mode exit, for example.
-        /// </summary>
         public static void Clear()
         {
             s_entries.Clear();
