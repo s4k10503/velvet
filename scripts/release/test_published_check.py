@@ -449,6 +449,8 @@ class GitReadingTests(unittest.TestCase):
         # Act / Assert
         self.assertNotIn("2.1.3", said)
 
+    # GREEN_ON_BASE(characterization): an untagged version closed before the tags reached the reading
+    # and closes after, and it is the half the change must not buy its silence with.
     def test_Given_AVersionNoTagAnswersFor_When_Read_Then_ItIsStillClosing(self):
         # Arrange — the same shape with no tag, which is a release rather than a record.
         said = self.forward_merge(("v2.0.1",))
