@@ -400,13 +400,19 @@ def blocking_reasons(project, number, base=None, states=None):
     if target not in states:
         states[target] = project_state(project, target)
     state = states[target]
+    # Re-asked with this pull request's head, because the per-base reading cannot see that this one
+    # is the repair: a base holding an unpublished release refuses the change that reopens it.
+    unpublished = state.unpublished_release
+    if unpublished:
+        unpublished = published_check.unpublished_reason(
+            project, f"origin/{target}", fetch=False, result=before.sha)
     results = checks(project, before.sha)
     after = head_sha(project, number)
     return Blocking(reasons_from(before.sha, after, results, before.branch, target,
                                  holds_base=(not before.fork
                                              and contains_base(project, before.branch, target)),
                                  held_by_worktree=before.branch in state.held,
-                                 unpublished_release=state.unpublished_release,
+                                 unpublished_release=unpublished,
                                  draft=before.draft,
                                  merge_state=before.merge_state,
                                  fork=before.fork),

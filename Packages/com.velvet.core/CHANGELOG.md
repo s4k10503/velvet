@@ -7,126 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [Unreleased — breaking]
-
-### Removed
-
-- `FiberUpdatePriority.Deferred`. Source naming it stops compiling; `FiberUpdatePriority.Transition`
-  is what to write instead — the same delayed tier, the same fixed flush delay and the same
-  time-sliced frame budget, plus the starvation promotion and `isPending` bookkeeping `Deferred`
-  never took part in. Nothing in the framework ever scheduled it: every lane Velvet enrols is
-  `Urgent`, `Normal` or `Transition`, and `UseDeferredValue` — whose name suggests otherwise —
-  derives through `Transition`. `Transition` is now `2` where it was `3`, so a value kept as an
-  `int` reads differently; no public member takes or returns the enum, so nothing else changes
-  shape.
-
-## [3.0.0] - 2026-08-27
-
-### Highlights
-
-- Which container a `V.Component` renders into is now the same question everywhere. A component
-  written under a `V.Portal` kept its hook state only until the first patch of that portal's
-  children, which rebuilt it from scratch, skipped the first instance's effect cleanups and left the
-  element it had rendered behind in the target; declared both inside a portal and at the same
-  position outside it, the two occurrences merged into a single instance; and none of them was
-  disposed when the portal's children left the container, so effects a closing modal opened went on
-  running. A component the reconciler carried into a different container reconciled its own
-  `setState` into the container it had left. And a portal that resolved its target id late
-  reconciled its first child against whatever the container already held, painting an overlay's own
-  backdrop into the portal's content.
-
-- A `V.AnimatePresence` that stops being rendered now takes its bookkeeping with it. Only disposing
-  the component around it retired that record, so a `cond ? V.AnimatePresence(…) : null` flipping to
-  `null` left the committed children and each key's exit anchor behind: rendering the presence again
-  spliced children that had already left back into the tree as exiting ghosts, and ran the enter
-  animation `initial: false` exists to suppress. The record outlived its parent element too, one per
-  mount-and-unmount cycle, and a pooled parent rented back at the same position picked it up again.
-
-- `UseTransition`'s pending flag now follows the transition instead of a proxy for it. An indicator
-  could stay on screen after the work had finished, never appear at all, or come down while the
-  transition was still running — depending on whether the callback parked between time-sliced
-  commits, ran async past the commit it had queued, rendered its own component, or shared that
-  component with a second open slot that was credited with its writes. `startTransition` also defers
-  what its callback schedules on *other* components' state and through a `Store`, which is where the
-  canonical React use lands — a child deferring an expensive update through a setter it took as a
-  prop. Those writes used to take the urgent lane the interaction itself was waiting on.
-
-- An exception raised by application code during teardown no longer takes the rest of the render pass
-  with it. A `refCallback` cleanup, an `IRouteScope.Dispose` and a deferred host mount that cannot
-  resolve where it goes are each reported and stepped over. Before, one throw halted a removal batch
-  and left every row behind it standing, blanked a `V.Outlet` across a route change with neither
-  route mounted, and lost every portal queued behind the failing one — while later patches for those
-  portals warned about a host on a layer that was fine. It also left the committed tree short of what
-  the pass had already put on screen, so each later render appended another copy of the difference.
-
-- A boundary waiting on something now stays up until that something arrives. Nested, a `V.Suspense`
-  lost its fallback the moment the outer boundary resolved; side by side, two of them shared one
-  suspended mark, so the second one rendering its children cleared the mark the first one's fallback
-  stood on — and either way a state update inside the hidden children committed over the slot range
-  the fallback occupied. A `Hooks.Use` resource key rebuilt on each render — a run-time string, or an
-  id boxed on its way to the parameter — restarted the fetch every render and never resolved at all.
-  And a `Router.OnLocationChanged` subscriber that threw while a Suspend-mode loader resolved was
-  recorded as that route's load failure, corrupting the round the loader belonged to.
-
-- A widget out of the element pool no longer arrives wearing what its last consumer wrote. Most of
-  the writable surface of `Button`, `Label`, `Toggle`, `Slider` and `TextField` survived a pool cycle
-  — a placeholder nobody had set, a `Toggle` stuck on mixed, a `Slider` running backwards or showing
-  a numeric input box it denied having, a paint delegate, a data-source binding, a focus or picking
-  configuration — and a `TextField` a `refCallback` had masked came unmasked on the first render that
-  stopped declaring the prop. Spacing is held to the same rule: only the `gap-*`, `divide-*` or
-  `grid-cols-*` container whose write is still on a child may take it back off, so a child handed
-  straight from one container to another keeps what the container it joined wrote.
-
-- `UseMutation` now treats a call in flight the way v5 does. A second `Mutate` no longer cancels the
-  first or drops its callbacks — a double-tapped Buy used to abort a request the server may already
-  have committed and then skip the handler that would have recorded it — `Reset` abandons the call
-  rather than leaving it to write `Success` back over the idle state it asked for, and a handle
-  reporting an error no longer shows the previous call's `Data` underneath it.
-
-- New: `animate-spin` turns an element once a second, linear and forever, with `animate-spin-[<time>]`
-  setting its own loop. `V.TextField` declares `placeholder:`, `maxLength:`, `isReadOnly:` and
-  `isDelayed:`, which until now had to be written onto the element by hand from a `refCallback:` and
-  so sat outside the diff, unable to change with state.
-
-- **Breaking:** twelve changes to read an existing application against, and **one of them stops source
-  compiling**: `V.Portal(null)` no longer builds, because a bare `null` is now ambiguous between the
-  `string` overload and the `VisualElement` one this release adds — name the parameter
-  (`V.Portal(targetId: null)`) or cast the literal. That new overload is the second half of the same
-  change: `V.Portal` takes a container element directly now, the way `createPortal` does, and passing
-  a different target on a later render moves the children rather than keeping them. Close behind it,
-  an exhaustive `switch` expression over `RouteBlockerStatus` needs a new arm, since `Proceeding`
-  joins the enum. The rest change behaviour a working application would notice, in four groups.
-  *State no longer survives a move*: the container a `V.Component` is written into is part of which
-  instance it is, so two sibling containers holding the same component hold two instances and writing
-  one into a different container is a fresh mount there; crossing a `V.Portal`'s boundary is an
-  unmount and a remount in every case; and re-registering a portal target id to a different element
-  moves the live portals into it instead of leaving them writing to an element the UI has replaced.
-  Keeping state across any of those means lifting it above both sides, to a `Store` or to a `UseState`
-  in the component that declares them. *Deferral now stops at the first suspension*: a `UseTransition`
-  covers what its callback runs before it first awaits something that actually suspends, so a
-  post-`await` write takes the lane it would have taken outside a transition unless it is wrapped in
-  the starter again, and an action writing on both sides of such an await commits in two renders where
-  it used to coalesce into one. *Memoization compares differently*: a `[Component(Memoize = true)]`
-  props bail decides a props value whole, so a bare `List` of equal contents re-renders where it used
-  to bail — hold it in a `Hooks.UseMemo`, a `Store` or a field to get the bail back — while a bare
-  `decimal`, `Guid` or collection that used to compare falsely equal now registers as the change it
-  is. *And four things that were quietly wrong now behave*: an unkeyed component among siblings is
-  keyed by the slot it sits in, so a sibling turning to `null` no longer hands its state to the next
-  component of the same identity; a `TabIndex` or `DelegatesFocus` a later render stopped declaring
-  restores what the element was constructed with rather than `0` or `false`, which is what stranded
-  focus on a composite field's own root; `RouteBlockerState.Proceed()` re-runs the blocked navigation,
-  so a confirm dialog's "Leave" reaches the destination — and any hand-rolled re-issue written around
-  the old no-op now runs on top of it; and `animate-pulse` suspends the element's native transitions
-  while it runs, as `V.Motion`'s own drivers already did. Finally, `V.Portal(layer:)` given a `UILayer`
-  naming no layer mounts nothing and reports it, where a cast outside the enum's range used to land
-  silently on `Overlay`. The migration guide, the portals guide and the navigation-blocking guide
-  state each rule.
-
 ### Added
 
 - `animate-spin` — a full turn a second, linear, forever, with `animate-spin-[<time>]` overriding the
   loop like the other looping utilities. It owns the rotate slot while it runs, on the terms
   `animate-hue` owns the filter.
+
 - `V.TextField` declares four more of the text-input surface: `placeholder:`, `maxLength:`,
   `isReadOnly:` and `isDelayed:` — HTML's `placeholder`, `maxlength` and `readonly`, plus a value that
   catches up with the typed text on Enter, on the field losing focus, and on a render taking
@@ -139,17 +25,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The same four arrive on `Velvet.Experimental.VTextField` as `Placeholder`, `MaxLength`, `IsReadOnly`
   and `IsDelayed`.
 
-- `V.Portal(target, …)` takes the element itself, the way `createPortal` does — no registration, no
-  shared name, and an element from a `refCallback` is a valid container. Passing a different target on a
-  later render moves the children — an unmount and a remount, so their state does not survive. The
-  portals guide states which containers a portal of either form may target.
-
 ### Changed
 
 - The switches that classify a `StyleVariantKind` are exhaustive by compilation rather than by review:
   `Runtime/csc.rsp` compiles CS8509 as an error, so a member added without an arm fails the build rather
   than warning into a log that nothing gates on. That response file ships with the package, so a project
   compiling `Velvet.asmdef` compiles CS8509 as an error too, applying to Velvet's own sources only.
+
 - A deferred host mount that cannot resolve where it goes is now reported and skipped rather than
   escaping the render. `V.Portal`, `V.WorldSpace` and a `z-*` placement share one queue drained after
   the pass, and an escape used to take everything still behind it: a portal on a named layer queued
@@ -161,12 +43,288 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   panel-attach callbacks a `V.Custom<T>` subclass registered on the element being landed escapes the
   render pass rather than being reported by the drain, and the entries queued behind it are still
   lost.
+
 - The switch behind the layer offset now names every layer, for the reason the `StyleVariantKind` entry
   above gives, and so do the ones behind `divide-*` colours, `clip-path` radius keywords, `animate-*`
   transition slots and the structural variants — each already answered every named member as it does now.
+
 - `StyleVariantClass.BreakpointPx` and `StyleVariantClass.IsResponsive` throw for a `StyleVariantKind`
   value naming no member of the enum, where they returned `0f` and `false`. Both have done so since
   2.0.1.
+
+### Fixed
+
+- A `V.AnimatePresence` that stops being rendered takes its bookkeeping with it. That bookkeeping is
+  keyed by the component the presence renders in, the parent element its children expand into, and the
+  presence's position — and only the component being disposed, or the whole tree being unmounted,
+  retired it. So a `cond ? V.AnimatePresence(…) : null` flipping to `null` left an entry holding the
+  committed children plus each key's exit anchor and Motion element, well after the removal had taken
+  those elements out of the tree. Rendering the presence again at that position then started from
+  that stale set: children that had left were spliced back into the DOM as exiting ghosts, and
+  `initial: false` no longer suppressed the enter, since the second mount was not taken for a first
+  render. The entry also survived its parent element being torn down — once per removal, so a panel
+  mounted and unmounted repeatedly accumulated one per cycle — and a poolable parent (a `V.Button`)
+  rented back for a fresh presence at the same position picked the stale entry up again. A presence
+  written inside a `V.Portal`'s own children was the same defect reached a third way, since its
+  bookkeeping is keyed by the container the portal renders into and that container belongs to the
+  caller: closing the portal resurrected the children the presence had already let go, as did
+  registering its `targetId` to a different element and back.
+
+- A `refCallback` cleanup that throws while its element is being unmounted is reported and the unmount
+  carries on, instead of the exception leaving the reconcile call. It used to escape from the middle of
+  the teardown, so the rest of that element's release never ran and the element itself was never taken
+  out of the tree, and the removal batch it interrupted left every row it had not reached yet standing
+  too. An `AnimatePresence` whose own leaf the batch had already removed then kept committed state
+  naming a child that was gone, and the next render at that position spliced it back as an exiting
+  ghost. The delegate is the caller's, and reconciler disposal already contained it this way.
+
+- An `IRouteScope.Dispose` that throws is reported the same way, at each of the three places a route
+  scope is disposed: the patch that swaps in a newly matched route, an unmounting `V.Outlet`, and the
+  whole-reconciler teardown sweep. The scope is the application's, built by the `IRouteScopeFactory`
+  handed to `Router`. From the route change the escape left the `V.Outlet` blank — the route navigated
+  away from torn down, the route navigated to never mounted — and a later render at that position
+  mounted the new route on the already-disposed scope. From the unmount it reached the same interrupted
+  removal batch and the same resurrected `AnimatePresence` child as above. Both also left the scope
+  registered for the teardown sweep to dispose a second time; from the sweep itself the escape left the
+  rest of that sweep unrun, including every scope it had not reached yet.
+
+- `UseTransition` no longer clears `isPending` when the first slice of a time-sliced transition commit
+  parks. The flag now spans every parked slice and clears after the terminal commit; that commit asks for
+  the render that takes an observed indicator down.
+
+- A same-starter async `startTransition` call keeps the joined transition owned until its own task
+  completes. If an outer action started that call without awaiting it and then completed first, its exit
+  used to release the shared slot and clear `isPending` while the joined action was still awaiting.
+
+- A child that moves from one `gap-*`, `divide-*` or `grid-cols-*` container to another keeps the
+  spacing, divider or column sizing the container it joined wrote. Each of the three tracked the children
+  it had written to by raw reference and reset the value on one no longer in the container, and the
+  element pool hands a child straight from one container to another — so the container a child left could
+  still be tracking it after the container it joined had written to it, and reset that write on its next
+  pass. A row that took a pooled `Label` from a sibling `gap-4` row lost one gap, a `divide-x` row lost
+  one rule, and a grid child lost its column gap and its width. Which container won was decided by the
+  order their re-applies landed in: a reconcile pass re-applies a container right after reconciling that
+  container's children and so never loses the race, and what reached this was the panel's own re-apply
+  sources — a `GeometryChangedEvent` or an `AttachToPanelEvent` arriving after the other container had
+  written. Each turn-off now asks a claim first, so only the container whose write is still on the child
+  may take it back off. Gap and grid share one claim, since both write a child's margins: a child moving
+  between a gap container and a grid one is one owner's or the other's.
+  One case moves the other way with it. A child the reconciler *removes* now keeps the spacing its
+  container wrote, where before the container's next pass cleared it: element cleanup drops the child's
+  claim, and the container then finds no claim to release against. This is every reconciler-driven child
+  removal, not an edge case. A removed element is either discarded with its subtree or scrubbed on its
+  way into the element pool, so what this changes is the inline state of an element an application has
+  kept a reference to and re-parented itself.
+
+- `startTransition` defers the updates its callback schedules on other components' state, not only
+  the calling component's own. A child deferring an expensive list update through a setter it
+  received as a prop — one of the canonical React uses — had that update classified against the
+  component that owns the state, which was in no transition: it took the Normal lane, or the Urgent
+  lane inside a click, and so drained at the next frame boundary with the interaction the user was
+  waiting on, instead of on the delayed lane the call asked for — where an update arriving in the
+  meantime would have gone ahead of it. The same held for a `Store` write made inside the
+  callback. The flag is now ambient for the callback's synchronous run, as React's is. `isPending`
+  follows those updates wherever they landed: it stays lit until every component the callback
+  scheduled an update on has discharged it — committed it, gone away, or had the scheduler drop it at
+  the update-depth cap — and the declaring component re-renders on the commit that
+  finishes them, so an indicator it renders comes down there. Where the callback wrote to two
+  components, what finishes them is the last commit rather than the first. What the flag does not do is force a
+  render of its own when the transition *starts* — nothing renders purely because `isPending` went
+  true, in this case or in the local-state one, so a component that shows a pending branch needs a
+  render from the same interaction (the urgent update a click also makes, or an ancestor's) to
+  observe it.
+
+- An `async` `startTransition` action takes its own pending indicator down when it finishes. Its
+  `isPending` correctly outlasts the commit of whatever the callback queued before it first suspended
+  — the action is still running — but the clear at the far end scheduled nothing, so the flag went
+  false while the component carried on rendering its pending branch until some unrelated interaction
+  re-rendered it. An action that writes before its `await` and then outlasts the transition tier's
+  100 ms delay is where a user meets it, since that commit is the render that puts the indicator up.
+  The completion now asks the declaring component for the render that observes the cleared flag: one
+  render, or none of its own where that component was already being re-rendered. An action that never
+  suspended is held to what the synchronous form does, so an `async` callback that only awaits an
+  already-completed task costs what the synchronous form costs — see the entry below for what that is.
+
+- A synchronous `startTransition` whose callback renders the declaring component now keeps its pending
+  indicator up for as long as the transition runs, and takes it down when it ends. A callback that
+  commits work of its own — driving a handler the component bound, a click or a value change or a
+  focus, whose exit flushes the updates queued before the call — has that flush render the component
+  while the transition is open.
+  The settle that flush ran used to clear `isPending` first, and only the entry to `startTransition`
+  ever sets it, so a callback that then deferred a write ran its whole transition with the indicator
+  never lit. A settle now leaves a slot alone while a call still owns it. The other half of the same
+  route follows from that: where such a callback defers nothing, the flag it raised is cleared at its
+  own exit, and nothing renders because a flag moved — so the exit asks the declaring component for the
+  render that takes the indicator down. That exit asks only where the declaring component's last render
+  read the flag as true, so it costs nothing where that component was not showing the transition — and
+  it settles only a transition with nothing outstanding. Where the callback's work is still queued
+  somewhere, what ends the transition is the commit of that work, and the settle there asks for its
+  render without that term, so a transition whose work commits on another component costs the declaring
+  one a render whether or not it was showing anything.
+
+- Two `UseTransition` slots whose transitions are open at once, but not nested one inside the other, no
+  longer credit each other's writes. One slot's update was attributed to every slot on that component
+  that still had a transition open, so a slot whose own callback had queued nothing kept `isPending`
+  lit until the other's work committed — including an `async` action parked on an await, which had
+  queued nothing yet by construction. An enrolment is now credited to the calls whose callback is
+  running when it is made, and recorded against the component it enrolled.
+
+- A `startTransition` whose own component has unmounted still marks what its callback writes on the
+  components that have not. Both overloads short-circuited on a disposed declaring component and ran
+  the callback with no transition open at all, so those updates took the Normal lane — or the Urgent
+  lane inside a click — and the deferral the call asked for was gone. An `async` action that outlives
+  the component that started it is where this is met, since wrapping its post-`await` write in the
+  starter again is what the migration guide asks callers to write, and by then the component may have
+  gone. The pending flag is still left alone on that path: it is read during a render, and a disposed
+  component has none left.
+
+- A component the reconciler carries to a different container now re-renders itself into the container
+  it is in. Its slot index and the stamp a portal teardown disposes by both followed the move and its
+  container did not, so its own `setState` reconciled its new output into the container it had left,
+  while the container it had moved into kept the element from before the move.
+  It also let the container it had left take it down: where the arriving container is reconciled first
+  and the departing one leaves the tree in that same render, the departing subtree's teardown still
+  found the carried component named as living inside it and ran its cleanups.
+
+- A `V.Component` written inside a `V.Portal` now survives a patch of that portal's children. Its mount
+  ran in the deferred pass that follows the reconcile, which registered it under a different parent from
+  the one every later patch looks it up by, so the first patch failed to find it: the component was
+  built a second time with fresh hook state and fresh effects, the first instance's effect cleanups
+  never ran, and the element it had rendered stayed behind in the target. A modal whose content
+  component held its own `UseState` lost it the first time anything else in that portal re-rendered —
+  once, because the instance built to replace it registers where the patch looks, so it survives every
+  patch after that. The element the first instance rendered stayed in the target for the life of the
+  tree.
+
+- A component a declaring render writes both inside a `V.Portal` and at the same position outside it now
+  keeps its own instance on each side, whichever of the two mounts first. They used to merge into one, in
+  both orders and each with its own damage. With the one outside mounted first, the first patch of the
+  portal's children replaced the portal's child with it. With the portal's mounted first, the position
+  outside took the portal's own instance over and rendered it in both places, and the next patch of that
+  portal built a second child and left the elements of the previous slot range in the target with nothing
+  to reconcile them away.
+
+- A portal that resolved its id late no longer writes over the container's own first child. It
+  recorded its range from slot 0 while the id was unregistered and never rebased it, so the healing
+  patch reconciled its first child against whatever the container already held — an overlay root with
+  a backdrop had the backdrop painted into the portal's content, and the portal's own child never
+  arrived. The range is now taken from the end of the container's children, the same place a portal
+  that resolved at mount takes it.
+
+- A `V.Component` written directly under a `V.Portal` is now disposed when the portal's children leave
+  the container — its own unmount and a move to another container alike, and whether or not it
+  rendered anything of its own. Its effect cleanups never ran and its hook state was never released,
+  so a subscription a closing modal's top-level component opened outlived the modal. The disposal
+  follows the portal the component was written under, so on a container several portals share, one of
+  them closing leaves the others' components mounted and takes only its own.
+
+- A `V.Suspense` nested inside another one's children no longer loses its fallback when the outer
+  boundary resolves. The outer boundary's expansion wrote its own answer over every fiber it had
+  created, the inner boundary's hidden children included, so a state update inside content the inner
+  boundary was still waiting on stopped being deferred and committed into the slot range the inner
+  fallback occupied — the fallback left the tree and the half-loaded content took its place. Each
+  boundary now keeps the answer it gave for the children it suspended over, so an outer boundary
+  resolving says nothing about an inner one that has not. An outer boundary that suspends still hides
+  the inner boundary's fallback, and releases it again on resolve.
+
+- Two `V.Suspense` boundaries in one component's render no longer share a single suspended mark. One
+  showing its fallback while a second, placed after it, rendered its children left the component
+  unmarked, so a state update inside the first one's hidden children stopped being deferred and
+  committed into the slot range its fallback occupied — the fallback disappeared from the tree.
+  Whether a boundary is showing a fallback is now read off the per-boundary record each `V.Suspense`
+  writes under its own position, so a sibling that resolves cannot clear it. Ordering decided it:
+  the same two boundaries with the resolved one placed first were unaffected.
+
+- A second `Mutate` call no longer cancels the first or drops its callbacks. Both run, each delivers
+  its own `OnSuccess` / `OnError`, and `Status` / `Data` / `Variables` show the most recent — which
+  is what TanStack Query does, and it hands `mutationFn` no signal at all. A double-tapped Buy used to
+  abort a request the server may already have committed and then skip the `OnSuccess` that records
+  it. The token survives for unmount, where a request does want cancelling. A starting call also
+  clears `Data` along with `Error`, so a result belonging to the previous call is not read as this
+  one's while it is still pending.
+
+- A `TextField`'s `isPasswordField` was written back to `false` by any render that stopped declaring
+  it, so a mask a `refCallback:` had switched on came off on the first render that dropped the prop.
+  A member a render declared and a later one dropped now restores what the field carried when the
+  prop was first declared, and one no render has declared is nobody's to write.
+
+- A pooled widget carried the `Focusable` default recorded under a previous consumer into its next
+  mount, so a render that dropped a declared `Focusable` prop handed the element that consumer's
+  focusability rather than the one it carried when this consumer first declared the prop. The record
+  is forgotten on the pool return every poolable type passes through.
+
+- A pooled widget carried far more than its reset helper named. Most of the writable surface of
+  `Button`, `Label`, `Toggle`, `Slider` and `TextField` survived a pool cycle and arrived on whatever
+  mounted next: a read-only or multiline `TextField`, a placeholder string the next consumer had not
+  written, a `Toggle` stuck showing a mixed value, a `Slider` whose direction was inverted, the
+  rich-text and emoji-fallback flags on `Button` and `Label`, text-selection colours and behaviour on
+  `Button`, `Label` and `TextField`, and a data-source binding on all five. A `TextField`'s stale
+  placeholder is the sharp end: the pool's own contract is that the next consumer cannot observe the
+  previous one's text.
+
+- A recycled composite field stopped delegating focus, and a recycled `Slider` or `TextField` also
+  started taking pointer picks on its own root. The shared reset writes the plain `VisualElement`
+  defaults for both, and only `focusable` was written back afterwards. A recycled `Label` carried
+  tab index 0 where its constructor sets -1, which shows once a consumer declares it focusable.
+
+- A `Slider` still carrying its numeric input field is no longer pooled at all. That sub-element only
+  tears down while the slider is on a panel, and a pool return has already detached it, so a recycled
+  slider showed a stray input box that its own `showInputField` denied.
+
+- A `Button` or `Label` no longer carries a paint delegate a consumer added onto whatever mounts next.
+
+- A composite field pooled without a label lost the class its constructor adds for that case, so a
+  recycled one no longer matched a fresh one's class list.
+
+- `UseMutation`'s `Reset` now abandons the call in flight instead of only clearing what it had written
+  so far. Pressing Save and then Reset used to leave the save owning the handle, so when it landed it
+  wrote `Success` and its result straight back over the idle state the user had asked for. The
+  abandoned call is still not cancelled and still delivers its own `OnSuccess` / `OnError` — what it
+  no longer does is write the handle, which is what v5's `reset()` detaching the observer amounts to.
+
+- A `UseMutation` handle no longer shows `Data` for a call it reports as failed. The result was
+  written before `OnSuccess` ran, so a handler that threw — which correctly makes the mutation an
+  error — left that result on show underneath the error, and a view rendering `Data` without checking
+  `Status` first showed it. The outcome is now committed after the handlers on both paths, which is
+  where v5 dispatches it, so a handler no longer reads its own call's outcome and `Data` stands only
+  under `Status == Success`.
+
+- `Hooks.Use(factory, resourceKey)` compares the resource key by value, so a key a render builds names
+  the resource the previous render named instead of starting a new one. The comparison closed over the
+  parameter's own `object` type and took the reference branch for every key whatever it held, so a
+  string built at run time — the query id the parameter's documentation recommends — and an id boxed at
+  the call boundary each tore the resource down and restarted it on every render. Under a `V.Suspense`
+  that cost the boundary its resolve, since the render a landing loader asks for restarted the loader
+  and suspended again. Nothing said so either: the warning about a resource restarting every render is
+  gated on the key being omitted, and an omitted key is the factory delegate, which a delegate's own
+  identity comparison covers either way. A key of any other reference type is still compared by
+  instance, so that omitted-key behaviour is unchanged.
+
+- A subscriber that throws while a `LoaderMode.Suspend` loader is resolving no longer corrupts the
+  round that loader belonged to. The router answers a resolution by re-emitting the location, so a
+  `Router.OnLocationChanged` subscriber can run behind that announcement — and a throw from one was
+  caught by the clauses that exist for the loader itself. That counted the round's outstanding loader
+  off a second time and recorded the throw as that route's loader error. So a caller reading the route's
+  loader error saw a load failure that had not happened. Filing it as a failure also ran the router's failure
+  handler, which writes the history entry's snapshot again — this time from a round the second count
+  had corrupted — so the entry stayed unsettled and a Back or Forward to it re-ran the loader instead
+  of being served from the cache. What that second count costs the round itself depends on how many
+  loaders it holds: one leaves it permanently short of settling, and two leave it reporting itself
+  settled while the second loader is still outstanding. The throw is now reported as the subscriber's own and the
+  round stands as the loader left it, with its result recorded and no error. A subscriber throwing out
+  of the failure announcement is reported the same way, where it used to be left to whatever observes a
+  forgotten task.
+
+## [Unreleased — breaking]
+
+### Added
+
+- `V.Portal(target, …)` takes the element itself, the way `createPortal` does — no registration, no
+  shared name, and an element from a `refCallback` is a valid container. Passing a different target on a
+  later render moves the children — an unmount and a remount, so their state does not survive. The
+  portals guide states which containers a portal of either form may target.
+
+### Changed
 
 - The container a `V.Component` is written into is part of which instance it is, as the position of a
   component is in React. Two sibling containers each holding the same component now hold two instances
@@ -181,6 +339,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   portal's boundary, which holds even where the two sides share a container, so neither rule subsumes
   the other. Keeping state across such a move means lifting it above both containers, to a `Store` or
   to a `UseState` in the component that declares them. The migration guide states what a position is.
+
 - A `UseTransition` transition now covers what its callback runs before that callback first suspends,
   rather than being inferred from the action still being in flight on the calling component. An update
   made after an `await` that suspended the action takes the lane it would have taken outside a
@@ -204,6 +363,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   commits at the next frame boundary. Wrapping the post-`await` update in the starter makes the two paths
   agree, since a joined call is a transition on both. The migration guide's `useTransition` row states the
   rule and where React's behaviour stops being a guide to it.
+
 - Moving a component across a `V.Portal`'s boundary is an unmount and a remount in every case now, so
   its state, refs and effects do not survive the move and the departing instance's cleanups run. A
   component written into a live portal's children that a previous render had outside them — and the same
@@ -214,9 +374,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   guide nor `createPortal` promised the surviving half. The portals guide states the contract that now
   holds in both directions. Keeping state across such a move means lifting it above the portal — to a
   `Store`, or to a `UseState` in the component that declares the portal.
+
 - `V.Portal(null)` no longer compiles: a bare `null` first argument is ambiguous between
   `Portal(string, …)` and the `Portal(VisualElement, …)` overload this version adds. Naming the
   parameter — `V.Portal(targetId: null)` — or casting the literal says which was meant.
+
 - `V.Portal(layer:)` no longer mounts its children for a `UILayer` value naming no layer, where it
   hosted them at the `Overlay` offset before. Every named layer hosts as it did, and only a cast outside
   the enum's range reaches this. What such a cast now produces: that portal's children do not mount, and
@@ -245,239 +407,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   where a bare struct holds a record class: one of equal content bails where it used to re-render, the
   member walk having read that record by its instance.
 
-### Fixed
+### Removed
 
-- A `V.AnimatePresence` that stops being rendered takes its bookkeeping with it. That bookkeeping is
-  keyed by the component the presence renders in, the parent element its children expand into, and the
-  presence's position — and only the component being disposed, or the whole tree being unmounted,
-  retired it. So a `cond ? V.AnimatePresence(…) : null` flipping to `null` left an entry holding the
-  committed children plus each key's exit anchor and Motion element, well after the removal had taken
-  those elements out of the tree. Rendering the presence again at that position then started from
-  that stale set: children that had left were spliced back into the DOM as exiting ghosts, and
-  `initial: false` no longer suppressed the enter, since the second mount was not taken for a first
-  render. The entry also survived its parent element being torn down — once per removal, so a panel
-  mounted and unmounted repeatedly accumulated one per cycle — and a poolable parent (a `V.Button`)
-  rented back for a fresh presence at the same position picked the stale entry up again. A presence
-  written inside a `V.Portal`'s own children was the same defect reached a third way, since its
-  bookkeeping is keyed by the container the portal renders into and that container belongs to the
-  caller: closing the portal resurrected the children the presence had already let go, as did
-  registering its `targetId` to a different element and back.
-- A `refCallback` cleanup that throws while its element is being unmounted is reported and the unmount
-  carries on, instead of the exception leaving the reconcile call. It used to escape from the middle of
-  the teardown, so the rest of that element's release never ran and the element itself was never taken
-  out of the tree, and the removal batch it interrupted left every row it had not reached yet standing
-  too. An `AnimatePresence` whose own leaf the batch had already removed then kept committed state
-  naming a child that was gone, and the next render at that position spliced it back as an exiting
-  ghost. The delegate is the caller's, and reconciler disposal already contained it this way.
-- An `IRouteScope.Dispose` that throws is reported the same way, at each of the three places a route
-  scope is disposed: the patch that swaps in a newly matched route, an unmounting `V.Outlet`, and the
-  whole-reconciler teardown sweep. The scope is the application's, built by the `IRouteScopeFactory`
-  handed to `Router`. From the route change the escape left the `V.Outlet` blank — the route navigated
-  away from torn down, the route navigated to never mounted — and a later render at that position
-  mounted the new route on the already-disposed scope. From the unmount it reached the same interrupted
-  removal batch and the same resurrected `AnimatePresence` child as above. Both also left the scope
-  registered for the teardown sweep to dispose a second time; from the sweep itself the escape left the
-  rest of that sweep unrun, including every scope it had not reached yet.
-- `UseTransition` no longer clears `isPending` when the first slice of a time-sliced transition commit
-  parks. The flag now spans every parked slice and clears after the terminal commit; that commit asks for
-  the render that takes an observed indicator down.
-- A same-starter async `startTransition` call keeps the joined transition owned until its own task
-  completes. If an outer action started that call without awaiting it and then completed first, its exit
-  used to release the shared slot and clear `isPending` while the joined action was still awaiting.
-- A child that moves from one `gap-*`, `divide-*` or `grid-cols-*` container to another keeps the
-  spacing, divider or column sizing the container it joined wrote. Each of the three tracked the children
-  it had written to by raw reference and reset the value on one no longer in the container, and the
-  element pool hands a child straight from one container to another — so the container a child left could
-  still be tracking it after the container it joined had written to it, and reset that write on its next
-  pass. A row that took a pooled `Label` from a sibling `gap-4` row lost one gap, a `divide-x` row lost
-  one rule, and a grid child lost its column gap and its width. Which container won was decided by the
-  order their re-applies landed in: a reconcile pass re-applies a container right after reconciling that
-  container's children and so never loses the race, and what reached this was the panel's own re-apply
-  sources — a `GeometryChangedEvent` or an `AttachToPanelEvent` arriving after the other container had
-  written. Each turn-off now asks a claim first, so only the container whose write is still on the child
-  may take it back off. Gap and grid share one claim, since both write a child's margins: a child moving
-  between a gap container and a grid one is one owner's or the other's.
-  One case moves the other way with it. A child the reconciler *removes* now keeps the spacing its
-  container wrote, where before the container's next pass cleared it: element cleanup drops the child's
-  claim, and the container then finds no claim to release against. This is every reconciler-driven child
-  removal, not an edge case. A removed element is either discarded with its subtree or scrubbed on its
-  way into the element pool, so what this changes is the inline state of an element an application has
-  kept a reference to and re-parented itself.
-- `startTransition` defers the updates its callback schedules on other components' state, not only
-  the calling component's own. A child deferring an expensive list update through a setter it
-  received as a prop — one of the canonical React uses — had that update classified against the
-  component that owns the state, which was in no transition: it took the Normal lane, or the Urgent
-  lane inside a click, and so drained at the next frame boundary with the interaction the user was
-  waiting on, instead of on the delayed lane the call asked for — where an update arriving in the
-  meantime would have gone ahead of it. The same held for a `Store` write made inside the
-  callback. The flag is now ambient for the callback's synchronous run, as React's is. `isPending`
-  follows those updates wherever they landed: it stays lit until every component the callback
-  scheduled an update on has discharged it — committed it, gone away, or had the scheduler drop it at
-  the update-depth cap — and the declaring component re-renders on the commit that
-  finishes them, so an indicator it renders comes down there. Where the callback wrote to two
-  components, what finishes them is the last commit rather than the first. What the flag does not do is force a
-  render of its own when the transition *starts* — nothing renders purely because `isPending` went
-  true, in this case or in the local-state one, so a component that shows a pending branch needs a
-  render from the same interaction (the urgent update a click also makes, or an ancestor's) to
-  observe it.
-- An `async` `startTransition` action takes its own pending indicator down when it finishes. Its
-  `isPending` correctly outlasts the commit of whatever the callback queued before it first suspended
-  — the action is still running — but the clear at the far end scheduled nothing, so the flag went
-  false while the component carried on rendering its pending branch until some unrelated interaction
-  re-rendered it. An action that writes before its `await` and then outlasts the transition tier's
-  100 ms delay is where a user meets it, since that commit is the render that puts the indicator up.
-  The completion now asks the declaring component for the render that observes the cleared flag: one
-  render, or none of its own where that component was already being re-rendered. An action that never
-  suspended is held to what the synchronous form does, so an `async` callback that only awaits an
-  already-completed task costs what the synchronous form costs — see the entry below for what that is.
-- A synchronous `startTransition` whose callback renders the declaring component now keeps its pending
-  indicator up for as long as the transition runs, and takes it down when it ends. A callback that
-  commits work of its own — driving a handler the component bound, a click or a value change or a
-  focus, whose exit flushes the updates queued before the call — has that flush render the component
-  while the transition is open.
-  The settle that flush ran used to clear `isPending` first, and only the entry to `startTransition`
-  ever sets it, so a callback that then deferred a write ran its whole transition with the indicator
-  never lit. A settle now leaves a slot alone while a call still owns it. The other half of the same
-  route follows from that: where such a callback defers nothing, the flag it raised is cleared at its
-  own exit, and nothing renders because a flag moved — so the exit asks the declaring component for the
-  render that takes the indicator down. That exit asks only where the declaring component's last render
-  read the flag as true, so it costs nothing where that component was not showing the transition — and
-  it settles only a transition with nothing outstanding. Where the callback's work is still queued
-  somewhere, what ends the transition is the commit of that work, and the settle there asks for its
-  render without that term, so a transition whose work commits on another component costs the declaring
-  one a render whether or not it was showing anything.
-- Two `UseTransition` slots whose transitions are open at once, but not nested one inside the other, no
-  longer credit each other's writes. One slot's update was attributed to every slot on that component
-  that still had a transition open, so a slot whose own callback had queued nothing kept `isPending`
-  lit until the other's work committed — including an `async` action parked on an await, which had
-  queued nothing yet by construction. An enrolment is now credited to the calls whose callback is
-  running when it is made, and recorded against the component it enrolled.
-- A `startTransition` whose own component has unmounted still marks what its callback writes on the
-  components that have not. Both overloads short-circuited on a disposed declaring component and ran
-  the callback with no transition open at all, so those updates took the Normal lane — or the Urgent
-  lane inside a click — and the deferral the call asked for was gone. An `async` action that outlives
-  the component that started it is where this is met, since wrapping its post-`await` write in the
-  starter again is what the migration guide asks callers to write, and by then the component may have
-  gone. The pending flag is still left alone on that path: it is read during a render, and a disposed
-  component has none left.
-- A component the reconciler carries to a different container now re-renders itself into the container
-  it is in. Its slot index and the stamp a portal teardown disposes by both followed the move and its
-  container did not, so its own `setState` reconciled its new output into the container it had left,
-  while the container it had moved into kept the element from before the move.
-  It also let the container it had left take it down: where the arriving container is reconciled first
-  and the departing one leaves the tree in that same render, the departing subtree's teardown still
-  found the carried component named as living inside it and ran its cleanups.
-- A `V.Component` written inside a `V.Portal` now survives a patch of that portal's children. Its mount
-  ran in the deferred pass that follows the reconcile, which registered it under a different parent from
-  the one every later patch looks it up by, so the first patch failed to find it: the component was
-  built a second time with fresh hook state and fresh effects, the first instance's effect cleanups
-  never ran, and the element it had rendered stayed behind in the target. A modal whose content
-  component held its own `UseState` lost it the first time anything else in that portal re-rendered —
-  once, because the instance built to replace it registers where the patch looks, so it survives every
-  patch after that. The element the first instance rendered stayed in the target for the life of the
-  tree.
-- A component a declaring render writes both inside a `V.Portal` and at the same position outside it now
-  keeps its own instance on each side, whichever of the two mounts first. They used to merge into one, in
-  both orders and each with its own damage. With the one outside mounted first, the first patch of the
-  portal's children replaced the portal's child with it. With the portal's mounted first, the position
-  outside took the portal's own instance over and rendered it in both places, and the next patch of that
-  portal built a second child and left the elements of the previous slot range in the target with nothing
-  to reconcile them away.
-- A portal that resolved its id late no longer writes over the container's own first child. It
-  recorded its range from slot 0 while the id was unregistered and never rebased it, so the healing
-  patch reconciled its first child against whatever the container already held — an overlay root with
-  a backdrop had the backdrop painted into the portal's content, and the portal's own child never
-  arrived. The range is now taken from the end of the container's children, the same place a portal
-  that resolved at mount takes it.
-- A `V.Component` written directly under a `V.Portal` is now disposed when the portal's children leave
-  the container — its own unmount and a move to another container alike, and whether or not it
-  rendered anything of its own. Its effect cleanups never ran and its hook state was never released,
-  so a subscription a closing modal's top-level component opened outlived the modal. The disposal
-  follows the portal the component was written under, so on a container several portals share, one of
-  them closing leaves the others' components mounted and takes only its own.
-- A `V.Suspense` nested inside another one's children no longer loses its fallback when the outer
-  boundary resolves. The outer boundary's expansion wrote its own answer over every fiber it had
-  created, the inner boundary's hidden children included, so a state update inside content the inner
-  boundary was still waiting on stopped being deferred and committed into the slot range the inner
-  fallback occupied — the fallback left the tree and the half-loaded content took its place. Each
-  boundary now keeps the answer it gave for the children it suspended over, so an outer boundary
-  resolving says nothing about an inner one that has not. An outer boundary that suspends still hides
-  the inner boundary's fallback, and releases it again on resolve.
-- Two `V.Suspense` boundaries in one component's render no longer share a single suspended mark. One
-  showing its fallback while a second, placed after it, rendered its children left the component
-  unmarked, so a state update inside the first one's hidden children stopped being deferred and
-  committed into the slot range its fallback occupied — the fallback disappeared from the tree.
-  Whether a boundary is showing a fallback is now read off the per-boundary record each `V.Suspense`
-  writes under its own position, so a sibling that resolves cannot clear it. Ordering decided it:
-  the same two boundaries with the resolved one placed first were unaffected.
-- A second `Mutate` call no longer cancels the first or drops its callbacks. Both run, each delivers
-  its own `OnSuccess` / `OnError`, and `Status` / `Data` / `Variables` show the most recent — which
-  is what TanStack Query does, and it hands `mutationFn` no signal at all. A double-tapped Buy used to
-  abort a request the server may already have committed and then skip the `OnSuccess` that records
-  it. The token survives for unmount, where a request does want cancelling. A starting call also
-  clears `Data` along with `Error`, so a result belonging to the previous call is not read as this
-  one's while it is still pending.
-- A `TextField`'s `isPasswordField` was written back to `false` by any render that stopped declaring
-  it, so a mask a `refCallback:` had switched on came off on the first render that dropped the prop.
-  A member a render declared and a later one dropped now restores what the field carried when the
-  prop was first declared, and one no render has declared is nobody's to write.
-- A pooled widget carried the `Focusable` default recorded under a previous consumer into its next
-  mount, so a render that dropped a declared `Focusable` prop handed the element that consumer's
-  focusability rather than the one it carried when this consumer first declared the prop. The record
-  is forgotten on the pool return every poolable type passes through.
-- A pooled widget carried far more than its reset helper named. Most of the writable surface of
-  `Button`, `Label`, `Toggle`, `Slider` and `TextField` survived a pool cycle and arrived on whatever
-  mounted next: a read-only or multiline `TextField`, a placeholder string the next consumer had not
-  written, a `Toggle` stuck showing a mixed value, a `Slider` whose direction was inverted, the
-  rich-text and emoji-fallback flags on `Button` and `Label`, text-selection colours and behaviour on
-  `Button`, `Label` and `TextField`, and a data-source binding on all five. A `TextField`'s stale
-  placeholder is the sharp end: the pool's own contract is that the next consumer cannot observe the
-  previous one's text.
-- A recycled composite field stopped delegating focus, and a recycled `Slider` or `TextField` also
-  started taking pointer picks on its own root. The shared reset writes the plain `VisualElement`
-  defaults for both, and only `focusable` was written back afterwards. A recycled `Label` carried
-  tab index 0 where its constructor sets -1, which shows once a consumer declares it focusable.
-- A `Slider` still carrying its numeric input field is no longer pooled at all. That sub-element only
-  tears down while the slider is on a panel, and a pool return has already detached it, so a recycled
-  slider showed a stray input box that its own `showInputField` denied.
-- A `Button` or `Label` no longer carries a paint delegate a consumer added onto whatever mounts next.
-- A composite field pooled without a label lost the class its constructor adds for that case, so a
-  recycled one no longer matched a fresh one's class list.
-- `UseMutation`'s `Reset` now abandons the call in flight instead of only clearing what it had written
-  so far. Pressing Save and then Reset used to leave the save owning the handle, so when it landed it
-  wrote `Success` and its result straight back over the idle state the user had asked for. The
-  abandoned call is still not cancelled and still delivers its own `OnSuccess` / `OnError` — what it
-  no longer does is write the handle, which is what v5's `reset()` detaching the observer amounts to.
-- A `UseMutation` handle no longer shows `Data` for a call it reports as failed. The result was
-  written before `OnSuccess` ran, so a handler that threw — which correctly makes the mutation an
-  error — left that result on show underneath the error, and a view rendering `Data` without checking
-  `Status` first showed it. The outcome is now committed after the handlers on both paths, which is
-  where v5 dispatches it, so a handler no longer reads its own call's outcome and `Data` stands only
-  under `Status == Success`.
-- `Hooks.Use(factory, resourceKey)` compares the resource key by value, so a key a render builds names
-  the resource the previous render named instead of starting a new one. The comparison closed over the
-  parameter's own `object` type and took the reference branch for every key whatever it held, so a
-  string built at run time — the query id the parameter's documentation recommends — and an id boxed at
-  the call boundary each tore the resource down and restarted it on every render. Under a `V.Suspense`
-  that cost the boundary its resolve, since the render a landing loader asks for restarted the loader
-  and suspended again. Nothing said so either: the warning about a resource restarting every render is
-  gated on the key being omitted, and an omitted key is the factory delegate, which a delegate's own
-  identity comparison covers either way. A key of any other reference type is still compared by
-  instance, so that omitted-key behaviour is unchanged.
-- A subscriber that throws while a `LoaderMode.Suspend` loader is resolving no longer corrupts the
-  round that loader belonged to. The router answers a resolution by re-emitting the location, so a
-  `Router.OnLocationChanged` subscriber can run behind that announcement — and a throw from one was
-  caught by the clauses that exist for the loader itself. That counted the round's outstanding loader
-  off a second time and recorded the throw as that route's loader error. So a caller reading the route's
-  loader error saw a load failure that had not happened. Filing it as a failure also ran the router's failure
-  handler, which writes the history entry's snapshot again — this time from a round the second count
-  had corrupted — so the entry stayed unsettled and a Back or Forward to it re-ran the loader instead
-  of being served from the cache. What that second count costs the round itself depends on how many
-  loaders it holds: one leaves it permanently short of settling, and two leave it reporting itself
-  settled while the second loader is still outstanding. The throw is now reported as the subscriber's own and the
-  round stands as the loader left it, with its result recorded and no error. A subscriber throwing out
-  of the failure announcement is reported the same way, where it used to be left to whatever observes a
-  forgotten task.
+- `FiberUpdatePriority.Deferred`. Source naming it stops compiling; `FiberUpdatePriority.Transition`
+  is what to write instead — the same delayed tier, the same fixed flush delay and the same
+  time-sliced frame budget, plus the starvation promotion and `isPending` bookkeeping `Deferred`
+  never took part in. Nothing in the framework ever scheduled it: every lane Velvet enrols is
+  `Urgent`, `Normal` or `Transition`, and `UseDeferredValue` — whose name suggests otherwise —
+  derives through `Transition`. `Transition` is now `2` where it was `3`, so a value kept as an
+  `int` reads differently; no public member takes or returns the enum, so nothing else changes
+  shape.
+
+### Fixed
 
 - Registering a portal target id again with a different element now moves the portals already mounted
   into the old one, instead of leaving them writing into an element the UI has replaced. A
@@ -491,6 +432,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   still leave a live portal exactly where it is. A portal declared before its id existed follows the
   same signal: its children now appear on the first registration, where they used to wait for an
   unrelated re-render of the declaring component and stay invisible until one happened.
+
 - `animate-pulse` now suspends the element's native transitions while it runs, on the same terms
   `V.Motion`'s own per-frame drivers already do. An element whose own utilities declare a transition
   covering opacity — including the bare `duration-*` that leaves UI Toolkit's initial `all` standing —
@@ -500,6 +442,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   transitions nothing over opacity is left alone. A `V.Motion` variant swap on the same element owns
   the slot for its own length: the suspension stands aside for the swap, which therefore still tweens,
   and is back once the swap ends.
+
 - A component keeps its own state when a sibling written as `cond ? node : null` stops rendering. An
   unkeyed component written inline among siblings was keyed by how many components of its identity the
   walk had passed rather than by the slot it sat in, so a sibling turning to `null` shifted the
@@ -517,12 +460,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `cond ? V.Div(V.Component(Row)) : null` beside a second such `V.Div` — where the element diff patches
   the surviving wrapper onto the leaving one's element and the component inside it re-binds along with
   it. A `key:` on those wrappers matches each with itself; the migration guide says so.
+
 - A `TabIndex` or `DelegatesFocus` prop that a later render stopped declaring was written back as `0`
   or `false` rather than as the value the element was constructed with — neither of which is the
   right answer for every type. A `Label` is built out of the tab ring at -1, which shows once a
   consumer declares it focusable; a `TextField`, `Toggle` or `Slider` is built delegating focus to
   the input beneath it, so dropping that prop stranded focus on the field's own root. `Focusable` already restored its
   constructed value; all three do now.
+
 - `RouteBlockerState.Proceed()` now runs the blocked navigation again, from the request the caller made,
   so the confirm-dialog flow it exists for reaches the destination: the user clicks "Leave" and the
   router goes there. It used to clear the state and invoke a callback nothing assigned, leaving the
