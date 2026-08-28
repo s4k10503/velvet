@@ -54,12 +54,20 @@ def carries(operands, flags):
     return False
 
 
+# `new` is gh's own alias for `create`, on both subcommands -- measured, `gh pr new --help` and
+# `gh issue new --help` each print a usage. A guard that claims one spelling is skippable by typing
+# the other, which for this one costs the label and the assignee and for its neighbour costs the only
+# place a mutation receipt is ever asked for.
+CREATE_SPELLINGS = ("create", "new")
+
+
 def creations(command):
     """(kind, operands) for each `gh issue create` / `gh pr create` the command runs."""
     found = []
     for kind in ("issue", "pr"):
-        for operands in program_invocations(command, "gh", (kind, "create")):
-            found.append((kind, operands))
+        for spelling in CREATE_SPELLINGS:
+            for operands in program_invocations(command, "gh", (kind, spelling)):
+                found.append((kind, operands))
     return found
 
 
