@@ -2841,6 +2841,8 @@ class WarmLibraryTests(unittest.TestCase):
         # Act / Assert
         self.assertFalse((self.cloned() / "ScriptAssemblies").exists())
 
+    # GREEN_ON_BASE(characterization): the base copies this across too, by copying everything. It is
+    # the half the exclusion could take with it, and only running it says whether it did.
     def test_Given_AWarmLibrary_When_ItIsCloned_Then_TheImportStateComesAcross(self):
         # Arrange — the control: an exclusion that took the whole Library would satisfy the case
         # above and put back the import this flag exists to avoid.
