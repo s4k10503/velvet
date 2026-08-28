@@ -107,6 +107,9 @@ namespace Velvet.Tests
             }
         }
 
+        // GREEN_ON_BASE(characterization): the rendering under test sits in this same file, which
+        // the base lane carries with the cases, so no base run can separate them. Restoring the
+        // first-backtick cut by hand and re-running the fixture fails both, which is the reading.
         [Test]
         public void Given_ATypeNestedInsideAGeneric_When_Rendered_Then_ItIsNotItsOwner()
         {
@@ -122,6 +125,9 @@ namespace Velvet.Tests
                         Is.EqualTo((true, true, true)));
         }
 
+        // GREEN_ON_BASE(characterization): the rendering under test sits in this same file, which
+        // the base lane carries with the cases, so no base run can separate them. Restoring the
+        // first-backtick cut by hand and re-running the fixture fails both, which is the reading.
         [Test]
         public void Given_ATypeNestedInsideAGeneric_When_Rendered_Then_ItsOwnerIsNamedInIt()
         {
