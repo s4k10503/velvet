@@ -3524,6 +3524,37 @@ class CommentOnlyBranchTests(unittest.TestCase):
         self.assertNotIn("out of scope", printed)
 
 
+class BusyWaitScopeTests(unittest.TestCase):
+    """Which scopes make this lane wait for a quiet machine, which is what it starts an editor for.
+
+    The harness count in the unity-tests skill excludes a `--lane python` line on the strength of
+    this: a Python-only run never waits and never launches an editor, so an agent reading it off the
+    count holds a run against nothing.
+    """
+
+    def platforms_for(self, *paths):
+        """The platform set the wait is guarded on, derived as the lane derives it."""
+        cases = [base_red_check.Case("N.C.Given_A_When_B_Then_C", path, 1, 2) for path in paths]
+        return sorted({base_red_check.platform_of(case.path) for case in cases
+                       if base_red_check.kind_of(case.path) == "csharp"})
+
+    # GREEN_ON_BASE(characterization): the derivation is unchanged here. It is what the skill's
+    # narrowed count now rests on, and nothing said so before.
+    def test_Given_APythonOnlyScope_When_ThePlatformsAreDerived_Then_ThereAreNone(self):
+        # Act / Assert — an empty set is what leaves `wait_for_quiet` unasked.
+        self.assertEqual(self.platforms_for("scripts/hooks/test_probe.py"), [])
+
+    # GREEN_ON_BASE(characterization): the derivation is unchanged here. It is what the skill's
+    # narrowed count now rests on, and nothing said so before.
+    def test_Given_AScopeHoldingACsharpCase_When_ThePlatformsAreDerived_Then_OneIsNamed(self):
+        # Arrange — the control: without it, a derivation that returned nothing for everything would
+        # satisfy the case above having read nothing.
+        # Act / Assert
+        self.assertEqual(
+            self.platforms_for("Packages/com.velvet.core/Runtime/A/Tests/Editor/ProbeTests.cs"),
+            ["EditMode"])
+
+
 class RepositoryTests(unittest.TestCase):
     """The reader against every test file this repository has, rather than against invented ones."""
 
