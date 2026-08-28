@@ -121,9 +121,6 @@ def judge(command, cwd):
             "Spell the directory out.\n")
         return 2
     here = os.path.join(cwd, moved) if moved else cwd
-    root = worktree_of(here)
-    if root is None:
-        return 0
 
     asked = [("git commit", operands, MESSAGE_FLAGS)
              for _, _, operands in git_invocations(command, ("commit",))]
@@ -131,16 +128,25 @@ def judge(command, cwd):
         for operands in program_invocations(command, "gh", words):
             asked.append(("gh " + " ".join(words), operands, BODY_FILE_FLAGS))
 
-    for what, operands, flags in asked:
-        path = valued(operands, flags)
-        if path is None:
-            continue
+    named = [(what, valued(operands, flags)) for what, operands, flags in asked]
+    named = [(what, path) for what, path in named if path is not None]
+    if not named:
+        return 0
+
+    # Asked before the worktree, because a path the shell has not expanded is unreadable in any tree
+    # and the worktree reading stands down where git will not answer.
+    for what, path in named:
         if unexpanded(path):
             sys.stderr.write(
                 f"Refusing `{what}`: the message path is still unexpanded, so which worktree it\n"
                 "belongs to cannot be read here.\n\n"
-                f"Spell the path out, under {root}.\n")
+                "Spell the path out, inside the worktree the change is in.\n")
             return 2
+
+    root = worktree_of(here)
+    if root is None:
+        return 0
+    for what, path in named:
         if not inside(path, root, here):
             return refuse(what, path, root)
     return 0

@@ -29,7 +29,12 @@ class Verdicts(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.elsewhere, ignore_errors=True)
 
     def judge(self, command, cwd=None):
-        """The guard's verdict, as (exit code, stderr)."""
+        """The guard's verdict, as (exit code, stderr).
+
+        Cases below match on words the refusal writes, never on a substring of the guard's own name:
+        a tree without the guard exits 2 from python with the path in the message, and `outside` is
+        in that path. Measured -- two cases passed on the base that way.
+        """
         event = {"tool_name": "Bash", "cwd": str(cwd or self.root),
                  "tool_input": {"command": command}}
         done = subprocess.run(["python3", str(GUARD)], input=json.dumps(event),
@@ -42,7 +47,7 @@ class Verdicts(unittest.TestCase):
         code, said = self.judge(f"git commit -F {self.elsewhere}/msg.txt")
 
         # Act / Assert
-        self.assertEqual((code, "outside" in said), (2, True))
+        self.assertEqual((code, "the worktree it describes" in said), (2, True))
 
     def test_Given_ACommitMessageInsideTheWorktree_When_Judged_Then_ItIsLetThrough(self):
         # Arrange — a worktree is per-agent here, so a file inside it is nobody else's to write.
@@ -65,7 +70,7 @@ class Verdicts(unittest.TestCase):
             f"gh pr create --title t --body-file {self.elsewhere}/pr-body.md")
 
         # Act / Assert
-        self.assertEqual((code, "outside" in said), (2, True))
+        self.assertEqual((code, "the worktree it describes" in said), (2, True))
 
     def test_Given_AnInlineMessage_When_Judged_Then_ItIsLetThrough(self):
         # Arrange — `-m` carries the message itself, so there is no path for anyone to overwrite.
@@ -90,6 +95,15 @@ class Verdicts(unittest.TestCase):
 
         # Act / Assert
         self.assertEqual((code, said), (0, ""))
+
+    def test_Given_AnUnexpandedPathOutsideAnyRepository_When_Judged_Then_ItIsStillRefused(self):
+        # Arrange — the worktree reading stands down where git will not answer, and asking it first
+        # took the unexpanded reading down with it. That is how the guard's own declared policy
+        # disagreed with it: `PreExpansionPolicyTests` poses each probe where no worktree answers.
+        code, said = self.judge('git commit -F "$MSG"', cwd=self.elsewhere)
+
+        # Act / Assert
+        self.assertEqual((code, "unexpanded" in said), (2, True))
 
     def test_Given_ACommandOutsideAnyRepository_When_Judged_Then_ItIsNotThisGuardsToRefuse(self):
         # Arrange — no worktree, so no worktree the message belongs to.
