@@ -632,10 +632,14 @@ behaviour a working application would notice changing.
    section empty and every entry of it word for word in the version being closed, and a minor or a
    patch may neither take anything out of it nor leave anything in. So a wording change belongs in a
    change that closes no version — which is also how an entry is reclassified out of the section,
-   deciding it was never breaking, and none of this is asked of one. Give the version a row in
-   `SECURITY.md`'s supported-versions table, and decide there what happens to the series it
-   succeeds: `supported_versions_check.py` refuses a release the table does not cover with one row
-   marked supported.
+   deciding it was never breaking, and none of this is asked of one. A major also answers for the
+   breaking work still in flight: an entry written for it sits on its own branch until that branch
+   merges, so the CHANGELOG holds only the part that has landed. Name every open pull request adding
+   to `## [Unreleased — breaking]` and say which the version carries —
+   `breaking_in_flight_check.py` refuses one that names none of them, and "not this one" is a
+   decision it accepts. Give the version a row in `SECURITY.md`'s supported-versions table, and
+   decide there what happens to the series it succeeds: `supported_versions_check.py` refuses a
+   release the table does not cover with one row marked supported.
 2. Merge to `main` (the `upm` branch is updated automatically).
 3. Run the **UPM** workflow via *Actions ▸ UPM ▸ Run workflow*, entering the same version.
    This tags `vX.Y.Z` on the `upm` (package-at-root) commit and publishes a GitHub release.

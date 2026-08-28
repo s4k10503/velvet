@@ -146,6 +146,29 @@ def consistency_reason(changelog_text, package_json_text):
     return None
 
 
+def unpublished_versions(changelog_text, tags):
+    """Closed sections no release tag answers for, newest first."""
+    return [version for version, line in version_headings(changelog_text)
+            if RELEASE_DATE.search(line) and f"v{version}" not in tags]
+
+
+def reopened_by(changelog_text, tags, result_changelog):
+    """Whether the result stops closing every version the base left unpublished.
+
+    A withdrawn release leaves its base closing a version no tag answers for, and the change that
+    reopens the section is the repair. Asked of the base alone the publication question refuses that
+    change, and with it every merge waiting behind it. Read off the same list the refusal is built
+    from rather than out of its message, which is prose and would drift.
+    """
+    if result_changelog is None:
+        return False
+    unpublished = unpublished_versions(changelog_text, tags)
+    if not unpublished:
+        return False
+    still = {version for version, _ in version_headings(result_changelog)}
+    return not any(version in still for version in unpublished)
+
+
 def drain_reason(base_changelog, result_changelog):
     """Why this change may not close the version it closes, or None.
 
@@ -232,8 +255,7 @@ def publication_reason(changelog_text, package_json_text, tags):
     if not any(RELEASE_TAG.match(tag) for tag in tags):
         return None
 
-    unpublished = [version for version, line in version_headings(changelog_text)
-                   if RELEASE_DATE.search(line) and f"v{version}" not in tags]
+    unpublished = unpublished_versions(changelog_text, tags)
     if not unpublished:
         return None
 
@@ -280,8 +302,13 @@ def read_at(project, rev, path):
     return git(project, "show", f"{rev}:{path}")
 
 
-def unpublished_reason(project, rev="origin/main", remote="origin", fetch=False):
+def unpublished_reason(project, rev="origin/main", remote="origin", fetch=False, result=None):
     """publication_reason for one revision of a repository, or None when it reads clean.
+
+    `result` is the revision the change would produce. A base closing a version no tag answers for
+    refuses everything merged onto it, and the change that reopens the section is the repair — so it
+    refuses itself, and every merge waiting behind it. Naming the result lets that one through, and
+    only that one: reopening some of several unpublished versions leaves the rest unanswered.
 
     A git failure answers None rather than refusing: an absent revision, an absent remote and an
     unreachable network are ordinary states on a developer's machine, and refusing in them would
@@ -292,9 +319,14 @@ def unpublished_reason(project, rev="origin/main", remote="origin", fetch=False)
     try:
         if fetch:
             git(project, "fetch", remote, rev.split("/", 1)[-1], "--quiet")
-        return publication_reason(read_at(project, rev, CHANGELOG_PATH),
-                                  read_at(project, rev, PACKAGE_JSON_PATH),
-                                  remote_tags(project, remote))
+        base_changelog = read_at(project, rev, CHANGELOG_PATH)
+        tags = remote_tags(project, remote)
+        reason = publication_reason(base_changelog,
+                                    read_at(project, rev, PACKAGE_JSON_PATH), tags)
+        if reason and result and reopened_by(base_changelog, tags,
+                                             read_at(project, result, CHANGELOG_PATH)):
+            return None
+        return reason
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired,
             json.JSONDecodeError, OSError) as failure:
         print(f"could not read {rev} to check it against the published releases: {failure}",
@@ -325,10 +357,15 @@ def main():
             print(f"{rev}: {right}")
 
     if args.base:
-        report(args.base,
-               publication_reason(read_at(project, args.base, CHANGELOG_PATH),
-                                  read_at(project, args.base, PACKAGE_JSON_PATH),
-                                  remote_tags(project, args.remote)),
+        base_changelog = read_at(project, args.base, CHANGELOG_PATH)
+        tags = remote_tags(project, args.remote)
+        reason = publication_reason(base_changelog,
+                                    read_at(project, args.base, PACKAGE_JSON_PATH), tags)
+        if reason and args.result and reopened_by(
+                base_changelog, tags, read_at(project, args.result, CHANGELOG_PATH)):
+            print(f"{args.base} holds an unpublished release that {args.result} reopens")
+            reason = None
+        report(args.base, reason,
                "holds an unpublished release", "no unpublished release is in the way")
 
     if args.result:
