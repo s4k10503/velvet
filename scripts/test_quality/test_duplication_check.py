@@ -155,6 +155,9 @@ class ExitCodeTests(unittest.TestCase):
                 contextlib.redirect_stdout(io.StringIO()):
             return duplication_check.main(), err.getvalue()
 
+    # GREEN_ON_BASE(characterization): the base stops it because every arrival stopped it. This is
+    # the half the split must not drop, and dropping it is silent — the check would still run, still
+    # report, and let new duplication through.
     def test_Given_ABlockThatStartedRepeating_When_Checked_Then_ItStopsTheChange(self):
         # Arrange
         before = self.anchored(Alpha=block("a"), Beta=block("b"))
@@ -166,8 +169,9 @@ class ExitCodeTests(unittest.TestCase):
         # Assert
         self.assertEqual((code, "now repeat that did not before" in said), (1, True))
 
-    def test_Given_ABlockThatMovedFiles_When_Checked_Then_ItStopsTheChange(self):
-        # Arrange
+    def test_Given_ABlockThatMovedFiles_When_Checked_Then_ItIsTheOnlyThingSaid(self):
+        # Arrange — a move leaves an entry on each side, and each side read alone names a different
+        # thing that did not happen: a block that started repeating, and one that stopped.
         before = self.anchored(Alpha=block("a"), Beta=block("a"))
         after = self.anchored(Alpha=block("a"), Delta=block("a"))
 
@@ -175,20 +179,14 @@ class ExitCodeTests(unittest.TestCase):
         code, said = self.run_against(before, after)
 
         # Assert
-        self.assertEqual((code, "repeat in different files" in said), (1, True))
+        self.assertEqual((code,
+                          "repeat in different files" in said,
+                          "now repeat that did not before" in said,
+                          "no longer repeat" in said),
+                         (1, True, False, False))
 
-    def test_Given_ABlockThatMovedFiles_When_Checked_Then_NothingIsSaidToHaveStopped(self):
-        # Arrange — the departure is the move's other half, and reporting it as a block that stopped
-        # repeating asks for a ratchet that would undo the entry the move just added.
-        before = self.anchored(Alpha=block("a"), Beta=block("a"))
-        after = self.anchored(Alpha=block("a"), Delta=block("a"))
-
-        # Act
-        _, said = self.run_against(before, after)
-
-        # Assert
-        self.assertNotIn("no longer repeat", said)
-
+    # GREEN_ON_BASE(characterization): a block that stopped repeating ratcheted the baseline before
+    # the arrivals were separated, and it is the reading the split had to leave where it was.
     def test_Given_ABlockThatStoppedRepeating_When_Checked_Then_TheBaselineIsRatcheted(self):
         # Arrange
         before = self.anchored(Alpha=block("a"), Beta=block("a"))
