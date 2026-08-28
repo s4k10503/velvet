@@ -510,6 +510,61 @@ class MutableScopeTests(unittest.TestCase):
         self.assertFalse(mutation_check.mutable(path, REPO_ROOT))
 
 
+class GenericCallRemovalTests(unittest.TestCase):
+    """A call whose name carries type arguments, which the removal pattern could not read.
+
+    `target.RegisterCallback<GeometryChangedEvent>(OnGeometry);` is a call whose deletion the tests
+    should notice, and it matched nothing: 109 whole statements in this package passed every other
+    reading and generated no mutant. The loss was silent — a line no operator reaches is reported the
+    same way as a line with nothing to mutate.
+    """
+
+    def test_Given_ACallCarryingTypeArguments_When_MutantsAreGenerated_Then_ItIsRemovable(self):
+        # Arrange
+        text = "Prepare();\ntarget.RegisterCallback<GeometryChangedEvent>(OnGeometry);\n"
+
+        # Act
+        deletions = [mutant.before for mutant in mutants_of(text, "line removed")]
+
+        # Assert
+        self.assertIn("target.RegisterCallback<GeometryChangedEvent>(OnGeometry);", deletions)
+
+    def test_Given_ANestedTypeArgument_When_MutantsAreGenerated_Then_ItIsStillRemovable(self):
+        # Arrange — the argument list is read as a character class, so a generic inside it is inside
+        # the class rather than outside the match.
+        text = "Prepare();\nRegister<Dictionary<string, int>>(store);\n"
+
+        # Act
+        deletions = [mutant.before for mutant in mutants_of(text, "line removed")]
+
+        # Assert
+        self.assertIn("Register<Dictionary<string, int>>(store);", deletions)
+
+    # GREEN_ON_BASE(characterization): the base does not read this as a call either, and it is what the widened class could start
+    # reading — only running it says whether it did.
+    def test_Given_AComparisonThatLooksLikeOne_When_MutantsAreGenerated_Then_ItIsNotRemoved(self):
+        # Arrange — the control: `;` and `(` are deliberately outside the character class, so a
+        # statement whose angle brackets are comparisons is not read as a call.
+        text = "Prepare();\nvar ok = a < b && c > (d);\n"
+
+        # Act
+        deletions = [mutant.before for mutant in mutants_of(text, "line removed")]
+
+        # Assert
+        self.assertNotIn("var ok = a < b && c > (d);", deletions)
+
+    # GREEN_ON_BASE(characterization): the base removes this, and it is the half the widening must not lose.
+    def test_Given_APlainCall_When_MutantsAreGenerated_Then_ItIsStillRemovable(self):
+        # Arrange — the half that already worked, and what the widened pattern must not lose.
+        text = "Prepare();\nStep(now);\n"
+
+        # Act
+        deletions = [mutant.before for mutant in mutants_of(text, "line removed")]
+
+        # Assert
+        self.assertIn("Step(now);", deletions)
+
+
 class LineRemovalReadingTests(unittest.TestCase):
     """What the removal reads a line as, and what it puts back in place of it.
 

@@ -392,10 +392,22 @@ OPERATORS = [
 
 WORD_OPERATORS = [("true", "false", "literal"), ("false", "true", "literal")]
 
-# An identifier, a parenthesised head, a semicolon-terminated tail. The word in front of the
-# parenthesis is no part of that, so what the removal takes is everything the line runs rather than
-# one call -- which is what its verdict is named for.
-REMOVABLE_LINE = re.compile(r"^[A-Za-z_][A-Za-z0-9_.]*(\.[A-Za-z_][A-Za-z0-9_]*)*\s*\([^;]*\)\s*;$")
+# An identifier, an optional type argument list, a parenthesised head, a semicolon-terminated tail.
+# The word in front of the parenthesis is no part of that, so what the removal takes is everything the
+# line runs rather than one call -- which is what its verdict is named for.
+#
+# The type arguments are read because `target.RegisterCallback<GeometryChangedEvent>(OnGeometry);` is
+# a call whose deletion the tests should notice, and without them it matched nothing: 109 whole
+# statements in this package passed every other reading and generated no mutant. The loss was silent,
+# because a line no operator reaches is reported the same way as a line with nothing to mutate.
+#
+# The argument list is a character class rather than a balanced read: a nested generic is inside it,
+# and what is deliberately not inside it is `;` or `(`, so a comparison -- `a < b && c > (d);` -- is
+# not read as one.
+REMOVABLE_LINE = re.compile(
+    r"^[A-Za-z_][A-Za-z0-9_.]*(\.[A-Za-z_][A-Za-z0-9_]*)*"
+    r"(<[A-Za-z0-9_.,<>\[\]?\s]*>)?"
+    r"\s*\([^;]*\)\s*;$")
 
 # `return (value, done);` has the shape above and is not a line whose code can go: what replaces it
 # is an empty statement, so what the line returns goes with it. A word rather than a prefix, because
