@@ -129,8 +129,11 @@ class LineMainHasNotTaken(unittest.TestCase):
         # Act
         done = run(clone)
 
-        # Assert
-        self.assertNotIn("main does not carry", done.stdout)
+        # Assert — the first reading rides along, because a run that printed nothing at all satisfies
+        # the absence too. "main does not" covers the ancestry wording as well as this one, which is
+        # what the base prints here.
+        self.assertEqual(("holds 1 unreleased CHANGELOG entry" in done.stdout,
+                          "main does not" in done.stdout), (True, False))
 
     def test_Given_ALineMainHasMerged_When_Reported_Then_NothingIsSaid(self):
         # Arrange — once the merge has happened there is nothing left to interpret, and a report that
