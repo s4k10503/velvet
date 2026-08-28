@@ -624,19 +624,28 @@ behaviour a working application would notice changing.
 
 1. Close the version in `Packages/com.velvet.core/CHANGELOG.md` and bump `version` in
    `package.json` to match. A major moves the breaking entries up into `## [Unreleased]` and leaves
-   their heading standing with none; a minor or a patch leaves them where they are. Rename
+   their heading standing with none. A minor or a patch closes only over a section already empty,
+   and `published_check.py` refuses one that is not: a release publishes the tree rather than the
+   section, and `main` was found carrying the code an entry described while that entry still
+   waited. A line that never took those changes has an empty section, which is what keeps the
+   reading silent on the maintenance line. Rename
    `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD` **last**, once nothing further is going into it:
    `changelog_into_closed_version.py` refuses a write into a dated section, and the rename is what
    dates it. The breaking heading itself is never dated and never deleted, and a `**Breaking:**`
    bullet in `### Highlights` belongs to a major and to no other release; `test_release_notes.py`
-   refuses each of those. Give the version a row in `SECURITY.md`'s supported-versions table, and
-   decide there what happens to the series it succeeds: `supported_versions_check.py` refuses a
-   release the table does not cover with one row marked supported. A major also answers for the
+   refuses each of those. Where the entries went is read from the change rather than the file, by
+   `published_check.py` on the pull request that closes the version: a major has to close with the
+   section empty and every entry of it word for word in the version being closed, and a minor or a
+   patch may neither take anything out of it nor leave anything in. So a wording change belongs in a
+   change that closes no version — which is also how an entry is reclassified out of the section,
+   deciding it was never breaking, and none of this is asked of one. A major also answers for the
    breaking work still in flight: an entry written for it sits on its own branch until that branch
    merges, so the CHANGELOG holds only the part that has landed. Name every open pull request adding
    to `## [Unreleased — breaking]` and say which the version carries —
    `breaking_in_flight_check.py` refuses one that names none of them, and "not this one" is a
-   decision it accepts.
+   decision it accepts. Give the version a row in `SECURITY.md`'s supported-versions table, and
+   decide there what happens to the series it succeeds: `supported_versions_check.py` refuses a
+   release the table does not cover with one row marked supported.
 2. Merge to `main` (the `upm` branch is updated automatically).
 3. Run the **UPM** workflow via *Actions ▸ UPM ▸ Run workflow*, entering the same version.
    This tags `vX.Y.Z` on the `upm` (package-at-root) commit and publishes a GitHub release.

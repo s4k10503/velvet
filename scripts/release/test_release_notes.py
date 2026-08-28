@@ -5,14 +5,17 @@ Run: python3 scripts/release/test_release_notes.py
 """
 
 import json
-import re
 import unittest
 from pathlib import Path
 
+import published_check
+import release_notes
 from published_check import RELEASE_DATE
 from release_notes import (
+    BREAKING_SECTION,
     DEFAULT_CHANGELOG,
     DEFAULT_PACKAGE_JSON,
+    OPEN_SECTION,
     ReleaseNotesError,
     VERSION_HEADING,
     build_notes,
@@ -25,14 +28,35 @@ from release_notes import (
 REPO = "s4k10503/velvet"
 
 
-def bullets(lines):
-    """Split a block of CHANGELOG lines into its top-level list items."""
-    return [item for item in re.split(r"\n(?=- )", "\n".join(lines)) if item.startswith("- ")]
+def named(version, entry):
+    return f"{version}: {entry.splitlines()[0][:60]}…"
 
 
-def normalize(text):
-    """Collapse the wrapping a CHANGELOG line carries, so two spellings of one sentence match."""
-    return " ".join(text.split())
+def highlights_copying_an_entry(text, version):
+    """This version's Highlights bullets that ARE one of its own long-form entries."""
+    highlights, remainder = split_highlights(extract_version_section(text, version), version)
+    entries = {release_notes.normalize(entry)
+               for entry in release_notes.split_entries(remainder)}
+    return [named(version, bullet) for bullet in release_notes.split_entries(highlights)
+            if release_notes.normalize(bullet) in entries]
+
+
+def breaking_entries_repeated_elsewhere(text):
+    """Entries of the breaking section that some other section of `text` also lists.
+
+    Nothing where that section is absent, rather than the raise `extract_version_section` answers
+    with: a repeat is a comparison, and an absent section leaves nothing to compare.
+    """
+    headings = [match.group("version") for line in text.splitlines()
+                if (match := VERSION_HEADING.match(line))]
+    if BREAKING_SECTION not in headings:
+        return []
+    waiting = {release_notes.normalize(entry) for entry
+               in release_notes.split_entries(extract_version_section(text, BREAKING_SECTION))}
+    return [named(version, entry)
+            for version in headings if version != BREAKING_SECTION
+            for entry in release_notes.split_entries(extract_version_section(text, version))
+            if release_notes.normalize(entry) in waiting]
 
 COMPLETE = """# Changelog
 
@@ -81,6 +105,51 @@ TWO_OPEN = """# Changelog
 ### Added
 
 - Everything.
+"""
+
+# One entry written twice: once as a Highlights bullet, once as the last item of `### Changed`, where
+# the heading below it is what a split running only to the next item would carry into its text.
+HIGHLIGHT_COPY = """# Changelog
+
+## [2.0.0] - 2026-08-02
+
+### Highlights
+
+- A break nobody restated.
+
+### Changed
+
+- A break nobody restated.
+
+### Fixed
+
+- Something else.
+"""
+
+# The same shape across two sections, with the two copies at different distances from a heading: the
+# breaking one is last in `### Changed`, the released one is not.
+BREAKING_COPY = """# Changelog
+
+## [Unreleased — breaking]
+
+### Changed
+
+- A break that also went out in 2.0.0.
+
+### Fixed
+
+- Something that waits.
+
+## [2.0.0] - 2026-08-02
+
+### Highlights
+
+- A fix.
+
+### Changed
+
+- A break that also went out in 2.0.0.
+- Something else.
 """
 
 
@@ -162,6 +231,48 @@ class SplitHighlights(unittest.TestCase):
         # Act / Assert
         with self.assertRaises(ReleaseNotesError):
             split_highlights(section, "2.0.0")
+
+
+class SplitEntries(unittest.TestCase):
+    def test_Given_an_item_last_in_its_subsection_When_splitting_Then_the_heading_below_is_left_out(self):
+        # Arrange / Act
+        entries = release_notes.split_entries(["- One.", "### Fixed", "- Two."])
+
+        # Assert
+        self.assertEqual(entries, ["- One.", "- Two."])
+
+    def test_Given_an_item_last_before_a_deeper_heading_When_splitting_Then_that_heading_is_left_out(self):
+        # Arrange / Act
+        entries = release_notes.split_entries(["- One.", "#### Detail", "- Two."])
+
+        # Assert
+        self.assertEqual(entries, ["- One.", "- Two."])
+
+    def test_Given_a_wrapped_item_When_splitting_Then_its_continuation_stays_with_it(self):
+        # Arrange / Act
+        entries = release_notes.split_entries(["- One", "  wrapped at a column.", "- Two."])
+
+        # Assert
+        self.assertEqual(entries, ["- One\n  wrapped at a column.", "- Two."])
+
+
+class EntryComparisons(unittest.TestCase):
+    """The two guards below match one entry's text against another's, so a heading inside either
+    text is a match that does not happen and a defect that is not reported."""
+
+    def test_Given_a_highlight_copying_an_entry_last_in_its_subsection_When_read_Then_it_is_named(self):
+        # Arrange / Act
+        copied = highlights_copying_an_entry(HIGHLIGHT_COPY, "2.0.0")
+
+        # Assert
+        self.assertEqual(copied, ["2.0.0: - A break nobody restated.…"])
+
+    def test_Given_a_breaking_entry_last_in_its_subsection_When_a_release_repeats_it_Then_it_is_named(self):
+        # Arrange / Act
+        copied = breaking_entries_repeated_elsewhere(BREAKING_COPY)
+
+        # Assert
+        self.assertEqual(copied, ["2.0.0: - A break that also went out in 2.0.0.…"])
 
 
 class UnwrapSoftBreaks(unittest.TestCase):
@@ -305,7 +416,7 @@ class ThisRepositorysChangelog(unittest.TestCase):
         # version is what brings it under these guards, on the pull request that renames it. Both
         # open sections are in-progress, so both stand outside them until one is renamed.
         cls.versions = [version for version, _ in cls.headings
-                        if version not in ("Unreleased", "Unreleased — breaking")]
+                        if version not in (OPEN_SECTION, BREAKING_SECTION)]
 
     # GREEN_ON_BASE(characterization): no `*` or `+` item is in the file today, and this is what keeps it that way.
     def test_Given_the_shipped_changelog_When_read_Then_every_list_item_opens_with_a_dash(self):
@@ -371,15 +482,8 @@ class ThisRepositorysChangelog(unittest.TestCase):
         # Arrange — length does not separate the two (the shortest long-form entry here is 61
         # characters), so the guard is verbatim reuse: a highlight that IS its own entry says the
         # same thing twice in one note.
-        copied = []
-        for version in self.versions:
-            highlights, remainder = split_highlights(
-                extract_version_section(self.text, version), version
-            )
-            entries = {normalize(bullet) for bullet in bullets(remainder)}
-            for bullet in bullets(highlights):
-                if normalize(bullet) in entries:
-                    copied.append(f"{version}: {bullet.splitlines()[0][:60]}…")
+        copied = [copy for version in self.versions
+                  for copy in highlights_copying_an_entry(self.text, version)]
 
         # Act / Assert
         self.assertEqual(copied, [])
@@ -390,42 +494,25 @@ class ThisRepositorysChangelog(unittest.TestCase):
         # closed. Moving entries out changes no heading, and nothing here reports that.
         # Act
         open_breaking = [version for version, line in self.headings
-                         if version == "Unreleased — breaking" and not RELEASE_DATE.search(line)]
+                         if version == BREAKING_SECTION and not RELEASE_DATE.search(line)]
 
         # Assert
-        self.assertEqual(open_breaking, ["Unreleased — breaking"])
-
-    def entries_waiting_for_a_major(self):
-        """What the breaking section lists, or nothing where the section itself has gone missing —
-        which the case above reports, so reading it here would name one defect twice."""
-        if not any(version == "Unreleased — breaking" for version, _ in self.headings):
-            return set()
-        return {normalize(bullet) for bullet in
-                bullets(extract_version_section(self.text, "Unreleased — breaking"))}
+        self.assertEqual(open_breaking, [BREAKING_SECTION])
 
     # GREEN_ON_BASE(characterization): the base names nothing as waiting for a major.
     def test_Given_the_breaking_section_When_reading_every_other_section_Then_none_repeats_it(self):
         # Arrange — closing a major moves entries out of this section. One copied rather than moved
         # both ships and goes on waiting, and reads as true in each place; copied into the open
         # minor section instead, it is the same defect one release earlier.
-        waiting = self.entries_waiting_for_a_major()
-        elsewhere = [version for version, _ in self.headings
-                     if version != "Unreleased — breaking"]
-
         # Act
-        copied = [f"{version}: {bullet.splitlines()[0][:60]}…"
-                  for version in elsewhere
-                  for bullet in bullets(extract_version_section(self.text, version))
-                  if normalize(bullet) in waiting]
+        copied = breaking_entries_repeated_elsewhere(self.text)
 
         # Assert
         self.assertEqual(copied, [])
 
     def major_bumps(self):
-        """Versions whose major differs from the release below them, which `self.versions` orders
-        newest first. The oldest release has nothing below it and is nobody's bump."""
-        return [version for version, previous in zip(self.versions, self.versions[1:])
-                if version.split(".")[0] != previous.split(".")[0]]
+        return [version for version in self.versions
+                if published_check.is_major_bump(self.versions, version)]
 
     def breaking_highlight(self, version):
         return "**Breaking:**" in "\n".join(
