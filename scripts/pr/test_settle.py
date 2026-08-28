@@ -852,26 +852,38 @@ class HeartbeatTests(unittest.TestCase):
     # different questions, so each gets its own case rather than one standing in for the others.
     CORRUPT = b"\xff\xfe1000 1\n"
 
+    def answered(self, reading):
+        """What the reading returned, or the name of what it raised instead.
+
+        The claim is that it answers, and an answer and a raise are the two outcomes to tell apart —
+        so the raise is turned into a value rather than left to end the case, which reports the same
+        way whether the reading raised or the file was never written.
+        """
+        with self.heartbeat(self.CORRUPT):
+            try:
+                return reading()
+            except Exception as raised:  # noqa: BLE001
+                return type(raised).__name__
+
     def test_Given_AHeartbeatThatIsNotUtf8_When_LivenessIsRead_Then_ItAnswersRatherThanRaising(self):
         # Arrange — a UnicodeDecodeError is a ValueError, so it goes past an OSError catch and out of
         # whichever PreToolUse or Stop hook was asking.
-        with self.heartbeat(self.CORRUPT):
-            # Act / Assert
-            self.assertFalse(settle.watcher_state.alive(now=1060))
+        # Act / Assert
+        self.assertIs(self.answered(lambda: settle.watcher_state.alive(now=1060)), False)
 
     def test_Given_AHeartbeatThatIsNotUtf8_When_TheUnreadableReadingIsAsked_Then_ItAnswersRatherThanRaising(self):
         # Arrange — this reading exists to separate "nothing is watching" from "the reading failed",
         # and raising is neither.
-        with self.heartbeat(self.CORRUPT):
-            # Act / Assert
-            self.assertFalse(settle.watcher_state.unreadable_beat(now=1060))
+        # Act / Assert
+        self.assertIs(self.answered(lambda: settle.watcher_state.unreadable_beat(now=1060)), False)
 
     def test_Given_AHeartbeatThatIsNotUtf8_When_AnotherWatcherIsLookedFor_Then_ItAnswersRatherThanRaising(self):
         # Arrange — this one decides whether a second watcher may start, so a raise here refuses the
         # recovery the other two name.
-        with self.heartbeat(self.CORRUPT):
-            # Act / Assert
-            self.assertFalse(settle.watcher_state.beating_elsewhere(os.getpid(), now=1060))
+        # Act / Assert
+        self.assertIs(
+            self.answered(lambda: settle.watcher_state.beating_elsewhere(os.getpid(), now=1060)),
+            False)
 
     @contextlib.contextmanager
     def heartbeat(self, text):
