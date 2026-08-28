@@ -524,7 +524,7 @@ namespace Velvet
                 oldNode.Children ?? Array.Empty<VNode>(),
                 newNode.Children ?? Array.Empty<VNode>());
 
-            _ctx.InvokeRefCallback(element, newNode.RefCallback);
+            _ctx.SyncRefCallback(element, newNode.RefCallback);
         }
 
         private void PatchMotion(VisualElement element, MotionNode oldNode, MotionNode newNode)

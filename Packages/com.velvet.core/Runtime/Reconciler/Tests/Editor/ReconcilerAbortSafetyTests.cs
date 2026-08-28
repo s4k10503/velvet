@@ -116,6 +116,9 @@ namespace Velvet.Tests
                 Is.EqualTo((true, 2, "caught", "b")));
         }
 
+        // GREEN_ON_BASE(refactor): the base raises the flag from CreateElement too, so this case is green
+        // there whichever of the two callbacks raises it. The swap is what keeps it that way here, where
+        // one of the two no longer runs from CreateElement at all.
         [Test]
         public void Given_AbortObservedDuringTimeSlicedKeyedReplace_When_Reconciled_Then_TheReplacementIsInsertedAndLaterSiblingIsUntouched()
         {
@@ -126,20 +129,18 @@ namespace Velvet.Tests
             // (V.Mount's re-render path always uses frameBudgetMs: 0), and a real error-boundary
             // component mounted this way would bootstrap its OWN isolated ReconcilerContext (its
             // fiber has no parent fiber to inherit the shared one from — see SetupMount), so
-            // SetAborted() would never reach the context this test observes. A refCallback fired
+            // SetAborted() would never reach the context this test observes. An onCreated fired
             // during CreateElement stands in for the abort a real boundary would raise, exercising
-            // the same _ctx.IsAborted contract without depending on component-fiber parentage.
+            // the same _ctx.IsAborted contract without depending on component-fiber parentage. A
+            // refCallback would not: its setup is queued for the pass boundary, which is past the scan
+            // this drives.
             var oldTree = new VNode[] { V.Label(text: "a", key: "k0"), V.Label(text: "b", key: "k1") };
             Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
             var ctx = Reconciler.Context;
 
             var newTree = new VNode[]
             {
-                V.Div(key: "k0", refCallback: _ =>
-                {
-                    ctx.IsAborted = true;
-                    return null;
-                }),
+                V.ScrollView(key: "k0", onCreated: _ => ctx.IsAborted = true),
                 V.Label(text: "b-updated", key: "k1"),
             };
 
@@ -147,7 +148,7 @@ namespace Velvet.Tests
             Reconciler.Reconcile(Root, oldTree, newTree, frameBudgetMs: 0.001);
             DrainPendingWork();
 
-            // Assert — the rebuilt k0 element is inserted despite the abort (refCallback fires after
+            // Assert — the rebuilt k0 element is inserted despite the abort (onCreated fires after
             // the element is fully built), and the abort stops the scan before k1 is reached, so its
             // original text survives instead of being patched to "b-updated".
             Assert.That((Root.childCount, ((Label)Root.ElementAt(1)).text), Is.EqualTo((2, "b")));
@@ -507,5 +508,82 @@ namespace Velvet.Tests
             Assert.That(refInvocations, Is.EqualTo(afterMount),
                 "A keyed reorder that reuses the same VNode instances skips PatchNode on each retained child");
         }
+    }
+
+    /// <summary>
+    /// Specifies which tree a fiber keeps as its diff baseline when the top-level pass it rendered into was
+    /// aborted by a boundary below it: the pre-throw one, not the one that pass built.
+    /// <c>FiberRenderer.RenderAndReconcile</c> owns why it is that one.
+    /// <para>
+    /// The boundary catches during the WALK here. One catching during the ref-setup drain that ends the same
+    /// pass is the other half, and that fiber commits instead — <c>ElementCallbackFailureTests</c> holds
+    /// those cases and <c>ComponentFiber.FallbackReplacedPreviousTree</c> owns what separates the two.
+    /// </para>
+    /// </summary>
+    [TestFixture]
+    internal sealed class AbortedPassBaselineTests
+    {
+        private const string FailureMessage = "arranged failure during the walk";
+
+        private VisualElement _root;
+        private static bool s_fallbackShown;
+        private static ComponentFiber s_hostFiber;
+        private static StateUpdater<bool> s_setFlipped;
+
+        [SetUp]
+        public void SetUp()
+        {
+            _root = new VisualElement();
+            s_fallbackShown = false;
+            s_hostFiber = null;
+            s_setFlipped = default;
+        }
+
+        // GREEN_ON_BASE(characterization): the discard this reads predates the branch — the base drops an
+        // aborted pass's tree on the same flag. What the branch adds beside that flag is the boundary fiber's
+        // own reading, and this case is what keeps the older half measured once the newer one is there.
+        [Test]
+        public void Given_ABoundaryBelowAFiberCaughtDuringTheWalk_When_ThePassEnds_Then_TheFibersBaselineIsThePreThrowTree()
+        {
+            // Arrange — the host's own element name carries its state, so the committed baseline and the tree
+            // the aborted pass built disagree by name.
+            using var mounted = V.Mount(_root, V.Component(AbortingWalkHost, key: "host"));
+
+            // Act
+            s_setFlipped.Invoke(true);
+            mounted.FlushStateForTest();
+
+            // Assert — the fallback flag gates the name, because a pass that never re-rendered the host
+            // reads the same pre-throw name with nothing about the abort measured.
+            Assert.That((s_fallbackShown, (s_hostFiber?.PreviousTree?[0] as BaseElementNode)?.Name),
+                Is.EqualTo((true, "host-initial")));
+        }
+
+        // The type flip at slot 0 is what builds the boundary's subtree inside this pass, so the catch lands
+        // in the walk rather than in the drain that ends the pass.
+        [Component]
+        private static VNode AbortingWalkHost()
+        {
+            s_hostFiber = FiberAmbientStack.Current;
+            var (flipped, setFlipped) = Hooks.UseState(false);
+            s_setFlipped = setFlipped;
+            return V.Div(name: flipped ? "host-flipped" : "host-initial", children: flipped
+                ? new VNode[] { V.Div(children: new VNode[] { V.Component(WalkFailingBoundary) }) }
+                : new VNode[] { V.Label(text: "a") });
+        }
+
+        [Component(IsErrorBoundary = true)]
+        private static VNode WalkFailingBoundary()
+        {
+            Hooks.UseFallback(_ =>
+            {
+                s_fallbackShown = true;
+                return V.Label(name: "fallback", text: "caught");
+            });
+            return V.Component(WalkThrowingChild, key: "child");
+        }
+
+        [Component]
+        private static VNode WalkThrowingChild() => throw new Exception(FailureMessage);
     }
 }
