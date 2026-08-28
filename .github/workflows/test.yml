@@ -226,13 +226,17 @@ jobs:
       # Every other reading here is of one tree, so a branch carrying a breaking entry is invisible
       # to all of them — which is how v3.0.0 shipped twelve of the thirteen written for it. Skipped
       # on merge_group, where no body is left to name anything: the pull request already answered.
+      # The body is read here rather than taken from the event, because what this refusal asks for is
+      # an edit to it. `pull_request` does not fire on `edited` — and cannot be made to, since both
+      # gated triggers are held childless — so an event-carried body makes the refusal unclearable
+      # except by a push, and `gh run rerun` replays the same payload it already refused.
       - if: github.event_name == 'pull_request'
         env:
           BASE: ${{ github.event.pull_request.base.sha }}
-          BODY: ${{ github.event.pull_request.body }}
+          NUMBER: ${{ github.event.pull_request.number }}
           GH_TOKEN: ${{ github.token }}
         run: |
-          printf '%s' "$BODY" > /tmp/pr-body.md
+          gh pr view "$NUMBER" --json body -q .body > /tmp/pr-body.md
           python3 scripts/release/breaking_in_flight_check.py \
             --base "$BASE" --result HEAD --body-file /tmp/pr-body.md
 
