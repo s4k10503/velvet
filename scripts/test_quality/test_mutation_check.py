@@ -225,9 +225,9 @@ class GenerationAcrossLinesTests(unittest.TestCase):
         # Assert
         self.assertEqual(lines, [1, 2, 3, 4, 5, 6, 7, 8, 9])
 
-    # GREEN_ON_BASE(characterization): the total already cleared its floor, and the per-operator one
-    # this adds beside it is cleared by the shipped generator too. What either separates is a later
-    # narrowing, which only running them says anything about.
+    # GREEN_ON_BASE(characterization): both floors clear on either corpus, which is the point — what
+    # the widening changes is which edits can move them, and no edit here is one. Only running it says
+    # whether the larger corpus still clears, and it is 12132 against 8000 and 3284 against 2500.
     def test_Given_TheRepositorysOwnSources_When_MutantsAreGenerated_Then_EachTotalHoldsItsFloor(self):
         # Arrange — floors rather than the exact numbers, which every edit to the package moves.
         #
