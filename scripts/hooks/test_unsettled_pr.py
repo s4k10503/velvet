@@ -119,6 +119,8 @@ class PendingBehindAWatcher(unittest.TestCase):
         # Act / Assert
         self.assertIsNone(said)
 
+    # GREEN_ON_BASE(characterization): the base blocks here because it forgives nothing, and this is
+    # the half a widened permissive branch could take with it. Only running it says whether it did.
     def test_Given_NoHeartbeatAtAll_When_ACheckIsPending_Then_ItStillBlocks(self):
         # Arrange — the control: forgiving here is the hole this guard was written for, and an
         # absent file and an unreadable one are what the two halves separate.
