@@ -70,14 +70,16 @@ def main():
     # Every merge the command carries, deduplicated: a compound command lands each of them, and the
     # release state is a fact about a base rather than about a pull request, so two merges onto one
     # base cost one reading.
+    # The head travels with the base: a base holding an unpublished release refuses the change that
+    # reopens it, and only that change's own tree says it is the repair.
     bases = []
     for pr in targets:
         target = refs_of(cwd, pr)
-        if target is not None and target.base not in bases:
-            bases.append(target.base)
+        if target is not None and not any(base == target.base for base, _ in bases):
+            bases.append((target.base, getattr(target, "head", None)))
 
-    for base in bases:
-        reason = published_check.unpublished_reason(cwd, f"origin/{base}", fetch=True)
+    for base, head in bases:
+        reason = published_check.unpublished_reason(cwd, f"origin/{base}", fetch=True, result=head)
         if not reason:
             continue
         sys.stderr.write(
