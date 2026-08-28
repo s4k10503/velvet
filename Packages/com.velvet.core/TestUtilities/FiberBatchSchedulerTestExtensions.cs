@@ -28,7 +28,7 @@ namespace Velvet.TestUtilities
         internal static void DrainImmediateForTest(this FiberBatchScheduler scheduler)
             => Drain(scheduler, DrainImmediateMethodName);
 
-        /// <summary>Drains the Deferred / Transition tier.</summary>
+        /// <summary>Drains the Transition tier.</summary>
         // Bypasses: the panel scheduler callback and its delay: production registers DrainDelayed with schedule.Execute(...).ExecuteLater(delayMs).
         internal static void DrainDelayedForTest(this FiberBatchScheduler scheduler)
             => Drain(scheduler, DrainDelayedMethodName);

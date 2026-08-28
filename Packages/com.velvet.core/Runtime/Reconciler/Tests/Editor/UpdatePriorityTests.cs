@@ -13,14 +13,15 @@ namespace Velvet.Tests
     /// <list type="bullet">
     /// <item>A Normal-lane update requires a flush to render; multiple Normal updates coalesce into a single
     /// render that commits the last value, and a setter call with an equal value skips the render.</item>
-    /// <item>Lane routing by tier: Urgent and Normal enroll on the immediate (next-frame) tier; Deferred and
-    /// Transition enroll on the delayed tier. Each tier's drain flushes only its own lanes.</item>
+    /// <item>Lane routing by tier: Urgent and Normal enroll on the immediate (next-frame) tier; Transition
+    /// enrolls on the delayed tier. Each tier's drain flushes only its own lanes.</item>
     /// <item>An Urgent lane drains and clears the dirty flag; once the queue is empty a further flush is a no-op.</item>
-    /// <item>Deferred updates require a delayed flush and coalesce on the same fiber; Transition updates require a
-    /// flush and coalesce, and a starved Transition lane is promoted to Normal — and drained — by the flush that
-    /// reaches the starvation threshold, however often the lane was re-scheduled while pending.</item>
-    /// <item>A fiber's lane queue drains lowest-value-first, one lane per flush; an Urgent update added to an
-    /// already-Deferred fiber also enrolls it on the immediate tier so a synchronous immediate flush can commit it.</item>
+    /// <item>Transition updates require a delayed flush and coalesce on the same fiber, and a starved Transition
+    /// lane is promoted to Normal — and drained — by the flush that reaches the starvation threshold, however
+    /// often the lane was re-scheduled while pending.</item>
+    /// <item>A fiber's lane queue drains lowest-value-first, one lane per flush; an Urgent update added to a
+    /// fiber already on the delayed tier also enrolls it on the immediate tier so a synchronous immediate flush
+    /// can commit it.</item>
     /// <item>A render-phase setState re-runs Render() synchronously within the same commit, leaves no pending
     /// next-frame work, and is bounded by <see cref="FiberBeginWork.RenderPhaseUpdateLimit"/>; the render-phase
     /// counter resets even when the re-run exits via an exception, leaving the fiber able to settle later.</item>
@@ -29,7 +30,7 @@ namespace Velvet.Tests
     /// </list>
     /// </summary>
     /// <remarks>
-    /// The UIToolkit scheduler does not advance in EditMode, so the Urgent and Deferred lanes are injected
+    /// The UIToolkit scheduler does not advance in EditMode, so the Urgent and Transition lanes are injected
     /// directly via <see cref="MountedTreeTestExtensions.ScheduleRerenderForTest"/>, tier routing is asserted
     /// against the tree-wide <see cref="FiberBatchScheduler"/>, and lane drain ordering against the per-fiber lane
     /// queue, which pops one lane per <see cref="MountedTreeTestExtensions.FlushStateForTest"/>.
@@ -199,84 +200,92 @@ namespace Velvet.Tests
 
         #endregion
 
-        #region Deferred priority
+        #region Delayed-tier routing
 
+        // GREEN_ON_BASE(refactor): Transition already routed to the delayed tier and nowhere else.
         [Test]
-        public void Given_DeferredUpdate_When_Scheduled_Then_EnrollsOnDelayedTierOnly()
+        public void Given_TransitionLaneUpdate_When_Scheduled_Then_EnrollsOnDelayedTierOnly()
         {
             // Arrange
             s_simpleInitial = "initial";
             using var mounted = V.Mount(_root, V.Component(SimpleRender, key: "simple"));
 
             // Act
-            s_simpleFiber.ScheduleRerenderForTest(FiberUpdatePriority.Deferred);
+            s_simpleFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
 
             // Assert
             Assert.AreEqual((1, 0),
                 (Scheduler(s_simpleFiber).DelayedPendingCount, Scheduler(s_simpleFiber).ImmediatePendingCount),
-                "The Deferred lane routes to the delayed tier, preserving its deferral");
+                "The Transition lane routes to the delayed tier, preserving its deferral");
         }
 
+        // GREEN_ON_BASE(refactor): the immediate drain already left a Transition enrolment alone.
         [Test]
-        public void Given_DeferredUpdate_When_ImmediateDrained_Then_DoesNotFlush()
+        public void Given_TransitionLaneUpdate_When_ImmediateDrained_Then_LeavesItPendingUnflushed()
         {
             // Arrange
             s_simpleInitial = "initial";
             using var mounted = V.Mount(_root, V.Component(SimpleRender, key: "simple"));
-            s_simpleFiber.ScheduleRerenderForTest(FiberUpdatePriority.Deferred);
+            s_simpleFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
 
             // Act
             Scheduler(s_simpleFiber).DrainImmediateForTest();
 
-            // Assert
-            Assert.AreEqual(1, s_simpleRenderCount, "The immediate drain does not flush a Deferred-lane fiber");
+            // Assert — the enrolment travels in the assertion, or an unscheduled fiber satisfies the
+            // render count on its own and the drain is asked nothing.
+            Assert.AreEqual((1, 1),
+                (s_simpleRenderCount, Scheduler(s_simpleFiber).DelayedPendingCount),
+                "The immediate drain leaves the delayed-tier fiber unflushed and still enrolled");
         }
 
+        // GREEN_ON_BASE(refactor): the delayed drain already flushed a Transition enrolment.
         [Test]
-        public void Given_DeferredUpdate_When_DelayedDrained_Then_Flushes()
+        public void Given_TransitionLaneUpdate_When_DelayedDrained_Then_Flushes()
         {
             // Arrange
             s_simpleInitial = "initial";
             using var mounted = V.Mount(_root, V.Component(SimpleRender, key: "simple"));
-            s_simpleFiber.ScheduleRerenderForTest(FiberUpdatePriority.Deferred);
+            s_simpleFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
 
             // Act
             Scheduler(s_simpleFiber).DrainDelayedForTest();
 
             // Assert
-            Assert.AreEqual(2, s_simpleRenderCount, "The delayed drain flushes the Deferred-lane fiber");
+            Assert.AreEqual(2, s_simpleRenderCount, "The delayed drain flushes the delayed-tier fiber");
         }
 
+        // GREEN_ON_BASE(refactor): repeated enrolment on one lane already coalesced.
         [Test]
-        public void Given_RepeatedDeferredUpdates_When_Scheduled_Then_CoalesceToOneDelayedEntry()
+        public void Given_RepeatedTransitionLaneUpdates_When_Scheduled_Then_CoalesceToOneDelayedEntry()
         {
             // Arrange
             s_simpleInitial = "initial";
             using var mounted = V.Mount(_root, V.Component(SimpleRender, key: "simple"));
 
             // Act
-            s_simpleFiber.ScheduleRerenderForTest(FiberUpdatePriority.Deferred);
-            s_simpleFiber.ScheduleRerenderForTest(FiberUpdatePriority.Deferred);
+            s_simpleFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+            s_simpleFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
 
             // Assert
             Assert.AreEqual(1, Scheduler(s_simpleFiber).DelayedPendingCount,
-                "Repeated Deferred scheduling on the same fiber coalesces into one delayed entry");
+                "Repeated delayed-tier scheduling on the same fiber coalesces into one delayed entry");
         }
 
+        // GREEN_ON_BASE(refactor): a coalesced delayed entry already rendered once.
         [Test]
-        public void Given_RepeatedDeferredUpdates_When_DelayedDrained_Then_RendersOnce()
+        public void Given_RepeatedTransitionLaneUpdates_When_DelayedDrained_Then_RendersOnce()
         {
             // Arrange
             s_simpleInitial = "initial";
             using var mounted = V.Mount(_root, V.Component(SimpleRender, key: "simple"));
-            s_simpleFiber.ScheduleRerenderForTest(FiberUpdatePriority.Deferred);
-            s_simpleFiber.ScheduleRerenderForTest(FiberUpdatePriority.Deferred);
+            s_simpleFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+            s_simpleFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
 
             // Act
             Scheduler(s_simpleFiber).DrainDelayedForTest();
 
             // Assert
-            Assert.AreEqual(2, s_simpleRenderCount, "The coalesced Deferred entry renders once");
+            Assert.AreEqual(2, s_simpleRenderCount, "The coalesced delayed-tier entry renders once");
         }
 
         #endregion
@@ -389,62 +398,6 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_StarvedTransitionUnderDeferredPreemption_When_ThresholdReached_Then_PromotedLaneOutranksThePreemptor()
-        {
-            // Arrange — starve the Transition lane behind a re-added Deferred lane each pass (Deferred
-            // outranks Transition, so each flush drains the Deferred preemptor and Transition survives).
-            s_simpleInitial = "initial";
-            using var mounted = V.Mount(_root, V.Component(SimpleRender, key: "simple"));
-            Assume.That(s_simpleRenderCount, Is.EqualTo(1), "Precondition: the mount rendered once");
-            s_simpleStartTransition.Invoke(() => s_simpleSetValue.Invoke("transition-update"));
-            const int threshold = 30;
-            for (var i = 0; i < threshold - 1; i++)
-            {
-                s_simpleFiber.ScheduleRerenderForTest(FiberUpdatePriority.Deferred);
-                mounted.FlushStateForTest();
-            }
-
-            // Act — the threshold flush must drain the PROMOTED lane, which now outranks the re-added
-            // Deferred preemptor; the preemptor is what stays pending.
-            s_simpleFiber.ScheduleRerenderForTest(FiberUpdatePriority.Deferred);
-            mounted.FlushStateForTest();
-
-            // Assert — distinguishes a genuine promotion from a drop of the starved lane: a drop would
-            // let this flush drain the Deferred preemptor instead, emptying the queue.
-            Assert.AreEqual((true, true),
-                (s_simpleFiber.LaneQueue.Contains(FiberUpdatePriority.Deferred), s_simpleFiber.IsDirty),
-                "The promoted lane outranks the Deferred preemptor — the threshold flush drains the "
-                + "promoted Normal and leaves the preemptor pending");
-        }
-
-        [Test]
-        public void Given_StarvedTransitionUnderDeferredPreemption_When_ThePromotedLaneDrains_Then_IsPendingClearsDespiteThePendingPreemptor()
-        {
-            // Arrange — same starvation shape as the preemptor-ordering test above.
-            s_simpleInitial = "initial";
-            using var mounted = V.Mount(_root, V.Component(SimpleRender, key: "simple"));
-            Assume.That(s_simpleRenderCount, Is.EqualTo(1), "Precondition: the mount rendered once");
-            s_simpleStartTransition.Invoke(() => s_simpleSetValue.Invoke("transition-update"));
-            const int threshold = 30;
-            for (var i = 0; i < threshold - 1; i++)
-            {
-                s_simpleFiber.ScheduleRerenderForTest(FiberUpdatePriority.Deferred);
-                mounted.FlushStateForTest();
-            }
-            s_simpleFiber.ScheduleRerenderForTest(FiberUpdatePriority.Deferred);
-
-            // Act — the threshold flush promotes and drains the starved lane while the Deferred
-            // preemptor stays queued.
-            mounted.FlushStateForTest();
-
-            // Assert — the promoted marker must retire with the drain that committed its content: a
-            // marker left set would skip the settle sweep for as long as any other lane stays queued,
-            // holding isPending past its own commit.
-            Assert.IsFalse(s_simpleFiber.IsTransitionPending,
-                "isPending clears at the promoted drain even while the Deferred preemptor is still queued");
-        }
-
-        [Test]
         public void Given_StarvedTransitionPromotedBehindUrgent_When_ThresholdFlushDrainsUrgent_Then_IsPendingSurvives()
         {
             // Arrange
@@ -503,13 +456,14 @@ namespace Velvet.Tests
 
         #region Lane queue ordering
 
+        // GREEN_ON_BASE(refactor): Urgent already outranked Transition in the same queue.
         [Test]
-        public void Given_UrgentAddedToDeferredFiber_When_Flushed_Then_DrainsUrgentLaneFirst()
+        public void Given_UrgentAddedToTransitionFiber_When_Flushed_Then_DrainsUrgentLaneFirst()
         {
-            // Arrange — Deferred (2) is queued first, then Urgent (0) joins the same fiber's queue
+            // Arrange — Transition (2) is queued first, then Urgent (0) joins the same fiber's queue
             s_simpleInitial = "initial";
             using var mounted = V.Mount(_root, V.Component(SimpleRender, key: "simple"));
-            s_simpleFiber.ScheduleRerenderForTest(FiberUpdatePriority.Deferred);
+            s_simpleFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
             s_simpleFiber.ScheduleRerenderForTest(FiberUpdatePriority.Urgent);
 
             // Act
@@ -517,16 +471,17 @@ namespace Velvet.Tests
 
             // Assert
             Assert.AreEqual((2, true), (s_simpleRenderCount, s_simpleFiber.IsDirty),
-                "The first flush drains the higher-priority Urgent lane and leaves the Deferred lane pending");
+                "The first flush drains the higher-priority Urgent lane and leaves the Transition lane pending");
         }
 
+        // GREEN_ON_BASE(refactor): the second flush already drained what the first left queued.
         [Test]
-        public void Given_UrgentAddedToDeferredFiber_When_FlushedTwice_Then_DrainsRemainingDeferredLane()
+        public void Given_UrgentAddedToTransitionFiber_When_FlushedTwice_Then_DrainsRemainingTransitionLane()
         {
             // Arrange
             s_simpleInitial = "initial";
             using var mounted = V.Mount(_root, V.Component(SimpleRender, key: "simple"));
-            s_simpleFiber.ScheduleRerenderForTest(FiberUpdatePriority.Deferred);
+            s_simpleFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
             s_simpleFiber.ScheduleRerenderForTest(FiberUpdatePriority.Urgent);
             mounted.FlushStateForTest();
 
@@ -535,35 +490,38 @@ namespace Velvet.Tests
 
             // Assert
             Assert.AreEqual((3, false), (s_simpleRenderCount, s_simpleFiber.IsDirty),
-                "The second flush drains the remaining Deferred lane and clears the dirty flag");
+                "The second flush drains the remaining Transition lane and clears the dirty flag");
         }
 
+        // GREEN_ON_BASE(refactor): the escalation already enrolled both tiers for this pair.
         [Test]
-        public void Given_UrgentAddedToDeferredFiber_When_Scheduled_Then_EnrollsOnBothTiers()
+        public void Given_UrgentAddedToTransitionFiber_When_Scheduled_Then_EnrollsOnBothTiers()
         {
-            // An Urgent update on an already-Deferred fiber must also enroll it on the immediate tier, otherwise
-            // the end-of-discrete-event FlushImmediate (immediate tier only) can not commit it synchronously.
+            // An Urgent update on a fiber already on the delayed tier must also enroll it on the immediate tier,
+            // otherwise the end-of-discrete-event FlushImmediate (immediate tier only) can not commit it
+            // synchronously.
             // Arrange
             s_simpleInitial = "initial";
             using var mounted = V.Mount(_root, V.Component(SimpleRender, key: "simple"));
 
             // Act
-            s_simpleFiber.ScheduleRerenderForTest(FiberUpdatePriority.Deferred);
+            s_simpleFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
             s_simpleFiber.ScheduleRerenderForTest(FiberUpdatePriority.Urgent);
 
             // Assert
             Assert.AreEqual((1, 1),
                 (Scheduler(s_simpleFiber).ImmediatePendingCount, Scheduler(s_simpleFiber).DelayedPendingCount),
-                "The Urgent lane enrolls the immediate tier while the original Deferred lane stays on the delayed tier");
+                "The Urgent lane enrolls the immediate tier while the original Transition lane stays on the delayed tier");
         }
 
+        // GREEN_ON_BASE(refactor): FlushImmediate already left the delayed lane queued.
         [Test]
-        public void Given_UrgentAddedToDeferredFiber_When_FlushImmediate_Then_DrainsUrgentLaneAndLeavesDeferredPending()
+        public void Given_UrgentAddedToTransitionFiber_When_FlushImmediate_Then_DrainsUrgentLaneAndLeavesTransitionPending()
         {
             // Arrange
             s_simpleInitial = "initial";
             using var mounted = V.Mount(_root, V.Component(SimpleRender, key: "simple"));
-            s_simpleFiber.ScheduleRerenderForTest(FiberUpdatePriority.Deferred);
+            s_simpleFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
             s_simpleFiber.ScheduleRerenderForTest(FiberUpdatePriority.Urgent);
 
             // Act
@@ -571,18 +529,19 @@ namespace Velvet.Tests
 
             // Assert
             Assert.AreEqual((2, true), (s_simpleRenderCount, s_simpleFiber.IsDirty),
-                "FlushImmediate drains the Urgent lane and leaves the Deferred lane pending");
+                "FlushImmediate drains the Urgent lane and leaves the Transition lane pending");
         }
 
+        // GREEN_ON_BASE(refactor): these three lanes already drained in this order.
         [Test]
         public void Given_ThreeLanesOnOneFiber_When_FlushedRepeatedly_Then_DrainsLowestValueFirst()
         {
-            // Arrange — Normal (1), Deferred (2), Transition (3) pending on one fiber
+            // Arrange — Urgent (0), Normal (1), Transition (2) pending on one fiber
             s_simpleInitial = "initial";
             using var mounted = V.Mount(_root, V.Component(SimpleRender, key: "simple"));
             s_simpleFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
-            s_simpleFiber.ScheduleRerenderForTest(FiberUpdatePriority.Deferred);
             s_simpleFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
+            s_simpleFiber.ScheduleRerenderForTest(FiberUpdatePriority.Urgent);
 
             // Act
             mounted.FlushStateForTest();
@@ -591,7 +550,7 @@ namespace Velvet.Tests
             var afterSecond = s_simpleRenderCount;
             mounted.FlushStateForTest();
 
-            // Assert — one lane per flush, lowest value first: Normal, then Deferred, then Transition
+            // Assert — one lane per flush, lowest value first: Urgent, then Normal, then Transition
             Assert.AreEqual((2, 3, 4, false), (afterFirst, afterSecond, s_simpleRenderCount, s_simpleFiber.IsDirty),
                 "Each flush pops exactly one lane in lowest-value-first order until the queue is empty");
         }
