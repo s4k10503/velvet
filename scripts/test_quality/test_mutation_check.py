@@ -225,20 +225,30 @@ class GenerationAcrossLinesTests(unittest.TestCase):
         # Assert
         self.assertEqual(lines, [1, 2, 3, 4, 5, 6, 7, 8, 9])
 
-    def test_Given_TheRepositorysOwnSources_When_MutantsAreGenerated_Then_TheTotalHoldsAFloor(self):
-        # Arrange — the count is what moved: 2097 across these files before the loop variable stopped
-        # rebinding the file's source, and over eleven thousand after. A floor rather than the exact
-        # number, which every edit to the package moves.
-        sources = [path for path in (RUNTIME).rglob("*.cs")
+    # GREEN_ON_BASE(characterization): the total already cleared its floor, and the per-operator one
+    # this adds beside it is cleared by the shipped generator too. What either separates is a later
+    # narrowing, which only running them says anything about.
+    def test_Given_TheRepositorysOwnSources_When_MutantsAreGenerated_Then_EachTotalHoldsItsFloor(self):
+        # Arrange — floors rather than the exact numbers, which every edit to the package moves.
+        #
+        # The second floor is why there are two: dropping "{" and ":" from STATEMENT_BOUNDARY takes
+        # `line removed` down by more than a third and leaves the total above 8000, so the aggregate
+        # clears while the operator that fell has gone quiet. 2500 is under what the generator
+        # produces today with room for ordinary drift, and above what that narrowing leaves.
+        sources = [path for path in RUNTIME.rglob("*.cs")
                    if "/Tests/" not in path.as_posix() and "/Plugins/" not in path.as_posix()]
 
-        # Act
-        total = sum(len(mutation_check.mutations_for(
-            path, path.read_text(), set(range(1, len(path.read_text().splitlines()) + 1))))
-            for path in sources)
+        # Act — one scan for both, since a second would only re-read the same files.
+        mutants = [mutant
+                   for path in sources
+                   for mutant in mutation_check.mutations_for(
+                       path, path.read_text(),
+                       set(range(1, len(path.read_text().splitlines()) + 1)))]
+        removed = sum(1 for mutant in mutants if mutant.operator == "line removed")
 
         # Assert — the source count rides along because an empty scan clears any floor by arithmetic.
-        self.assertEqual((len(sources) > 200, total > 8000), (True, True))
+        self.assertEqual((len(sources) > 200, len(mutants) > 8000, removed > 2500),
+                         (True, True, True))
 
 
 class StatementChainCutTests(unittest.TestCase):
