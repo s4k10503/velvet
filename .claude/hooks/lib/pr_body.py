@@ -23,6 +23,24 @@ BODY_FLAGS = ("--body", "-b")
 # None of these opens or updates a pull request, so none of them posts a description. A mapping
 # rather than a set, so `-h` and `--help` resolve a repeat as one flag rather than one each.
 EXEMPT_FLAGS = {"--dry-run": "--dry-run", "--help": "--help", "-h": "--help"}
+
+# Which subcommands each exemption is real on, measured against `gh <subcommand> --help`: `--dry-run`
+# is on `pr create` and `pr new` and on neither `pr edit` nor `pr merge`. An exemption granted where
+# the flag cannot exist costs nothing today, because gh rejects the command before anything is posted
+# -- and it is an exemption nobody could have earned, which is the shape a reader has to trust.
+EXEMPT_WHERE = {
+    "--dry-run": {("pr", "create"), ("pr", "new")},
+}
+
+
+def merges_nothing(operands):
+    """Whether this `gh pr merge` posts nothing and merges nothing, so no merge guard has a question.
+
+    `--help` prints the option table and exits. Measured: a `grep` command holding the phrase was
+    refused by three merge guards during a probe, which is a refusal over a command that does not
+    reach the pull request at all.
+    """
+    return any(token.partition("=")[0] in ("--help", "-h") for token in operands)
 TRUE_SPELLINGS = {"1", "t", "true"}
 
 # Mirrored from gh's own option table. `scripts/hooks/test_pr_body_flags.py` is what holds it there,
@@ -117,23 +135,31 @@ def valued(operands, flags):
     return values[-1] if values else None
 
 
-def exempted(operands):
+def exempted(operands, words=None):
     """Whether the invocation carries an exemption as an option rather than another option's value.
 
     A repeat is read the way `valued` reads one, by the last value given. Taking any occurrence
     instead left the two readings of one token stream disagreeing over `--help --help=false`: the
     exemption held while the body flag beside it was still resolved to a file.
+
+    `words` narrows an exemption to the subcommands the flag exists on; without it every exemption
+    applies, which is what a caller reading one subcommand already knows.
     """
     last = {}
     for name, value in options(operands):
-        if name in EXEMPT_FLAGS:
-            last[EXEMPT_FLAGS[name]] = value
+        if name not in EXEMPT_FLAGS:
+            continue
+        resolved = EXEMPT_FLAGS[name]
+        where = EXEMPT_WHERE.get(resolved)
+        if words is not None and where is not None and tuple(words) not in where:
+            continue
+        last[resolved] = value
     return any(value is None or value.casefold() in TRUE_SPELLINGS for value in last.values())
 
 
-def effective_body(operands, cwd, after_a_move):
+def effective_body(operands, cwd, after_a_move, words=None):
     """(text, obstruction, file path) for a `--body-file`'s body, or else the inline one."""
-    if exempted(operands):
+    if exempted(operands, words):
         return None, None, None
     path = valued(operands, BODY_FILE_FLAGS)
     if path is not None:

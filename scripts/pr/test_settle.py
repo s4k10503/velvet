@@ -869,12 +869,55 @@ class HeartbeatTests(unittest.TestCase):
                 # Act / Assert
                 self.assertEqual(settle.watch(Path("."), "main"), 1)
 
+    # A truncated write, a disk fault, a file written by something else. The three readers answer
+    # different questions, so each gets its own case rather than one standing in for the others.
+    CORRUPT = b"\xff\xfe1000 1\n"
+
+    def answered(self, reading):
+        """What the reading returned, or the name of what it raised instead.
+
+        The claim is that it answers, and an answer and a raise are the two outcomes to tell apart —
+        so the raise is turned into a value rather than left to end the case, which reports the same
+        way whether the reading raised or the file was never written.
+        """
+        with self.heartbeat(self.CORRUPT):
+            try:
+                return reading()
+            except Exception as raised:  # noqa: BLE001
+                return type(raised).__name__
+
+    def test_Given_AHeartbeatThatIsNotUtf8_When_LivenessIsRead_Then_ItAnswersRatherThanRaising(self):
+        # Arrange — a UnicodeDecodeError is a ValueError, so it goes past an OSError catch and out of
+        # whichever PreToolUse or Stop hook was asking.
+        # Act / Assert
+        self.assertIs(self.answered(lambda: settle.watcher_state.alive(now=1060)), False)
+
+    def test_Given_AHeartbeatThatIsNotUtf8_When_TheUnreadableReadingIsAsked_Then_ItAnswersRatherThanRaising(self):
+        # Arrange — this reading exists to separate "nothing is watching" from "the reading failed",
+        # and raising is neither.
+        # Act / Assert
+        self.assertIs(self.answered(lambda: settle.watcher_state.unreadable_beat(now=1060)), False)
+
+    def test_Given_AHeartbeatThatIsNotUtf8_When_AnotherWatcherIsLookedFor_Then_ItAnswersRatherThanRaising(self):
+        # Arrange — this one decides whether a second watcher may start, so a raise here refuses the
+        # recovery the other two name.
+        # Act / Assert
+        self.assertIs(
+            self.answered(lambda: settle.watcher_state.beating_elsewhere(os.getpid(), now=1060)),
+            False)
+
     @contextlib.contextmanager
     def heartbeat(self, text):
-        """Both files a read touches: reading the first is what writes the second."""
+        """Both files a read touches: reading the first is what writes the second.
+
+        `text` may be bytes, which is how a heartbeat corrupted outside this process arrives.
+        """
         with tempfile.TemporaryDirectory(prefix="settle-beat-") as directory:
             path = Path(directory) / "beat"
-            path.write_text(text)
+            if isinstance(text, bytes):
+                path.write_bytes(text)
+            else:
+                path.write_text(text)
             with contextlib.ExitStack() as stack:
                 stack.enter_context(mock.patch.object(settle.watcher_state, "HEARTBEAT", path))
                 stack.enter_context(mock.patch.object(settle.watcher_state, "ASKED",

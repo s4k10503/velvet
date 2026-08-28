@@ -2814,6 +2814,72 @@ class ResultLabelTests(unittest.TestCase):
         self.assertEqual(base_red_check.outcome_for("N.C.Given_A_When_B_Then_C", reported), "Error")
 
 
+class PlatformSelectionTests(unittest.TestCase):
+    """Whether `--platform` named a lane the branch has a case on.
+
+    Reachable only by running a platform lane directly: CI's `--emit` step prints no fixtures and
+    skips the editor. That is what a contributor reproducing a lane by hand does, and what they got
+    was every case reporting "the base tree cannot answer" — the verdict for a run that happened and
+    produced nothing usable.
+    """
+
+    def test_Given_APlatformNoChangedCaseIsOn_When_TheSelectionIsRead_Then_NothingWasAsked(self):
+        # Act / Assert
+        self.assertTrue(base_red_check.asked_about_nothing(["EditMode"], ["PlayMode"]))
+
+    def test_Given_APlatformOneChangedCaseIsOn_When_TheSelectionIsRead_Then_SomethingWasAsked(self):
+        # Arrange — the control, without which a reading that answered yes to everything would
+        # satisfy the case above.
+        # Act / Assert
+        self.assertFalse(base_red_check.asked_about_nothing(["EditMode", "PlayMode"], ["PlayMode"]))
+
+    def test_Given_NoPlatformNamed_When_TheSelectionIsRead_Then_SomethingWasAsked(self):
+        # Arrange — the ordinary run, which names none and asks about both.
+        # Act / Assert
+        self.assertFalse(base_red_check.asked_about_nothing(["EditMode"], []))
+
+    def test_Given_ABranchWithNoCsharpCaseAtAll_When_TheSelectionIsRead_Then_SomethingWasAsked(self):
+        # Arrange — the Python lane is the answer there, and this would talk over it.
+        # Act / Assert
+        self.assertFalse(base_red_check.asked_about_nothing([], ["PlayMode"]))
+
+
+class WarmLibraryTests(unittest.TestCase):
+    """What a warm Library may carry into the base tree.
+
+    A base run that reuses an assembly the branch compiled reports the branch's behaviour as the
+    base's. The two directions are not equally exposed: a leaked assembly that makes a case pass
+    there is reported as an undeclared pass and fails the run, while one that makes a case fail hands
+    the branch the verdict it wanted, for its own code — and `red on the base` is the answer the lane
+    exists to produce, so a wrong one looks like a right one.
+    """
+
+    def cloned(self):
+        """A Library holding a compiled assembly and some import state, copied as the lane copies it."""
+        source = Path(tempfile.mkdtemp(prefix="warm-src-")) / "Library"
+        (source / "ScriptAssemblies").mkdir(parents=True)
+        (source / "ScriptAssemblies" / "Velvet.dll").write_bytes(b"the branch compiled this")
+        (source / "PackageCache").mkdir()
+        (source / "PackageCache" / "kept.txt").write_text("import state the base rebuilds identically")
+        destination = Path(tempfile.mkdtemp(prefix="warm-dst-")) / "Library"
+        self.addCleanup(shutil.rmtree, source.parent, ignore_errors=True)
+        self.addCleanup(shutil.rmtree, destination.parent, ignore_errors=True)
+        base_red_check.clone_tree(source, destination)
+        return destination
+
+    def test_Given_AWarmLibrary_When_ItIsCloned_Then_TheBranchsAssembliesStayBehind(self):
+        # Act / Assert
+        self.assertFalse((self.cloned() / "ScriptAssemblies").exists())
+
+    # GREEN_ON_BASE(characterization): the base copies this across too, by copying everything. It is
+    # the half the exclusion could take with it, and only running it says whether it did.
+    def test_Given_AWarmLibrary_When_ItIsCloned_Then_TheImportStateComesAcross(self):
+        # Arrange — the control: an exclusion that took the whole Library would satisfy the case
+        # above and put back the import this flag exists to avoid.
+        # Act / Assert
+        self.assertTrue((self.cloned() / "PackageCache" / "kept.txt").exists())
+
+
 class PlatformInstrumentTests(unittest.TestCase):
     def test_Given_ACanaryThatPassed_When_ThePlatformIsRead_Then_ItIsNotWithdrawn(self):
         # Arrange -- one passing case is the bar: the question is whether anything built and ran.
@@ -3522,6 +3588,37 @@ class CommentOnlyBranchTests(unittest.TestCase):
 
         # Assert
         self.assertNotIn("out of scope", printed)
+
+
+class BusyWaitScopeTests(unittest.TestCase):
+    """Which scopes make this lane wait for a quiet machine, which is what it starts an editor for.
+
+    The harness count in the unity-tests skill excludes a `--lane python` line on the strength of
+    this: a Python-only run never waits and never launches an editor, so an agent reading it off the
+    count holds a run against nothing.
+    """
+
+    def platforms_for(self, *paths):
+        """The platform set the wait is guarded on, derived as the lane derives it."""
+        cases = [base_red_check.Case("N.C.Given_A_When_B_Then_C", path, 1, 2) for path in paths]
+        return sorted({base_red_check.platform_of(case.path) for case in cases
+                       if base_red_check.kind_of(case.path) == "csharp"})
+
+    # GREEN_ON_BASE(characterization): the derivation is unchanged here. It is what the skill's
+    # narrowed count now rests on, and nothing said so before.
+    def test_Given_APythonOnlyScope_When_ThePlatformsAreDerived_Then_ThereAreNone(self):
+        # Act / Assert — an empty set is what leaves `wait_for_quiet` unasked.
+        self.assertEqual(self.platforms_for("scripts/hooks/test_probe.py"), [])
+
+    # GREEN_ON_BASE(characterization): the derivation is unchanged here. It is what the skill's
+    # narrowed count now rests on, and nothing said so before.
+    def test_Given_AScopeHoldingACsharpCase_When_ThePlatformsAreDerived_Then_OneIsNamed(self):
+        # Arrange — the control: without it, a derivation that returned nothing for everything would
+        # satisfy the case above having read nothing.
+        # Act / Assert
+        self.assertEqual(
+            self.platforms_for("Packages/com.velvet.core/Runtime/A/Tests/Editor/ProbeTests.cs"),
+            ["EditMode"])
 
 
 class RepositoryTests(unittest.TestCase):
