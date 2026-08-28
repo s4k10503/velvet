@@ -611,6 +611,12 @@ the license on the same account.
 
 ## Releasing
 
+A CHANGELOG entry opens with `- ` and sits outside a fenced block. Four readers in
+`scripts/release/` each decide where an entry ends and they disagree about the alternatives: a `*`
+bullet reads as no entry at all, so a breaking section written with stars reads as empty and the
+drain question a major is held to passes over the breaks it exists to catch.
+`test_release_notes.py` refuses both spellings.
+
 The CHANGELOG holds two open sections, and which one an entry goes in is settled when the entry is
 written rather than when the version closes. `## [Unreleased]` is what a minor or a patch may ship.
 `## [Unreleased — breaking]` is what has to wait for a major: an API a caller has to edit around, and

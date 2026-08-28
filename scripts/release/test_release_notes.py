@@ -307,6 +307,38 @@ class ThisRepositorysChangelog(unittest.TestCase):
         cls.versions = [version for version, _ in cls.headings
                         if version not in ("Unreleased", "Unreleased — breaking")]
 
+    def test_Given_the_shipped_changelog_When_read_Then_every_list_item_opens_with_a_dash(self):
+        # Arrange — four readers in scripts/release/ each decide where an entry ends, and they
+        # disagree about what a list item is: a `*`-bulleted one reads as zero entries to the entry
+        # splitter, so a breaking section written with stars reads as empty and the drain question a
+        # major is held to passes over breaks it exists to catch. Refusing the spelling is smaller
+        # than teaching four readers three bullet characters, and this file already uses one.
+        offending = [
+            f"{number}: {line}"
+            for number, line in enumerate(self.text.splitlines(), start=1)
+            if line[:2] in ("* ", "+ ")
+        ]
+
+        # Assert
+        self.assertEqual(offending, [],
+                         "list items open with `- `; a `*` or `+` bullet reads as no entry at all")
+
+    def test_Given_the_shipped_changelog_When_read_Then_no_fence_hides_a_heading(self):
+        # Arrange — `extract_version_section` and `split_highlights` both end a section at an
+        # unindented heading, and neither tracks fences, so a `###` inside a code block truncates the
+        # section at content. Measured on this file: zero fenced blocks sit inside a section body.
+        depth, offending = 0, []
+        for number, line in enumerate(self.text.splitlines(), start=1):
+            if line.startswith("```"):
+                depth = 1 - depth
+            elif depth and line.startswith("#"):
+                offending.append(f"{number}: {line}")
+
+        # Assert
+        self.assertEqual(offending, [],
+                         "a heading inside a fence ends the section for every reader that scans "
+                         "for one")
+
     def test_Given_the_shipped_changelog_When_reading_Then_it_lists_versions(self):
         # Arrange / Act / Assert — every case below is vacuous on an empty list.
         self.assertGreater(len(self.versions), 0)
