@@ -67,6 +67,13 @@ REFUSAL_BASELINE = "scripts/test_quality/logic_refusal_baseline.txt"
 
 KILLED = "killed"
 TIMED_OUT = "not measured (timed out)"
+HUNG = "killed (the suite did not finish)"
+
+# How far under --timeout the baseline has to land before a mutant reaching it is read as the
+# mutation's doing rather than as a bound the suite was always going to outrun. Three is the smallest
+# ratio that is not a judgement call about a slow machine: a run that took a third of the bound and
+# then took all of it did not get three times slower by chance.
+HANG_MARGIN = 3
 SURVIVED = "survived"
 INCONCLUSIVE = "survived (inconclusive)"
 UNCOMPILABLE = "uncompilable"
@@ -1553,14 +1560,24 @@ def main():
             counts = read_counts(results)
             dll = assemblies_dir / "{}.dll".format(assembly_of(mutant.path))
             blamed = build_error(log)
-            if timed_out:
-                # Not killed. A mutation that leaves a loop unbounded and a --timeout shorter than the
-                # suite reach here identically, and nothing in the results tells them apart: a killed
-                # editor writes no verdict either way. One of the two is a mutant nobody asked about,
-                # so the run refuses and says which reading to take.
+            if timed_out and baseline_wall * HANG_MARGIN <= args.timeout:
+                # The baseline finished with room to spare and this did not, so the bound is not what
+                # the suite was always going to outrun -- the mutation is. A suite that never finishes
+                # is not a suite that still passes, which is the whole of what a campaign asks, so
+                # this counts as answered rather than as a mutant nobody asked about. Named apart from
+                # a test failure because no test reported: an await whose completion the mutation
+                # removed never returns, and nothing writes a verdict for it.
+                mutant.verdict = HUNG
+                mutant.detail = ("the suite ran past --timeout {}s where the baseline finished in "
+                                 "{:.0f}s".format(args.timeout, baseline_wall))
+            elif timed_out:
+                # The baseline was already close to the bound, so a mutant reaching it says nothing
+                # about the mutation. One of the two readings is a mutant nobody asked about, so the
+                # run refuses and says which to take.
                 mutant.verdict = TIMED_OUT
-                mutant.detail = ("the editor was killed at --timeout {}s; raise it, or read the log "
-                                 "for a mutation that does not terminate".format(args.timeout))
+                mutant.detail = ("the editor was killed at --timeout {}s and the baseline took {:.0f}s; "
+                                 "raise it, or read the log for a mutation that does not terminate"
+                                 .format(args.timeout, baseline_wall))
             elif blamed:
                 mutant.verdict = UNCOMPILABLE
                 mutant.detail = "the build stopped in {}".format(blamed)

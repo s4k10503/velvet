@@ -1480,22 +1480,26 @@ class StubbedCampaign:
     no_results = False
     build_error = False
     not_rebuilt = False
+    # What the baseline is reported to have taken. Zero is a baseline with the whole bound to spare,
+    # which is what separates a mutant that hung from a bound the suite was always going to outrun.
+    baseline_seconds = 0.0
 
     def run_suite(self, _unity, _project, _platform, _scope, results, log, _timeout, _holder=None):
         # The baseline has to be green whatever the mutants do, or the run stops before the loop.
         mutant = Path(results).name != "baseline.xml"
+        wall = 0.0 if mutant else self.baseline_seconds
         if mutant and self.no_results:
             Path(log).write_text("")
-            return 0.0, False
+            return wall, False
         if self.not_rebuilt:
             (self.project / "Library" / "ScriptAssemblies" / "None.dll").write_bytes(b"same")
         if mutant and self.times_out:
-            return 0.0, True
+            return wall, True
         Path(results).write_text(FAILING_RESULTS if (mutant and self.kills) else GREEN_RESULTS)
         Path(log).write_text(
             "Packages/com.velvet.core/Runtime/Probe.cs(5,9): error VEL501: too many branches\n"
             if (mutant and self.build_error) else "")
-        return 0.0, False
+        return wall, False
 
     def unity_busy(self):
         self.seen.append(self.source.read_text())
@@ -2207,11 +2211,14 @@ class CampaignVerdictTests(unittest.TestCase):
         # Assert
         self.assertEqual(code, 0)
 
-    def test_Given_AMutantTheEditorNeverRan_When_TheRunFinishes_Then_ItFails(self):
-        # Arrange — a mutant whose editor was killed at --timeout is one nobody asked about, and a
-        # mutation that hangs the suite is indistinguishable from a --timeout that was too short.
+    # GREEN_ON_BASE(characterization): the base refuses every timeout, so it refuses this one
+    # too. What this pins is that the half still refused stays refused.
+    def test_Given_AMutantTheEditorNeverRan_When_TheBaselineWasAlsoSlow_Then_ItFails(self):
+        # Arrange — a mutant nobody asked about must never be a pass, and a baseline already near the
+        # bound is what makes a mutant reaching it say nothing about the mutation.
         campaign = StubbedCampaign()
         campaign.times_out = True
+        campaign.baseline_seconds = 500.0
 
         # Act
         code = campaign.run_over_diff("--max", "40")
@@ -2403,15 +2410,26 @@ class VerdictNamingTests(unittest.TestCase):
         for field, value in how.items():
             setattr(campaign, field, value)
         code = campaign.run_over_diff("--max", "40")
-        named = [verdict for verdict in (mutation_check.TIMED_OUT, mutation_check.UNCOMPILABLE,
+        named = [verdict for verdict in (mutation_check.TIMED_OUT, mutation_check.HUNG,
+                                         mutation_check.UNCOMPILABLE,
                                          mutation_check.NOT_BUILT, mutation_check.SURVIVED,
                                          mutation_check.KILLED)
                  if verdict + ":" in campaign.printed]
         return code, named
 
-    def test_Given_AnEditorKilledAtTheTimeout_When_TheRunIsTallied_Then_ItNamesTheTimeout(self):
+    def test_Given_ABaselineWithRoomToSpare_When_AMutantReachesTheBound_Then_ItIsAnswered(self):
+        # Arrange — the baseline finished with the whole bound to spare and this did not, so what ran
+        # past it is the mutation. A suite that never finishes is not a suite that still passes, which
+        # is the whole of what a campaign asks, so the run does not refuse.
         # Act / Assert
-        self.assertEqual(self.tally_of(times_out=True), (1, [mutation_check.TIMED_OUT]))
+        self.assertEqual(self.tally_of(times_out=True), (0, [mutation_check.HUNG]))
+
+    def test_Given_ABaselineAlreadyNearTheBound_When_AMutantReachesIt_Then_ItIsNotMeasured(self):
+        # Arrange — a bound the suite was always going to outrun says nothing about the mutation, and
+        # a mutant nobody asked about must never be a pass.
+        # Act / Assert
+        self.assertEqual(self.tally_of(times_out=True, baseline_seconds=500.0),
+                         (1, [mutation_check.TIMED_OUT]))
 
     def test_Given_ABuildTheAnalyzersStopped_When_TheRunIsTallied_Then_ItNamesTheUncompilable(self):
         # Act / Assert
