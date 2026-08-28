@@ -4,19 +4,15 @@ using System.Collections.Generic;
 namespace Velvet
 {
     /// <summary>
-    /// Matching engine over the route definition tree.
-    /// Flattens the tree into ranked branches: every leaf route is paired with its
-    /// full ancestor chain, each branch is scored for specificity, and <see cref="Match"/> returns the
-    /// highest-scoring branch whose pattern matches the path. Matching is therefore best-match, not
-    /// declaration-order. Supports literal, dynamic (<c>:param</c>), optional (<c>:param?</c> / <c>segment?</c>),
-    /// and splat (<c>*</c>) segments.
+    /// Ranks route branches by specificity before matching; declaration order breaks score ties only.
+    /// Supports literal, dynamic (<c>:param</c>), optional (<c>:param?</c> / <c>segment?</c>), and splat
+    /// (<c>*</c>) segments.
     /// </summary>
     public sealed class RouteTree
     {
         private readonly RouteDefinition[] _routes;
         private readonly List<RouteBranch> _rankedBranches;
 
-        /// <summary>Builds the route definition tree and pre-computes ranked branches.</summary>
         /// <param name="routes">Array of route definitions. null is not allowed.</param>
         public RouteTree(RouteDefinition[] routes)
         {
@@ -33,9 +29,6 @@ namespace Velvet
             });
         }
 
-        /// <summary>
-        /// Searches for the best-matching route branch for the given path.
-        /// </summary>
         /// <param name="path">Path to match. null and empty string are invalid and return null (use "/" for the root path).</param>
         /// <returns>The matched chain (parent first) or null when nothing matches.</returns>
         public IReadOnlyList<RouteMatch>? Match(string path)
@@ -98,10 +91,8 @@ namespace Velvet
 
                 var hasChildren = route.Children is { Length: > 0 };
 
-                // Emit this route as its own terminal branch: a pathful parent route
-                // can be the match on its own, rendering with an empty Outlet, when no child / index
-                // matches. The root ("/") is emitted too so "/" resolves to it. Among equal-scoring
-                // branches the index / deeper child outranks the bare parent via ComputeScore.
+                // Every route is a candidate so a parent can match with an empty Outlet. An index child is
+                // scored above its bare parent and joins the chain when both consume the same path.
                 output.Add(BuildBranch(ancestors));
 
                 if (hasChildren)
@@ -141,7 +132,6 @@ namespace Velvet
             var path = route.Path;
             if (string.IsNullOrEmpty(path) || path == "/")
             {
-                // Root and index routes contribute no segments to the matchable pattern.
                 yield break;
             }
 
@@ -157,9 +147,7 @@ namespace Velvet
                 var part = parts[i];
                 if (part == "*")
                 {
-                    // A splat is a tail-only catch-all. A splat in any non-terminal
-                    // position (e.g. "a/*/b") is rejected at definition time so it can never silently
-                    // swallow the segments that follow it.
+                    // Within one route path, a splat must be last because matching it stops segment checks.
                     if (i != parts.Length - 1)
                     {
                         throw new ArgumentException(
@@ -201,7 +189,6 @@ namespace Velvet
 
         private static int ComputeScore(List<RouteSegment> pattern, bool isIndexLeaf)
         {
-            // An index leaf outranks its bare pathful parent at the same depth.
             var score = isIndexLeaf ? IndexRouteScore : 0;
 
             foreach (var seg in pattern)
@@ -240,9 +227,9 @@ namespace Velvet
         {
             matches = null;
 
-            // The params dictionary is created lazily on the first param/splat capture: Match() probes
-            // every ranked branch until one succeeds, and most probes fail on a static segment before
-            // capturing anything, so an eager allocation per attempted branch would be pure waste.
+            // Null until the first capture, and threaded by ref for that: Match probes ranked branches
+            // until one succeeds, and a failed probe's dictionary is discarded, so allocating eagerly
+            // pays per branch probed and keeps one.
             Dictionary<string, string>? captured = null;
 
             if (!TryConsume(branch.Pattern, 0, segments, 0, ref captured))
@@ -256,11 +243,6 @@ namespace Velvet
             return true;
         }
 
-        /// <summary>
-        /// Recursively consumes the flattened pattern against the path segments, supporting optional and
-        /// splat segments. Optional segments branch into "present" / "absent" attempts; a splat consumes
-        /// the remaining path tail.
-        /// </summary>
         private static bool TryConsume(
             List<RouteSegment>? pattern, int pi, string[] segments, int si, ref Dictionary<string, string>? captured)
         {
@@ -271,7 +253,6 @@ namespace Velvet
 
                 if (seg.IsSplat)
                 {
-                    // Splat captures the (possibly empty) remaining tail and must be terminal.
                     var rest = si >= segments.Length
                         ? string.Empty
                         : string.Join("/", segments, si, segments.Length - si);
@@ -302,17 +283,12 @@ namespace Velvet
                 si++;
             }
 
-            // Pattern exhausted: succeed only when the path is also fully consumed.
             return si == segments.Length;
         }
 
-        /// <summary>
-        /// Matches an optional segment as present and consumes the rest of the pattern behind it.
-        /// </summary>
         /// <remarks>
-        /// A capture made here must not leak into the caller's skip branch, nor into a sibling branch the
-        /// ranking loop probes afterwards, so the param key is snapshotted and restored when the downstream
-        /// match fails.
+        /// A capture made here must not leak into the caller's skip branch, so the param key is snapshotted
+        /// and restored when the downstream match fails.
         /// </remarks>
         private static bool TryConsumeOptionalPresent(
             List<RouteSegment> pattern, int pi, string[] segments, int si, RouteSegment seg,
@@ -366,9 +342,8 @@ namespace Velvet
             if (chain == null) return new List<RouteMatch>();
             var matches = new List<RouteMatch>(chain.Length);
             var cumulativeId = string.Empty;
-            // Resolved (params-substituted) URL pathname accumulated down the chain, without a leading
-            // slash. Drives route-relative `..` resolution: each level records its cumulative resolved
-            // pathname so a `..` can drop a whole route's contribution at once.
+            // Each level stores a cumulative base because route-relative `..` pops a whole route level,
+            // not one URL segment.
             var cumulativeResolved = string.Empty;
 
             foreach (var route in chain)
@@ -383,8 +358,7 @@ namespace Velvet
                         : cumulativeResolved + "/" + resolvedSegment;
                 }
 
-                // Each level receives the params captured by its own and ancestor segments (the cumulative
-                // param set is exposed at every level), so share the captured dictionary.
+                // Every level exposes the full branch's captures, including captures from descendants.
                 matches.Add(new RouteMatch
                 {
                     Route = route,
@@ -398,12 +372,6 @@ namespace Velvet
             return matches;
         }
 
-        /// <summary>
-        /// Resolves a route's own pattern (<see cref="ComputeMatchedPath"/>) into its concrete URL
-        /// contribution by substituting captured params, expanding the splat tail, and dropping absent
-        /// optional segments. Returns the empty string for the root (<c>/</c>) and index (<c>""</c>)
-        /// routes, which contribute no URL segments. The returned string carries no leading/trailing slash.
-        /// </summary>
         private static string ResolveRouteSegments(RouteDefinition route, IReadOnlyDictionary<string, string> captured)
         {
             if (string.IsNullOrEmpty(route.Path) || route.Path == "/" || route.Path == "")
@@ -426,7 +394,6 @@ namespace Velvet
 
                 if (part == "*")
                 {
-                    // Splat captures the (possibly empty, possibly multi-segment) remaining tail.
                     if (captured.TryGetValue("*", out var splat) && splat.Length > 0)
                     {
                         resolved.Add(splat);
@@ -437,8 +404,6 @@ namespace Velvet
                 if (part.Length > 0 && part[0] == ':')
                 {
                     var name = part.Substring(1);
-                    // A present param (including a matched optional one) substitutes its captured value;
-                    // an absent optional param simply contributes nothing.
                     if (captured.TryGetValue(name, out var value) && value.Length > 0)
                     {
                         resolved.Add(value);
@@ -446,8 +411,6 @@ namespace Velvet
                     continue;
                 }
 
-                // Literal segment (optional literals that were skipped do not appear in captured, but a
-                // matched literal always contributes itself).
                 resolved.Add(part);
             }
 
@@ -456,8 +419,7 @@ namespace Velvet
 
         private static string AppendRouteId(string parentId, RouteDefinition route)
         {
-            // Index routes (path="") and the root ("/") would otherwise collide with their parent's id,
-            // so disambiguate them explicitly. Other levels append their own (trimmed) path segment.
+            // Index routes would otherwise reuse their parent's id, so disambiguate them explicitly.
             if (route.Path == "")
             {
                 return parentId.Length == 0 ? "/?index" : parentId + "/?index";
@@ -505,10 +467,6 @@ namespace Velvet
             return trimmed.Length == 0 ? Array.Empty<string>() : trimmed.Split('/');
         }
 
-        /// <summary>
-        /// Canonical leading/trailing slash normalization shared by every pattern/path consumer in
-        /// this class. Interior slashes are preserved; segment splitting stays with each caller.
-        /// </summary>
         private static string TrimSlashes(string path) => path.TrimStart('/').TrimEnd('/');
     }
 }
