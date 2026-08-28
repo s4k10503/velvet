@@ -4,8 +4,8 @@ using System.Collections.Generic;
 namespace Velvet
 {
     /// <summary>
-    /// Bitmask over the four <see cref="FiberUpdatePriority"/> values, used as the per-fiber pending-lane
-    /// set. The priority space is fixed at exactly 4 members (Urgent=0 .. Transition=3), and this type sits
+    /// Bitmask over the three <see cref="FiberUpdatePriority"/> values, used as the per-fiber pending-lane
+    /// set. The priority space is fixed at exactly 3 members (Urgent=0 .. Transition=2), and this type sits
     /// on the scheduler's hottest path (<see cref="FiberWorkLoop.ScheduleRerender"/> /
     /// <see cref="FiberWorkLoop.FlushState"/> run on every hook-driven update), so membership is tracked with
     /// a single byte rather than a general-purpose ordered-set container: no per-enrollment node allocation,
@@ -15,13 +15,15 @@ namespace Velvet
     {
         private byte _mask;
 
-        /// <summary>Number of lanes currently enrolled (0-4).</summary>
+        /// <summary>Number of lanes currently enrolled (0-3).</summary>
         internal readonly int Count
         {
             get
             {
                 var count = 0;
-                for (var bit = 0; bit < 4; bit++)
+                // MUTANT_SURVIVES(equivalent): no lane maps to bit 3, so a scan one bit wider counts a
+                // bit Add never sets.
+                for (var bit = 0; bit < 3; bit++)
                 {
                     if ((_mask & (1 << bit)) != 0)
                     {
@@ -42,7 +44,9 @@ namespace Velvet
         {
             get
             {
-                for (var bit = 0; bit < 4; bit++)
+                // MUTANT_SURVIVES(equivalent): reaching bit 3 means bits 0-2 were all clear, and only a
+                // lane is ever added, so the mask is empty and a wider scan still falls through to default.
+                for (var bit = 0; bit < 3; bit++)
                 {
                     if ((_mask & (1 << bit)) != 0)
                     {
@@ -672,6 +676,15 @@ namespace Velvet
 
         /// <summary>The VNode array fixed by the previous reconcile. Serves as the "old" side for the next reconcile.</summary>
         internal VNode?[]? PreviousTree { get; set; }
+
+        /// <summary>
+        /// Set where <c>FiberErrorBoundary.TryShowFallback</c> writes the fallback over
+        /// <see cref="PreviousTree"/>, cleared at the top of every <c>FiberRenderer.RenderAndReconcile</c>
+        /// for this fiber. What it answers that the reconciler's own abort flag cannot is which fiber the
+        /// fallback belongs to: the abort is shared by every Reconciler on one context, so a descendant
+        /// boundary catching raises it for an ancestor whose committed tree is still the one in the DOM.
+        /// </summary>
+        internal bool FallbackReplacedPreviousTree { get; set; }
 
         /// <summary>Reference to the previous tree retained during a pending time-sliced reconcile.</summary>
         internal VNode?[]? PendingOldTree { get; set; }

@@ -302,11 +302,15 @@ namespace Velvet.Tests
         }
 
         // The five below share one sequence: a render declares one member, the refCallback — which the
-        // create path invokes after applying props, so the record is taken before it — assigns another, and
+        // create path queues and the pass boundary runs, both after the props are applied, so the record
+        // is taken before it — assigns another, and
         // a second render redeclares only the first. The undeclared member is nobody's to write, so it has
         // to survive. One callback instance stands in both trees, so the patch does not re-run it
-        // (ReconcilerContext.InvokeRefCallback's identity skip) and a second assignment cannot stand in for
+        // (ReconcilerContext.SyncRefCallback's identity skip) and a second assignment cannot stand in for
         // a survival.
+        // GREEN_ON_BASE(refactor): the props are applied before the ref writes, here as on the base.
+        // Moving the setup out to the pass boundary keeps that, and the comment above is the only text
+        // of this case the branch touched.
         [Test]
         public void Given_APasswordFlagWrittenFromARefCallback_When_ALaterRenderRedeclaresThePlaceholder_Then_TheFlagSurvives()
         {

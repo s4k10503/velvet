@@ -92,6 +92,7 @@ namespace Velvet
             // failure and re-appears inside the fallback).
             var failedTree = fiber.PreviousTree;
             fiber.PreviousTree = fallbackTree;
+            fiber.FallbackReplacedPreviousTree = true;
             FiberTreeReturn.ReturnRetiredTree(failedTree, fiber);
             // FallbackContentFailed is set when a re-entrant TryCatch above declined because THIS
             // fiber's own fallback content threw (logged, or shown by a farther ancestor instead) — the

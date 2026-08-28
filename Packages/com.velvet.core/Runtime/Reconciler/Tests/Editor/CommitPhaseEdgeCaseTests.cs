@@ -39,7 +39,8 @@ namespace Velvet.Tests
         }
 
         // The ref callback is deliberately a fresh delegate every render, so every patch cycles it
-        // (identity change) and the setup runs DURING the commit — the mid-flush write under test.
+        // (identity change) and its setup runs at that pass's own boundary, still inside the drain that
+        // started the render — the mid-flush write under test.
         // The write is edge-guarded so the follow-up render (which re-cycles the ref) converges.
         [Component]
         private static VNode CommitWriteHost()
@@ -291,7 +292,7 @@ namespace Velvet.Tests
     /// Specifies that a DELAYED batch drain that does NOT continue an immediate drain (a "solo" delayed drain —
     /// e.g. a Transition-priority re-render with no Urgent/Normal work in the same wave) opens a FRESH UseStore
     /// snapshot wave instead of reusing a stale pin retained from a prior immediate drain. The cross-tier
-    /// tearing guard pins a snapshot so an immediate (Urgent/Normal) drain and the delayed (Deferred/Transition)
+    /// tearing guard pins a snapshot so an immediate (Urgent/Normal) drain and the delayed (Transition)
     /// drain that follows it in the SAME wave agree; but a solo delayed drain belongs to a new wave and must read
     /// the current store value (an external-store read takes the latest snapshot on each commit).
     /// </summary>

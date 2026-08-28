@@ -9,6 +9,14 @@ namespace Velvet
         VisualElement CreateElementForController(VNode node);
         void CleanupElementForController(VisualElement element);
 
+        // Runs the ref setups the item loop above queued. An item's ref attaches at the end of the
+        // render range rather than where the item was created, for the reason
+        // Reconciler.FinishTopLevelPass gives — and this is the seam that reaches it, because the
+        // item loop also runs outside any reconcile pass (BeginDetachedItemScope names when). Which of
+        // the queued entries a call runs, and when it runs none of them, is
+        // ReconcilerContext.DrainRefAttaches's own.
+        void DrainRefAttachesForController();
+
         // Patches an item element previously returned by CreateElementForController or by this
         // method. element may be a structural WRAPPER (shadow-* / clip-path-* item roots —
         // CreateElement returns the wrapper): the implementation resolves the real inner before

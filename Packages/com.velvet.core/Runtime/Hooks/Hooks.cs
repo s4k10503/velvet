@@ -159,7 +159,7 @@ namespace Velvet
 
             // Cross-tier tearing guard: read the snapshot pinned for this store within the current batch
             // drain wave instead of the live store.Current. An ancestor on the immediate tier and a
-            // descendant on the delayed tier (separated by up to DeferredDelayMs) therefore observe the SAME
+            // descendant on the delayed tier (separated by up to DelayedTierDelayMs) therefore observe the SAME
             // store value even if the store mutates between their tier drains; the mutation re-schedules every
             // reader, and that follow-up render lands on the next immediate drain, which re-pins to the now-
             // current snapshot so readers converge. Falls back to store.Current
@@ -603,9 +603,10 @@ namespace Velvet
         /// <summary>
         /// Returns a navigate function that pushes (or, when <paramref name="replace"/> is true, replaces)
         /// the given target path. The target may be
-        /// absolute (<c>/foo</c>) or relative (<c>.</c>, <c>..</c>, <c>../sibling</c>) — relative targets
-        /// resolve against <see cref="Router.CurrentLocation"/>. Navigation is driven by
-        /// <see cref="Router.Current"/>.
+        /// absolute (<c>/foo</c>) or relative (<c>.</c>, <c>..</c>, <c>../sibling</c>). Relative targets
+        /// resolve from the calling component's enclosing Outlet route level. Without one, the router uses
+        /// the current leaf route level when matches exist; otherwise it uses the current URL path, or the
+        /// root before the first location. Navigation is driven by <see cref="Router.Current"/>.
         /// </summary>
         /// <returns>A stable delegate <c>navigate(to)</c>; the returned <see cref="UniTask{NavigationResult}"/> can be awaited or fire-and-forget.</returns>
         public static Func<string, UniTask<NavigationResult>> UseNavigate(bool replace = false)
