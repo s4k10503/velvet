@@ -408,6 +408,42 @@ class StatementChainCutTests(unittest.TestCase):
         self.assertEqual((len(sources) > 200, dropped), (True, []))
 
 
+class MutableScopeTests(unittest.TestCase):
+    """What a campaign may mutate, which has to be what a Unity build compiles.
+
+    Unity's asset database does not import a `~`-suffixed directory, so a source under one compiles
+    into nothing: mutating a line there leaves every assembly byte-identical, the run scores
+    `NOT_BUILT`, and no receipt can be written. A branch editing one could therefore never earn a
+    passing campaign, and what it was told named a build state rather than a scope rule.
+    """
+
+    def test_Given_ASourceUnderATildeDirectory_When_TheScopeIsRead_Then_ItIsNotMutable(self):
+        # Arrange — the live case: the starter sample exists twice, and this is the copy nothing
+        # compiles.
+        path = REPO_ROOT / "Packages/com.velvet.core/Samples~/StarterApp/StarterApp.cs"
+
+        # Act / Assert — the file's presence rides along, because a path that is not there is not
+        # mutable either and would satisfy this having read nothing.
+        self.assertEqual((path.exists(), mutation_check.mutable(path, REPO_ROOT)), (True, False))
+
+    # GREEN_ON_BASE(characterization): the base mutates this too, and it is the half a widened exclusion could take with it.
+    def test_Given_ASourceUnderTheRuntime_When_TheScopeIsRead_Then_ItIsStillMutable(self):
+        # Arrange — the control: a rule that excluded everything would satisfy the case above.
+        path = REPO_ROOT / "Packages/com.velvet.core/Runtime/Routing/RouteTree.cs"
+
+        # Act / Assert
+        self.assertEqual((path.exists(), mutation_check.mutable(path, REPO_ROOT)), (True, True))
+
+    # GREEN_ON_BASE(characterization): the base excludes these by name, and this says the rule that replaced the name still does.
+    def test_Given_TheGeneratorSources_When_TheScopeIsRead_Then_TheyAreStillOut(self):
+        # Arrange — named one directory at a time before, which is the same rule read off one
+        # instance of it.
+        path = REPO_ROOT / "Packages/com.velvet.core/Generators~/src/Velvet.StyleTable/StyleTable.cs"
+
+        # Act / Assert
+        self.assertFalse(mutation_check.mutable(path, REPO_ROOT))
+
+
 class LineRemovalReadingTests(unittest.TestCase):
     """What the removal reads a line as, and what it puts back in place of it.
 

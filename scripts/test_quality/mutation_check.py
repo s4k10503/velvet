@@ -883,8 +883,14 @@ def mutable(path, project):
         return False
     if not relative.startswith(PACKAGE + "/"):
         return False
-    # Generators~ is outside the Unity build and has its own mutation run; see its README.
-    if "/Generators~/" in relative:
+    # Unity's asset database does not import a `~`-suffixed directory, so a source under one compiles
+    # into nothing here: mutating a line there leaves every assembly byte-identical, the run scores
+    # NOT_BUILT, and no receipt can be written -- so a branch that edits one can never earn a passing
+    # campaign, and what it is told names a build state rather than a scope rule. The starter sample
+    # is the live case: `Samples~/StarterApp` is the copy nothing compiles, and `sync_starter_sample.py`
+    # keeps `Assets/VelvetStarterSample` beside it as the copy that does. `Generators~` was named here
+    # one directory at a time, which is the same rule read off one instance of it.
+    if any(part.endswith("~") for part in relative.split("/")):
         return False
     # A mutation inside a test asserts nothing about the code the test covers.
     return "/Tests/" not in relative and "/TestUtilities/" not in relative
