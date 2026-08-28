@@ -822,6 +822,9 @@ namespace Velvet.Tests
             Assert.That((blocked, laterState.Status), Is.EqualTo((false, RouteBlockerStatus.Idle)));
         }
 
+        // GREEN_ON_BASE(characterization): the snapshot is already taken, and this is what says what it
+        // is for. Measured: two cases beside it also fail when the walk goes back to the live list — but
+        // both assert a state that stays Idle, where this one asserts a later blocker ran.
         [Test]
         public void Given_AnEarlierBlockerUnregistersItself_When_ThePassContinues_Then_TheNextOneIsStillConsulted()
         {
@@ -851,6 +854,9 @@ namespace Velvet.Tests
             Assert.That((secondSaw, blocked), Is.EqualTo((true, true)));
         }
 
+        // GREEN_ON_BASE(characterization): the superseded read already happens after the check returns,
+        // and this is what says so. Measured: hoisting it to the top of the loop body — where a reader
+        // expects a cancellation check — fails this case and no other in the suite.
         [Test]
         public void Given_AnAttemptTheCheckItselfSupersedes_When_ItWouldBlock_Then_NoStateIsFlipped()
         {
