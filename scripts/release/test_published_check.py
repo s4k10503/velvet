@@ -227,6 +227,26 @@ class DrainDecisionTests(unittest.TestCase):
         # Assert
         self.assertIn("2.2.0 is not a major", reason)
 
+    def test_Given_AVersionTheRemoteAlreadyTags_When_Decided_Then_ItIsRecordedNotClosed(self):
+        # Arrange — merging a maintenance line forward brings its released sections across. Asked
+        # without the tags that reads as a release closing over the breaking section, and the merge
+        # publishes nothing: the line's own dispatch already did.
+        recorded = WAITING.replace("## [2.0.1] - 2026-08-08",
+                                   "## [2.1.3] - 2026-08-27\n\n### Fixed\n\n- A backported fix."
+                                   "\n\n## [2.0.1] - 2026-08-08")
+
+        # Act / Assert
+        self.assertIsNone(drain_reason(WAITING, recorded, {"v2.1.3", "v2.1.3-main"}))
+
+    def test_Given_AVersionNoTagAnswersFor_When_Decided_Then_ItIsStillClosing(self):
+        # Arrange — the same shape with no tag, which is a release rather than a record.
+        closing = WAITING.replace("## [2.0.1] - 2026-08-08",
+                                  "## [2.1.3] - 2026-08-27\n\n### Fixed\n\n- A backported fix."
+                                  "\n\n## [2.0.1] - 2026-08-08")
+
+        # Act / Assert
+        self.assertIn("2.1.3 is not a major", drain_reason(WAITING, closing, {"v2.0.1"}))
+
     def test_Given_AMinorClosingOverAFullSection_When_Decided_Then_ItIsRefused(self):
         # Arrange — the section is exactly where the change found it, and the tree it releases holds
         # the code those entries describe, so the minor ships every one of them undescribed.
