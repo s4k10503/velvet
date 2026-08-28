@@ -409,13 +409,16 @@ class DoLoopTailTests(unittest.TestCase):
         return ("namespace N\n{\n    class C\n    {\n        void M()\n        {\n"
                 + body + "        }\n    }\n}\n")
 
-    def test_Given_ADoLoopTailOnOneLine_When_MutantsAreGenerated_Then_ItIsNotRemoved(self):
+    def test_Given_ADoLoopTailBelowAOneLineBlock_When_MutantsAreGenerated_Then_ItIsNotRemoved(self):
+        # Arrange — the `do` and its whole block on one line, so the code above the tail is a `}` with
+        # the `do` in front of it on the same line.
+        body = "            do { Step(); }\n            while (more);\n"
+
         # Act
-        deletions = mutants_of(self.method("            do { Step(); } while (more);\n"),
-                               "line removed")
+        deletions = mutants_of(self.method(body), "line removed")
 
         # Assert
-        self.assertEqual([mutant.before for mutant in deletions], [])
+        self.assertEqual([mutant.before for mutant in deletions if "while" in mutant.before], [])
 
     def test_Given_ADoLoopTailBelowABlock_When_MutantsAreGenerated_Then_ItIsNotRemoved(self):
         # Arrange — the `do` and the brace it opens on different lines, with the block holding braces
@@ -429,6 +432,8 @@ class DoLoopTailTests(unittest.TestCase):
         # Assert
         self.assertEqual([mutant.before for mutant in deletions if "while" in mutant.before], [])
 
+    # GREEN_ON_BASE(characterization): the base removes it too, and it is the half the refusal must
+    # not take with it — the two spellings are identical on the line itself.
     def test_Given_AnEmptyBodiedWhileLoop_When_MutantsAreGenerated_Then_ItIsStillRemoved(self):
         # Arrange — the control: the same spelling, closing no `do`, and its removal compiles. Without
         # it a reading that refused every `while` would satisfy the two cases above.
