@@ -51,6 +51,8 @@ class UnexpandedOperands(unittest.TestCase):
         # absence too.
         self.assertEqual((code, "Name the paths" in said), (2, False))
 
+    # GREEN_ON_BASE(characterization): the base gives every unexpanded operand this sentence, which
+    # is why the other two exist. It is the half the split had to leave where it was.
     def test_Given_AnUnexpandedPathspec_When_Refused_Then_ItKeepsItsOwnRemedy(self):
         # Arrange — the reading the sentence was written for, which this must leave where it is.
         code, said = self.judge('git commit -m "x" -- "$FILES"')
