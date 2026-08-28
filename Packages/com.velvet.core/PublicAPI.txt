@@ -6,6 +6,7 @@
 [Velvet.Editor] method Velvet.Editor.DevTools.StateHistoryBuffer.GetNewestFirst(): System.Collections.Generic.IReadOnlyList`1[Velvet.Editor.DevTools.StateHistoryEntry]
 [Velvet.Editor] method Velvet.Editor.DevTools.StateHistoryBuffer.Push(Velvet.Editor.DevTools.StateHistoryEntry): System.Void
 [Velvet.Editor] method Velvet.Editor.DevTools.VelvetDevToolsWindow.ShowWindow(): System.Void
+[Velvet.Editor] method Velvet.Editor.PlayerBuild.PlayerScriptCompilation.CompileForPlayer(): System.Void
 [Velvet.Editor] method Velvet.Editor.Preview.VelvetPreviewWindow.ShowWindow(): System.Void
 [Velvet.Editor] property Velvet.Editor.DevTools.StateHistoryBuffer.Capacity: System.Int32
 [Velvet.Editor] property Velvet.Editor.DevTools.StateHistoryBuffer.Count: System.Int32
@@ -15,6 +16,7 @@
 [Velvet.Editor] type Velvet.Editor.DevTools.StateHistoryBuffer
 [Velvet.Editor] type Velvet.Editor.DevTools.StateHistoryEntry
 [Velvet.Editor] type Velvet.Editor.DevTools.VelvetDevToolsWindow
+[Velvet.Editor] type Velvet.Editor.PlayerBuild.PlayerScriptCompilation
 [Velvet.Editor] type Velvet.Editor.Preview.VelvetPreviewWindow
 [Velvet] ctor System.Runtime.CompilerServices.ModuleInitializerAttribute.ctor(): System.Void
 [Velvet] ctor Velvet.AnchoredSettings.ctor(UnityEngine.Transform?, UnityEngine.Camera?, UnityEngine.Vector2, System.Boolean, System.Boolean, System.Nullable`1[UnityEngine.LayerMask], System.Nullable`1[System.Single]): System.Void
@@ -193,7 +195,6 @@
 [Velvet] field Velvet.RouterStatus.Matching: Velvet.RouterStatus
 [Velvet] field Velvet.RouterStatus.NotFound: Velvet.RouterStatus
 [Velvet] field Velvet.RouterStatus.Ready: Velvet.RouterStatus
-[Velvet] field Velvet.SearchParams.Empty: Velvet.SearchParams
 [Velvet] field Velvet.StyleOverrides.Empty: Velvet.StyleOverrides
 [Velvet] field Velvet.StyleTransition.Fade: Velvet.StyleTransitionConfig
 [Velvet] field Velvet.StyleTransition.FadeSlideUp: Velvet.StyleTransitionConfig
@@ -804,6 +805,7 @@
 [Velvet] property Velvet.ScrollViewSettings.TouchScrollBehavior: System.Nullable`1[UnityEngine.UIElements.ScrollView+TouchScrollBehavior]
 [Velvet] property Velvet.ScrollViewSettings.VerticalScrollerVisibility: System.Nullable`1[UnityEngine.UIElements.ScrollerVisibility]
 [Velvet] property Velvet.SearchParams.Count: System.Int32
+[Velvet] property Velvet.SearchParams.Empty: Velvet.SearchParams
 [Velvet] property Velvet.SearchParams.Keys: System.Collections.Generic.IReadOnlyList`1[System.String]
 [Velvet] property Velvet.SliderSettings.HighValue: System.Nullable`1[System.Single]
 [Velvet] property Velvet.SliderSettings.LowValue: System.Nullable`1[System.Single]

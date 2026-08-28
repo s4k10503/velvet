@@ -120,6 +120,23 @@ def asked_ago(now=None):
     return stamp_age(text, time.time() if now is None else now)
 
 
+def beat_text():
+    """The heartbeat's text, or None when there is nothing readable to answer from.
+
+    A file whose bytes are not UTF-8 raises `UnicodeDecodeError`, which is a `ValueError` and so goes
+    straight past an `OSError` catch. Every reader below runs inside a `PreToolUse` or `Stop` hook,
+    where a raise exits non-zero for a reason having nothing to do with what the guard judges — and
+    the same shape had already killed `settle.py watch` at startup from a corrupt ready file.
+
+    One reader rather than the catch repeated three times, because that is what left the widening to
+    be done three times and done once.
+    """
+    try:
+        return HEARTBEAT.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+
+
 def alive(now=None):
     """Whether the process that wrote the heartbeat is running and wrote it recently.
 
@@ -127,9 +144,8 @@ def alive(now=None):
     without being told to.
     """
     note_asked(now)
-    try:
-        text = HEARTBEAT.read_text(encoding="utf-8")
-    except OSError:
+    text = beat_text()
+    if text is None:
         return False
     read = written(text)
     return (read is not None
@@ -145,9 +161,8 @@ def unreadable_beat(now=None):
     Something is watching; what failed is the reading. Separating the two is what lets a guard name
     the recovery, which is to end that watcher rather than to start another.
     """
-    try:
-        text = HEARTBEAT.read_text(encoding="utf-8")
-    except OSError:
+    text = beat_text()
+    if text is None:
         return False
     return stamped(text, time.time() if now is None else now) is not None and written(text) is None
 
@@ -161,9 +176,8 @@ def beating_elsewhere(mine, now=None):
     answers for, and is believed only while that process exists — otherwise a watcher restarted
     inside the window would refuse itself.
     """
-    try:
-        text = HEARTBEAT.read_text(encoding="utf-8")
-    except OSError:
+    text = beat_text()
+    if text is None:
         return False
     if stamped(text, time.time() if now is None else now) is None:
         return False
