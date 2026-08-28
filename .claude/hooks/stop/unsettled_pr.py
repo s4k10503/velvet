@@ -155,15 +155,11 @@ def judge(pr):
         return unread(pr, "its checks")
 
     if not checks:
-        # No pull request here is entitled to zero checks. Both required workflows subscribe to
-        # `pull_request` with no path filter — the filters are the push trigger's alone — so a head
-        # with none is one whose run never started, whatever the merge state says. Measured: three
-        # `.claude/`-only pull requests, #676 to #678, report fourteen checks each.
-        #
-        # This branch used to read CLEAN as ready and say "merge it", on a path filter that does not
-        # exist. The state was reachable once, through a `pull_request: branches: [main]` filter that
-        # left a maintenance-line pull request with no required check at all, and there the advice was
-        # to merge something nothing had tested. #776 removed the filter; the advice goes with it.
+        # No pull request here is entitled to zero checks, so a head with none is one whose run never
+        # started, whatever the merge state says. `WorkflowTriggerCoverageTests` is what holds that:
+        # it fails when either required workflow stops subscribing to `pull_request`, and when either
+        # subscription gains a path filter. This branch used to read CLEAN as ready and say "merge
+        # it", which was advice to merge something nothing had tested.
         state = merge_state(pr)
         if state is None:
             return unread(pr, "its merge state")
