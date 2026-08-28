@@ -11,8 +11,7 @@ namespace Velvet
     // hook-slot commit in FiberHookCommit and committed-tree pooling in FiberTreeReturn; this class drives it.
     internal static class FiberWorkLoop
     {
-        // Delay (milliseconds) for the Deferred priority.
-        private const int DeferredDelayMs = 100;
+        private const int DelayedTierDelayMs = 100;
 
         // The FlushState invocation at which a continuously-pending Transition lane is promoted
         // (see PromoteStarvedTransitionLane); it survives threshold-1 preempted flushes.
@@ -148,21 +147,20 @@ namespace Velvet
             {
                 // The new lane outranks what was already scheduled. When it routes to the immediate tier
                 // (Urgent / Normal) but the fiber is currently only enrolled on the delayed tier
-                // (prevHighest = Deferred / Transition), enroll it on the immediate tier too so the next-frame
+                // (prevHighest = Transition), enroll it on the immediate tier too so the next-frame
                 // and end-of-discrete-event flush can drain it; the per-fiber lane queue still orders the
                 // actual drain. ScheduleImmediate dedups, so re-enrolling a fiber already on the immediate
-                // tier is a no-op. A more-urgent delayed lane (Deferred over Transition) needs no re-enroll:
-                // the fiber is already on the delayed tier with the same delay.
+                // tier is a no-op.
                 ScheduleFlush(fiber, priority);
             }
         }
 
         // Routes the fiber's flush through the tree-wide FiberBatchScheduler so concurrent
         // dirty fibers sharing one ReconcilerContext coalesce into a single frame-boundary
-        // drain. Normal / Urgent enqueue on the next-frame tier; Deferred / Transition enqueue on the
-        // delayed tier (kept at DeferredDelayMs). The per-fiber lane queue is still drained
+        // drain. Normal / Urgent enqueue on the next-frame tier; Transition enqueues on the
+        // delayed tier (kept at DelayedTierDelayMs). The per-fiber lane queue is still drained
         // one lane per FlushState inside the batch, preserving priority ordering and the
-        // Deferred delay.
+        // delayed-tier delay.
         internal static void ScheduleFlush(ComponentFiber fiber, FiberUpdatePriority priority)
         {
             var scheduler = fiber.Reconciler?.Context.BatchScheduler;
@@ -180,7 +178,7 @@ namespace Velvet
             }
             else
             {
-                scheduler.ScheduleDelayed(fiber, DeferredDelayMs);
+                scheduler.ScheduleDelayed(fiber, DelayedTierDelayMs);
             }
         }
 
@@ -249,7 +247,7 @@ namespace Velvet
             // re-render that re-attaches (and re-commits) it, which settles every lane that re-render subsumes
             // (FiberRenderer.SubsumeFiberIntoThisPass), or for disposal, which scrubs the queue and dirty flag outright (Unmount).
             // A further update on the same delayed tier coalesces onto the
-            // queued lane without rescheduling (IsDirty is already set, and Transition/Deferred do not re-enrol on
+            // queued lane without rescheduling (IsDirty is already set, and Transition does not re-enrol on
             // the immediate tier). A higher-priority Urgent/Normal update DOES re-enrol and re-flush, but that flush
             // hits this same guard and harmlessly re-defers. Either way a detached fiber never flushes independently.
             if (fiber.IsInlineMounted && IsHostDetachedFromRoot(fiber))
@@ -259,7 +257,7 @@ namespace Velvet
 
             PromoteStarvedTransitionLane(fiber);
 
-            // The lane being drained decides this flush's frame budget (Transition / Deferred may time-slice;
+            // The lane being drained decides this flush's frame budget (Transition may time-slice;
             // Urgent / Normal stay synchronous). Capture it from the lane before removing it. With no pending
             // lane (e.g. a context-driven flush) the reconcile runs synchronously.
             var flushBudget = FiberLane.FrameBudgetMs;
@@ -505,16 +503,14 @@ namespace Velvet
 
             if (fiber.TransitionStarvationCounter >= TransitionStarvationThreshold)
             {
-                // Promote to Normal — not Deferred — so the starved work coalesces with the very traffic
-                // that kept preempting it and drains in this flush (the caller drains the queue's minimum
-                // next; co-pending Urgent drains still go first, parking the promoted lane on the
-                // immediate tier, not back behind the sustained stream that starved it). A Deferred
-                // promotion would stay below a sustained stream of Normal updates and the lane would
-                // starve on exactly as before; an expired lane must instead flush synchronously,
-                // abandoning time-slicing, so starvation is bounded no matter how relentless the
-                // higher-priority traffic is. The promoted marker keeps the settle sweep honest about
-                // the erased Transition label (see HasPromotedTransition), so isPending still clears at
-                // (not before) the commit that renders the promoted content.
+                // Promote to Normal so the starved work coalesces with the very traffic that kept
+                // preempting it and drains in this flush (the caller drains the queue's minimum next;
+                // co-pending Urgent drains still go first, parking the promoted lane on the immediate
+                // tier, not back behind the sustained stream that starved it). An expired lane must
+                // flush synchronously, abandoning time-slicing, so starvation is bounded no matter how
+                // relentless the higher-priority traffic is. The promoted marker keeps the settle sweep
+                // honest about the erased Transition label (see HasPromotedTransition), so isPending
+                // still clears at (not before) the commit that renders the promoted content.
                 // Contains(Transition) above guarantees Lanes was already allocated; mutate the backing
                 // field directly, as the fiber.LaneQueue accessor only hands back a read-only copy.
                 fiber.Lanes!.Queue.Remove(FiberUpdatePriority.Transition);
