@@ -1,5 +1,6 @@
 // annotations only: incremental nullable hygiene. See the leading comment in Velvet core Hooks.cs for details.
 #nullable enable annotations
+using System.Collections.Generic;
 using System.Linq;
 using NUnit.Framework;
 using UnityEngine.UIElements;
@@ -24,9 +25,23 @@ namespace Velvet.Tests
             _root = null!;
         }
 
-        private MountedTree MountAt(string path, VNode tree)
+        private MountedTree MountAt(string path, VNode tree) =>
+            MountUnder(new Router(new[] { Route(path, element: V.Component(StubA)) }), path, tree);
+
+        private MountedTree MountNestedAt(string path, VNode tree) =>
+            MountUnder(
+                new Router(new[]
+                {
+                    Route("/", children: new[]
+                    {
+                        Route("settings", children: new[] { Route("profile") }),
+                    }),
+                }),
+                path,
+                tree);
+
+        private MountedTree MountUnder(Router router, string path, VNode tree)
         {
-            var router = new Router(new[] { Route(path, element: V.Component(StubA)) });
             router.NavigateSync(path);
 
             return V.Mount(_root,
@@ -188,6 +203,60 @@ namespace Velvet.Tests
             var button = FindButton(_root);
             Assume.That(button, Is.Not.Null, "Precondition: the nav link rendered a button");
             Assert.That(button!.ClassListContains("is-active"), Is.True);
+        }
+
+        [Test]
+        public void Given_RelativeNavLink_When_LocationIsUnderTheResolvedTarget_Then_AppliesActiveClass()
+        {
+            // Arrange + Act
+            using var mounted = MountNestedAt("/settings/profile",
+                V.NavLink(to: "..", activeClass: "is-active", text: "Settings"));
+
+            // Assert
+            var button = FindButton(_root);
+            Assume.That(button, Is.Not.Null, "Precondition: the nav link rendered a button");
+            Assert.That(button!.ClassListContains("is-active"), Is.True);
+        }
+
+        [Test]
+        public void Given_BareSegmentNavLink_When_RenderedAtANestedOutletDepth_Then_AppliesActiveClass()
+        {
+            // Arrange + Act — depth 2 is what an Outlet pushes for the "settings" route's own element, so
+            // "profile" resolves against "/settings" rather than against the leaf.
+            using var mounted = MountNestedAt("/settings/profile",
+                V.Provider(RouterContext.Depth, 2, children: new VNode[]
+                {
+                    V.NavLink(to: "profile", activeClass: "is-active", text: "Profile", end: true),
+                }));
+
+            // Assert
+            var button = FindButton(_root);
+            Assume.That(button, Is.Not.Null, "Precondition: the nav link rendered a button");
+            Assert.That(button!.ClassListContains("is-active"), Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): the absolute target a location without a router already matches,
+        // which resolving relative targets through that router must leave standing.
+        [Test]
+        public void Given_AbsoluteNavLink_When_ThereIsNoRouterToResolveThrough_Then_AppliesActiveClass()
+        {
+            // Arrange + Act
+            using var mounted = V.Mount(_root,
+                V.Provider(
+                    RouterContext.Location,
+                    new RouterLocation { Path = "/home", Params = new Dictionary<string, string>() },
+                    children: new VNode[]
+                    {
+                        V.NavLink(to: "/home", activeClass: "is-active", text: "Home", end: true),
+                    }));
+
+            // Assert — the absent router is folded in: with one mounted, an absolute target resolves to
+            // itself, so the active class alone would hold either way.
+            var button = FindButton(_root);
+            Assume.That(button, Is.Not.Null, "Precondition: the nav link rendered a button");
+            Assert.That(
+                (routerAbsent: Router.Current == null, active: button!.ClassListContains("is-active")),
+                Is.EqualTo((routerAbsent: true, active: true)));
         }
 
         [Test]

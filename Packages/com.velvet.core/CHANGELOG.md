@@ -54,6 +54,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `V.NavLink` with a relative `to` takes its active class. The click path resolved the target through
+  the router — `..` against the enclosing route, a bare segment appended to it — while the active
+  comparison used the string as written, so `to: ".."` was compared against a current path beginning
+  with `/` and did not match: the link navigated to the right place and stayed unhighlighted. The
+  target is now resolved through the same `Router` call the click makes, anchored at the caller's
+  Outlet depth, before it is normalised and compared. An absolute target is returned by that call
+  unchanged, so `end`, `caseSensitive`, a trailing slash and a query answer as before; with no router
+  mounted to resolve through, the target is compared as written, as it was.
+  One shape that was active is active elsewhere now: a query-only `to` such as `"?tab=1"` normalised
+  to `/`, so with `end` left false it lit up wherever the user was. It now resolves against the
+  current route and the comparison strips the query from what comes back, so it is active on that
+  route's path and under it — what an absolute `to` naming that path gives. Where clicking it takes
+  the user is unchanged.
+
 - `SearchParams.Empty` hands back a new instance on each read. It was a `static readonly` field
   holding one instance for the whole process, and `SearchParams.Append` mutates the instance it is
   called on, so the shape the member invites — `var next = SearchParams.Empty; next.Append("q",
