@@ -837,7 +837,7 @@ def wait_for_quiet(seconds):
         if time.time() > deadline:
             return False
         if not announced:
-            print("  another Unity run is in flight; waiting for the machine")
+            print("  another Unity run is in flight; waiting for the machine", flush=True)
             announced = True
         time.sleep(5)
     return True
@@ -1756,9 +1756,9 @@ def report(cases, control, reported, canaries=None, wrote=True, unbuildable=None
         else:
             case.verdict, case.detail = decide(case, outcome_for(case.key, reported),
                                                case.fixture in ran)
-    print("\n--- what the base said ---")
+    print("\n--- what the base said ---", flush=True)
     for case in cases:
-        print("{:<32} {}  ({})".format(case.verdict, case.name, case.detail))
+        print("{:<32} {}  ({})".format(case.verdict, case.name, case.detail), flush=True)
     # Three counts, never one. A case the base could not build names a symbol the branch adds, which
     # is the strongest pin this takes, and folding it into the readings nobody took would tell the
     # author of a correct test that the run measured nothing. A tolerated case is not a failure, so
@@ -1767,15 +1767,15 @@ def report(cases, control, reported, canaries=None, wrote=True, unbuildable=None
     if tolerated:
         print("\n{} of {} case(s) reached a surface only the branch provides, so the base could not "
               "load them\nand each is counted as depending on this change".format(
-                  len(tolerated), len(cases)))
+                  len(tolerated), len(cases)), flush=True)
     silent = [case for case in cases if case.verdict == COULD_NOT_ANSWER]
     if silent:
         print("\nthe base could not answer for {} of {} case(s), so they carry no reading either "
-              "way".format(len(silent), len(cases)))
+              "way".format(len(silent), len(cases)), flush=True)
     unbuilt = [case for case in cases if case.verdict == COULD_NOT_COMPILE]
     if unbuilt:
         print("\n{} of {} case(s) sit in a fixture the base built none of, so the reading is that "
-              "fixture's rather than each case's".format(len(unbuilt), len(cases)))
+              "fixture's rather than each case's".format(len(unbuilt), len(cases)), flush=True)
     offenders = [case for case in cases if case.verdict in FAILING_VERDICTS]
     # Split by whether a behavioural verdict exists, because one remedy does not cover both. Offering
     # a declaration where the run produced none sends the author to sharpen a case that may be perfectly
@@ -1786,14 +1786,14 @@ def report(cases, control, reported, canaries=None, wrote=True, unbuildable=None
     if answered:
         print("\n{} case(s) the base already answers. Green on both sides separates nothing: sharpen "
               "the\ncase until it goes red without this branch, or say why it belongs "
-              "there:".format(len(answered)))
-        print("  // GREEN_ON_BASE({}): <why>".format("|".join(CATEGORIES)))
+              "there:".format(len(answered)), flush=True)
+        print("  // GREEN_ON_BASE({}): <why>".format("|".join(CATEGORIES)), flush=True)
     if unanswered:
         print("\n{} case(s) yielded no base verdict, so none of them carries a reading either way. A\n"
               "declaration does not answer for that -- the detail beside each says what happened."
-              .format(len(unanswered)))
+              .format(len(unanswered)), flush=True)
     if single_round and not wrote and any(case.verdict == BASE_UNSOUND for case in unanswered):
-        print(local_remedy(single_round, unanswered))
+        print(local_remedy(single_round, unanswered), flush=True)
     return offenders
 
 
@@ -1920,40 +1920,40 @@ def main():
     if args.verdict:
         plan = json.loads(Path(args.verdict).read_text())
         if not plan["cases"]:
-            print("no changed test case in the reading")
+            print("no changed test case in the reading", flush=True)
             return 0
         if not args.results:
             raise SystemExit("--verdict needs --results")
         reported, wrote = results_from(args.results)
         if not wrote:
-            print("the base run wrote no result, so nothing it was asked was measured")
+            print("the base run wrote no result, so nothing it was asked was measured", flush=True)
         return 1 if report(from_plan(plan["cases"]), from_plan(plan["control"]), reported,
                            plan["canaries"], wrote, plan.get("withdrawn"),
                            plan.get("since")) else 0
 
     project = Path(args.project).resolve()
     since, cases, control, shared, shared_helper = collect(project, args.base, args.lane)
-    print("merge base {}".format(since[:12]))
+    print("merge base {}".format(since[:12]), flush=True)
     for relative, count in sorted(kept_out(project, since, args.lane).items()):
         print("  out of scope: {} case(s) of {} hold a line this branch changed and no code it "
-              "changed".format(count, relative))
+              "changed".format(count, relative), flush=True)
     if not cases:
-        print("no changed test case in scope of --lane {}".format(args.lane))
+        print("no changed test case in scope of --lane {}".format(args.lane), flush=True)
         return 0
 
     for case in cases:
         print("  {}{}".format(case.name,
                               " [{}]".format(case.declaration.category)
-                              if case.declaration and case.declaration.written_here else ""))
-    print("  ({} control case(s) alongside)".format(len(control)))
+                              if case.declaration and case.declaration.written_here else ""), flush=True)
+    print("  ({} control case(s) alongside)".format(len(control)), flush=True)
     for relative, count in sorted(shared.items()):
         print("  no control: {} line(s) of {} sit in no case -- a SetUp, a field, a helper, a using. "
               "The\n              cases beside them are this branch's text too, so none of them reads "
-              "the base tree.".format(count, relative))
+              "the base tree.".format(count, relative), flush=True)
     for relative in shared_helper:
         print("  no control: {} is carried onto the base, so every case that calls it is this "
               "branch's\n              text there. The base's own fixtures are what read the tree."
-              .format(relative))
+              .format(relative), flush=True)
     for relative in sorted({case.path for case in cases}):
         source = project / relative
         if not source.exists():
@@ -1961,7 +1961,7 @@ def main():
         written, carried = orphaned_declarations(relative, source.read_text())
         if written > carried:
             print("  orphaned: {} of {} declaration(s) in {} sit above no case, so nothing reads "
-                  "them".format(written - carried, written, relative))
+                  "them".format(written - carried, written, relative), flush=True)
     if args.plan:
         return 0
 
@@ -1973,7 +1973,7 @@ def main():
         if not args.base_tree:
             raise SystemExit("--emit needs --base-tree to say where the base is built")
         base_tree = Path(args.base_tree).resolve()
-        print("  building the base tree at {}".format(base_tree))
+        print("  building the base tree at {}".format(base_tree), flush=True)
         build_base_tree(project, since, base_tree, carry, drop, args.warm_library)
         # Before the run rather than after it, because there is no after: one round of a C# compile
         # failure is an empty artifacts directory, and every fixture in the tree is behind it.
@@ -1982,7 +1982,7 @@ def main():
             withdraw(base_tree, relative)
             print("  withdrawn: {} spells {}, which the base has not got, so the base builds no "
                   "fixture\n             of its assembly and the run would report none of them"
-                  .format(relative, name))
+                  .format(relative, name), flush=True)
         canaries = canaries_for(base_tree, cases, carry, args.platform)
         Path(args.emit).write_text(
             json.dumps(as_plan(since, cases, control, shared, canaries, unbuildable), indent=2))
@@ -1996,7 +1996,7 @@ def main():
                   and (not args.platform or platform_of(case.path) in args.platform)}
         for chosen in canaries.values():
             wanted.update(chosen)
-        print("fixtures={}".format(";".join(sorted(wanted))))
+        print("fixtures={}".format(";".join(sorted(wanted))), flush=True)
         return 0
 
     holder = None
@@ -2013,7 +2013,7 @@ def main():
     canaries = {}
     ever_wrote = not any(kind_of(case.path) == "csharp" for case in cases)
     try:
-        print("  building the base tree at {}".format(base_tree))
+        print("  building the base tree at {}".format(base_tree), flush=True)
         build_base_tree(project, since, base_tree, carry, drop, args.warm_library)
 
         python_lane = [case for case in cases + control if kind_of(case.path) == "python"]
@@ -2021,7 +2021,7 @@ def main():
             guards = python_canaries(base_tree, carry)
             canaries[PYTHON_LANE] = [case.fixture for case in guards]
             print("  running {} Python case(s) there, one process each".format(
-                len(python_lane) + len(guards)))
+                len(python_lane) + len(guards)), flush=True)
             reported.update(run_python(base_tree, project, python_lane + guards, transcript))
 
         platforms = sorted({platform_of(case.path) for case in cases
@@ -2050,7 +2050,7 @@ def main():
                 ever_wrote = ever_wrote or wrote
                 reported.update(seen)
                 print("{} attempt {}: {} case(s) over {} fixture(s) in {:.0f}s".format(
-                    platform, attempt, len(seen), len(fixtures), wall))
+                    platform, attempt, len(seen), len(fixtures), wall), flush=True)
 
                 # One file per attempt. A round that reports nothing says only that something the
                 # tree holds did not build, never which file, so withdrawing every silent one at
@@ -2074,9 +2074,9 @@ def main():
         (output / "python.log").write_text("\n".join(transcript))
 
     if not ever_wrote:
-        print("no round wrote a result, so nothing any of them was asked was measured")
+        print("no round wrote a result, so nothing any of them was asked was measured", flush=True)
     offenders = report(cases, control, reported, canaries, ever_wrote)
-    print("\nlogs: {}".format(output))
+    print("\nlogs: {}".format(output), flush=True)
     return 1 if offenders else 0
 
 
