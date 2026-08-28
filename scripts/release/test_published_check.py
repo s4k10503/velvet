@@ -22,6 +22,7 @@ from published_check import (
     consistency_reason,
     drain_reason,
     publication_reason,
+    remote_tags,
     reopened_by,
     unpublished_reason,
 )
@@ -267,6 +268,40 @@ class DrainDecisionTests(unittest.TestCase):
 
         # Assert
         self.assertIsNone(reason)
+
+
+class TagListingBound(unittest.TestCase):
+    """The bound is the hook's, where a person waits. The workflow raises it and nothing waits there.
+
+    Asserted as the value git is asked to run under rather than as elapsed time: a wall-clock case
+    would pass on a fast remote whatever the caller named, which is the whole of what can go wrong.
+    """
+
+    def bound_seen(self, **named):
+        seen = {}
+
+        def spy(project, *args, timeout=5):
+            seen["timeout"] = timeout
+            seen["args"] = args
+            return ""
+
+        original = published_check.git
+        published_check.git = spy
+        try:
+            remote_tags(".", **named)
+        finally:
+            published_check.git = original
+        return seen
+
+    # GREEN_ON_BASE(characterization): the default was already five, and this pins it against the
+    # change that adds a way to name another.
+    def test_Given_NoBoundNamed_When_TheTagsAreListed_Then_TheHooksOwnIsUsed(self):
+        # Act / Assert — five seconds is what a killed hook cannot report from.
+        self.assertEqual(self.bound_seen()["timeout"], 5)
+
+    def test_Given_ABoundNamed_When_TheTagsAreListed_Then_ThatIsWhatGitRunsUnder(self):
+        # Act / Assert
+        self.assertEqual(self.bound_seen(timeout=30)["timeout"], 30)
 
 
 class PublicationDecisionTests(unittest.TestCase):
