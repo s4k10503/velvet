@@ -64,7 +64,20 @@ jobs:
           REPOSITORY: ${{ github.repository }}
         run: |
           MAIN_TAG="v${VERSION}-main"
-          PREV_MAIN_TAG=$(git tag -l "v*-main" --sort=-v:refname | grep -vx "$MAIN_TAG" | head -1)
+          # The highest tag BELOW this version, rather than the highest there is. Repository-wide,
+          # `--sort=-v:refname` takes the newest tag whatever series it belongs to, so releasing 2.1.3
+          # once v3.0.0-main exists picks that and the compare link in the note runs backwards.
+          #
+          # Below rather than within the same major: a new major's first release has no earlier tag in
+          # its own series, and 2.1.3 is what 3.0.0 follows. This version is dropped and re-added once,
+          # so a re-publish finds its neighbour rather than itself.
+          PREV_MAIN_TAG=$(git tag -l "v*-main" \
+            | sed 's/^v//; s/-main$//' \
+            | grep -vx "$VERSION" \
+            | { cat; echo "$VERSION"; } \
+            | sort -V \
+            | awk -v here="$VERSION" '$0 == here { print last; exit } { last = $0 }')
+          [ -n "$PREV_MAIN_TAG" ] && PREV_MAIN_TAG="v${PREV_MAIN_TAG}-main"
           NOTES_FILE="${RUNNER_TEMP}/release-notes.md"
           ARGS=(
             --version "$VERSION"
@@ -85,6 +98,8 @@ jobs:
 
       - name: Subtree split (tests stripped) → upm branch
         id: split
+        env:
+          VERSION: ${{ inputs.version }}
         run: |
           SPLIT=$(git subtree split --prefix="$PREFIX")
           git checkout --quiet "$SPLIT"
@@ -103,8 +118,23 @@ jobs:
           fi
           FINAL=$(git rev-parse HEAD)
           echo "sha=$FINAL" >> "$GITHUB_OUTPUT"
-          git push --force origin "$FINAL:refs/heads/upm"
-          echo "Pushed package-at-root split (tests stripped) $FINAL to refs/heads/upm"
+          # `upm` is one branch every line shares, and a consumer tracking `#upm` unpinned is asking for
+          # the newest package. Publishing a 2.x patch once 3.0.0 has shipped would put the older package
+          # there and downgrade them until the next push to main, so the ref moves only where this
+          # version is the highest published. The tag and the GitHub release are per-version and are
+          # written either way, so a maintenance release still publishes -- to its own tag.
+          #
+          # Compared by version rather than by tag: this release's tag is written by a later step, so it
+          # is not among the tags here and a tag-equality test would skip every push.
+          NEWEST=$(git tag -l "v*-main" --sort=-v:refname | head -1 | sed 's/^v//; s/-main$//')
+          HIGHEST=$(printf '%s\n%s\n' "$NEWEST" "$VERSION" | sort -V | tail -1)
+          if [ -z "$NEWEST" ] || [ "$HIGHEST" = "$VERSION" ]; then
+            git push --force origin "$FINAL:refs/heads/upm"
+            echo "Pushed package-at-root split (tests stripped) $FINAL to refs/heads/upm"
+          else
+            echo "Left refs/heads/upm where it is: $VERSION is behind $NEWEST, and #upm is what an"
+            echo "unpinned consumer follows. This version publishes under its own tag."
+          fi
 
       - name: Tag and publish release (release only)
         if: github.event_name == 'workflow_dispatch'
