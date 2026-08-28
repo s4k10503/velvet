@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using UnityEditor;
@@ -57,8 +58,8 @@ namespace Velvet.Editor.PlayerBuild
                 return;
             }
 
-            var built = new System.Collections.Generic.HashSet<string>(
-                result.assemblies ?? Array.Empty<string>(), StringComparer.Ordinal);
+            var built = new HashSet<string>(
+                result.assemblies ?? (IEnumerable<string>)Array.Empty<string>(), StringComparer.Ordinal);
             var missing = wanted.Where(name => !built.Contains(name)).ToList();
 
             // An empty wanted list would leave nothing missing however the compile went, which reads as
