@@ -225,6 +225,32 @@ class GenerationAcrossLinesTests(unittest.TestCase):
         # Assert
         self.assertEqual(lines, [1, 2, 3, 4, 5, 6, 7, 8, 9])
 
+    # GREEN_ON_BASE(characterization): the generator already clears this floor, and what the case
+    # separates is a future widening rather than this change.
+    def test_Given_TheRepositorysOwnSources_When_LinesAreRemoved_Then_ThatOperatorHoldsItsOwn(self):
+        # Arrange — `total > 8000` clears with room for this operator to lose a third of its output
+        # twice over, so it cannot say which one went quiet. Shortening STATEMENT_BOUNDARY to
+        # (";", "}") takes `line removed` from 2926 to 2058 package-wide and the whole suite stays
+        # green but for one case written for the join operator, which catches it by accident.
+        #
+        # 2500 sits below the band the shipped generator holds — 2788 to 2926 over the last eighty
+        # first-parent commits, largest single-commit fall 8 — and well above what that widening
+        # produces.
+        sources = [path for path in RUNTIME.rglob("*.cs")
+                   if "/Tests/" not in path.as_posix() and "/Plugins/" not in path.as_posix()]
+
+        # Act
+        removed = sum(
+            1
+            for path in sources
+            for mutant in mutation_check.mutations_for(
+                path, path.read_text(),
+                set(range(1, len(path.read_text().splitlines()) + 1)))
+            if mutant.operator == "line removed")
+
+        # Assert — the source count rides along because an empty scan clears any floor by arithmetic.
+        self.assertEqual((len(sources) > 200, removed > 2500), (True, True))
+
     def test_Given_TheRepositorysOwnSources_When_MutantsAreGenerated_Then_TheTotalHoldsAFloor(self):
         # Arrange — the count is what moved: 2097 across these files before the loop variable stopped
         # rebinding the file's source, and over eleven thousand after. A floor rather than the exact
