@@ -146,6 +146,11 @@ jobs:
       - name: Unsettled pull request guard tests
         run: python3 scripts/test_quality/run_suite.py scripts/hooks/test_unsettled_pr.py
 
+      # gh's own alias for `create`. A guard claiming one spelling is skippable by typing the other,
+      # and for the receipt gate that is the only place it is ever asked.
+      - name: Create alias guard tests
+        run: python3 scripts/test_quality/run_suite.py scripts/hooks/test_create_aliases.py
+
       # Every guard asking "is this command a git <subcommand>" reads one table, so a word it does not
       # know hides the call from all of them, unrefused and unreported.
       - name: Shell command reading tests
