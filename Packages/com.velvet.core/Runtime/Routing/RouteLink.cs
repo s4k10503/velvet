@@ -50,18 +50,14 @@ namespace Velvet
         public static VNode Render(Props p)
         {
             var location = Hooks.UseLocation();
-            // Standing in for a missing location with the empty string was rejected: it goes through the same
-            // normalisation as the target, where an empty path is the root, so a link to "/" came out as the
-            // current page of a tree that has no current page.
+            // A missing location is not the root; otherwise its NavLink would be active before navigation.
             var isActive = location != null && IsActive(location.Path, p.To, p.End, p.CaseSensitive);
 
             var className = isActive && !string.IsNullOrEmpty(p.ActiveClass)
                 ? string.IsNullOrEmpty(p.ClassName) ? p.ActiveClass : p.ClassName + " " + p.ActiveClass
                 : p.ClassName;
 
-            // NavLink is Link plus active-state styling: derive the effective class from the current
-            // location, then delegate the click/navigate wiring to the Link component so the two can
-            // never drift.
+            // Keep click navigation owned by RouteLink after deriving the effective class here.
             return V.Component(
                 RouteLink.Render,
                 new RouteLink.Props(p.To, p.Text, className, p.Name, p.Children, p.Replace));
