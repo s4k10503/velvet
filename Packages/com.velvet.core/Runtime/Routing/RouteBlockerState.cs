@@ -2,12 +2,9 @@ using System;
 
 namespace Velvet
 {
-    /// <summary>Current state of a Blocker.</summary>
     public enum RouteBlockerStatus
     {
-        /// <summary>Idle, not currently blocking.</summary>
         Idle,
-        /// <summary>Currently blocking a navigation. <see cref="RouteBlockerState.Attempt"/> holds the attempt details.</summary>
         Blocked,
         /// <summary>
         /// <see cref="RouteBlockerState.Proceed"/> has released the block and the navigation it held is on
@@ -17,18 +14,13 @@ namespace Velvet
         Proceeding,
     }
 
-    /// <summary>
-    /// State object held by an individual Blocker.
-    /// UI components observe this object to drive the display of a block dialog.
-    /// </summary>
+    /// <summary>Observable state for an individual navigation Blocker.</summary>
     public sealed class RouteBlockerState
     {
-        /// <summary>Current block state.</summary>
         public RouteBlockerStatus Status { get; internal set; } = RouteBlockerStatus.Idle;
         /// <summary>
-        /// Where the navigation this Blocker holds was heading when the predicate saw it, which is what a
-        /// dialog names the destination from. Not what <see cref="Proceed"/> re-issues — that is the request
-        /// the caller made, and a Guard redirect makes the two differ. null when
+        /// The transition presented to this Blocker's predicate. <see cref="Proceed"/> re-issues the caller's
+        /// request instead, which can differ after a Guard redirect. null when
         /// <see cref="RouteBlockerStatus.Idle"/>.
         /// </summary>
         public NavigationAttempt? Attempt { get; internal set; }
@@ -73,10 +65,6 @@ namespace Velvet
             _abandon?.Invoke();
         }
 
-        /// <summary>
-        /// Resets the state without re-issuing or abandoning anything (internal use before a navigation
-        /// starts, and once the navigation this Blocker released has settled).
-        /// </summary>
         internal void InternalReset()
         {
             Status = RouteBlockerStatus.Idle;
