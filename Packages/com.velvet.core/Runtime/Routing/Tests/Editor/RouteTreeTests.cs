@@ -549,6 +549,51 @@ namespace Velvet.Tests
             Assert.That(result, Is.Not.Null);
         }
 
+        [Test]
+        public void Given_OptionalLiteralRoute_When_SegmentAbsent_Then_TheBaseIsThePathTheUrlHeld()
+        {
+            // Arrange — the base is what a relative navigation resolves against, so a segment the URL
+            // never carried puts every hop from here onto an address that does not exist.
+            var tree = new RouteTree(new[] { Route("docs/intro?") });
+
+            // Act
+            var result = tree.Match("/docs");
+
+            // Assert
+            Assert.That(result[0].PathnameBase, Is.EqualTo("/docs"));
+        }
+
+        [Test]
+        public void Given_OptionalLiteralRoute_When_SegmentPresent_Then_TheBaseCarriesIt()
+        {
+            // Arrange — the control: the same route with the segment matched, where it belongs.
+            var tree = new RouteTree(new[] { Route("docs/intro?") });
+
+            // Act
+            var result = tree.Match("/docs/intro");
+
+            // Assert
+            Assert.That(result[0].PathnameBase, Is.EqualTo("/docs/intro"));
+        }
+
+        [Test]
+        public void Given_AChildUnderAnAbsentOptionalLiteral_When_Matched_Then_TheParentBaseSkipsIt()
+        {
+            // Arrange — the harder half to notice: the child renders as expected while its parent's
+            // base names a path one segment longer than the URL, so `..` lands somewhere that still
+            // matches and the next hop compounds it.
+            var tree = new RouteTree(new[]
+            {
+                Route("docs/intro?", children: new[] { Route("api") }),
+            });
+
+            // Act
+            var result = tree.Match("/docs/api");
+
+            // Assert
+            Assert.That(result[0].PathnameBase, Is.EqualTo("/docs"));
+        }
+
         #endregion
 
         #region Ranking by specificity
