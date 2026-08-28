@@ -4,31 +4,9 @@ using static Velvet.Tests.RouteTestStubs;
 
 namespace Velvet.Tests
 {
-    /// <summary>
-    /// Specifies what <see cref="RouteBlockerState.Proceed"/> does with the navigation its Blocker held.
-    /// <list type="bullet">
-    /// <item>Proceed re-issues the request the caller made, without consulting that Blocker again — a Push
-    /// or a Replace by its path and in its mode, a Back or Forward as the same history step. The pipeline
-    /// runs again from matching, so a Guard rewrites the destination again and its target is what lands.</item>
-    /// <item>While the re-issued navigation runs, the Blocker still holds the attempt it released — the
-    /// status it reports over that span is pinned by <see cref="BlockerTests"/> — and is passed over by an
-    /// unrelated navigation reaching the check in that span, not only by the one it consented to.</item>
-    /// <item>Which attempt is held is decided by the last navigation to reach the Blocker phase: one that
-    /// matches no route returns before it, leaving the earlier attempt in place to be re-issued.</item>
-    /// <item>The Blocker comes back to Idle once that navigation lands or ends without landing and no
-    /// Blocker is left blocking, so the next navigation is blocked again either way. On the landing it is
-    /// already Idle by the time <see cref="Router.OnLocationChanged"/> runs.</item>
-    /// <item>A second Blocker that blocks the re-issued navigation is what holds it then: the first stays
-    /// out of the way until that one proceeds too, and comes back into it when that one resets.</item>
-    /// <item><see cref="RouteBlockerState.Reset"/> releases the Blocker and re-issues nothing. It ends the
-    /// attempt for the Blockers holding it beside this one, so a later <c>Proceed</c> on one of them
-    /// resumes nothing.</item>
-    /// </list>
-    /// </summary>
     [TestFixture]
     internal sealed class BlockerProceedTests
     {
-        // Router.Current is global singleton state; dispose between tests.
         [TearDown]
         public void TearDown()
         {
@@ -163,8 +141,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_ABlockedPush_When_ANavigationMatchesNoRoute_Then_ProceedReIssuesTheAttemptStillHeld()
         {
-            // Arrange — "/nowhere" returns at the match, which is before the pass that clears a standing
-            // block, so the Blocker is still holding the first attempt when the dialog is answered.
+            // Arrange
             var router = BuildRouter("/home", Route("home"), Route("other"));
             var state = new RouteBlockerState();
             router.RouteBlockerManager.Register(_ => true, state);
@@ -184,8 +161,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_ASecondNavigationBlockedOverTheFirst_When_Proceed_Then_TheSecondIsWhatLands()
         {
-            // Arrange — the second navigation reaches the Blocker phase, so the predicate is put its
-            // attempt and the Blocker holds that one instead of the first.
+            // Arrange
             var router = BuildRouter("/home", Route("home"), Route("other"), Route("third"));
             var state = new RouteBlockerState();
             router.RouteBlockerManager.Register(_ => true, state);
@@ -467,10 +443,6 @@ namespace Velvet.Tests
                 Is.EqualTo((NavigationResult.Blocked, 3, NavigationResult.Blocked, "/home")));
         }
 
-        // GREEN_ON_BASE(characterization): the base's Proceed re-issues nothing, so no Blocker can resurrect
-        // a declined attempt there and this reads as trivially true. It pins the release that the re-issue
-        // makes reachable: without it the second Proceed sends the router at the destination the first
-        // Blocker was answered "stay" about.
         [Test]
         public void Given_TwoBlockersHoldingOneAttempt_When_OneResets_Then_TheOthersProceedResumesNothing()
         {
@@ -493,8 +465,6 @@ namespace Velvet.Tests
                 Is.EqualTo((NavigationResult.Blocked, RouteBlockerStatus.Idle, "/home")));
         }
 
-        // GREEN_ON_BASE(characterization): Reset() releases the Blocker and abandons the blocked attempt on
-        // the base too. Wiring Proceed() puts a re-issue on the state that Reset() must not reach.
         [Test]
         public void Given_ABlockedPush_When_Reset_Then_TheBlockerIsReleasedAndNothingIsResumed()
         {
