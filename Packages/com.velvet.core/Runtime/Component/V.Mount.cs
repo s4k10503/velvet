@@ -34,9 +34,6 @@ namespace Velvet
             // so ring predictions are never computed from a non-root subtree.
             FiberFocusNavigator.EnsureAttached(target, ctx);
 #if UNITY_EDITOR
-            // Auto-attach to DevTools: opening the inspector shows the live tree
-            // with no manual Register call. Editor-only — the registry and this call are compiled out of
-            // player builds. Manual Register stays available for labelling interior sub-trees.
             DevTools.VelvetDevToolsRegistry.Register(rootFiber, ResolveDevToolsLabel(tree, target));
 #endif
             return new MountedTree(rootFiber);
@@ -90,8 +87,6 @@ namespace Velvet
             if (_disposed) return;
             _disposed = true;
 #if UNITY_EDITOR
-            // Detach from DevTools so an unmounted tree drops out of the inspector. Paired with the
-            // auto-register in V.Mount; editor-only, compiled out of player builds.
             DevTools.VelvetDevToolsRegistry.Unregister(Root);
 #endif
             // Unmounting a root is terminal — subsequent hook setters / async
