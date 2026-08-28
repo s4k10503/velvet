@@ -584,6 +584,8 @@ namespace Velvet.Tests
              "\"cwd\":\"%SCRATCH%\",\"tool_input\":{\"command\":\"git checkout -b probe\"}"),
             ("a commit scoped by an unexpanded pathspec",
              "\"cwd\":\"%SCRATCH%\",\"tool_input\":{\"command\":\"git commit -m probe -- $PATHS\"}"),
+            ("a commit message read from an unexpanded path",
+             "\"cwd\":\"%SCRATCH%\",\"tool_input\":{\"command\":\"git commit -F $MSG\"}"),
             ("an issue creation carrying no metadata",
              "\"cwd\":\"%SCRATCH%\",\"tool_input\":{\"command\":\"gh issue create --title probe\"}"),
             ("a background command naming a repository path relatively",

@@ -115,5 +115,32 @@ class ValueFlagMirrorTests(unittest.TestCase):
                          "gh prints a boolean shorthand SHORT_BOOLEAN_FLAGS does not carry")
 
 
+class ExemptionScopeTests(unittest.TestCase):
+    """Where an exemption is real, against gh's own tables.
+
+    An exemption granted on a subcommand that does not take the flag costs nothing today — gh rejects
+    the command before anything is posted — and it is an exemption nobody could have earned, which is
+    what a reader has to trust when they see one.
+    """
+
+    def test_Given_ghsOwnOptionTables_When_TheDryRunExemptionIsRead_Then_ItNamesTheSubcommandsThatTakeIt(self):
+        # Arrange — `pr new` is `pr create`'s alias and prints the same table, so it rides with it.
+        # `merge` is read here though the body guard does not claim it: the exemption table is what
+        # says where a flag exists, and that answer does not depend on who is asking.
+        taking = {("pr", subcommand) for subcommand in SUBCOMMANDS + ("merge",)
+                  if "--dry-run" in option_table(subcommand)[1]}
+        if ("pr", "create") in taking:
+            taking.add(("pr", "new"))
+
+        # Act — read as a value rather than reached for, so a tree without the table fails the
+        # comparison instead of raising out of the case, which separates nothing.
+        claimed = getattr(pr_body, "EXEMPT_WHERE", {}).get("--dry-run", set())
+
+        # Assert — the emptiness rides along, since an empty reading agrees with any claim in one
+        # direction and this exists to refuse exactly that.
+        self.assertEqual((sorted(claimed - taking), sorted(taking - claimed), bool(taking)),
+                         ([], [], True))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -55,6 +55,29 @@ class TargetTests(unittest.TestCase):
         self.assertEqual(targets, ["736"])
 
 
+    def test_Given_AMergesOwnHelp_When_TheTargetsAreRead_Then_ThereIsNone(self):
+        # Arrange — `--help` prints the option table and exits, so it merges nothing and posts
+        # nothing. Measured: a `grep` command holding the phrase was refused by three merge guards
+        # during a probe, over a command that never reaches the pull request.
+        command = "gh pr " + "merge --help"
+
+        # Act
+        targets = merge_target.merge_targets(command)
+
+        # Assert
+        self.assertEqual(targets, [])
+
+    def test_Given_AMergeBesideAHelp_When_TheTargetsAreRead_Then_TheRealOneIsStillNamed(self):
+        # Arrange — the control: the exemption is per invocation, and one command may hold both.
+        command = "gh pr " + "merge --help && gh pr " + "merge 736 --squash"
+
+        # Act
+        targets = merge_target.merge_targets(command)
+
+        # Assert
+        self.assertEqual(targets, ["736"])
+
+
 class RefsTests(unittest.TestCase):
     def setUp(self):
         self.workspace = Path(tempfile.mkdtemp(prefix="velvet-merge-target-"))
