@@ -823,6 +823,58 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AnEarlierBlockerUnregistersItself_When_ThePassContinues_Then_TheNextOneIsStillConsulted()
+        {
+            // Arrange — the pass walks a snapshot, so an entry removed mid-pass is still visited and the
+            // entries behind it do not shift under the walk. Three blockers, because with two the removal
+            // empties the list and the loop ends either way.
+            var manager = new RouteBlockerManager();
+            var secondSaw = false;
+            IDisposable first = null;
+            first = manager.Register(_ =>
+            {
+                first.Dispose();
+                return false;
+            }, new RouteBlockerState());
+            using var second = manager.Register(_ =>
+            {
+                secondSaw = true;
+                return true;
+            }, new RouteBlockerState());
+            using var third = manager.Register(_ => false, new RouteBlockerState());
+
+            // Act
+            var blocked = manager.CheckAsync(Attempt(), NoResume).GetAwaiter().GetResult();
+
+            // Assert — the decision rides along because a second that was consulted and a second that
+            // was skipped both leave every state Idle.
+            Assert.That((secondSaw, blocked), Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_AnAttemptSupersededDuringTheAwait_When_ABlockerWouldBlock_Then_NoStateIsFlipped()
+        {
+            // Arrange — the cancellation is read after the await rather than at the top of the loop
+            // body, so a token cancelled while the check was running is still seen. Hoisting the read
+            // is the ordinary refactor, and it leaves Blocked wired to an attempt the caller discards.
+            var manager = new RouteBlockerManager();
+            var state = new RouteBlockerState();
+            using var cts = new CancellationTokenSource();
+            using var registration = manager.Register(async (attempt, token) =>
+            {
+                cts.Cancel();
+                await UniTask.Yield();
+                return true;
+            }, state);
+
+            // Act
+            manager.CheckAsync(Attempt(), NoResume, cts.Token).GetAwaiter().GetResult();
+
+            // Assert
+            Assert.That(state.Status, Is.EqualTo(RouteBlockerStatus.Idle));
+        }
+
+        [Test]
         public void Given_AnAlreadySupersededAttempt_When_ABlockerWouldBlock_Then_NoStateIsFlipped()
         {
             // Arrange — the attempt's token is cancelled before the pass begins.
