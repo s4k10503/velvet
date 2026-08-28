@@ -817,13 +817,15 @@ namespace Velvet.Tests
             // Arrange — the walk is rooted, so a document under a root nobody added is scanned by nothing
             // and every drift guard reading this corpus passes over it in silence.
             var scanned = DocumentationCorpus.Files().ToList();
+            var listing = TrackedFiles();
 
             // Act
-            var unwalked = DocumentationCorpus.UnwalkedMarkdownRoots();
+            var unwalked = DocumentationCorpus.UnwalkedMarkdownRoots(listing);
 
             // Assert — the scanned count rides along because a walk that collapsed to nothing would leave
             // this reporting no unwalked root either.
-            Assert.That((scanned.Count > 20, string.Join(", ", unwalked)), Is.EqualTo((true, string.Empty)),
+            Assert.That((scanned.Count > 20, listing != null, string.Join(", ", unwalked)),
+                        Is.EqualTo((true, true, string.Empty)),
                 "markdown under a root the walk does not reach is checked by nothing; add the root to the "
                 + "walk, or leave it untracked if it is machine-local");
         }
@@ -841,13 +843,14 @@ namespace Velvet.Tests
 
             try
             {
-                // Act
-                var unwalked = DocumentationCorpus.UnwalkedMarkdownRoots();
+                var listing = TrackedFiles();
 
-                // Assert — the corpus size rides along, because a reading that answered nothing would name
-                // no root either.
-                Assert.That((DocumentationCorpus.TrackedMarkdown().Count > 20,
-                             string.Join(", ", unwalked)),
+                // Act
+                var unwalked = DocumentationCorpus.UnwalkedMarkdownRoots(listing);
+
+                // Assert — the listing arriving rides along, because a reading that answered nothing
+                // would name no root either.
+                Assert.That((listing != null && listing.Count > 20, string.Join(", ", unwalked)),
                             Is.EqualTo((true, string.Empty)));
             }
             finally

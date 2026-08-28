@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
@@ -47,24 +46,33 @@ namespace Velvet.Tests
         /// </para>
         /// <para>
         /// Nothing is lost by the narrowing. A documentation directory is tracked by the commit that adds
-        /// it, which is before CI and before review, so the guard still meets every case it is for on that
-        /// commit. The `.gitignore` reading it used to need goes with the filesystem walk: an ignored
-        /// directory is untracked by construction. `IgnoredRoots` stays for its other reader.
+        /// it, which is before CI and before review. The `.gitignore` reading it used to need goes with
+        /// the filesystem walk: an ignored directory is untracked by construction. `IgnoredRoots` stays
+        /// for its other reader.
+        /// </para>
+        /// <para>
+        /// The listing is handed in rather than read here, because reading it is what
+        /// `DocumentationDriftTests.TrackedFiles` already does — including the safe.directory argument a
+        /// checkout the process does not own needs, which is every checkout the Unity job runs in.
         /// </para>
         /// </remarks>
-        internal static IReadOnlyList<string> UnwalkedMarkdownRoots()
+        internal static IReadOnlyList<string> UnwalkedMarkdownRoots(IEnumerable<string> tracked)
         {
             var walked = new HashSet<string>(WalkedRoots(includeClaude: true), StringComparer.Ordinal);
             var found = new SortedSet<string>(StringComparer.Ordinal);
-            foreach (var tracked in TrackedMarkdown())
+            foreach (var path in tracked ?? Enumerable.Empty<string>())
             {
-                var cut = tracked.IndexOf('/');
+                if (!path.EndsWith(".md", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+                var cut = path.IndexOf('/');
                 if (cut <= 0)
                 {
                     // A document at the top level sits under no directory, so it names no unwalked root.
                     continue;
                 }
-                var root = tracked.Substring(0, cut);
+                var root = path.Substring(0, cut);
                 if (walked.Contains(root) || BaseUnwalkedDirectories.Contains(root))
                 {
                     continue;
@@ -73,43 +81,6 @@ namespace Velvet.Tests
             }
 
             return found.ToList();
-        }
-
-        /// <summary>Every markdown path git tracks, repo-relative and slash-separated.</summary>
-        /// <remarks>
-        /// A git that does not answer leaves the reading with nothing rather than with an empty
-        /// repository, and an empty list would make every caller pass for want of anything to compare —
-        /// so it is reported as the check failing, the way an unreadable workflow is next door.
-        /// </remarks>
-        internal static IReadOnlyList<string> TrackedMarkdown()
-        {
-            var start = new ProcessStartInfo("git")
-            {
-                WorkingDirectory = Path.GetFullPath("."),
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            };
-            start.ArgumentList.Add("ls-files");
-            start.ArgumentList.Add("-z");
-            start.ArgumentList.Add("--");
-            start.ArgumentList.Add("*.md");
-
-            using var process = Process.Start(start);
-            if (process == null)
-            {
-                throw new InvalidOperationException("git ls-files did not start, so no corpus could be read");
-            }
-            var output = process.StandardOutput.ReadToEnd();
-            process.WaitForExit();
-            if (process.ExitCode != 0)
-            {
-                throw new InvalidOperationException(
-                    $"git ls-files exited {process.ExitCode}, so no corpus could be read");
-            }
-
-            return output.Split('\0').Where(entry => entry.Length > 0).ToList();
         }
 
         // Unity's own template writes /[Ll]ibrary/, so a root is a character class rather than a name;
