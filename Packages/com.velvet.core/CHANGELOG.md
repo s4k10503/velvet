@@ -18,9 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   unchanged, so `end`, `caseSensitive`, a trailing slash and a query answer as before; with no router
   mounted to resolve through, the target is compared as written, as it was.
   One shape that was active is active elsewhere now: a query-only `to` such as `"?tab=1"` normalised
-  to `/`, so with `end` left false it was active on every page. It resolves to the current route's
-  path, which the comparison then reads with the query stripped, so it is active there and under it —
-  what an absolute `to` naming that path gives.
+  to `/`, so with `end` left false it lit up wherever the user was. It now resolves against the
+  current route and the comparison strips the query from what comes back, so it is active on that
+  route's path and under it — what an absolute `to` naming that path gives. Where clicking it takes
+  the user is unchanged.
 
 ## [2.1.3] - 2026-08-27
 

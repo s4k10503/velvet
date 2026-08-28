@@ -2365,8 +2365,8 @@ namespace Velvet
         /// Applies <paramref name="activeClass"/> when the link is active.
         /// </summary>
         /// <param name="to">
-        /// Navigation target path (absolute or relative). A relative target is resolved against the enclosing
-        /// route — the same resolution the click performs — before the active comparison.
+        /// Navigation target path (absolute or relative). A relative target takes the same resolution for the
+        /// active comparison that it takes to navigate, against the enclosing route.
         /// </param>
         /// <param name="activeClass">CSS-like class string appended when the link is active.</param>
         /// <param name="text">Link label text.</param>
