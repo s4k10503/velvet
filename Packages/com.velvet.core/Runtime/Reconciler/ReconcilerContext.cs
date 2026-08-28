@@ -1573,7 +1573,7 @@ namespace Velvet
         // is the store's TState snapshot, boxed). Every UseStore read of the same store within
         // one wave returns the selector applied to this pinned snapshot rather than the live
         // store.Current, so an ancestor on the immediate tier and a descendant on the delayed tier
-        // (separated by up to DeferredDelayMs) observe the SAME value even if the store mutates
+        // (separated by up to DelayedTierDelayMs) observe the SAME value even if the store mutates
         // between their tier drains — giving every external-store read in one wave a consistent snapshot.
         // Pinning is active only inside a batch-scheduler drain (_storeSnapshotWaveActive). A
         // "wave" spans the immediate drain and the delayed drain that follows it in the same frame: the

@@ -418,6 +418,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   where a bare struct holds a record class: one of equal content bails where it used to re-render, the
   member walk having read that record by its instance.
 
+### Removed
+
+- `FiberUpdatePriority.Deferred`. Source naming it stops compiling; `FiberUpdatePriority.Transition`
+  is what to write instead — the same delayed tier, the same fixed flush delay and the same
+  time-sliced frame budget, plus the starvation promotion and `isPending` bookkeeping `Deferred`
+  never took part in. Nothing in the framework ever scheduled it: every lane Velvet enrols is
+  `Urgent`, `Normal` or `Transition`, and `UseDeferredValue` — whose name suggests otherwise —
+  derives through `Transition`. `Transition` is now `2` where it was `3`, so a value kept as an
+  `int` reads differently; no public member takes or returns the enum, so nothing else changes
+  shape.
+
 ### Fixed
 
 - Registering a portal target id again with a different element now moves the portals already mounted
