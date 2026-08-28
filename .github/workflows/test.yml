@@ -174,13 +174,13 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - run: python3 scripts/release/test_release_notes.py
+      - run: python3 scripts/test_quality/run_suite.py scripts/release/test_release_notes.py
 
-      - run: python3 scripts/release/test_supported_versions_check.py
+      - run: python3 scripts/test_quality/run_suite.py scripts/release/test_supported_versions_check.py
 
       - run: python3 scripts/release/supported_versions_check.py
 
-      - run: python3 scripts/release/test_pin_example_check.py
+      - run: python3 scripts/test_quality/run_suite.py scripts/release/test_pin_example_check.py
 
       - run: python3 scripts/release/pin_example_check.py
 
@@ -213,7 +213,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - run: python3 scripts/release/test_published_check.py
+      - run: python3 scripts/test_quality/run_suite.py scripts/release/test_published_check.py
 
       - env:
           BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
@@ -221,7 +221,7 @@ jobs:
           python3 scripts/release/published_check.py --result HEAD --timeout 30 \
             ${BASE:+--base "$BASE"}
 
-      - run: python3 scripts/release/test_breaking_in_flight_check.py
+      - run: python3 scripts/test_quality/run_suite.py scripts/release/test_breaking_in_flight_check.py
 
       # Every other reading here is of one tree, so a branch carrying a breaking entry is invisible
       # to all of them — which is how v3.0.0 shipped twelve of the thirteen written for it. Skipped
@@ -355,17 +355,17 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - run: python3 scripts/test_quality/test_mutation_check.py
+      - run: python3 scripts/test_quality/run_suite.py scripts/test_quality/test_mutation_check.py
 
-      - run: python3 scripts/test_quality/test_neuter_check.py
+      - run: python3 scripts/test_quality/run_suite.py scripts/test_quality/test_neuter_check.py
 
       - run: python3 scripts/test_quality/neuter_check.py --audit
 
-      - run: python3 scripts/test_quality/test_base_red_check.py
+      - run: python3 scripts/test_quality/run_suite.py scripts/test_quality/test_base_red_check.py
 
-      - run: python3 scripts/test_quality/test_assert_results_from_this_tree.py
+      - run: python3 scripts/test_quality/run_suite.py scripts/test_quality/test_assert_results_from_this_tree.py
 
-      - run: python3 scripts/test_quality/test_assume_gate_check.py
+      - run: python3 scripts/test_quality/run_suite.py scripts/test_quality/test_assume_gate_check.py
 
       - run: python3 scripts/test_quality/assume_gate_check.py
 
