@@ -307,6 +307,7 @@ class ThisRepositorysChangelog(unittest.TestCase):
         cls.versions = [version for version, _ in cls.headings
                         if version not in ("Unreleased", "Unreleased — breaking")]
 
+    # GREEN_ON_BASE(characterization): no `*` or `+` item is in the file today, and this is what keeps it that way.
     def test_Given_the_shipped_changelog_When_read_Then_every_list_item_opens_with_a_dash(self):
         # Arrange — four readers in scripts/release/ each decide where an entry ends, and they
         # disagree about what a list item is: a `*`-bulleted one reads as zero entries to the entry
@@ -323,6 +324,7 @@ class ThisRepositorysChangelog(unittest.TestCase):
         self.assertEqual(offending, [],
                          "list items open with `- `; a `*` or `+` bullet reads as no entry at all")
 
+    # GREEN_ON_BASE(characterization): no fenced block sits in a section body today, and this is what keeps it that way.
     def test_Given_the_shipped_changelog_When_read_Then_no_fence_hides_a_heading(self):
         # Arrange — `extract_version_section` and `split_highlights` both end a section at an
         # unindented heading, and neither tracks fences, so a `###` inside a code block truncates the
