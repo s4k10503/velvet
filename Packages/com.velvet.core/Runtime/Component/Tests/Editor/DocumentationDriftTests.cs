@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Text;
 using System.Text.RegularExpressions;
 using NUnit.Framework;
 
@@ -66,8 +67,8 @@ namespace Velvet.Tests
             "UnityUIEFilter", "FocusIn", "KeyDown", "PointerDown", "Move", "Leave", "Up", "Wheel", "Enter",
             "RoslynAdditionalFileImporter", "DOTNET_ROOT", "StrykerOutput", "MSB4006", "USS001", "USS011",
             "VEL", "VEL500", "VEL501", "VEL502", "ProjectReference", "VEL503",
-            "Save", "ForTest",
-            "NullReferenceException", "BringToFront", "SendToBack", "SetCursor", "AllocatingGCMemory",
+            "ForTest",
+            "AllocatingGCMemory",
             "UpdateForRepaint", "Alloc", "StandaloneOSX", "MacOS", "InitTestScene", "Unity_lic", "UE",
             "VELVET_STORY_CAPTURE_DIR",
             "Unreleased", "Highlights", "Added", "Changed", "Breaking", "YYYY", "MM", "DD"
@@ -670,6 +671,114 @@ namespace Velvet.Tests
         private static List<string> ScanBacktickSpans(Func<string, string, IEnumerable<string>> extract) =>
             BacktickSpans().SelectMany(span => extract(span.Path, span.Reference)).Distinct().ToList();
 
+        // GREEN_ON_BASE(characterization): these read `WithoutShippedSections` directly, and it is
+        // declared in this same file, which the base lane carries with the cases. What the wiring
+        // is pinned by is `Given_ProjectMarkdown_When_ScannedForBacktickedIdentifiers_...`: taking
+        // the call out of `BacktickSpans` and re-running the fixture reddens that one, measured.
+        [Test]
+        public void Given_ADatedChangelogSection_When_TheProseIsRead_Then_ItIsNotThere()
+        {
+            // Arrange — a released note names what it shipped, and a later release renaming the type does
+            // not make the older note wrong. Measured on the branch removing `UniTask`: the v3.0.0 note
+            // cites it twice, correctly, and the guard reported both.
+            const string changelog = "# Changelog\n\n## [Unreleased]\n\n- `StillHere` is coming.\n\n"
+                                     + "## [3.0.0] - 2026-08-27\n\n- `GoneNow` shipped here.\n";
+
+            // Act
+            var kept = WithoutShippedSections("Packages/com.velvet.core/CHANGELOG.md", changelog);
+
+            // Assert — the open section riding along, because a reading that dropped everything would
+            // satisfy the absence too.
+            Assert.That((kept.Contains("StillHere"), kept.Contains("GoneNow")), Is.EqualTo((true, false)));
+        }
+
+        // GREEN_ON_BASE(characterization): these read `WithoutShippedSections` directly, and it is
+        // declared in this same file, which the base lane carries with the cases. What the wiring
+        // is pinned by is `Given_ProjectMarkdown_When_ScannedForBacktickedIdentifiers_...`: taking
+        // the call out of `BacktickSpans` and re-running the fixture reddens that one, measured.
+        [Test]
+        public void Given_AHighlightsBlockInsideADatedSection_When_TheProseIsRead_Then_ItGoesWithIt()
+        {
+            // Arrange — the same question one level in: the range runs to the next version heading, so a
+            // block inside a dated section is inside the range.
+            const string changelog = "# Changelog\n\n## [3.0.0] - 2026-08-27\n\n### Highlights\n\n"
+                                     + "- `GoneNow` led the release.\n\n## [2.0.0] - 2026-08-02\n\n"
+                                     + "- `AlsoGone` shipped earlier.\n";
+
+            // Act
+            var kept = WithoutShippedSections("Packages/com.velvet.core/CHANGELOG.md", changelog);
+
+            // Assert
+            Assert.That((kept.Contains("GoneNow"), kept.Contains("AlsoGone")), Is.EqualTo((false, false)));
+        }
+
+        // GREEN_ON_BASE(characterization): these read `WithoutShippedSections` directly, and it is
+        // declared in this same file, which the base lane carries with the cases. What the wiring
+        // is pinned by is `Given_ProjectMarkdown_When_ScannedForBacktickedIdentifiers_...`: taking
+        // the call out of `BacktickSpans` and re-running the fixture reddens that one, measured.
+        [Test]
+        public void Given_ADatedHeadingInAnotherDocument_When_TheProseIsRead_Then_ItIsLeftAlone()
+        {
+            // Arrange — only the CHANGELOG carries this convention, and a guide that happens to spell a
+            // heading the same way is describing the tree that exists.
+            const string guide = "## [3.0.0] - 2026-08-27\n\n- `StillHere` is documented here.\n";
+
+            // Act
+            var kept = WithoutShippedSections("Packages/com.velvet.core/Documentation~/guide.md", guide);
+
+            // Assert
+            Assert.That(kept.Contains("StillHere"), Is.True);
+        }
+
+        // A CHANGELOG heading a date closes. `## [Unreleased]` and `## [Unreleased — breaking]` carry none,
+        // which is the whole of the difference this reads.
+        private static readonly Regex ShippedHeadingPattern =
+            new(@"^## \[\d+\.\d+\.\d+\] - \d{4}-\d{2}-\d{2}\s*$", RegexOptions.Multiline);
+
+        private static readonly Regex VersionHeadingPattern =
+            new(@"^## \[", RegexOptions.Multiline);
+
+        /// <summary>The text with every dated CHANGELOG section taken out.</summary>
+        /// <remarks>
+        /// A dated section describes a tree that shipped, and its names resolved then. Read as a claim
+        /// about the tree that exists, every name a published release note cites is pinned in the source
+        /// forever, and removing one fails the guard — measured on the branch that removes `UniTask`,
+        /// whose v3.0.0 note names it twice and correctly.
+        /// <para>
+        /// Neither repair works: the released section cannot be edited, `changelog_into_closed_version.py`
+        /// refuses that write and the note is published under its tag; and an allowlist entry is one name
+        /// for one removal, which turns the allowlist into a list of what the repository has deleted.
+        /// </para>
+        /// <para>
+        /// The `Unreleased` sections keep their reading, which is the one the guard exists for: they
+        /// describe the tree being built, and a dangling name in one is drift. A `### Highlights` block
+        /// inside a dated section goes with the section, since the range runs to the next version heading.
+        /// </para>
+        /// </remarks>
+        private static string WithoutShippedSections(string path, string text)
+        {
+            if (!string.Equals(Path.GetFileName(path), "CHANGELOG.md", StringComparison.Ordinal))
+            {
+                return text;
+            }
+
+            var kept = new StringBuilder();
+            var cursor = 0;
+            foreach (Match heading in ShippedHeadingPattern.Matches(text))
+            {
+                if (heading.Index < cursor)
+                {
+                    continue;
+                }
+                kept.Append(text, cursor, heading.Index - cursor);
+                var next = VersionHeadingPattern.Match(text, heading.Index + heading.Length);
+                cursor = next.Success ? next.Index : text.Length;
+            }
+
+            kept.Append(text, cursor, text.Length - cursor);
+            return kept.ToString();
+        }
+
         // The walk itself, separate from reporting over it, so a caller that wants the spans rather than a
         // report reads the same one. A path on the reader's own machine is skipped outright: it names
         // nothing in the repo, so no check that reads this has anything to say about it.
@@ -677,7 +786,8 @@ namespace Velvet.Tests
         {
             foreach (var path in DocumentationCorpus.Files())
             {
-                var prose = FencedBlockPattern.Replace(File.ReadAllText(path), "\n");
+                var prose = FencedBlockPattern.Replace(
+                    WithoutShippedSections(path, File.ReadAllText(path)), "\n");
                 foreach (Match span in BacktickSpanPattern.Matches(prose))
                 {
                     var reference = string.Join(" ", span.Groups[1].Value.Split((char[])null!,
