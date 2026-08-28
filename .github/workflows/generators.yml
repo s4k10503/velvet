@@ -146,6 +146,11 @@ jobs:
       - name: Unsettled pull request guard tests
         run: python3 scripts/hooks/test_unsettled_pr.py
 
+      # A guard routed around by one character is worse than no guard: the refusal that does not fire
+      # reads identically to a command nobody needed to refuse.
+      - name: Background path guard tests
+        run: python3 scripts/hooks/test_background_relative_path.py
+
       # Every guard asking "is this command a git <subcommand>" reads one table, so a word it does not
       # know hides the call from all of them, unrefused and unreported.
       - name: Shell command reading tests
