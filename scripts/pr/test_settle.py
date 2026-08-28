@@ -525,8 +525,10 @@ class RetirementTests(unittest.TestCase):
         # three leaves whoever reads it to work out the rest.
         said = watch_until().output
 
-        # Act / Assert
-        self.assertEqual(("nothing stamped" in said,
+        # Act / Assert — "since anything last stamped" rather than "nothing stamped": the file is
+        # normally there and normally old, and a reader who has been editing all session reads the
+        # second as the stamping being broken when what happened is that they stopped.
+        self.assertEqual(("since anything last stamped" in said,
                           "blocks a Stop again" in said,
                           "python3 scripts/pr/settle.py watch" in said), (True, True, True))
 

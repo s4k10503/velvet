@@ -521,8 +521,9 @@ def retire(lock, unasked):
     went on to other work would hold it while nothing was watching.
     """
     lock.close()
-    print(f"Retiring after {int(unasked)}s in which nothing stamped {watcher_state.ASKED}, which is "
-          f"how a guard records reading the watcher's state.\n"
+    print(f"Retiring {int(unasked)}s since anything last stamped {watcher_state.ASKED}, which is "
+          f"how a guard records reading the watcher's state — floored by this watcher's own start, "
+          f"so a first stamp that never came reads the same as one that stopped.\n"
           f"\nFrom here a pending check blocks a Stop again, and an edit is refused until something "
           f"is watching. Both are what a live watcher was forgiving. Start another when that is what "
           f"you want:\n"
