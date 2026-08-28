@@ -35,7 +35,8 @@ HOOK_DIRECTORY = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(HOOK_DIRECTORY / "lib"))
 sys.path.insert(0, str(HOOK_DIRECTORY.parent.parent / "scripts" / "pr"))
 
-from shell_commands import command_segments, leading_program, mask_shell_literals  # noqa: E402
+from shell_commands import (  # noqa: E402
+    ENV_ASSIGNMENT, LEADING_WORDS, command_segments, leading_program, mask_shell_literals)
 from shell_commands import tokens_of, without_redirections  # noqa: E402
 from watcher_state import HEARTBEAT, LOCK, READY_STATE, alive, unreadable_beat  # noqa: E402
 
@@ -127,15 +128,23 @@ def segment_tokens(segment):
 
 
 def command_word(tokens):
-    """Where the program a segment runs sits, past a loop head and what `leading_program` skips.
+    """Where the program a segment runs sits, past what `leading_program` skips."""
+    return leading_program(tokens)
 
-    `while` and `until` are not in `shell_commands.LEADING_WORDS`, so a command word behind one reads
-    as the keyword.
+
+def loop_head(tokens):
+    """Where a loop keyword sits in this segment, or -1.
+
+    Read off the raw tokens rather than off `leading_program`, which skips a loop head along with
+    every other word that may precede a command: this guard's subject is the keyword itself, and a
+    reading that walks past it cannot see the repetition it exists to refuse.
     """
-    index = leading_program(tokens)
-    if index < len(tokens) and tokens[index] in LOOP_HEADS:
-        index += 1 + leading_program(tokens[index + 1:])
-    return index
+    for index, token in enumerate(tokens):
+        if token in LOOP_HEADS:
+            return index
+        if not (ENV_ASSIGNMENT.match(token) or token in LEADING_WORDS):
+            return -1
+    return -1
 
 
 def handed_to_a_shell(text):
@@ -180,13 +189,14 @@ def repeats(command):
         for segment in command_segments(text):
             tokens = segment_tokens(segment)
             head = leading_program(tokens)
-            if head >= len(tokens):
-                continue
-            if tokens[head] in LOOP_HEADS:
+            looped = loop_head(tokens)
+            if looped >= 0:
                 word = command_word(tokens)
                 if word >= len(tokens) or tokens[word] != WALKS_INPUT:
                     return True
-            elif tokens[head] == LIST_LOOP and LIST_WORD not in tokens[head + 1:head + 3]:
+            if head >= len(tokens):
+                continue
+            if tokens[head] == LIST_LOOP and LIST_WORD not in tokens[head + 1:head + 3]:
                 return True
             elif os.path.basename(tokens[head]) == RE_RUNS:
                 return True

@@ -146,6 +146,11 @@ jobs:
       - name: Unsettled pull request guard tests
         run: python3 scripts/hooks/test_unsettled_pr.py
 
+      # Every guard asking "is this command a git <subcommand>" reads one table, so a word it does not
+      # know hides the call from all of them, unrefused and unreported.
+      - name: Shell command reading tests
+        run: python3 scripts/hooks/test_shell_commands.py
+
       # The two unexpanded-operand readings, which were one list under a sentence written for one of
       # them.
       - name: Fast-checks commit guard tests
