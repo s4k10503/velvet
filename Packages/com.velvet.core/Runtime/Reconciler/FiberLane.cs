@@ -12,7 +12,7 @@ namespace Velvet
         // interrupted), initial mount, and nested host reconciles.
         internal const double FrameBudgetMs = 0;
 
-        // Frame budget (milliseconds) for time-sliced reconciliation on the Transition / Deferred lanes. Only
+        // Frame budget (milliseconds) for time-sliced reconciliation on the Transition lane. Only
         // the fast path (a flat list of host leaves in ReconcileIndexed / ReconcileKeyed) honors a
         // non-zero budget and can pause/resume; a tree containing components / Providers / Fragments / Suspense
         // / Memo takes the general path, which is a single synchronous live-context walk (yielding mid-walk
@@ -33,18 +33,18 @@ namespace Velvet
         }
 
         // Whether priority flushes on the next-frame (immediate) tier rather than the
-        // delayed tier. Urgent and Normal flush on the immediate tier; Deferred and Transition are delayed by
-        // DeferredDelayMs. Single source of truth for tier membership, shared by the
+        // delayed tier. Urgent and Normal flush on the immediate tier; Transition is delayed by
+        // DelayedTierDelayMs. Single source of truth for tier membership, shared by the
         // already-dirty escalation in ScheduleRerender and the routing in ScheduleFlush.
         internal static bool SchedulesOnImmediateTier(FiberUpdatePriority priority)
             => priority is FiberUpdatePriority.Urgent or FiberUpdatePriority.Normal;
 
-        // Frame budget for a flush of priority. Transition and Deferred slice against timeSlicedBudgetMs so a
+        // Frame budget for a flush of priority. Transition slices against timeSlicedBudgetMs so a
         // large flat-list diff can pause/resume across frames; Urgent and Normal run synchronously
         // (user-input-driven updates are never interrupted). Only the reconciler fast path acts on
         // a non-zero budget — see TimeSlicedBudgetMs.
         internal static double BudgetForLane(FiberUpdatePriority priority, double timeSlicedBudgetMs)
-            => priority is FiberUpdatePriority.Transition or FiberUpdatePriority.Deferred
+            => priority is FiberUpdatePriority.Transition
                 ? timeSlicedBudgetMs
                 : FrameBudgetMs;
     }
