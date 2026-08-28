@@ -14,10 +14,6 @@ namespace Velvet.Editor.DevTools
     ///
     /// Usage:
     ///   Window > Velvet > DevTools Inspector
-    ///
-    /// Auto-attaches: every <c>V.Mount</c> registers its root, so the running app's tree appears here with
-    /// no setup. Call <c>VelvetDevToolsRegistry.Register(fiber, "Label")</c> manually only to also surface a
-    /// specific interior sub-tree under a custom label.
     /// </summary>
     public sealed class VelvetDevToolsWindow : EditorWindow
     {
