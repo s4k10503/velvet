@@ -456,11 +456,12 @@ namespace Velvet.Tests
             }));
         }
 
+        // GREEN_ON_BASE(characterization): the control for the refusal above, and the shape it is
+        // asking the author to write instead. Green on both sides is the whole point of it.
         [Test]
         public void Given_ASplatRouteWithNoChildren_When_Constructing_Then_ItIsAccepted()
         {
-            // Act + Assert — the control: a splat leaf is the shape the refusal must leave alone, and
-            // it is what the branch above is asking the author to write instead.
+            // Act + Assert
             Assert.DoesNotThrow(() => new RouteTree(new[] { Route("files/*") }));
         }
 
