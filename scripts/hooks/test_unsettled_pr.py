@@ -57,12 +57,16 @@ class ZeroChecks(unittest.TestCase):
         # Act / Assert
         self.assertIn("no check ever ran for its head", self.judge_with("CLEAN"))
 
+    # GREEN_ON_BASE(characterization): the three states that explain an absent list are what this
+    # change had to leave alone while removing the fourth, and nothing else says they still do.
     def test_Given_AStateThatExplainsAnAbsentList_When_Judged_Then_NothingIsSaid(self):
         # Arrange — BLOCKED is one of the three; a list absent for a reason it names is not a run
         # that did not start.
         # Act / Assert
         self.assertIsNone(self.judge_with("BLOCKED"))
 
+    # GREEN_ON_BASE(characterization): DIRTY is the state the whole reading was built for, and the
+    # branch that names it is the one being rewritten.
     def test_Given_AConflictingPullRequest_When_Judged_Then_ItIsStillNamed(self):
         # Act / Assert
         self.assertIn("DIRTY", self.judge_with("DIRTY"))
