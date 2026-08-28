@@ -69,7 +69,8 @@ namespace Velvet
         private readonly List<string> _keys = new();
         private readonly Dictionary<string, List<string>> _values = new(StringComparer.Ordinal);
 
-        public static readonly SearchParams Empty = new();
+        /// <summary>A new empty instance on each read, so <see cref="Append"/> on one reaches no other reader.</summary>
+        public static SearchParams Empty => new();
 
         /// <inheritdoc />
         public int Count => _keys.Count;
