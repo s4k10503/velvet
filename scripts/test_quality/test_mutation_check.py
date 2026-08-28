@@ -95,14 +95,16 @@ def code_parens(fragment):
     return seen.count("(") - seen.count(")")
 
 
-def survivor(path, line, verdict=None):
-    mutant = mutation_check.Mutant(path, line, 0, "a", "b", "equality")
+def survivor(path, line, verdict=None, operator="equality"):
+    mutant = mutation_check.Mutant(path, line, 0, "a", "b", operator)
     mutant.verdict = verdict or mutation_check.SURVIVED
     return mutant
 
 
-def declaration(line, category="equivalent", reason="a reason of four words", written_here=True):
-    return mutation_check.Declaration(category, reason, line, written_here=written_here)
+def declaration(line, category="equivalent", reason="a reason of four words", written_here=True,
+                operator=None):
+    return mutation_check.Declaration(category, reason, line, written_here=written_here,
+                                      operator=operator)
 
 
 class CodeMaskTests(unittest.TestCase):
@@ -1400,6 +1402,70 @@ class VerdictTests(unittest.TestCase):
         self.assertEqual(stale, [])
 
 
+class NamedDeclarationTests(unittest.TestCase):
+    """A declaration that names the operator it answers for, and what it stops answering for.
+
+    A line carries more than one mutant, and one keyed by line alone answers for every one. Where
+    only one of them survives today the answer is unambiguous now and widens the moment a sibling
+    starts surviving — and the staleness guard cannot report that, because it asks whether the line
+    still produces a survivor and the one already answered for keeps it non-stale.
+    """
+
+    def decide(self, mutants, declared, deferred=frozenset()):
+        unanswered, stale = mutation_check.answered(mutants, set(deferred), declared)
+        return ([complaint for _, complaint in unanswered],
+                [held.line for _, _, held in stale])
+
+    def test_Given_ADeclarationNamingAnotherOperator_When_ASurvivorLands_Then_ItIsUnanswered(self):
+        # Arrange — the shape the naming exists for: the removal is answered, and the boundary flip
+        # beside it starts surviving.
+        mutants = [survivor(Path("probe.cs"), 12, operator="boundary")]
+        declared = {(Path("probe.cs"), 12): declaration(12, operator="line removed")}
+
+        # Act
+        unanswered, _ = self.decide(mutants, declared)
+
+        # Assert
+        self.assertEqual(unanswered,
+                         ["the declaration above answers for 'line removed', not for this"])
+
+    def test_Given_ADeclarationNamingThisOperator_When_ASurvivorLands_Then_ItIsAnswered(self):
+        # Arrange — the control, without which a reading that refused every named declaration would
+        # satisfy the case above.
+        mutants = [survivor(Path("probe.cs"), 12, operator="boundary")]
+        declared = {(Path("probe.cs"), 12): declaration(12, operator="boundary")}
+
+        # Act
+        unanswered, stale = self.decide(mutants, declared)
+
+        # Assert
+        self.assertEqual((unanswered, stale), ([], []))
+
+    def test_Given_ADeclarationNamingNoOperator_When_ASurvivorLands_Then_ItStillAnswers(self):
+        # Arrange — every declaration written before this reads the line whole, and none of them
+        # changes meaning.
+        mutants = [survivor(Path("probe.cs"), 12, operator="boundary")]
+        declared = {(Path("probe.cs"), 12): declaration(12)}
+
+        # Act
+        unanswered, stale = self.decide(mutants, declared)
+
+        # Assert
+        self.assertEqual((unanswered, stale), ([], []))
+
+    def test_Given_ANamedDeclarationWhoseOwnMutantDied_When_ASiblingSurvives_Then_ItIsStale(self):
+        # Arrange — the same widening read from the other side: a sibling still surviving would keep
+        # a stale named declaration from being reported if staleness read the line whole.
+        mutants = [survivor(Path("probe.cs"), 12, operator="boundary")]
+        declared = {(Path("probe.cs"), 12): declaration(12, operator="line removed")}
+
+        # Act
+        _, stale = self.decide(mutants, declared)
+
+        # Assert
+        self.assertEqual(stale, [12])
+
+
 class DeclarationFormatTests(unittest.TestCase):
     """What the guide shows and what the tree holds, against what the script will actually accept.
 
@@ -1409,7 +1475,8 @@ class DeclarationFormatTests(unittest.TestCase):
 
     def test_Given_TheDeclarationTheGuideShows_When_TheScriptsOwnPatternReadsIt_Then_ItIsAccepted(self):
         # Arrange
-        shown = [mutation_check.Declaration(match.group(1), match.group(2).strip(), 0)
+        shown = [mutation_check.Declaration(match.group(1), match.group(3).strip(), 0,
+                                            operator=(match.group(2) or "").strip() or None)
                  for match in mutation_check.DECLARATION.finditer(GUIDE.read_text())]
 
         # Act

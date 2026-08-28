@@ -153,7 +153,21 @@ surviving and needs the same answer: an `Assume` that stopped holding measured n
 is read the three ways the base-red one below is: one over a statement whose mutants all died is stale
 and fails, one whose category or reason the script refuses fails, and one the branch did not itself
 write answers for the base's change rather than for this one — restate it. It answers for the statement
-rather than the line, because a condition broken across two lines carries mutants on both. Only a
+rather than the line, because a condition broken across two lines carries mutants on both.
+
+A statement carries more than one mutant — `if (depth > cap) Reset();` has a boundary flip and a
+void-call removal — and the form above answers for every one of them. Where only one survives today
+that is unambiguous now and widens the moment a sibling starts surviving, with nothing to report it:
+staleness asks whether the statement still produces a survivor, and the one already answered for
+keeps it non-stale. Name the operator to answer for one:
+
+```csharp
+// MUTANT_SURVIVES(unreachable, line removed): nothing pairs the depth cap with a transition.
+```
+
+A named declaration answers for that operator alone, and is stale when that operator's mutant stops
+surviving whatever its siblings do. The unnamed form is unchanged and still reads the statement
+whole, which is what a statement carrying one mutant wants. Only a
 whole-suite run over the diff reads any: `--files`, `--filter` and `--assemblies` each ask a narrower
 question, and under one nearly everything survives. `--platform` is not one of those — it runs a whole
 suite, just a different one — so it reads declarations and writes a receipt, and the platform is part
