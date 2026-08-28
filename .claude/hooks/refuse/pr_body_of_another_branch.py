@@ -131,7 +131,8 @@ def judge_inline(text, command):
             command,
             "the body is assembled by the shell, so the description this\n"
             "can read is not the one that will be posted.\n\n"
-            "Write it to a file in a step of its own and pass `--body-file <path>`.")
+            "Write it to a file in a step of its own, inside the worktree it describes, and pass\n"
+            "`--body-file <path>`.")
     return refuse_command(command, NO_ANSWER)
 
 
