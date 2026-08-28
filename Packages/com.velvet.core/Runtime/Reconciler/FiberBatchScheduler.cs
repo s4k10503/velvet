@@ -8,11 +8,11 @@ namespace Velvet
     // single frame-boundary flush. A single event handler that calls
     // setState on N different fibers commits in one reconcile pass with no intermediate render between
     // the updates, instead of scheduling N independent IVisualElementScheduler callbacks.
-    // Two tiers exist because the Deferred / Transition lanes intentionally defer their flush by
-    // DeferredDelayMs while Normal / Urgent flush on the next frame. Each tier registers exactly
+    // Two tiers exist because the Transition lane intentionally defers its flush by
+    // DelayedTierDelayMs while Normal / Urgent flush on the next frame. Each tier registers exactly
     // one schedule.Execute callback per pending batch (guarded by a flag) and drains its whole
     // set in one pass. The per-fiber lane queue is still popped one lane per FiberWorkLoop.FlushState
-    // call inside the drain, so lane priority ordering, starvation promotion, and the Deferred delay are
+    // call inside the drain, so lane priority ordering, starvation promotion, and the delayed-tier delay are
     // preserved — only the scheduler-callback count collapses to one per tier.
     internal sealed class FiberBatchScheduler
     {
@@ -92,7 +92,7 @@ namespace Velvet
         // Count of fibers awaiting the next-frame (Normal / Urgent) batch drain.
         internal int ImmediatePendingCount => _immediateOrder.Count;
 
-        // Count of fibers awaiting the delayed (Deferred / Transition) batch drain.
+        // Count of fibers awaiting the delayed (Transition) batch drain.
         internal int DelayedPendingCount => _delayedOrder.Count;
 
         // Reused per drain so a fiber re-dirtying itself during flush (re-enqueue) does not mutate the
@@ -148,7 +148,7 @@ namespace Velvet
         }
 
         // Enqueues fiber for a batched flush deferred by delayMs
-        // (Deferred / Transition priority) and registers the single shared delayed drain callback if not
+        // (Transition priority) and registers the single shared delayed drain callback if not
         // already pending.
         // Intentional: this is fixed-delay deferral — each scheduled delayed drain fires
         // delayMs after it was scheduled. A fiber that re-defers itself from inside a
@@ -189,14 +189,14 @@ namespace Velvet
                     // frame callback cannot reach an error boundary and would only re-arm next frame,
                     // burning the full cap every frame forever — so the runaway update is DROPPED
                     // instead and the UI keeps the last committed state. Only the IMMEDIATE-tier
-                    // lanes are dropped: a fiber can be queued this deep with an unrelated
-                    // Transition/Deferred lane still pending (the
-                    // runaway's commits may write bystanders each pass), and wiping that lane would
-                    // strand its delayed-tier work (a StartTransition left isPending forever). A
-                    // Transition lane that starvation-promoted to Normal DURING the runaway (the cap
-                    // exceeds the starvation threshold) is dropped with it — acceptable: state slots are
-                    // written eagerly, so the last committed render already showed the transition's
-                    // values, and the pending-flag sweep below spares an async action still in flight.
+                    // lanes are dropped: a fiber can be queued this deep with an unrelated Transition
+                    // lane still pending (the runaway's commits may write bystanders each pass), and
+                    // wiping that lane would strand its delayed-tier work (a StartTransition left
+                    // isPending forever). A Transition lane that starvation-promoted to Normal DURING
+                    // the runaway (the cap exceeds the starvation threshold) is dropped with it —
+                    // acceptable: state slots are written eagerly, so the last committed render already
+                    // showed the transition's values, and the pending-flag sweep below spares an async
+                    // action still in flight.
                     FiberLogger.LogError("Scheduler",
                         "Maximum update depth exceeded. A component repeatedly schedules state"
                         + " updates from its commit phase (a callback ref or an effect writing a"
@@ -223,7 +223,7 @@ namespace Velvet
                             dropped.SettleTransitionPending();
                         }
                         // else: a delayed-tier lane survives — the fiber stays dirty and enrolled on
-                        // that tier, so its pending Transition/Deferred work still commits there.
+                        // that tier, so its pending Transition work still commits there.
                     }
                     _drainBuffer.Clear();
                     break;

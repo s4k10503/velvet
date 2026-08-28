@@ -144,7 +144,6 @@
 [Velvet] field Velvet.DragMovement.None: Velvet.DragMovement
 [Velvet] field Velvet.DragMovement.Translate: Velvet.DragMovement
 [Velvet] field Velvet.FiberElementProps.Empty: Velvet.FiberElementProps
-[Velvet] field Velvet.FiberUpdatePriority.Deferred: Velvet.FiberUpdatePriority
 [Velvet] field Velvet.FiberUpdatePriority.Normal: Velvet.FiberUpdatePriority
 [Velvet] field Velvet.FiberUpdatePriority.Transition: Velvet.FiberUpdatePriority
 [Velvet] field Velvet.FiberUpdatePriority.Urgent: Velvet.FiberUpdatePriority
