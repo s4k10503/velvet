@@ -2380,14 +2380,11 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Declarative redirect element. Navigates to <paramref name="to"/> via the active
-        /// <see cref="Router"/>, then renders nothing. Use it for conditional redirects such as
-        /// <c>return loggedIn ? V.Outlet() : V.Navigate("/login")</c>.
+        /// No element participates in layout while the active <see cref="Router"/> handles the target.
         /// </summary>
-        /// <param name="to">Navigation target path (absolute or relative).</param>
+        /// <remarks>Redirects on mount and again when <paramref name="to"/> or <paramref name="replace"/> changes.</remarks>
+        /// <param name="to">Absolute and route-relative targets follow <see cref="Hooks.UseNavigate(bool)"/>.</param>
         /// <param name="replace">When true, replaces the current history entry instead of pushing.</param>
-        /// <param name="key">Key used to disambiguate siblings at the same position.</param>
-        /// <returns>A <see cref="ComponentNode"/> that performs the redirect and renders nothing.</returns>
         public static ComponentNode Navigate(
             string to,
             bool replace = false,
