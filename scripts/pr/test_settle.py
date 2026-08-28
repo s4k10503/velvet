@@ -525,10 +525,31 @@ class RetirementTests(unittest.TestCase):
         # three leaves whoever reads it to work out the rest.
         said = watch_until().output
 
-        # Act / Assert
-        self.assertEqual(("nothing stamped" in said,
+        # Act / Assert — "since anything last stamped" rather than "nothing stamped": the file is
+        # normally there and normally old, and a reader who has been editing all session reads the
+        # second as the stamping being broken when what happened is that they stopped.
+        self.assertEqual(("since anything last stamped" in said,
                           "blocks a Stop again" in said,
                           "python3 scripts/pr/settle.py watch" in said), (True, True, True))
+
+    def test_Given_NoStampAtAll_When_ItRetires_Then_ItNamesTheReaderThatCouldNotRecord(self):
+        # Arrange — a guard resolves the stamping code from its own checkout, so one at a commit
+        # predating it reads the watcher every turn and cannot record having done it, and the file
+        # it would have written stays absent however long the reading goes on.
+        said = watch_until().output
+
+        # Act / Assert
+        self.assertIn("carries no stamp at all", said)
+
+    def test_Given_AStampThatWentStale_When_ItRetires_Then_ItReportsTheIntervalAndNothingMore(self):
+        # Arrange — a file that exists and is old is the reader having stopped, which the sentence
+        # for the third state would misdescribe as a checkout that cannot record.
+        said = watch_until(seed_asked=0).output
+
+        # Act / Assert — paired, because the absence alone is also what a message that never gained
+        # the sentence looks like.
+        self.assertEqual(("since anything last stamped" in said,
+                          "carries no stamp at all" in said), (True, False))
 
     def test_Given_ARetiringWatcher_When_ItStops_Then_ItLetsGoOfTheLock(self):
         # Act
