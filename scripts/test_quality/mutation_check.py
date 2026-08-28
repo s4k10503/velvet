@@ -1077,25 +1077,40 @@ def refusal(code, message):
 
 
 def digestible(text):
-    """The file with its comments blanked and its blank lines dropped.
+    """The file with its comments removed, and the lines they emptied with them.
 
     What a receipt is keyed on has to move when what a campaign measured moves, and no further. A
     comment carries no mutant -- `mask_spans` reads it as something other than code, and the
     generator skips it -- so an edit to one voids a receipt over a change no operator could have
-    seen. Measured on `main`: 17 of the 127 commits touching a non-test production source over the
-    last 300 are comment-only, and a review round here is largely prose, so the ones most likely to
-    be comment-only land *after* the campaign they void.
+    seen, and a review round here is largely prose.
 
-    A string literal is masked for generation and kept here, because editing one changes behaviour
-    a mutant could have covered. A directive is kept for the same reason: it decides what compiles.
+    A string literal is masked for generation and kept here, because editing one changes behaviour a
+    mutant could have covered. A directive is kept for the same reason: it decides what compiles. A
+    blank line inside a verbatim string is part of the value, and a verbatim span is the only one
+    `mask_spans` reads across lines, so a line holding one is never dropped as empty.
     """
-    mask = [True] * len(text)
+    keep = [True] * len(text)
+    quoted = [False] * len(text)
     for start, end, kind in mask_spans(text):
-        if kind in (LINE_COMMENT, BLOCK_COMMENT):
-            for offset in range(start, end):
-                mask[offset] = False
-    kept = "".join(text[offset] for offset in range(len(text)) if mask[offset])
-    return "\n".join(line for line in kept.splitlines() if line.strip())
+        for offset in range(start, min(end, len(text))):
+            if kind in (LINE_COMMENT, BLOCK_COMMENT):
+                keep[offset] = False
+            elif kind == VERBATIM:
+                quoted[offset] = True
+
+    lines, held, spans = [], [], False
+    for offset, character in enumerate(text):
+        if character == "\n":
+            # The newline too: a line that is empty inside a verbatim string holds nothing else to
+            # ask, and it is the one this has to keep.
+            lines.append(("".join(held), spans or quoted[offset]))
+            held, spans = [], False
+            continue
+        spans = spans or quoted[offset]
+        if keep[offset]:
+            held.append(character)
+    lines.append(("".join(held), spans))
+    return "\n".join(line for line, held_a_span in lines if line.strip() or held_a_span)
 
 
 def scope_digest(base, targets, project, platform):
@@ -1122,7 +1137,7 @@ def scope_digest(base, targets, project, platform):
         # path and an unresolved one reach the same file and digest differently.
         parts.append("{}:{}".format(
             relative_to(path, project).as_posix(),
-            hashlib.sha256(digestible(path.read_text()).encode()).hexdigest()))
+            hashlib.sha256(digestible(path.read_text(encoding="utf-8")).encode()).hexdigest()))
     return hashlib.sha256("\n".join(parts).encode()).hexdigest()
 
 
