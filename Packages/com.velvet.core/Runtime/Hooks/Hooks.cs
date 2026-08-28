@@ -608,13 +608,7 @@ namespace Velvet
         {
             _ = Resolve("UseNavigate");
             var mode = replace ? NavigationMode.Replace : NavigationMode.Push;
-            // Capture the caller's Outlet depth so relative ("..") targets resolve against the route this
-            // hook is called in, not the leaf route (route-relative resolution). A component
-            // mounted by an Outlet at depth d owns Matches[d - 1], so baseRouteIndex = depth - 1. When
-            // there is no enclosing route (depth 0), baseRouteIndex becomes -1, which the Router treats as
-            // "leaf" and leaves absolute/no-context navigation unaffected.
-            var depth = UseContext(RouterContext.Depth);
-            var baseRouteIndex = depth - 1;
+            var baseRouteIndex = UseBaseRouteIndex();
             return UseCallback<Func<string, UniTask<NavigationResult>>>(
                 to =>
                 {
@@ -627,6 +621,12 @@ namespace Velvet
                 },
                 mode, baseRouteIndex);
         }
+
+        /// <summary>
+        /// The matched-route level a relative target resolves against for the calling component: a component
+        /// mounted by an Outlet at depth d owns <c>Matches[d - 1]</c>.
+        /// </summary>
+        internal static int UseBaseRouteIndex() => UseContext(RouterContext.Depth) - 1;
 
         /// <summary>
         /// Returns the current navigation state. The state is <see cref="NavigationLifecycle.Loading"/> while
