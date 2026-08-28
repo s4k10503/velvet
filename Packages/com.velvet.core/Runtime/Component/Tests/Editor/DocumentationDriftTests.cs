@@ -671,6 +671,10 @@ namespace Velvet.Tests
         private static List<string> ScanBacktickSpans(Func<string, string, IEnumerable<string>> extract) =>
             BacktickSpans().SelectMany(span => extract(span.Path, span.Reference)).Distinct().ToList();
 
+        // GREEN_ON_BASE(characterization): these read `WithoutShippedSections` directly, and it is
+        // declared in this same file, which the base lane carries with the cases. What the wiring
+        // is pinned by is `Given_ProjectMarkdown_When_ScannedForBacktickedIdentifiers_...`: taking
+        // the call out of `BacktickSpans` and re-running the fixture reddens that one, measured.
         [Test]
         public void Given_ADatedChangelogSection_When_TheProseIsRead_Then_ItIsNotThere()
         {
@@ -688,6 +692,10 @@ namespace Velvet.Tests
             Assert.That((kept.Contains("StillHere"), kept.Contains("GoneNow")), Is.EqualTo((true, false)));
         }
 
+        // GREEN_ON_BASE(characterization): these read `WithoutShippedSections` directly, and it is
+        // declared in this same file, which the base lane carries with the cases. What the wiring
+        // is pinned by is `Given_ProjectMarkdown_When_ScannedForBacktickedIdentifiers_...`: taking
+        // the call out of `BacktickSpans` and re-running the fixture reddens that one, measured.
         [Test]
         public void Given_AHighlightsBlockInsideADatedSection_When_TheProseIsRead_Then_ItGoesWithIt()
         {
@@ -704,6 +712,10 @@ namespace Velvet.Tests
             Assert.That((kept.Contains("GoneNow"), kept.Contains("AlsoGone")), Is.EqualTo((false, false)));
         }
 
+        // GREEN_ON_BASE(characterization): these read `WithoutShippedSections` directly, and it is
+        // declared in this same file, which the base lane carries with the cases. What the wiring
+        // is pinned by is `Given_ProjectMarkdown_When_ScannedForBacktickedIdentifiers_...`: taking
+        // the call out of `BacktickSpans` and re-running the fixture reddens that one, measured.
         [Test]
         public void Given_ADatedHeadingInAnotherDocument_When_TheProseIsRead_Then_ItIsLeftAlone()
         {
