@@ -298,12 +298,13 @@ namespace Velvet
 
                 if (seg.IsSplat)
                 {
+                    // MUTANT_SURVIVES(equivalent): at si == Length the join is asked for zero
+                    // elements and returns the empty string, which is what the other arm yields.
                     var rest = si >= walk.Segments.Length
                         ? string.Empty
                         : string.Join("/", walk.Segments, si, walk.Segments.Length - si);
                     walk.Captured ??= new Dictionary<string, string>();
                     walk.Captured["*"] = rest;
-                    walk.Taken[pi] = si < walk.Segments.Length ? si : -1;
                     return true;
                 }
 
@@ -363,6 +364,9 @@ namespace Velvet
 
             // The failed attempt may have been what created the dictionary, so it can be non-null here
             // even when the snapshot above saw null.
+            // MUTANT_SURVIVES(equivalent): the body restores or removes the key this segment named, and
+            // a segment that named none has nothing under that key to disturb -- so a mutation that
+            // widens the guard reaches a body with nothing to do.
             if (seg.IsParam && walk.Captured != null)
             {
                 if (keyExisted)
@@ -448,6 +452,10 @@ namespace Velvet
             {
                 var index = patternOffset++;
 
+                // `taken` is not read for a splat or a param: the first resolves from the captured
+                // tail and the second from its capture, and only a literal has nothing else to say
+                // whether the URL held it. A mutant that changed what the splat branch wrote there
+                // survived every test, which is what a write nobody reads does.
                 if (seg.IsSplat)
                 {
                     if (captured.TryGetValue("*", out var splat) && splat.Length > 0)
@@ -459,6 +467,8 @@ namespace Velvet
 
                 if (seg.IsParam)
                 {
+                    // MUTANT_SURVIVES(unreachable): a capture is a URL segment, and the split that
+                    // produces them drops the empty ones, so no captured value is empty here.
                     if (captured.TryGetValue(seg.Value, out var value) && value.Length > 0)
                     {
                         resolved.Add(value);
@@ -468,6 +478,8 @@ namespace Velvet
 
                 // A literal the match skipped is one the URL never held, so a base built from it would
                 // resolve the next relative hop against a path that does not exist.
+                // MUTANT_SURVIVES(unreachable): `taken` is as long as the branch pattern and `index`
+                // walks that same pattern, so the bound is never the arm that decides.
                 if (seg.IsOptional && (index >= taken.Length || taken[index] < 0))
                 {
                     continue;
