@@ -524,6 +524,37 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AnOptionalParamTheSkipPathMatchesPast_When_Matched_Then_TheAbandonedCaptureIsGone()
+        {
+            // Arrange — the present path captures `id` as "end" and then fails, having nothing left for
+            // the segment behind it; the skip path is what matches. `users/:id?` cannot reach this: the
+            // optional is last there, so the present path never runs.
+            var tree = new RouteTree(new[] { Route(":id?/end") });
+
+            // Act
+            var result = tree.Match("/end");
+
+            // Assert — the match rides along, because a tree that matched nothing carries no capture
+            // either.
+            Assert.That((result != null, result != null && result[0].Params.ContainsKey("id")),
+                        Is.EqualTo((true, false)));
+        }
+
+        [Test]
+        public void Given_AnOptionalLiteralTakingTheFirstSegment_When_Matched_Then_TheBaseCarriesIt()
+        {
+            // Arrange — the segment it took is index 0, which is what separates "took none" from "took
+            // the first one" in the record the base is built from.
+            var tree = new RouteTree(new[] { Route("intro?") });
+
+            // Act
+            var result = tree.Match("/intro");
+
+            // Assert
+            Assert.That(result[0].PathnameBase, Is.EqualTo("/intro"));
+        }
+
+        [Test]
         public void Given_OptionalLiteralRoute_When_SegmentPresent_Then_Matches()
         {
             // Arrange

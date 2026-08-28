@@ -55,10 +55,19 @@ namespace Velvet
 
         private sealed class RouteBranch
         {
-            public RouteDefinition[]? Chain;
-            public List<RouteSegment>? Pattern;
+            // Set together at construction, so neither is nullable and neither reading has a branch for
+            // an absence that cannot happen. The two null checks that were here survived every mutant
+            // that removed them, which is what an unreachable branch does.
+            public readonly RouteDefinition[] Chain;
+            public readonly List<RouteSegment> Pattern;
             public int Score;
             public int Order;
+
+            public RouteBranch(RouteDefinition[] chain, List<RouteSegment> pattern)
+            {
+                Chain = chain;
+                Pattern = pattern;
+            }
         }
 
         private readonly struct RouteSegment
@@ -118,10 +127,8 @@ namespace Velvet
             var leaf = chain[chain.Count - 1];
             var isIndexLeaf = leaf.Path == "";
 
-            return new RouteBranch
+            return new RouteBranch(chain.ToArray(), pattern)
             {
-                Chain = chain.ToArray(),
-                Pattern = pattern,
                 Score = ComputeScore(pattern, isIndexLeaf),
                 Order = _branchCounter++,
             };
@@ -259,11 +266,6 @@ namespace Velvet
         {
             matches = null;
 
-            if (branch.Pattern == null)
-            {
-                return false;
-            }
-
             var walk = new Walk(branch.Pattern, segments);
 
             if (!TryConsume(ref walk, 0, 0))
@@ -281,13 +283,15 @@ namespace Velvet
         }
 
         /// <remarks>
-        /// Writes into `taken` as it walks and undoes its own writes before returning false, the same
-        /// discipline `TryConsumeOptionalPresent` applies to a capture: a probe that got several
-        /// segments in before failing would otherwise leave them standing for the branch that follows.
+        /// Writes into `taken` as it walks and never unwrites. A failed probe's entries are not the
+        /// capture dictionary's problem one level up: `taken` is indexed by pattern position, and the
+        /// walk that succeeds decides every position it passes, so nothing it did not decide is read.
+        /// Undoing them was written here anyway, on the strength of the capture snapshot below being
+        /// the same discipline -- and it is not, a dictionary keyed by name having no such property.
+        /// Three mutants removing the undo all survived, and the suite is green without it.
         /// </remarks>
         private static bool TryConsume(ref Walk walk, int pi, int si)
         {
-            var first = pi;
             while (pi < walk.Pattern.Count)
             {
                 var seg = walk.Pattern[pi];
@@ -318,13 +322,11 @@ namespace Velvet
                         return true;
                     }
 
-                    Undo(walk.Taken, first, pi);
                     return false;
                 }
 
                 if (si >= walk.Segments.Length || !TryMatchSingle(ref walk, seg, walk.Segments[si]))
                 {
-                    Undo(walk.Taken, first, pi);
                     return false;
                 }
 
@@ -338,16 +340,7 @@ namespace Velvet
                 return true;
             }
 
-            Undo(walk.Taken, first, pi);
             return false;
-        }
-
-        private static void Undo(int[] taken, int from, int through)
-        {
-            for (var index = from; index <= through && index < taken.Length; index++)
-            {
-                taken[index] = -1;
-            }
         }
 
         /// <remarks>
@@ -399,9 +392,8 @@ namespace Velvet
         }
 
         private static List<RouteMatch> BuildMatches(
-            RouteDefinition[]? chain, Dictionary<string, string> captured, int[] taken)
+            RouteDefinition[] chain, Dictionary<string, string> captured, int[] taken)
         {
-            if (chain == null) return new List<RouteMatch>();
             var matches = new List<RouteMatch>(chain.Length);
             var cumulativeId = string.Empty;
             // Each level stores a cumulative base because route-relative `..` pops a whole route level,
