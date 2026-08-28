@@ -541,6 +541,20 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AnOptionalParamWhosePresentAndSkipPathsBothFail_When_Matched_Then_NothingMatches()
+        {
+            // Arrange — the same route, at a URL neither reading reaches: taking `wrong` as `id` leaves
+            // nothing for `end`, and skipping it puts `end` against `wrong`.
+            var tree = new RouteTree(new[] { Route(":id?/end") });
+
+            // Act
+            var result = tree.Match("/wrong");
+
+            // Assert
+            Assert.That(result, Is.Null);
+        }
+
+        [Test]
         public void Given_AnOptionalLiteralTakingTheFirstSegment_When_Matched_Then_TheBaseCarriesIt()
         {
             // Arrange — the segment it took is index 0, which is what separates "took none" from "took
