@@ -275,6 +275,30 @@ namespace Velvet.Tests
                 + "path filter was the one being watched for.");
         }
 
+        [Test]
+        public void Given_ATriggerWrittenAsAFlowMapping_When_ItsFiltersAreRead_Then_TheChildOnItsOwnLineIsOne()
+        {
+            // Arrange — the shape the line-and-indent reading cannot see, since the child never gets a line.
+            var workflow = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.yml");
+            File.WriteAllText(workflow, "on:\n  pull_request: {branches: [main]}\n  push:\n    paths:\n      - 'x'\n");
+
+            try
+            {
+                // Act
+                var gated = TriggerFilters(workflow)
+                    .Where(entry => entry.Trigger == "pull_request")
+                    .Select(entry => entry.Key)
+                    .ToList();
+
+                // Assert
+                Assert.That(string.Join(", ", gated), Is.EqualTo("branches"));
+            }
+            finally
+            {
+                File.Delete(workflow);
+            }
+        }
+
         // Read separately from the filters below because their absence and a trigger's absence are
         // different failures: a filter that should not be there fails the guard by appearing, and a trigger
         // that must be there fails it by not.
