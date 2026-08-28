@@ -713,11 +713,25 @@ next major is built. **One line is maintained at a time — the series immediate
 
 **The line takes fixes, and the CI its own pull requests need. It does not take features.**
 
+**The line is merged forward into `main`, not picked back out of it**, and a fix that lands there is
+owed a release. The first is not optional: a fix that stays on the line is one a branch cut from
+`main` reproduces in full — #732 removed a `branches:` filter `main` still carried, and stayed for
+three days. Merging forward is also what makes it checkable, because git then records the ancestry
+and `merge-base --is-ancestor` answers it without anyone reading a pull request;
+`unreleased_maintenance_line.py` reports both at session start.
+
+**A fix that lands there is owed a release.** `main` between releases is expected to hold unreleased
+entries; a maintenance line holding them is a backport nobody shipped, and the release readings do
+not see it — `published_check.py` asks whether a *closed* version went unpublished, and these entries
+belong to no version yet. `unreleased_maintenance_line.py` reports the state at session start; it
+found the line holding one entry for four days, which no session had noticed.
+
 **A commit that carries a breaking change does not come, even when it also carries a fix.** What makes
 one unsplittable is the code: the fix can name a symbol that arrives with the breaking half, so the
 pick auto-merges and then does not compile. If the fix is wanted on the line it is written fresh there
-— and a change written first on the line may need to come forward to `main`. Nothing checks either
-direction, and `main` may already carry its own; ask before opening one.
+— and the line is merged forward into `main`, which the session-start report above names when it has
+not been. `main` may already carry its own; ask before
+opening one.
 
 **Decide per commit, not per `[Unreleased]` entry.** The mapping runs many-to-many, and a commit may
 write no bullet at all. Where one did, ask which section its bullets sit in on `main` today — reading
