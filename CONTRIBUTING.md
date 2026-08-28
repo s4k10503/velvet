@@ -618,19 +618,28 @@ behaviour a working application would notice changing.
 
 1. Close the version in `Packages/com.velvet.core/CHANGELOG.md` and bump `version` in
    `package.json` to match. A major moves the breaking entries up into `## [Unreleased]` and leaves
-   their heading standing with none; a minor or a patch leaves them where they are. Rename
+   their heading standing with none. A minor or a patch closes only over a section already empty,
+   and `published_check.py` refuses one that is not: a release publishes the tree rather than the
+   section, and `main` was found carrying the code an entry described while that entry still
+   waited. A line that never took those changes has an empty section, which is what keeps the
+   reading silent on the maintenance line. Rename
    `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD` **last**, once nothing further is going into it:
    `changelog_into_closed_version.py` refuses a write into a dated section, and the rename is what
    dates it. The breaking heading itself is never dated and never deleted, and a `**Breaking:**`
    bullet in `### Highlights` belongs to a major and to no other release; `test_release_notes.py`
-   refuses each of those. Give the version a row in `SECURITY.md`'s supported-versions table, and
-   decide there what happens to the series it succeeds: `supported_versions_check.py` refuses a
-   release the table does not cover with one row marked supported. A major also answers for the
+   refuses each of those. Where the entries went is read from the change rather than the file, by
+   `published_check.py` on the pull request that closes the version: a major has to close with the
+   section empty and every entry of it word for word in the version being closed, and a minor or a
+   patch may neither take anything out of it nor leave anything in. So a wording change belongs in a
+   change that closes no version — which is also how an entry is reclassified out of the section,
+   deciding it was never breaking, and none of this is asked of one. A major also answers for the
    breaking work still in flight: an entry written for it sits on its own branch until that branch
    merges, so the CHANGELOG holds only the part that has landed. Name every open pull request adding
    to `## [Unreleased — breaking]` and say which the version carries —
    `breaking_in_flight_check.py` refuses one that names none of them, and "not this one" is a
-   decision it accepts.
+   decision it accepts. Give the version a row in `SECURITY.md`'s supported-versions table, and
+   decide there what happens to the series it succeeds: `supported_versions_check.py` refuses a
+   release the table does not cover with one row marked supported.
 2. Merge to `main` (the `upm` branch is updated automatically).
 3. Run the **UPM** workflow via *Actions ▸ UPM ▸ Run workflow*, entering the same version.
    This tags `vX.Y.Z` on the `upm` (package-at-root) commit and publishes a GitHub release.
@@ -704,11 +713,25 @@ next major is built. **One line is maintained at a time — the series immediate
 
 **The line takes fixes, and the CI its own pull requests need. It does not take features.**
 
+**The line is merged forward into `main`, not picked back out of it**, and a fix that lands there is
+owed a release. The first is not optional: a fix that stays on the line is one a branch cut from
+`main` reproduces in full — #732 removed a `branches:` filter `main` still carried, and stayed for
+three days. Merging forward is also what makes it checkable, because git then records the ancestry
+and `merge-base --is-ancestor` answers it without anyone reading a pull request;
+`unreleased_maintenance_line.py` reports both at session start.
+
+**A fix that lands there is owed a release.** `main` between releases is expected to hold unreleased
+entries; a maintenance line holding them is a backport nobody shipped, and the release readings do
+not see it — `published_check.py` asks whether a *closed* version went unpublished, and these entries
+belong to no version yet. `unreleased_maintenance_line.py` reports the state at session start; it
+found the line holding one entry for four days, which no session had noticed.
+
 **A commit that carries a breaking change does not come, even when it also carries a fix.** What makes
 one unsplittable is the code: the fix can name a symbol that arrives with the breaking half, so the
 pick auto-merges and then does not compile. If the fix is wanted on the line it is written fresh there
-— and a change written first on the line may need to come forward to `main`. Nothing checks either
-direction, and `main` may already carry its own; ask before opening one.
+— and the line is merged forward into `main`, which the session-start report above names when it has
+not been. `main` may already carry its own; ask before
+opening one.
 
 **Decide per commit, not per `[Unreleased]` entry.** The mapping runs many-to-many, and a commit may
 write no bullet at all. Where one did, ask which section its bullets sit in on `main` today — reading
