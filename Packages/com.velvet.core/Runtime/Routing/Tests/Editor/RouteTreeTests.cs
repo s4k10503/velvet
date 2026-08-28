@@ -6,35 +6,6 @@ using static Velvet.Tests.RouteTestStubs;
 
 namespace Velvet.Tests
 {
-    /// <summary>
-    /// Specifies the contract of <see cref="RouteTree.Match"/> over a route definition tree, from plain literal
-    /// matching through the advanced segment kinds (splat, optional, dynamic) and specificity ranking.
-    /// <list type="bullet">
-    /// <item>A path matches the highest-specificity branch whose pattern consumes it fully; a leading slash on
-    /// the queried path is optional and the root path <c>"/"</c> resolves to a declared <c>"/"</c> route.</item>
-    /// <item>A null or empty queried path matches nothing.</item>
-    /// <item>A path that no branch consumes returns null, and <see cref="RouteTree.Match"/> declares that
-    /// null where <see cref="RouteMatch.Params"/> is declared non-null.</item>
-    /// <item>A dynamic <c>:param</c> segment captures the corresponding path segment under the param name.</item>
-    /// <item>Nested routes return the full parent-first chain, and every level shares the one cumulative
-    /// parameter set captured across the whole branch.</item>
-    /// <item>An index child (<c>path == ""</c>) matches its parent's path and forms a second chain entry, with
-    /// a <see cref="RouteMatch.RouteId"/> disambiguated from its parent's id.</item>
-    /// <item>Matching is case-insensitive by default and per-route; <c>caseSensitive: true</c> opts a single
-    /// route into ordinal matching without inheriting to or from its relatives, and the flag participates in
-    /// branch ranking so a case-rejected literal falls through to a dynamic sibling.</item>
-    /// <item>The default case-insensitivity is the <see cref="RouteDefinition.CaseSensitive"/> init default, and
-    /// it applies to splat and optional literal prefixes as well as plain literals.</item>
-    /// <item>The constructor rejects a null route array.</item>
-    /// <item>A splat (<c>*</c>) captures the remaining path tail under the <c>*</c> key, including the empty
-    /// tail, and a same-length static segment outranks it.</item>
-    /// <item>An optional parameter (<c>:id?</c>) matches with the value captured or, when absent, without the
-    /// key present; an optional literal (<c>seg?</c>) matches both its present and absent forms.</item>
-    /// <item>Ranking is by specificity, not declaration order: a static segment outranks a dynamic one for the
-    /// same path, while a dynamic route still matches when no static route applies, and a deeper nested branch
-    /// outranks a shallower one.</item>
-    /// </list>
-    /// </summary>
     [TestFixture]
     internal sealed class RouteTreeTests
     {
@@ -230,8 +201,6 @@ namespace Velvet.Tests
         [Test]
         public void Given_NestedRouteWithParam_When_MatchingLeafPath_Then_EveryLevelSharesTheCumulativeParamSet()
         {
-            // The branch captures one parameter dictionary and exposes it at every chain level, so a param
-            // captured by a descendant segment is visible from the parent entry too.
             // Arrange
             var tree = new RouteTree(new[]
             {
@@ -362,8 +331,6 @@ namespace Velvet.Tests
         [Test]
         public void Given_DefaultSplatRoute_When_LiteralPrefixCaseDiffers_Then_MatchesAndCapturesTail()
         {
-            // A splat's literal prefix segment follows the route's case-sensitivity flag (default insensitive),
-            // so "Files/*" matches "/files/a.png" and the splat captures the remaining tail.
             // Arrange
             var tree = new RouteTree(new[] { Route("Files/*") });
 
@@ -377,7 +344,6 @@ namespace Velvet.Tests
         [Test]
         public void Given_DefaultOptionalLiteralRoute_When_QueriedWithDifferentCase_Then_Matches()
         {
-            // Both the literal prefix and the optional literal segment honor the default-insensitive flag.
             // Arrange
             var tree = new RouteTree(new[] { Route("Docs/intro?") });
 
@@ -391,8 +357,6 @@ namespace Velvet.Tests
         [Test]
         public void Given_CaseSensitiveParentWithDefaultChild_When_ChildLiteralCaseDiffers_Then_ChildStaysInsensitive()
         {
-            // The per-route flag is not inherited: a default-insensitive child literal matches a different case
-            // even under a case-sensitive parent.
             // Arrange
             var tree = new RouteTree(new[]
             {
@@ -412,7 +376,6 @@ namespace Velvet.Tests
         [Test]
         public void Given_CaseSensitiveParentWithDefaultChild_When_ParentLiteralCaseDiffers_Then_ParentStaysSensitive()
         {
-            // The parent's case-sensitive flag is not relaxed by an insensitive child.
             // Arrange
             var tree = new RouteTree(new[]
             {
@@ -432,8 +395,6 @@ namespace Velvet.Tests
         [Test]
         public void Given_CaseSensitiveLiteralAndDynamicSibling_When_LiteralCaseRejects_Then_FallsThroughToDynamic()
         {
-            // "About" opts into case-sensitive matching, so "/ABOUT" cannot bind to it and falls through to the
-            // dynamic ":slug" sibling, confirming the per-route flag participates in branch ranking.
             // Arrange
             var tree = new RouteTree(new[]
             {
@@ -480,10 +441,6 @@ namespace Velvet.Tests
         [Test]
         public void Given_MidRouteSplat_When_Constructing_Then_ThrowsArgumentException()
         {
-            // A splat is a tail-only catch-all; placing it before another segment is rejected at
-            // definition time so the trailing segment can never be silently swallowed.
-            // The complement (a terminal splat capturing the whole tail) is verified by
-            // Given_SplatRoute_When_TailHasMultipleSegments_Then_CapturesWholeTail below.
             // Act + Assert
             Assert.Throws<ArgumentException>(() => new RouteTree(new[] { Route("files/*/download") }));
         }
