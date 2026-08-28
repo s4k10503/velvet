@@ -135,6 +135,12 @@ jobs:
       - name: Stale base report tests
         run: python3 scripts/hooks/test_stale_main.py
 
+      # `published_check.py` asks whether a closed version went unpublished; an entry waiting in a
+      # maintenance line's `## [Unreleased]` belongs to no version yet, so that reading is silent
+      # while the work waits. The silences are what the tests are mostly about.
+      - name: Maintenance line report tests
+        run: python3 scripts/hooks/test_unreleased_maintenance_line.py
+
       # The zero-checks reading, which had no suite. It used to say "merge it" for a pull request
       # nothing had tested, on a path filter `pull_request` does not carry.
       - name: Unsettled pull request guard tests
