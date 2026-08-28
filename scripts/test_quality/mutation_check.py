@@ -86,7 +86,15 @@ CATEGORIES = ("equivalent", "unreachable")
 # Four words, for the reason base_red_check.py's own floor gives.
 MINIMUM_REASON_WORDS = 4
 
-DECLARATION = re.compile(r"MUTANT_SURVIVES\(([A-Za-z]*)\)\s*:\s*(.*)")
+# The category, and optionally the operator it answers for. A line carries more than one mutant --
+# `if (depth > cap) Reset();` carries a boundary flip and a void-call removal -- and a declaration
+# keyed by line alone answers for every one of them. Measured: 4 of this package's 10 declarations sit
+# on such a line, one of them over five mutants. Where only one of them survives today the
+# declaration is unambiguous now and widens the moment a sibling starts surviving, and the staleness
+# guard cannot report that: it asks whether the LINE still produces a survivor, and the one already
+# answered for keeps it non-stale.
+DECLARATION = re.compile(
+    r"MUTANT_SURVIVES\(([A-Za-z]*)(?:\s*,\s*([^)]*?))?\)\s*:\s*(.*)")
 
 # How many unreached line numbers a file lists before the rest become a count. The count stays exact
 # either way; what this bounds is a whole-file `--files` run printing several hundred of them.
@@ -133,8 +141,13 @@ def folded_reason(tail, wrapped):
 
 
 class Declaration:
-    def __init__(self, category, reason, line, claim=None, through=None, written_here=True):
+    def __init__(self, category, reason, line, claim=None, through=None, written_here=True,
+                 operator=None):
         self.category = category
+        # Which operator's mutant this answers for, or None for every one on its line. Named where
+        # the line carries more than one, so an answer written for the removal there does not sign
+        # off the boundary flip beside it the day that starts surviving.
+        self.operator = operator
         self.reason = reason
         self.claim = reason if claim is None else claim
         self.line = line
@@ -231,9 +244,10 @@ def declarations_in(text):
             subject += 1
         if subject >= len(lines) or not lines[subject].strip():
             continue
-        claim, reason = folded_reason(match.group(2), lines[index + 1:subject])
+        claim, reason = folded_reason(match.group(3), lines[index + 1:subject])
+        named = (match.group(2) or "").strip() or None
         declaration = Declaration(match.group(1), reason, line=index + 1, claim=claim,
-                                  through=subject)
+                                  through=subject, operator=named)
         # Extends while the statement's own parentheses are still open, which is what a condition
         # broken across lines leaves and what a finished statement does not.
         depth = 0
@@ -1221,6 +1235,11 @@ def answered(mutants, deferred, declared):
         if mutant.verdict not in SURVIVING:
             continue
         declaration = declared.get((mutant.path, mutant.line))
+        if declaration is not None and declaration.operator not in (None, mutant.operator):
+            # Named for a different mutant on this line, so it says nothing about this one.
+            unanswered.append((mutant, "the declaration above answers for '{}', not for this".format(
+                declaration.operator)))
+            continue
         if declaration is None:
             unanswered.append((mutant, "nothing above this line answers for it"))
         elif not declaration.written_here:
@@ -1232,15 +1251,26 @@ def answered(mutants, deferred, declared):
     # Grouped by the declaration rather than by the line, because one covering a condition broken
     # over two lines has a survivor on either of them and is stale only when neither carries one.
     settled = surviving | deferred
+    # A named declaration is settled by a survivor of its own operator rather than by any survivor on
+    # the line: without that, a sibling still surviving would keep a stale one from being reported,
+    # which is the widening this naming exists to close read from the other side.
+    named = {(mutant.path, mutant.line, mutant.operator)
+             for mutant in mutants if mutant.verdict in SURVIVING}
     covers = {}
     for (path, subject), declaration in declared.items():
         covers.setdefault((path, declaration.line), [declaration, []])[1].append(subject)
-    stale = [(path, min(subjects), declaration)
-             for (path, _), (declaration, subjects) in sorted(covers.items(),
-                                                              key=lambda item: (str(item[0][0]),
-                                                                                item[0][1]))
-             if declaration.written_here
-             and not any((path, subject) in settled for subject in subjects)]
+    stale = []
+    for (path, _), (declaration, subjects) in sorted(
+            covers.items(), key=lambda item: (str(item[0][0]), item[0][1])):
+        if not declaration.written_here:
+            continue
+        if declaration.operator is None:
+            answered_here = any((path, subject) in settled for subject in subjects)
+        else:
+            answered_here = any((path, subject, declaration.operator) in named
+                                or (path, subject) in deferred for subject in subjects)
+        if not answered_here:
+            stale.append((path, min(subjects), declaration))
     return unanswered, stale
 
 
