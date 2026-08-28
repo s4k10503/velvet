@@ -169,12 +169,13 @@ def reopened_by(changelog_text, tags, result_changelog):
     return not any(version in still for version in unpublished)
 
 
-def drain_reason(base_changelog, result_changelog):
+def drain_reason(base_changelog, result_changelog, tags=()):
     """Why this change may not close the version it closes, or None.
 
     Read of the two trees rather than one, for the reason the module docstring gives. A change that
     closes nothing is nobody's release and is asked nothing here — that is what leaves an entry free
-    to be reclassified, reworded or dropped on its own.
+    to be reclassified, reworded or dropped on its own. `tags` is what separates closing a version
+    from recording one somebody else already published.
 
     A major's entries are compared by text, so a drain that reworded one on the way is refused too.
     Counting them instead permits the reword and still catches a drop, until the release writes an
@@ -185,7 +186,12 @@ def drain_reason(base_changelog, result_changelog):
     """
     before = released_versions(base_changelog)
     after = released_versions(result_changelog)
-    closing = [named for named in after if named not in before]
+    # A version the remote already tags is one this change records rather than closes. Merging a
+    # maintenance line forward brings its released sections across, and asked without the tags that
+    # reads as a release closing over whatever the breaking section holds — measured, on the merge
+    # that first carried 2.1.1 through 2.1.3 onto main.
+    closing = [named for named in after
+               if named not in before and f"v{named}" not in tags]
     waiting_before = section_entries(base_changelog, BREAKING_SECTION)
     waiting_after = section_entries(result_changelog, BREAKING_SECTION)
 
@@ -380,7 +386,8 @@ def main():
     if args.base and args.result:
         report(f"{args.base}..{args.result}",
                drain_reason(read_at(project, args.base, CHANGELOG_PATH),
-                            read_at(project, args.result, CHANGELOG_PATH)),
+                            read_at(project, args.result, CHANGELOG_PATH),
+                            remote_tags(project, args.remote)),
                "leaves the breaking section wrong for the version it closes",
                "the breaking section suits whatever this closes")
 
