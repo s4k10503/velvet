@@ -216,7 +216,7 @@ namespace Velvet.Tests
             // The button's presence rides along: it gates the class read beside it, so an Assume
             // over it turns a regression that renders nothing into an Inconclusive nothing counts.
             var button = FindButton(_root);
-            Assert.That((button != null, button?.ClassListContains("is-active")),
+            Assert.That((button != null, button?.ClassListContains("is-active") == true),
                         Is.EqualTo((true, true)));
         }
 
@@ -235,7 +235,7 @@ namespace Velvet.Tests
             // The button's presence rides along: it gates the class read beside it, so an Assume
             // over it turns a regression that renders nothing into an Inconclusive nothing counts.
             var button = FindButton(_root);
-            Assert.That((button != null, button?.ClassListContains("is-active")),
+            Assert.That((button != null, button?.ClassListContains("is-active") == true),
                         Is.EqualTo((true, true)));
         }
 
@@ -259,7 +259,7 @@ namespace Velvet.Tests
             var button = FindButton(_root);
             Assert.That(
                 (routerAbsent: Router.Current == null, rendered: button != null,
-                 active: button?.ClassListContains("is-active")),
+                 active: button?.ClassListContains("is-active") == true),
                 Is.EqualTo((routerAbsent: true, rendered: true, active: true)));
         }
 
