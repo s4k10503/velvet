@@ -541,13 +541,15 @@ class RetirementTests(unittest.TestCase):
         # Act / Assert
         self.assertIn("carries no stamp at all", said)
 
-    def test_Given_AStampThatWentStale_When_ItRetires_Then_ItSaysNothingAboutTheThirdState(self):
+    def test_Given_AStampThatWentStale_When_ItRetires_Then_ItReportsTheIntervalAndNothingMore(self):
         # Arrange — a file that exists and is old is the reader having stopped, which the sentence
-        # above would misdescribe as a checkout that cannot record.
+        # for the third state would misdescribe as a checkout that cannot record.
         said = watch_until(seed_asked=0).output
 
-        # Act / Assert
-        self.assertNotIn("carries no stamp at all", said)
+        # Act / Assert — paired, because the absence alone is also what a message that never gained
+        # the sentence looks like.
+        self.assertEqual(("since anything last stamped" in said,
+                          "carries no stamp at all" in said), (True, False))
 
     def test_Given_ARetiringWatcher_When_ItStops_Then_ItLetsGoOfTheLock(self):
         # Act
