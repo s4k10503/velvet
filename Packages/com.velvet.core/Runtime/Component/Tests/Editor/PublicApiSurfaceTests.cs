@@ -97,6 +97,47 @@ namespace Velvet.Tests
                 + "it. An unloaded assembly would report the same empty surface, so both are read at once.");
         }
 
+        /// <summary>A generic with a nested type, which the repository's own surface gains with
+        /// `VelvetTask` and did not carry when this rendering was written.</summary>
+        private sealed class OwnerWithNested<T>
+        {
+            internal struct Nested
+            {
+                internal T Held;
+            }
+        }
+
+        [Test]
+        public void Given_ATypeNestedInsideAGeneric_When_Rendered_Then_ItIsNotItsOwner()
+        {
+            // Arrange — the two rendered the same line, so the nested type's members were recorded
+            // against its owner and an addition to either produced the same diff.
+            var owner = PublicApiSurface.FormatType(typeof(OwnerWithNested<>));
+            var nested = PublicApiSurface.FormatType(
+                typeof(OwnerWithNested<>.Nested));
+
+            // Act / Assert — the owner naming itself rides along, because two renderings that both
+            // collapsed to something else would differ from each other and be no more use.
+            Assert.That((owner.Contains("OwnerWithNested"), nested.Contains("Nested"), owner != nested),
+                        Is.EqualTo((true, true, true)));
+        }
+
+        [Test]
+        public void Given_ATypeNestedInsideAGeneric_When_Rendered_Then_ItsOwnerIsNamedInIt()
+        {
+            // Arrange — the non-generic case already rendered the owner in front of the `+`, and this
+            // is the same spelling one arity marker along. What the marker looks like is read off the
+            // owner rather than written down, so this says nothing about how the runtime spells one.
+            var owner = PublicApiSurface.FormatType(typeof(OwnerWithNested<>));
+            var nested = PublicApiSurface.FormatType(
+                typeof(OwnerWithNested<>.Nested));
+
+            // Act / Assert
+            Assert.That(nested.StartsWith(owner.Substring(0, owner.IndexOf('`')), StringComparison.Ordinal)
+                        && nested.Contains("+Nested"),
+                        Is.True, $"owner={owner} nested={nested}");
+        }
+
         private static string BuildDriftMessage(IReadOnlyList<string> added, IReadOnlyList<string> removed)
         {
             var message = "Public API surface drifted from Packages/com.velvet.core/PublicAPI.txt.";
@@ -252,45 +293,6 @@ namespace Velvet.Tests
                     yield return line;
                 }
             }
-        }
-
-        /// <summary>A public generic with a nested type, which the repository's own surface gains with
-        /// `VelvetTask` and did not carry when this rendering was written.</summary>
-        private sealed class OwnerWithNested<T>
-        {
-            internal struct Nested
-            {
-                internal T Held;
-            }
-        }
-
-        [Test]
-        public void Given_ATypeNestedInsideAGeneric_When_Rendered_Then_ItIsNotItsOwner()
-        {
-            // Arrange — the two rendered the same line, so the nested type's members were recorded
-            // against its owner and an addition to either produced the same diff.
-            var owner = FormatType(typeof(OwnerWithNested<>));
-            var nested = FormatType(typeof(OwnerWithNested<>.Nested));
-
-            // Act / Assert — the owner naming itself rides along, because two renderings that both
-            // collapsed to something else would differ from each other and be no more use.
-            Assert.That((owner.Contains("OwnerWithNested"), nested.Contains("Nested"), owner != nested),
-                        Is.EqualTo((true, true, true)));
-        }
-
-        [Test]
-        public void Given_ATypeNestedInsideAGeneric_When_Rendered_Then_ItsOwnerIsNamedInIt()
-        {
-            // Arrange — the non-generic case already rendered the owner in front of the `+`, and this
-            // is the same spelling one arity marker along. What the marker looked like is read off the
-            // owner rather than written down, so this says nothing about how the runtime spells one.
-            var owner = FormatType(typeof(OwnerWithNested<>));
-            var nested = FormatType(typeof(OwnerWithNested<>.Nested));
-
-            // Act / Assert
-            Assert.That(nested.StartsWith(owner.Substring(0, owner.IndexOf('`')), StringComparison.Ordinal)
-                        && nested.Contains("+Nested"),
-                        Is.True, $"owner={owner} nested={nested}");
         }
 
         private static string RenderType(Type type) => "type " + FormatType(type);
@@ -503,7 +505,7 @@ namespace Velvet.Tests
         // than off the name.
         private static readonly Regex ArityMarker = new(@"`\d+", RegexOptions.Compiled);
 
-        private static string FormatType(Type type) => FormatType(type, null);
+        internal static string FormatType(Type type) => FormatType(type, null);
 
         private static string FormatType(Type type, NullableAnnotationProbe.AnnotationReader reader)
         {
