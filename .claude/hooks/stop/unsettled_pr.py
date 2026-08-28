@@ -155,26 +155,24 @@ def judge(pr):
         return unread(pr, "its checks")
 
     if not checks:
-        # Zero checks is legitimate when nothing the PR touches matches a workflow's path filter —
-        # a docs-only or .claude/-only change reports none and is ready to merge. It is a problem
-        # when the head never got a run it should have, and the tell is the merge state: a
-        # conflicting PR reports DIRTY (or UNKNOWN while GitHub is still computing) and never starts
-        # CI at all, which is the shape that went unwatched for seven hours.
+        # No pull request here is entitled to zero checks. Both required workflows subscribe to
+        # `pull_request` with no path filter — the filters are the push trigger's alone — so a head
+        # with none is one whose run never started, whatever the merge state says. Measured: three
+        # `.claude/`-only pull requests, #676 to #678, report fourteen checks each.
+        #
+        # This branch used to read CLEAN as ready and say "merge it", on a path filter that does not
+        # exist. The state was reachable once, through a `pull_request: branches: [main]` filter that
+        # left a maintenance-line pull request with no required check at all, and there the advice was
+        # to merge something nothing had tested. #776 removed the filter; the advice goes with it.
         state = merge_state(pr)
         if state is None:
             return unread(pr, "its merge state")
-        if state == "CLEAN":
-            # Ready, and ready is the state that reads as finished. A docs-only or .claude/-only
-            # change reports no checks at all and so never reached the merge reminder below, which
-            # is the same hole one level down from the one that left eight green PRs sitting.
-            return (f"  PR #{pr} — no checks apply to it and it is unmerged. Merge it, or say what "
-                    "it is waiting on and arm\n    something that brings you back when that arrives.")
         if state in EXPECTED_WITHOUT_CHECKS:
             return None
-        return (f"  PR #{pr} — no checks reported and merge state is {state or 'unnamed'}. A "
-                "conflicting PR never starts CI, so\n    this is not 'still running'. Rebase it, or "
-                "check the head SHA against\n    'gh run list --branch <b> --json headSha' if you "
-                "expected a run.")
+        return (f"  PR #{pr} — no check ever ran for its head, and the merge state is "
+                f"{state or 'unnamed'}.\n    Every workflow subscribes to pull_request without a "
+                "path filter, so this is a run that\n    did not start rather than one nothing "
+                "matched. Push again, or read\n    'gh run list --branch <b> --json headSha'.")
 
     pending = [check for check in checks if check.get("bucket") == "pending"]
     if not pending:
