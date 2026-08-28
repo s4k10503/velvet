@@ -1076,6 +1076,28 @@ def refusal(code, message):
     return code
 
 
+def digestible(text):
+    """The file with its comments blanked and its blank lines dropped.
+
+    What a receipt is keyed on has to move when what a campaign measured moves, and no further. A
+    comment carries no mutant -- `mask_spans` reads it as something other than code, and the
+    generator skips it -- so an edit to one voids a receipt over a change no operator could have
+    seen. Measured on `main`: 17 of the 127 commits touching a non-test production source over the
+    last 300 are comment-only, and a review round here is largely prose, so the ones most likely to
+    be comment-only land *after* the campaign they void.
+
+    A string literal is masked for generation and kept here, because editing one changes behaviour
+    a mutant could have covered. A directive is kept for the same reason: it decides what compiles.
+    """
+    mask = [True] * len(text)
+    for start, end, kind in mask_spans(text):
+        if kind in (LINE_COMMENT, BLOCK_COMMENT):
+            for offset in range(start, end):
+                mask[offset] = False
+    kept = "".join(text[offset] for offset in range(len(text)) if mask[offset])
+    return "\n".join(line for line in kept.splitlines() if line.strip())
+
+
 def scope_digest(base, targets, project, platform):
     """What a campaign measured, in a form a later check can compare a tree against.
 
@@ -1088,13 +1110,19 @@ def scope_digest(base, targets, project, platform):
     What it does not cover is a test-side change. Removing a test can make a killed mutant survive,
     and this stays valid across it; including tests would void the receipt on the ordinary act of
     adding one after the run, which is most of a branch's commits.
+
+    Nor a comment: `digestible` blanks them before the hash, so a receipt survives the prose
+    correction a review round leaves behind. Anything narrower than the whole bytes has to be
+    checked for what it stops voiding on, and this stops on exactly the spans the generator already
+    refuses to mutate.
     """
     parts = [base, platform]
     for path in sorted(targets, key=str):
         # Repository-relative, so a receipt does not depend on where the checkout sits: a resolved
         # path and an unresolved one reach the same file and digest differently.
-        parts.append("{}:{}".format(relative_to(path, project).as_posix(),
-                                    hashlib.sha256(path.read_bytes()).hexdigest()))
+        parts.append("{}:{}".format(
+            relative_to(path, project).as_posix(),
+            hashlib.sha256(digestible(path.read_text()).encode()).hexdigest()))
     return hashlib.sha256("\n".join(parts).encode()).hexdigest()
 
 

@@ -1946,6 +1946,19 @@ class EmitLinesTests(unittest.TestCase):
         self.assertEqual(campaign.seen, [])
 
 
+PROBE_WITH_LITERAL = """\
+namespace Velvet
+{
+    internal static class Probe
+    {
+        internal static bool Ready(int a, int b) => a <= b && Name() == "ready";
+
+        internal static string Name() => "ready";
+    }
+}
+"""
+
+
 class ReceiptTests(unittest.TestCase):
     """What asks whether the campaign was run at all.
 
@@ -2045,11 +2058,42 @@ class ReceiptTests(unittest.TestCase):
         # Assert
         self.assertEqual(code, mutation_check.RECEIPT_REFUSAL)
 
+    # GREEN_ON_BASE(refactor): the byte hash refused a code edit too; what moves is the comment case beside it.
     def test_Given_APassingCampaign_When_AMutatedFileIsEditedWithoutCommitting_Then_ItIsRefusedAgain(self):
         # Arrange — the reading the head tree sha cannot take: this edit moves no tree sha at all.
         campaign = StubbedCampaign()
         campaign.write_receipt("pass")
+        campaign.source.write_text(
+            campaign.source.read_text().replace("a <= b", "a < b"))
+
+        # Act
+        code = campaign.run_over_diff("--receipt")
+
+        # Assert
+        self.assertEqual(code, mutation_check.RECEIPT_REFUSAL)
+
+    def test_Given_APassingCampaign_When_OnlyACommentIsAdded_Then_TheReceiptStillCovers(self):
+        # Arrange — a comment carries no mutant, so voiding on one asks for a fresh campaign over a
+        # byte-identical mutant set. Measured on main: 17 of the 127 commits touching a non-test
+        # production source over the last 300 are comment-only.
+        campaign = StubbedCampaign()
+        campaign.write_receipt("pass")
         campaign.source.write_text(campaign.source.read_text() + "// an edit after the run\n")
+
+        # Act
+        code = campaign.run_over_diff("--receipt")
+
+        # Assert
+        self.assertEqual(code, 0)
+
+    # GREEN_ON_BASE(refactor): the byte hash refused a literal edit too, and this pins that the narrower keying still does.
+    def test_Given_APassingCampaign_When_AStringLiteralIsEdited_Then_ItIsRefusedAgain(self):
+        # Arrange — a literal is masked for generation and kept in the digest: editing one changes
+        # behaviour a mutant could have covered, so the receipt does not carry across it.
+        campaign = StubbedCampaign(body=PROBE_WITH_LITERAL)
+        campaign.write_receipt("pass")
+        campaign.source.write_text(
+            campaign.source.read_text().replace('"ready"', '"steady"'))
 
         # Act
         code = campaign.run_over_diff("--receipt")
