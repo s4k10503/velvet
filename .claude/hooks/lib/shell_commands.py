@@ -226,6 +226,36 @@ def git_invocation(tokens, git_directory=False):
     return context, tokens[index], tokens[index + 1:]
 
 
+# What a leading `cd` names, when the segment before the work is one. `PreToolUse` fires before the
+# command runs, so a hook reading the event's own directory reads where the tool call *started* —
+# the session's checkout — for `cd <worktree> && git ...`. `background_relative_path.py` refuses that
+# shape outright for a background command; a foreground one is answerable, and this is the answer.
+UNRESOLVED_CD = object()
+
+
+def leading_cd(command):
+    """The directory the first segment changes into, UNRESOLVED_CD when it cannot be read, or None.
+
+    Unresolved rather than absent for a target the shell has not expanded: a hook that reads `$SP` as
+    a literal directory answers about a path nothing holds, and answering about the wrong tree is what
+    this exists to stop.
+    """
+    segments = command_segments(command)
+    if not segments:
+        return None
+    tokens = tokens_of(segments[0])
+    index = leading_program(tokens)
+    if index >= len(tokens) or tokens[index] != "cd":
+        return None
+    rest = [token for token in tokens[index + 1:] if not token.startswith("-")]
+    if not rest:
+        return None
+    target = rest[0]
+    if "$" in target or "`" in target or "~" in target:
+        return UNRESOLVED_CD
+    return target
+
+
 def git_invocations(command, subcommands, git_directory=False):
     """Each segment that runs git with one of `subcommands`, shaped as `git_invocation`.
 

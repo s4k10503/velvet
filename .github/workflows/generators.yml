@@ -135,6 +135,12 @@ jobs:
       - name: Stale base report tests
         run: python3 scripts/hooks/test_stale_main.py
 
+      # `published_check.py` asks whether a closed version went unpublished; an entry waiting in a
+      # maintenance line's `## [Unreleased]` belongs to no version yet, so that reading is silent
+      # while the work waits. The silences are what the tests are mostly about.
+      - name: Maintenance line report tests
+        run: python3 scripts/hooks/test_unreleased_maintenance_line.py
+
       # Holds the body guards' record of which gh options take a value against the gh on the runner,
       # which needs no licence and no token, only `--help`. The script owns what a disagreement
       # costs in either direction.

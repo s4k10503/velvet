@@ -18,7 +18,7 @@ namespace Velvet.Tests
     /// <item>A selector that throws on a store emit is not swallowed: it re-renders so the render-phase throw reaches the ErrorBoundary.</item>
     /// <item>Every reader of the same store within one batch drain wave observes the SAME snapshot, even when an
     /// ancestor lands on the immediate tier (Normal lane, this frame) and a descendant on the delayed tier
-    /// (Transition lane, +DeferredDelayMs) and the store mutates between their tier drains — no tearing within a
+    /// (Transition lane, +DelayedTierDelayMs) and the store mutates between their tier drains — no tearing within a
     /// commit — and both converge to the latest snapshot once the mutation's follow-up render reaches the next
     /// immediate drain.</item>
     /// </list>
@@ -215,7 +215,7 @@ namespace Velvet.Tests
             Assume.That(s_descendantFiber, Is.Not.Null);
 
             // Ancestor re-renders on the Normal lane (immediate tier); descendant on the Transition lane
-            // (delayed tier). They now sit on different tiers separated by DeferredDelayMs.
+            // (delayed tier). They now sit on different tiers separated by DelayedTierDelayMs.
             s_ancestorFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
             s_descendantFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
 
@@ -228,7 +228,7 @@ namespace Velvet.Tests
 
             // Assert — the descendant observes the same snapshot the ancestor committed in this wave, not the
             // newer live store.Current. Without the tearing guard the descendant reads 1 while the ancestor
-            // committed 0 (torn for up to DeferredDelayMs).
+            // committed 0 (torn for up to DelayedTierDelayMs).
             Assert.AreEqual(ancestorAfterImmediate, s_descendantValue,
                 "The delayed-tier descendant observes the same store snapshot the immediate-tier ancestor committed");
             Assert.AreEqual(0, s_descendantValue,
