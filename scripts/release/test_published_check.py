@@ -9,11 +9,14 @@ Run: python3 scripts/release/test_published_check.py
 """
 
 import contextlib
+import io
 import json
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import published_check
 from published_check import (
@@ -227,26 +230,6 @@ class DrainDecisionTests(unittest.TestCase):
         # Assert
         self.assertIn("2.2.0 is not a major", reason)
 
-    def test_Given_AVersionTheRemoteAlreadyTags_When_Decided_Then_ItIsRecordedNotClosed(self):
-        # Arrange — merging a maintenance line forward brings its released sections across. Asked
-        # without the tags that reads as a release closing over the breaking section, and the merge
-        # publishes nothing: the line's own dispatch already did.
-        recorded = WAITING.replace("## [2.0.1] - 2026-08-08",
-                                   "## [2.1.3] - 2026-08-27\n\n### Fixed\n\n- A backported fix."
-                                   "\n\n## [2.0.1] - 2026-08-08")
-
-        # Act / Assert
-        self.assertIsNone(drain_reason(WAITING, recorded, {"v2.1.3", "v2.1.3-main"}))
-
-    def test_Given_AVersionNoTagAnswersFor_When_Decided_Then_ItIsStillClosing(self):
-        # Arrange — the same shape with no tag, which is a release rather than a record.
-        closing = WAITING.replace("## [2.0.1] - 2026-08-08",
-                                  "## [2.1.3] - 2026-08-27\n\n### Fixed\n\n- A backported fix."
-                                  "\n\n## [2.0.1] - 2026-08-08")
-
-        # Act / Assert
-        self.assertIn("2.1.3 is not a major", drain_reason(WAITING, closing, {"v2.0.1"}))
-
     def test_Given_AMinorClosingOverAFullSection_When_Decided_Then_ItIsRefused(self):
         # Arrange — the section is exactly where the change found it, and the tree it releases holds
         # the code those entries describe, so the minor ships every one of them undescribed.
@@ -437,6 +420,41 @@ class GitReadingTests(unittest.TestCase):
 
         # Assert
         self.assertIn("--ref release/2.0.1 -f version=2.0.1", reason)
+
+    def forward_merge(self, tags):
+        """A repository whose result records a version its base did not, under `tags`.
+
+        Driven through the command rather than `drain_reason`, because the reading under test is
+        whether the tags reach it at all: called directly, a tree that does not pass them raises
+        instead of deciding, and a raise separates nothing.
+        """
+        recorded = WAITING.replace(
+            "## [2.0.1] - 2026-08-08",
+            "## [2.1.3] - 2026-08-27\n\n### Fixed\n\n- A backported fix.\n\n## [2.0.1] - 2026-08-08")
+        path = self.repository(changelog=WAITING, package=package_json(version="2.1.3"), tags=tags)
+        (path / CHANGELOG_PATH).write_text(recorded)
+        git(path, "commit", "--quiet", "-a", "-m", "forward merge")
+        argv = ["published_check.py", "--project", str(path), "--base", "HEAD~1", "--result", "HEAD"]
+        err = io.StringIO()
+        with mock.patch.object(sys, "argv", argv), contextlib.redirect_stderr(err), \
+                contextlib.redirect_stdout(io.StringIO()):
+            published_check.main()
+        return err.getvalue()
+
+    def test_Given_AVersionTheRemoteAlreadyTags_When_Read_Then_ItIsRecordedNotClosed(self):
+        # Arrange — merging a maintenance line forward brings its released sections across, and the
+        # merge publishes nothing: the line's own dispatch already did.
+        said = self.forward_merge(("v2.0.1", "v2.1.3", "v2.1.3-main"))
+
+        # Act / Assert
+        self.assertNotIn("2.1.3", said)
+
+    def test_Given_AVersionNoTagAnswersFor_When_Read_Then_ItIsStillClosing(self):
+        # Arrange — the same shape with no tag, which is a release rather than a record.
+        said = self.forward_merge(("v2.0.1",))
+
+        # Act / Assert
+        self.assertIn("2.1.3 is not a major", said)
 
     def test_Given_ARevisionThatDoesNotExist_When_Read_Then_ItAnswersCleanRatherThanRaising(self):
         # Arrange — a branch that was never fetched is ordinary on a developer's machine, and refusing
