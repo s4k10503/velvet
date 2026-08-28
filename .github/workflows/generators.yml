@@ -156,6 +156,11 @@ jobs:
       - name: Background path guard tests
         run: python3 scripts/test_quality/run_suite.py scripts/hooks/test_background_relative_path.py
 
+      # The state under test is one nobody can put a machine into, so free space is stubbed. What is
+      # not stubbed is the shape the guard reads a seed off.
+      - name: Library seed guard tests
+        run: python3 scripts/test_quality/run_suite.py scripts/hooks/test_library_seed_without_room.py
+
       # Every guard asking "is this command a git <subcommand>" reads one table, so a word it does not
       # know hides the call from all of them, unrefused and unreported.
       - name: Shell command reading tests
