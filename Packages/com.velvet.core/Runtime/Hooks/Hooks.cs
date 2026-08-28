@@ -603,9 +603,10 @@ namespace Velvet
         /// <summary>
         /// Returns a navigate function that pushes (or, when <paramref name="replace"/> is true, replaces)
         /// the given target path. The target may be
-        /// absolute (<c>/foo</c>) or relative (<c>.</c>, <c>..</c>, <c>../sibling</c>) — relative targets
-        /// resolve against <see cref="Router.CurrentLocation"/>. Navigation is driven by
-        /// <see cref="Router.Current"/>.
+        /// absolute (<c>/foo</c>) or relative (<c>.</c>, <c>..</c>, <c>../sibling</c>). Relative targets
+        /// resolve from the calling component's enclosing Outlet route level. Without one, the router uses
+        /// the current leaf route level when matches exist; otherwise it uses the current URL path, or the
+        /// root before the first location. Navigation is driven by <see cref="Router.Current"/>.
         /// </summary>
         /// <returns>A stable delegate <c>navigate(to)</c>; the returned <see cref="UniTask{NavigationResult}"/> can be awaited or fire-and-forget.</returns>
         public static Func<string, UniTask<NavigationResult>> UseNavigate(bool replace = false)
