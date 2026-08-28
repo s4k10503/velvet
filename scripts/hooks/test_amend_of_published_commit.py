@@ -190,15 +190,37 @@ class PublishedHeadTests(GuardCase):
         # Assert
         self.assertEqual(answer, (REFUSE, PUBLISHED))
 
-    def test_Given_AnAmendInASecondSegment_When_ItIsPosed_Then_ItIsRefused(self):
-        # Arrange — a guard reading only the first command of the line sees a directory change here.
-        # What is read is the event's directory either way: `cd` is not followed, so a second
-        # segment naming an unpublished tree is refused here too.
+    def test_Given_AnAmendAfterACdIntoNoRepository_When_ItIsPosed_Then_ItSaysItCouldNotRead(self):
+        # Arrange — the cd is followed, so the tree read is the one the amend will run in. That one
+        # is not a repository, and a guard that cannot read HEAD is not entitled to say it is
+        # published.
         # Act
         answer = self.refused("cd /tmp && git commit --amend")
 
         # Assert
-        self.assertEqual(answer, (REFUSE, PUBLISHED))
+        self.assertEqual(answer, (REFUSE, UNREAD))
+
+    def test_Given_AnAmendAfterACdIntoAnUnpublishedTree_When_ItIsPosed_Then_ItIsAllowed(self):
+        # Arrange — `PreToolUse` fires before the command runs, so the event's directory is where the
+        # tool call started: the published checkout. The amend happens in the other one.
+        elsewhere = self.root / "elsewhere"
+        git(self.root, "clone", "-q", str(self.root / "remote.git"), "elsewhere")
+        commit(elsewhere, "two")
+
+        # Act
+        code, text = self.answer(f"cd {elsewhere} && git commit --amend", cwd=self.clone)
+
+        # Assert
+        self.assertEqual((code, text), (ALLOW, ""))
+
+    def test_Given_ACdTheShellHasNotExpanded_When_AnAmendFollows_Then_ItIsRefused(self):
+        # Arrange — reading `$SP` as a literal directory answers about a path nothing holds, and
+        # answering about the wrong tree is what this guard exists to stop.
+        # Act
+        code, text = self.answer("cd $SP/work && git commit --amend", cwd=self.clone)
+
+        # Assert
+        self.assertEqual((code, "has not expanded" in text), (REFUSE, True))
 
     def test_Given_AnAmendNamingTheTreeWithDashC_When_ItIsPosed_Then_ThatTreeIsWhatIsRead(self):
         # Arrange — the shell sits in a directory git cannot place, so an answer at all is one
