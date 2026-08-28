@@ -544,6 +544,9 @@ class ReaderFloorTests(unittest.TestCase):
         # Assert
         self.assertEqual(complaints, [self.UNDER_THE_FLOOR] * len(READERS))
 
+    # GREEN_ON_BASE(characterization): every pattern stopped at the wrap before and stops at it now.
+    # What moved is how this reads the reason out — by the last group rather than by number — so a
+    # pattern gaining a group does not silently start comparing something else.
     def test_Given_AReasonWrappedOntoASecondLine_When_EachPatternReadsIt_Then_EachStopsAtTheWrap(self):
         # Arrange — the guard judges the first line because that is the whole of what the readers
         # take as the claim. A reader that folded the continuation in would be measuring a reason
