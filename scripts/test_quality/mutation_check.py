@@ -1133,7 +1133,7 @@ def scope_digest(base, targets, project, platform):
     and this stays valid across it; including tests would void the receipt on the ordinary act of
     adding one after the run, which is most of a branch's commits.
 
-    Nor a comment: `digestible` blanks them before the hash, so a receipt survives the prose
+    Nor a comment: `digestible` takes them out before the hash, so a receipt survives the prose
     correction a review round leaves behind. Anything narrower than the whole bytes has to be
     checked for what it stops voiding on, and this stops on exactly the spans the generator already
     refuses to mutate.
