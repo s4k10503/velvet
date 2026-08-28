@@ -275,6 +275,9 @@ namespace Velvet.Tests
                 + "path filter was the one being watched for.");
         }
 
+        // GREEN_ON_BASE(characterization): the reading under test is this fixture's own helper, so the
+        // base lane compiles the branch's copy of it and no base run can separate the two. Removing
+        // the call by hand is what says the case is load-bearing, and it fails there.
         [Test]
         public void Given_ATriggerWrittenAsAFlowMapping_When_ItsFiltersAreRead_Then_TheChildOnItsOwnLineIsOne()
         {
