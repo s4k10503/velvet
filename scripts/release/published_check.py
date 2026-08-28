@@ -284,22 +284,23 @@ def git(project, *args, timeout=5):
     """Run git, raising on failure and on a read that never returns.
 
     A caller that kills this instead cannot report anything: a killed hook exits neither 0 nor 2, and
-    the stderr note unpublished_reason promises is never written. The workflow pays the same bound
-    although nothing there is waiting on it, which is the trade: a slow ls-remote reddens a required
-    check rather than passing an unread answer along.
+    the stderr note unpublished_reason promises is never written. So the default is the hook's, where
+    a person is waiting. The workflow raises it with `--timeout`: nothing there is waiting, and a
+    latency spike reddening a required check is a bound nobody chose paying for a reading that would
+    have answered. A remote that stays unreadable still reddens, which is the part the bound defends.
     """
     result = subprocess.run(["git", "-C", str(project), *args],
                             capture_output=True, text=True, check=True, timeout=timeout)
     return result.stdout
 
 
-def remote_tags(project, remote="origin"):
+def remote_tags(project, remote="origin", timeout=5):
     """Tag names on the remote.
 
     Asked of the remote so a stale local tag list cannot report an unpublished version as published,
     and so the reading needs neither a tag fetch nor a checkout deep enough to carry one.
     """
-    lines = git(project, "ls-remote", "--tags", remote).splitlines()
+    lines = git(project, "ls-remote", "--tags", remote, timeout=timeout).splitlines()
     return {line.split("refs/tags/", 1)[1].removesuffix("^{}")
             for line in lines if "refs/tags/" in line}
 
@@ -347,6 +348,8 @@ def main():
     parser.add_argument("--base", help="revision to ask the publication question of")
     parser.add_argument("--result", help="revision to ask the consistency question of")
     parser.add_argument("--remote", default="origin", help="remote to read tags from")
+    parser.add_argument("--timeout", type=int, default=5,
+                        help="seconds to allow the tag listing (default: the hook's bound)")
     args = parser.parse_args()
     if not args.base and not args.result:
         parser.error("name at least one of --base and --result")
@@ -364,7 +367,7 @@ def main():
 
     if args.base:
         base_changelog = read_at(project, args.base, CHANGELOG_PATH)
-        tags = remote_tags(project, args.remote)
+        tags = remote_tags(project, args.remote, args.timeout)
         reason = publication_reason(base_changelog,
                                     read_at(project, args.base, PACKAGE_JSON_PATH), tags)
         if reason and args.result and reopened_by(
