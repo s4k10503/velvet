@@ -34,12 +34,13 @@ The three harnesses the exception below covers — a mutation campaign, a neuter
 
 ```bash
 ps -Ao command= | grep -E '^[^ ]*[Pp]ython[^ ]* .*[ /](mutation_check|neuter_check|base_red_check)\.py' \
-  | grep -vc -- '--lane python'
+  | grep -vE -- '--lane python|--plan|--list|--refusals|--emit-lines|--receipt|--report' \
+  | grep -c .
 ```
 
 It is anchored twice over and needs both: on the interpreter, which is what excludes the `/bin/zsh -c` line carrying this very command and a watcher spelling `pgrep -f neuter_check.py`; and on the separator before the script's name, which excludes a `-m pytest` run over `test_mutation_check.py` — a Python process naming a harness without being one. Between the two it allows a run of flags, because an interpreter flag can sit there, as `-u` did in the campaign this was measured against.
 
-The `--lane python` exclusion is the third anchor, and it answers a narrower question than the other two: they ask whether the line is a harness, this asks whether the harness will start an editor. `base_red_check.py` waits for a quiet machine only where its scope holds a C# case, so a Python-only run never waits and never launches one, while matching the pattern exactly. An agent that reads `1` off such a line holds a run against nothing. `BusyWaitScopeTests` fails when a Python-only scope stops leaving that set empty.
+The read-only exclusions are the third anchor, and they answer a narrower question than the other two: those ask whether the line is a harness, these ask whether the harness will start an editor. Every one was read off the source rather than assumed — `base_red_check.py` waits for a quiet machine only where its scope holds a C# case, so `--lane python` never waits and never launches one, and `--plan`, `--list`, `--refusals`, `--emit-lines`, `--receipt` and `--report` each read the tree and return before any editor is asked for. All of them match the pattern exactly, and an agent that reads `1` off such a line holds a run against nothing. Measured on a real round: the count flickered 1/0 while a `--plan` came and went, and establishing that a `--lane csharp` was genuinely running in another worktree took ninety seconds of sampling full command lines — which is the reading this recipe exists to save. `BusyWaitScopeTests` fails when a Python-only scope stops leaving that set empty.
 
 What the count still cannot say is whether a harness it *does* report is between editors — a campaign holds none while it mutates, restores or writes its receipt, and that window is where a run of yours is charged without either count seeing it. The pair is what answers that, and neither reading answers it alone.
 
