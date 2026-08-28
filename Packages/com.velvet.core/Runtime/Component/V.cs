@@ -2364,7 +2364,10 @@ namespace Velvet
         /// Clickable navigation primitive that derives an active state from the current location.
         /// Applies <paramref name="activeClass"/> when the link is active.
         /// </summary>
-        /// <param name="to">Navigation target path (absolute or relative).</param>
+        /// <param name="to">
+        /// Navigation target path (absolute or relative). A relative target takes the same resolution for the
+        /// active comparison that it takes to navigate, against the enclosing route.
+        /// </param>
         /// <param name="activeClass">CSS-like class string appended when the link is active.</param>
         /// <param name="text">Link label text.</param>
         /// <param name="className">CSS-like utility class string applied always.</param>
