@@ -76,6 +76,11 @@ def repeated_blocks(package_root: Path) -> set[str]:
     return entries
 
 
+def block_id(entry: str) -> str:
+    """The hash an entry opens with, which is the block itself rather than where it repeats."""
+    return entry.split(None, 1)[0]
+
+
 def read_baseline(path: Path) -> set[str]:
     entries = {line.rstrip("\n") for line in path.read_text().splitlines() if line.strip()}
     if not entries:
@@ -121,6 +126,14 @@ def main():
     added = sorted(current - baseline)
     removed = sorted(baseline - current)
 
+    # An entry is a block id and the files it repeats in, so a block that gained a file leaves one on
+    # each side. Read as added alone it says a block started repeating, which is what a reader acts
+    # on -- measured, as a design question raised on a pull request over a block that had repeated in
+    # ten files for as long as the baseline has existed.
+    started = [entry for entry in added if block_id(entry) not in {block_id(e) for e in removed}]
+    stopped = [entry for entry in removed if block_id(entry) not in {block_id(e) for e in added}]
+    moved = [entry for entry in added if entry not in started]
+
     # Both directions are reported before either decides the exit code, because a change that swaps one
     # block for another is the case a count cannot see and is the reason this reads a set.
     for entry in added:
@@ -128,15 +141,19 @@ def main():
     for entry in removed:
         print(f"  - {entry}", file=sys.stderr)
 
-    if added:
-        print(f"\n{len(added)} block(s) now repeat that did not before.", file=sys.stderr)
+    if started or moved:
+        if started:
+            print(f"\n{len(started)} block(s) now repeat that did not before.", file=sys.stderr)
+        if moved:
+            print(f"\n{len(moved)} block(s) already repeated and now repeat in different files. The "
+                  f"repeated-block count is what it was; what moved is where.", file=sys.stderr)
         print("Update the baseline only when duplication was added deliberately:", file=sys.stderr)
         print(f"  {sys.executable} scripts/test_quality/duplication_check.py "
               f"--write-baseline {args.baseline}", file=sys.stderr)
         return 1
 
-    if removed:
-        print(f"\n{len(removed)} block(s) no longer repeat.", file=sys.stderr)
+    if stopped:
+        print(f"\n{len(stopped)} block(s) no longer repeat.", file=sys.stderr)
         print("Ratchet the baseline down so the next deliberate addition is visible:", file=sys.stderr)
         print(f"  {sys.executable} scripts/test_quality/duplication_check.py "
               f"--write-baseline {args.baseline}", file=sys.stderr)
