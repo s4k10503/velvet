@@ -201,11 +201,19 @@ def invocations(command, *word_sets):
 
 
 def read_body_file(path, cwd, after_a_move):
-    """(text, None) when the file can be read, else (None, one of the obstructions above)."""
+    """(text, None) when the file can be read, else (None, one of the obstructions above).
+
+    `~` is expanded here rather than recognised as unexpanded. It is a selector the shell rewrites,
+    like `$VAR` -- but unlike `$VAR` it names one path this can resolve, so the file is read rather
+    than the reading refused. Measured before this: `--body-file ~/x.md` over a file that exists and
+    answers was refused as "does not exist", with a next action about a write that did not run, while
+    the absolute spelling of the same file was read.
+    """
     if unexpanded(path):
         return None, UNEXPANDED_PATH
     if path == "-":
         return None, STDIN
+    path = os.path.expanduser(path)
     if after_a_move and not os.path.isabs(path):
         return None, RELATIVE_AFTER_MOVE
     resolved = Path(path) if os.path.isabs(path) else Path(cwd) / path

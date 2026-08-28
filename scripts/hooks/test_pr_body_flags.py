@@ -24,11 +24,14 @@ Run: python3 scripts/hooks/test_pr_body_flags.py
 """
 
 import importlib.util
+import os
 import re
 import shutil
 import subprocess
+import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -88,6 +91,54 @@ def across_subcommands(index):
     for subcommand in SUBCOMMANDS:
         found |= option_table(subcommand)[index]
     return found
+
+
+class BodyPathReadingTests(unittest.TestCase):
+    """Which spellings of a path the body reader resolves.
+
+    `~` is a selector the shell rewrites, like `$VAR` — and unlike `$VAR` it names one path this can
+    resolve, so the file is read rather than the reading refused. Measured before: `--body-file ~/x.md`
+    over a file that exists and answers was refused as "does not exist", with a next action about a
+    write that did not run, while the absolute spelling of the same file was read.
+    """
+
+    def setUp(self):
+        self.home = Path(tempfile.mkdtemp(prefix="body-home-"))
+        self.addCleanup(shutil.rmtree, self.home, ignore_errors=True)
+
+    def read(self, spelling):
+        with mock.patch.dict(os.environ, {"HOME": str(self.home)}):
+            return pr_body.read_body_file(spelling, str(self.home), after_a_move=False)
+
+    def test_Given_ATildeSpelledBody_When_Read_Then_ItIsTheFileThatIsThere(self):
+        # Arrange
+        (self.home / "body.md").write_text("a body that answers")
+
+        # Act
+        text, obstruction = self.read("~/body.md")
+
+        # Assert
+        self.assertEqual((text, obstruction), ("a body that answers", None))
+
+    # GREEN_ON_BASE(characterization): the base answers this too, and it is the half the
+    # widened reading could take with it — only running it says whether it did.
+    def test_Given_ATildeSpelledBodyThatIsNotThere_When_Read_Then_ItIsStillMissing(self):
+        # Arrange — the control: expanding the selector must not make an absent file readable.
+        # Act
+        _, obstruction = self.read("~/nothing-here.md")
+
+        # Assert
+        self.assertEqual(obstruction, pr_body.MISSING)
+
+    # GREEN_ON_BASE(characterization): the base answers this too, and it is the half the
+    # widened reading could take with it — only running it says whether it did.
+    def test_Given_AVariableSpelledBody_When_Read_Then_ItIsStillUnexpanded(self):
+        # Arrange — the other selector, which names no path this can resolve and is refused as before.
+        # Act
+        _, obstruction = self.read("$BODY")
+
+        # Assert
+        self.assertEqual(obstruction, pr_body.UNEXPANDED_PATH)
 
 
 class ValueFlagMirrorTests(unittest.TestCase):
