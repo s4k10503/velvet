@@ -83,8 +83,16 @@ def adds_breaking(pull, base):
 
     Read as a set difference rather than as a diff, so an entry the base already carries is not
     charged to whichever branch happens to touch the file beside it.
+
+    The head is asked for by sha and fetched when it is missing: the shas come from a live listing
+    and the objects from a checkout taken before it, so any pull request pushed since this run
+    started names a commit that is not here. That is ordinary while a queue is draining, and it was
+    reported as something the reader should go and fetch.
     """
     theirs = at(pull["headRefOid"], CHANGELOG)
+    if theirs is None:
+        run(["git", "fetch", "--quiet", "--depth", "1", "origin", pull["headRefOid"]], timeout=60)
+        theirs = at(pull["headRefOid"], CHANGELOG)
     if theirs is None:
         return None
     return [entry for entry in section(theirs, BREAKING)
@@ -125,8 +133,9 @@ def main():
         entries = adds_breaking(pull, args.base)
         if entries is None:
             sys.stderr.write(
-                "Could not read the CHANGELOG on #{}, so what it adds went unread: fetch it and\n"
-                "run this again.\n".format(pull["number"]))
+                "Could not read the CHANGELOG on #{}, so what it adds went unread. Fetching its\n"
+                "head did not bring it either, so this is not the ordinary case of a branch pushed\n"
+                "since the checkout.\n".format(pull["number"]))
             return UNREADABLE
         if entries:
             carrying.append((pull, entries))
@@ -161,7 +170,8 @@ def main():
     sys.stderr.write(
         "\nA breaking entry is written for the next major, so the major closing here is the one it\n"
         "was written for. Say in the body which of these the version carries and which it does not —\n"
-        "'not this one' is a decision, and going without one is what this refuses.\n")
+        "'not this one' is a decision, and going without one is what this refuses. The body is read\n"
+        "when this runs, so re-running it after the edit is enough.\n")
     return UNNAMED
 
 

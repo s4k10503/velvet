@@ -516,13 +516,22 @@ def unasked_for(started, now=None):
     return now - started if ago is None else min(ago, now - started)
 
 
-def retire(lock, unasked):
+def retire(lock, unasked, ever_asked=None):
     """The lock goes back here rather than at the exit: `watch` returns to a caller, and one that
     went on to other work would hold it while nothing was watching.
+
+    `ever_asked` is whether a stamp is readable there at all. None is a third state the interval
+    cannot express: a guard resolves `watcher_state` from its own checkout, so one at a commit
+    predating `note_asked` reads this watcher on every turn and cannot record having done it.
     """
     lock.close()
-    print(f"Retiring after {int(unasked)}s in which nothing stamped {watcher_state.ASKED}, which is "
-          f"how a guard records reading the watcher's state.\n"
+    never = ("\nThat file carries no stamp at all. A guard resolves the stamping code from its own "
+             "checkout,\nso one at a commit predating it reads this watcher every turn and cannot "
+             "record having done it —\npull there before reading this as nobody watching."
+             if ever_asked is False else "")
+    print(f"Retiring {int(unasked)}s since anything last stamped {watcher_state.ASKED}, which is "
+          f"how a guard records reading the watcher's state — floored by this watcher's own start, "
+          f"so a first stamp that never came reads the same as one that stopped.{never}\n"
           f"\nFrom here a pending check blocks a Stop again, and an edit is refused until something "
           f"is watching. Both are what a live watcher was forgiving. Start another when that is what "
           f"you want:\n"
@@ -562,7 +571,7 @@ def watch(project, base):
         # watcher whose calls all fail goes unread like any other.
         unasked = unasked_for(started)
         if unasked >= watcher_state.RETIRE_AFTER:
-            return retire(lock, unasked)
+            return retire(lock, unasked, watcher_state.asked_ago() is not None)
         try:
             pull_requests = open_pull_requests(project)
         except RuntimeError as error:

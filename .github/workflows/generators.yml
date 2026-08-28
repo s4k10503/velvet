@@ -141,6 +141,22 @@ jobs:
       - name: Maintenance line report tests
         run: python3 scripts/hooks/test_unreleased_maintenance_line.py
 
+      # The zero-checks reading, which had no suite. It used to say "merge it" for a pull request
+      # nothing had tested, on a path filter `pull_request` does not carry.
+      - name: Unsettled pull request guard tests
+        run: python3 scripts/hooks/test_unsettled_pr.py
+
+      # The two unexpanded-operand readings, which were one list under a sentence written for one of
+      # them.
+      - name: Fast-checks commit guard tests
+        run: python3 scripts/hooks/test_commit_failing_fast_checks.py
+
+      # A refuse guard that stops matching exits 0 and says nothing, which is what it does when it has
+      # nothing to say. The release-time edits it must let through are the half it was measured wrong
+      # about, by somebody walking the procedure by hand.
+      - name: Closed-version CHANGELOG guard tests
+        run: python3 scripts/hooks/test_changelog_into_closed_version.py
+
       # Holds the body guards' record of which gh options take a value against the gh on the runner,
       # which needs no licence and no token, only `--help`. The script owns what a disagreement
       # costs in either direction.
