@@ -174,13 +174,13 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - run: python3 scripts/release/test_release_notes.py
+      - run: python3 scripts/test_quality/run_suite.py scripts/release/test_release_notes.py
 
-      - run: python3 scripts/release/test_supported_versions_check.py
+      - run: python3 scripts/test_quality/run_suite.py scripts/release/test_supported_versions_check.py
 
       - run: python3 scripts/release/supported_versions_check.py
 
-      - run: python3 scripts/release/test_pin_example_check.py
+      - run: python3 scripts/test_quality/run_suite.py scripts/release/test_pin_example_check.py
 
       - run: python3 scripts/release/pin_example_check.py
 
@@ -213,7 +213,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - run: python3 scripts/release/test_published_check.py
+      - run: python3 scripts/test_quality/run_suite.py scripts/release/test_published_check.py
 
       - env:
           BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
@@ -221,18 +221,22 @@ jobs:
           python3 scripts/release/published_check.py --result HEAD --timeout 30 \
             ${BASE:+--base "$BASE"}
 
-      - run: python3 scripts/release/test_breaking_in_flight_check.py
+      - run: python3 scripts/test_quality/run_suite.py scripts/release/test_breaking_in_flight_check.py
 
       # Every other reading here is of one tree, so a branch carrying a breaking entry is invisible
       # to all of them — which is how v3.0.0 shipped twelve of the thirteen written for it. Skipped
       # on merge_group, where no body is left to name anything: the pull request already answered.
+      # The body is read here rather than taken from the event, because what this refusal asks for is
+      # an edit to it. `pull_request` does not fire on `edited` — and cannot be made to, since both
+      # gated triggers are held childless — so an event-carried body makes the refusal unclearable
+      # except by a push, and `gh run rerun` replays the same payload it already refused.
       - if: github.event_name == 'pull_request'
         env:
           BASE: ${{ github.event.pull_request.base.sha }}
-          BODY: ${{ github.event.pull_request.body }}
+          NUMBER: ${{ github.event.pull_request.number }}
           GH_TOKEN: ${{ github.token }}
         run: |
-          printf '%s' "$BODY" > /tmp/pr-body.md
+          gh pr view "$NUMBER" --json body -q .body > /tmp/pr-body.md
           python3 scripts/release/breaking_in_flight_check.py \
             --base "$BASE" --result HEAD --body-file /tmp/pr-body.md
 
@@ -351,17 +355,17 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - run: python3 scripts/test_quality/test_mutation_check.py
+      - run: python3 scripts/test_quality/run_suite.py scripts/test_quality/test_mutation_check.py
 
-      - run: python3 scripts/test_quality/test_neuter_check.py
+      - run: python3 scripts/test_quality/run_suite.py scripts/test_quality/test_neuter_check.py
 
       - run: python3 scripts/test_quality/neuter_check.py --audit
 
-      - run: python3 scripts/test_quality/test_base_red_check.py
+      - run: python3 scripts/test_quality/run_suite.py scripts/test_quality/test_base_red_check.py
 
-      - run: python3 scripts/test_quality/test_assert_results_from_this_tree.py
+      - run: python3 scripts/test_quality/run_suite.py scripts/test_quality/test_assert_results_from_this_tree.py
 
-      - run: python3 scripts/test_quality/test_assume_gate_check.py
+      - run: python3 scripts/test_quality/run_suite.py scripts/test_quality/test_assume_gate_check.py
 
       - run: python3 scripts/test_quality/assume_gate_check.py
 
@@ -376,14 +380,53 @@ jobs:
   # not, because a superseded run and a run somebody stopped both arrive here
   # with nothing having been tested.
   # ---------------------------------------------------------------------------
+  # ---------------------------------------------------------------------------
+  # The one compile the suite never performs. EditMode and PlayMode both run inside the editor, where
+  # UNITY_EDITOR is defined, so a call to a member declared under `#if UNITY_EDITOR` from outside one
+  # compiles in every job above and in no consumer's build. Measured on a branch carrying such a call:
+  # clean with the define, CS0103 without it, and what a consumer hits is a package that will not build.
+  #
+  # Scripts rather than a player: the question is which defines the compile runs under, and a player
+  # build would answer it alongside a scene load, an asset import and a linker pass with failure modes
+  # of their own.
+  # ---------------------------------------------------------------------------
+  player-compile:
+    name: Player script compilation
+    needs: license-check
+    if: needs.license-check.outputs.has_license == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: true
+
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: Library
+          key: Library-player-${{ hashFiles('Packages/**', 'ProjectSettings/**') }}
+          restore-keys: |
+            Library-player-
+
+      - uses: game-ci/unity-builder@1d4ee0697f193f54668e98961d79907911f4b4f2 # v4
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          unityVersion: 6000.3.21f1
+          targetPlatform: StandaloneLinux64
+          projectPath: .
+          buildMethod: Velvet.Editor.PlayerBuild.PlayerScriptCompilation.CompileForPlayer
+          allowDirtyBuild: true
+
   required-checks:
     name: Required checks (Unity)
     if: always()
-    needs: [license-check, unity-tests, release-notes, publication, test-quality, base-red-python, base-red]
+    needs: [license-check, unity-tests, player-compile, release-notes, publication, test-quality, base-red-python, base-red]
     runs-on: ubuntu-latest
     steps:
       - env:
-          RESULTS: ${{ needs.license-check.result }} ${{ needs.unity-tests.result }} ${{ needs.release-notes.result }} ${{ needs.publication.result }} ${{ needs.test-quality.result }} ${{ needs.base-red-python.result }} ${{ needs.base-red.result }}
+          RESULTS: ${{ needs.license-check.result }} ${{ needs.unity-tests.result }} ${{ needs.player-compile.result }} ${{ needs.release-notes.result }} ${{ needs.publication.result }} ${{ needs.test-quality.result }} ${{ needs.base-red-python.result }} ${{ needs.base-red.result }}
         run: |
           failed=0
           for result in $RESULTS; do
