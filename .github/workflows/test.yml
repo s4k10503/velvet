@@ -218,7 +218,7 @@ jobs:
       - env:
           BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
         run: |
-          python3 scripts/release/published_check.py --result HEAD \
+          python3 scripts/release/published_check.py --result HEAD --timeout 30 \
             ${BASE:+--base "$BASE"}
 
       - run: python3 scripts/release/test_breaking_in_flight_check.py
