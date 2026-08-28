@@ -15,8 +15,13 @@ Run: python3 scripts/hooks/test_unsettled_pr.py
 
 import importlib.util
 import json
+import shutil
+import sys
+import tempfile
+import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 GUARD = REPO_ROOT / ".claude/hooks/stop/unsettled_pr.py"
@@ -70,6 +75,57 @@ class ZeroChecks(unittest.TestCase):
     def test_Given_AConflictingPullRequest_When_Judged_Then_ItIsStillNamed(self):
         # Act / Assert
         self.assertIn("DIRTY", self.judge_with("DIRTY"))
+
+
+class PendingBehindAWatcher(unittest.TestCase):
+    """A pending check is forgiven while something is demonstrably watching.
+
+    `alive` answers False for any fresh heartbeat that is not exactly two fields, which is what a
+    watcher launched from a checkout predating the pid field writes — five commits in this
+    repository's history write one. Something is watching there, and the reading is what failed.
+    """
+
+    def judge_with(self, beat):
+        """`judge` over one pending check, with the heartbeat file holding `beat` or absent."""
+        def stub(args):
+            if "checks" in args:
+                return json.dumps([{"name": "Unity tests", "bucket": "pending"}]), "", 0
+            if "statusCheckRollup" in args:
+                return json.dumps({"statusCheckRollup": [{"name": "Unity tests"}]}), "", 0
+            return "BLOCKED", "", 0
+
+        directory = Path(tempfile.mkdtemp(prefix="unsettled-beat-"))
+        path = directory / "heartbeat"
+        if beat is not None:
+            path.write_text(beat)
+        original = unsettled_pr.gh
+        unsettled_pr.gh = stub
+        # The guard binds the readings by name, so what has to be redirected is the module they read
+        # their paths from.
+        state = sys.modules["watcher_state"]
+        try:
+            with mock.patch.object(state, "HEARTBEAT", path), \
+                    mock.patch.object(state, "ASKED", directory / "asked"):
+                return unsettled_pr.judge("1")
+        finally:
+            unsettled_pr.gh = original
+            shutil.rmtree(directory, ignore_errors=True)
+
+    def test_Given_AHeartbeatThisCannotRead_When_ACheckIsPending_Then_ItIsForgiven(self):
+        # Arrange — a one-field heartbeat inside the window: `alive` is False and something is
+        # writing it, which is the state `unreadable_beat` exists to name.
+        said = self.judge_with(f"{int(time.time())}\n")
+
+        # Act / Assert
+        self.assertIsNone(said)
+
+    def test_Given_NoHeartbeatAtAll_When_ACheckIsPending_Then_ItStillBlocks(self):
+        # Arrange — the control: forgiving here is the hole this guard was written for, and an
+        # absent file and an unreadable one are what the two halves separate.
+        said = self.judge_with(None)
+
+        # Act / Assert
+        self.assertIn("still pending", said or "")
 
 
 if __name__ == "__main__":
