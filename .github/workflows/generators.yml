@@ -146,6 +146,11 @@ jobs:
       - name: Unsettled pull request guard tests
         run: python3 scripts/hooks/test_unsettled_pr.py
 
+      # The two unexpanded-operand readings, which were one list under a sentence written for one of
+      # them.
+      - name: Fast-checks commit guard tests
+        run: python3 scripts/hooks/test_commit_failing_fast_checks.py
+
       # A refuse guard that stops matching exits 0 and says nothing, which is what it does when it has
       # nothing to say. The release-time edits it must let through are the half it was measured wrong
       # about, by somebody walking the procedure by hand.
