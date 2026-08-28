@@ -56,7 +56,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - A route whose optional literal the URL did not carry no longer writes that segment into the match's
   `PathnameBase`. `Route("docs/intro?")` at `/docs` gave a base of `/docs/intro`, so `UseNavigate()`
-  and `V.RouteLink` resolved every relative target one segment deeper than the address the user was
+  and `V.Link` resolved every relative target one segment deeper than the address the user was
   at — and nested, where the parent base is what `..` pops to, the wrong address still matched the
   parent, so the render looked right while each further hop compounded the error. The base is now
   built from the segments the match consumed, which is what an absent optional param and an absent
