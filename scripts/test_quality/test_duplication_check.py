@@ -8,10 +8,14 @@ newly written area — the case the check exists for — walks past it.
 Run: python3 scripts/test_quality/test_duplication_check.py
 """
 
+import contextlib
 import importlib.util
+import io
+import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -127,6 +131,75 @@ class BlockIdReadingTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(len(started), 1)
+
+
+class ExitCodeTests(unittest.TestCase):
+    """What the two arrivals cost, which is the half the block-id reading does not decide.
+
+    Separating them is only worth anything if both still stop the change; a reading that renamed one
+    of them and let it pass would report duplication more precisely and guard nothing.
+    """
+
+    def anchored(self, **files):
+        """A package whose baseline is never empty, which `read_baseline` refuses to read."""
+        return package(Anchor=block("z"), Mirror=block("z"), **files)
+
+    def run_against(self, before, after):
+        """`main` over `after`, baselined on `before`, returning (exit code, stderr)."""
+        baseline = Path(tempfile.mkdtemp()) / "baseline.txt"
+        baseline.write_text("\n".join(sorted(duplication_check.repeated_blocks(before))) + "\n")
+        argv = ["duplication_check.py", "--project", str(after.parents[1]),
+                "--baseline", str(baseline)]
+        err = io.StringIO()
+        with mock.patch.object(sys, "argv", argv), contextlib.redirect_stderr(err), \
+                contextlib.redirect_stdout(io.StringIO()):
+            return duplication_check.main(), err.getvalue()
+
+    def test_Given_ABlockThatStartedRepeating_When_Checked_Then_ItStopsTheChange(self):
+        # Arrange
+        before = self.anchored(Alpha=block("a"), Beta=block("b"))
+        after = self.anchored(Alpha=block("a"), Beta=block("a"))
+
+        # Act
+        code, said = self.run_against(before, after)
+
+        # Assert
+        self.assertEqual((code, "now repeat that did not before" in said), (1, True))
+
+    def test_Given_ABlockThatMovedFiles_When_Checked_Then_ItStopsTheChange(self):
+        # Arrange
+        before = self.anchored(Alpha=block("a"), Beta=block("a"))
+        after = self.anchored(Alpha=block("a"), Delta=block("a"))
+
+        # Act
+        code, said = self.run_against(before, after)
+
+        # Assert
+        self.assertEqual((code, "repeat in different files" in said), (1, True))
+
+    def test_Given_ABlockThatMovedFiles_When_Checked_Then_NothingIsSaidToHaveStopped(self):
+        # Arrange — the departure is the move's other half, and reporting it as a block that stopped
+        # repeating asks for a ratchet that would undo the entry the move just added.
+        before = self.anchored(Alpha=block("a"), Beta=block("a"))
+        after = self.anchored(Alpha=block("a"), Delta=block("a"))
+
+        # Act
+        _, said = self.run_against(before, after)
+
+        # Assert
+        self.assertNotIn("no longer repeat", said)
+
+    def test_Given_ABlockThatStoppedRepeating_When_Checked_Then_TheBaselineIsRatcheted(self):
+        # Arrange
+        before = self.anchored(Alpha=block("a"), Beta=block("a"))
+        after = self.anchored(Alpha=block("a"), Beta=block("b"))
+
+        # Act
+        code, said = self.run_against(before, after)
+
+        # Assert
+        self.assertEqual((code, "no longer repeat" in said),
+                         (duplication_check.BASELINE_DRIFT_EXIT, True))
 
 
 class BaselineTests(unittest.TestCase):

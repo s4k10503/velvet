@@ -141,18 +141,19 @@ def main():
     for entry in removed:
         print(f"  - {entry}", file=sys.stderr)
 
-    if started:
-        print(f"\n{len(started)} block(s) now repeat that did not before.", file=sys.stderr)
-    if moved:
-        print(f"\n{len(moved)} block(s) already repeated and now repeat in different files. The "
-              f"repeated-block count is what it was; what moved is where.", file=sys.stderr)
+    if started or moved:
+        if started:
+            print(f"\n{len(started)} block(s) now repeat that did not before.", file=sys.stderr)
+        if moved:
+            print(f"\n{len(moved)} block(s) already repeated and now repeat in different files. The "
+                  f"repeated-block count is what it was; what moved is where.", file=sys.stderr)
         print("Update the baseline only when duplication was added deliberately:", file=sys.stderr)
         print(f"  {sys.executable} scripts/test_quality/duplication_check.py "
               f"--write-baseline {args.baseline}", file=sys.stderr)
         return 1
 
-    if removed:
-        print(f"\n{len(removed)} block(s) no longer repeat.", file=sys.stderr)
+    if stopped:
+        print(f"\n{len(stopped)} block(s) no longer repeat.", file=sys.stderr)
         print("Ratchet the baseline down so the next deliberate addition is visible:", file=sys.stderr)
         print(f"  {sys.executable} scripts/test_quality/duplication_check.py "
               f"--write-baseline {args.baseline}", file=sys.stderr)
