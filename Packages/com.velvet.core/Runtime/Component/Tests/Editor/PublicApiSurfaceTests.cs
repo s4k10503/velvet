@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Text.RegularExpressions;
 using NUnit.Framework;
 using Velvet.Editor.DevTools;
 using Velvet.TestUtilities;
@@ -94,6 +95,53 @@ namespace Velvet.Tests
                 Is.EqualTo((loaded: true, surface: string.Empty)),
                 "The ILPP assembly is left out of PublicAPI.txt because a consumer can bind to nothing in "
                 + "it. An unloaded assembly would report the same empty surface, so both are read at once.");
+        }
+
+        /// <summary>A generic with a nested type, which the repository's own surface gains with
+        /// `VelvetTask` and did not carry when this rendering was written.</summary>
+        private sealed class OwnerWithNested<T>
+        {
+            internal struct Nested
+            {
+                internal T Held;
+            }
+        }
+
+        // GREEN_ON_BASE(characterization): the rendering under test sits in this same file, which
+        // the base lane carries with the cases, so no base run can separate them. Restoring the
+        // first-backtick cut by hand and re-running the fixture fails both, which is the reading.
+        [Test]
+        public void Given_ATypeNestedInsideAGeneric_When_Rendered_Then_ItIsNotItsOwner()
+        {
+            // Arrange — the two rendered the same line, so the nested type's members were recorded
+            // against its owner and an addition to either produced the same diff.
+            var owner = PublicApiSurface.FormatType(typeof(OwnerWithNested<>));
+            var nested = PublicApiSurface.FormatType(
+                typeof(OwnerWithNested<>.Nested));
+
+            // Act / Assert — the owner naming itself rides along, because two renderings that both
+            // collapsed to something else would differ from each other and be no more use.
+            Assert.That((owner.Contains("OwnerWithNested"), nested.Contains("Nested"), owner != nested),
+                        Is.EqualTo((true, true, true)));
+        }
+
+        // GREEN_ON_BASE(characterization): the rendering under test sits in this same file, which
+        // the base lane carries with the cases, so no base run can separate them. Restoring the
+        // first-backtick cut by hand and re-running the fixture fails both, which is the reading.
+        [Test]
+        public void Given_ATypeNestedInsideAGeneric_When_Rendered_Then_ItsOwnerIsNamedInIt()
+        {
+            // Arrange — the non-generic case already rendered the owner in front of the `+`, and this
+            // is the same spelling one arity marker along. What the marker looks like is read off the
+            // owner rather than written down, so this says nothing about how the runtime spells one.
+            var owner = PublicApiSurface.FormatType(typeof(OwnerWithNested<>));
+            var nested = PublicApiSurface.FormatType(
+                typeof(OwnerWithNested<>.Nested));
+
+            // Act / Assert
+            Assert.That(nested.StartsWith(owner.Substring(0, owner.IndexOf('`')), StringComparison.Ordinal)
+                        && nested.Contains("+Nested"),
+                        Is.True, $"owner={owner} nested={nested}");
         }
 
         private static string BuildDriftMessage(IReadOnlyList<string> added, IReadOnlyList<string> removed)
@@ -459,7 +507,11 @@ namespace Velvet.Tests
             return formatted;
         }
 
-        private static string FormatType(Type type) => FormatType(type, null);
+        // `Owner`1+Nested`2` carries one per segment, and the arity below is read off the type rather
+        // than off the name.
+        private static readonly Regex ArityMarker = new(@"`\d+", RegexOptions.Compiled);
+
+        internal static string FormatType(Type type) => FormatType(type, null);
 
         private static string FormatType(Type type, NullableAnnotationProbe.AnnotationReader reader)
         {
@@ -487,9 +539,14 @@ namespace Velvet.Tests
             {
                 var annotation = Annotate(type, reader);
                 var definition = type.IsGenericTypeDefinition ? type : type.GetGenericTypeDefinition();
-                var definitionName = definition.FullName ?? definition.Name;
-                var tickIndex = definitionName.IndexOf('`', StringComparison.Ordinal);
-                var baseName = tickIndex >= 0 ? definitionName[..tickIndex] : definitionName;
+                // Every arity marker rather than the text before the first one. A type nested inside a
+                // generic spells its FullName `Owner`1+Nested`, so cutting at the first backtick dropped
+                // `+Nested` and rendered the nested type as its owner -- same line, same members recorded
+                // against the wrong type, and a reviewer's diff unable to tell an addition on one from an
+                // addition on the other. The non-generic owner was already correct, which is why nothing
+                // reported it.
+                var definitionName = ArityMarker.Replace(definition.FullName ?? definition.Name, "");
+                var baseName = definitionName;
                 var arity = definition.GetGenericArguments().Length;
 
                 // A signature written in terms of the declaring type's own parameters arrives here as the

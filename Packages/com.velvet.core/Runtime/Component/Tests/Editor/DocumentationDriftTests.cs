@@ -811,21 +811,58 @@ namespace Velvet.Tests
             return unresolved.Distinct().ToList();
         }
 
+        // GREEN_ON_BASE(characterization): this one is green either way here — the checkout it runs in
+        // holds no untracked markdown at the top level on a runner, which is the whole asymmetry. What
+        // separates the readings is the case below, and only running it says whether it does.
         [Test]
         public void Given_EveryTopLevelDirectoryHoldingMarkdown_When_TheWalkIsRead_Then_TheWalkReachesIt()
         {
             // Arrange — the walk is rooted, so a document under a root nobody added is scanned by nothing
             // and every drift guard reading this corpus passes over it in silence.
             var scanned = DocumentationCorpus.Files().ToList();
+            var listing = TrackedFiles();
 
             // Act
-            var unwalked = DocumentationCorpus.UnwalkedMarkdownRoots();
+            var unwalked = DocumentationCorpus.UnwalkedMarkdownRoots(listing);
 
             // Assert — the scanned count rides along because a walk that collapsed to nothing would leave
             // this reporting no unwalked root either.
-            Assert.That((scanned.Count > 20, string.Join(", ", unwalked)), Is.EqualTo((true, string.Empty)),
+            Assert.That((scanned.Count > 20, listing != null, string.Join(", ", unwalked)),
+                        Is.EqualTo((true, true, string.Empty)),
                 "markdown under a root the walk does not reach is checked by nothing; add the root to the "
-                + "walk, or to .gitignore if it is machine-local");
+                + "walk, or leave it untracked if it is machine-local");
+        }
+
+        // GREEN_ON_BASE(characterization): the reading under test sits in `DocumentationCorpus`, a
+        // test-side file the base lane carries with the cases, so no base run can separate them.
+        // Restoring the filesystem walk by hand and re-running the fixture fails this one.
+        [Test]
+        public void Given_MarkdownGitDoesNotTrack_When_TheUnwalkedRootsAreRead_Then_ItNamesNoRoot()
+        {
+            // Arrange — a developer machine carries untracked directories a runner does not, and the two
+            // answers must differ: a documentation root somebody forgot is tracked by the commit that adds
+            // it. Measured before this reading was narrowed, an untracked `.agents/` holding two documents
+            // reddened the case above here and left it green in CI.
+            var stray = Path.Combine(Path.GetFullPath("."), ".velvet-untracked-probe");
+            Directory.CreateDirectory(stray);
+            File.WriteAllText(Path.Combine(stray, "note.md"), "# a note nobody committed\n");
+
+            try
+            {
+                var listing = TrackedFiles();
+
+                // Act
+                var unwalked = DocumentationCorpus.UnwalkedMarkdownRoots(listing);
+
+                // Assert — the listing arriving rides along, because a reading that answered nothing
+                // would name no root either.
+                Assert.That((listing != null && listing.Count > 20, string.Join(", ", unwalked)),
+                            Is.EqualTo((true, string.Empty)));
+            }
+            finally
+            {
+                Directory.Delete(stray, recursive: true);
+            }
         }
 
         // The case above enumerates top-level directories, so it answers only for a root nobody walks. The
