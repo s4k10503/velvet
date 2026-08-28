@@ -68,5 +68,22 @@ class LeadingWordTests(unittest.TestCase):
         self.assertEqual(self.subcommands("echo 'if git commit --amend'"), [])
 
 
+class LoopHeadReaderTests(unittest.TestCase):
+    """A guard whose subject is the keyword itself cannot read it through this table.
+
+    `hand_rolled_pr_poller` decides that a command repeats by finding `while` or `until` where the
+    program word would be. Adding those to `LEADING_WORDS` walked past them, so a backgrounded poll
+    over the watcher's state stopped reading as a loop and the guard let it through — measured, and
+    what caught it was that guard's own suite rather than anything here.
+    """
+
+    def test_Given_ALoopKeyword_When_TheProgramWordIsSought_Then_TheTableWalksPastIt(self):
+        # Arrange — the property the poller guard has to compensate for, stated where the table is.
+        tokens = ["until", "gh", "pr", "checks", "702"]
+
+        # Act / Assert
+        self.assertEqual(tokens[shell_commands.leading_program(tokens)], "gh")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
