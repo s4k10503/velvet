@@ -151,6 +151,11 @@ jobs:
       - name: Create alias guard tests
         run: python3 scripts/test_quality/run_suite.py scripts/hooks/test_create_aliases.py
 
+      # A guard routed around by one character is worse than no guard: the refusal that does not fire
+      # reads identically to a command nobody needed to refuse.
+      - name: Background path guard tests
+        run: python3 scripts/test_quality/run_suite.py scripts/hooks/test_background_relative_path.py
+
       # The state under test is one nobody can put a machine into, so free space is stubbed. What is
       # not stubbed is the shape the guard reads a seed off.
       - name: Library seed guard tests
@@ -176,6 +181,11 @@ jobs:
       # about, by somebody walking the procedure by hand.
       - name: Closed-version CHANGELOG guard tests
         run: python3 scripts/test_quality/run_suite.py scripts/hooks/test_changelog_into_closed_version.py
+
+      # Silent when it stops matching, like every refuse guard, and the shapes it must let through
+      # are as much of the subject as the ones it refuses.
+      - name: Message-location guard tests
+        run: python3 scripts/hooks/test_message_outside_its_worktree.py
 
       # Holds the body guards' record of which gh options take a value against the gh on the runner,
       # which needs no licence and no token, only `--help`. The script owns what a disagreement

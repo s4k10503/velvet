@@ -746,6 +746,21 @@ def changed_lines_by_file(project, since):
     return changed
 
 
+def asked_about_nothing(derived, wanted):
+    """Whether `--platform` names none of the platforms the branch's own cases are on.
+
+    Nothing asked and nothing able to answer are opposite states, and the run cannot tell them apart:
+    a platform with no case writes no result, which `decide` reads as a base that could not be read —
+    the verdict reserved for a run that happened and produced nothing usable. So the empty
+    intersection is answered before the run, where the reason is still in hand.
+
+    Both halves are required. Without `wanted` this fires on every run that names no platform, and
+    without `derived` it fires on a branch with no C# case at all, where the Python lane is the
+    answer and this would talk over it.
+    """
+    return bool(wanted) and bool(derived) and not [name for name in derived if name in wanted]
+
+
 def deleted_files(project, since):
     """The paths the base holds and the branch does not, so the base tree stops holding them either.
 
@@ -766,19 +781,38 @@ def deleted_files(project, since):
 # Building the base tree
 # --------------------------------------------------------------------------------------------------
 
+# What a warm Library must not carry into the base tree. The rest of it is import state -- an artifact
+# database, a shader cache, a package cache -- which the base tree would rebuild identically. This one
+# holds the assemblies the BRANCH compiled, and a base run that reuses one reports the branch's
+# behaviour as the base's.
+#
+# The two directions are not equally exposed. A leaked assembly that makes a case PASS on the base is
+# reported as an undeclared pass and fails the run loudly. One that makes a case FAIL hands the branch
+# exactly the verdict it wanted, for its own code rather than the base's, and `red on the base` is the
+# answer the lane exists to produce -- so a wrong one looks like a right one and nothing says so.
+CARRIES_NOTHING = "ScriptAssemblies"
+
+
 def clone_tree(source, destination):
-    """Copies a Library into the base tree, asking the filesystem to share the blocks if it will.
+    """Copies a Library into the base tree, minus what the branch compiled, sharing blocks if it can.
 
     The base tree is a checkout the machine has never imported, and the import is most of what a base
     run costs. A byte copy of a Library this size is its own kind of slow, so `cp -c` is tried first
     and the plain copy is what happens when it is refused.
+
+    Excluding here rather than asking each caller to remember a flag: CLAUDE.md already says to leave
+    that directory behind when seeding a Library, and CONTRIBUTING.md's own example passed it. The two
+    stopped disagreeing when the reading moved into the copy. Measured, the exclusion costs almost
+    nothing -- 166 files of 34452, 27 MB of 2.7 GB -- so what `--warm-library` is for is untouched.
     """
     if sys.platform == "darwin":
         result = subprocess.run(["cp", "-Rc", str(source), str(destination)],
                                 capture_output=True, text=True)
         if result.returncode == 0:
+            shutil.rmtree(Path(destination) / CARRIES_NOTHING, ignore_errors=True)
             return
-    shutil.copytree(str(source), str(destination), symlinks=True, dirs_exist_ok=True)
+    shutil.copytree(str(source), str(destination), symlinks=True, dirs_exist_ok=True,
+                    ignore=shutil.ignore_patterns(CARRIES_NOTHING))
 
 
 def build_base_tree(project, commit, destination, carry, drop, warm_library=None):
@@ -2024,10 +2058,14 @@ def main():
                 len(python_lane) + len(guards)), flush=True)
             reported.update(run_python(base_tree, project, python_lane + guards, transcript))
 
-        platforms = sorted({platform_of(case.path) for case in cases
-                            if kind_of(case.path) == "csharp"})
-        if args.platform:
-            platforms = [name for name in platforms if name in args.platform]
+        derived = sorted({platform_of(case.path) for case in cases
+                          if kind_of(case.path) == "csharp"})
+        platforms = [name for name in derived if name in args.platform] if args.platform else derived
+        if asked_about_nothing(derived, args.platform):
+            print("No changed case is on {}; the ones this branch wrote are {}.".format(
+                ", ".join(sorted(args.platform)), ", ".join(derived)))
+            print("Nothing was asked here, so nothing could answer. Run the lane those cases are on.")
+            return 0
         if platforms and not wait_for_quiet(args.busy_timeout):
             raise SystemExit("another Unity test run is still in flight")
         canaries.update(canaries_for(base_tree, cases, carry, platforms))
