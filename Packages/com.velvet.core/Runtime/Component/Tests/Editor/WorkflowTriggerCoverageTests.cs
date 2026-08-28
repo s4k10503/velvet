@@ -304,7 +304,12 @@ namespace Velvet.Tests
         // A child key whose colon follows its name is reported, rather than a list of the filters named
         // today: a list is silent about a key it has not got, where reporting one it should not have
         // reported fails and gets corrected. A spelling that puts anything between the name and the
-        // colon, or that writes the trigger as a flow mapping, is not reached.
+        // colon is not reached.
+        //
+        // A flow mapping puts the child on the trigger's own line, where the line-and-indent reading
+        // sees only the trigger. Measured before this was added: `pull_request: {branches: [main]}`
+        // passed the guard the block-style spelling fails, and that filter is the one whose absence
+        // makes a required check never start.
         private static IEnumerable<(string Workflow, string Trigger, string Key)> TriggerFilters(string workflow)
         {
             var lines = File.ReadAllLines(Path.GetFullPath(workflow));
@@ -331,11 +336,28 @@ namespace Velvet.Tests
                 if (indent == 2)
                 {
                     trigger = name;
+                    foreach (var inner in FlowKeys(line.Substring(key.Length)))
+                    {
+                        yield return (workflow, trigger, inner);
+                    }
                 }
                 else
                 {
                     yield return (workflow, trigger, name);
                 }
+            }
+        }
+
+        private static readonly Regex FlowKeyPattern =
+            new(@"[{,]\s*[""']?([A-Za-z_][A-Za-z0-9_-]*)[""']?\s*:", RegexOptions.Compiled);
+
+        // Read off the trigger's own line, after its colon. Only a `{`- or `,`-preceded name counts, so a
+        // value that happens to hold a colon -- a cron expression, a path glob -- names no key.
+        private static IEnumerable<string> FlowKeys(string afterColon)
+        {
+            foreach (Match found in FlowKeyPattern.Matches(afterColon))
+            {
+                yield return found.Groups[1].Value;
             }
         }
 
