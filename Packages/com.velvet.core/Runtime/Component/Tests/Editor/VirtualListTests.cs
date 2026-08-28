@@ -20,6 +20,8 @@ namespace Velvet.Tests
     /// <item>The visible range is firstVisible..lastVisible derived from scroll offset, viewport height, and
     /// itemHeight, widened by overscan on both sides and clamped to the collection bounds.</item>
     /// <item>An empty collection renders no visible items and tolerates range updates without throwing.</item>
+    /// <item>An item's <c>refCallback</c> has run by the time a range update returns, though the update is
+    /// driven from a scroll rather than from a reconcile pass.</item>
     /// <item>The DSL rejects a null items / keySelector / renderer with <see cref="ArgumentNullException"/>, and a
     /// non-positive itemHeight with <see cref="ArgumentOutOfRangeException"/>.</item>
     /// <item>The type-erased item list admits a null element, since the source element type may itself.</item>
@@ -155,6 +157,32 @@ namespace Velvet.Tests
             // Assert
             Assert.That(visibleContainer.childCount, Is.GreaterThan(0),
                 "A scrolled-down window still renders the items now in view");
+        }
+
+        // GREEN_ON_BASE(characterization): an item's ref attaches, which the base does at the moment it
+        // creates the item. Moving ref setups to the end of a reconcile pass has to keep it, and this
+        // range update is driven straight from a scroll, where there is no such pass to end.
+        [Test]
+        public void Given_AnItemCarryingARef_When_TheRangeIsRendered_Then_TheRefHoldsTheRenderedItem()
+        {
+            // Arrange
+            VisualElement captured = null;
+            var node = V.VirtualList(
+                items: CreateItems(100),
+                keySelector: item => item.Id,
+                itemHeight: 50f,
+                renderer: item => V.Label(text: item.Name, key: item.Id,
+                    refCallback: element => { captured = element; return null; }),
+                overscan: 0);
+            var scrollView = new ScrollView(ScrollViewMode.Vertical);
+            using var controller = new FiberVirtualListController(scrollView, node, Reconciler);
+            var visibleContainer = scrollView.contentContainer.ElementAt(1);
+
+            // Act
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 50f);
+
+            // Assert — the last item the window rendered is the one the shared capture holds.
+            Assert.That(captured, Is.SameAs(visibleContainer.ElementAt(visibleContainer.childCount - 1)));
         }
 
         [Test]

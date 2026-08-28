@@ -677,6 +677,15 @@ namespace Velvet
         /// <summary>The VNode array fixed by the previous reconcile. Serves as the "old" side for the next reconcile.</summary>
         internal VNode?[]? PreviousTree { get; set; }
 
+        /// <summary>
+        /// Set where <c>FiberErrorBoundary.TryShowFallback</c> writes the fallback over
+        /// <see cref="PreviousTree"/>, cleared at the top of every <c>FiberRenderer.RenderAndReconcile</c>
+        /// for this fiber. What it answers that the reconciler's own abort flag cannot is which fiber the
+        /// fallback belongs to: the abort is shared by every Reconciler on one context, so a descendant
+        /// boundary catching raises it for an ancestor whose committed tree is still the one in the DOM.
+        /// </summary>
+        internal bool FallbackReplacedPreviousTree { get; set; }
+
         /// <summary>Reference to the previous tree retained during a pending time-sliced reconcile.</summary>
         internal VNode?[]? PendingOldTree { get; set; }
 
