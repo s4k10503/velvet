@@ -267,8 +267,6 @@ namespace Velvet
 
         #region Branch matching
 
-        /// <summary>One branch probe's state: everything the walk carries that does not change as it
-        /// descends, plus the two things it fills in.</summary>
         private ref struct Walk
         {
             public readonly List<RouteSegment> Pattern;
@@ -471,17 +469,10 @@ namespace Velvet
             return matches;
         }
 
-        /// <summary>
-        /// The path this route contributes to a match's base, with any segment the match skipped left
-        /// out. Advances <paramref name="patternOffset"/> past this route's share of the branch pattern.
-        /// </summary>
-        /// <remarks>
-        /// Walks <see cref="ParseRouteSegments"/> rather than splitting the path again: indexing into
-        /// `taken` needs the two readings to agree segment for segment, and they did not — one dropped
-        /// the empty part in `a//b` and the other kept it.
-        /// </remarks>
-        // Read off the branch's already-parsed pattern rather than the route's path: `ParseRouteSegments`
-        // is an iterator, and calling it here allocated an enumerator per route on every match.
+        // Read off the branch's already-parsed pattern rather than the route's path. Two readings of one
+        // path do not agree segment for segment -- one drops the empty part in `a//b` and the other keeps
+        // it -- and `taken` is indexed over the pattern, so the pattern is the reading that can be
+        // indexed. Re-parsing here also allocated an enumerator per route on every match.
         private static string ResolveRouteSegments(
             List<RouteSegment> pattern, int count, IReadOnlyDictionary<string, string> captured,
             int[] taken, ref int patternOffset)

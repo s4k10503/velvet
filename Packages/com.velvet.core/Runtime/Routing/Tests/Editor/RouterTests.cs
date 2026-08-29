@@ -592,10 +592,7 @@ namespace Velvet.Tests
             // Suspend-mode failures route through OnSuspendLoaderFailed, which logs the exception.
             LogAssert.Expect(UnityEngine.LogType.Exception, new System.Text.RegularExpressions.Regex("deferred-failure"));
             tcs.TrySetException(new InvalidOperationException("deferred-failure"));
-            // No hop between the two: the completion source resumes the loader's `await` inline, the
-            // catch announces inline, and the Router's handler writes the error inline. A wait here
-            // would let a future hop through unnoticed, and one hop is not the same amount of progress
-            // on a runner as on the machine that counted it.
+            // No hop between the two: a wait here would let a future one through unnoticed.
             Assume.That(router.CurrentLoaderErrors.Count, Is.EqualTo(1),
                 "Precondition: the failure was recorded synchronously with the exception being set");
             router.NavigateSync("/other");
