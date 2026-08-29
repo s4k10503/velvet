@@ -715,8 +715,6 @@ class ExhaustedLoopTests(unittest.TestCase):
     answering about the tree rather than about any case in it.
     """
 
-    # GREEN_ON_BASE(characterization): the base says nothing here because it has no such message at
-    # all, and this is the control that keeps the new one off a lane that starts no editor.
     def test_Given_NoRoundRan_When_TheReasonIsBuilt_Then_ItSaysNothing(self):
         # Arrange — the Python-only lane starts no editor, so there is no loop to report on.
         # Act / Assert
