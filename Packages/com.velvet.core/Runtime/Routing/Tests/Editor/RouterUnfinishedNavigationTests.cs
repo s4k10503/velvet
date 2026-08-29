@@ -39,7 +39,7 @@ namespace Velvet.Tests
             var (check, entered, _, _) = MakeDeferredBlocker();
             using var registration = router.RouteBlockerManager.Register(check, new RouteBlockerState());
             var parked = router.GoBack();
-            await entered.Task;
+            await entered.Task.Bounded();
             Assume.That(router.CurrentLocation?.Path, Is.EqualTo("/settings"),
                 "Precondition: the Back is still parked in the blocker and has committed nothing");
 
@@ -69,7 +69,7 @@ namespace Velvet.Tests
             var (check, entered, _, resumeUnblocked) = MakeDeferredBlocker();
             using var registration = router.RouteBlockerManager.Register(check, new RouteBlockerState());
             var parked = router.GoForward();
-            await entered.Task;
+            await entered.Task.Bounded();
             await router.NavigateAsync("/contact");
             Assume.That(RouterHistoryProbe.PathsOf(router), Is.EqualTo("/home,/about,/contact"),
                 "Precondition: the Push truncated the entry the parked Forward had resolved onto");
@@ -105,7 +105,7 @@ namespace Velvet.Tests
             var (check, entered, _, _) = MakeDeferredBlocker();
             using var registration = router.RouteBlockerManager.Register(check, new RouteBlockerState());
             var parked = router.NavigateAsync("/guarded");
-            await entered.Task;
+            await entered.Task.Bounded();
 
             // Act
             await router.NavigateAsync("/x");

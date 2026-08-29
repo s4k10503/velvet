@@ -243,11 +243,11 @@ namespace Velvet.Tests
             var joinedStarted = false;
             s_transitionStarter.Invoke(async () =>
             {
-                await outerGate.Task;
+                await outerGate.Task.Bounded();
                 s_transitionStarter.Invoke(async () =>
                 {
                     joinedStarted = true;
-                    await joinedGate.Task;
+                    await joinedGate.Task.Bounded();
                 });
             });
 
@@ -304,7 +304,7 @@ namespace Velvet.Tests
             Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () =>
             {
                 s_transitionSetValue.Invoke(1);
-                await gate.Task;
+                await gate.Task.Bounded();
                 s_transitionSetValue.Invoke(2);
             };
 
@@ -324,7 +324,7 @@ namespace Velvet.Tests
             var gate = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
             Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () =>
             {
-                await gate.Task;
+                await gate.Task.Bounded();
                 s_transitionSetValue.Invoke(1);
             };
             s_transitionStarter.Invoke(asyncUpdates);
@@ -348,7 +348,7 @@ namespace Velvet.Tests
             var gate = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
             Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () =>
             {
-                await gate.Task;
+                await gate.Task.Bounded();
                 s_transitionSetValue.Invoke(1);
             };
             s_transitionStarter.Invoke(asyncUpdates);
@@ -533,7 +533,7 @@ namespace Velvet.Tests
             var gate = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
             Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () =>
             {
-                await gate.Task;
+                await gate.Task.Bounded();
                 s_transitionSetValue.Invoke(1);
                 s_transitionStarter.Invoke(() => s_transitionSetValue.Invoke(2));
             };
@@ -559,7 +559,7 @@ namespace Velvet.Tests
             // Arrange — the action parks on its await having scheduled nothing, so the fiber carries no lane
             using var mounted = V.Mount(_root, V.Component(TransitionRender, key: "transition"));
             var gate = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
-            Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () => await gate.Task;
+            Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () => await gate.Task.Bounded();
             s_transitionStarter.Invoke(asyncUpdates);
             var awaitingBeforeTheAct = s_transitionFiber.IsTransitionPending;
 
@@ -587,7 +587,7 @@ namespace Velvet.Tests
             Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () =>
             {
                 s_transitionSetValue.Invoke(1);
-                await gate.Task;
+                await gate.Task.Bounded();
             };
             s_transitionStarter.Invoke(asyncUpdates);
             mounted.GetSchedulerForTest().DrainDelayedForTest();
@@ -614,7 +614,7 @@ namespace Velvet.Tests
             Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () =>
             {
                 s_transitionSetValue.Invoke(1);
-                await gate.Task;
+                await gate.Task.Bounded();
                 s_transitionSetValue.Invoke(2);
             };
             s_transitionStarter.Invoke(asyncUpdates);
@@ -695,7 +695,7 @@ namespace Velvet.Tests
             var gate = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
             Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () =>
             {
-                await gate.Task;
+                await gate.Task.Bounded();
                 s_twoSetValue.Invoke(1);
             };
             s_twoStarterA.Invoke(asyncUpdates);
@@ -736,7 +736,7 @@ namespace Velvet.Tests
             // synchronous transition that does write, so the fiber carries B's transition lane while A awaits
             using var mounted = V.Mount(_root, V.Component(TwoTransitionRender, key: "two"));
             var gateA = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
-            Func<Cysharp.Threading.Tasks.UniTask> actionA = async () => await gateA.Task;
+            Func<Cysharp.Threading.Tasks.UniTask> actionA = async () => await gateA.Task.Bounded();
             s_twoStarterA.Invoke(actionA);
             s_twoStartB.Invoke(() => s_twoSetValueB.Invoke(1));
             var inFlightBeforeTheAct = s_twoFiber.TransitionSlots[0].IsAsyncInFlight;
@@ -763,10 +763,10 @@ namespace Velvet.Tests
             var gateB = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
             Func<Cysharp.Threading.Tasks.UniTask> actionA = async () =>
             {
-                await gateA.Task;
+                await gateA.Task.Bounded();
                 s_twoSetValue.Invoke(1);
             };
-            Func<Cysharp.Threading.Tasks.UniTask> actionB = async () => await gateB.Task;
+            Func<Cysharp.Threading.Tasks.UniTask> actionB = async () => await gateB.Task.Bounded();
             s_twoStarterA.Invoke(actionA);
             s_twoStarterB.Invoke(actionB);
             var bothInFlightBeforeTheAct = s_twoFiber.TransitionSlots[0].IsAsyncInFlight
@@ -797,7 +797,7 @@ namespace Velvet.Tests
             // completion behind it both run with B's transition scope open around them
             using var mounted = V.Mount(_root, V.Component(TwoTransitionRender, key: "two"));
             var gate = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
-            Func<Cysharp.Threading.Tasks.UniTask> actionA = async () => await gate.Task;
+            Func<Cysharp.Threading.Tasks.UniTask> actionA = async () => await gate.Task.Bounded();
             s_twoStarterA.Invoke(actionA);
             var pendingBeforeTheAct = s_twoFiber.TransitionSlots[0].IsPending;
 
@@ -906,7 +906,7 @@ namespace Velvet.Tests
             Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () =>
             {
                 s_propSetterChildSetCount.Invoke(1);
-                await gate.Task;
+                await gate.Task.Bounded();
             };
             s_propSetterChildStart.Invoke(asyncUpdates);
             mounted.GetSchedulerForTest().DrainDelayedForTest();
@@ -934,7 +934,7 @@ namespace Velvet.Tests
             Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () =>
             {
                 s_propSetterChildSetCount.Invoke(1);
-                await gate.Task;
+                await gate.Task.Bounded();
             };
             s_propSetterChildStart.Invoke(asyncUpdates);
             mounted.GetSchedulerForTest().DrainDelayedForTest();
@@ -966,7 +966,7 @@ namespace Velvet.Tests
             Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () =>
             {
                 s_propSetterChildSetCount.Invoke(1);
-                await gate.Task;
+                await gate.Task.Bounded();
                 s_propSetterChildSetCount.Invoke(2);
             };
             s_propSetterChildStart.Invoke(asyncUpdates);
@@ -1347,7 +1347,7 @@ namespace Velvet.Tests
             // Arrange — the async action parks on its await without having scheduled anything
             using var mounted = V.Mount(_root, V.Component(ClickableTransitionRender, key: "clickable"));
             var gate = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
-            Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () => await gate.Task;
+            Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () => await gate.Task.Bounded();
             s_clickableStarter.Invoke(asyncUpdates);
             Assume.That(s_clickableFiber.IsTransitionPending, Is.True, "Precondition: the async transition is awaiting");
 
@@ -1368,7 +1368,7 @@ namespace Velvet.Tests
             // Arrange — the slot's async action parks on its await, so a further call on it joins that owner
             using var mounted = V.Mount(_root, V.Component(ClickableTransitionRender, key: "clickable"));
             var gate = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
-            Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () => await gate.Task;
+            Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () => await gate.Task.Bounded();
             s_clickableStarter.Invoke(asyncUpdates);
             Assume.That(s_clickableFiber.IsTransitionPending, Is.True, "Precondition: the async transition is awaiting");
 
@@ -1394,7 +1394,7 @@ namespace Velvet.Tests
             s_clickableGate = gate;
             Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () =>
             {
-                await gate.Task;
+                await gate.Task.Bounded();
                 s_clickableSetValue.Invoke(v => v + 1);
             };
             s_clickableStarter.Invoke(asyncUpdates);
@@ -1423,7 +1423,7 @@ namespace Velvet.Tests
             s_clickableGate = gate;
             Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () =>
             {
-                await gate.Task;
+                await gate.Task.Bounded();
                 s_clickableSetValue.Invoke(v => v + 1);
             };
             s_clickableStarter.Invoke(asyncUpdates);
@@ -1448,7 +1448,7 @@ namespace Velvet.Tests
             using var mounted = V.Mount(_root, V.Component(ClickableTransitionRender, key: "clickable"));
             var gate = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
             s_clickableGate = gate;
-            Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () => await gate.Task;
+            Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () => await gate.Task.Bounded();
             s_clickableStarter.Invoke(asyncUpdates);
             var rendersBeforeTheClick = s_clickableRenderCount;
 
@@ -1507,7 +1507,7 @@ namespace Velvet.Tests
             var fiber = FiberRenderer.CreateRoot(TransitionRender);
             FiberRenderer.Mount(fiber, _root);
             var gate = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
-            Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () => await gate.Task;
+            Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () => await gate.Task.Bounded();
             s_transitionStarter.Invoke(asyncUpdates);
             Assume.That(fiber.IsTransitionPending, Is.True, "Precondition: the async transition is awaiting");
             var slotBeforeUnmount = fiber.TransitionSlots[0];
@@ -1572,7 +1572,7 @@ namespace Velvet.Tests
             starter.Invoke(async () =>
             {
                 s_outlivedSetValue.Invoke(1);
-                await gate.Task;
+                await gate.Task.Bounded();
             });
 
             // Assert — same four terms as the synchronous case, for the same three reasons

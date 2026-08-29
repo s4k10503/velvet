@@ -48,7 +48,7 @@ namespace Velvet.Tests
             using var registration = router.RouteBlockerManager.Register(check, new RouteBlockerState());
             using var callerCts = new CancellationTokenSource();
             var nav = router.GoBack(callerCts.Token);
-            await entered.Task;
+            await entered.Task.Bounded();
             Assume.That(router.CurrentLocation?.Path, Is.EqualTo("/about"),
                 "Precondition: the Back is still parked in the blocker and has committed nothing");
 
@@ -80,7 +80,7 @@ namespace Velvet.Tests
             using var registration = router.RouteBlockerManager.Register(check, new RouteBlockerState());
             using var callerCts = new CancellationTokenSource();
             var nav = router.NavigateAsync("/guarded", NavigationMode.Push, callerCts.Token);
-            await entered.Task;
+            await entered.Task.Bounded();
 
             // Act
             callerCts.Cancel();
@@ -105,7 +105,7 @@ namespace Velvet.Tests
             using var registration = router.RouteBlockerManager.Register(check, new RouteBlockerState());
             using var callerCts = new CancellationTokenSource();
             var nav = router.NavigateAsync("/about", NavigationMode.Push, callerCts.Token);
-            await entered.Task;
+            await entered.Task.Bounded();
             Assume.That(router.CurrentLocation?.Path, Is.EqualTo("/home"),
                 "Precondition: the cancelled navigation never commits a location");
 
@@ -133,7 +133,7 @@ namespace Velvet.Tests
             var (check, entered, resumeCancelled, _) = MakeDeferredBlocker();
             using var registration = router.RouteBlockerManager.Register(check, new RouteBlockerState());
             var superseded = router.GoBack();
-            await entered.Task;
+            await entered.Task.Bounded();
             await router.GoBack();
             Assume.That(router.CurrentLocation?.Path, Is.EqualTo("/about"),
                 "Precondition: the newer Back committed while the superseded one was still parked");
@@ -166,7 +166,7 @@ namespace Velvet.Tests
             var (check, entered, resumeCancelled, _) = MakeDeferredBlocker();
             using var registration = router.RouteBlockerManager.Register(check, new RouteBlockerState());
             var superseded = router.NavigateAsync("/guarded");
-            await entered.Task;
+            await entered.Task.Bounded();
             await router.NavigateAsync("/x");
             Assume.That(router.CurrentLocation?.Path, Is.EqualTo("/x"),
                 "Precondition: the newer navigation committed while the redirect was still parked");
@@ -197,7 +197,7 @@ namespace Velvet.Tests
             var (check, entered, _, resumeUnblocked) = MakeDeferredBlocker();
             using var registration = router.RouteBlockerManager.Register(check, new RouteBlockerState());
             var superseded = router.GoBack();
-            await entered.Task;
+            await entered.Task.Bounded();
             await router.GoBack();
             Assume.That(router.CurrentLocation?.Path, Is.EqualTo("/about"),
                 "Precondition: the newer Back committed while the superseded one was still parked");
@@ -227,7 +227,7 @@ namespace Velvet.Tests
             var (check, entered, resumeCancelled, _) = MakeDeferredBlocker();
             using var registration = router.RouteBlockerManager.Register(check, new RouteBlockerState());
             var superseded = router.GoBack();
-            await entered.Task;
+            await entered.Task.Bounded();
             var unmatched = await router.NavigateAsync("/no-such-route");
             Assume.That(unmatched, Is.EqualTo(NavigationResult.NotFound),
                 "Precondition: the superseding navigation returned without reaching the claim");
@@ -260,7 +260,7 @@ namespace Velvet.Tests
             var (check, entered, _, resumeUnblocked) = MakeDeferredBlocker();
             using var registration = router.RouteBlockerManager.Register(check, new RouteBlockerState());
             var superseded = router.NavigateAsync("/guarded");
-            await entered.Task;
+            await entered.Task.Bounded();
             await router.NavigateAsync("/x");
             Assume.That(router.CurrentLocation?.Path, Is.EqualTo("/x"),
                 "Precondition: the newer navigation committed while the redirect was still parked");
@@ -289,7 +289,7 @@ namespace Velvet.Tests
             using var registration = router.RouteBlockerManager.Register(check, new RouteBlockerState());
             var statusEvents = 0;
             var parked = router.GoBack();
-            await entered.Task;
+            await entered.Task.Bounded();
             router.OnStatusChanged += _ => statusEvents++;
 
             // Act

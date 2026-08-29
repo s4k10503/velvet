@@ -443,7 +443,7 @@ namespace Velvet.Tests
         private static async UniTask RunAsync(
             UniTaskCompletionSource gate, Action body)
         {
-            await gate.Task;
+            await gate.Task.Bounded();
             body();
         }
 

@@ -1085,7 +1085,7 @@ namespace Velvet.Tests
             var (check, entered) = MakeOneShotBlocker();
             using var _ = router.RouteBlockerManager.Register(check, new RouteBlockerState());
             var firstNav = router.NavigateAsync("/about");
-            await entered.Task;
+            await entered.Task.Bounded();
             var secondNav = router.NavigateAsync("/home");
 
             // Act
@@ -1106,7 +1106,7 @@ namespace Velvet.Tests
             var (check, entered) = MakeOneShotBlocker();
             using var _ = router.RouteBlockerManager.Register(check, new RouteBlockerState());
             var firstNav = router.NavigateAsync("/about");
-            await entered.Task;
+            await entered.Task.Bounded();
             var secondNav = router.NavigateAsync("/home");
 
             // Act
@@ -1127,7 +1127,7 @@ namespace Velvet.Tests
             var (check, entered) = MakeOneShotBlocker();
             using var _ = router.RouteBlockerManager.Register(check, new RouteBlockerState());
             var firstNav = router.NavigateAsync("/about");
-            await entered.Task;
+            await entered.Task.Bounded();
             var secondNav = router.NavigateAsync("/home");
 
             // Act
@@ -1153,7 +1153,7 @@ namespace Velvet.Tests
             using var _ = router.RouteBlockerManager.Register(check, new RouteBlockerState());
             using var callerCts = new CancellationTokenSource();
             var nav = router.NavigateAsync("/about", cancellationToken: callerCts.Token);
-            await entered.Task;
+            await entered.Task.Bounded();
 
             // Act
             callerCts.Cancel();
