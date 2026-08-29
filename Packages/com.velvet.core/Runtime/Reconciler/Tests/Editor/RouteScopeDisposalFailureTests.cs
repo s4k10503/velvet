@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Text.RegularExpressions;
 using NUnit.Framework;
+using UnityEngine;
+using UnityEngine.TestTools;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
 
@@ -53,12 +56,20 @@ namespace Velvet.Tests
             }
         }
 
+        private const string CreateFailureMessage = "arranged failure out of a route scope CreateScope";
+
         private sealed class ThrowingRouteScopeFactory : IRouteScopeFactory
         {
             public List<ThrowingRouteScope> Scopes { get; } = new();
 
+            public bool ThrowOnCreate { get; set; }
+
             public IRouteScope CreateScope(RouteDefinition? route, IRouteScope? parent)
             {
+                if (ThrowOnCreate)
+                {
+                    throw new InvalidOperationException(CreateFailureMessage);
+                }
                 var scope = new ThrowingRouteScope();
                 Scopes.Add(scope);
                 return scope;
@@ -95,6 +106,28 @@ namespace Velvet.Tests
             s_throwOnDispose = false;
             _router.Dispose();
             _reconciler.Dispose();
+        }
+
+        [Test]
+        public void Given_AFactoryThatThrowsOnCreate_When_TheRouteChanges_Then_TheThrowDoesNotEscapeTheReconcile()
+        {
+            // Arrange — the outgoing scope disposes cleanly, so the only failure is the replacement's
+            // creation: the entrance the containment work around it left open.
+            s_throwOnDispose = false;
+            var mounted = MountRoutedApp();
+            _router.NavigateAsync("/other").GetAwaiter().GetResult();
+            _scopeFactory.ThrowOnCreate = true;
+            // One line, not two: with no error boundary mounted the propagation falls back to
+            // Debug.LogException, where the drop-and-log shape beside it logs a tag and the exception.
+            LogAssert.Expect(LogType.Exception,
+                             new Regex("InvalidOperationException: " + CreateFailureMessage));
+
+            // Act
+            var escaped = EscapesFrom(() => ReRenderAppAtCurrentLocation(mounted));
+
+            // Assert — what the incoming route renders rides along, because a reconcile that escaped
+            // would leave the old label standing and satisfy neither half on its own.
+            Assert.That((escaped, LabelTextsUnder(_root)), Is.EqualTo((false, "other")));
         }
 
         [Test]

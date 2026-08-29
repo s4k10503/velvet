@@ -63,6 +63,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- An `IRouteScopeFactory.CreateScope` that throws no longer takes the reconcile with it. The scope's
+  *disposal* was already contained; its creation was not, at all three sites that ask for one — so an
+  application whose factory failed on a route change lost the render as well as the scope. The route
+  now renders without a scope and the exception reaches the nearest error boundary, which is where the
+  disposal beside it already sends one, so an application that wants the route refused still can.
+
 - A navigation no longer allocates a snapshot of the registered blockers on every pass. The pass walks
   a copy because a decision taken in it may unregister, and the copy was a fresh array each time — so
   an application with any blocker registered paid one per navigation. One list serves every pass now,

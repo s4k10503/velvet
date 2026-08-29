@@ -174,8 +174,20 @@ namespace Velvet
                 var scopeFactory = Router.Current?.ScopeFactory;
                 if (scopeFactory != null)
                 {
-                    newOutlet.Scope = scopeFactory.CreateScope(match!.Route, null);
-                    _ctx.OutletScopes[element] = newOutlet.Scope;
+                    // The scope is the route's, not the render's: a factory that throws leaves the
+                    // route to render without one rather than taking the reconcile with it, which is
+                    // what the disposal beside it already does. Contained rather than swallowed --
+                    // PropagateException reaches the nearest error boundary, so an application that
+                    // wants the route refused still gets to refuse it.
+                    try
+                    {
+                        newOutlet.Scope = scopeFactory.CreateScope(match!.Route, null);
+                        _ctx.OutletScopes[element] = newOutlet.Scope;
+                    }
+                    catch (System.Exception exception)
+                    {
+                        ReconcilerContext.ContainUserCallbackFailure(_ctx.FiberStack.Current, exception);
+                    }
                 }
             }
             else if (_ctx.OutletScopes.TryGetValue(element, out var existingScope))
@@ -188,8 +200,20 @@ namespace Velvet
                 var scopeFactory = Router.Current?.ScopeFactory;
                 if (scopeFactory != null)
                 {
-                    newOutlet.Scope = scopeFactory.CreateScope(match!.Route, null);
-                    _ctx.OutletScopes[element] = newOutlet.Scope;
+                    // The scope is the route's, not the render's: a factory that throws leaves the
+                    // route to render without one rather than taking the reconcile with it, which is
+                    // what the disposal beside it already does. Contained rather than swallowed --
+                    // PropagateException reaches the nearest error boundary, so an application that
+                    // wants the route refused still gets to refuse it.
+                    try
+                    {
+                        newOutlet.Scope = scopeFactory.CreateScope(match!.Route, null);
+                        _ctx.OutletScopes[element] = newOutlet.Scope;
+                    }
+                    catch (System.Exception exception)
+                    {
+                        ReconcilerContext.ContainUserCallbackFailure(_ctx.FiberStack.Current, exception);
+                    }
                 }
             }
 
