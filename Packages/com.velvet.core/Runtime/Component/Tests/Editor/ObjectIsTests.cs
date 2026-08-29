@@ -236,9 +236,8 @@ namespace Velvet.Tests
         // pinned the branches this file's own header names was a test about Memoize. With these, the same
         // cut reddens the two signed-zero cases here.
 
-        // GREEN_ON_BASE(characterization): the base already distinguishes the zeros — this change adds
-        // no behaviour, it moves who says so. Measured: deleting `AreEqual<T>`'s raw-bit branches reddens
-        // nine cases in three other fixtures and none here, and reddens this one once it exists.
+        // GREEN_ON_BASE(characterization): the base already distinguishes the zeros; what moves is who
+        // says so, for the reason the region header gives.
         [Test]
         public void Given_FloatSignedZero_When_AreEqualOfFloat_Then_AreNotEqual()
         {
@@ -246,10 +245,9 @@ namespace Velvet.Tests
             Assert.That(ObjectIs.AreEqual(0f, -0f), Is.False);
         }
 
-        // GREEN_ON_BASE(characterization): the base already answers this, and so does a build with the
-        // raw-bit branch deleted — `EqualityComparer<float>` reaches `float.Equals`, which is true for two
-        // NaNs where `==` is false. It is here because the branch's contract is both halves, and the
-        // signed-zero case beside it is the half a cut can see.
+        // GREEN_ON_BASE(characterization): green under the cut too — `EqualityComparer<float>` reaches
+        // `float.Equals`, true for two NaNs. Here because the contract is both halves, and the case
+        // beside it is the half a cut can see.
         [Test]
         public void Given_FloatNaN_When_AreEqualOfFloat_Then_AreEqual()
         {
