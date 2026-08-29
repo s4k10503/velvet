@@ -1917,6 +1917,9 @@ class DroppedFromTheBaseTreeTests(unittest.TestCase):
         base_red_check.build_base_tree(root, since, tree, [], drop)
         return root, since, tree
 
+    # GREEN_ON_BASE(characterization): the base already unlinks what `drop` names, and nothing said so
+    # — the only test-side call passed an empty list. Measured: deleting the unlink fails this and no
+    # other case.
     def test_Given_AFileInDrop_When_TheBaseTreeIsBuilt_Then_ItIsNotThere(self):
         # Arrange — the base has it and the branch deleted it, which is the shape `drop` is built from.
         base = {self.FIXTURE: "// a fixture\n", self.PRODUCTION: "// a type\n"}
@@ -1930,6 +1933,9 @@ class DroppedFromTheBaseTreeTests(unittest.TestCase):
         self.assertEqual(((tree / self.FIXTURE).exists(), (tree / self.PRODUCTION).exists()),
                          (False, True))
 
+    # GREEN_ON_BASE(characterization): the base already narrows the drop to the test side. Measured:
+    # replacing `is_test_side(name)` with `True` there fails this and no other case, where before it
+    # broke the base compile and nothing went red.
     def test_Given_AProductionDeletion_When_TheDropIsNarrowed_Then_ItIsNotInIt(self):
         # Arrange — the branch deletes one of each. Only the test-side one may be unlinked: taking the
         # other out of the base tree is what leaves that tree unable to compile.
