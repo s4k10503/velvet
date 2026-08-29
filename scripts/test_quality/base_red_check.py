@@ -1866,7 +1866,7 @@ def local_remedy(since, cases):
                 "".join(" --platform " + platform for platform in platforms), since or "origin/main"))
 
 
-def exhausted_reason(spent, withdrawn, carried, cap):
+def exhausted_reason(spent, withdrawn, carried):
     """What a loop that ran out of rounds without ever compiling the base has to say for itself.
 
     The generic line is the one a single round writes, and a reader who ran the loop has already done
@@ -1877,8 +1877,12 @@ def exhausted_reason(spent, withdrawn, carried, cap):
     branch replacing UniTask with an in-tree awaitable: at the default of 8 the loop reported nothing
     measured, and at 60 it compiled the base on round 38 and gave every case a verdict. One round
     withdraws one file, so a change touching many test modules needs about as many rounds as modules.
+
+    Whether the budget is what ended the run is the caller's to know, and it does not print this
+    otherwise: a run that stopped short of its budget stopped for some other reason, and raising the
+    budget is not its remedy.
     """
-    if not spent or spent < cap:
+    if not spent:
         return ""
     put_back = "\n".join("    " + name for name in sorted(withdrawn)[:6])
     more = len(withdrawn) - 6
@@ -1888,7 +1892,7 @@ def exhausted_reason(spent, withdrawn, carried, cap):
             "base holds. One round withdraws one file, so a change whose carried modules the base\n"
             "cannot build needs about as many rounds as there are of them:\n"
             "  --max-rounds {}\n"
-            "{}".format(spent, len(withdrawn), carried, max(carried, cap * 4),
+            "{}".format(spent, len(withdrawn), carried, max(carried, spent * 4),
                         put_back if withdrawn else ""))
 
 
@@ -2163,7 +2167,8 @@ def main():
 
     if not ever_wrote:
         print("no round wrote a result, so nothing any of them was asked was measured", flush=True)
-        print(exhausted_reason(rounds_spent, put_back, len(carry), args.max_rounds), flush=True)
+        if rounds_spent >= args.max_rounds:
+            print(exhausted_reason(rounds_spent, put_back, len(carry)), flush=True)
     offenders = report(cases, control, reported, canaries, ever_wrote)
     print("\nlogs: {}".format(output), flush=True)
     return 1 if offenders else 0
