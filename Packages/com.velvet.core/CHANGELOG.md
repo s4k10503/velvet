@@ -59,7 +59,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the element's own transitionable set, and it had no flag for `filter` or for the background-position
   pair — so those three reported driving nothing and their per-frame writes were left to whatever
   transition covered them. A bare `duration-*` is enough to reach this, because UI Toolkit's initial
-  `transition-property` of `all` covers every slot. What the suspension does not reach is the
+  `transition-property` of `all` covers every slot, which is how an element reaches the two new slots:
+  no bundled utility names either of them on its own. What the suspension does not reach is the
   background size and repeat the pan modes set once at attach, above the call that takes it.
 
 - A component inside one `V.Portal` no longer has its position rewritten by a sibling portal on a

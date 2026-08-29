@@ -26,9 +26,9 @@ namespace Velvet
         // longhands per tick -- which of the two is the binding's own axis, so both are one slot here for
         // the same reason Color is one: the driver reports the slot, not the channel.
         //
-        // No SlotsOf arm for BackgroundPosition: the bundled sheets declare no transition-property naming
-        // it, and StyleTransitionUtilities is derived from them, so the declared side reaches this slot
-        // through `all` alone. Filter has `.transition-filter` and so has an arm.
+        // Neither has a SlotsOf arm yet: the driver reports the slot it writes, and an element reaches
+        // both through `all`. `.transition-filter` is the one utility that could name a declared side
+        // finer, which is a separate change from giving the driver a flag.
         Filter = 1 << 6,
         BackgroundPosition = 1 << 7,
         All = Opacity | Translate | Scale | Rotate | Color | Length | Filter | BackgroundPosition,
@@ -282,7 +282,6 @@ namespace Velvet
             if (declared.Contains(StyleLonghand.Rotate)) slots |= MotionTransitionSlots.Rotate;
             if (declared.Overlaps(s_colorProperties)) slots |= MotionTransitionSlots.Color;
             if (declared.Overlaps(s_lengthProperties)) slots |= MotionTransitionSlots.Length;
-            if (declared.Contains(StyleLonghand.Filter)) slots |= MotionTransitionSlots.Filter;
             return slots;
         }
 

@@ -44,8 +44,10 @@ namespace Velvet.Tests
             return slots;
         }
 
-        // An unmapped name throws rather than defaulting: silently contributing nothing would let a new
-        // utility widen the cascade without any case here going red.
+        // Filter maps to None because the declared side has no arm for it yet -- the driver reports the
+        // slot, and what an element declares reaches it through `all` alone. An unmapped name throws
+        // rather than defaulting: silently contributing nothing would let a new utility widen the
+        // cascade without any case here going red.
         private static MotionTransitionSlots SlotOf(string ussProperty) => ussProperty switch
         {
             "all" => MotionTransitionSlots.All,
@@ -63,7 +65,7 @@ namespace Velvet.Tests
             // transition-property: none resolves to one entry that names no property, whose ToString is null;
             // there is no empty resolved list to read instead.
             "" => MotionTransitionSlots.None,
-            "filter" => MotionTransitionSlots.Filter,
+            "filter" => MotionTransitionSlots.None,
             _ => throw new NotSupportedException(
                 $"The cascade resolved transition-property to '{ussProperty}', which this oracle does not map."),
         };
