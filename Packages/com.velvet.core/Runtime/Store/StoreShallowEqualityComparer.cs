@@ -2,18 +2,12 @@ using System.Collections.Generic;
 
 namespace Velvet
 {
-    /// <summary>
-    /// Shallow equality comparers for selector return values that are sequences.
-    /// Elements are compared with <c>Object.is</c> semantics (see <see cref="Sequence{T}"/> for the
-    /// exact per-type rules) at matching positions with matching lengths; deep equality is
-    /// intentionally not performed.
-    /// </summary>
     /// <remarks>
-    /// Use this for selectors that return an array/list slice, where a fresh list instance with the
-    /// same elements should not be treated as a change. The canonical form is
-    /// <c>UseStore(store, s =&gt; s.Items, StoreShallowEqualityComparer.Sequence&lt;Item&gt;())</c>.
-    /// Tuple / record selectors do not need this helper — <see cref="EqualityComparer{T}.Default"/>
-    /// already performs member-wise equality for <c>ValueTuple</c> and value-type records.
+    /// For a selector returning a list, where a fresh instance of the same elements should not read as a
+    /// change: <c>UseStore(store, s =&gt; s.Items, StoreShallowEqualityComparer.Sequence&lt;Item&gt;())</c>.
+    /// A selector returning a tuple or a value-type record needs no comparer —
+    /// <see cref="Hooks.UseStore{TStore,TSel}"/> documents which selector shapes its default already
+    /// answers for.
     /// </remarks>
     public static class StoreShallowEqualityComparer
     {
