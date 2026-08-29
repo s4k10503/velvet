@@ -1033,9 +1033,7 @@ namespace Velvet.Tests
 
             // Act — B re-renders synchronously (Normal lane), turning its own first item z-managed: the
             // shared host's FIRST negative-z child ever, so B's own top-level drain creates the back
-            // container while A is STILL parked. RebaseParkedSlotsForContainerChange's ParkedBaselineFibers
-            // loop — not A's own self-park rebase, which only ever fires from A's OWN drain — must be what
-            // rebases A here.
+            // container while A is STILL parked.
             s_crossParkBZManaged = true;
             s_crossParkBFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
             FiberWorkLoop.FlushState(s_crossParkBFiber);
@@ -1106,8 +1104,7 @@ namespace Velvet.Tests
 
         // Keyed mirror of CrossParkARender/CrossParkSiblingHost: every one of A's own children carries an
         // explicit key, so its park goes through PendingKeyedState (ContinueKeyed) instead of
-        // PendingIndexedState (ContinueIndexed) — RebasePendingSlotStartIfTargeting's OTHER branch, never
-        // exercised by the positional cross-fiber tests above.
+        // PendingIndexedState (ContinueIndexed), which the positional cross-fiber tests above never reach.
         [Component]
         private static VNode CrossParkKeyedSiblingHost() => V.Div(
             name: "cross-park-keyed-host", className: "relative", children: new VNode[]
@@ -1318,8 +1315,7 @@ namespace Velvet.Tests
             // Act — tick 2 (a single manual resume, which continues at the tiny budget tick 1 captured on the
             // fiber): processes item1, creating the shared parent's first back container INSIDE this tick's drain,
             // then re-parks immediately after (item2..item9 remain) — so the fiber is STILL registered in
-            // ParkedBaselineFibers at the exact moment RebaseParkedSlotsForContainerChange runs, alongside
-            // its own current.RebasePendingSlotStartIfTargeting call on the very same PendingIndexedState.
+            // ParkedBaselineFibers while its own resumed drain is rebasing that same PendingIndexedState.
             FiberWorkLoop.ContinueReconcile(s_drainFiber);
             var resumeTickCreatedTheBackContainer = FindLayerContainer(root, front: false) != null;
             var reParkedWhileStillRegistered = s_drainFiber.HasPendingReconcileWorkForTest();
