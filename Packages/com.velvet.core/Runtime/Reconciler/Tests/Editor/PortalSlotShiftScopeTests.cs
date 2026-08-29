@@ -109,9 +109,9 @@ namespace Velvet.Tests
             Assert.That(Names(b), Is.EqualTo("own|s1"));
         }
 
-        // GREEN_ON_BASE(characterization): the same-target direction the base already gets right, and the
-        // half a guard written as "skip every sibling" would take with it. That guard passes the case
-        // above and fails only here.
+        // GREEN_ON_BASE(characterization): the same-target direction the base already gets right. It is
+        // what a guard written as "skip every sibling" would take away, and the case above would not
+        // notice that guard at all.
         [Test]
         public void Given_TwoComponentsOnOneTarget_When_TheFirstGrows_Then_TheSecondMovesWithIt()
         {
