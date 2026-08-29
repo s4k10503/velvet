@@ -1069,6 +1069,9 @@ namespace Velvet.Tests
 
         #region Concurrent navigation cancellation
 
+        // GREEN_ON_BASE(refactor): the wait this bounds is the same wait, and a run where the code
+        // under test arrives cannot tell the two apart. What the bound changes is the run where it
+        // does not: a hang becomes a failure naming the wait.
         [UnityTest]
         public IEnumerator Given_ConcurrentNavigationDuringBlockerAwait_When_SecondTakesOver_Then_FirstReturnsCancelled()
             => UniTask.ToCoroutine(async () =>
@@ -1082,7 +1085,7 @@ namespace Velvet.Tests
             var (check, entered) = MakeOneShotBlocker();
             using var _ = router.RouteBlockerManager.Register(check, new RouteBlockerState());
             var firstNav = router.NavigateAsync("/about");
-            await entered.Task;
+            await entered.Task.Bounded();
             var secondNav = router.NavigateAsync("/home");
 
             // Act
@@ -1093,6 +1096,9 @@ namespace Velvet.Tests
             Assert.That(firstResult, Is.EqualTo(NavigationResult.Cancelled));
         });
 
+        // GREEN_ON_BASE(refactor): the wait this bounds is the same wait, and a run where the code
+        // under test arrives cannot tell the two apart. What the bound changes is the run where it
+        // does not: a hang becomes a failure naming the wait.
         [UnityTest]
         public IEnumerator Given_ConcurrentNavigationDuringBlockerAwait_When_SecondTakesOver_Then_SecondSucceeds()
             => UniTask.ToCoroutine(async () =>
@@ -1103,7 +1109,7 @@ namespace Velvet.Tests
             var (check, entered) = MakeOneShotBlocker();
             using var _ = router.RouteBlockerManager.Register(check, new RouteBlockerState());
             var firstNav = router.NavigateAsync("/about");
-            await entered.Task;
+            await entered.Task.Bounded();
             var secondNav = router.NavigateAsync("/home");
 
             // Act
@@ -1114,6 +1120,9 @@ namespace Velvet.Tests
             Assert.That(secondResult, Is.EqualTo(NavigationResult.Success));
         });
 
+        // GREEN_ON_BASE(refactor): the wait this bounds is the same wait, and a run where the code
+        // under test arrives cannot tell the two apart. What the bound changes is the run where it
+        // does not: a hang becomes a failure naming the wait.
         [UnityTest]
         public IEnumerator Given_ConcurrentNavigationDuringBlockerAwait_When_SecondTakesOver_Then_CommitsLatestLocation()
             => UniTask.ToCoroutine(async () =>
@@ -1124,7 +1133,7 @@ namespace Velvet.Tests
             var (check, entered) = MakeOneShotBlocker();
             using var _ = router.RouteBlockerManager.Register(check, new RouteBlockerState());
             var firstNav = router.NavigateAsync("/about");
-            await entered.Task;
+            await entered.Task.Bounded();
             var secondNav = router.NavigateAsync("/home");
 
             // Act
@@ -1136,6 +1145,9 @@ namespace Velvet.Tests
                 "The final committed location reflects the latest nav, not the cancelled first");
         });
 
+        // GREEN_ON_BASE(refactor): the wait this bounds is the same wait, and a run where the code
+        // under test arrives cannot tell the two apart. What the bound changes is the run where it
+        // does not: a hang becomes a failure naming the wait.
         [UnityTest]
         public IEnumerator Given_CallerCancelsTokenDuringBlockerAwait_When_Cancelled_Then_ReturnsCancelledInsteadOfThrowing()
             => UniTask.ToCoroutine(async () =>
@@ -1150,7 +1162,7 @@ namespace Velvet.Tests
             using var _ = router.RouteBlockerManager.Register(check, new RouteBlockerState());
             using var callerCts = new CancellationTokenSource();
             var nav = router.NavigateAsync("/about", cancellationToken: callerCts.Token);
-            await entered.Task;
+            await entered.Task.Bounded();
 
             // Act
             callerCts.Cancel();

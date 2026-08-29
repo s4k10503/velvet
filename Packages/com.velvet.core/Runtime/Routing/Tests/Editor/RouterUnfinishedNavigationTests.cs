@@ -21,6 +21,9 @@ namespace Velvet.Tests
             Router.Current?.Dispose();
         }
 
+        // GREEN_ON_BASE(refactor): the wait this bounds is the same wait, and a run where the code
+        // under test arrives cannot tell the two apart. What the bound changes is the run where it
+        // does not: a hang becomes a failure naming the wait.
         [UnityTest]
         public IEnumerator Given_ABackParkedInABlocker_When_APushCommitsMeanwhile_Then_TheEntryTheUserIsOnSurvives()
             => UniTask.ToCoroutine(async () =>
@@ -39,7 +42,7 @@ namespace Velvet.Tests
             var (check, entered, _, _) = MakeDeferredBlocker();
             using var registration = router.RouteBlockerManager.Register(check, new RouteBlockerState());
             var parked = router.GoBack();
-            await entered.Task;
+            await entered.Task.Bounded();
             Assume.That(router.CurrentLocation?.Path, Is.EqualTo("/settings"),
                 "Precondition: the Back is still parked in the blocker and has committed nothing");
 
@@ -51,6 +54,9 @@ namespace Velvet.Tests
                 "A navigation that has not committed must not move the position a later Push builds on");
         });
 
+        // GREEN_ON_BASE(refactor): the wait this bounds is the same wait, and a run where the code
+        // under test arrives cannot tell the two apart. What the bound changes is the run where it
+        // does not: a hang becomes a failure naming the wait.
         [UnityTest]
         public IEnumerator Given_AForwardParkedInABlocker_When_APushTakesOverItsSlot_Then_ItCommitsNothing()
             => UniTask.ToCoroutine(async () =>
@@ -69,7 +75,7 @@ namespace Velvet.Tests
             var (check, entered, _, resumeUnblocked) = MakeDeferredBlocker();
             using var registration = router.RouteBlockerManager.Register(check, new RouteBlockerState());
             var parked = router.GoForward();
-            await entered.Task;
+            await entered.Task.Bounded();
             await router.NavigateAsync("/contact");
             Assume.That(RouterHistoryProbe.PathsOf(router), Is.EqualTo("/home,/about,/contact"),
                 "Precondition: the Push truncated the entry the parked Forward had resolved onto");
@@ -86,6 +92,9 @@ namespace Velvet.Tests
                 + "that destination used to occupy");
         });
 
+        // GREEN_ON_BASE(refactor): the wait this bounds is the same wait, and a run where the code
+        // under test arrives cannot tell the two apart. What the bound changes is the run where it
+        // does not: a hang becomes a failure naming the wait.
         [UnityTest]
         public IEnumerator Given_ARedirectParkedInABlocker_When_ANewerNavigationCommits_Then_NoEntryForTheRedirectingPathRemains()
             => UniTask.ToCoroutine(async () =>
@@ -105,7 +114,7 @@ namespace Velvet.Tests
             var (check, entered, _, _) = MakeDeferredBlocker();
             using var registration = router.RouteBlockerManager.Register(check, new RouteBlockerState());
             var parked = router.NavigateAsync("/guarded");
-            await entered.Task;
+            await entered.Task.Bounded();
 
             // Act
             await router.NavigateAsync("/x");
