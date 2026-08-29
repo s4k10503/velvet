@@ -308,7 +308,9 @@ namespace Velvet.Tests
             return ("escaped:" + escaped, NamesOf(root));
         }
 
-        // Filtered on the arranged message so any other InvalidOperationException still leaves the case.
+        // Filtered on the arranged messages so any other InvalidOperationException still leaves the case.
+        // Both of them, so that a case whose arrangement is uncontained answers `true` rather than
+        // raising: a reader of this suite that has no containment is one of the two readings it takes.
         private static bool EscapesFrom(Action reconcile)
         {
             try
@@ -316,7 +318,8 @@ namespace Velvet.Tests
                 reconcile();
                 return false;
             }
-            catch (InvalidOperationException exception) when (exception.Message == DisposeFailureMessage)
+            catch (InvalidOperationException exception) when (exception.Message == DisposeFailureMessage
+                                                              || exception.Message == CreateFailureMessage)
             {
                 return true;
             }
