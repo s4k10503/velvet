@@ -97,8 +97,8 @@ namespace Velvet.Tests
                 + "it. An unloaded assembly would report the same empty surface, so both are read at once.");
         }
 
-        /// <summary>A generic with a nested type, which the repository's own surface gains with
-        /// `VelvetTask` and did not carry when this rendering was written.</summary>
+        /// <summary>A generic with a nested type, a shape the rendering had no instance of when it was
+        /// written and so had never been asked to spell.</summary>
         private sealed class OwnerWithNested<T>
         {
             internal struct Nested
