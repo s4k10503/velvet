@@ -711,8 +711,8 @@ class ExhaustedLoopTests(unittest.TestCase):
 
     The generic line beside this one is what a single round writes, and its remedy is to run the loop
     -- advice a reader who ran the loop has already taken. What separates the two readings is the
-    loop's own history, which nothing printed before: a base that built none of the carried set is
-    answering about the tree rather than about any case in it.
+    loop's own history and the flag that changes it, since the budget is what binds. Whether the budget
+    is what ended the run is the caller's to know; these are about what the message carries.
     """
 
     def test_Given_NoRoundRan_When_TheReasonIsBuilt_Then_ItSaysNothing(self):
@@ -744,11 +744,12 @@ class ExhaustedLoopTests(unittest.TestCase):
         # Assert
         self.assertIn("and 2 more", said)
 
-    def test_Given_RoundsThatCompiledNothing_When_TheReasonIsBuilt_Then_ItSaysADeclarationDoesNotReachIt(self):
-        # Arrange — the reading a per-case declaration cannot answer, which is why the message has to
-        # say where the answer goes instead.
+    def test_Given_RoundsThatCompiledNothing_When_TheReasonIsBuilt_Then_ItNamesTheFlagThatRaisesThem(self):
+        # Arrange — the budget is what binds: measured, the same branch that measured nothing at 8
+        # rounds compiled the base on round 38 at 60.
         # Act / Assert
-        self.assertIn("not a per-case one", base_red_check.exhausted_reason(8, {"a.cs"}, 24))
+        self.assertIn("--max-rounds", base_red_check.exhausted_reason(8, {"a.cs"}, 24))
+
 
 
 class SelectionTests(unittest.TestCase):
