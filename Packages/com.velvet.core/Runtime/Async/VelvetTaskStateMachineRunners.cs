@@ -11,7 +11,6 @@ namespace Velvet
 
         VelvetTask Task { get; }
 
-        void SetStateMachine(IAsyncStateMachine stateMachine);
 
         void SetResult();
 
@@ -24,7 +23,6 @@ namespace Velvet
 
         VelvetTask<T> Task { get; }
 
-        void SetStateMachine(IAsyncStateMachine stateMachine);
 
         void SetResult(T result);
 
@@ -41,7 +39,6 @@ namespace Velvet
         static readonly Stack<AsyncVelvetTaskMethod<TStateMachine>> Pool = new();
 
         TStateMachine _stateMachine = default!;
-        IAsyncStateMachine? _boxedStateMachine;
         VelvetTaskCompletionSourceCore<AsyncUnit> _core = new();
         bool _returnedToPool;
 
@@ -73,25 +70,11 @@ namespace Velvet
 
             field = runner;
             runner._stateMachine = stateMachine;
-            runner._boxedStateMachine = null;
             runner._returnedToPool = false;
         }
 
-        public void SetStateMachine(IAsyncStateMachine stateMachine) =>
-            _boxedStateMachine = stateMachine ?? throw new ArgumentNullException(nameof(stateMachine));
-
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        void Run()
-        {
-            if (_boxedStateMachine != null)
-            {
-                _boxedStateMachine.MoveNext();
-            }
-            else
-            {
-                _stateMachine.MoveNext();
-            }
-        }
+        void Run() => _stateMachine.MoveNext();
 
         public void SetResult() => _core.TrySetResult(AsyncUnit.Default);
 
@@ -128,7 +111,6 @@ namespace Velvet
             _returnedToPool = true;
             _core.Reset();
             _stateMachine = default!;
-            _boxedStateMachine = null;
             if (Pool.Count < MaxPoolSize)
             {
                 Pool.Push(this);
@@ -146,7 +128,6 @@ namespace Velvet
         static readonly Stack<AsyncVelvetTaskMethod<TStateMachine, T>> Pool = new();
 
         TStateMachine _stateMachine = default!;
-        IAsyncStateMachine? _boxedStateMachine;
         VelvetTaskCompletionSourceCore<T> _core = new();
         bool _returnedToPool;
 
@@ -176,25 +157,11 @@ namespace Velvet
 
             field = runner;
             runner._stateMachine = stateMachine;
-            runner._boxedStateMachine = null;
             runner._returnedToPool = false;
         }
 
-        public void SetStateMachine(IAsyncStateMachine stateMachine) =>
-            _boxedStateMachine = stateMachine ?? throw new ArgumentNullException(nameof(stateMachine));
-
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        void Run()
-        {
-            if (_boxedStateMachine != null)
-            {
-                _boxedStateMachine.MoveNext();
-            }
-            else
-            {
-                _stateMachine.MoveNext();
-            }
-        }
+        void Run() => _stateMachine.MoveNext();
 
         public void SetResult(T result) => _core.TrySetResult(result);
 
@@ -233,7 +200,6 @@ namespace Velvet
             _returnedToPool = true;
             _core.Reset();
             _stateMachine = default!;
-            _boxedStateMachine = null;
             if (Pool.Count < MaxPoolSize)
             {
                 Pool.Push(this);

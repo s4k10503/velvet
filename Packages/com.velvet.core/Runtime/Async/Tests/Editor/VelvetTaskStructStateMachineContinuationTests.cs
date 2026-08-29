@@ -76,8 +76,9 @@ namespace Velvet.Tests
                 }
             }
 
-            public void SetStateMachine(IAsyncStateMachine stateMachine) =>
-                Builder.SetStateMachine(stateMachine);
+            public void SetStateMachine(IAsyncStateMachine stateMachine)
+            {
+            }
         }
 
         // Reaching either AwaitUnsafeOnCompleted overload takes an awaiter of the fixture's own: both
@@ -154,8 +155,9 @@ namespace Velvet.Tests
                 }
             }
 
-            public void SetStateMachine(IAsyncStateMachine stateMachine) =>
-                Builder.SetStateMachine(stateMachine);
+            public void SetStateMachine(IAsyncStateMachine stateMachine)
+            {
+            }
         }
 
         // Same no-SetStateMachine constraint as TwoYieldStructStateMachine.
@@ -196,8 +198,9 @@ namespace Velvet.Tests
                 }
             }
 
-            public void SetStateMachine(IAsyncStateMachine stateMachine) =>
-                Builder.SetStateMachine(stateMachine);
+            public void SetStateMachine(IAsyncStateMachine stateMachine)
+            {
+            }
         }
 
         // Same no-SetStateMachine constraint as TwoYieldStructStateMachine.
@@ -241,8 +244,9 @@ namespace Velvet.Tests
                 }
             }
 
-            public void SetStateMachine(IAsyncStateMachine stateMachine) =>
-                Builder.SetStateMachine(stateMachine);
+            public void SetStateMachine(IAsyncStateMachine stateMachine)
+            {
+            }
         }
 
         static async VelvetTask<int> AccumulateAcrossTwoYields()
