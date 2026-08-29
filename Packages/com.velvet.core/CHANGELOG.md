@@ -63,6 +63,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A navigation no longer allocates a snapshot of the registered blockers on every pass. The pass walks
+  a copy because a decision taken in it may unregister, and the copy was a fresh array each time — so
+  an application with any blocker registered paid one per navigation. One list serves every pass now,
+  and a pass that begins while another holds it takes its own copy, since a blocker runs caller code
+  and that caller may navigate again.
+
 - Matching a URL no longer parses each route's path again to build the match's base. A branch already
   holds its whole pattern, parsed once when the tree was built; resolving the base walked
   `ParseRouteSegments` instead, which is an iterator, so every level of every match allocated an

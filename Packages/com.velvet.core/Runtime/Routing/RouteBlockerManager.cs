@@ -10,6 +10,12 @@ namespace Velvet
     {
         private readonly List<BlockerEntry> _blockers = new();
 
+        // The pass below walks a snapshot, and one list serves every pass rather than one array each.
+        // A pass runs caller code, so a second pass could start while this holds the first's snapshot:
+        // `CheckAsync` takes its own copy when this one is already in use.
+        private readonly List<BlockerEntry> _snapshot = new();
+        private bool _snapshotInUse;
+
         #region Register
 
         /// <summary>
@@ -46,39 +52,55 @@ namespace Velvet
             // RemoveSettledRegistrations, both of which remove from _blockers. Over the live list the entry
             // after a removed one is skipped and never consulted; over the snapshot it is visited, and the
             // IsRegistered guards are what decide whether it may still act.
-            foreach (var entry in _blockers.ToArray())
+            List<BlockerEntry> walking;
+            var borrowed = !_snapshotInUse;
+            if (borrowed)
             {
-                if (!entry.IsRegistered)
-                {
-                    continue;
-                }
+                _snapshotInUse = true;
+                walking = _snapshot;
+                walking.Clear();
+                walking.AddRange(_blockers);
+            }
+            else
+            {
+                walking = new List<BlockerEntry>(_blockers);
+            }
 
-                if (entry.State.Status == RouteBlockerStatus.Proceeding)
+            try
+            {
+                foreach (var entry in walking)
                 {
-                    continue;
-                }
+                    if (!entry.IsRegistered)
+                    {
+                        continue;
+                    }
 
-                bool blocked;
-                if (entry.SyncCheck != null)
-                {
-                    blocked = entry.SyncCheck(attempt);
-                }
-                else if (entry.AsyncCheck != null)
-                {
-                    blocked = await entry.AsyncCheck(attempt, cancellationToken);
-                }
-                else
-                {
-                    continue;
-                }
+                    if (entry.State.Status == RouteBlockerStatus.Proceeding)
+                    {
+                        continue;
+                    }
 
-                // After the await and before Block: the token is this navigation's own, so a newer
-                // navigation taking over mid-await means the caller discards this result as Cancelled,
-                // and a Blocked written here would strand a confirm UI until some unrelated later
-                // navigation resets it.
-                if (cancellationToken.IsCancellationRequested)
-                {
-                    return anyBlocked;
+                    bool blocked;
+                    if (entry.SyncCheck != null)
+                    {
+                        blocked = entry.SyncCheck(attempt);
+                    }
+                    else if (entry.AsyncCheck != null)
+                    {
+                        blocked = await entry.AsyncCheck(attempt, cancellationToken);
+                    }
+                    else
+                    {
+                        continue;
+                    }
+
+                    // After the await and before Block: the token is this navigation's own, so a newer
+                    // navigation taking over mid-await means the caller discards this result as Cancelled,
+                    // and a Blocked written here would strand a confirm UI until some unrelated later
+                    // navigation resets it.
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        return anyBlocked;
                 }
 
                 if (blocked && entry.IsRegistered)
@@ -88,6 +110,15 @@ namespace Velvet
                 }
             }
             return anyBlocked;
+            }
+            finally
+            {
+                if (borrowed)
+                {
+                    _snapshot.Clear();
+                    _snapshotInUse = false;
+                }
+            }
         }
 
         #endregion
