@@ -218,14 +218,17 @@ namespace Velvet
                 // fiber carries no offscreen mark and may flush normally (the fallback renders while the
                 // primary is offscreen).
                 //
-                // Every enclosing boundary, not the nearest: IsSuspenseBoundary is set whenever a Suspense
-                // is expanded, whether or not it suspended, so a resolved one between the fiber and the
+                // Every enclosing boundary, not the nearest: a Suspense is marked a boundary whenever it is
+                // expanded, whether or not it suspended, so a resolved one between the fiber and the
                 // boundary that did suspend is what a nearest-only reading stops at — and the mark it
                 // stops short of is the one an outer expansion wrote.
+                //
+                // No IsSuspenseBoundary test beside the lookup: only a fiber ExpandSuspenseInline marked
+                // as one is ever recorded as showing a fallback, in the same branch that marks it.
                 var offscreen = fiber.IsOffscreen;
                 for (var f = fiber.Parent; f != null; f = f.Parent)
                 {
-                    if (offscreen && f.IsSuspenseBoundary && context.IsBoundaryShowingFallback(f)) return;
+                    if (offscreen && context.IsBoundaryShowingFallback(f)) return;
                     if (f.IsOffscreen) offscreen = true;
                 }
             }
