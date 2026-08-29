@@ -9,6 +9,14 @@ passing case named for a fixture no source in the tree declares -- under a -test
 something else, which is what makes it read as a result rather than as a failure to run. Unity's
 exit code is the caller's to notice, and nobody was reading it.
 
+One precondition before any of them: the results and the log have to sit inside the project named.
+A caller that spells an absolute path to a run's output and lets --project default is naming two
+trees, and every reading below is then a comparison across them. Measured on two worktrees of this
+repository declaring the same fixtures: exit 0, having compared one tree's sources against the
+other's results. It is only when the running tree declares a fixture this one does not that the
+third reading catches the pairing -- and there it reports a stranger, which is the sentence for a
+stale Library rather than for a call pointed at two trees.
+
 Three readings, and the run has to survive all of them:
 
   - the log names the results file, which is how a run says the file is its own;
@@ -315,8 +323,31 @@ def foreign_fixtures(reported, ours, resolved, types):
     return ran, found
 
 
+def elsewhere(project, named):
+    """Every named file that does not sit under the project the check was pointed at.
+
+    A run writes its results and its log under the tree it ran in, so a file outside that tree is a
+    reading of a different one. Paired the other way round the check compares this tree's sources
+    against another tree's assemblies, and what it then reports is a fixture the running tree
+    declares and this one does not -- which is the sentence it prints for the defect it exists to
+    catch, about work that is fine.
+    """
+    root = project.resolve()
+    return [path for path in named if root not in path.resolve().parents and path.resolve() != root]
+
+
 def refusals(project, results, logs):
     """Every reason the results are not this worktree's reading. Empty means none of them said so."""
+    # Before any reading of either: the two arguments have to be of one tree. A caller that names an
+    # absolute results path and lets --project default is pointing the check at two, and every
+    # reading below would then be a comparison across them.
+    strangers = elsewhere(project, results + logs)
+    if strangers:
+        raise Unreadable(
+            "{} sit(s) outside {}, so the results and the sources are of different trees. Pass "
+            "--project for the tree the run happened in.".format(
+                ", ".join(str(path) for path in strangers), project))
+
     # First, and returning on its own: a run that did not compile wrote no results, so every reading
     # below would refuse it for the absence rather than for the cause, and the caller would be told
     # a file is missing while the diagnostic explaining why sits unread in the log beside it.

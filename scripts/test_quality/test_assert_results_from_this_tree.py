@@ -105,7 +105,9 @@ class Workspace:
                 (cached / (name + ".asmdef")).write_text(json.dumps({"name": name}),
                                                          encoding="utf-8")
 
-        self.run_directory = self.root / "run"
+        # Under the project, as every writer of one puts it: -testResults is given a path inside the
+        # tree being run, and the guard refuses a pairing that spans two trees.
+        self.run_directory = self.project / "Logs"
         self.run_directory.mkdir()
         self.results = self.run_directory / "results.xml"
         self.log = self.run_directory / "run.log"
@@ -353,6 +355,45 @@ class LogTests(unittest.TestCase):
 
 class UnreadableTests(unittest.TestCase):
     """Every reading the guard cannot take is a refusal, since exiting 0 unread looks like a pass."""
+
+    def test_Given_AnotherWorktreesResults_When_TheProjectIsThisOne_Then_TheReadingIsRefused(self):
+        # Arrange -- an absolute path to the run's own output with --project left where the call
+        # started. The guard's own sentence then names a fixture the running tree declares and this
+        # one does not, which reads exactly like the defect it exists to catch.
+        with workspace() as here, workspace() as ran:
+            ran.wrote()
+
+            # Act
+            code, _ = here.verdict(str(ran.results), "--log", str(ran.log),
+                                   "--project", str(here.project))
+
+            # Assert
+            self.assertEqual(code, 2)
+
+    def test_Given_AnotherWorktreesResults_When_TheProjectIsThisOne_Then_TheRefusalNamesTheFile(self):
+        # Arrange
+        with workspace() as here, workspace() as ran:
+            ran.wrote()
+
+            # Act
+            _, said = here.verdict(str(ran.results), "--log", str(ran.log),
+                                   "--project", str(here.project))
+
+            # Assert
+            self.assertIn(str(ran.results), said)
+
+    def test_Given_ALogFromAnotherWorktree_When_TheResultsAreThisOnes_Then_TheReadingIsRefused(self):
+        # Arrange -- the compile the guard reads is then of a tree the results did not come from.
+        with workspace() as here, workspace() as ran:
+            here.wrote()
+            ran.wrote()
+
+            # Act
+            code, _ = here.verdict(str(here.results), "--log", str(ran.log),
+                                   "--project", str(here.project))
+
+            # Assert
+            self.assertEqual(code, 2)
 
     def test_Given_NoEditorLogAtAll_When_TheRunIsRead_Then_TheReadingIsRefused(self):
         # Arrange
