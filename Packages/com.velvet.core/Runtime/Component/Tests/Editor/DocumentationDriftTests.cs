@@ -1251,6 +1251,11 @@ namespace Velvet.Tests
         }
 
         /// <summary>Exit code and stdout from git, or -1 where it never answered.</summary>
+        // A path no file stands at, which is how git is told to read no config file rather than the
+        // machine's. Under the temporary directory so it names nothing a contributor might create.
+        private static readonly string NoSuchConfig =
+            Path.Combine(Path.GetTempPath(), "velvet-no-such-gitconfig");
+
         private static (int Exit, string Output) RunGit(
             string directory, IEnumerable<string> arguments, bool assumeForeignOwner = false)
         {
@@ -1269,6 +1274,12 @@ namespace Velvet.Tests
             if (assumeForeignOwner)
             {
                 start.Environment["GIT_TEST_ASSUME_DIFFERENT_OWNER"] = "1";
+                // Both configs point at a path that does not exist, so the refusal is decided by the
+                // code under test rather than by what the machine carries. `safe.directory = *` is what
+                // a worktree-heavy workflow drives people to set, and it lifts the very refusal these
+                // cases arrange -- one then fails on its left term and the other on its right.
+                start.Environment["GIT_CONFIG_GLOBAL"] = NoSuchConfig;
+                start.Environment["GIT_CONFIG_SYSTEM"] = NoSuchConfig;
             }
 
             try
