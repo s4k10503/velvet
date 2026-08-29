@@ -43,7 +43,11 @@ MARKER = "GREEN_ON_BASE"
 
 
 def two_commit_repo(test, base, branch):
-    """(a repository whose first commit is `base` and second is `branch`, the merge base's sha)."""
+    """(a repository whose first commit is `base` and second is `branch`, the merge base's sha).
+
+    A `branch` entry whose text is None is a file the second commit deletes, which is what a caller
+    reading `deleted_files` needs and what writing-only fixtures cannot produce.
+    """
     holder = tempfile.mkdtemp(prefix="base-red-tree-")
     test.addCleanup(shutil.rmtree, holder, ignore_errors=True)
     root = Path(holder)
@@ -55,6 +59,9 @@ def two_commit_repo(test, base, branch):
     for label, files in (("base", base), ("branch", branch)):
         for relative, text in files.items():
             path = root / relative
+            if text is None:
+                path.unlink(missing_ok=True)
+                continue
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(text)
         run("add", "-A")
@@ -1890,6 +1897,54 @@ class CSharpSurfaceEvidenceTests(unittest.TestCase):
 
         # Assert
         self.assertIsNone(found)
+
+
+class DroppedFromTheBaseTreeTests(unittest.TestCase):
+    """What `drop` unlinks, and what the narrowing keeps out of it.
+
+    The direction that matters is the one where the narrowing stops being applied: a production file the
+    branch deleted would then be unlinked from the base tree, that tree would not compile, and a base
+    tree that cannot compile is what this harness reports as "the base could not answer" — the reading
+    #622 was filed for. `two_commit_repo` could not reach any of this until it could delete a file.
+    """
+
+    FIXTURE = "Packages/p/Runtime/A/Tests/Editor/ProbeTests.cs"
+    PRODUCTION = "Packages/p/Runtime/A/Thing.cs"
+
+    def tree_of(self, base, branch, drop):
+        root, since = two_commit_repo(self, base, branch)
+        tree = worktree_beside(self, root)
+        base_red_check.build_base_tree(root, since, tree, [], drop)
+        return root, since, tree
+
+    def test_Given_AFileInDrop_When_TheBaseTreeIsBuilt_Then_ItIsNotThere(self):
+        # Arrange — the base has it and the branch deleted it, which is the shape `drop` is built from.
+        base = {self.FIXTURE: "// a fixture\n", self.PRODUCTION: "// a type\n"}
+        branch = {self.FIXTURE: None}
+
+        # Act
+        _, _, tree = self.tree_of(base, branch, [self.FIXTURE])
+
+        # Assert — the production file rides along, because a tree missing everything would satisfy the
+        # left side having built nothing at all.
+        self.assertEqual(((tree / self.FIXTURE).exists(), (tree / self.PRODUCTION).exists()),
+                         (False, True))
+
+    def test_Given_AProductionDeletion_When_TheDropIsNarrowed_Then_ItIsNotInIt(self):
+        # Arrange — the branch deletes one of each. Only the test-side one may be unlinked: taking the
+        # other out of the base tree is what leaves that tree unable to compile.
+        base = {self.FIXTURE: "// a fixture\n", self.PRODUCTION: "// a type\n"}
+        branch = {self.FIXTURE: None, self.PRODUCTION: None}
+        root, since = two_commit_repo(self, base, branch)
+
+        # Act
+        deleted = base_red_check.deleted_files(root, since)
+        narrowed = sorted(name for name in deleted if base_red_check.is_test_side(name))
+
+        # Assert — both halves: the deletion of the production file has to be seen and then left out,
+        # and a reading that saw neither would satisfy the right side alone.
+        self.assertEqual((sorted(deleted), narrowed),
+                         ([self.FIXTURE, self.PRODUCTION], [self.FIXTURE]))
 
 
 class UnbuildableOnBaseTests(unittest.TestCase):
