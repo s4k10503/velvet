@@ -29,13 +29,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and got the Transition lane, so it waited out the delayed tier's 100 ms instead of committing at
   the next frame boundary. Nothing is inferred from in-flight fiber state now.
 
-`ReactStartTransition.js` sets `T` before `scope()` and restores it in a `finally`, with no `await`
-anywhere in the function — so for an async scope the restore runs the moment `scope()` hands back
-its promise, and nothing re-establishes it for the continuation. `requestUpdateLane` does read its
-`fiber` argument in source: `fiber.mode` gates a legacy `SyncLane` return that precedes the
-transition read. That branch is behind `!disableLegacyMode`, which is `true` in React 19's default
-flag set, so the read cannot change the answer there. react.dev states the same contract from the
-outside and files the post-`await` case as a known limitation it means to fix.
+React sets its transition flag before the callback and restores it in a `finally`, with no `await`
+in between — so for an async scope the restore runs the moment the callback hands back its promise,
+and nothing re-establishes it for the continuation. Its lane decision reads that ambient flag rather
+than the component the update belongs to, apart from one legacy branch its current default flag set
+turns off. react.dev states the same contract from the outside and files the post-`await` case as a
+known limitation it means to fix.
 
 
 - `SearchParams.Empty` hands back a new instance on each read. It was a `static readonly` field
