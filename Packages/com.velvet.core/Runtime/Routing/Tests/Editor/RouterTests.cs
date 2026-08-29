@@ -538,6 +538,8 @@ namespace Velvet.Tests
             Assert.That(router.CurrentLoaderErrors["/boom"].Message, Does.Contain("boom-error"));
         }
 
+        // GREEN_ON_BASE(characterization): the base already resolves inline, for the reason the failure
+        // case below gives, and passing on both sides is what says the wait was buying nothing.
         [UnityTest]
         public IEnumerator Given_SuspendLoaderResolvedAfterCommit_When_GoBackToIt_Then_RestoresPostResolutionData()
             => UniTask.ToCoroutine(async () =>
@@ -568,6 +570,9 @@ namespace Velvet.Tests
                 "The Back cache hit restores the post-resolution snapshot, not the stale pre-resolution one");
         });
 
+        // GREEN_ON_BASE(characterization): the base already records the failure inline, which is what
+        // makes the wait this drops unnecessary — passing on both sides is the evidence. Measured:
+        // yielding once before `Announce` in `RunSuspendLoader` fails this case and no other.
         [UnityTest]
         public IEnumerator Given_SuspendLoaderFailedAfterCommit_When_GoBackToIt_Then_RestoresCachedError()
             => UniTask.ToCoroutine(async () =>
