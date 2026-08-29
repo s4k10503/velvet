@@ -368,8 +368,8 @@ Three kinds of case belong on the base, and say so above themselves with a reaso
 ```
 
 ```csharp
-// GREEN_ON_BASE(construction): both sides here are the repository's own content. Perturb a reference
-// to `WalkRoott` and this is what reddens.
+// GREEN_ON_BASE(construction): both sides here are the repository's own content. Misspell the
+// reference as `published_check.unpublished_reasonn` and this is what reddens.
 ```
 
 `characterization` pins behaviour the base already has; `refactor` rides with a change meant to preserve

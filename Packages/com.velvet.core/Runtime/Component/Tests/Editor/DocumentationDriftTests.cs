@@ -504,9 +504,9 @@ namespace Velvet.Tests
                     : IdentifierTokenPattern.Matches(JsxElementPattern.Replace(span.Reference, " "))
                         .Select(token => (span.Path, span.Reference, Token: token.Value)));
 
-        // GREEN_ON_BASE(construction): both sides of the comparison are the base's own content — this
-        // repository's markdown and this repository's scripts — and they agree there. Perturb a
-        // reference to `WalkRoott` and this case is what reddens; no base run can perform that.
+        // GREEN_ON_BASE(construction): both sides of this comparison are the base's own content, and on
+        // the base they agree — this repository's markdown against its scripts. Misspell a reference as
+        // `published_check.unpublished_reasonn` and this case reddens; no base run can perform that.
         [Test]
         public void Given_MarkdownNamingAScriptSymbol_When_TheSymbolIsSoughtInThatScript_Then_ItIsDefinedThere()
         {

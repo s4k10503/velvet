@@ -168,9 +168,9 @@ CATEGORIES = ("characterization", "refactor", "construction")
 #
 # So its reason has to name that perturbation, and naming is the part a script can hold: a backticked
 # span, which is how this repository writes an identifier or a command in prose. The rule is only on
-# this category. Measured over the 298 declarations on `main` when it was added, 275 carry no backtick
-# at all -- asking the same of `characterization` or `refactor` would rewrite the corpus rather than
-# check it.
+# this category. Measured with this reader over the 286 declarations on `main` when it was added, 263
+# carry no backtick at all -- asking the same of `characterization` or `refactor` would rewrite the
+# corpus rather than check it.
 NAMES_A_PERTURBATION = ("construction",)
 
 BACKTICKED = re.compile(r"`[^`]+`")

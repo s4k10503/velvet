@@ -699,7 +699,7 @@ class DeclarationTests(unittest.TestCase):
     # says the new rule did not widen to it. A rule written on the category set rather than on one
     # member passes the three cases above and fails here.
     def test_Given_ACharacterizationReasonNamingNothing_When_Checked_Then_ThereIsNoComplaint(self):
-        # Arrange — the control: the rule is on `construction` alone, because 275 of the 298
+        # Arrange — the control: the rule is on `construction` alone, because 263 of the 286
         # declarations that existed when it was added carry no backtick.
         # Act / Assert
         self.assertIsNone(base_red_check.Declaration(

@@ -2,9 +2,10 @@
 """Refuse a GREEN_ON_BASE or MUTANT_SURVIVES declaration whose first line breaks off mid-clause.
 
 Only the first line of a declaration is a claim on its own, and it is the whole of what the readers
-take as the reason: both stop the capture at the newline and measure their four-word floor on what
-stands before it. So where the sentence runs on past it, the wrap position is part of what the
-declaration says.
+measure their four-word floor on: both stop the capture at the newline. A reader may still fold the
+continuation in for a different question -- `base_red_check` looks for a `construction` reason's
+backtick over the folded form -- but nothing reads the wrap as a sentence boundary, so where the
+sentence runs on past it, the wrap position is part of what the declaration says.
 
 The floor is not what this adds. A first line under four words is refused by the readers already,
 by name, and saying so twice would buy nothing. What gets through them is a line long enough to

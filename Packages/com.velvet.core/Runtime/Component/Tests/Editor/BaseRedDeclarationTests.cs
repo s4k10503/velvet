@@ -15,9 +15,9 @@ namespace Velvet.Tests
     /// contributor copies, so a format change that leaves it behind teaches the wrong shape.
     /// </summary>
     /// <remarks>
-    /// Both what the script accepts — its categories and how long a reason has to be — are read out of it
-    /// rather than listed here. A second copy is a second thing to update, and the failure of the copy
-    /// that nobody updated is silence.
+    /// Everything the script accepts on — its categories, how long a reason has to be, and which
+    /// categories must name a perturbation — is read out of it rather than listed here. A second copy is
+    /// a second thing to update, and the failure of the copy that nobody updated is silence.
     /// </remarks>
     [TestFixture]
     internal sealed class BaseRedDeclarationTests
@@ -36,7 +36,57 @@ namespace Velvet.Tests
         private static readonly Regex Declaration =
             new(@"GREEN_ON_BASE\(([A-Za-z]*)\)\s*:\s*(.*)", RegexOptions.Compiled);
 
+        private static readonly Regex PerturbationTuple =
+            new(@"NAMES_A_PERTURBATION\s*=\s*\(([^)]*)\)", RegexOptions.Compiled);
+
+        private static readonly Regex Backticked = new("`[^`]+`", RegexOptions.Compiled);
+
+        // The script folds a wrapped reason before it looks for the backtick, so the guide's example
+        // has to be read the same way -- `Declaration`'s `(.*)` stops at the newline, and the example
+        // carries its backtick on the wrap.
+        private static readonly Regex CommentContinuation =
+            new(@"^\s*(?://|#)\s?(.*)$", RegexOptions.Compiled);
+
         private static string Read(string path) => File.ReadAllText(Path.GetFullPath(path));
+
+        private static IReadOnlyList<string> PerturbationCategories()
+        {
+            var tuple = PerturbationTuple.Match(Read(Script));
+            return tuple.Success
+                ? Quoted.Matches(tuple.Groups[1].Value).Select(match => match.Groups[1].Value).ToList()
+                : new List<string>();
+        }
+
+        private static List<(string Category, string Reason, string Folded)> ShownInTheGuide()
+        {
+            var lines = Read(Guide).Split('\n');
+            var shown = new List<(string, string, string)>();
+            for (var index = 0; index < lines.Length; index++)
+            {
+                var match = Declaration.Match(lines[index]);
+                if (!match.Success)
+                {
+                    continue;
+                }
+
+                var reason = match.Groups[2].Value.TrimEnd('\r');
+                var folded = reason;
+                for (var next = index + 1; next < lines.Length; next++)
+                {
+                    var carried = CommentContinuation.Match(lines[next].TrimEnd('\r'));
+                    if (!carried.Success || Declaration.IsMatch(lines[next]))
+                    {
+                        break;
+                    }
+
+                    folded += " " + carried.Groups[1].Value;
+                }
+
+                shown.Add((match.Groups[1].Value, reason, folded));
+            }
+
+            return shown;
+        }
 
         private static IReadOnlyList<string> Categories()
         {
@@ -112,17 +162,19 @@ namespace Velvet.Tests
             var categories = Categories();
             var minimum = MinimumReasonWords();
 
+            var namesAPerturbation = PerturbationCategories();
+
             // Act
-            var shown = Declaration.Matches(Read(Guide)).Cast<Match>()
-                .Select(match => (Category: match.Groups[1].Value, Reason: match.Groups[2].Value))
-                .ToList();
+            var shown = ShownInTheGuide();
 
             // Assert — the count rides along because a guide that shows no example passes on the rest.
             // A floor rather than an exact number: the guide shows one spelling per lane, and pinning
             // how many lanes there are is a mirror that goes stale when a third one arrives.
             Assert.That((shown.Count >= 1, shown.All(sample => categories.Contains(sample.Category)
                     && sample.Reason.Split((char[])null, StringSplitOptions.RemoveEmptyEntries)
-                        .Length >= minimum)),
+                        .Length >= minimum
+                    && (!namesAPerturbation.Contains(sample.Category)
+                        || Backticked.IsMatch(sample.Folded)))),
                 Is.EqualTo((true, true)),
                 $"{Guide} shows an example {Script} would not accept");
         }
