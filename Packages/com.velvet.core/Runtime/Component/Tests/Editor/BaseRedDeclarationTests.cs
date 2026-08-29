@@ -152,6 +152,9 @@ namespace Velvet.Tests
                 $"{Script} declares no MINIMUM_REASON_WORDS this fixture can read");
         }
 
+        // GREEN_ON_BASE(construction): the guide and the script are both the base's own content and they
+        // agree there, whichever conditions the script holds. Drop the backticks from the guide's
+        // `construction` example and this case reddens; the base has no such example to drop.
         [Test]
         public void Given_TheDeclarationTheGuideShows_When_TheScriptsOwnPatternReadsIt_Then_ItIsAccepted()
         {
