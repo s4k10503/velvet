@@ -10,10 +10,10 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies what an <see cref="IRouteScope"/> whose <c>Dispose</c> throws does to the teardown that
-    /// invoked it. The scope is built by the application's <see cref="IRouteScopeFactory"/>, so every
-    /// entrance below reaches the caller's code, and each contains it the way a <c>refCallback</c>
-    /// cleanup is contained.
+    /// Specifies what an <see cref="IRouteScopeFactory"/> that throws does to the pass that called it —
+    /// out of <c>CreateScope</c>, and out of the <c>Dispose</c> of the scope it built. Every entrance
+    /// below is a call into the application's own code. The disposals drop and log; the creations reach
+    /// the nearest error boundary, which the last case here mounts.
     /// <list type="bullet">
     /// <item>Changing route: the Outlet still mounts the route it navigated to, the incoming route's own
     /// scope is built regardless of the failure, and the scope it left behind is disposed once rather
@@ -128,6 +128,60 @@ namespace Velvet.Tests
             // Assert — what the incoming route renders rides along, because a reconcile that escaped
             // would leave the old label standing and satisfy neither half on its own.
             Assert.That((escaped, LabelTextsUnder(_root)), Is.EqualTo((false, "other")));
+        }
+
+        [Test]
+        public void Given_AFactoryThatThrowsOnCreate_When_TheAppFirstMounts_Then_TheThrowDoesNotEscapeTheReconcile()
+        {
+            // Arrange — the mount path builds the scope, which is the entrance FiberNodeFactory owns.
+            s_throwOnDispose = false;
+            _scopeFactory.ThrowOnCreate = true;
+            LogAssert.Expect(LogType.Exception,
+                             new Regex("InvalidOperationException: " + CreateFailureMessage));
+
+            // Act
+            var escaped = EscapesFrom(() => MountRoutedApp());
+
+            // Assert
+            Assert.That((escaped, LabelTextsUnder(_root)), Is.EqualTo((false, "route")));
+        }
+
+        [Test]
+        public void Given_AnOutletLeftWithoutAScope_When_ItIsPatchedAtTheSameRoute_Then_TheRetryIsContainedToo()
+        {
+            // Arrange — the mount's own create failed, so no scope is registered and the patch takes the
+            // branch that builds one for a route it is already holding.
+            s_throwOnDispose = false;
+            _scopeFactory.ThrowOnCreate = true;
+            LogAssert.Expect(LogType.Exception,
+                             new Regex("InvalidOperationException: " + CreateFailureMessage));
+            var mounted = MountRoutedApp();
+            LogAssert.Expect(LogType.Exception,
+                             new Regex("InvalidOperationException: " + CreateFailureMessage));
+
+            // Act
+            var escaped = EscapesFrom(() => ReRenderAppAtCurrentLocation(mounted));
+
+            // Assert
+            Assert.That((escaped, LabelTextsUnder(_root)), Is.EqualTo((false, "route")));
+        }
+
+        [Test]
+        public void Given_AnErrorBoundaryAboveTheOutlet_When_TheFactoryThrows_Then_ItShowsItsFallback()
+        {
+            // Arrange — with a boundary mounted the propagation has somewhere to land, which is the whole
+            // of what containment buys over a drop: the application decides what a scope-less route does.
+            s_throwOnDispose = false;
+            var mounted = MountBoundedApp();
+            _router.NavigateAsync("/other").GetAwaiter().GetResult();
+            _scopeFactory.ThrowOnCreate = true;
+
+            // Act
+            var escaped = EscapesFrom(() => ReRenderBoundedAppAtCurrentLocation(mounted));
+
+            // Assert — no log line: the boundary consumed it, where the case above has none to consume it.
+            Assert.That((escaped, _root.Q<VisualElement>("fallback") != null, LabelTextsUnder(_root)),
+                        Is.EqualTo((false, true, string.Empty)));
         }
 
         [Test]
@@ -273,6 +327,26 @@ namespace Velvet.Tests
             _reconciler.Reconcile(_root, Array.Empty<VNode>(), tree);
             return tree;
         }
+
+        private VNode[] BoundedApp() => new VNode[]
+        {
+            V.ErrorBoundary(fallback: _ => V.Div(name: "fallback"),
+                            children: new VNode[]
+                            {
+                                V.Component(RoutedApp, _router.CurrentLocation!, key: "app"),
+                            },
+                            key: "boundary"),
+        };
+
+        private VNode[] MountBoundedApp()
+        {
+            var tree = BoundedApp();
+            _reconciler.Reconcile(_root, Array.Empty<VNode>(), tree);
+            return tree;
+        }
+
+        private void ReRenderBoundedAppAtCurrentLocation(VNode[] mounted)
+            => _reconciler.Reconcile(_root, mounted, BoundedApp());
 
         private void ReRenderAppAtCurrentLocation(VNode[] mounted)
             => _reconciler.Reconcile(_root, mounted,
