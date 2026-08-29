@@ -24,11 +24,14 @@ Run: python3 scripts/hooks/test_pr_body_flags.py
 """
 
 import importlib.util
+import os
 import re
 import shutil
 import subprocess
+import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -90,6 +93,54 @@ def across_subcommands(index):
     return found
 
 
+class BodyPathReadingTests(unittest.TestCase):
+    """Which spellings of a path the body reader resolves.
+
+    `~` is a selector the shell rewrites, like `$VAR` — and unlike `$VAR` it names one path this can
+    resolve, so the file is read rather than the reading refused. Measured before: `--body-file ~/x.md`
+    over a file that exists and answers was refused as "does not exist", with a next action about a
+    write that did not run, while the absolute spelling of the same file was read.
+    """
+
+    def setUp(self):
+        self.home = Path(tempfile.mkdtemp(prefix="body-home-"))
+        self.addCleanup(shutil.rmtree, self.home, ignore_errors=True)
+
+    def read(self, spelling):
+        with mock.patch.dict(os.environ, {"HOME": str(self.home)}):
+            return pr_body.read_body_file(spelling, str(self.home), after_a_move=False)
+
+    def test_Given_ATildeSpelledBody_When_Read_Then_ItIsTheFileThatIsThere(self):
+        # Arrange
+        (self.home / "body.md").write_text("a body that answers")
+
+        # Act
+        text, obstruction = self.read("~/body.md")
+
+        # Assert
+        self.assertEqual((text, obstruction), ("a body that answers", None))
+
+    # GREEN_ON_BASE(characterization): the base answers this too, and it is the half the
+    # widened reading could take with it — only running it says whether it did.
+    def test_Given_ATildeSpelledBodyThatIsNotThere_When_Read_Then_ItIsStillMissing(self):
+        # Arrange — the control: expanding the selector must not make an absent file readable.
+        # Act
+        _, obstruction = self.read("~/nothing-here.md")
+
+        # Assert
+        self.assertEqual(obstruction, pr_body.MISSING)
+
+    # GREEN_ON_BASE(characterization): the base answers this too, and it is the half the
+    # widened reading could take with it — only running it says whether it did.
+    def test_Given_AVariableSpelledBody_When_Read_Then_ItIsStillUnexpanded(self):
+        # Arrange — the other selector, which names no path this can resolve and is refused as before.
+        # Act
+        _, obstruction = self.read("$BODY")
+
+        # Assert
+        self.assertEqual(obstruction, pr_body.UNEXPANDED_PATH)
+
+
 class ValueFlagMirrorTests(unittest.TestCase):
     def test_Given_ghsOwnOptionTable_When_TheValueTakingOptionsAreRead_Then_TheMirrorSpellsThoseExactly(self):
         # Arrange
@@ -113,6 +164,33 @@ class ValueFlagMirrorTests(unittest.TestCase):
         # Assert
         self.assertEqual(uncovered, ([], True),
                          "gh prints a boolean shorthand SHORT_BOOLEAN_FLAGS does not carry")
+
+
+class ExemptionScopeTests(unittest.TestCase):
+    """Where an exemption is real, against gh's own tables.
+
+    An exemption granted on a subcommand that does not take the flag costs nothing today — gh rejects
+    the command before anything is posted — and it is an exemption nobody could have earned, which is
+    what a reader has to trust when they see one.
+    """
+
+    def test_Given_ghsOwnOptionTables_When_TheDryRunExemptionIsRead_Then_ItNamesTheSubcommandsThatTakeIt(self):
+        # Arrange — `pr new` is `pr create`'s alias and prints the same table, so it rides with it.
+        # `merge` is read here though the body guard does not claim it: the exemption table is what
+        # says where a flag exists, and that answer does not depend on who is asking.
+        taking = {("pr", subcommand) for subcommand in SUBCOMMANDS + ("merge",)
+                  if "--dry-run" in option_table(subcommand)[1]}
+        if ("pr", "create") in taking:
+            taking.add(("pr", "new"))
+
+        # Act — read as a value rather than reached for, so a tree without the table fails the
+        # comparison instead of raising out of the case, which separates nothing.
+        claimed = getattr(pr_body, "EXEMPT_WHERE", {}).get("--dry-run", set())
+
+        # Assert — the emptiness rides along, since an empty reading agrees with any claim in one
+        # direction and this exists to refuse exactly that.
+        self.assertEqual((sorted(claimed - taking), sorted(taking - claimed), bool(taking)),
+                         ([], [], True))
 
 
 if __name__ == "__main__":

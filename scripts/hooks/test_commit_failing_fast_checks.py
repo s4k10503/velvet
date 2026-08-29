@@ -53,6 +53,16 @@ class UnexpandedOperands(unittest.TestCase):
 
     # GREEN_ON_BASE(characterization): the base gives every unexpanded operand this sentence, which
     # is why the other two exist. It is the half the split had to leave where it was.
+    def test_Given_ATildeSpelledPathspec_When_Judged_Then_TheContentIsNotSilentlyEmpty(self):
+        # Arrange — the shell expands a `~` and git does not, so a pathspec spelled that way reached
+        # git literally, matched nothing, and left every check below reading no content. Measured, it
+        # passed all of them.
+        code, said = self.judge("git commit -m x -- ~/velvet/a.cs")
+
+        # Act / Assert — expanded it is an absolute path outside the repository, which git refuses,
+        # so this reaches the unreadable-content refusal rather than the silence.
+        self.assertEqual((code, "could not be read" in said), (2, True))
+
     def test_Given_AnUnexpandedPathspec_When_Refused_Then_ItKeepsItsOwnRemedy(self):
         # Arrange — the reading the sentence was written for, which this must leave where it is.
         code, said = self.judge('git commit -m "x" -- "$FILES"')

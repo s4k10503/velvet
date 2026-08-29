@@ -466,6 +466,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A route whose path ends in a splat no longer accepts children. `ParseRouteSegments` refused a splat
+  that was not last within one route path, but a branch is every ancestor's segments joined, and
+  nothing re-read the position across that join: `Route("files/*", children: new[] { Route("download") })`
+  built the branch `[files, *, download]`, which outscored its splat-only parent and won for every
+  path the parent would have taken — the child's own segment never compared against anything, because
+  a splat stops the walk where it matches. A splat is a leaf, as it is in React Router, and declaring
+  children under one is now refused where the mid-path spelling already was.
+
 - Registering a portal target id again with a different element now moves the portals already mounted
   into the old one, instead of leaving them writing into an element the UI has replaced. A
   `"modal-root"` that a screen owns — torn down on navigation and re-registered from the rebuilt

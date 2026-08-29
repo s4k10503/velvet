@@ -97,6 +97,20 @@ namespace Velvet
 
                 var hasChildren = route.Children is { Length: > 0 };
 
+                // The refusal inside ParseRouteSegments is over one route's own path, and a branch is
+                // every ancestor's segments joined. A splat stops the walk where it matches, so a child
+                // segment behind one is never compared: the branch outscores its splat-only parent and
+                // wins for every path the parent would have taken, which is the swallowing the
+                // one-path refusal is worded against.
+                if (hasChildren && EndsWithSplat(route))
+                {
+                    throw new ArgumentException(
+                        $"Splat segment '*' must be the last segment of a route path, but route "
+                        + $"'{route.Path}' declares {route.Children!.Length} child route(s) behind it. "
+                        + "A splat takes the whole tail, so nothing under it can be reached as "
+                        + "declared. Move the children beside the splat route rather than under it.");
+                }
+
                 // Every route is a candidate so a parent can match with an empty Outlet. An index child is
                 // scored above its bare parent and joins the chain when both consume the same path.
                 output.Add(BuildBranch(ancestors));
@@ -108,6 +122,17 @@ namespace Velvet
 
                 ancestors.RemoveAt(ancestors.Count - 1);
             }
+        }
+
+        private static bool EndsWithSplat(RouteDefinition route)
+        {
+            var last = false;
+            foreach (var seg in ParseRouteSegments(route))
+            {
+                last = seg.IsSplat;
+            }
+
+            return last;
         }
 
         private RouteBranch BuildBranch(List<RouteDefinition> chain)
