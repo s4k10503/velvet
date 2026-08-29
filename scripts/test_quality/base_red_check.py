@@ -1866,6 +1866,27 @@ def local_remedy(since, cases):
                 "".join(" --platform " + platform for platform in platforms), since or "origin/main"))
 
 
+def exhausted_reason(spent, withdrawn, carried):
+    """What a loop that ran out of rounds without ever compiling the base has to say for itself.
+
+    The generic line is the one a single round writes, and a reader who ran the loop has already done
+    the thing that line would tell them to do. What separates the two is the loop's own history: how
+    many rounds it spent and how much of the carried set it put back, which is the evidence that the
+    base cannot build the branch's test modules at all rather than one of them.
+    """
+    if not spent:
+        return ""
+    put_back = "\n".join("    " + name for name in sorted(withdrawn)[:6])
+    more = len(withdrawn) - 6
+    if more > 0:
+        put_back += "\n    and {} more".format(more)
+    return ("\n{} round(s) compiled nothing, having put {} of the {} carried file(s) back to what the\n"
+            "base holds. A base that builds none of them is answering about the tree rather than about\n"
+            "a case, and no declaration reaches that: what a branch introducing a type the base has no\n"
+            "source for owes is a reason in its description, not a per-case one.\n"
+            "{}".format(spent, len(withdrawn), carried, put_back if withdrawn else ""))
+
+
 def held_at(project, commit, relative):
     """A file's text at a commit, or None where the commit has not got it."""
     result = git(project, "show", "{}:{}".format(commit, relative), check=False)
@@ -2064,6 +2085,8 @@ def main():
     transcript = []
     canaries = {}
     ever_wrote = not any(kind_of(case.path) == "csharp" for case in cases)
+    rounds_spent = 0
+    put_back = set()
     try:
         print("  building the base tree at {}".format(base_tree), flush=True)
         build_base_tree(project, since, base_tree, carry, drop, args.warm_library)
@@ -2088,10 +2111,14 @@ def main():
             raise SystemExit("another Unity test run is still in flight")
         canaries.update(canaries_for(base_tree, cases, carry, platforms))
         for platform in platforms:
+            # Accumulated across platforms, unlike `withdrawn`: what the message below is evidence
+            # for is that the base built none of the carried set, which both lanes are asking about.
             wanted = [case for case in cases + control
                       if kind_of(case.path) == "csharp" and platform_of(case.path) == platform]
             withdrawn = set()
             for attempt in range(1, args.max_rounds + 1):
+                rounds_spent = max(rounds_spent, attempt)
+                put_back |= withdrawn
                 live = [case for case in wanted if case.path not in withdrawn]
                 fixtures = sorted({case.fixture for case in live} | set(canaries[platform]))
                 if not fixtures:
@@ -2131,6 +2158,7 @@ def main():
 
     if not ever_wrote:
         print("no round wrote a result, so nothing any of them was asked was measured", flush=True)
+        print(exhausted_reason(rounds_spent, put_back, len(carry)), flush=True)
     offenders = report(cases, control, reported, canaries, ever_wrote)
     print("\nlogs: {}".format(output), flush=True)
     return 1 if offenders else 0

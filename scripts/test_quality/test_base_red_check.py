@@ -706,6 +706,53 @@ class DeclarationTests(unittest.TestCase):
             "characterization", "the ordering the base already commits to").complaint)
 
 
+class ExhaustedLoopTests(unittest.TestCase):
+    """What the withdrawing loop says when it runs out of rounds having compiled nothing.
+
+    The generic line beside this one is what a single round writes, and its remedy is to run the loop
+    -- advice a reader who ran the loop has already taken. What separates the two readings is the
+    loop's own history, which nothing printed before: a base that built none of the carried set is
+    answering about the tree rather than about any case in it.
+    """
+
+    # GREEN_ON_BASE(characterization): the base says nothing here because it has no such message at
+    # all, and this is the control that keeps the new one off a lane that starts no editor.
+    def test_Given_NoRoundRan_When_TheReasonIsBuilt_Then_ItSaysNothing(self):
+        # Arrange — the Python-only lane starts no editor, so there is no loop to report on.
+        # Act / Assert
+        self.assertEqual(base_red_check.exhausted_reason(0, set(), 12), "")
+
+    def test_Given_RoundsThatCompiledNothing_When_TheReasonIsBuilt_Then_ItCountsThem(self):
+        # Act
+        said = base_red_check.exhausted_reason(8, {"a.cs", "b.cs"}, 24)
+
+        # Assert
+        self.assertIn("8 round(s) compiled nothing", said)
+
+    def test_Given_FilesPutBack_When_TheReasonIsBuilt_Then_ItNamesThem(self):
+        # Arrange — the withdrawn set is the evidence, so a count without the names is a claim the
+        # reader cannot check.
+        # Act
+        said = base_red_check.exhausted_reason(3, {"one.cs", "two.cs"}, 9)
+
+        # Assert
+        self.assertEqual(("one.cs" in said, "two.cs" in said), (True, True))
+
+    def test_Given_MoreFilesThanItPrints_When_TheReasonIsBuilt_Then_ItSaysHowManyItLeftOut(self):
+        # Arrange — eight withdrawn, six printed.
+        # Act
+        said = base_red_check.exhausted_reason(8, {"f%d.cs" % n for n in range(8)}, 30)
+
+        # Assert
+        self.assertIn("and 2 more", said)
+
+    def test_Given_RoundsThatCompiledNothing_When_TheReasonIsBuilt_Then_ItSaysADeclarationDoesNotReachIt(self):
+        # Arrange — the reading a per-case declaration cannot answer, which is why the message has to
+        # say where the answer goes instead.
+        # Act / Assert
+        self.assertIn("not a per-case one", base_red_check.exhausted_reason(8, {"a.cs"}, 24))
+
+
 class SelectionTests(unittest.TestCase):
     def test_Given_ALineInsideOneCase_When_TheFileIsSelected_Then_OnlyThatCaseIsTaken(self):
         # Arrange
