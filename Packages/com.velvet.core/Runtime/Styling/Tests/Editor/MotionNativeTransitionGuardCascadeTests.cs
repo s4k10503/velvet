@@ -64,8 +64,6 @@ namespace Velvet.Tests
             // there is no empty resolved list to read instead.
             "" => MotionTransitionSlots.None,
             "filter" => MotionTransitionSlots.Filter,
-            "background-position-x" => MotionTransitionSlots.BackgroundPosition,
-            "background-position-y" => MotionTransitionSlots.BackgroundPosition,
             _ => throw new NotSupportedException(
                 $"The cascade resolved transition-property to '{ussProperty}', which this oracle does not map."),
         };

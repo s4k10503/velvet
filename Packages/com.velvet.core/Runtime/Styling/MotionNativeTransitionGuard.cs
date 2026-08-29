@@ -25,6 +25,10 @@ namespace Velvet
         // `animate-hue` writes `filter` whole, and the pan modes write one of the two background-position
         // longhands per tick -- which of the two is the binding's own axis, so both are one slot here for
         // the same reason Color is one: the driver reports the slot, not the channel.
+        //
+        // No SlotsOf arm for BackgroundPosition: the bundled sheets declare no transition-property naming
+        // it, and StyleTransitionUtilities is derived from them, so the declared side reaches this slot
+        // through `all` alone. Filter has `.transition-filter` and so has an arm.
         Filter = 1 << 6,
         BackgroundPosition = 1 << 7,
         All = Opacity | Translate | Scale | Rotate | Color | Length | Filter | BackgroundPosition,
@@ -237,10 +241,6 @@ namespace Velvet
             StyleLonghand.BorderBottomColor,
             StyleLonghand.BorderLeftColor);
 
-        private static readonly StyleLonghandSet s_backgroundPositionProperties = SetOf(
-            StyleLonghand.BackgroundPositionX,
-            StyleLonghand.BackgroundPositionY);
-
         private static readonly StyleLonghandSet s_lengthProperties = SetOf(
             StyleLonghand.Width,
             StyleLonghand.Height,
@@ -283,7 +283,6 @@ namespace Velvet
             if (declared.Overlaps(s_colorProperties)) slots |= MotionTransitionSlots.Color;
             if (declared.Overlaps(s_lengthProperties)) slots |= MotionTransitionSlots.Length;
             if (declared.Contains(StyleLonghand.Filter)) slots |= MotionTransitionSlots.Filter;
-            if (declared.Overlaps(s_backgroundPositionProperties)) slots |= MotionTransitionSlots.BackgroundPosition;
             return slots;
         }
 

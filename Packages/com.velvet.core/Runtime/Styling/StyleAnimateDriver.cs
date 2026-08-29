@@ -77,8 +77,9 @@ namespace Velvet
         public static void SyncTransitionSuspension(VisualElement element, StyleAnimateBinding binding)
             => MotionNativeTransitionGuard.SyncSuspension(element, binding, GuardedSlots(binding.Spec.Mode));
 
-        // The slot each mode writes on a tick, which is the only write a transition can intercept. The pan
-        // modes set background-size and background-repeat on attach rather than per tick, so neither is here.
+        // The slot each mode writes on a tick. The pan modes also write background-size and
+        // background-repeat, but at attach and once -- and above this call, so a transition covering
+        // either takes that write whatever this returns.
 #pragma warning disable CS8524 // no discard arm: a new mode has to name the slots it guards
         private static MotionTransitionSlots GuardedSlots(AnimateMode mode) => mode switch
         {

@@ -57,11 +57,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `animate-hue` and the two gradient pan modes now suspend a native transition covering the slot they
   drive, as `animate-spin` and `animate-pulse` already did. The guard matches a driver's slot against
   the element's own transitionable set, and it had no flag for `filter` or for the background-position
-  pair — so those three reported driving nothing and were left to whatever transition covered them.
-  UI Toolkit does not take an inline write while a transition covers that longhand; it starts a fresh
-  transition toward it, so the painted value trailed the driver for the whole loop. A bare `duration-*`
-  is enough to reach this, because UI Toolkit's initial `transition-property` of `all` covers
-  every slot.
+  pair — so those three reported driving nothing and their per-frame writes were left to whatever
+  transition covered them. A bare `duration-*` is enough to reach this, because UI Toolkit's initial
+  `transition-property` of `all` covers every slot. What the suspension does not reach is the
+  background size and repeat the pan modes set once at attach, above the call that takes it.
 
 - A component inside one `V.Portal` no longer has its position rewritten by a sibling portal on a
   different target. Two portals declared side by side are siblings in the fiber chain whatever targets

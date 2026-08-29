@@ -334,9 +334,10 @@ Two combinations to avoid, both because something else writes the same slot ever
 
 - a mode's slot driven by a Motion channel on the same element — `animate-spin` under a Motion
   `rotate`, say. The result is whichever wrote last, not a blend.
-- a native transition covering that slot. Every mode suspends one while it runs, the way Motion's own
-  drivers do, so a transition never intercepts a driven tick. Note a transition needs no
-  `transition-*` utility — a bare `duration-*` leaves UI Toolkit's initial `all` standing, which
+- a native transition covering that slot. Every mode suspends one for the length of its run, the way
+  Motion's own drivers do. The pan modes also set background size and repeat once at attach, before
+  the suspension, so a transition covering either still takes that one write. Note a transition needs
+  no `transition-*` utility — a bare `duration-*` leaves UI Toolkit's initial `all` standing, which
   covers every slot.
 
 The suspension is element-wide (UI Toolkit's `transition-property` has no "everything except these"

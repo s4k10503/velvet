@@ -260,9 +260,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_AHueUnderADuration_When_ItAttaches_Then_TheNativeTransitionIsSuspended()
         {
-            // Arrange — the same bare duration, over the slot `animate-hue` writes every tick. UI Toolkit
-            // starts a fresh transition toward an inline filter rather than taking it, so an unsuspended
-            // hue trails its own driver for the whole loop.
+            // Arrange — the same bare duration, over the slot `animate-hue` writes every tick.
             var (untimed, timed) = MountPair(
                 "w-[40px] h-[40px] bg-red-500 animate-hue",
                 "w-[40px] h-[40px] bg-red-500 duration-300 animate-hue");
