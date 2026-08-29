@@ -63,6 +63,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Matching a URL no longer parses each route's path again to build the match's base. A branch already
+  holds its whole pattern, parsed once when the tree was built; resolving the base walked
+  `ParseRouteSegments` instead, which is an iterator, so every level of every match allocated an
+  enumerator and a list. The branch records how many segments each of its routes contributed and the
+  resolution reads that slice. Measured over a two-level route with a blocker registered: four fewer
+  allocated blocks per navigation.
+
 - Matching a URL no longer allocates an array for every route branch it walks past. The record of
   which path segment each pattern segment took is a buffer on the tree now, rewritten per probe,
   where it was a fresh array per probe — and `Match` probes the ranked branches until one matches, so
