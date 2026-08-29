@@ -1,21 +1,13 @@
-using System.Collections.Generic;
 using UnityEngine.UIElements;
 
 namespace Velvet
 {
-    // Facade interface used by Reconciler subsystems (FiberNodeFactory,
-    // FiberElementCleaner, FiberNodePatcher) instead of referencing one another directly.
-    // Centralizes the host-platform element operations (create / remove / patch) behind one
-    // injection point so the reconciler core stays decoupled from concrete VisualElement handling.
+    // Facade the Patcher and the Factory reach ChildReconciler and FiberElementCleaner through, instead
+    // of referencing them directly. Every member here is called on one of their `_host` fields; a member
+    // nothing calls is reachable from nowhere else, because this interface is implemented explicitly and
+    // by one type.
     internal interface IReconcilerHost
     {
-        // Operations provided by FiberNodeFactory
-        VisualElement CreateElement(VNode node);                                           // Used by Patcher
-        List<(string key, VNode node)> BuildKeyedMapCopy(VNode?[] children);               // Used by ChildReconciler
-
-        // Operations provided by FiberElementCleaner
-        void RemoveElement(VisualElement parent, int index);                               // Used by Patcher only
-        void RemoveElementDirect(VisualElement parent, VisualElement element);
         // Used by Patcher only, for a registry Portal whose id now names a different element.
         void ReleasePortalRangeForRetarget(VisualElement placeholder);
 

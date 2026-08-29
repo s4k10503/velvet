@@ -8,20 +8,10 @@ namespace Velvet
     internal sealed class FiberElementCleaner
     {
         private readonly ReconcilerContext _ctx;
-        private IReconcilerHost _host = null!;
 
         public FiberElementCleaner(ReconcilerContext ctx)
         {
             _ctx = ctx;
-        }
-
-        internal void SetHost(IReconcilerHost host)
-        {
-            if (_host != null)
-            {
-                throw new System.InvalidOperationException("[FiberElementCleaner] SetHost called twice");
-            }
-            _host = host;
         }
 
         public void RemoveElement(VisualElement parent, int index)
@@ -35,20 +25,6 @@ namespace Velvet
             var poolable = PoolableOccupantOf(element);
             CleanupElement(element);
             parent.RemoveAt(index);
-            ReturnOccupantToPool(element, poolable);
-        }
-
-        // Removes an element from its parent directly (by element reference, not index).
-        public void RemoveElementDirect(VisualElement parent, VisualElement element)
-        {
-            if (element?.parent != parent)
-            {
-                return;
-            }
-
-            var poolable = PoolableOccupantOf(element);
-            CleanupElement(element);
-            element.RemoveFromHierarchy();
             ReturnOccupantToPool(element, poolable);
         }
 
@@ -690,7 +666,7 @@ namespace Velvet
         //
         // Descendant elements are NOT returned to VNodePool here because the descendant DOM remove is bulk
         // (parent.RemoveAt) and individual children are not surfaced. Pool return is limited to the top-level
-        // element of RemoveElement, RemoveElementDirect, and CleanupPortal.
+        // element of RemoveElement and CleanupPortal.
         private void CleanupElementCore(VisualElement element)
         {
             var isWrapper = _ctx.WrapperToInnerMap.TryGetValue(element, out var innerElement);
