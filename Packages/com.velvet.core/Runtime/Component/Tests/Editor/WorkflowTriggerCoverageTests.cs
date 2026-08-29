@@ -404,12 +404,17 @@ namespace Velvet.Tests
         // until a test starts skipping.
         private static List<string> NamedRepoFiles(string workflow)
         {
-            var ignored = DocumentationCorpus.IgnoredRoots();
-            return PathTokenPattern.Matches(File.ReadAllText(Path.GetFullPath(workflow)))
+            var present = PathTokenPattern.Matches(File.ReadAllText(Path.GetFullPath(workflow)))
                 .Select(match => match.Value)
                 .Distinct(StringComparer.Ordinal)
                 .Where(token => File.Exists(Path.GetFullPath(token)))
-                .Where(token => !ignored.Contains(token.Split('/')[0]))
+                .ToList();
+            // Asked of git rather than of IgnoredRoots, which answers a first-segment question: `docs/api/`
+            // reduces to `docs` there, and every file this workflow names under `docs/` was dropped before
+            // the case could read it. A dropped file and a covered one are the same green.
+            var ignored = DocumentationCorpus.IgnoredAmong(present);
+            return present
+                .Where(token => !ignored.Contains(token))
                 .OrderBy(token => token, StringComparer.Ordinal)
                 .ToList();
         }
