@@ -126,6 +126,11 @@ namespace Velvet.Tests
                 UseShellExecute = false,
                 CreateNoWindow = true,
             };
+            // Same ownership argument the tracked-listing read takes: a checkout the process does
+            // not own is one git refuses to read at all, and a refusal here reports nothing ignored,
+            // which is a silence that lets an ignored path through as a covered one.
+            start.ArgumentList.Add("-c");
+            start.ArgumentList.Add("safe.directory=" + Path.GetFullPath("."));
             start.ArgumentList.Add("check-ignore");
             start.ArgumentList.Add("--stdin");
 
@@ -141,7 +146,16 @@ namespace Velvet.Tests
             }
             process.StandardInput.Close();
             var output = process.StandardOutput.ReadToEnd();
+            var declined = process.StandardError.ReadToEnd();
             process.WaitForExit();
+            // Exit 1 is "none of these is ignored", which is an answer. Anything above it is git
+            // declining, and a decline read as an empty answer lets every ignored path through as one a
+            // trigger has to cover.
+            if (process.ExitCode > 1)
+            {
+                throw new InvalidOperationException(
+                    $"git check-ignore declined to answer for {asked.Count} path(s): {declined.Trim()}");
+            }
 
             return output.Split('\n')
                 .Select(line => line.Trim().Replace('\\', '/'))
