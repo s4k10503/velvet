@@ -2,9 +2,10 @@ using UnityEngine.UIElements;
 
 namespace Velvet
 {
-    // Facade the Patcher and the Factory reach ChildReconciler through, instead of referencing it
-    // directly. Every member here is called on one of their `_host` fields; a member nothing calls is
-    // reachable from nowhere else, because this interface is implemented explicitly and by one type.
+    // Facade the Patcher and the Factory reach ChildReconciler and FiberElementCleaner through, instead
+    // of referencing them directly. Every member here is called on one of their `_host` fields; a member
+    // nothing calls is reachable from nowhere else, because this interface is implemented explicitly and
+    // by one type.
     internal interface IReconcilerHost
     {
         // Used by Patcher only, for a registry Portal whose id now names a different element.

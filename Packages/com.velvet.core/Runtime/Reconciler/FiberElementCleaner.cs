@@ -28,20 +28,6 @@ namespace Velvet
             ReturnOccupantToPool(element, poolable);
         }
 
-        // Removes an element from its parent directly (by element reference, not index).
-        public void RemoveElementDirect(VisualElement parent, VisualElement element)
-        {
-            if (element?.parent != parent)
-            {
-                return;
-            }
-
-            var poolable = PoolableOccupantOf(element);
-            CleanupElement(element);
-            element.RemoveFromHierarchy();
-            ReturnOccupantToPool(element, poolable);
-        }
-
         // Resolves the poolable occupant of a slot: a clip-path-* leaf sits inside a
         // structural wrapper, and the wrapper — not the widget — is the slot's element. Must run
         // BEFORE CleanupElement, which consumes the wrapper map entry.
@@ -680,7 +666,7 @@ namespace Velvet
         //
         // Descendant elements are NOT returned to VNodePool here because the descendant DOM remove is bulk
         // (parent.RemoveAt) and individual children are not surfaced. Pool return is limited to the top-level
-        // element of RemoveElement, RemoveElementDirect, and CleanupPortal.
+        // element of RemoveElement and CleanupPortal.
         private void CleanupElementCore(VisualElement element)
         {
             var isWrapper = _ctx.WrapperToInnerMap.TryGetValue(element, out var innerElement);

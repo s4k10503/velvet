@@ -301,7 +301,7 @@ namespace Velvet.Tests.Performance
         #region B-1-d: Pooled-widget recycle (mount -> unmount -> remount)
 
         // Pins the primitive-element pool's recycle path: VNodePool.ReturnLabel / ReturnButton (invoked
-        // when RemoveElement/RemoveElementDirect reclaims an unmounted Label/Button) run
+        // when RemoveElement reclaims an unmounted Label/Button) run
         // FiberLabelPoolHelper/FiberButtonPoolHelper's ResetXForReuse, which calls
         // FiberElementPoolReset.ResetClassListAndCommon on every single recycle — an unintended per-recycle
         // heap allocation on that path is what this measurement exists to catch. The Button half carries an
