@@ -186,6 +186,48 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_TabIndexDeclared_When_PatchedToUnset_Then_ElementConstructedValueRestored()
+        {
+            // Arrange — a Label inherits TextElement's -1 rather than the 0 the coalescing wrote, which is
+            // what makes the difference observable. Reached through V.Custom, since V.Text carries no props.
+            var oldTree = new VNode[] { V.Custom<Label>(props: new FiberElementProps { TabIndex = 3 }) };
+            var newTree = new VNode[] { V.Custom<Label>() };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
+            var element = Root.ElementAt(0);
+            var whileDeclared = element.tabIndex;
+
+            // Act
+            Reconciler.Reconcile(Root, oldTree, newTree);
+
+            // Assert — the identity term is what separates a restore from a remount: a Label handed back to
+            // the pool is reset to -1, so an implementation that discarded this element would satisfy the
+            // reading while the tree holds a different one.
+            Assert.That(
+                (ReferenceEquals(Root!.ElementAt(0), element), whileDeclared, element.tabIndex),
+                Is.EqualTo((true, 3, -1)));
+        }
+
+        [Test]
+        public void Given_DelegatesFocusDeclared_When_PatchedToUnset_Then_ElementConstructedValueRestored()
+        {
+            // Arrange — a composite field is constructed delegating focus, so switching it off and dropping
+            // the prop is what strands focus on the field's own root.
+            var oldTree = new VNode[] { V.Custom<TextField>(props: new FiberElementProps { DelegatesFocus = false }) };
+            var newTree = new VNode[] { V.Custom<TextField>() };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
+            var element = Root.ElementAt(0);
+            var whileDeclared = element.delegatesFocus;
+
+            // Act
+            Reconciler.Reconcile(Root, oldTree, newTree);
+
+            // Assert — same identity term, and for the same reason: the pool restores this reading too.
+            Assert.That(
+                (ReferenceEquals(Root!.ElementAt(0), element), whileDeclared, element.delegatesFocus),
+                Is.EqualTo((true, false, true)));
+        }
+
+        [Test]
         public void Given_FocusableTrue_When_PatchedToUnset_Then_ElementConstructedValueRestored()
         {
             // Arrange — the mount render declares the Div focusable; the next render drops the prop entirely,
