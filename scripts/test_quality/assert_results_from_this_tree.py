@@ -9,13 +9,20 @@ passing case named for a fixture no source in the tree declares -- under a -test
 something else, which is what makes it read as a result rather than as a failure to run. Unity's
 exit code is the caller's to notice, and nobody was reading it.
 
-One precondition before any of them: the results and the log have to sit inside the project named.
-A caller that spells an absolute path to a run's output and lets --project default is naming two
-trees, and every reading below is then a comparison across them. Measured on two worktrees of this
-repository declaring the same fixtures: exit 0, having compared one tree's sources against the
-other's results. It is only when the running tree declares a fixture this one does not that the
-third reading catches the pairing -- and there it reports a stranger, which is the sentence for a
-stale Library rather than for a call pointed at two trees.
+One precondition before any of them: the log says which project the editor opened, and that has to
+be the project this is pointed at. A caller who spells an absolute path to another worktree's output
+and lets --project default is naming two trees, and the third reading below is then a comparison
+across them. Measured on two worktrees of this repository declaring the same fixtures: exit 0,
+having compared one tree's sources against the other's results. The pairing is caught only in the
+direction where the tree that ran declares a fixture this one does not -- and there it reports a
+stranger, which is the sentence for a stale Library rather than for a call pointed at two trees.
+
+Read off the log rather than from where the files sit. Location is not the same question: the
+story-capture recipe in CONTRIBUTING.md writes its results to /tmp from a run whose project is the
+checkout, and refusing that would be refusing a correct pairing. What the log names is the project
+the run measured, which is the thing this has to agree with. A path it names that does not exist
+here is not read -- an artifact downloaded out of a container names the container's path, and the
+run it came from is not one this machine can locate.
 
 Three readings, and the run has to survive all of them:
 
@@ -323,30 +330,40 @@ def foreign_fixtures(reported, ours, resolved, types):
     return ran, found
 
 
-def elsewhere(project, named):
-    """Every named file that does not sit under the project the check was pointed at.
+PROJECT_OPENED = re.compile(r"^Successfully changed project path to:\s*(.+?)\s*$", re.MULTILINE)
 
-    A run writes its results and its log under the tree it ran in, so a file outside that tree is a
-    reading of a different one. Paired the other way round the check compares this tree's sources
-    against another tree's assemblies, and what it then reports is a fixture the running tree
-    declares and this one does not -- which is the sentence it prints for the defect it exists to
-    catch, about work that is fine.
+
+def measured_elsewhere(project, logs):
+    """Every log whose run opened a project that is not this one, and that this machine can find.
+
+    A path the log names and this machine does not have is a run from somewhere else -- an artifact
+    out of a container names the container's path -- and there the log has nothing to say about
+    which tree is here. Only a path that resolves to a real directory is compared, so the reading
+    either separates two trees on this machine or stands aside.
     """
     root = project.resolve()
-    return [path for path in named if root not in path.resolve().parents and path.resolve() != root]
+    found = []
+    for path in logs:
+        opened = PROJECT_OPENED.search(read_text(path))
+        if not opened:
+            continue
+        named = Path(opened.group(1))
+        if named.is_dir() and named.resolve() != root:
+            found.append((path, named))
+    return found
 
 
 def refusals(project, results, logs):
     """Every reason the results are not this worktree's reading. Empty means none of them said so."""
-    # Before any reading of either: the two arguments have to be of one tree. A caller that names an
-    # absolute results path and lets --project default is pointing the check at two, and every
-    # reading below would then be a comparison across them.
-    strangers = elsewhere(project, results + logs)
-    if strangers:
+    # First, before the compile reading below: a log of another tree's run says nothing about
+    # whether this one compiled, and refusing it for the diagnostic it carries would name the wrong
+    # tree's fault.
+    crossed = measured_elsewhere(project, logs)
+    if crossed:
         raise Unreadable(
-            "{} sit(s) outside {}, so the results and the sources are of different trees. Pass "
-            "--project for the tree the run happened in.".format(
-                ", ".join(str(path) for path in strangers), project))
+            "{}, so the run measured a tree this is not pointed at. Pass --project for the tree "
+            "the run happened in.".format(
+                "; ".join("{} is of a run in {}".format(path, named) for path, named in crossed)))
 
     # First, and returning on its own: a run that did not compile wrote no results, so every reading
     # below would refuse it for the absence rather than for the cause, and the caller would be told

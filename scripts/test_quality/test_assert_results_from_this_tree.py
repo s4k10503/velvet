@@ -105,9 +105,7 @@ class Workspace:
                 (cached / (name + ".asmdef")).write_text(json.dumps({"name": name}),
                                                          encoding="utf-8")
 
-        # Under the project, as every writer of one puts it: -testResults is given a path inside the
-        # tree being run, and the guard refuses a pairing that spans two trees.
-        self.run_directory = self.project / "Logs"
+        self.run_directory = self.root / "run"
         self.run_directory.mkdir()
         self.results = self.run_directory / "results.xml"
         self.log = self.run_directory / "run.log"
@@ -117,7 +115,8 @@ class Workspace:
         self.results.write_text(results if results is not None else results_xml(assemblies),
                                 encoding="utf-8")
         self.log.write_text(
-            "Saving results to: {}\n".format(self.results) if log is None else log,
+            "Successfully changed project path to: {}\nSaving results to: {}\n".format(
+                self.project, self.results) if log is None else log,
             encoding="utf-8")
         return self
 
@@ -356,10 +355,10 @@ class LogTests(unittest.TestCase):
 class UnreadableTests(unittest.TestCase):
     """Every reading the guard cannot take is a refusal, since exiting 0 unread looks like a pass."""
 
-    def test_Given_AnotherWorktreesResults_When_TheProjectIsThisOne_Then_TheReadingIsRefused(self):
-        # Arrange -- an absolute path to the run's own output with --project left where the call
-        # started. The guard's own sentence then names a fixture the running tree declares and this
-        # one does not, which reads exactly like the defect it exists to catch.
+    def test_Given_ARunOfAnotherWorktree_When_TheProjectIsThisOne_Then_TheReadingIsRefused(self):
+        # Arrange -- an absolute path to another worktree's output with --project left where the
+        # call started. Where the two trees declare the same fixtures this was exit 0; where they
+        # do not it names a fixture as a stranger, which is the sentence for a stale Library.
         with workspace() as here, workspace() as ran:
             ran.wrote()
 
@@ -370,7 +369,7 @@ class UnreadableTests(unittest.TestCase):
             # Assert
             self.assertEqual(code, 2)
 
-    def test_Given_AnotherWorktreesResults_When_TheProjectIsThisOne_Then_TheRefusalNamesTheFile(self):
+    def test_Given_ARunOfAnotherWorktree_When_TheProjectIsThisOne_Then_TheRefusalNamesTheTree(self):
         # Arrange
         with workspace() as here, workspace() as ran:
             ran.wrote()
@@ -380,20 +379,37 @@ class UnreadableTests(unittest.TestCase):
                                    "--project", str(here.project))
 
             # Assert
-            self.assertIn(str(ran.results), said)
+            self.assertIn(str(ran.project), said)
 
-    def test_Given_ALogFromAnotherWorktree_When_TheResultsAreThisOnes_Then_TheReadingIsRefused(self):
-        # Arrange -- the compile the guard reads is then of a tree the results did not come from.
-        with workspace() as here, workspace() as ran:
-            here.wrote()
-            ran.wrote()
+    def test_Given_ARunOfThisProjectWritingItsResultsElsewhere_When_ItIsRead_Then_ItIsNotRefused(self):
+        # Arrange -- CONTRIBUTING's story-capture recipe: -projectPath the checkout, -testResults
+        # /tmp. Where the files sit says nothing; what the run opened is the question.
+        with workspace() as tree:
+            outside = tree.root / "elsewhere"
+            outside.mkdir()
+            tree.results, tree.log = outside / "capture.xml", outside / "capture.log"
+            tree.wrote()
 
             # Act
-            code, _ = here.verdict(str(here.results), "--log", str(ran.log),
-                                   "--project", str(here.project))
+            code, _ = tree.verdict(str(tree.results), "--log", str(tree.log),
+                                   "--project", str(tree.project))
 
             # Assert
-            self.assertEqual(code, 2)
+            self.assertEqual(code, 0)
+
+    def test_Given_ALogNamingAProjectThisMachineDoesNotHave_When_ItIsRead_Then_ItIsNotRefused(self):
+        # Arrange -- an artifact downloaded out of a container names the container's path, and the
+        # run it came from is not one this machine can locate. CI reads exactly this.
+        with workspace() as tree:
+            tree.wrote(log="Successfully changed project path to: /github/workspace\n"
+                           "Saving results to: {}\n".format(tree.results))
+
+            # Act
+            code, _ = tree.verdict(str(tree.results), "--log", str(tree.log),
+                                   "--project", str(tree.project))
+
+            # Assert
+            self.assertEqual(code, 0)
 
     def test_Given_NoEditorLogAtAll_When_TheRunIsRead_Then_TheReadingIsRefused(self):
         # Arrange
