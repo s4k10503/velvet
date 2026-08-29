@@ -1684,8 +1684,9 @@ namespace Velvet
         /// </summary>
         /// <returns>
         /// 2-tuple in the order (<c>isPending</c>, <c>startTransition</c>):
-        /// - <c>isPending</c>: true while a Transition update is queued or being committed (and across an async
-        ///   transition's awaits).
+        /// - <c>isPending</c>: true while an update this starter's callback scheduled is queued or being
+        ///   committed — through the terminal reconcile slice, wherever the state it wrote lives — and across
+        ///   an async transition's awaits.
         /// - <c>startTransition</c>: a <see cref="TransitionStarter"/>, reference-stable across renders. Call
         ///   <c>startTransition.Invoke(() =&gt; ...)</c>
         ///   for synchronous updates or <c>startTransition.Invoke(async () =&gt; ...)</c> for async actions whose
@@ -1701,7 +1702,7 @@ namespace Velvet
 
             if (index >= fiber.TransitionSlots.Count)
             {
-                var slot = new HookTransitionSlot();
+                var slot = new HookTransitionSlot { DeclaringFiber = fiber };
                 // The starter captures this slot so each UseTransition() drives only its own pending flag:
                 // two transitions in one component are independent.
                 slot.Starter = new TransitionStarter(
@@ -1712,6 +1713,8 @@ namespace Velvet
             }
 
             var existing = fiber.TransitionSlots[index];
+            // See HookTransitionSlot.LastRenderedPending for why a read site writes.
+            existing.LastRenderedPending = existing.IsPending;
             return (existing.IsPending, existing.Starter);
         }
 

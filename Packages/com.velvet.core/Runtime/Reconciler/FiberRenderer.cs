@@ -179,7 +179,7 @@ namespace Velvet
             }
 
             fiber.IsDirty = false;
-            fiber.ClearAllTransitionPending();
+            fiber.SettleTransitionPending();
             fiber.Reconciler?.Context.BatchScheduler.Remove(fiber);
         }
 
@@ -249,6 +249,9 @@ namespace Velvet
             // For components whose LaneState has not been allocated (Lane never used), do not call Clear() to
             // preserve zero-allocation.
             fiber.Lanes?.Clear();
+            // The lane queue cleared above is where another component's transition was waiting for its work
+            // to commit, so the slots enrolled here settle now: nothing is left to commit it.
+            fiber.DischargeTransitionEnrolments();
             fiber.ReleaseTransitionSlotOwnership();
 
             // A mid-pass unmount takes its own deferred inline baselines with it: the end-of-pass

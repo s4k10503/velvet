@@ -9,6 +9,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `startTransition(() => setItemsFromParent(heavyList))` — a child deferring an expensive update
+  through a setter it received as a prop — had that update classified against the component that
+  *owns* the state, which was in no transition, so it took the Normal lane, or the Urgent lane
+  inside a click. The same held for a `Store` write made inside the callback.
+- A starter whose declaring component had gone away short-circuited before opening any scope, so
+  every update its callback made — on components still alive — took the Normal lane. React has no
+  such short-circuit; it sets its ambient flag with no fiber in hand. The scope now opens on that
+  path too and only the bookkeeping is skipped. That is the shape the migration guide asks callers
+  to write: an `async` action wrapping its post-`await` update in the starter again, having outlived
+  the component that started it.
+- `isPending` answered for the calling component's lanes rather than for the callback's work, so a
+  transition whose writes all landed elsewhere settled the moment its callback returned; an `async`
+  action's completion cleared the flag and scheduled nothing, stranding the indicator on screen; a
+  synchronous callback that drove a flush of its own ran the transition with the indicator down; and
+  two concurrent transitions credited each other's writes.
+- An unrelated update landing while an async action awaited — a timer tick, a `UseStore`
+  notification, a `UseMutation` callback — was indistinguishable from the action's own continuation
+  and got the Transition lane, so it waited out the delayed tier's 100 ms instead of committing at
+  the next frame boundary. Nothing is inferred from in-flight fiber state now.
+
+React sets its transition flag before the callback and restores it in a `finally`, with no `await`
+in between — so for an async scope the restore runs the moment the callback hands back its promise,
+and nothing re-establishes it for the continuation. Its lane decision reads that ambient flag rather
+than the component the update belongs to, apart from one legacy branch its current default flag set
+turns off. react.dev states the same contract from the outside and files the post-`await` case as a
+known limitation it means to fix.
+
+
 - `SearchParams.Empty` hands back a new instance on each read. It was a `static readonly` field
   holding one instance for the whole process, and `SearchParams.Append` mutates the instance it is
   called on, so the shape the member invites — `var next = SearchParams.Empty; next.Append("q",

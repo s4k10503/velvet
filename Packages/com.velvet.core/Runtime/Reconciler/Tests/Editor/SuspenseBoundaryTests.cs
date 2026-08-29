@@ -378,6 +378,26 @@ namespace Velvet.Tests
         // for this boundary, so these children now reach the offscreen walk and what keeps them flushing
         // is its per-fiber check: widen that marking to the boundary and this case goes red.
         [Test]
+        public void Given_AResolvedBoundaryInsideASuspendedOne_When_ItsOffscreenDescendantUpdates_Then_TheOuterFallbackSurvives()
+        {
+            // Arrange — the stateful fiber's nearest boundary is the inner Suspense, which resolved and so
+            // shows no fallback; the mark on that fiber was written by the outer one, which did suspend.
+            var source = new UniTaskCompletionSource<string>();
+            s_offscreenFactory = _ => source.Task;
+            using var mounted = V.Mount(_root, V.Component(NestedBoundaryHostRender, key: "host"));
+            Assume.That(_root.FindLabelByText("loading-outer"), Is.Not.Null,
+                "Precondition: the outer Suspense is showing its fallback");
+
+            // Act
+            s_offscreenSetter.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(_root.FindLabelByText("loading-outer"), Is.Not.Null,
+                "A flush that read past the inner boundary finds the outer's mark and does not patch its fallback away");
+        }
+
+        [Test]
         public void Given_SuspendedBoundaryFollowedByResolvedSibling_When_ResolvedSiblingsDescendantUpdates_Then_ItRerenders()
         {
             // Arrange — the same boundary fiber owns both Suspense nodes, so keeping the suspended one's
@@ -1058,6 +1078,30 @@ namespace Velvet.Tests
                     fallback: V.Label(text: "loading-B"),
                     children: new VNode[] { V.Component(ResolvedSiblingStatefulChildRender, key: "sibling") },
                     key: "b"),
+            });
+
+        // A Suspense of its own between the stateful fiber and the one that suspends, and it resolves:
+        // IsSuspenseBoundary is set on expansion whether or not a boundary suspended, so this is the fiber
+        // a nearest-boundary reading stops at.
+        [Component]
+        private static VNode NestedResolvedBoundaryRender()
+            => V.Suspense(
+                fallback: V.Label(text: "inner-loading"),
+                children: new VNode[] { V.Component(OffscreenStatefulChildRender, key: "stateful") },
+                key: "inner");
+
+        [Component]
+        private static VNode NestedBoundaryHostRender()
+            => V.Div(children: new VNode[]
+            {
+                V.Suspense(
+                    fallback: V.Label(text: "loading-outer"),
+                    children: new VNode[]
+                    {
+                        V.Component(NestedResolvedBoundaryRender, key: "middle"),
+                        V.Component(OffscreenSuspendingChildRender, key: "suspending"),
+                    },
+                    key: "outer"),
             });
 
         // The same two boundaries in the opposite order, so the suspended one's marking pass is the one
