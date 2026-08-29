@@ -458,6 +458,9 @@ namespace Velvet.Tests
             // Assert — LogAssert.Expect verifies the footgun warning was emitted
         }
 
+        // GREEN_ON_BASE(characterization): the base already reuses the resource when the explicit key
+        // matches, and this says so with the factory identity changing underneath it — the arrangement
+        // the case it replaces named and did not build.
         [Test]
         public void Given_AnExplicitKeyBesideAFreshLambdaEachRender_When_ReRendered_Then_TheFactoryRunsOnce()
         {
@@ -479,6 +482,9 @@ namespace Velvet.Tests
             Assert.That((runsAfterMount, s_explicitKeyFactoryRuns), Is.EqualTo((1, 1)));
         }
 
+        // GREEN_ON_BASE(characterization): the base already logs nothing here. It reads the same run
+        // as the case above from the console rather than from the factory, which is where a user meets
+        // the hatch.
         [Test]
         public void Given_AnExplicitKey_When_TheFactoryIdentityChanges_Then_NoWarningIsLogged()
         {
@@ -498,6 +504,9 @@ namespace Velvet.Tests
             LogAssert.NoUnexpectedReceived();
         }
 
+        // GREEN_ON_BASE(characterization): the base already gates the warning on the caller having
+        // passed the key. Measured: deleting `!resourceKeyExplicit &&` from `UseCore` leaves the whole
+        // EditMode suite green apart from this case, which nothing in it did before.
         [Test]
         public void Given_AnExplicitKeyThatChangesEachRender_When_ReRendered_Then_NoWarningIsLogged()
         {
