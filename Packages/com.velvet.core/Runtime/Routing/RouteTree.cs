@@ -55,10 +55,16 @@ namespace Velvet
 
         private sealed class RouteBranch
         {
-            public RouteDefinition[]? Chain;
-            public List<RouteSegment>? Pattern;
+            public readonly RouteDefinition[] Chain;
+            public readonly List<RouteSegment> Pattern;
             public int Score;
             public int Order;
+
+            public RouteBranch(RouteDefinition[] chain, List<RouteSegment> pattern)
+            {
+                Chain = chain;
+                Pattern = pattern;
+            }
         }
 
         private readonly struct RouteSegment
@@ -143,10 +149,8 @@ namespace Velvet
             var leaf = chain[chain.Count - 1];
             var isIndexLeaf = leaf.Path == "";
 
-            return new RouteBranch
+            return new RouteBranch(chain.ToArray(), pattern)
             {
-                Chain = chain.ToArray(),
-                Pattern = pattern,
                 Score = ComputeScore(pattern, isIndexLeaf),
                 Order = _branchCounter++,
             };
@@ -248,41 +252,75 @@ namespace Velvet
 
         #region Branch matching
 
+        /// <summary>One branch probe's state: everything the walk carries that does not change as it
+        /// descends, plus the two things it fills in.</summary>
+        private ref struct Walk
+        {
+            public readonly List<RouteSegment> Pattern;
+            public readonly string[] Segments;
+
+            /// <summary>Which path segment each pattern segment took, or -1 for one the match skipped.
+            /// An absent optional literal is otherwise indistinguishable from one the URL held, and
+            /// <see cref="BuildMatches"/> reads the pattern rather than the path.</summary>
+            public readonly int[] Taken;
+
+            public Dictionary<string, string>? Captured;
+
+            public Walk(List<RouteSegment> pattern, string[] segments)
+            {
+                Pattern = pattern;
+                Segments = segments;
+                Taken = new int[pattern.Count];
+                for (var index = 0; index < Taken.Length; index++)
+                {
+                    Taken[index] = -1;
+                }
+
+                Captured = null;
+            }
+        }
+
         private static bool TryMatchBranch(RouteBranch branch, string[] segments, out List<RouteMatch>? matches)
         {
             matches = null;
 
-            // Null until the first capture, and threaded by ref for that: Match probes ranked branches
-            // until one succeeds, and a failed probe's dictionary is discarded, so allocating eagerly
-            // pays per branch probed and keeps one.
-            Dictionary<string, string>? captured = null;
+            var walk = new Walk(branch.Pattern, segments);
 
-            if (!TryConsume(branch.Pattern, 0, segments, 0, ref captured))
+            if (!TryConsume(ref walk, 0, 0))
             {
                 return false;
             }
 
+            var captured = walk.Captured;
+            var taken = walk.Taken;
+
             // A paramless successful match still exposes a (shared, empty) dictionary at every level,
             // preserving the pre-lazy contract that RouteMatch.Params is never null.
-            matches = BuildMatches(branch.Chain, captured ?? new Dictionary<string, string>());
+            matches = BuildMatches(branch.Chain, captured ?? new Dictionary<string, string>(), taken);
             return true;
         }
 
-        private static bool TryConsume(
-            List<RouteSegment>? pattern, int pi, string[] segments, int si, ref Dictionary<string, string>? captured)
+        /// <remarks>
+        /// Writes into `taken` as it walks and never unwrites. Undoing a failed probe's entries was
+        /// written here at first, on the strength of the capture snapshot below being the same
+        /// discipline -- and it is not: `taken` is indexed by pattern position, which the next probe
+        /// overwrites as it passes, where a dictionary keyed by name has no such property.
+        /// </remarks>
+        private static bool TryConsume(ref Walk walk, int pi, int si)
         {
-            if (pattern == null) return false;
-            while (pi < pattern.Count)
+            while (pi < walk.Pattern.Count)
             {
-                var seg = pattern[pi];
+                var seg = walk.Pattern[pi];
 
                 if (seg.IsSplat)
                 {
-                    var rest = si >= segments.Length
+                    // MUTANT_SURVIVES(equivalent): at si == Length the join is asked for zero
+                    // elements and returns the empty string, which is what the other arm yields.
+                    var rest = si >= walk.Segments.Length
                         ? string.Empty
-                        : string.Join("/", segments, si, segments.Length - si);
-                    captured ??= new Dictionary<string, string>();
-                    captured["*"] = rest;
+                        : string.Join("/", walk.Segments, si, walk.Segments.Length - si);
+                    walk.Captured ??= new Dictionary<string, string>();
+                    walk.Captured["*"] = rest;
                     return true;
                 }
 
@@ -290,71 +328,81 @@ namespace Velvet
                 {
                     // Greedily try the optional segment as present before falling through to the skip
                     // branch, which consumes no path segment.
-                    if (si < segments.Length &&
-                        TryConsumeOptionalPresent(pattern, pi, segments, si, seg, ref captured))
+                    if (si < walk.Segments.Length && TryConsumeOptionalPresent(ref walk, pi, si, seg))
+                    {
+                        walk.Taken[pi] = si;
+                        return true;
+                    }
+
+                    if (TryConsume(ref walk, pi + 1, si))
                     {
                         return true;
                     }
 
-                    return TryConsume(pattern, pi + 1, segments, si, ref captured);
+                    return false;
                 }
 
-                if (si >= segments.Length || !TryMatchSingle(seg, segments[si], ref captured))
+                if (si >= walk.Segments.Length || !TryMatchSingle(ref walk, seg, walk.Segments[si]))
                 {
                     return false;
                 }
 
+                walk.Taken[pi] = si;
                 pi++;
                 si++;
             }
 
-            return si == segments.Length;
+            if (si == walk.Segments.Length)
+            {
+                return true;
+            }
+
+            return false;
         }
 
         /// <remarks>
         /// A capture made here must not leak into the caller's skip branch, so the param key is snapshotted
         /// and restored when the downstream match fails.
         /// </remarks>
-        private static bool TryConsumeOptionalPresent(
-            List<RouteSegment> pattern, int pi, string[] segments, int si, RouteSegment seg,
-            ref Dictionary<string, string>? captured)
+        private static bool TryConsumeOptionalPresent(ref Walk walk, int pi, int si, RouteSegment seg)
         {
             var keyExisted = false;
             string snap = "";
-            if (seg.IsParam && captured != null)
+            if (seg.IsParam && walk.Captured != null)
             {
-                keyExisted = captured.TryGetValue(seg.Value, out snap);
+                keyExisted = walk.Captured.TryGetValue(seg.Value, out snap);
             }
 
-            if (TryMatchSingle(seg, segments[si], ref captured) &&
-                TryConsume(pattern, pi + 1, segments, si + 1, ref captured))
+            if (TryMatchSingle(ref walk, seg, walk.Segments[si]) && TryConsume(ref walk, pi + 1, si + 1))
             {
                 return true;
             }
 
-            // The failed attempt may have been what created the dictionary, so it can be non-null here
-            // even when the snapshot above saw null.
-            if (seg.IsParam && captured != null)
+            // No null check, unlike the snapshot above: `TryMatchSingle` runs on the way in and creates
+            // the dictionary for a param, so reaching here with `seg.IsParam` means it exists. The
+            // `IsParam` test itself is load-bearing -- for a literal, `seg.Value` is its text, and
+            // removing under it takes whatever param happens to share the spelling.
+            if (seg.IsParam)
             {
                 if (keyExisted)
                 {
-                    captured[seg.Value] = snap;
+                    walk.Captured[seg.Value] = snap;
                 }
                 else
                 {
-                    captured.Remove(seg.Value);
+                    walk.Captured.Remove(seg.Value);
                 }
             }
 
             return false;
         }
 
-        private static bool TryMatchSingle(RouteSegment seg, string pathSeg, ref Dictionary<string, string>? captured)
+        private static bool TryMatchSingle(ref Walk walk, RouteSegment seg, string pathSeg)
         {
             if (seg.IsParam)
             {
-                captured ??= new Dictionary<string, string>();
-                captured[seg.Value] = pathSeg;
+                walk.Captured ??= new Dictionary<string, string>();
+                walk.Captured[seg.Value] = pathSeg;
                 return true;
             }
 
@@ -362,20 +410,23 @@ namespace Velvet
             return string.Equals(seg.Value, pathSeg, comparison);
         }
 
-        private static List<RouteMatch> BuildMatches(RouteDefinition[]? chain, Dictionary<string, string> captured)
+        private static List<RouteMatch> BuildMatches(
+            RouteDefinition[] chain, Dictionary<string, string> captured, int[] taken)
         {
-            if (chain == null) return new List<RouteMatch>();
             var matches = new List<RouteMatch>(chain.Length);
             var cumulativeId = string.Empty;
             // Each level stores a cumulative base because route-relative `..` pops a whole route level,
             // not one URL segment.
             var cumulativeResolved = string.Empty;
+            // `taken` is indexed over the branch's flattened pattern, which is each route's segments in
+            // chain order, so a route's slice starts where the routes above it ended.
+            var patternOffset = 0;
 
             foreach (var route in chain)
             {
                 cumulativeId = AppendRouteId(cumulativeId, route);
 
-                var resolvedSegment = ResolveRouteSegments(route, captured);
+                var resolvedSegment = ResolveRouteSegments(route, captured, taken, ref patternOffset);
                 if (resolvedSegment.Length > 0)
                 {
                     cumulativeResolved = cumulativeResolved.Length == 0
@@ -397,27 +448,29 @@ namespace Velvet
             return matches;
         }
 
-        private static string ResolveRouteSegments(RouteDefinition route, IReadOnlyDictionary<string, string> captured)
+        /// <summary>
+        /// The path this route contributes to a match's base, with any segment the match skipped left
+        /// out. Advances <paramref name="patternOffset"/> past this route's share of the branch pattern.
+        /// </summary>
+        /// <remarks>
+        /// Walks <see cref="ParseRouteSegments"/> rather than splitting the path again: indexing into
+        /// `taken` needs the two readings to agree segment for segment, and they did not — one dropped
+        /// the empty part in `a//b` and the other kept it.
+        /// </remarks>
+        private static string ResolveRouteSegments(
+            RouteDefinition route, IReadOnlyDictionary<string, string> captured, int[] taken,
+            ref int patternOffset)
         {
-            if (string.IsNullOrEmpty(route.Path) || route.Path == "/" || route.Path == "")
+            var resolved = new List<string>();
+
+            foreach (var seg in ParseRouteSegments(route))
             {
-                return string.Empty;
-            }
+                var index = patternOffset++;
 
-            var pattern = TrimSlashes(route.Path);
-            var parts = pattern.Split('/', StringSplitOptions.RemoveEmptyEntries);
-            var resolved = new List<string>(parts.Length);
-
-            foreach (var rawPart in parts)
-            {
-                var part = rawPart;
-                var optional = part.Length > 0 && part[part.Length - 1] == '?';
-                if (optional)
-                {
-                    part = part.Substring(0, part.Length - 1);
-                }
-
-                if (part == "*")
+                // `taken` is not read for a splat or a param: the first resolves from the captured
+                // tail and the second from its capture, and only a literal has nothing else to say
+                // whether the URL held it.
+                if (seg.IsSplat)
                 {
                     if (captured.TryGetValue("*", out var splat) && splat.Length > 0)
                     {
@@ -426,17 +479,28 @@ namespace Velvet
                     continue;
                 }
 
-                if (part.Length > 0 && part[0] == ':')
+                if (seg.IsParam)
                 {
-                    var name = part.Substring(1);
-                    if (captured.TryGetValue(name, out var value) && value.Length > 0)
+                    // A captured segment can be empty -- the split that produces path segments keeps
+                    // empty entries, so `//` reaches a param -- and a base carrying it would double the
+                    // separator in every relative target resolved against it.
+                    if (captured.TryGetValue(seg.Value, out var value) && value.Length > 0)
                     {
                         resolved.Add(value);
                     }
                     continue;
                 }
 
-                resolved.Add(part);
+                // A literal the match skipped is one the URL never held, so a base built from it would
+                // resolve the next relative hop against a path that does not exist.
+                // MUTANT_SURVIVES(unreachable): `taken` is as long as the branch pattern and `index`
+                // walks that same pattern, so the bound is never the arm that decides.
+                if (seg.IsOptional && (index >= taken.Length || taken[index] < 0))
+                {
+                    continue;
+                }
+
+                resolved.Add(seg.Value);
             }
 
             return string.Join("/", resolved);

@@ -81,6 +81,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   declaration over the concrete `SearchParams` type, and no Velvet signature declares a
   `SearchParams` parameter.
 
+- A route whose optional literal the URL did not carry no longer writes that segment into the match's
+  `PathnameBase`. `Route("docs/intro?")` at `/docs` gave a base of `/docs/intro`, so `UseNavigate()`
+  and `V.Link` resolved every relative target one segment deeper than the address the user was
+  at — and nested, where the parent base is what `..` pops to, the wrong address still matched the
+  parent, so the render looked right while each further hop compounded the error. An optional segment
+  the match never took is now left out of the base, which is what an absent optional param and an
+  absent splat already were.
+
 - A `refCallback` setup, a `refCallback` cleanup cycled by a changed callback identity, an `onCreated:`,
   a `wrapElement:` and a `V.Motion` `onEnterComplete:` that throw reach the nearest error boundary
   instead of leaving the reconcile call — the containment a `UseEffect` cleanup and

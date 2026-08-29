@@ -543,6 +543,98 @@ namespace Velvet.Tests
             Assert.That(result[0].Params.ContainsKey("id"), Is.False);
         }
 
+        // GREEN_ON_BASE(characterization): the restore is already there, and this says what it
+        // restores — the capture the abandoned present path made, rather than merely that the match
+        // succeeded.
+        [Test]
+        public void Given_AnOptionalParamTheSkipPathMatchesPast_When_Matched_Then_TheAbandonedCaptureIsGone()
+        {
+            // Arrange — the present path captures `id` as "end" and then fails, having nothing left for
+            // the segment behind it; the skip path is what matches. `users/:id?` cannot reach this: the
+            // optional is last there, so the present path either succeeds or is never tried.
+            var tree = new RouteTree(new[] { Route(":id?/end") });
+
+            // Act
+            var result = tree.Match("/end");
+
+            // Assert — the match rides along, because a tree that matched nothing carries no capture
+            // either.
+            Assert.That((result != null, result != null && result[0].Params.ContainsKey("id")),
+                        Is.EqualTo((true, false)));
+        }
+
+        // GREEN_ON_BASE(characterization): a route neither reading reaches already matches nothing.
+        // Measured: making the optional arm report a match when both fail leaves the fixture green
+        // apart from this case.
+        [Test]
+        public void Given_AnOptionalParamWhosePresentAndSkipPathsBothFail_When_Matched_Then_NothingMatches()
+        {
+            // Arrange — the same route, at a URL neither reading reaches: taking `wrong` as `id` leaves
+            // nothing for `end`, and skipping it puts `end` against `wrong`.
+            var tree = new RouteTree(new[] { Route(":id?/end") });
+
+            // Act
+            var result = tree.Match("/wrong");
+
+            // Assert
+            Assert.That(result, Is.Null);
+        }
+
+        // GREEN_ON_BASE(characterization): the restore is already gated on the segment being a param.
+        // Measured: widening that gate to `||` leaves the fixture green apart from this case, and the
+        // gate is what this change's `Taken` bookkeeping sits next to.
+        [Test]
+        public void Given_AnOptionalLiteralSharingAParamsName_When_ItsPresentPathFails_Then_TheParamSurvives()
+        {
+            // Arrange — the optional is a literal spelled `p`, and the param before it is named `p` too.
+            // The present path tries the literal against "a", fails, and runs the restore on its way out.
+            var tree = new RouteTree(new[] { Route(":p/p?/a") });
+
+            // Act
+            var result = tree.Match("/a/a");
+
+            // Assert — a restore that ran for a literal would read the segment's text as a capture key
+            // and take `p` with it.
+            Assert.That((result != null, result != null ? result[0].Params["p"] : null),
+                        Is.EqualTo((true, "a")));
+        }
+
+        // GREEN_ON_BASE(characterization): an empty capture is already left out of the base. Measured:
+        // widening the emptiness test to admit it leaves the fixture green apart from this case.
+        [Test]
+        public void Given_AUrlWithAnEmptySegment_When_ItIsCaptured_Then_TheBaseDoesNotCarryIt()
+        {
+            // Arrange — the split that produces path segments does not drop empty entries, so `//`
+            // arrives as a segment and a param captures it.
+            var tree = new RouteTree(new[] { Route("docs/:slug/edit") });
+
+            // Act
+            var result = tree.Match("/docs//edit");
+
+            // Assert — the capture rides along, because a URL that matched nothing would satisfy the
+            // base half having captured nothing.
+            Assert.That((result != null ? result[0].Params["slug"] : null,
+                         result != null ? result[0].PathnameBase : null),
+                        Is.EqualTo(("", "/docs/edit")));
+        }
+
+        // GREEN_ON_BASE(characterization): the control for the skip. A base built from every declared
+        // segment gives the same answer here as one built from the segments taken, which is what makes
+        // it the case that fails if the skip is applied to an optional the URL did carry.
+        [Test]
+        public void Given_AnOptionalLiteralTakingTheFirstSegment_When_Matched_Then_TheBaseCarriesIt()
+        {
+            // Arrange — the segment it took is index 0, which is what separates "took none" from "took
+            // the first one" in the record the base is built from.
+            var tree = new RouteTree(new[] { Route("intro?") });
+
+            // Act
+            var result = tree.Match("/intro");
+
+            // Assert
+            Assert.That(result[0].PathnameBase, Is.EqualTo("/intro"));
+        }
+
         [Test]
         public void Given_OptionalLiteralRoute_When_SegmentPresent_Then_Matches()
         {
@@ -567,6 +659,53 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(result, Is.Not.Null);
+        }
+
+        [Test]
+        public void Given_OptionalLiteralRoute_When_SegmentAbsent_Then_TheBaseIsThePathTheUrlHeld()
+        {
+            // Arrange — the base is what a relative navigation resolves against, so a segment the URL
+            // never carried puts every hop from here onto an address that does not exist.
+            var tree = new RouteTree(new[] { Route("docs/intro?") });
+
+            // Act
+            var result = tree.Match("/docs");
+
+            // Assert
+            Assert.That(result[0].PathnameBase, Is.EqualTo("/docs"));
+        }
+
+        // GREEN_ON_BASE(characterization): the present half of the pair below, unchanged by this fix
+        // and here so a skip that fired unconditionally could not pass as one that fired correctly.
+        [Test]
+        public void Given_OptionalLiteralRoute_When_SegmentPresent_Then_TheBaseCarriesIt()
+        {
+            // Arrange — the control: the same route with the segment matched, where it belongs.
+            var tree = new RouteTree(new[] { Route("docs/intro?") });
+
+            // Act
+            var result = tree.Match("/docs/intro");
+
+            // Assert
+            Assert.That(result[0].PathnameBase, Is.EqualTo("/docs/intro"));
+        }
+
+        [Test]
+        public void Given_AChildUnderAnAbsentOptionalLiteral_When_Matched_Then_TheParentBaseSkipsIt()
+        {
+            // Arrange — the harder half to notice: the child renders as expected while its parent's
+            // base names a path one segment longer than the URL, so `..` lands somewhere that still
+            // matches and the next hop compounds it.
+            var tree = new RouteTree(new[]
+            {
+                Route("docs/intro?", children: new[] { Route("api") }),
+            });
+
+            // Act
+            var result = tree.Match("/docs/api");
+
+            // Assert
+            Assert.That(result[0].PathnameBase, Is.EqualTo("/docs"));
         }
 
         #endregion
