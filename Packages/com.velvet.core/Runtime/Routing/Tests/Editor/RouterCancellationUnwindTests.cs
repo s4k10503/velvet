@@ -36,6 +36,9 @@ namespace Velvet.Tests
             Router.Current?.Dispose();
         }
 
+        // GREEN_ON_BASE(refactor): the wait this bounds is the same wait, and a run where the code
+        // under test arrives cannot tell the two apart. What the bound changes is the run where it
+        // does not: a hang becomes a failure naming the wait.
         [UnityTest]
         public IEnumerator Given_BlockerHonorsToken_When_CancelledDuringBackAwait_Then_HistoryIndexIsUnchanged()
             => UniTask.ToCoroutine(async () =>
@@ -61,6 +64,9 @@ namespace Velvet.Tests
                 "A cancelled Back leaves the history pointing at the entry the user never left");
         });
 
+        // GREEN_ON_BASE(refactor): the wait this bounds is the same wait, and a run where the code
+        // under test arrives cannot tell the two apart. What the bound changes is the run where it
+        // does not: a hang becomes a failure naming the wait.
         [UnityTest]
         public IEnumerator Given_GuardRedirect_When_CancelledDuringRedirectBlockerAwait_Then_NothingIsRecorded()
             => UniTask.ToCoroutine(async () =>
@@ -92,6 +98,9 @@ namespace Velvet.Tests
                 + "still leaves the stack describing a navigation that never happened");
         });
 
+        // GREEN_ON_BASE(refactor): the wait this bounds is the same wait, and a run where the code
+        // under test arrives cannot tell the two apart. What the bound changes is the run where it
+        // does not: a hang becomes a failure naming the wait.
         [UnityTest]
         public IEnumerator Given_BlockerHonorsToken_When_CancelledWithNoFollowUpNavigation_Then_StatusReturnsToIdle()
             => UniTask.ToCoroutine(async () =>
@@ -118,6 +127,9 @@ namespace Velvet.Tests
                 "With no navigation left in flight, UseNavigation must not keep reporting one");
         });
 
+        // GREEN_ON_BASE(refactor): the wait this bounds is the same wait, and a run where the code
+        // under test arrives cannot tell the two apart. What the bound changes is the run where it
+        // does not: a hang becomes a failure naming the wait.
         [UnityTest]
         public IEnumerator Given_SupersededBackUnwindsLate_When_NewerBackHasCommitted_Then_TheCommittedStateSurvives()
             => UniTask.ToCoroutine(async () =>
@@ -148,6 +160,9 @@ namespace Velvet.Tests
                 "A late unwind must leave the newer navigation's own position and status standing");
         });
 
+        // GREEN_ON_BASE(refactor): the wait this bounds is the same wait, and a run where the code
+        // under test arrives cannot tell the two apart. What the bound changes is the run where it
+        // does not: a hang becomes a failure naming the wait.
         [UnityTest]
         public IEnumerator Given_SupersededRedirectUnwindsLate_When_NewerNavigationHasPushed_Then_ItsHistorySurvives()
             => UniTask.ToCoroutine(async () =>
@@ -182,6 +197,9 @@ namespace Velvet.Tests
                 "A late unwind must leave the newer navigation's own entries and status exactly as it left them");
         });
 
+        // GREEN_ON_BASE(refactor): the wait this bounds is the same wait, and a run where the code
+        // under test arrives cannot tell the two apart. What the bound changes is the run where it
+        // does not: a hang becomes a failure naming the wait.
         [UnityTest]
         public IEnumerator Given_SupersededBlockerReturnsLate_When_NewerBackHasCommitted_Then_IndexAndStatusSurvive()
             => UniTask.ToCoroutine(async () =>
@@ -212,6 +230,9 @@ namespace Velvet.Tests
                 + "the newer navigation established");
         });
 
+        // GREEN_ON_BASE(refactor): the wait this bounds is the same wait, and a run where the code
+        // under test arrives cannot tell the two apart. What the bound changes is the run where it
+        // does not: a hang becomes a failure naming the wait.
         [UnityTest]
         public IEnumerator Given_SupersededByAnUnmatchedPath_When_ItResumes_Then_TheStatusIsStillRestored()
             => UniTask.ToCoroutine(async () =>
@@ -241,6 +262,9 @@ namespace Velvet.Tests
                 "Only an attempt that took the claim may stop the parked one from restoring the status");
         });
 
+        // GREEN_ON_BASE(refactor): the wait this bounds is the same wait, and a run where the code
+        // under test arrives cannot tell the two apart. What the bound changes is the run where it
+        // does not: a hang becomes a failure naming the wait.
         [UnityTest]
         public IEnumerator Given_SupersededRedirectReturnsLate_When_NewerNavigationHasPushed_Then_ItsHistorySurvives()
             => UniTask.ToCoroutine(async () =>
@@ -274,6 +298,9 @@ namespace Velvet.Tests
                 "A redirect that returns Cancelled after being superseded must commit nothing of its own");
         });
 
+        // GREEN_ON_BASE(refactor): the wait this bounds is the same wait, and a run where the code
+        // under test arrives cannot tell the two apart. What the bound changes is the run where it
+        // does not: a hang becomes a failure naming the wait.
         [UnityTest]
         public IEnumerator Given_BlockerParkedAcrossDispose_When_DisposeCancelsIt_Then_TheDeadRouterIsNotWritten()
             => UniTask.ToCoroutine(async () =>

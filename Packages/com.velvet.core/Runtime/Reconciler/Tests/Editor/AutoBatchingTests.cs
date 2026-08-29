@@ -399,6 +399,9 @@ namespace Velvet.Tests
                 "Each fiber renders exactly once for setStates batched after an await");
         }
 
+        // GREEN_ON_BASE(refactor): the wait this bounds is the same wait, and a run where the code
+        // under test arrives cannot tell the two apart. What the bound changes is the run where it
+        // does not: a hang becomes a failure naming the wait.
         [Test]
         public void Given_TwoSettersAfterTheSameAwait_When_BatchDrained_Then_EachCommitsItsLatestValue()
         {

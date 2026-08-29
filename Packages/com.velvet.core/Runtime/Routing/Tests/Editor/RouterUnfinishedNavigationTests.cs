@@ -21,6 +21,9 @@ namespace Velvet.Tests
             Router.Current?.Dispose();
         }
 
+        // GREEN_ON_BASE(refactor): the wait this bounds is the same wait, and a run where the code
+        // under test arrives cannot tell the two apart. What the bound changes is the run where it
+        // does not: a hang becomes a failure naming the wait.
         [UnityTest]
         public IEnumerator Given_ABackParkedInABlocker_When_APushCommitsMeanwhile_Then_TheEntryTheUserIsOnSurvives()
             => UniTask.ToCoroutine(async () =>
@@ -51,6 +54,9 @@ namespace Velvet.Tests
                 "A navigation that has not committed must not move the position a later Push builds on");
         });
 
+        // GREEN_ON_BASE(refactor): the wait this bounds is the same wait, and a run where the code
+        // under test arrives cannot tell the two apart. What the bound changes is the run where it
+        // does not: a hang becomes a failure naming the wait.
         [UnityTest]
         public IEnumerator Given_AForwardParkedInABlocker_When_APushTakesOverItsSlot_Then_ItCommitsNothing()
             => UniTask.ToCoroutine(async () =>
@@ -86,6 +92,9 @@ namespace Velvet.Tests
                 + "that destination used to occupy");
         });
 
+        // GREEN_ON_BASE(refactor): the wait this bounds is the same wait, and a run where the code
+        // under test arrives cannot tell the two apart. What the bound changes is the run where it
+        // does not: a hang becomes a failure naming the wait.
         [UnityTest]
         public IEnumerator Given_ARedirectParkedInABlocker_When_ANewerNavigationCommits_Then_NoEntryForTheRedirectingPathRemains()
             => UniTask.ToCoroutine(async () =>
