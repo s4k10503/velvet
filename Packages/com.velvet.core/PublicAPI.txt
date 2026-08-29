@@ -119,6 +119,8 @@
 [Velvet] ctor Velvet.VelvetPreviewHost.ctor(UnityEngine.UIElements.VisualElement): System.Void
 [Velvet] ctor Velvet.VelvetPreviewSetupAttribute.ctor(): System.Void
 [Velvet] ctor Velvet.VelvetRuntimeAssets.ctor(): System.Void
+[Velvet] ctor Velvet.VelvetTaskCompletionSource.ctor(): System.Void
+[Velvet] ctor Velvet.VelvetTaskCompletionSource`1[T].ctor(): System.Void
 [Velvet] ctor Velvet.VirtualListNode.ctor(System.Collections.Generic.IReadOnlyList`1[System.Object?], System.Func`2[System.Object?, System.String], System.Single, System.Func`2[System.Object?, Velvet.VNode], System.Int32): System.Void
 [Velvet] ctor Velvet.WheelBinding.ctor(): System.Void
 [Velvet] ctor Velvet.WorldSpaceNode.ctor(): System.Void
@@ -252,6 +254,10 @@
 [Velvet] field Velvet.VelvetFontWeightEntry.weight: Velvet.VelvetFontWeight
 [Velvet] field Velvet.VelvetResponsive.ContainerClass: System.String
 [Velvet] field Velvet.VelvetStyleUtilities.DarkThemeClass: System.String
+[Velvet] field Velvet.VelvetTaskStatus.Canceled: Velvet.VelvetTaskStatus
+[Velvet] field Velvet.VelvetTaskStatus.Faulted: Velvet.VelvetTaskStatus
+[Velvet] field Velvet.VelvetTaskStatus.Pending: Velvet.VelvetTaskStatus
+[Velvet] field Velvet.VelvetTaskStatus.Succeeded: Velvet.VelvetTaskStatus
 [Velvet] method Velvet.AnimatePresenceNode.StaggerDelaySec(System.Int32, System.Int32): System.Single
 [Velvet] method Velvet.AnimationSequenceStep.Call(System.Action): Velvet.AnimationSequenceStep
 [Velvet] method Velvet.AnimationSequenceStep.To(System.String, Velvet.StyleTransitionConfig?, System.Nullable`1[System.Single]): Velvet.AnimationSequenceStep
@@ -521,6 +527,58 @@
 [Velvet] method Velvet.VelvetPreviewStory.CreateDefaultArgs(): System.Object?
 [Velvet] method Velvet.VelvetStyleUtilities.AttachTo(UnityEngine.UIElements.VisualElement): System.Void
 [Velvet] method Velvet.VelvetStyleUtilities.BindThemeTo(UnityEngine.UIElements.VisualElement): System.Void
+[Velvet] method Velvet.VelvetTask+Awaiter.GetResult(): System.Void
+[Velvet] method Velvet.VelvetTask+Awaiter.OnCompleted(System.Action): System.Void
+[Velvet] method Velvet.VelvetTask+Awaiter`1[T].GetResult(): T
+[Velvet] method Velvet.VelvetTask+Awaiter`1[T].OnCompleted(System.Action): System.Void
+[Velvet] method Velvet.VelvetTask.FromException(System.Exception): Velvet.VelvetTask
+[Velvet] method Velvet.VelvetTask.FromException`1(System.Exception): Velvet.VelvetTask`1[T]
+[Velvet] method Velvet.VelvetTask.FromResult(): Velvet.VelvetTask
+[Velvet] method Velvet.VelvetTask.FromResult`1(T): Velvet.VelvetTask`1[T]
+[Velvet] method Velvet.VelvetTask.GetAwaiter(): Velvet.VelvetTask+Awaiter
+[Velvet] method Velvet.VelvetTask.Never(System.Threading.CancellationToken): Velvet.VelvetTask
+[Velvet] method Velvet.VelvetTask.Never`1(System.Threading.CancellationToken): Velvet.VelvetTask`1[T]
+[Velvet] method Velvet.VelvetTask.ToCoroutine(System.Func`1[Velvet.VelvetTask]): System.Collections.IEnumerator
+[Velvet] method Velvet.VelvetTask.Yield(): Velvet.VelvetTask
+[Velvet] method Velvet.VelvetTaskCompletionSource.SetCanceled(System.Threading.CancellationToken): System.Void
+[Velvet] method Velvet.VelvetTaskCompletionSource.SetException(System.Exception): System.Void
+[Velvet] method Velvet.VelvetTaskCompletionSource.SetResult(): System.Void
+[Velvet] method Velvet.VelvetTaskCompletionSource.TrySetCanceled(System.Threading.CancellationToken): System.Boolean
+[Velvet] method Velvet.VelvetTaskCompletionSource.TrySetException(System.Exception): System.Boolean
+[Velvet] method Velvet.VelvetTaskCompletionSource.TrySetResult(): System.Boolean
+[Velvet] method Velvet.VelvetTaskCompletionSource`1[T].SetCanceled(System.Threading.CancellationToken): System.Void
+[Velvet] method Velvet.VelvetTaskCompletionSource`1[T].SetException(System.Exception): System.Void
+[Velvet] method Velvet.VelvetTaskCompletionSource`1[T].SetResult(T): System.Void
+[Velvet] method Velvet.VelvetTaskCompletionSource`1[T].TrySetCanceled(System.Threading.CancellationToken): System.Boolean
+[Velvet] method Velvet.VelvetTaskCompletionSource`1[T].TrySetException(System.Exception): System.Boolean
+[Velvet] method Velvet.VelvetTaskCompletionSource`1[T].TrySetResult(T): System.Boolean
+[Velvet] method Velvet.VelvetTaskExtensions.AttachExternalCancellation(Velvet.VelvetTask, System.Threading.CancellationToken): Velvet.VelvetTask
+[Velvet] method Velvet.VelvetTaskExtensions.AttachExternalCancellation`1(Velvet.VelvetTask`1[T], System.Threading.CancellationToken): Velvet.VelvetTask`1[T]
+[Velvet] method Velvet.VelvetTaskExtensions.Forget(Velvet.VelvetTask): System.Void
+[Velvet] method Velvet.VelvetTaskExtensions.Forget`1(Velvet.VelvetTask`1[T]): System.Void
+[Velvet] method Velvet.VelvetTaskExtensions.ToCoroutine(System.Func`1[Velvet.VelvetTask]): System.Collections.IEnumerator
+[Velvet] method Velvet.VelvetTaskExtensions.ToCoroutine(Velvet.VelvetTask, System.Action`1[System.Exception]?): System.Collections.IEnumerator
+[Velvet] method Velvet.VelvetTaskExtensions.ToCoroutine`1(Velvet.VelvetTask`1[T], System.Action`1[T]?, System.Action`1[System.Exception]?): System.Collections.IEnumerator
+[Velvet] method Velvet.VelvetTaskMethodBuilder.AwaitOnCompleted`2(TAwaiter&, TStateMachine&): System.Void
+[Velvet] method Velvet.VelvetTaskMethodBuilder.AwaitUnsafeOnCompleted`2(TAwaiter&, TStateMachine&): System.Void
+[Velvet] method Velvet.VelvetTaskMethodBuilder.Create(): Velvet.VelvetTaskMethodBuilder
+[Velvet] method Velvet.VelvetTaskMethodBuilder.SetException(System.Exception): System.Void
+[Velvet] method Velvet.VelvetTaskMethodBuilder.SetResult(): System.Void
+[Velvet] method Velvet.VelvetTaskMethodBuilder.SetStateMachine(System.Runtime.CompilerServices.IAsyncStateMachine): System.Void
+[Velvet] method Velvet.VelvetTaskMethodBuilder.Start`1(TStateMachine&): System.Void
+[Velvet] method Velvet.VelvetTaskMethodBuilder`1[T].AwaitOnCompleted`2(TAwaiter&, TStateMachine&): System.Void
+[Velvet] method Velvet.VelvetTaskMethodBuilder`1[T].AwaitUnsafeOnCompleted`2(TAwaiter&, TStateMachine&): System.Void
+[Velvet] method Velvet.VelvetTaskMethodBuilder`1[T].Create(): Velvet.VelvetTaskMethodBuilder`1[T]
+[Velvet] method Velvet.VelvetTaskMethodBuilder`1[T].SetException(System.Exception): System.Void
+[Velvet] method Velvet.VelvetTaskMethodBuilder`1[T].SetResult(T): System.Void
+[Velvet] method Velvet.VelvetTaskMethodBuilder`1[T].SetStateMachine(System.Runtime.CompilerServices.IAsyncStateMachine): System.Void
+[Velvet] method Velvet.VelvetTaskMethodBuilder`1[T].Start`1(TStateMachine&): System.Void
+[Velvet] method Velvet.VelvetTaskStatusExtensions.IsCanceled(Velvet.VelvetTaskStatus): System.Boolean
+[Velvet] method Velvet.VelvetTaskStatusExtensions.IsCompleted(Velvet.VelvetTaskStatus): System.Boolean
+[Velvet] method Velvet.VelvetTaskStatusExtensions.IsCompletedSuccessfully(Velvet.VelvetTaskStatus): System.Boolean
+[Velvet] method Velvet.VelvetTaskStatusExtensions.IsFaulted(Velvet.VelvetTaskStatus): System.Boolean
+[Velvet] method Velvet.VelvetTask`1[T].FromResult(T): Velvet.VelvetTask`1[T]
+[Velvet] method Velvet.VelvetTask`1[T].GetAwaiter(): Velvet.VelvetTask+Awaiter`1[T~]
 [Velvet] method protected Velvet.Experimental.VBuilder.BuildChildren(): Velvet.VNode?[]
 [Velvet] method protected Velvet.Store`1[TState].Mutate(System.Func`2[TState, TState]): System.Void
 [Velvet] method protected Velvet.Store`1[TState].OnDispose(): System.Void
@@ -865,6 +923,15 @@
 [Velvet] property Velvet.VelvetPreviewStory.Width: System.Int32
 [Velvet] property Velvet.VelvetStyleHints.PreviewStyleSheet: UnityEngine.UIElements.StyleSheet?
 [Velvet] property Velvet.VelvetStyleUtilities.Sheet: UnityEngine.UIElements.StyleSheet
+[Velvet] property Velvet.VelvetTask+Awaiter.IsCompleted: System.Boolean
+[Velvet] property Velvet.VelvetTask+Awaiter`1[T].IsCompleted: System.Boolean
+[Velvet] property Velvet.VelvetTask.CompletedTask: Velvet.VelvetTask
+[Velvet] property Velvet.VelvetTask.Status: Velvet.VelvetTaskStatus
+[Velvet] property Velvet.VelvetTaskCompletionSource.Task: Velvet.VelvetTask
+[Velvet] property Velvet.VelvetTaskCompletionSource`1[T].Task: Velvet.VelvetTask`1[T]
+[Velvet] property Velvet.VelvetTaskMethodBuilder.Task: Velvet.VelvetTask
+[Velvet] property Velvet.VelvetTaskMethodBuilder`1[T].Task: Velvet.VelvetTask`1[T]
+[Velvet] property Velvet.VelvetTask`1[T].Status: Velvet.VelvetTaskStatus
 [Velvet] property Velvet.VelvetTheme.IsDark: System.Boolean
 [Velvet] property Velvet.VirtualListNode.ClassNames: System.String[]
 [Velvet] property Velvet.VirtualListNode.ItemHeight: System.Single
@@ -1045,6 +1112,17 @@
 [Velvet] type Velvet.VelvetRuntimeAssets
 [Velvet] type Velvet.VelvetStyleHints
 [Velvet] type Velvet.VelvetStyleUtilities
+[Velvet] type Velvet.VelvetTask
+[Velvet] type Velvet.VelvetTask+Awaiter
+[Velvet] type Velvet.VelvetTask+Awaiter`1[T]
+[Velvet] type Velvet.VelvetTaskCompletionSource
+[Velvet] type Velvet.VelvetTaskCompletionSource`1[T]
+[Velvet] type Velvet.VelvetTaskExtensions
+[Velvet] type Velvet.VelvetTaskMethodBuilder
+[Velvet] type Velvet.VelvetTaskMethodBuilder`1[T]
+[Velvet] type Velvet.VelvetTaskStatus
+[Velvet] type Velvet.VelvetTaskStatusExtensions
+[Velvet] type Velvet.VelvetTask`1[T]
 [Velvet] type Velvet.VelvetTheme
 [Velvet] type Velvet.VirtualListNode
 [Velvet] type Velvet.WheelBinding
