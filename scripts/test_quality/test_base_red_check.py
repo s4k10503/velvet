@@ -711,18 +711,18 @@ class ExhaustedLoopTests(unittest.TestCase):
 
     The generic line beside this one is what a single round writes, and its remedy is to run the loop
     -- advice a reader who ran the loop has already taken. What separates the two readings is the
-    loop's own history, which nothing printed before: a base that built none of the carried set is
-    answering about the tree rather than about any case in it.
+    loop's own history and the flag that changes it: the budget is what binds, and a run that stopped
+    short of it stopped for some other reason and has nothing to say here.
     """
 
     def test_Given_NoRoundRan_When_TheReasonIsBuilt_Then_ItSaysNothing(self):
         # Arrange — the Python-only lane starts no editor, so there is no loop to report on.
         # Act / Assert
-        self.assertEqual(base_red_check.exhausted_reason(0, set(), 12), "")
+        self.assertEqual(base_red_check.exhausted_reason(0, set(), 12, 8), "")
 
     def test_Given_RoundsThatCompiledNothing_When_TheReasonIsBuilt_Then_ItCountsThem(self):
         # Act
-        said = base_red_check.exhausted_reason(8, {"a.cs", "b.cs"}, 24)
+        said = base_red_check.exhausted_reason(8, {"a.cs", "b.cs"}, 24, 8)
 
         # Assert
         self.assertIn("8 round(s) compiled nothing", said)
@@ -731,7 +731,7 @@ class ExhaustedLoopTests(unittest.TestCase):
         # Arrange — the withdrawn set is the evidence, so a count without the names is a claim the
         # reader cannot check.
         # Act
-        said = base_red_check.exhausted_reason(3, {"one.cs", "two.cs"}, 9)
+        said = base_red_check.exhausted_reason(3, {"one.cs", "two.cs"}, 9, 3)
 
         # Assert
         self.assertEqual(("one.cs" in said, "two.cs" in said), (True, True))
@@ -739,16 +739,23 @@ class ExhaustedLoopTests(unittest.TestCase):
     def test_Given_MoreFilesThanItPrints_When_TheReasonIsBuilt_Then_ItSaysHowManyItLeftOut(self):
         # Arrange — eight withdrawn, six printed.
         # Act
-        said = base_red_check.exhausted_reason(8, {"f%d.cs" % n for n in range(8)}, 30)
+        said = base_red_check.exhausted_reason(8, {"f%d.cs" % n for n in range(8)}, 30, 8)
 
         # Assert
         self.assertIn("and 2 more", said)
 
-    def test_Given_RoundsThatCompiledNothing_When_TheReasonIsBuilt_Then_ItSaysADeclarationDoesNotReachIt(self):
-        # Arrange — the reading a per-case declaration cannot answer, which is why the message has to
-        # say where the answer goes instead.
+    def test_Given_RoundsThatCompiledNothing_When_TheReasonIsBuilt_Then_ItNamesTheFlagThatRaisesThem(self):
+        # Arrange — the budget is what binds: measured, the same branch that measured nothing at 8
+        # rounds compiled the base on round 38 at 60.
         # Act / Assert
-        self.assertIn("not a per-case one", base_red_check.exhausted_reason(8, {"a.cs"}, 24))
+        self.assertIn("--max-rounds", base_red_check.exhausted_reason(8, {"a.cs"}, 24, 8))
+
+
+    def test_Given_ARunThatStoppedBeforeTheCap_When_TheReasonIsBuilt_Then_ItSaysNothing(self):
+        # Arrange — three rounds of an eight-round budget. Something other than the budget ended it, so
+        # raising the budget is not the remedy and the message would be advice to the wrong reader.
+        # Act / Assert
+        self.assertEqual(base_red_check.exhausted_reason(3, {"a.cs"}, 24, 8), "")
 
 
 class SelectionTests(unittest.TestCase):
