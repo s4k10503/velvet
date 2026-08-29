@@ -44,8 +44,7 @@ namespace Velvet.Tests
             return slots;
         }
 
-        // No per-frame driver writes filter, so a list naming it contends for nothing, exactly as an empty list
-        // does. An unmapped name throws rather than defaulting: silently contributing nothing would let a new
+        // An unmapped name throws rather than defaulting: silently contributing nothing would let a new
         // utility widen the cascade without any case here going red.
         private static MotionTransitionSlots SlotOf(string ussProperty) => ussProperty switch
         {
@@ -64,7 +63,9 @@ namespace Velvet.Tests
             // transition-property: none resolves to one entry that names no property, whose ToString is null;
             // there is no empty resolved list to read instead.
             "" => MotionTransitionSlots.None,
-            "filter" => MotionTransitionSlots.None,
+            "filter" => MotionTransitionSlots.Filter,
+            "background-position-x" => MotionTransitionSlots.BackgroundPosition,
+            "background-position-y" => MotionTransitionSlots.BackgroundPosition,
             _ => throw new NotSupportedException(
                 $"The cascade resolved transition-property to '{ussProperty}', which this oracle does not map."),
         };

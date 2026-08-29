@@ -22,7 +22,12 @@ namespace Velvet
         Color = 1 << 4,
         // Every length-valued property, grouped for the same reason as Color.
         Length = 1 << 5,
-        All = Opacity | Translate | Scale | Rotate | Color | Length,
+        // `animate-hue` writes `filter` whole, and the pan modes write one of the two background-position
+        // longhands per tick -- which of the two is the binding's own axis, so both are one slot here for
+        // the same reason Color is one: the driver reports the slot, not the channel.
+        Filter = 1 << 6,
+        BackgroundPosition = 1 << 7,
+        All = Opacity | Translate | Scale | Rotate | Color | Length | Filter | BackgroundPosition,
     }
 
     /// <summary>
@@ -232,6 +237,10 @@ namespace Velvet
             StyleLonghand.BorderBottomColor,
             StyleLonghand.BorderLeftColor);
 
+        private static readonly StyleLonghandSet s_backgroundPositionProperties = SetOf(
+            StyleLonghand.BackgroundPositionX,
+            StyleLonghand.BackgroundPositionY);
+
         private static readonly StyleLonghandSet s_lengthProperties = SetOf(
             StyleLonghand.Width,
             StyleLonghand.Height,
@@ -273,6 +282,8 @@ namespace Velvet
             if (declared.Contains(StyleLonghand.Rotate)) slots |= MotionTransitionSlots.Rotate;
             if (declared.Overlaps(s_colorProperties)) slots |= MotionTransitionSlots.Color;
             if (declared.Overlaps(s_lengthProperties)) slots |= MotionTransitionSlots.Length;
+            if (declared.Contains(StyleLonghand.Filter)) slots |= MotionTransitionSlots.Filter;
+            if (declared.Overlaps(s_backgroundPositionProperties)) slots |= MotionTransitionSlots.BackgroundPosition;
             return slots;
         }
 

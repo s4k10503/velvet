@@ -77,15 +77,16 @@ namespace Velvet
         public static void SyncTransitionSuspension(VisualElement element, StyleAnimateBinding binding)
             => MotionNativeTransitionGuard.SyncSuspension(element, binding, GuardedSlots(binding.Spec.Mode));
 
-        // Only the two slots named here have a flag in MotionTransitionSlots; the filter and background-position
-        // the other three modes write have none, so those are left to whatever transition covers them.
+        // The slot each mode writes on a tick, which is the only write a transition can intercept. The pan
+        // modes set background-size and background-repeat on attach rather than per tick, so neither is here.
 #pragma warning disable CS8524 // no discard arm: a new mode has to name the slots it guards
         private static MotionTransitionSlots GuardedSlots(AnimateMode mode) => mode switch
         {
             AnimateMode.Spin => MotionTransitionSlots.Rotate,
             AnimateMode.Pulse => MotionTransitionSlots.Opacity,
-            AnimateMode.None or AnimateMode.Gradient or AnimateMode.Shimmer or AnimateMode.Hue
-                => MotionTransitionSlots.None,
+            AnimateMode.Hue => MotionTransitionSlots.Filter,
+            AnimateMode.Gradient or AnimateMode.Shimmer => MotionTransitionSlots.BackgroundPosition,
+            AnimateMode.None => MotionTransitionSlots.None,
         };
 #pragma warning restore CS8524
 
