@@ -63,13 +63,19 @@ namespace Velvet
         {
             public readonly RouteDefinition[] Chain;
             public readonly List<RouteSegment> Pattern;
+
+            /// <summary>How many of <see cref="Pattern"/>'s segments each chain entry contributed, so a
+            /// match reads its slice rather than parsing the route's path again.</summary>
+            public readonly int[] SegmentCounts;
+
             public int Score;
             public int Order;
 
-            public RouteBranch(RouteDefinition[] chain, List<RouteSegment> pattern)
+            public RouteBranch(RouteDefinition[] chain, List<RouteSegment> pattern, int[] segmentCounts)
             {
                 Chain = chain;
                 Pattern = pattern;
+                SegmentCounts = segmentCounts;
             }
         }
 
@@ -144,18 +150,21 @@ namespace Velvet
         private RouteBranch BuildBranch(List<RouteDefinition> chain)
         {
             var pattern = new List<RouteSegment>();
-            foreach (var route in chain)
+            var counts = new int[chain.Count];
+            for (var index = 0; index < chain.Count; index++)
             {
-                foreach (var seg in ParseRouteSegments(route))
+                var before = pattern.Count;
+                foreach (var seg in ParseRouteSegments(chain[index]))
                 {
                     pattern.Add(seg);
                 }
+                counts[index] = pattern.Count - before;
             }
 
             var leaf = chain[chain.Count - 1];
             var isIndexLeaf = leaf.Path == "";
 
-            return new RouteBranch(chain.ToArray(), pattern)
+            return new RouteBranch(chain.ToArray(), pattern, counts)
             {
                 Score = ComputeScore(pattern, isIndexLeaf),
                 Order = _branchCounter++,
@@ -307,7 +316,7 @@ namespace Velvet
 
             // A paramless successful match still exposes a (shared, empty) dictionary at every level,
             // preserving the pre-lazy contract that RouteMatch.Params is never null.
-            matches = BuildMatches(branch.Chain, captured ?? new Dictionary<string, string>(), taken);
+            matches = BuildMatches(branch, captured ?? new Dictionary<string, string>(), taken);
             return true;
         }
 
@@ -422,8 +431,9 @@ namespace Velvet
         }
 
         private static List<RouteMatch> BuildMatches(
-            RouteDefinition[] chain, Dictionary<string, string> captured, int[] taken)
+            RouteBranch branch, Dictionary<string, string> captured, int[] taken)
         {
+            var chain = branch.Chain;
             var matches = new List<RouteMatch>(chain.Length);
             var cumulativeId = string.Empty;
             // Each level stores a cumulative base because route-relative `..` pops a whole route level,
@@ -433,11 +443,13 @@ namespace Velvet
             // chain order, so a route's slice starts where the routes above it ended.
             var patternOffset = 0;
 
-            foreach (var route in chain)
+            for (var level = 0; level < chain.Length; level++)
             {
+                var route = chain[level];
                 cumulativeId = AppendRouteId(cumulativeId, route);
 
-                var resolvedSegment = ResolveRouteSegments(route, captured, taken, ref patternOffset);
+                var resolvedSegment = ResolveRouteSegments(
+                    branch.Pattern, branch.SegmentCounts[level], captured, taken, ref patternOffset);
                 if (resolvedSegment.Length > 0)
                 {
                     cumulativeResolved = cumulativeResolved.Length == 0
@@ -468,14 +480,18 @@ namespace Velvet
         /// `taken` needs the two readings to agree segment for segment, and they did not — one dropped
         /// the empty part in `a//b` and the other kept it.
         /// </remarks>
+        // Read off the branch's already-parsed pattern rather than the route's path: `ParseRouteSegments`
+        // is an iterator, and calling it here allocated an enumerator per route on every match.
         private static string ResolveRouteSegments(
-            RouteDefinition route, IReadOnlyDictionary<string, string> captured, int[] taken,
-            ref int patternOffset)
+            List<RouteSegment> pattern, int count, IReadOnlyDictionary<string, string> captured,
+            int[] taken, ref int patternOffset)
         {
-            var resolved = new List<string>();
+            var resolved = ScratchSegments;
+            resolved.Clear();
 
-            foreach (var seg in ParseRouteSegments(route))
+            for (var step = 0; step < count; step++)
             {
+                var seg = pattern[patternOffset];
                 var index = patternOffset++;
 
                 // `taken` is not read for a splat or a param: the first resolves from the captured
@@ -516,6 +532,11 @@ namespace Velvet
 
             return string.Join("/", resolved);
         }
+
+        // One list for every level of every match. BuildMatches reads the string this returns before it
+        // asks for the next level, so nothing outlives a call. Static because RouteTree runs no caller
+        // code between filling it and joining it.
+        private static readonly List<string> ScratchSegments = new();
 
         private static string AppendRouteId(string parentId, RouteDefinition route)
         {
