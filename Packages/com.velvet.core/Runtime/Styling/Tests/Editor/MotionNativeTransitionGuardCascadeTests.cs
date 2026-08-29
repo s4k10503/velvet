@@ -44,9 +44,10 @@ namespace Velvet.Tests
             return slots;
         }
 
-        // No per-frame driver writes filter, so a list naming it contends for nothing, exactly as an empty list
-        // does. An unmapped name throws rather than defaulting: silently contributing nothing would let a new
-        // utility widen the cascade without any case here going red.
+        // Filter maps to None because the declared side has no arm for it yet -- the driver reports the
+        // slot, and what an element declares reaches it through `all` alone. An unmapped name throws
+        // rather than defaulting: silently contributing nothing would let a new utility widen the
+        // cascade without any case here going red.
         private static MotionTransitionSlots SlotOf(string ussProperty) => ussProperty switch
         {
             "all" => MotionTransitionSlots.All,

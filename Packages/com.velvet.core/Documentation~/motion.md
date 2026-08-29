@@ -334,13 +334,14 @@ Two combinations to avoid, both because something else writes the same slot ever
 
 - a mode's slot driven by a Motion channel on the same element — `animate-spin` under a Motion
   `rotate`, say. The result is whichever wrote last, not a blend.
-- a native transition covering that slot. `animate-spin` and `animate-pulse` suspend one while they
-  run, the way Motion's own drivers do, so those two are safe. `animate-hue` and the gradient pair
-  are not: their slots have no flag in the guard yet. Note a transition needs no `transition-*`
-  utility — a bare `duration-*` leaves UI Toolkit's initial `all` standing, which covers every slot.
+- a native transition covering that slot. Every mode suspends one for the length of its run, the way
+  Motion's own drivers do. The pan modes also set background size and repeat once at attach, before
+  the suspension, so a transition covering either still takes that one write. Note a transition needs
+  no `transition-*` utility — a bare `duration-*` leaves UI Toolkit's initial `all` standing, which
+  covers every slot.
 
 The suspension is element-wide (UI Toolkit's `transition-property` has no "everything except these"
-spelling), so while a suspended `animate-spin` or `animate-pulse` runs, the element's *other*
+spelling), so while a suspended mode runs, the element's *other*
 transitions land instantly too. It is taken only when the element's own utility CLASSES name the slot
 the mode writes — `animate-pulse transition-colors` keeps its colour fade — and handed back as soon
 as a re-render leaves nothing transitioning that slot. Reading the classes means anything that never

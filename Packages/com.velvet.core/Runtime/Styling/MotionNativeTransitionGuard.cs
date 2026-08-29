@@ -22,7 +22,16 @@ namespace Velvet
         Color = 1 << 4,
         // Every length-valued property, grouped for the same reason as Color.
         Length = 1 << 5,
-        All = Opacity | Translate | Scale | Rotate | Color | Length,
+        // `animate-hue` writes `filter` whole, and the pan modes write one of the two background-position
+        // longhands per tick -- which of the two is the binding's own axis, so both are one slot here for
+        // the same reason Color is one: the driver reports the slot, not the channel.
+        //
+        // Neither has a SlotsOf arm yet: the driver reports the slot it writes, and an element reaches
+        // both through `all`. `.transition-filter` is the one utility that could name a declared side
+        // finer, which is a separate change from giving the driver a flag.
+        Filter = 1 << 6,
+        BackgroundPosition = 1 << 7,
+        All = Opacity | Translate | Scale | Rotate | Color | Length | Filter | BackgroundPosition,
     }
 
     /// <summary>

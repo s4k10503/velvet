@@ -258,6 +258,43 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AHueUnderADuration_When_ItAttaches_Then_TheNativeTransitionIsSuspended()
+        {
+            // Arrange — the same bare duration, over the slot `animate-hue` writes every tick.
+            var (untimed, timed) = MountPair(
+                "w-[40px] h-[40px] bg-red-500 animate-hue",
+                "w-[40px] h-[40px] bg-red-500 duration-300 animate-hue");
+
+            // Act
+            var whileHueing = timed.style.transitionProperty.keyword;
+            StyleAnimateDriver.Detach(timed, BindingOf(timed));
+
+            // Assert
+            Assert.That(
+                (untimed.style.transitionProperty.keyword, whileHueing, timed.style.transitionProperty.keyword),
+                Is.EqualTo((StyleKeyword.Null, StyleKeyword.Undefined, StyleKeyword.Null)));
+        }
+
+        [Test]
+        public void Given_AGradientPanUnderADuration_When_ItAttaches_Then_TheNativeTransitionIsSuspended()
+        {
+            // Arrange — the pan modes write one background-position longhand a tick, chosen by the binding's
+            // own axis, so the guard's slot covers both.
+            var (untimed, timed) = MountPair(
+                "w-[100px] h-[40px] bg-gradient-to-r from-red-500 to-blue-500 animate-gradient",
+                "w-[100px] h-[40px] bg-gradient-to-r from-red-500 to-blue-500 duration-300 animate-gradient");
+
+            // Act
+            var whilePanning = timed.style.transitionProperty.keyword;
+            StyleAnimateDriver.Detach(timed, BindingOf(timed));
+
+            // Assert
+            Assert.That(
+                (untimed.style.transitionProperty.keyword, whilePanning, timed.style.transitionProperty.keyword),
+                Is.EqualTo((StyleKeyword.Null, StyleKeyword.Undefined, StyleKeyword.Null)));
+        }
+
+        [Test]
         public void Given_ASuspendedSpin_When_APatchLeavesNothingTransitioningRotate_Then_TheSuspensionIsHandedBack()
         {
             // Arrange — the suspension costs the element every transition it declares, not just the one over
