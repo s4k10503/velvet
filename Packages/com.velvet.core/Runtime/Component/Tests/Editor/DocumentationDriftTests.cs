@@ -504,10 +504,9 @@ namespace Velvet.Tests
                     : IdentifierTokenPattern.Matches(JsxElementPattern.Replace(span.Reference, " "))
                         .Select(token => (span.Path, span.Reference, Token: token.Value)));
 
-        // GREEN_ON_BASE(characterization): the base's own markdown names no wrong symbol, so it is green there.
-        // Not a behaviour the base has — the case is new — but a property of content the base already
-        // holds on both sides of the comparison. What shows it can fail is a reference perturbed to a name
-        // no script defines, measured, rather than the base run.
+        // GREEN_ON_BASE(construction): both sides of this comparison are the base's own content, and on
+        // the base they agree — this repository's markdown against its scripts. Misspell a reference as
+        // `published_check.unpublished_reasonn` and this case reddens; no base run can perform that.
         [Test]
         public void Given_MarkdownNamingAScriptSymbol_When_TheSymbolIsSoughtInThatScript_Then_ItIsDefinedThere()
         {

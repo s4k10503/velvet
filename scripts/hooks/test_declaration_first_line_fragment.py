@@ -548,9 +548,9 @@ class ReaderFloorTests(unittest.TestCase):
     # What moved is how this reads the reason out — by the last group rather than by number — so a
     # pattern gaining a group does not silently start comparing something else.
     def test_Given_AReasonWrappedOntoASecondLine_When_EachPatternReadsIt_Then_EachStopsAtTheWrap(self):
-        # Arrange — the guard judges the first line because that is the whole of what the readers
-        # take as the claim. A reader that folded the continuation in would be measuring a reason
-        # this guard never saw.
+        # Arrange — the guard judges the first line because that is what the readers measure their
+        # four-word floor on, and these are the patterns that decide it. A reader that folds the
+        # continuation in for a different question does not move the floor.
         first = "the base already separates these two and"
         blocks = {"base_red_check": f"// {BASE}(characterization): {first}\n// the rest of it.\n",
                   "mutation_check": f"// {SURVIVES}(equivalent): {first}\n// the rest of it.\n"}
