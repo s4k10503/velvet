@@ -171,24 +171,7 @@ namespace Velvet
                 {
                     FiberLogger.LogException("FiberNodePatcher", exception);
                 }
-                var scopeFactory = Router.Current?.ScopeFactory;
-                if (scopeFactory != null)
-                {
-                    // The scope is the route's, not the render's: a factory that throws leaves the
-                    // route to render without one rather than taking the reconcile with it, which is
-                    // what the disposal beside it already does. Contained rather than swallowed --
-                    // PropagateException reaches the nearest error boundary, so an application that
-                    // wants the route refused still gets to refuse it.
-                    try
-                    {
-                        newOutlet.Scope = scopeFactory.CreateScope(match!.Route, null);
-                        _ctx.OutletScopes[element] = newOutlet.Scope;
-                    }
-                    catch (System.Exception exception)
-                    {
-                        ReconcilerContext.ContainUserCallbackFailure(_ctx.FiberStack.Current, exception);
-                    }
-                }
+                newOutlet.Scope = FiberOutletScope.CreateOutletScope(_ctx, match!.Route, element);
             }
             else if (_ctx.OutletScopes.TryGetValue(element, out var existingScope))
             {
@@ -197,24 +180,7 @@ namespace Velvet
             else
             {
                 // First match: no fiber exists yet, and no scope is registered.
-                var scopeFactory = Router.Current?.ScopeFactory;
-                if (scopeFactory != null)
-                {
-                    // The scope is the route's, not the render's: a factory that throws leaves the
-                    // route to render without one rather than taking the reconcile with it, which is
-                    // what the disposal beside it already does. Contained rather than swallowed --
-                    // PropagateException reaches the nearest error boundary, so an application that
-                    // wants the route refused still gets to refuse it.
-                    try
-                    {
-                        newOutlet.Scope = scopeFactory.CreateScope(match!.Route, null);
-                        _ctx.OutletScopes[element] = newOutlet.Scope;
-                    }
-                    catch (System.Exception exception)
-                    {
-                        ReconcilerContext.ContainUserCallbackFailure(_ctx.FiberStack.Current, exception);
-                    }
-                }
+                newOutlet.Scope = FiberOutletScope.CreateOutletScope(_ctx, match!.Route, element);
             }
 
             // Mount the matched route Component with Depth+1 pushed live so the next nested

@@ -597,20 +597,7 @@ namespace Velvet
                 return container;
             }
 
-            var scopeFactory = Router.Current?.ScopeFactory;
-            if (scopeFactory != null)
-            {
-                // Same containment as the patch path's, for the reason stated there.
-                try
-                {
-                    outletNode.Scope = scopeFactory.CreateScope(match.Route, null);
-                    _ctx.OutletScopes[container] = outletNode.Scope;
-                }
-                catch (System.Exception exception)
-                {
-                    ReconcilerContext.ContainUserCallbackFailure(_ctx.FiberStack.Current, exception);
-                }
-            }
+            outletNode.Scope = FiberOutletScope.CreateOutletScope(_ctx, match.Route, container);
 
             // Mount the matched route Component with Depth+1 pushed live so its UseContext
             // reads the incremented router depth: an Outlet provides the
