@@ -357,7 +357,7 @@ after the replacement. The check reads it only where the trace does not lead bac
 the same words at the head of a body's assertion remain that body's disagreement. Behind a body's own
 message it is not read, because a case that disagreed did so whatever its scaffolding went on to do.
 
-Two kinds of case belong on the base, and say so above themselves with a reason a reviewer can weigh:
+Three kinds of case belong on the base, and say so above themselves with a reason a reviewer can weigh:
 
 ```csharp
 // GREEN_ON_BASE(characterization): the keyed-reorder order this refactor must not change.
@@ -367,8 +367,20 @@ Two kinds of case belong on the base, and say so above themselves with a reason 
 # GREEN_ON_BASE(refactor): the settle-path names this rename preserves.
 ```
 
+```csharp
+// GREEN_ON_BASE(construction): both sides here are the repository's own content. Perturb a reference
+// to `WalkRoott` and this is what reddens.
+```
+
 `characterization` pins behaviour the base already has; `refactor` rides with a change meant to preserve
-it. A declaration answers for the change written under it, and it is read three ways so it cannot outlive
+it. `construction` is for neither: a guard that reads two of the repository's own sources against each
+other is green on the base because both sides there are the base's content and they agree, so nothing
+about the base's behaviour is pinned and the change is not behaviour-preserving. What shows such a case
+can fail is a perturbation, which no base run can perform — so its reason has to name one, in backticks,
+and the check refuses one that names nothing. The rule is on this category alone: asked of the other
+two it would rewrite the corpus rather than check it, most of whose reasons name nothing in backticks.
+
+A declaration answers for the change written under it, and it is read three ways so it cannot outlive
 what it describes: one over a case that turns out red on the base fails the check, one whose category or
 reason the script refuses fails it, and one the branch did not itself write is a declaration for a change
 the base already carries and does not cover this one — restate it. A reason may wrap onto the comment

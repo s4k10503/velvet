@@ -670,6 +670,41 @@ class DeclarationTests(unittest.TestCase):
         self.assertIsNone(
             base_red_check.Declaration("refactor", "a pure rename of the applier").complaint)
 
+    def test_Given_AConstructionReasonNamingNothing_When_TheDeclarationIsChecked_Then_ItIsComplainedAbout(self):
+        # Arrange — enough words, a known category, and no perturbation a reader could apply.
+        reason = "both sides here are the base's own content"
+
+        # Act
+        complaint = base_red_check.Declaration("construction", reason).complaint
+
+        # Assert
+        self.assertIn("perturbation", complaint)
+
+    def test_Given_AConstructionReasonNamingOne_When_TheDeclarationIsChecked_Then_ThereIsNoComplaint(self):
+        # Act / Assert
+        self.assertIsNone(base_red_check.Declaration(
+            "construction", "misspell `WalkRoot` in the guide and this is the case that reddens").complaint)
+
+    def test_Given_AConstructionReasonNamingOneOnAContinuationLine_When_Checked_Then_ThereIsNoComplaint(self):
+        # Arrange — the first line is the claim the word floor reads; the perturbation may be named
+        # anywhere in the folded reason, which is what the rule is asked of.
+        first = "the guide and the script agree because both are the base's"
+        folded = first + " own content; drop `--lane` from the command and this reddens"
+
+        # Act / Assert
+        self.assertIsNone(
+            base_red_check.Declaration("construction", folded, claim=first).complaint)
+
+    # GREEN_ON_BASE(characterization): the base already lets a backtick-free reason through, and this
+    # says the new rule did not widen to it. A rule written on the category set rather than on one
+    # member passes the three cases above and fails here.
+    def test_Given_ACharacterizationReasonNamingNothing_When_Checked_Then_ThereIsNoComplaint(self):
+        # Arrange — the control: the rule is on `construction` alone, because 275 of the 298
+        # declarations that existed when it was added carry no backtick.
+        # Act / Assert
+        self.assertIsNone(base_red_check.Declaration(
+            "characterization", "the ordering the base already commits to").complaint)
+
 
 class SelectionTests(unittest.TestCase):
     def test_Given_ALineInsideOneCase_When_TheFileIsSelected_Then_OnlyThatCaseIsTaken(self):

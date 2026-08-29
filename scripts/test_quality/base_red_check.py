@@ -158,7 +158,22 @@ NOT_AN_ANSWER = {
 # matching the labels NUnit pairs with a failing status.
 NOT_A_VERDICT_LABEL = ("Cancelled", "Error", "Invalid")
 
-CATEGORIES = ("characterization", "refactor")
+CATEGORIES = ("characterization", "refactor", "construction")
+
+# `construction` is for a case the base answers green because both sides of what it compares are the
+# base's own content -- a guard reading this repository's markdown against its scripts, or a generated
+# table against the stylesheets it derives from. Nothing about the base's behaviour is pinned and the
+# change is not behaviour-preserving, so neither of the other two fits; what shows the case can fail is
+# a perturbation, which no base run can perform.
+#
+# So its reason has to name that perturbation, and naming is the part a script can hold: a backticked
+# span, which is how this repository writes an identifier or a command in prose. The rule is only on
+# this category. Measured over the 298 declarations on `main` when it was added, 275 carry no backtick
+# at all -- asking the same of `characterization` or `refactor` would rewrite the corpus rather than
+# check it.
+NAMES_A_PERTURBATION = ("construction",)
+
+BACKTICKED = re.compile(r"`[^`]+`")
 
 # The reason has to say something a reviewer can disagree with, and a word count is the only part of
 # that a script can hold. Four words rules out "n/a" and "see above" without pretending to judge prose.
@@ -235,6 +250,9 @@ class Declaration:
             return "category {!r} is not one of {}".format(self.category, ", ".join(CATEGORIES))
         if len(self.claim.split()) < MINIMUM_REASON_WORDS:
             return "the reason's first line is under {} words".format(MINIMUM_REASON_WORDS)
+        if self.category in NAMES_A_PERTURBATION and not BACKTICKED.search(self.reason):
+            return ("a {} reason names the perturbation that would fail the case, in backticks; "
+                    "this one names nothing".format(self.category))
         return None
 
 
