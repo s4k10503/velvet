@@ -474,17 +474,17 @@ namespace Velvet.Tests
             s_explicitKeySetTick.Invoke(1);
             mounted.FlushStateForTest();
 
-            // Assert — the mount run rides along, because a factory that never ran would satisfy a bare
-            // count of one after the re-render.
+            // Assert — the mount run rides along, because a count of one after the re-render alone also
+            // holds for a resource that never started at mount and started here.
             Assert.That((runsAfterMount, s_explicitKeyFactoryRuns), Is.EqualTo((1, 1)));
         }
 
         [Test]
         public void Given_AnExplicitKey_When_TheFactoryIdentityChanges_Then_NoWarningIsLogged()
         {
-            // Arrange — the gate rather than the hatch: the warning is written behind
-            // `!resourceKeyExplicit`, so this says the explicit key reaches that gate. It is green on a
-            // build where the hatch itself is broken, which is why the case above exists beside it.
+            // Arrange — the key matches, so the resource is reused and the branch the warning is written
+            // in is not entered at all. That is what the hatch promises a user who reads the console;
+            // the case below is the one that reaches the warning's own gate.
             s_explicitKeyFactoryRuns = 0;
             s_explicitKeySetTick = null;
             s_explicitKeyValue = 42;
@@ -496,6 +496,34 @@ namespace Velvet.Tests
 
             // Assert
             LogAssert.NoUnexpectedReceived();
+        }
+
+        [Test]
+        public void Given_AnExplicitKeyThatChangesEachRender_When_ReRendered_Then_NoWarningIsLogged()
+        {
+            // Arrange — an explicit key that differs across renders is the only arrangement that reaches
+            // the warning's `!resourceKeyExplicit` gate: the resource is rebuilt, as it is for a changed
+            // implicit key, and the caller chose the key, so nothing is being warned about.
+            s_changingKeySetTick = null;
+            using var mounted = V.Mount(_root, V.Component(ChangingExplicitKeyRender, key: "changing"));
+
+            // Act
+            s_changingKeySetTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            LogAssert.NoUnexpectedReceived();
+        }
+
+        private static Action<int> s_changingKeySetTick;
+
+        [Component]
+        private static VNode ChangingExplicitKeyRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_changingKeySetTick = setTick;
+            _ = Hooks.Use<int>((CancellationToken _) => UniTask.FromResult(tick), resourceKey: tick.ToString());
+            return V.Label(text: tick.ToString());
         }
 
         private static int s_inlineLambdaFactoryRender;
