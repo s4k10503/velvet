@@ -555,8 +555,9 @@ namespace Velvet.Tests
             router.NavigateSync("/deferred");
             Assume.That(router.GetLoaderData("/deferred"), Is.Null, "Precondition: unresolved at commit time");
             tcs.TrySetResult("deferred-data");
-            await UniTask.Yield();
-            Assume.That(router.GetLoaderData("/deferred"), Is.EqualTo("deferred-data"), "Precondition: resolved after commit");
+            // No hop between the two, for the reason the failure case below gives.
+            Assume.That(router.GetLoaderData("/deferred"), Is.EqualTo("deferred-data"),
+                "Precondition: resolved synchronously with the result being set");
             router.NavigateSync("/other");
 
             // Act
@@ -586,8 +587,12 @@ namespace Velvet.Tests
             // Suspend-mode failures route through OnSuspendLoaderFailed, which logs the exception.
             LogAssert.Expect(UnityEngine.LogType.Exception, new System.Text.RegularExpressions.Regex("deferred-failure"));
             tcs.TrySetException(new InvalidOperationException("deferred-failure"));
-            await UniTask.Yield();
-            Assume.That(router.CurrentLoaderErrors.Count, Is.EqualTo(1), "Precondition: the failure was recorded after commit");
+            // No hop between the two: the completion source resumes the loader's `await` inline, the
+            // catch announces inline, and the Router's handler writes the error inline. A wait here
+            // would let a future hop through unnoticed, and one hop is not the same amount of progress
+            // on a runner as on the machine that counted it.
+            Assume.That(router.CurrentLoaderErrors.Count, Is.EqualTo(1),
+                "Precondition: the failure was recorded synchronously with the exception being set");
             router.NavigateSync("/other");
 
             // Act
