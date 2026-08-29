@@ -353,11 +353,11 @@ namespace Velvet
                 return true;
             }
 
-            // The failed attempt may have been what created the dictionary, so it can be non-null here
-            // even when the snapshot above saw null. `seg.IsParam` is not redundant with that: for a
-            // literal, `seg.Value` is its text, and removing under it takes whatever param happens to
-            // share the spelling.
-            if (seg.IsParam && walk.Captured != null)
+            // No null check, unlike the snapshot above: `TryMatchSingle` runs on the way in and creates
+            // the dictionary for a param, so reaching here with `seg.IsParam` means it exists. The
+            // `IsParam` test itself is load-bearing -- for a literal, `seg.Value` is its text, and
+            // removing under it takes whatever param happens to share the spelling.
+            if (seg.IsParam)
             {
                 if (keyExisted)
                 {
