@@ -233,6 +233,9 @@ namespace Velvet.Tests
                 "The nested transition's update commits on flush, for the render count a single transition costs");
         }
 
+        // GREEN_ON_BASE(refactor): the wait this bounds is the same wait, and a run where the code
+        // under test arrives cannot tell the two apart. What the bound changes is the run where it
+        // does not: a hang becomes a failure naming the wait.
         [Test]
         public void Given_AnAsyncTransitionStartsAJoinedAsyncCall_When_TheOuterActionCompletes_Then_IsPendingWaitsForTheJoinedCall()
         {
@@ -243,11 +246,11 @@ namespace Velvet.Tests
             var joinedStarted = false;
             s_transitionStarter.Invoke(async () =>
             {
-                await outerGate.Task;
+                await outerGate.Task.Bounded();
                 s_transitionStarter.Invoke(async () =>
                 {
                     joinedStarted = true;
-                    await joinedGate.Task;
+                    await joinedGate.Task.Bounded();
                 });
             });
 
@@ -295,6 +298,9 @@ namespace Velvet.Tests
 
         #region Async startTransition
 
+        // GREEN_ON_BASE(refactor): the wait this bounds is the same wait, and a run where the code
+        // under test arrives cannot tell the two apart. What the bound changes is the run where it
+        // does not: a hang becomes a failure naming the wait.
         [Test]
         public void Given_AsyncStartTransition_When_Awaiting_Then_IsPendingStaysTrue()
         {
@@ -304,7 +310,7 @@ namespace Velvet.Tests
             Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () =>
             {
                 s_transitionSetValue.Invoke(1);
-                await gate.Task;
+                await gate.Task.Bounded();
                 s_transitionSetValue.Invoke(2);
             };
 
@@ -315,6 +321,9 @@ namespace Velvet.Tests
             Assert.IsTrue(s_transitionFiber.IsTransitionPending, "isPending stays true while the async transition is awaiting");
         }
 
+        // GREEN_ON_BASE(refactor): the wait this bounds is the same wait, and a run where the code
+        // under test arrives cannot tell the two apart. What the bound changes is the run where it
+        // does not: a hang becomes a failure naming the wait.
         [Test]
         public void Given_AsyncStartTransitionAwaitingBeforeAnyUpdate_When_ACleanFiberFlushFires_Then_IsPendingStaysTrue()
         {
@@ -324,7 +333,7 @@ namespace Velvet.Tests
             var gate = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
             Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () =>
             {
-                await gate.Task;
+                await gate.Task.Bounded();
                 s_transitionSetValue.Invoke(1);
             };
             s_transitionStarter.Invoke(asyncUpdates);
@@ -340,6 +349,9 @@ namespace Velvet.Tests
                 "A flush on a clean fiber must not wipe an awaiting async transition's pending flag");
         }
 
+        // GREEN_ON_BASE(refactor): the wait this bounds is the same wait, and a run where the code
+        // under test arrives cannot tell the two apart. What the bound changes is the run where it
+        // does not: a hang becomes a failure naming the wait.
         [Test]
         public void Given_AnAsyncTransition_When_ItsContinuationSetsStateAfterTheAwait_Then_ThatUpdateIsNotOnTheTransitionLane()
         {
@@ -348,7 +360,7 @@ namespace Velvet.Tests
             var gate = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
             Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () =>
             {
-                await gate.Task;
+                await gate.Task.Bounded();
                 s_transitionSetValue.Invoke(1);
             };
             s_transitionStarter.Invoke(asyncUpdates);
@@ -524,6 +536,9 @@ namespace Velvet.Tests
                 "An async callback that throws leaves no scope open behind it either");
         }
 
+        // GREEN_ON_BASE(refactor): the wait this bounds is the same wait, and a run where the code
+        // under test arrives cannot tell the two apart. What the bound changes is the run where it
+        // does not: a hang becomes a failure naming the wait.
         [Test]
         public void Given_AnAsyncTransitionsContinuation_When_ItWrapsOneOfTwoUpdatesAgain_Then_OnlyTheWrappedOneTakesTheTransitionLane()
         {
@@ -533,7 +548,7 @@ namespace Velvet.Tests
             var gate = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
             Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () =>
             {
-                await gate.Task;
+                await gate.Task.Bounded();
                 s_transitionSetValue.Invoke(1);
                 s_transitionStarter.Invoke(() => s_transitionSetValue.Invoke(2));
             };
@@ -553,13 +568,16 @@ namespace Velvet.Tests
                 "Re-wrapping is what puts a post-await update back in the transition, and it covers only that update");
         }
 
+        // GREEN_ON_BASE(refactor): the wait this bounds is the same wait, and a run where the code
+        // under test arrives cannot tell the two apart. What the bound changes is the run where it
+        // does not: a hang becomes a failure naming the wait.
         [Test]
         public void Given_AnAwaitingAsyncTransition_When_AnUnrelatedSetterRuns_Then_ThatUpdateTakesTheNormalLane()
         {
             // Arrange — the action parks on its await having scheduled nothing, so the fiber carries no lane
             using var mounted = V.Mount(_root, V.Component(TransitionRender, key: "transition"));
             var gate = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
-            Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () => await gate.Task;
+            Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () => await gate.Task.Bounded();
             s_transitionStarter.Invoke(asyncUpdates);
             var awaitingBeforeTheAct = s_transitionFiber.IsTransitionPending;
 
@@ -576,6 +594,9 @@ namespace Velvet.Tests
                 "An update outside the transition's callback keeps its own priority while that transition awaits");
         }
 
+        // GREEN_ON_BASE(refactor): the wait this bounds is the same wait, and a run where the code
+        // under test arrives cannot tell the two apart. What the bound changes is the run where it
+        // does not: a hang becomes a failure naming the wait.
         [Test]
         public void Given_AnAsyncTransitionWhoseWorkAlreadyCommitted_When_ItsTaskCompletes_Then_ADrainRendersTheComponentNotPending()
         {
@@ -587,7 +608,7 @@ namespace Velvet.Tests
             Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () =>
             {
                 s_transitionSetValue.Invoke(1);
-                await gate.Task;
+                await gate.Task.Bounded();
             };
             s_transitionStarter.Invoke(asyncUpdates);
             mounted.GetSchedulerForTest().DrainDelayedForTest();
@@ -605,6 +626,8 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(characterization): an async action's isPending clears on completion either way.
         // What this branch changed is how many lanes it leaves behind, so the case gained a second flush.
+        // The wait it makes is bounded now: same wait where the code under test arrives, a failure
+        // naming it where that stops happening.
         [Test]
         public void Given_AsyncStartTransition_When_TaskCompletesAndFlushes_Then_IsPendingClears()
         {
@@ -614,7 +637,7 @@ namespace Velvet.Tests
             Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () =>
             {
                 s_transitionSetValue.Invoke(1);
-                await gate.Task;
+                await gate.Task.Bounded();
                 s_transitionSetValue.Invoke(2);
             };
             s_transitionStarter.Invoke(asyncUpdates);
@@ -687,6 +710,9 @@ namespace Velvet.Tests
                 "Both slots clear after the transition flush completes");
         }
 
+        // GREEN_ON_BASE(refactor): the wait this bounds is the same wait, and a run where the code
+        // under test arrives cannot tell the two apart. What the bound changes is the run where it
+        // does not: a hang becomes a failure naming the wait.
         [Test]
         public void Given_OneSlotsAsyncTransitionAwaiting_When_ASecondSlotStartsItsOwn_Then_TheSecondSlotReportsPending()
         {
@@ -695,7 +721,7 @@ namespace Velvet.Tests
             var gate = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
             Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () =>
             {
-                await gate.Task;
+                await gate.Task.Bounded();
                 s_twoSetValue.Invoke(1);
             };
             s_twoStarterA.Invoke(asyncUpdates);
@@ -729,6 +755,9 @@ namespace Velvet.Tests
                 "A transition that queued nothing settles when its callback returns, whatever another slot left queued");
         }
 
+        // GREEN_ON_BASE(refactor): the wait this bounds is the same wait, and a run where the code
+        // under test arrives cannot tell the two apart. What the bound changes is the run where it
+        // does not: a hang becomes a failure naming the wait.
         [Test]
         public void Given_AnAwaitingAsyncTransitionThatQueuedNothing_When_AnotherSlotsCallbackQueuesWork_Then_ItStillClearsOnItsOwnCompletion()
         {
@@ -736,7 +765,7 @@ namespace Velvet.Tests
             // synchronous transition that does write, so the fiber carries B's transition lane while A awaits
             using var mounted = V.Mount(_root, V.Component(TwoTransitionRender, key: "two"));
             var gateA = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
-            Func<Cysharp.Threading.Tasks.UniTask> actionA = async () => await gateA.Task;
+            Func<Cysharp.Threading.Tasks.UniTask> actionA = async () => await gateA.Task.Bounded();
             s_twoStarterA.Invoke(actionA);
             s_twoStartB.Invoke(() => s_twoSetValueB.Invoke(1));
             var inFlightBeforeTheAct = s_twoFiber.TransitionSlots[0].IsAsyncInFlight;
@@ -754,6 +783,9 @@ namespace Velvet.Tests
                 "A slot's pending flag answers for what its own callback queued, not for another slot's");
         }
 
+        // GREEN_ON_BASE(refactor): the wait this bounds is the same wait, and a run where the code
+        // under test arrives cannot tell the two apart. What the bound changes is the run where it
+        // does not: a hang becomes a failure naming the wait.
         [Test]
         public void Given_TwoAsyncTransitionsInFlight_When_OneContinuationSetsState_Then_TheOtherSlotClearsOnItsOwnCompletion()
         {
@@ -763,10 +795,10 @@ namespace Velvet.Tests
             var gateB = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
             Func<Cysharp.Threading.Tasks.UniTask> actionA = async () =>
             {
-                await gateA.Task;
+                await gateA.Task.Bounded();
                 s_twoSetValue.Invoke(1);
             };
-            Func<Cysharp.Threading.Tasks.UniTask> actionB = async () => await gateB.Task;
+            Func<Cysharp.Threading.Tasks.UniTask> actionB = async () => await gateB.Task.Bounded();
             s_twoStarterA.Invoke(actionA);
             s_twoStarterB.Invoke(actionB);
             var bothInFlightBeforeTheAct = s_twoFiber.TransitionSlots[0].IsAsyncInFlight
@@ -789,6 +821,9 @@ namespace Velvet.Tests
                 "A slot settles on what its own callback queued, not on what another slot's action wrote");
         }
 
+        // GREEN_ON_BASE(refactor): the wait this bounds is the same wait, and a run where the code
+        // under test arrives cannot tell the two apart. What the bound changes is the run where it
+        // does not: a hang becomes a failure naming the wait.
         [Test]
         public void Given_AnAsyncTransitionsCompletion_When_ItIsReachedInsideAnotherSlotsScope_Then_ItsRenderIsNotDeferred()
         {
@@ -797,7 +832,7 @@ namespace Velvet.Tests
             // completion behind it both run with B's transition scope open around them
             using var mounted = V.Mount(_root, V.Component(TwoTransitionRender, key: "two"));
             var gate = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
-            Func<Cysharp.Threading.Tasks.UniTask> actionA = async () => await gate.Task;
+            Func<Cysharp.Threading.Tasks.UniTask> actionA = async () => await gate.Task.Bounded();
             s_twoStarterA.Invoke(actionA);
             var pendingBeforeTheAct = s_twoFiber.TransitionSlots[0].IsPending;
 
@@ -896,6 +931,9 @@ namespace Velvet.Tests
                 "The parent commit renders the child pending before the terminal clear renders it again");
         }
 
+        // GREEN_ON_BASE(refactor): the wait this bounds is the same wait, and a run where the code
+        // under test arrives cannot tell the two apart. What the bound changes is the run where it
+        // does not: a hang becomes a failure naming the wait.
         [Test]
         public void Given_AnAsyncTransitionOnTheParentsStateThatAlreadyCommitted_When_ItsTaskCompletes_Then_TheChildsIndicatorComesDown()
         {
@@ -906,7 +944,7 @@ namespace Velvet.Tests
             Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () =>
             {
                 s_propSetterChildSetCount.Invoke(1);
-                await gate.Task;
+                await gate.Task.Bounded();
             };
             s_propSetterChildStart.Invoke(asyncUpdates);
             mounted.GetSchedulerForTest().DrainDelayedForTest();
@@ -924,6 +962,9 @@ namespace Velvet.Tests
                 "The completion takes the indicator down on the component that declared the transition");
         }
 
+        // GREEN_ON_BASE(refactor): the wait this bounds is the same wait, and a run where the code
+        // under test arrives cannot tell the two apart. What the bound changes is the run where it
+        // does not: a hang becomes a failure naming the wait.
         [Test]
         public void Given_AnAsyncTransitionOnTheParentsStateThatAlreadyCommitted_When_ItsTaskCompletes_Then_TheChildRendersOnceForIt()
         {
@@ -934,7 +975,7 @@ namespace Velvet.Tests
             Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () =>
             {
                 s_propSetterChildSetCount.Invoke(1);
-                await gate.Task;
+                await gate.Task.Bounded();
             };
             s_propSetterChildStart.Invoke(asyncUpdates);
             mounted.GetSchedulerForTest().DrainDelayedForTest();
@@ -956,6 +997,8 @@ namespace Velvet.Tests
         // GREEN_ON_BASE(characterization): the post-await write re-renders the parent either way.
         // The parent's render is what reaches the child. What this pins is that the completion's own request
         // coalesces into that render rather than costing a second one.
+        // The wait it makes is bounded now: same wait where the code under test arrives, a failure
+        // naming it where that stops happening.
         [Test]
         public void Given_AnAsyncTransitionWhoseContinuationWritesTheParentToo_When_ItCompletes_Then_TheChildStillRendersOnce()
         {
@@ -966,7 +1009,7 @@ namespace Velvet.Tests
             Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () =>
             {
                 s_propSetterChildSetCount.Invoke(1);
-                await gate.Task;
+                await gate.Task.Bounded();
                 s_propSetterChildSetCount.Invoke(2);
             };
             s_propSetterChildStart.Invoke(asyncUpdates);
@@ -1341,13 +1384,16 @@ namespace Velvet.Tests
 
         #region Discrete updates during an in-flight async transition
 
+        // GREEN_ON_BASE(refactor): the wait this bounds is the same wait, and a run where the code
+        // under test arrives cannot tell the two apart. What the bound changes is the run where it
+        // does not: a hang becomes a failure naming the wait.
         [Test]
         public void Given_AnAwaitingAsyncTransition_When_AClickSetsStateOnTheSameComponent_Then_ItCommitsInsideTheClick()
         {
             // Arrange — the async action parks on its await without having scheduled anything
             using var mounted = V.Mount(_root, V.Component(ClickableTransitionRender, key: "clickable"));
             var gate = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
-            Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () => await gate.Task;
+            Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () => await gate.Task.Bounded();
             s_clickableStarter.Invoke(asyncUpdates);
             Assume.That(s_clickableFiber.IsTransitionPending, Is.True, "Precondition: the async transition is awaiting");
 
@@ -1362,13 +1408,15 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(characterization): an explicitly wrapped update kept transition priority on the base.
         // Only the comment naming the mechanism changed, since the carve-out it named is gone.
+        // The wait it makes is bounded now: same wait where the code under test arrives, a failure
+        // naming it where that stops happening.
         [Test]
         public void Given_AnAwaitingAsyncTransition_When_AClickReusesTheSameStarter_Then_ItsUpdateStaysOnTheTransitionLane()
         {
             // Arrange — the slot's async action parks on its await, so a further call on it joins that owner
             using var mounted = V.Mount(_root, V.Component(ClickableTransitionRender, key: "clickable"));
             var gate = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
-            Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () => await gate.Task;
+            Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () => await gate.Task.Bounded();
             s_clickableStarter.Invoke(asyncUpdates);
             Assume.That(s_clickableFiber.IsTransitionPending, Is.True, "Precondition: the async transition is awaiting");
 
@@ -1385,6 +1433,8 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(characterization): the base gave a discrete-resumed continuation that same priority.
         // It was the deliberate cost of a carve-out this branch removes instead.
+        // The wait it makes is bounded now: same wait where the code under test arrives, a failure
+        // naming it where that stops happening.
         [Test]
         public void Given_AnAwaitingAsyncTransition_When_AClickCompletesItsAwaitedTask_Then_TheResumedUpdateTakesUrgentPriority()
         {
@@ -1394,7 +1444,7 @@ namespace Velvet.Tests
             s_clickableGate = gate;
             Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () =>
             {
-                await gate.Task;
+                await gate.Task.Bounded();
                 s_clickableSetValue.Invoke(v => v + 1);
             };
             s_clickableStarter.Invoke(asyncUpdates);
@@ -1413,6 +1463,8 @@ namespace Velvet.Tests
         // One is therefore all the click could cost there — for want of the request rather than by
         // coalescing with it. Red against this branch's own previous head, which asked for that render at a
         // fixed Normal: Expected 1 But was 2.
+        // The wait it makes is bounded now: same wait where the code under test arrives, a failure
+        // naming it where that stops happening.
         [Test]
         public void Given_AnAwaitingAsyncTransition_When_AClickCompletesItsAwaitedTask_Then_TheComponentRendersOnceForIt()
         {
@@ -1423,7 +1475,7 @@ namespace Velvet.Tests
             s_clickableGate = gate;
             Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () =>
             {
-                await gate.Task;
+                await gate.Task.Bounded();
                 s_clickableSetValue.Invoke(v => v + 1);
             };
             s_clickableStarter.Invoke(asyncUpdates);
@@ -1440,6 +1492,9 @@ namespace Velvet.Tests
         // The case above cannot fall to nought: the continuation's own write renders the component whether or
         // not the completion asked for anything, so it separates the lane the request takes and not whether one
         // was made. Dropping the write is what leaves the request alone in the handler.
+        // GREEN_ON_BASE(refactor): the wait this bounds is the same wait, and a run where the code
+        // under test arrives cannot tell the two apart. What the bound changes is the run where it
+        // does not: a hang becomes a failure naming the wait.
         [Test]
         public void Given_AnAwaitingAsyncTransitionThatWroteNothing_When_AClickCompletesItsAwaitedTask_Then_TheClearedFlagStillCostsARender()
         {
@@ -1448,7 +1503,7 @@ namespace Velvet.Tests
             using var mounted = V.Mount(_root, V.Component(ClickableTransitionRender, key: "clickable"));
             var gate = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
             s_clickableGate = gate;
-            Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () => await gate.Task;
+            Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () => await gate.Task.Bounded();
             s_clickableStarter.Invoke(asyncUpdates);
             var rendersBeforeTheClick = s_clickableRenderCount;
 
@@ -1499,6 +1554,9 @@ namespace Velvet.Tests
 
         #region Ownership across unmount
 
+        // GREEN_ON_BASE(refactor): the wait this bounds is the same wait, and a run where the code
+        // under test arrives cannot tell the two apart. What the bound changes is the run where it
+        // does not: a hang becomes a failure naming the wait.
         [Test]
         public void Given_AFiberUnmountedWhileItsAsyncTransitionAwaits_When_ItIsMountedAgain_Then_TheSlotStartsUnownedAndTheNextTransitionReportsPending()
         {
@@ -1507,7 +1565,7 @@ namespace Velvet.Tests
             var fiber = FiberRenderer.CreateRoot(TransitionRender);
             FiberRenderer.Mount(fiber, _root);
             var gate = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
-            Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () => await gate.Task;
+            Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () => await gate.Task.Bounded();
             s_transitionStarter.Invoke(asyncUpdates);
             Assume.That(fiber.IsTransitionPending, Is.True, "Precondition: the async transition is awaiting");
             var slotBeforeUnmount = fiber.TransitionSlots[0];
@@ -1556,6 +1614,9 @@ namespace Velvet.Tests
                 "A starter outliving the component that declared it still marks what its callback writes");
         }
 
+        // GREEN_ON_BASE(refactor): the wait this bounds is the same wait, and a run where the code
+        // under test arrives cannot tell the two apart. What the bound changes is the run where it
+        // does not: a hang becomes a failure naming the wait.
         [Test]
         public void Given_AnAsyncStarterWhoseComponentIsDisposed_When_ItsActionWritesLiveStateBeforeSuspending_Then_ThatWriteTakesTheTransitionLane()
         {
@@ -1572,7 +1633,7 @@ namespace Velvet.Tests
             starter.Invoke(async () =>
             {
                 s_outlivedSetValue.Invoke(1);
-                await gate.Task;
+                await gate.Task.Bounded();
             });
 
             // Assert — same four terms as the synchronous case, for the same three reasons
