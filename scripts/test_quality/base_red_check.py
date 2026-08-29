@@ -114,7 +114,7 @@ import tempfile
 import time
 import tokenize
 import xml.etree.ElementTree as ET
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 DEFAULT_UNITY = "/Applications/Unity/Hub/Editor/6000.3.11f1/Unity.app/Contents/MacOS/Unity"
 # Anchored at the editor binary so that a shell waiting on this pattern does not match itself and
@@ -1486,6 +1486,29 @@ def added_csharp_surface(text, base_names, added_names):
                  if name not in base_names), None)
 
 
+def assembly_absent_on_base(project, base_tree, relative):
+    """The asmdef a carried file belongs to, where the base tree has not got it.
+
+    Unity gives a source file to the nearest asmdef at or above it. A branch that adds a test assembly
+    adds the asmdef too, and the asmdef is not a `.cs` and so is never carried -- so on the base the
+    file falls to the next asmdef up, which for a fixture under `Runtime/` is the runtime assembly. An
+    `AssemblyInfo.cs` landing there is a duplicate attribute and takes the whole compile with it, and
+    the name-spelling comparison cannot see it: such a file spells no type at all.
+    """
+    owner = None
+    directory = PurePosixPath(relative).parent
+    while True:
+        for candidate in sorted((project / directory).glob("*.asmdef")):
+            owner = str(directory / candidate.name)
+            break
+        if owner is not None or str(directory) in (".", ""):
+            break
+        directory = directory.parent
+    if owner is None or (base_tree / owner).exists():
+        return None
+    return owner
+
+
 def unbuildable_on_base(project, since, base_tree, carry):
     """Carried C# test file -> the name it spells that the base tree has not got.
 
@@ -1498,6 +1521,13 @@ def unbuildable_on_base(project, since, base_tree, carry):
     tree's -- which holds the branch's copy of every carried file -- so a name the branch's own test
     side declares reads that way too. Measured: each withdraws a file that compiles there.
     """
+    found = {}
+    for relative in carry:
+        if kind_of(relative) != "csharp":
+            continue
+        owner = assembly_absent_on_base(project, base_tree, relative)
+        if owner is not None:
+            found[relative] = owner
     changed = [name for name in changed_lines_by_file(project, since)
                if name.endswith(".cs") and name not in carry]
     added = set()
@@ -1507,10 +1537,11 @@ def unbuildable_on_base(project, since, base_tree, carry):
             added |= names_in("\n".join(code_lines(
                 source.read_text(encoding="utf-8", errors="replace"))))
     if not added:
-        return {}
+        return found
     base_names = csharp_names(base_tree, carried=carry)
-    found = {}
     for relative in carry:
+        if relative in found:
+            continue
         if kind_of(relative) != "csharp":
             continue
         source = project / relative
