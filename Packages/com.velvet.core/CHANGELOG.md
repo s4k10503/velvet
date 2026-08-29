@@ -54,6 +54,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A component inside one `V.Portal` no longer has its position rewritten by a sibling portal on a
+  different target. Two portals declared side by side are siblings in the fiber chain whatever targets
+  they name, and a child-count change committed on one shifted the recorded position of every following
+  sibling — including one mounted somewhere else. Nothing moved at the time, so the target looked
+  right; the damage showed on that sibling's next own re-render, which wrote at the shifted position
+  and left its previous element behind instead of patching it. A delta now reaches only the siblings
+  that share the target it was measured on, which is what the method's own doc said it did.
+
 - `V.NavLink` with a relative `to` takes its active class. The click path resolved the target through
   the router — `..` against the enclosing route, a bare segment appended to it — while the active
   comparison used the string as written, so `to: ".."` was compared against a current path beginning
