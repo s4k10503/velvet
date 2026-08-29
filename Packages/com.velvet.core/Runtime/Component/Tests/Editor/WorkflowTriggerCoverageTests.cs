@@ -402,14 +402,43 @@ namespace Velvet.Tests
         // The one that matters here is scripts/test_quality/assert_no_inconclusive.py: no other file in the repository
         // invokes it, and its failure mode is passing a run it should have failed, which stays invisible
         // until a test starts skipping.
+        [Test]
+        public void Given_APathUnderARootAGitignoreLineNamesADirectoryOf_When_TheGuardReadsIt_Then_ItIsNotDropped()
+        {
+            // Arrange — `.gitignore` names `docs/api/`, and the first-segment reading of that line is
+            // `docs`, a directory the repository does not ignore. Everything a workflow names under it was
+            // dropped before this fixture could ask whether a trigger covers it.
+            var byFirstSegment = DocumentationCorpus.IgnoredRoots();
+            var named = Workflows()
+                .SelectMany(NamedRepoFiles)
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+            Assume.That(named, Is.Not.Empty, "Precondition: the workflows name files that exist");
+
+            // Act — the two readings over the same set: what git ignores, and what the first-segment
+            // reduction would have dropped.
+            var byGit = DocumentationCorpus.IgnoredAmong(named);
+            var byReduction = named.Where(path => byFirstSegment.Contains(path.Split('/')[0])).ToList();
+
+            // Assert — every file this fixture reads is one git does not ignore, and at least one of them
+            // the reduction would have dropped. Both halves: an empty right side would mean the reduction
+            // and git agree here and this case is measuring nothing.
+            Assert.That((string.Join(", ", byGit), byReduction.Count > 0), Is.EqualTo((string.Empty, true)));
+        }
+
         private static List<string> NamedRepoFiles(string workflow)
         {
-            var ignored = DocumentationCorpus.IgnoredRoots();
-            return PathTokenPattern.Matches(File.ReadAllText(Path.GetFullPath(workflow)))
+            var present = PathTokenPattern.Matches(File.ReadAllText(Path.GetFullPath(workflow)))
                 .Select(match => match.Value)
                 .Distinct(StringComparer.Ordinal)
                 .Where(token => File.Exists(Path.GetFullPath(token)))
-                .Where(token => !ignored.Contains(token.Split('/')[0]))
+                .ToList();
+            // Asked of git rather than of IgnoredRoots, which answers a first-segment question: `docs/api/`
+            // reduces to `docs` there, and every file this workflow names under `docs/` was dropped before
+            // the case could read it. A dropped file and a covered one are the same green.
+            var ignored = DocumentationCorpus.IgnoredAmong(present);
+            return present
+                .Where(token => !ignored.Contains(token))
                 .OrderBy(token => token, StringComparer.Ordinal)
                 .ToList();
         }

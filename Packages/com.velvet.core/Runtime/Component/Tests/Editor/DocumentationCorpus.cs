@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
@@ -99,6 +100,55 @@ namespace Velvet.Tests
         /// is the drift that fixture pair exists to report.
         /// </para>
         /// </remarks>
+        /// <summary>Which of <paramref name="paths"/> git ignores, asked of git rather than derived.
+        /// </summary>
+        /// <remarks>
+        /// <see cref="IgnoredRoots"/> answers a different question: it reduces each line to its first
+        /// segment, which is what a caller enumerating top-level directories needs and is wrong for a
+        /// caller asking whether one path is ignored — `docs/api/` there contributes `docs`, a directory
+        /// the repository does not ignore. Anchoring, negation and wildcards are `.gitignore` semantics,
+        /// and git is what implements them. One call for the whole set rather than one per path.
+        /// </remarks>
+        internal static HashSet<string> IgnoredAmong(IEnumerable<string> paths)
+        {
+            var asked = paths.Distinct(StringComparer.Ordinal).ToList();
+            if (asked.Count == 0)
+            {
+                return new HashSet<string>(StringComparer.Ordinal);
+            }
+
+            var start = new ProcessStartInfo("git")
+            {
+                WorkingDirectory = Path.GetFullPath("."),
+                RedirectStandardInput = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            start.ArgumentList.Add("check-ignore");
+            start.ArgumentList.Add("--stdin");
+
+            using var process = Process.Start(start);
+            if (process == null)
+            {
+                return new HashSet<string>(StringComparer.Ordinal);
+            }
+
+            foreach (var path in asked)
+            {
+                process.StandardInput.WriteLine(path);
+            }
+            process.StandardInput.Close();
+            var output = process.StandardOutput.ReadToEnd();
+            process.WaitForExit();
+
+            return output.Split('\n')
+                .Select(line => line.Trim().Replace('\\', '/'))
+                .Where(line => line.Length > 0)
+                .ToHashSet(StringComparer.Ordinal);
+        }
+
         internal static HashSet<string> IgnoredRoots() =>
             File.ReadAllLines(Path.GetFullPath(".gitignore"))
                 .Select(line => line.Trim())
