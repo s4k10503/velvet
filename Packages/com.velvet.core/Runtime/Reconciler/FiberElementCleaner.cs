@@ -8,20 +8,10 @@ namespace Velvet
     internal sealed class FiberElementCleaner
     {
         private readonly ReconcilerContext _ctx;
-        private IReconcilerHost _host = null!;
 
         public FiberElementCleaner(ReconcilerContext ctx)
         {
             _ctx = ctx;
-        }
-
-        internal void SetHost(IReconcilerHost host)
-        {
-            if (_host != null)
-            {
-                throw new System.InvalidOperationException("[FiberElementCleaner] SetHost called twice");
-            }
-            _host = host;
         }
 
         public void RemoveElement(VisualElement parent, int index)
