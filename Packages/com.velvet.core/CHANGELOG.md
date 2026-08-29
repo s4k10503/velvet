@@ -63,6 +63,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Matching a URL no longer allocates an array for every route branch it walks past. The record of
+  which path segment each pattern segment took is a buffer on the tree now, rewritten per probe,
+  where it was a fresh array per probe — and `Match` probes the ranked branches until one matches, so
+  the cost was one array per branch not taken. Nothing outlives a probe: what reads the record does so
+  before the next branch is tried.
+
 - `animate-hue` and the two gradient pan modes now suspend a native transition covering the slot they
   drive, as `animate-spin` and `animate-pulse` already did. The guard matches a driver's slot against
   the element's own transitionable set, and it had no flag for `filter` or for the background-position

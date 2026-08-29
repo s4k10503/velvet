@@ -13,6 +13,12 @@ namespace Velvet
         private readonly RouteDefinition[] _routes;
         private readonly List<RouteBranch> _rankedBranches;
 
+        // One buffer for every branch probe rather than one array each. Match walks the ranked branches
+        // until one succeeds, so a per-probe array is an allocation per branch not taken. Held on the
+        // tree and not static: two trees are two navigations, and Match runs no caller code, so nothing
+        // re-enters one tree's probe while it is using this.
+        private int[] _taken = Array.Empty<int>();
+
         /// <param name="routes">Array of route definitions. null is not allowed.</param>
         public RouteTree(RouteDefinition[] routes)
         {
@@ -266,12 +272,12 @@ namespace Velvet
 
             public Dictionary<string, string>? Captured;
 
-            public Walk(List<RouteSegment> pattern, string[] segments)
+            public Walk(List<RouteSegment> pattern, string[] segments, int[] taken)
             {
                 Pattern = pattern;
                 Segments = segments;
-                Taken = new int[pattern.Count];
-                for (var index = 0; index < Taken.Length; index++)
+                Taken = taken;
+                for (var index = 0; index < pattern.Count; index++)
                 {
                     Taken[index] = -1;
                 }
@@ -280,11 +286,16 @@ namespace Velvet
             }
         }
 
-        private static bool TryMatchBranch(RouteBranch branch, string[] segments, out List<RouteMatch>? matches)
+        private bool TryMatchBranch(RouteBranch branch, string[] segments, out List<RouteMatch>? matches)
         {
             matches = null;
 
-            var walk = new Walk(branch.Pattern, segments);
+            if (_taken.Length < branch.Pattern.Count)
+            {
+                _taken = new int[branch.Pattern.Count];
+            }
+
+            var walk = new Walk(branch.Pattern, segments, _taken);
 
             if (!TryConsume(ref walk, 0, 0))
             {
