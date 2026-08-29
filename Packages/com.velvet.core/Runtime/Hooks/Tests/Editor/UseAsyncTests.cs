@@ -458,12 +458,40 @@ namespace Velvet.Tests
             // Assert — LogAssert.Expect verifies the footgun warning was emitted
         }
 
+        // GREEN_ON_BASE(characterization): the base already reuses the resource when the explicit key
+        // matches, and this says so with the factory identity changing underneath it — the arrangement
+        // the case it replaces named and did not build.
         [Test]
-        public void Given_ExplicitResourceKey_When_InlineLambdaFactoryReRenders_Then_DoesNotWarn()
+        public void Given_AnExplicitKeyBesideAFreshLambdaEachRender_When_ReRendered_Then_TheFactoryRunsOnce()
         {
-            // Arrange — an explicit resourceKey is the documented escape hatch: it silences the footgun warning even
-            // when the factory is a fresh inline lambda. No LogAssert.Expect — any leaked warning fails the test.
-            s_explicitKeyFactoryRender = 0;
+            // Arrange — the escape hatch, in the arrangement that distinguishes it: the factory is an
+            // inline lambda, so its identity differs on the second render and only the key can name the
+            // same resource. The sibling cases hold the key equal with a stable factory.
+            s_explicitKeyFactoryRuns = 0;
+            s_explicitKeySetTick = null;
+            s_explicitKeyValue = 42;
+            using var mounted = V.Mount(_root, V.Component(ExplicitResourceKeyFactoryRender, key: "explicit"));
+            var runsAfterMount = s_explicitKeyFactoryRuns;
+
+            // Act
+            s_explicitKeySetTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert — the mount run rides along, because a count of one after the re-render alone also
+            // holds for a resource that never started at mount and started here.
+            Assert.That((runsAfterMount, s_explicitKeyFactoryRuns), Is.EqualTo((1, 1)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base already logs nothing here. It reads the same run
+        // as the case above from the console rather than from the factory, which is where a user meets
+        // the hatch.
+        [Test]
+        public void Given_AnExplicitKey_When_TheFactoryIdentityChanges_Then_NoWarningIsLogged()
+        {
+            // Arrange — the key matches, so the resource is reused and the branch the warning is written
+            // in is not entered at all. That is what the hatch promises a user who reads the console;
+            // the case below is the one that reaches the warning's own gate.
+            s_explicitKeyFactoryRuns = 0;
             s_explicitKeySetTick = null;
             s_explicitKeyValue = 42;
             using var mounted = V.Mount(_root, V.Component(ExplicitResourceKeyFactoryRender, key: "explicit"));
@@ -472,7 +500,39 @@ namespace Velvet.Tests
             s_explicitKeySetTick.Invoke(1);
             mounted.FlushStateForTest();
 
-            // Assert — the absence of any logged warning is the assertion
+            // Assert
+            LogAssert.NoUnexpectedReceived();
+        }
+
+        // GREEN_ON_BASE(characterization): the base already gates the warning on the caller having
+        // passed the key. Measured: deleting `!resourceKeyExplicit &&` from `UseCore` leaves the whole
+        // EditMode suite green apart from this case, which nothing in it did before.
+        [Test]
+        public void Given_AnExplicitKeyThatChangesEachRender_When_ReRendered_Then_NoWarningIsLogged()
+        {
+            // Arrange — an explicit key that differs across renders is the only arrangement that reaches
+            // the warning's `!resourceKeyExplicit` gate: the resource is rebuilt, as it is for a changed
+            // implicit key, and the caller chose the key, so nothing is being warned about.
+            s_changingKeySetTick = null;
+            using var mounted = V.Mount(_root, V.Component(ChangingExplicitKeyRender, key: "changing"));
+
+            // Act
+            s_changingKeySetTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            LogAssert.NoUnexpectedReceived();
+        }
+
+        private static Action<int> s_changingKeySetTick;
+
+        [Component]
+        private static VNode ChangingExplicitKeyRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_changingKeySetTick = setTick;
+            _ = Hooks.Use<int>((CancellationToken _) => UniTask.FromResult(tick), resourceKey: tick.ToString());
+            return V.Label(text: tick.ToString());
         }
 
         private static int s_inlineLambdaFactoryRender;
@@ -490,7 +550,7 @@ namespace Velvet.Tests
             return V.Label(text: tick.ToString());
         }
 
-        private static int s_explicitKeyFactoryRender;
+        private static int s_explicitKeyFactoryRuns;
         private static Action<int> s_explicitKeySetTick;
         private static int s_explicitKeyValue;
 
@@ -499,10 +559,16 @@ namespace Velvet.Tests
         {
             var (tick, setTick) = Hooks.UseState(0);
             s_explicitKeySetTick = setTick;
-            s_explicitKeyFactoryRender++;
-            // The factory is an inline lambda (identity changes per render) but the explicit resourceKey is stable,
-            // so the footgun warning must not fire.
-            _ = Hooks.Use<int>((CancellationToken _) => UniTask.FromResult(s_explicitKeyValue), resourceKey: "stable-key");
+            // `tick` is captured so the lambda is a fresh delegate each render. A body that reads only
+            // static state is cached in a static field by the compiler and has one identity for the life
+            // of the process, which arranges none of what this component is for.
+            _ = Hooks.Use<int>(
+                (CancellationToken _) =>
+                {
+                    s_explicitKeyFactoryRuns++;
+                    return UniTask.FromResult(s_explicitKeyValue + tick);
+                },
+                resourceKey: "stable-key");
             return V.Label(text: tick.ToString());
         }
 
