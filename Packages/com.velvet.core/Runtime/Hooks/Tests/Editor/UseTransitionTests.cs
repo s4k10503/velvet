@@ -626,6 +626,8 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(characterization): an async action's isPending clears on completion either way.
         // What this branch changed is how many lanes it leaves behind, so the case gained a second flush.
+        // The wait it makes is bounded now: same wait where the code under test arrives, a failure
+        // naming it where that stops happening.
         [Test]
         public void Given_AsyncStartTransition_When_TaskCompletesAndFlushes_Then_IsPendingClears()
         {
@@ -995,6 +997,8 @@ namespace Velvet.Tests
         // GREEN_ON_BASE(characterization): the post-await write re-renders the parent either way.
         // The parent's render is what reaches the child. What this pins is that the completion's own request
         // coalesces into that render rather than costing a second one.
+        // The wait it makes is bounded now: same wait where the code under test arrives, a failure
+        // naming it where that stops happening.
         [Test]
         public void Given_AnAsyncTransitionWhoseContinuationWritesTheParentToo_When_ItCompletes_Then_TheChildStillRendersOnce()
         {
@@ -1404,6 +1408,8 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(characterization): an explicitly wrapped update kept transition priority on the base.
         // Only the comment naming the mechanism changed, since the carve-out it named is gone.
+        // The wait it makes is bounded now: same wait where the code under test arrives, a failure
+        // naming it where that stops happening.
         [Test]
         public void Given_AnAwaitingAsyncTransition_When_AClickReusesTheSameStarter_Then_ItsUpdateStaysOnTheTransitionLane()
         {
@@ -1427,6 +1433,8 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(characterization): the base gave a discrete-resumed continuation that same priority.
         // It was the deliberate cost of a carve-out this branch removes instead.
+        // The wait it makes is bounded now: same wait where the code under test arrives, a failure
+        // naming it where that stops happening.
         [Test]
         public void Given_AnAwaitingAsyncTransition_When_AClickCompletesItsAwaitedTask_Then_TheResumedUpdateTakesUrgentPriority()
         {
@@ -1455,6 +1463,8 @@ namespace Velvet.Tests
         // One is therefore all the click could cost there — for want of the request rather than by
         // coalescing with it. Red against this branch's own previous head, which asked for that render at a
         // fixed Normal: Expected 1 But was 2.
+        // The wait it makes is bounded now: same wait where the code under test arrives, a failure
+        // naming it where that stops happening.
         [Test]
         public void Given_AnAwaitingAsyncTransition_When_AClickCompletesItsAwaitedTask_Then_TheComponentRendersOnceForIt()
         {
