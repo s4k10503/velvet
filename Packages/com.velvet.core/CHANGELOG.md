@@ -62,6 +62,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and left its previous element behind instead of patching it. A delta now reaches only the siblings
   that share the target it was measured on, which is what the method's own doc said it did.
 
+- A `V.Suspense` inside another one no longer lets the outer's fallback be patched away while its own
+  resource is still pending. A component's flush is deferred while the slot it writes into is held by a
+  fallback, and the check for that stopped at the nearest enclosing Suspense — which is set on every
+  expanded boundary, resolved or not. With a resolved boundary between the component and the one that
+  actually suspended, the check found a boundary showing no fallback and never read the mark the outer
+  expansion had written, so the component flushed into the outer fallback's slot and replaced it. The
+  walk now continues past a boundary that is not showing a fallback.
+
 - `V.NavLink` with a relative `to` takes its active class. The click path resolved the target through
   the router — `..` against the enclosing route, a bare segment appended to it — while the active
   comparison used the string as written, so `to: ".."` was compared against a current path beginning
