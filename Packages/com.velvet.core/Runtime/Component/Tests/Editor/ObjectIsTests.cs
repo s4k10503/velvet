@@ -228,6 +228,49 @@ namespace Velvet.Tests
 
         #endregion
 
+        #region AreEqual<T> — raw-bit float and double
+
+        // The generic overload carries its own float and double branches, separate from the pair
+        // AreEqualObjects has. Measured before these were written: deleting them reddened nine cases
+        // across the three fixtures that own the props comparer and the Provider, and none here — so what
+        // pinned the branches this file's own header names was a test about Memoize. With these, the same
+        // cut reddens the two signed-zero cases here.
+
+        [Test]
+        public void Given_FloatSignedZero_When_AreEqualOfFloat_Then_AreNotEqual()
+        {
+            // Act + Assert — raw-bit equality distinguishes +0 from -0, unlike IEEE ==
+            Assert.That(ObjectIs.AreEqual(0f, -0f), Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): the base already answers this, and so does a build with the
+        // raw-bit branch deleted — `EqualityComparer<float>` reaches `float.Equals`, which is true for two
+        // NaNs where `==` is false. It is here because the branch's contract is both halves, and the
+        // signed-zero case beside it is the half a cut can see.
+        [Test]
+        public void Given_FloatNaN_When_AreEqualOfFloat_Then_AreEqual()
+        {
+            // Act + Assert — raw-bit equality treats NaN as equal to NaN, unlike IEEE ==
+            Assert.That(ObjectIs.AreEqual(float.NaN, float.NaN), Is.True);
+        }
+
+        [Test]
+        public void Given_DoubleSignedZero_When_AreEqualOfDouble_Then_AreNotEqual()
+        {
+            // Act + Assert
+            Assert.That(ObjectIs.AreEqual(0d, -0d), Is.False);
+        }
+
+        // GREEN_ON_BASE(characterization): the double half of the reading above.
+        [Test]
+        public void Given_DoubleNaN_When_AreEqualOfDouble_Then_AreEqual()
+        {
+            // Act + Assert
+            Assert.That(ObjectIs.AreEqual(double.NaN, double.NaN), Is.True);
+        }
+
+        #endregion
+
         #region AreEqual<T> — generic string value semantics
 
         private sealed record Rec(string Value);
