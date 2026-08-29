@@ -14,6 +14,7 @@ import importlib.util
 import io
 import json
 import re
+import pathlib
 import shutil
 import subprocess
 import sys
@@ -750,6 +751,67 @@ class ExhaustedLoopTests(unittest.TestCase):
         # Act / Assert
         self.assertIn("--max-rounds", base_red_check.exhausted_reason(8, {"a.cs"}, 24))
 
+
+
+class CarriedAssemblyTests(unittest.TestCase):
+    """A carried file whose assembly the base has not got.
+
+    Unity gives a source to the nearest asmdef at or above it, and an asmdef is not a `.cs` so it is
+    never carried. A branch adding a test assembly therefore lands its files on the base under whatever
+    asmdef is next up -- the runtime one, for a fixture under `Runtime/` -- and an `AssemblyInfo.cs`
+    there is a duplicate attribute that takes the whole compile down. The name comparison beside this
+    cannot see it: such a file spells no type at all.
+    """
+
+    def tree(self, *relatives):
+        """A directory holding each named path as an empty file."""
+        root = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, str(root), True)
+        for relative in relatives:
+            path = root / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("")
+        return root
+
+    def test_Given_ACarriedFileWhoseAsmdefTheBaseHasNot_When_Asked_Then_ItNamesThatAsmdef(self):
+        # Arrange
+        branch = self.tree("A/Tests/Editor/Own.asmdef", "A/Tests/Editor/AssemblyInfo.cs")
+        base = self.tree("A/Velvet.asmdef")
+
+        # Act
+        owner = base_red_check.assembly_absent_on_base(
+            branch, base, "A/Tests/Editor/AssemblyInfo.cs")
+
+        # Assert
+        self.assertEqual(owner, "A/Tests/Editor/Own.asmdef")
+
+    def test_Given_ACarriedFileWhoseAsmdefTheBaseHas_When_Asked_Then_ItNamesNothing(self):
+        # Arrange — the control: an ordinary change to a fixture in an assembly both trees hold.
+        branch = self.tree("A/Tests/Editor/Own.asmdef", "A/Tests/Editor/SomeTests.cs")
+        base = self.tree("A/Tests/Editor/Own.asmdef")
+
+        # Act / Assert
+        self.assertIsNone(base_red_check.assembly_absent_on_base(
+            branch, base, "A/Tests/Editor/SomeTests.cs"))
+
+    def test_Given_AFileWhoseNearestAsmdefIsAboveIt_When_Asked_Then_ItReadsThatOne(self):
+        # Arrange — no asmdef beside the file, so the search walks up, which is the rule Unity applies.
+        branch = self.tree("A/Own.asmdef", "A/Tests/Editor/SomeTests.cs")
+        base = self.tree("Elsewhere/Other.asmdef")
+
+        # Act
+        owner = base_red_check.assembly_absent_on_base(branch, base, "A/Tests/Editor/SomeTests.cs")
+
+        # Assert
+        self.assertEqual(owner, "A/Own.asmdef")
+
+    def test_Given_AFileUnderNoAsmdefAtAll_When_Asked_Then_ItNamesNothing(self):
+        # Arrange — nothing to be absent, so nothing to withdraw for.
+        branch = self.tree("A/Loose.cs")
+        base = self.tree("A/Loose.cs")
+
+        # Act / Assert
+        self.assertIsNone(base_red_check.assembly_absent_on_base(branch, base, "A/Loose.cs"))
 
 
 class SelectionTests(unittest.TestCase):
