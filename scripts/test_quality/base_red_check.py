@@ -1871,8 +1871,16 @@ def exhausted_reason(spent, withdrawn, carried):
 
     The generic line is the one a single round writes, and a reader who ran the loop has already done
     the thing that line would tell them to do. What separates the two is the loop's own history: how
-    many rounds it spent and how much of the carried set it put back, which is the evidence that the
-    base cannot build the branch's test modules at all rather than one of them.
+    many rounds it spent, how much of the carried set it put back, and that the budget is a flag.
+
+    Naming the flag because the budget is what binds, not the shape of the change. Measured on the
+    branch replacing UniTask with an in-tree awaitable: at the default of 8 the loop reported nothing
+    measured, and at 60 it compiled the base on round 38 and gave every case a verdict. One round
+    withdraws one file, so a change touching many test modules needs about as many rounds as modules.
+
+    Whether the budget is what ended the run is the caller's to know, and it does not print this
+    otherwise: a run that stopped short of its budget stopped for some other reason, and raising the
+    budget is not its remedy.
     """
     if not spent:
         return ""
@@ -1881,10 +1889,11 @@ def exhausted_reason(spent, withdrawn, carried):
     if more > 0:
         put_back += "\n    and {} more".format(more)
     return ("\n{} round(s) compiled nothing, having put {} of the {} carried file(s) back to what the\n"
-            "base holds. A base that builds none of them is answering about the tree rather than about\n"
-            "a case, and no declaration reaches that: what a branch introducing a type the base has no\n"
-            "source for owes is a reason in its description, not a per-case one.\n"
-            "{}".format(spent, len(withdrawn), carried, put_back if withdrawn else ""))
+            "base holds. One round withdraws one file, so a change whose carried modules the base\n"
+            "cannot build needs about as many rounds as there are of them:\n"
+            "  --max-rounds {}\n"
+            "{}".format(spent, len(withdrawn), carried, max(carried, spent * 4),
+                        put_back if withdrawn else ""))
 
 
 def held_at(project, commit, relative):
@@ -2158,7 +2167,8 @@ def main():
 
     if not ever_wrote:
         print("no round wrote a result, so nothing any of them was asked was measured", flush=True)
-        print(exhausted_reason(rounds_spent, put_back, len(carry)), flush=True)
+        if rounds_spent >= args.max_rounds:
+            print(exhausted_reason(rounds_spent, put_back, len(carry)), flush=True)
     offenders = report(cases, control, reported, canaries, ever_wrote)
     print("\nlogs: {}".format(output), flush=True)
     return 1 if offenders else 0
