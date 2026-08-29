@@ -44,13 +44,12 @@ namespace Velvet
         internal static int LogicalMountPointChildCount(VisualElement? mountPoint)
             => mountPoint != null ? LogicalChildSlots.Count(mountPoint) : 0;
 
-        // Propagates an inline-mount fiber's committed child-count change to the siblings that share its
-        // MountPoint. Updates the fiber's own slot count, then shifts every following sibling's
-        // ComponentFiber.MountSlotStart by the same delta and re-bases the captured slotStart of
-        // any following sibling whose own reconcile is parked. Called both from the initial
-        // RenderAndReconcile pass and from each ContinueReconcile
-        // resume slice, since the delta is committed incrementally across slices. No-op when
-        // actualDelta is zero.
+        // Propagates an inline-mount fiber's committed child-count change to the following siblings that
+        // share its MountPoint. Updates the fiber's own slot count, then shifts each of their
+        // ComponentFiber.MountSlotStart by the same delta and re-bases the captured slotStart of one whose
+        // own reconcile is parked. Called both from the initial RenderAndReconcile pass and from each
+        // ContinueReconcile resume slice, since the delta is committed incrementally across slices. No-op
+        // when actualDelta is zero.
         internal static void PropagateInlineSlotShift(ComponentFiber fiber, int actualDelta)
         {
             if (actualDelta == 0) return;
@@ -59,6 +58,15 @@ namespace Velvet
             fiber.MountSlotCount = baseline + actualDelta;
             for (var sibling = fiber.Sibling; sibling != null; sibling = sibling.Sibling)
             {
+                // The chain is every following sibling, which for a Portal is siblings mounted on other
+                // targets too. A delta measured on one target says nothing about a coordinate into
+                // another, and shifting it moves that sibling's next write off the rows it owns.
+                // `NextInlineSiblingSlotStart` above reads the same chain under the same condition.
+                if (sibling.MountPoint != fiber.MountPoint)
+                {
+                    continue;
+                }
+
                 sibling.MountSlotStart += actualDelta;
                 // A following sibling whose own time-sliced reconcile is parked captured its slotStart as an
                 // absolute offset into the shared parent. This shift moved its already-committed rows within
