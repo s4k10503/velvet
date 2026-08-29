@@ -236,6 +236,9 @@ namespace Velvet.Tests
         // pinned the branches this file's own header names was a test about Memoize. With these, the same
         // cut reddens the two signed-zero cases here.
 
+        // GREEN_ON_BASE(characterization): the base already distinguishes the zeros — this change adds
+        // no behaviour, it moves who says so. Measured: deleting `AreEqual<T>`'s raw-bit branches reddens
+        // nine cases in three other fixtures and none here, and reddens this one once it exists.
         [Test]
         public void Given_FloatSignedZero_When_AreEqualOfFloat_Then_AreNotEqual()
         {
@@ -254,6 +257,7 @@ namespace Velvet.Tests
             Assert.That(ObjectIs.AreEqual(float.NaN, float.NaN), Is.True);
         }
 
+        // GREEN_ON_BASE(characterization): the double half of the reading above.
         [Test]
         public void Given_DoubleSignedZero_When_AreEqualOfDouble_Then_AreNotEqual()
         {
