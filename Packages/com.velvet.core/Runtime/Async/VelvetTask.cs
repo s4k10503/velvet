@@ -270,9 +270,11 @@ namespace Velvet
             where TStateMachine : IAsyncStateMachine =>
             stateMachine.MoveNext();
 
+        // Required by the compiler -- deleting it is CS0656 -- and reached by nothing: Roslyn emits no
+        // call to it from a MoveNext, and this builder's own AwaitOnCompleted does not call the state
+        // machine's. A runner resumes the copy it was handed, and there is one resume route.
         public void SetStateMachine(IAsyncStateMachine stateMachine)
         {
-            _runner?.SetStateMachine(stateMachine);
         }
 
         public void AwaitOnCompleted<TAwaiter, TStateMachine>(ref TAwaiter awaiter, ref TStateMachine stateMachine)
@@ -355,9 +357,11 @@ namespace Velvet
             where TStateMachine : IAsyncStateMachine =>
             stateMachine.MoveNext();
 
+        // Required by the compiler -- deleting it is CS0656 -- and reached by nothing: Roslyn emits no
+        // call to it from a MoveNext, and this builder's own AwaitOnCompleted does not call the state
+        // machine's. A runner resumes the copy it was handed, and there is one resume route.
         public void SetStateMachine(IAsyncStateMachine stateMachine)
         {
-            _runner?.SetStateMachine(stateMachine);
         }
 
         public void AwaitOnCompleted<TAwaiter, TStateMachine>(ref TAwaiter awaiter, ref TStateMachine stateMachine)
