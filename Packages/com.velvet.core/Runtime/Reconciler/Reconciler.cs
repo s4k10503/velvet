@@ -72,7 +72,6 @@ namespace Velvet
 
             _factory.SetHost(this);
             _patcher.SetHost(this);
-            _cleaner.SetHost(this);
             // The root Reconciler owns the bridge so internal elements (FiberVirtualListController etc.)
             // can re-enter the reconciler via _ctx.ReconcilerBridge. Inherited contexts already have a
             // bridge assigned; skipping the set avoids the fail-fast double-call check.
@@ -479,14 +478,6 @@ namespace Velvet
         #endregion
 
         #region IReconcilerHost
-
-        VisualElement IReconcilerHost.CreateElement(VNode node) => _factory.CreateElement(node);
-
-        List<(string key, VNode node)> IReconcilerHost.BuildKeyedMapCopy(VNode?[] children) => _factory.BuildKeyedMapCopy(children);
-
-        void IReconcilerHost.RemoveElement(VisualElement parent, int index) => _cleaner.RemoveElement(parent, index);
-
-        void IReconcilerHost.RemoveElementDirect(VisualElement parent, VisualElement element) => _cleaner.RemoveElementDirect(parent, element);
 
         void IReconcilerHost.ReleasePortalRangeForRetarget(VisualElement placeholder)
             => _cleaner.ReleasePortalRangeForRetarget(placeholder);
