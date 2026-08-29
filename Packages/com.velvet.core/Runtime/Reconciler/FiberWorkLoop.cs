@@ -213,18 +213,20 @@ namespace Velvet
             var context = fiber.Reconciler?.Context;
             if (context is { AnyBoundaryShowingFallback: true })
             {
-                var enclosingBoundary = ComponentBoundarySearch.FindNearestSuspenseBoundary(fiber);
-                if (enclosingBoundary != null && !ReferenceEquals(enclosingBoundary, fiber)
-                    && context.IsBoundaryShowingFallback(enclosingBoundary))
+                // Defer only PRIMARY (offscreen) descendants — their slot is occupied by the fallback, so
+                // an independent flush would write into the fallback's range. A visible fallback-subtree
+                // fiber carries no offscreen mark and may flush normally (the fallback renders while the
+                // primary is offscreen).
+                //
+                // Every enclosing boundary, not the nearest: IsSuspenseBoundary is set whenever a Suspense
+                // is expanded, whether or not it suspended, so a resolved one between the fiber and the
+                // boundary that did suspend is what a nearest-only reading stops at — and the mark it
+                // stops short of is the one an outer expansion wrote.
+                var offscreen = fiber.IsOffscreen;
+                for (var f = fiber.Parent; f != null; f = f.Parent)
                 {
-                    // Defer only PRIMARY (offscreen) descendants — their slot is occupied by the
-                    // fallback, so an independent flush would write into the fallback's range. A visible
-                    // fallback-subtree fiber (no offscreen ancestor up to the boundary) may flush
-                    // normally (the fallback renders while the primary is offscreen).
-                    for (var f = fiber; f != null && !ReferenceEquals(f, enclosingBoundary); f = f.Parent)
-                    {
-                        if (f.IsOffscreen) return;
-                    }
+                    if (offscreen && f.IsSuspenseBoundary && context.IsBoundaryShowingFallback(f)) return;
+                    if (f.IsOffscreen) offscreen = true;
                 }
             }
 
