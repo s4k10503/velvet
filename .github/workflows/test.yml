@@ -353,7 +353,11 @@ jobs:
     name: Test quality
     runs-on: ubuntu-latest
     steps:
+      # fetch-depth 0 for stranded_name_check.py, which reads a change against its merge base, and
+      # for the two of its cases held against commits in this repository's own history.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
 
       - run: python3 scripts/test_quality/run_suite.py scripts/test_quality/test_mutation_check.py
 
@@ -368,6 +372,15 @@ jobs:
       - run: python3 scripts/test_quality/run_suite.py scripts/test_quality/test_assume_gate_check.py
 
       - run: python3 scripts/test_quality/assume_gate_check.py
+
+      - run: python3 scripts/test_quality/run_suite.py scripts/test_quality/test_stranded_name_check.py
+
+      # A removal reports here rather than in the corpus sweep the same question invites: read over
+      # every comment it is 518 unresolved tokens for 4 real ones, and read over one change's own
+      # removals it was 2 firings in 320 commits.
+      - env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+        run: python3 scripts/test_quality/stranded_name_check.py --base "${BASE:-HEAD^}"
 
   # ---------------------------------------------------------------------------
   # The one check branch protection requires from this workflow. Naming a real

@@ -1033,9 +1033,7 @@ namespace Velvet.Tests
 
             // Act — B re-renders synchronously (Normal lane), turning its own first item z-managed: the
             // shared host's FIRST negative-z child ever, so B's own top-level drain creates the back
-            // container while A is STILL parked. RebaseParkedSlotsForContainerChange's ParkedBaselineFibers
-            // loop — not A's own self-park rebase, which only ever fires from A's OWN drain — must be what
-            // rebases A here.
+            // container while A is STILL parked.
             s_crossParkBZManaged = true;
             s_crossParkBFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
             FiberWorkLoop.FlushState(s_crossParkBFiber);
@@ -1106,8 +1104,8 @@ namespace Velvet.Tests
 
         // Keyed mirror of CrossParkARender/CrossParkSiblingHost: every one of A's own children carries an
         // explicit key, so its park goes through PendingKeyedState (ContinueKeyed) instead of
-        // PendingIndexedState (ContinueIndexed) — RebasePendingSlotStartIfTargeting's OTHER branch, never
-        // exercised by the positional cross-fiber tests above.
+        // PendingIndexedState (ContinueIndexed). The keyed branch is the one the positional cross-fiber
+        // tests above never reach.
         [Component]
         private static VNode CrossParkKeyedSiblingHost() => V.Div(
             name: "cross-park-keyed-host", className: "relative", children: new VNode[]
@@ -1294,7 +1292,7 @@ namespace Velvet.Tests
 
         #endregion
 
-        #region Self-park double-rebase on a container-creating resume tick
+        #region A resume tick that creates the container and re-parks
 
         [Test]
         public void Given_AParkedFibersOwnResumeTickCreatesItsContainerAndReParks_When_ItFinishes_Then_TrailingItemsLandAtCorrectIndices()
@@ -1317,22 +1315,17 @@ namespace Velvet.Tests
 
             // Act — tick 2 (a single manual resume, which continues at the tiny budget tick 1 captured on the
             // fiber): processes item1, creating the shared parent's first back container INSIDE this tick's drain,
-            // then re-parks immediately after (item2..item9 remain) — so the fiber is STILL registered in
-            // ParkedBaselineFibers at the exact moment RebaseParkedSlotsForContainerChange runs, alongside
-            // its own current.RebasePendingSlotStartIfTargeting call on the very same PendingIndexedState.
+            // then re-parks immediately after (item2..item9 remain), still registered in
+            // ParkedBaselineFibers.
             FiberWorkLoop.ContinueReconcile(s_drainFiber);
             var resumeTickCreatedTheBackContainer = FindLayerContainer(root, front: false) != null;
             var reParkedWhileStillRegistered = s_drainFiber.HasPendingReconcileWorkForTest();
 
-            // Act — drain the remainder; the double-rebase this test targets is already fully determined by
-            // tick 2 above.
+            // Act — drain the remainder; what this case reads is already fully determined by tick 2 above.
             s_drainFiber.DrainTimeSlicedReconcileForTest();
 
-            // Assert — RED without the fix: the container-creating tick's own +1 delta is applied twice to
-            // the very same PendingIndexedState (current's own self-rebase, then the SAME fiber matched
-            // again in the ParkedBaselineFibers loop, since nothing yet removed it from that registry), so
-            // every trailing item resumes two physical slots ahead of where the container's single
-            // insertion actually left it.
+            // Assert — RED without the fix: every trailing item resumes two physical slots ahead of where
+            // the container's single insertion left it.
             Assert.That(
                 (noBackContainerBeforeTheReRender, parkedAfterItem0, registeredAsParkedBaseline,
                     resumeTickCreatedTheBackContainer, reParkedWhileStillRegistered, TrailingItemOrder(root)),
@@ -1388,7 +1381,7 @@ namespace Velvet.Tests
             store.Set(true);
             mounted.FlushStateForTest();
 
-            // Assert — RED without subtracting LeadingOffset: the re-derived sweep would read "ordinary" as
+            // Assert — RED if the re-derived sweep counts the back container as a sibling: it would read "ordinary" as
             // sibling index 1 (the back container counted as index 0) and "second" as index 2, matching neither
             // first: nor nth-child(2) (which expects 0-based index 1) — un-applying the payload each correctly
             // held after the mount.
@@ -1405,7 +1398,7 @@ namespace Velvet.Tests
         // addressing) without StructuralPatchParentHost itself ever re-rendering. That is deliberate: "parent"
         // itself getting patched would ALSO re-run its own post-children container sweep (ApplyStructuralVariants
         // — the same hunk StructuralSweepHost above exercises), which would re-derive (and so silently mask a
-        // broken) LeadingOffset subtraction in ApplyStructuralVariantConfig moments later in the very same
+        // broken) logical-index conversion in ApplyStructuralVariantConfig moments later in the very same
         // patch. Only isolating "ordinary"'s own re-render like this exercises ApplyStructuralVariantConfig's
         // immediate-evaluation branch on its own.
         [Component]
@@ -1438,7 +1431,7 @@ namespace Velvet.Tests
             store.Set(true);
             mounted.FlushStateForTest();
 
-            // Assert — RED without subtracting LeadingOffset in ApplyStructuralVariantConfig specifically: the
+            // Assert — RED if ApplyStructuralVariantConfig evaluates on physical indices: the
             // immediate evaluation would read "ordinary"'s raw physical index (1, the back container counted as
             // index 0) against the raw count, never matching first: (which expects index 0).
             Assert.That(

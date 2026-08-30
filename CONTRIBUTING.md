@@ -481,11 +481,48 @@ falsify the assumption, which the text does not say, and the filters tried inste
 the suite that the record would stop being a list anybody reads. A case carrying only that shape is
 not in the record; what still reaches it is `assert_no_inconclusive.py`, on the day it fires.
 
+### Checking that a removal did not strand its name
+
+A comment naming a method is true until somebody deletes the method, and nothing was reading for
+that: `DocumentationDriftTests` resolves the names markdown spells and strips comments from every
+format that has them. Three claims about a slot-rebase mechanism shipped that way and were found by
+grepping for the identifier months later.
+
+```bash
+python3 scripts/test_quality/stranded_name_check.py --base origin/main
+```
+
+It reads the change's own removals — a type or a method the diff takes out — and asks whether the
+name still occurs on a code line in any C# source in the tree. If it occurs only in comments, it
+says so.
+
+The direction is what makes it decidable. Asked from the comment side it is not: over this package's
+comments, bare PascalCase tokens resolving to no declaration numbered 518 for 4 real ones, and the
+shapes with a clean ratio — a `cref` attribute at 0.46%, a name with a trailing call, a dotted pair
+with both halves PascalCase — hold none of the four. Asked from the removal side it was two firings
+over 320 commits.
+
+What it declines to judge, and this list is what it claims rather than everything it misses:
+
+- a name surviving only inside a string literal, which is content rather than a reference;
+- a name surviving only in a `#region` or `#pragma` label, which is prose on a line that declares
+  nothing — routed to the code stream instead, one such label answers for that name tree-wide;
+- a property or a field, since the yield above was measured over types and methods and a widening is
+  a fresh measurement rather than an edit;
+- a declaration removed from C# written inside a verbatim string, which the diff reading cannot tell
+  from one removed from the source around it;
+- a comment that went stale for any reason other than a removal in the same change — a renamed
+  parameter, a reversed condition, a mechanism that still exists and no longer does that.
+
+There is no way to declare an exception, and one of the two firings did not want one: a
+base-red declaration, of the refactor category, naming the base tree's method is a true sentence that does not
+need the identifier to say what it says.
+
 ### Repository scripts
 
 `scripts/` holds the harnesses, grouped by what they are for — `test_quality/` (mutation, neuter,
-inconclusive-result and results-provenance guards), `release/` (the release-note builder), `unity/`
-(sample sync). Two rules keep the tree readable:
+inconclusive-result, results-provenance and stranded-name guards), `release/` (the release-note
+builder), `unity/` (sample sync). Two rules keep the tree readable:
 
 - **Python, named in `snake_case`.** Every harness is importable, so a test can exercise it directly rather
   than only through a shell invocation — which is what `release/test_release_notes.py` does. Python needs no

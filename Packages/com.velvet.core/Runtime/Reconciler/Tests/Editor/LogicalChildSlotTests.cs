@@ -11,8 +11,8 @@ namespace Velvet.Tests
     /// reconciler-invisible child may sit ANYWHERE among them, not only in a leading or trailing run.
     /// </summary>
     /// <remarks>
-    /// The reconciler used to treat <c>physical = logical + LeadingOffset</c> as true across a whole child
-    /// list, which pinned every invisible child to one end. A paint that must sit BESIDE the element it
+    /// The reconciler used to treat a physical index as a logical one shifted by a single leading offset
+    /// across a whole child list, which pinned every invisible child to one end. A paint that must sit BESIDE the element it
     /// decorates cannot honour that, so <see cref="LogicalChildSlots"/> converts at each DOM touch instead.
     /// The mid-list cases below are the ones that assumption made impossible; the leading (z-index back
     /// container) and trailing (filter bounds spacer) cases are kept alongside them because both still have
