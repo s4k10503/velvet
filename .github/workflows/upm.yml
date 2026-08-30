@@ -68,7 +68,15 @@ jobs:
       # modification nobody here made.
       - name: Put the release rules back
         if: github.event_name == 'workflow_dispatch'
-        run: git checkout --quiet -- scripts/release scripts/test_quality/run_suite.py
+        # One pathspec at a time. git validates every pathspec before it touches the working tree, so
+        # naming both in one command aborts the whole restore where the dispatched line does not track
+        # one of them -- measured on `2.x`, which has no `run_suite.py`: exit 1, nothing restored, and
+        # the modification this step exists to clear still there. Where the line has not got the file,
+        # the overlay created it and removing it is the restore.
+        run: |
+          git checkout --quiet -- scripts/release
+          git checkout --quiet -- scripts/test_quality/run_suite.py \
+            || git clean --quiet --force -- scripts/test_quality/run_suite.py
 
       - name: Verify version matches package.json (release only)
         if: github.event_name == 'workflow_dispatch'

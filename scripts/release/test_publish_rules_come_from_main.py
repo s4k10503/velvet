@@ -58,12 +58,19 @@ class PublishRulesTests(unittest.TestCase):
         overlay = index_of(lambda run: "origin main" in run and "scripts/release" in run)
         restore = index_of(lambda run: "checkout --quiet --" in run and "scripts/release" in run)
         split = index_of(lambda run: "subtree split" in run)
+        # Every path the overlay writes, against the ones the restore names. Ordering alone left the
+        # restore free to name fewer, and a path it misses is one still holding main's bytes.
+        overlaid = {word for word in (steps()[overlay].get("run") or "").split()
+                    if word.startswith("scripts/")} if overlay is not None else set()
+        putback = {word for word in (steps()[restore].get("run") or "").split()
+                   if word.startswith("scripts/")} if restore is not None else set()
 
         # Act / Assert
         self.assertEqual(
             (overlay is not None, split is not None,
-             restore is not None and overlay < restore < split),
-            (True, True, True))
+             restore is not None and overlay < restore < split,
+             sorted(overlaid - putback)),
+            (True, True, True, []))
 
     def test_Given_TheOverlayAndTheRules_When_TheEventIsAPush_Then_NeitherRuns(self):
         # Arrange -- a push to main is the mirror split, not a release, and has no version to check.
