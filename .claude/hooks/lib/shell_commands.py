@@ -238,26 +238,35 @@ UNRESOLVED_CD = object()
 
 
 def leading_cd(command):
-    """The directory the first segment changes into, UNRESOLVED_CD when it cannot be read, or None.
+    """The directory the command changes into before running anything else, or None.
 
-    Unresolved rather than absent for a target the shell has not expanded: a hook that reads `$SP` as
-    a literal directory answers about a path nothing holds, and answering about the wrong tree is what
-    this exists to stop.
+    UNRESOLVED_CD, not None, for a target the shell has not expanded: a hook that reads `$SP` as a
+    literal directory answers about a path nothing holds, and answering about the wrong tree is what
+    the callers of this exist to stop. None is "it did not move", which sends the caller to the
+    event's own directory -- so anything this cannot read has to come back as the first, or a guard
+    reads a tree the command was never in and says nothing.
+
+    Every segment up to the first that runs a program is read, not the first segment alone. A
+    variable assignment is a segment of its own, and stopping at one left `SP=/tmp; cd "$SP/x"`
+    answering None -- the shape a session types whenever it names a worktree once and moves into it.
     """
-    segments = command_segments(command)
-    if not segments:
-        return None
-    tokens = tokens_of(segments[0])
-    index = leading_program(tokens)
-    if index >= len(tokens) or tokens[index] != "cd":
-        return None
-    rest = [token for token in tokens[index + 1:] if not token.startswith("-")]
-    if not rest:
-        return None
-    target = rest[0]
-    if "$" in target or "`" in target or "~" in target:
-        return UNRESOLVED_CD
-    return target
+    for segment in command_segments(command):
+        tokens = tokens_of(segment)
+        index = leading_program(tokens)
+        if index >= len(tokens):
+            # An assignment and nothing else. It runs where the last `cd` left the shell, and the
+            # next segment is still before anything this cares about.
+            continue
+        if tokens[index] != "cd":
+            return None
+        rest = [token for token in tokens[index + 1:] if not token.startswith("-")]
+        if not rest:
+            return None
+        target = rest[0]
+        if "$" in target or "`" in target or "~" in target:
+            return UNRESOLVED_CD
+        return target
+    return None
 
 
 def git_invocations(command, subcommands, git_directory=False):
