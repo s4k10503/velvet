@@ -39,9 +39,10 @@ concurrency:
   group: docs
   cancel-in-progress: true
 
-# Carried at job level for the reason test_workflow_bytecode_env.py states, and required by it.
-# Named without its path: a workflow that names a repo file is one this repository's push filter has
-# to start for, and a pointer in prose is not a reason to run the docs build.
+# Required by test_workflow_bytecode_env.py, for the reason it states. At the root rather than under
+# a job, because the root mapping is what that guard reads. Its module is named without a path: a repo
+# file this workflow names is one its own push filter has to start for, and this filter covers no
+# suite.
 env:
   PYTHONDONTWRITEBYTECODE: "1"
 
@@ -138,7 +139,10 @@ jobs:
             exit 1
           }
           python3 docs/build.py
-          echo "path=$(python3 docs/build.py --site-path)" >> "$GITHUB_OUTPUT"
+          # Assigned before it is echoed: a substitution inside `echo` fails into an empty output
+          # while the step reports success, and the upload then dies naming itself rather than this.
+          site=$(python3 docs/build.py --site-path)
+          echo "path=$site" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
