@@ -160,7 +160,7 @@ subject that is clear.
 If the pause is deliberate, arm the deferral for what the WORK is waiting on. The failure above is
 not that, and naming it there is how a deferral comes to record something nothing was waiting on:
 
-  echo "{key} <what the work is waiting on> $(date +%s)" >> {DEFERRALS}"""
+  echo "{key} <what the work is waiting on> $(date +%s) $CLAUDE_CODE_SESSION_ID" >> {DEFERRALS}"""
 
 
 def project_tree():
