@@ -39,6 +39,13 @@ concurrency:
   group: docs
   cancel-in-progress: true
 
+# Required by test_workflow_bytecode_env.py, for the reason it states. At the root rather than under
+# a job, because the root mapping is what that guard reads. Its module is named without a path: a repo
+# file this workflow names is one its own push filter has to start for, and this filter covers no
+# suite.
+env:
+  PYTHONDONTWRITEBYTECODE: "1"
+
 jobs:
   license-check:
     name: Check Unity license secret
@@ -122,6 +129,7 @@ jobs:
           echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
 
       - name: Build docs
+        id: site
         env:
           # Linux editor image: engine managed assemblies live under <Editor>/Data.
           UnityEditorContents: /opt/unity/Editor/Data
@@ -130,18 +138,15 @@ jobs:
             echo "::error::Compiled assemblies were not restored — the compile job did not produce Library/ScriptAssemblies."
             exit 1
           }
-          cd docs
-          # Stage a disposable copy of the Documentation~ guides so DocFX's TOC/xref resolution
-          # can see them (see docs/build.py for why this can't reference Documentation~ in place).
-          rm -rf guides
-          mkdir -p guides
-          cp ../Packages/com.velvet.core/Documentation~/*.md guides/
-          docfx metadata docfx.json
-          docfx build docfx.json
+          python3 docs/build.py
+          # Assigned before it is echoed: a substitution inside `echo` fails into an empty output
+          # while the step reports success, and the upload then dies naming itself rather than this.
+          site=$(python3 docs/build.py --site-path)
+          echo "path=$site" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
-          path: docs/_site
+          path: ${{ steps.site.outputs.path }}
 
   deploy:
     name: Deploy to GitHub Pages
