@@ -53,12 +53,12 @@ jobs:
         if: github.event_name == 'workflow_dispatch'
         run: |
           git fetch --quiet --depth=1 origin main
-          git checkout --quiet FETCH_HEAD -- scripts/release
-          git reset --quiet -- scripts/release
+          git checkout --quiet FETCH_HEAD -- scripts/release scripts/test_quality/run_suite.py
+          git reset --quiet -- scripts/release scripts/test_quality/run_suite.py
 
       - name: Release rules (release only)
         if: github.event_name == 'workflow_dispatch'
-        run: python3 scripts/release/test_release_notes.py
+        run: python3 scripts/test_quality/run_suite.py scripts/release/test_release_notes.py
 
       - name: Verify version matches package.json (release only)
         if: github.event_name == 'workflow_dispatch'

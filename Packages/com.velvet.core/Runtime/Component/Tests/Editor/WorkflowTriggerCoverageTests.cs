@@ -70,6 +70,14 @@ namespace Velvet.Tests
         // A negation is a whole pattern, so a ! with anything before it is being used as something else.
         private static readonly Regex UnsupportedGlobPattern = new(@"[?+\[\]{}]|.!", RegexOptions.Compiled);
 
+        // A command naming a glob runs the files it expands to, and a reading that takes the token
+        // literally finds none of them. Only a single * within one segment is expanded: a pattern this
+        // does not read leaves its files reported as run by nothing, which is the direction that fails
+        // loudly rather than covering them in silence.
+        private static readonly Regex SingleStarGlobPattern =
+            new(@"(?<dir>[A-Za-z0-9_.~-]+(?:/[A-Za-z0-9_.~-]+)*)/(?<name>[A-Za-z0-9_.~-]*\*[A-Za-z0-9_.~-]*)",
+                RegexOptions.Compiled);
+
         [Test]
         public void Given_TheMarkdownThisSuiteScans_When_MatchedAgainstTheWorkflowPathFilter_Then_EveryFileStartsTheRun()
         {
@@ -117,6 +125,10 @@ namespace Velvet.Tests
                 "a workflow runs these files and does not start when one of them changes");
         }
 
+        // GREEN_ON_BASE(construction): both sides are this repository's own — the suites under
+        // `scripts/` and the commands its workflows run — so no base run perturbs it. What shows it
+        // still fails is deleting the `Hook guard suites` step: measured, the case then reported all
+        // 21 suites under scripts/hooks/.
         [Test]
         public void Given_EveryHarnessUnitTest_When_TheWorkflowsAreScanned_Then_SomeJobRunsIt()
         {
@@ -132,16 +144,55 @@ namespace Velvet.Tests
                 .OrderBy(path => path, StringComparer.Ordinal)
                 .ToList();
             var invoked = Workflows().SelectMany(RunCommandLines).ToList();
+            var swept = new HashSet<string>(invoked.SelectMany(GlobMatches), StringComparer.Ordinal);
 
             // Act
             var unrun = harnessTests
-                .Where(path => !invoked.Any(line => line.Contains(path, StringComparison.Ordinal)))
+                .Where(path => !swept.Contains(path)
+                               && !invoked.Any(line => line.Contains(path, StringComparison.Ordinal)))
                 .ToList();
 
             // Assert — a floor rather than the count, because a directory that yielded nothing leaves
             // nothing unrun. Raise it with the tree, or a deletion answers the same way an empty scan does.
             Assert.That((harnessTests.Count >= 6, string.Join("\n", unrun)), Is.EqualTo((true, string.Empty)),
                 "a harness under scripts/ has unit tests that no workflow job runs");
+        }
+
+        [Test]
+        public void Given_TheHookGuardSuites_When_TheWorkflowsAreScanned_Then_ASweepRunsThemRatherThanAStepEach()
+        {
+            // Arrange — the case above is satisfied by a step per suite, and that is what this refuses:
+            // every branch adding a guard appended its step to one region, so a queue of them conflicted
+            // pairwise and the last resolved once per branch ahead of it.
+            var suites = Directory
+                .EnumerateFiles(Path.GetFullPath("scripts/hooks"), "test_*.py")
+                .Select(RepoRelative)
+                .OrderBy(path => path, StringComparer.Ordinal)
+                .ToList();
+            var invoked = Workflows().SelectMany(RunCommandLines).ToList();
+            var swept = new HashSet<string>(invoked.SelectMany(GlobMatches), StringComparer.Ordinal);
+            // A block scalar's body is yielded whole, shell comments included, so a note naming a suite
+            // inside the sweep's own step read as a step naming it.
+            var commands = invoked.Where(line => !line.TrimStart().StartsWith("#", StringComparison.Ordinal))
+                .ToList();
+
+            // Act — a step naming one is what regrows the region, and the sweep covering it as well is
+            // no answer to that. Asking only whether the sweep covers them is a question the sweep's own
+            // glob settles: it enumerates this directory with this pattern, so it matches every file
+            // here for as long as the line exists, and a step added beside it is invisible. What this
+            // reads is a suite spelled as its repo-relative path; a step that spells one some other way
+            // — a narrower glob, a relative name under `working-directory` — is not reached.
+            var regrown = suites
+                .Where(path => commands.Any(line => line.Contains(path, StringComparison.Ordinal)))
+                .Select(path => path + " is named by a step of its own")
+                .Concat(suites.Where(path => !swept.Contains(path))
+                            .Select(path => path + " is outside the sweep"))
+                .ToList();
+
+            // Assert — a floor rather than the count, because a directory that yielded nothing leaves
+            // nothing to report. Raise it with the tree, or a deletion answers the same way an empty scan does.
+            Assert.That((suites.Count >= 15, string.Join("\n", regrown)), Is.EqualTo((true, string.Empty)),
+                "a hook guard's suite is run by a step naming it rather than by the sweep over the directory");
         }
 
         /// <summary>Every line of every command a workflow's <c>run:</c> steps execute.</summary>
@@ -177,6 +228,34 @@ namespace Velvet.Tests
                     continue;
                 }
                 yield return line;
+            }
+        }
+
+        /// <summary>The repo files a glob anywhere in <paramref name="text"/> expands to.</summary>
+        /// <remarks>
+        /// Posed the command lines, never a whole workflow: a path filter is itself written in globs, so
+        /// reading the file expanded the filter's own patterns and then required it to start for what they
+        /// matched — docs.yml narrows to <c>Runtime/**/*.cs</c> and was asked to start for every .meta and
+        /// .asmdef beside them.
+        /// </remarks>
+        private static IEnumerable<string> GlobMatches(string text)
+        {
+            foreach (Match match in SingleStarGlobPattern.Matches(text))
+            {
+                var directory = Path.GetFullPath(match.Groups["dir"].Value);
+                if (!Directory.Exists(directory))
+                {
+                    continue;
+                }
+                var name = new Regex(
+                    "^" + Regex.Escape(match.Groups["name"].Value).Replace("\\*", "[^/]*") + "$");
+                foreach (var file in Directory.EnumerateFiles(directory))
+                {
+                    if (name.IsMatch(Path.GetFileName(file)))
+                    {
+                        yield return RepoRelative(file);
+                    }
+                }
             }
         }
 
