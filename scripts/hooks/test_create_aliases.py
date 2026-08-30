@@ -9,9 +9,12 @@ and nothing downstream re-asks — not CI, and not `settle.py`, which merges ove
 Run: python3 scripts/hooks/test_create_aliases.py
 """
 
+import contextlib
 import json
+import shutil
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -19,12 +22,40 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 METADATA = REPO_ROOT / ".claude/hooks/refuse/metadata_less_create.py"
 RECEIPT = REPO_ROOT / ".claude/hooks/refuse/pr_without_mutation_receipt.py"
 
+# What mutation_check.py exits when a receipt is owed and absent. The guard reads this number and
+# nothing else about the harness, so a stub exiting it is a checkout that owes one.
+RECEIPT_REFUSAL = 3
 
-def judge(guard, command):
-    """The guard's exit code for `command`, run in this repository."""
-    event = {"tool_name": "Bash", "cwd": str(REPO_ROOT), "tool_input": {"command": command}}
+
+def judge(guard, command, cwd=None):
+    """The guard's exit code for `command`, in a checkout the caller names."""
+    event = {"tool_name": "Bash", "cwd": str(cwd or REPO_ROOT),
+             "tool_input": {"command": command}}
     return subprocess.run([sys.executable, str(guard)], input=json.dumps(event),
                           capture_output=True, text=True, timeout=90).returncode
+
+
+@contextlib.contextmanager
+def checkout_owing(owed):
+    """A checkout whose campaign harness answers as the caller says, and nothing else.
+
+    The receipt guard's verdict is the harness's: it runs mutation_check.py over the checkout and
+    reads the exit code. Asked of this repository, that is whatever the working tree happens to
+    hold -- a diff on a branch, nothing on a clean main -- so a case pinned against it says
+    something different on every checkout. Measured: the two refusal cases here passed on every
+    pull request and failed on every push to main for a day, because a merged main owes no receipt.
+
+    A stub decides instead, so the spelling is what the case is about.
+    """
+    root = Path(tempfile.mkdtemp(prefix="create-alias-"))
+    try:
+        subprocess.run(["git", "init", "-q", str(root)], check=True, capture_output=True)
+        script = root / "scripts" / "test_quality" / "mutation_check.py"
+        script.parent.mkdir(parents=True)
+        script.write_text("import sys\nsys.exit({})\n".format(RECEIPT_REFUSAL if owed else 0))
+        yield root
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
 
 
 class MetadataSpellingTests(unittest.TestCase):
@@ -56,15 +87,25 @@ class ReceiptSpellingTests(unittest.TestCase):
     """The gate this one holds is posed once and nowhere else."""
 
     def test_Given_APullRequestOpenedAsNew_When_NoCampaignMeasuredIt_Then_ItIsRefused(self):
-        # Act / Assert
-        self.assertEqual(judge(RECEIPT, "gh pr new --title x --label tooling"), 2)
+        # Arrange — a checkout that owes one, so the case is about the spelling.
+        with checkout_owing(True) as root:
+            # Act / Assert
+            self.assertEqual(judge(RECEIPT, "gh pr new --title x --label tooling", root), 2)
 
     # GREEN_ON_BASE(characterization): the base refuses this too, and it is the half the
     # widening could take with it — only running it says whether it did.
     def test_Given_APullRequestOpenedAsCreate_When_NoCampaignMeasuredIt_Then_ItIsStillRefused(self):
         # Arrange — the half that already worked.
-        # Act / Assert
-        self.assertEqual(judge(RECEIPT, "gh pr create --title x --label tooling"), 2)
+        with checkout_owing(True) as root:
+            # Act / Assert
+            self.assertEqual(judge(RECEIPT, "gh pr create --title x --label tooling", root), 2)
+
+    def test_Given_ACheckoutThatOwesNothing_When_APullRequestIsOpened_Then_ItGoesThrough(self):
+        # Arrange — the control the two above need: a guard that refused whatever the harness said
+        # would satisfy them.
+        with checkout_owing(False) as root:
+            # Act / Assert
+            self.assertEqual(judge(RECEIPT, "gh pr new --title x --label tooling", root), 0)
 
     # GREEN_ON_BASE(characterization): the base lets this through, and a widening that
     # refused every `new` would satisfy the red cases above while breaking this.
