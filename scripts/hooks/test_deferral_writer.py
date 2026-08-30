@@ -99,6 +99,27 @@ class WhoseDeferral(unittest.TestCase):
         # Act / Assert
         self.assertEqual(deferrals.deferred("377", NOW + 60), ("waiting on review", 1))
 
+    # GREEN_ON_BASE(characterization): the base reports this and the first draft of the narrowing beside
+    # it stopped — a line nothing attributes was dropped by `own` along with the foreign ones, so the
+    # session that wrote it was told nothing. Measured by routing `unusable` through `own(key)` without
+    # `unsigned`, which fails this case.
+    def test_Given_AnUnsignedMalformedLine_When_TheKeyIsRead_Then_TheWriterIsStillToldWhy(self):
+        # Arrange — what a failed substitution leaves: `echo "377 held by owner $(date+%s)"` with the
+        # space missing writes no stamp and no id. Nothing attributes it, so it suppresses nothing —
+        # and it is the line most likely to be this session's own mistake.
+        self.wrote("377 held by owner")
+
+        # Act / Assert
+        self.assertIn("'owner'", deferrals.unusable("377", NOW + 60) or "")
+
+    def test_Given_ASignedMalformedLine_When_TheKeyIsRead_Then_ItNamesTheStampRatherThanTheSession(self):
+        # Arrange — the session id is the one field that is right here, and naming it sent the writer
+        # to remove the field the deferral needs.
+        self.wrote("377 held by owner {}".format(MINE))
+
+        # Act / Assert
+        self.assertIn("'owner'", deferrals.unusable("377", NOW + 60) or "")
+
     def test_Given_AnotherSessionWroteAMalformedLineLater_When_TheKeyIsRead_Then_ItIsNotReportedAsThisOnes(self):
         # Arrange -- what `unusable` says goes to the session that wrote a deferral and saw nothing
         # happen, so a stamp somebody else fumbled is not an answer to that.

@@ -56,18 +56,29 @@ def written_by(fields):
         else None
 
 
-def own(lines, key):
+def own(lines, key, unsigned=False):
     """The lines for `key` this session wrote, in file order, or all of them where nothing attributes.
 
     Read before the last one is taken rather than after. Taking the file's last line for the key and
     then asking whose it was let any other session's later line stand in for this one's: `deferred`
     saw a line it had to disown and answered None, and `unusable` reported somebody else's malformed
     entry as the reason this session's deferral did nothing.
+
+    `unsigned` keeps the lines nothing attributes, and only a report wants them. Suppressing on one
+    is the hole the field was added to close, but a line missing the field is one this session may
+    have written and got wrong -- a substitution that failed leaves exactly that -- so a reader that
+    drops it tells nobody why their deferral did nothing.
     """
     mine = writer()
-    return [line for line in lines
-            if line.startswith(f"{key} ")
-            and (mine is None or written_by(line.split()) == mine)]
+    found = []
+    for line in lines:
+        if not line.startswith(f"{key} "):
+            continue
+        session = written_by(line.split())
+        if mine is not None and session != mine and not (unsigned and session is None):
+            continue
+        found.append(line)
+    return found
 
 
 def deferred(key, now=None):
@@ -160,7 +171,7 @@ def unusable(key, now=None):
     except OSError:
         return None
 
-    matching = own(lines, key)
+    matching = own(lines, key, unsigned=True)
     if not matching:
         return None
 
@@ -168,9 +179,13 @@ def unusable(key, now=None):
     # The same reading `deferred` takes, because the two run over one line: updated there and not
     # here, a signed line was honoured and reported unusable in the same breath.
     session = written_by(fields)
-    stamp = epoch(fields[-2] if session else fields[-1])
+    stamped = fields[-2] if session else fields[-1]
+    stamp = epoch(stamped)
     if stamp is None:
-        return f"its last field is {fields[-1]!r}, not the epoch second it was written"
+        # The field this read as the stamp, not the line's last one: on a signed line the last field
+        # is the session id and is the one thing that is right, so naming it sent the writer to
+        # remove it.
+        return f"the field it reads as the stamp is {stamped!r}, not the epoch second it was written"
     if (time.time() if now is None else now) - stamp < 0:
         return ("it is stamped in the future — the stamp is when the deferral was WRITTEN "
                 "(`$(date +%s)`), not when it should expire")
