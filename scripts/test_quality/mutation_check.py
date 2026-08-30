@@ -1044,6 +1044,26 @@ def unity_busy():
     return sum(1 for line in result.stdout.splitlines() if re.match(UNITY_RUNNING, line))
 
 
+# A campaign, seen from outside. `wait_for_quiet` counts editors, and a campaign holds none between
+# its mutants -- it applies the mutation, restores the previous one and writes its record -- so two
+# can sample zero in the same gap and launch together. A case reddened by that load reads KILLED in
+# both receipts, with nothing in either to tell it from a mutant a test really killed.
+CAMPAIGN_RUNNING = re.compile(
+    r"^[^ ]*[Pp]ython[^ ]* .*[ /]mutation_check\.py\b")
+
+
+def campaigns_running():
+    """How many mutation campaigns are on this machine, including this one.
+
+    Sampled rather than waited on. Whether a lock is worth its deadlock is a question about how often
+    two are live at once, and that is not answerable from what this repository keeps: two receipts
+    survive locally, ninety minutes apart. So each receipt records what it saw, and the question gets
+    an answer built from runs rather than from a guess about them.
+    """
+    result = subprocess.run(["ps", "-Ao", "command="], capture_output=True, text=True)
+    return sum(1 for line in result.stdout.splitlines() if CAMPAIGN_RUNNING.match(line))
+
+
 def wait_for_quiet(seconds):
     """Waits rather than sharing the machine: every failure in a mutant run has to be attributable
     to the mutation, and a second editor is a second explanation for all of them."""
@@ -1225,10 +1245,17 @@ PASSING_RECEIPTS = ("pass", "unreachable")
 def write_receipt(output, digest, base, verdict, detail):
     path = receipt_path(output, digest)
     path.parent.mkdir(parents=True, exist_ok=True)
+    alone = campaigns_running() <= 1
     path.write_text(json.dumps({
         "digest": digest, "base": base, "verdict": verdict, "detail": detail,
         "at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        # Whether this verdict was reached with the machine to itself. A neighbouring campaign is a
+        # second explanation for every failure in this one, and the editor count cannot see one
+        # between its mutants.
+        "alone": alone,
     }, indent=2))
+    if not alone:
+        print("    a second campaign was running when this verdict was written", flush=True)
     return path
 
 
