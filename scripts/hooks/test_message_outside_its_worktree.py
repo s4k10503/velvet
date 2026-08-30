@@ -41,6 +41,22 @@ class Verdicts(unittest.TestCase):
                               capture_output=True, text=True, timeout=30)
         return done.returncode, done.stderr
 
+    def test_Given_ABodyFileBehindABooleanShorthand_When_Judged_Then_ItIsStillRefused(self):
+        # Arrange — one character, and the guard saw no body file at all: a cluster is read a letter
+        # at a time, so `-d` has to be known before `-F` behind it is. gh posts the file either way.
+        code, said = self.judge(f"gh pr create --title x -dF {self.elsewhere}/body.md")
+
+        # Act / Assert
+        self.assertEqual((code, "the worktree it describes" in said), (2, True))
+
+    def test_Given_APathStandingWhereAnotherOptionsValueGoes_When_Judged_Then_ItIsNotRefused(self):
+        # Arrange — the other direction. `--title` takes a value, so gh reads `-F` as that value and
+        # posts nothing from a file; refusing here is a refusal over a path the command never opens.
+        code, said = self.judge(f"gh pr create --title -F {self.elsewhere}/body.md")
+
+        # Act / Assert
+        self.assertEqual((code, said), (0, ""))
+
     def test_Given_ACommitMessageAtASharedPath_When_Judged_Then_ItIsRefused(self):
         # Arrange — the shape that landed one change's message on another: a generic path outside
         # every worktree, written by whichever agent wrote it last.

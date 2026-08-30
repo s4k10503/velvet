@@ -31,6 +31,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 
+from pr_body import valued as gh_valued  # noqa: E402
 from shell_commands import (  # noqa: E402
     UNRESOLVED_CD, git_invocations, leading_cd, program_invocations, unexpanded)
 
@@ -59,7 +60,13 @@ UNREADABLE_PROBE = {"command": "git commit -F /tmp/velvet-message-probe.txt"}
 
 
 def valued(operands, flags):
-    """The last value given to any of `flags`, or None. `--flag=value` counts."""
+    """The last value given to any of `flags`, or None. `--flag=value` counts.
+
+    `git commit`'s reading, and only its. gh's goes through `pr_body`, which knows which options carry
+    a value -- this one does not, and measured, `gh pr create -dF /tmp/x.md` reads no body file here
+    while gh posts one. The union `pr_body` falls back to is the wrong table for `git commit`: under
+    it `git commit -am "..."` parses as `[('-a', 'm')]` and the message goes unfound.
+    """
     found = None
     index = 0
     while index < len(operands):
@@ -122,13 +129,14 @@ def judge(command, cwd):
         return 2
     here = os.path.join(cwd, moved) if moved else cwd
 
-    asked = [("git commit", operands, MESSAGE_FLAGS)
+    asked = [("git commit", operands, MESSAGE_FLAGS, None)
              for _, _, operands in git_invocations(command, ("commit",))]
     for words in GH_WORDS:
         for operands in program_invocations(command, "gh", words):
-            asked.append(("gh " + " ".join(words), operands, BODY_FILE_FLAGS))
+            asked.append(("gh " + " ".join(words), operands, BODY_FILE_FLAGS, words))
 
-    named = [(what, valued(operands, flags)) for what, operands, flags in asked]
+    named = [(what, valued(operands, flags) if words is None else gh_valued(operands, flags, words))
+             for what, operands, flags, words in asked]
     named = [(what, path) for what, path in named if path is not None]
     if not named:
         return 0
