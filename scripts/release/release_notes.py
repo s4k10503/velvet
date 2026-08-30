@@ -35,6 +35,31 @@ class ReleaseNotesError(Exception):
     """A CHANGELOG that cannot produce a complete note."""
 
 
+def items_under_no_subsection(section_text):
+    """Every item in a section that no `###` heading of that section covers.
+
+    An entry written under a heading of the wrong depth is invisible to the readers that walk the
+    section by its subsections, and stays invisible until the version closes -- at which point the
+    note is built from what they can see. Measured: `#### Fixed` in a closed version surfaces here
+    as "Highlights and nothing else", and in an open one as nothing at all, because nothing walks an
+    open section.
+
+    Read of any section, which is the point: `[Unreleased]` carries no Highlights and never will,
+    so the readings that need them cannot be asked of it, and this one does not need them.
+    """
+    stray, covered = [], False
+    lines = section_text.splitlines() if isinstance(section_text, str) else list(section_text)
+    for line in lines:
+        if VERSION_HEADING.match(line):
+            continue
+        if SUBSECTION_HEADING.match(line):
+            covered = True
+            continue
+        if line.startswith("- ") and not covered:
+            stray.append(line)
+    return stray
+
+
 def extract_version_section(changelog_text, version):
     """Return the lines under `## [version]`, excluding the heading itself."""
     lines = changelog_text.splitlines()
