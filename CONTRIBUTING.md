@@ -479,7 +479,8 @@ python3 scripts/test_quality/stranded_name_check.py --base origin/main
 ```
 
 It reads the change's own removals — a type or a method the diff takes out — and asks whether the
-name still occurs on a code line anywhere in the tree. If it occurs only in comments, it says so.
+name still occurs on a code line in any C# source in the tree. If it occurs only in comments, it
+says so.
 
 The direction is what makes it decidable. Asked from the comment side it is not: over this package's
 comments, bare PascalCase tokens resolving to no declaration numbered 518 for 4 real ones, and the
