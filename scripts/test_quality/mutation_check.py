@@ -1093,7 +1093,8 @@ def wait_for_quiet(seconds):
 
 
 def run_suite(unity, project, platform, scope, results, log, timeout, holder=None):
-    """Returns the wall clock and whether the editor had to be killed.
+    """Returns the wall clock, whether the editor had to be killed, and the most other
+    editors seen at once.
 
     A mutation can turn a loop bound into one that never terminates, and the run would otherwise
     wait on it for as long as the machine is left alone.
@@ -1111,13 +1112,22 @@ def run_suite(unity, project, platform, scope, results, log, timeout, holder=Non
     child = subprocess.Popen(command)
     if holder is not None:
         holder.child = child
+    # Sampled for the run's whole life, not once before it. The campaign waits before every mutant,
+    # and a neighbour arriving ten seconds in is invisible for the rest of that mutant -- where it
+    # can redden a timing-sensitive case, and the mutant is then recorded killed. A mutant that
+    # actually survived, which is a hole in the tests, reported as covered.
+    peak = 0
     try:
-        child.wait(timeout=timeout)
-        return time.time() - start, False
-    except subprocess.TimeoutExpired:
-        child.kill()
-        child.wait()
-        return time.time() - start, True
+        while True:
+            try:
+                child.wait(timeout=3)
+                return time.time() - start, False, peak
+            except subprocess.TimeoutExpired:
+                if time.time() - start > timeout:
+                    child.kill()
+                    child.wait()
+                    return time.time() - start, True, peak
+                peak = max(peak, max(0, unity_busy() - 1))
     finally:
         if holder is not None:
             holder.child = None
@@ -1672,7 +1682,7 @@ def main():
     # the baseline's editor outliving a killed campaign holds the project lock against the next one.
     holder.guard()
     baseline_results = output / "baseline.xml"
-    baseline_wall, baseline_timed_out = run_suite(args.unity, project, args.platform, scope,
+    baseline_wall, baseline_timed_out, _ = run_suite(args.unity, project, args.platform, scope,
                                                   baseline_results, output / "baseline.log",
                                                   args.timeout, holder)
     if baseline_timed_out:
@@ -1715,7 +1725,7 @@ def main():
             mutated = apply_mutation(originals[mutant.path], mutant)
             holder.hold(mutant.path, originals[mutant.path], mutated, mutant.describe(project))
             mutant.path.write_text(mutated)
-            wall, timed_out = run_suite(args.unity, project, args.platform, scope, results, log,
+            wall, timed_out, neighbours = run_suite(args.unity, project, args.platform, scope, results, log,
                                         args.timeout, holder)
             if holder.release() is None:
                 # The record is still there naming a file still mutated. Going on would apply the
@@ -1772,6 +1782,9 @@ def main():
                 mutant.detail = "{} inconclusive, 0 failed".format(counts["inconclusive"])
             else:
                 mutant.verdict = SURVIVED
+            if neighbours:
+                mutant.detail = "{}; {} other editor(s) were up".format(
+                    mutant.detail or "-", neighbours)
             average = (time.time() - started) / index
             print("      {} ({}) in {:.0f}s; {:.0f}s left at {:.0f}s each".format(
                 mutant.verdict, mutant.detail or "-", wall, average * (len(mutants) - index), average))

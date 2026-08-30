@@ -116,6 +116,38 @@ def declaration(line, category="equivalent", reason="a reason of four words", wr
         return mutation_check.Declaration(category, reason, line, written_here=written_here)
 
 
+class NeighbourDuringAMutantTests(unittest.TestCase):
+    """A second editor arriving after the wait is recorded rather than missed.
+
+    The campaign waits before every mutant, and then waits on the child without sampling. A
+    neighbour arriving ten seconds in can redden a timing-sensitive case, `counts["failed"]` is
+    non-zero, and the mutant is recorded killed -- a mutant that actually survived, which is a hole
+    in the tests, reported as covered. `wait_for_quiet`'s own docstring states the invariant this
+    breaks, and enforces it at one instant.
+    """
+
+    @staticmethod
+    def reading():
+        """What one run reports, as a tuple, so a shorter one fails rather than raises."""
+        return tuple(mutation_check.run_suite(
+            sys.executable, ".", "EditMode", ["-c", "pass"],
+            Path("/dev/null"), Path("/dev/null"), 30))
+
+    def test_Given_ARunThatMetNoNeighbour_When_ItIsRead_Then_ThePeakIsZero(self):
+        # Arrange -- a command that exits at once, so the loop samples and finds only this run.
+        reading = self.reading()
+
+        # Act / Assert -- the other two readings ride along, since a peak of zero from a run that
+        # never started says nothing.
+        self.assertEqual((len(reading), reading[-1], reading[1], reading[0] >= 0),
+                         (3, 0, False, True))
+
+    def test_Given_TheRunner_When_ItReturns_Then_ItCarriesAllThreeReadings(self):
+        # Arrange -- read as a shape, so a tree reporting a pair fails here rather than raising.
+        # Act / Assert
+        self.assertEqual(len(self.reading()), 3)
+
+
 class TextReadingKillerTests(unittest.TestCase):
     """A mutant killed only by a fixture that walks this tree's text was killed by nothing.
 
@@ -1883,16 +1915,16 @@ class StubbedCampaign:
         wall = 0.0 if mutant else self.baseline_seconds
         if mutant and self.no_results:
             Path(log).write_text("")
-            return wall, False
+            return wall, False, 0
         if self.not_rebuilt:
             (self.project / "Library" / "ScriptAssemblies" / "None.dll").write_bytes(b"same")
         if mutant and self.times_out:
-            return wall, True
+            return wall, True, 0
         Path(results).write_text(FAILING_RESULTS if (mutant and self.kills) else GREEN_RESULTS)
         Path(log).write_text(
             "Packages/com.velvet.core/Runtime/Probe.cs(5,9): error VEL501: too many branches\n"
             if (mutant and self.build_error) else "")
-        return wall, False
+        return wall, False, 0
 
     def unity_busy(self):
         self.seen.append(self.source.read_text())
