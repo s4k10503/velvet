@@ -42,6 +42,36 @@ def scaffold(project):
     return project
 
 
+class WhatASweepMayRestore(unittest.TestCase):
+    """A sweep restores what a run here writes, and reports the rest rather than deciding.
+
+    "Went dirty because the harness wrote it" and "went dirty because a person typed in it" are the
+    same reading after the fact. Measured before this was scoped: three uncommitted edits to
+    .github/workflows/test.yml were discarded during a sweep, logged as "restored" as they went.
+    """
+
+    def test_Given_AProjectSettingsFile_When_ASweepDirtiesIt_Then_ItIsTheHarnessTerritory(self):
+        # Arrange -- what a neutered run leaves behind, and the reason the restore exists at all.
+        # Act / Assert
+        self.assertIs(
+            neuter_check.in_harness_territory("ProjectSettings/GraphicsSettings.asset"), True)
+
+    def test_Given_AWorkflowFile_When_ItGoesDirty_Then_ItIsNotTheHarnessTerritory(self):
+        # Arrange -- the file the sweep actually destroyed work in.
+        # Act / Assert
+        self.assertIs(neuter_check.in_harness_territory(".github/workflows/test.yml"), False)
+
+    def test_Given_ASourceUnderPackages_When_ItGoesDirty_Then_ItIsNotTheHarnessTerritory(self):
+        # Arrange -- the control on the other side: a cut's own files are put back by its revert,
+        # and everything else under Packages is somebody's edit. Only the two manifests there are
+        # written by a run.
+        # Act / Assert
+        self.assertEqual(
+            (neuter_check.in_harness_territory("Packages/com.velvet.core/Runtime/V.cs"),
+             neuter_check.in_harness_territory("Packages/manifest.json")),
+            (False, True))
+
+
 class BaselineProblem(unittest.TestCase):
     def test_Given_AFilterThatRanNoCases_When_TheBaselineIsRead_Then_ItIsRefused(self):
         # Act

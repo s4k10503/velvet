@@ -164,7 +164,7 @@ what the stall looks like from inside — do the thing instead of announcing it 
 If the user asked something and is waiting on the answer, or the pause is deliberate, say so and
 arm the deferral. It expires after 45 minutes so the reason gets re-examined rather than forgotten:
 
-  echo "backlog <what clears it> $(date +%s)" >> {DEFERRALS}
+  echo "backlog <what clears it> $(date +%s) $CLAUDE_CODE_SESSION_ID" >> {DEFERRALS}
 
 A single issue is deferred the same way, by its number in place of `backlog`.
 

@@ -193,7 +193,7 @@ def refusal(cwd, name, start_point):
             f"git checkout -b {name}",
             "",
             f"To stack on unmerged work on purpose, record intent and retry:",
-            f'  echo "{name} <why> $(date +%s)" >> ~/.velvet-pr-deferrals',
+            f'  echo "{name} <why> $(date +%s) $CLAUDE_CODE_SESSION_ID" >> ~/.velvet-pr-deferrals',
         ]
 
     if main_behind:

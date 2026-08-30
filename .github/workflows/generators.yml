@@ -97,6 +97,8 @@ jobs:
 
       - run: python3 scripts/test_quality/run_suite.py scripts/release/test_publish_rules_come_from_main.py
 
+      - run: python3 scripts/test_quality/run_suite.py scripts/hooks/test_deferral_writer.py
+
       - name: Cohesion report
         run: python3 scripts/test_quality/cohesion_report.py
 
