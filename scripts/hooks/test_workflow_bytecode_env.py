@@ -38,6 +38,10 @@ class WorkflowBytecodeEnvTests(unittest.TestCase):
         return sorted(path for path in WORKFLOWS.glob("*.yml")
                       if runs_python(path.read_text(encoding="utf-8")))
 
+    # GREEN_ON_BASE(construction): the floor under the case below, and a floor is green wherever the
+    # thing it measures exists -- the base runs python3 in its workflows too. Deleting
+    # `runs_python`'s substring test so it selects nothing leaves the case below passing over an
+    # empty set, and this is what fails then.
     def test_Given_TheWorkflowsHere_When_TheyAreRead_Then_SomeRunPython(self):
         # Arrange -- the floor: a case over an empty set would pass having asked nothing.
         # Act / Assert

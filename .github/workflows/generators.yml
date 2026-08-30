@@ -91,6 +91,8 @@ jobs:
       - name: Committed generator DLL check tests
         run: python3 scripts/test_quality/run_suite.py scripts/generators/test_deployed_dll_check.py
 
+      - run: python3 scripts/test_quality/run_suite.py scripts/hooks/test_workflow_bytecode_env.py
+
       - name: Cohesion report
         run: python3 scripts/test_quality/cohesion_report.py
 
