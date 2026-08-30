@@ -49,6 +49,22 @@ class PublishRulesTests(unittest.TestCase):
         # Act / Assert
         self.assertEqual((rules is not None, overlay is not None and rules > overlay), (True, True))
 
+    def test_Given_TheOverlay_When_TheSplitRuns_Then_TheTreeIsCleanAgain(self):
+        # Arrange -- the overlay leaves main's bytes in the working tree and this line's in the index,
+        # which is a modified tracked file. The split checks out a package-at-root commit holding none
+        # of `scripts/`, and a checkout refuses to remove a modified file: measured, `Entry
+        # 'scripts/release/...' not uptodate. Cannot merge.`, exit 128, after the note is built and
+        # before any tag is pushed.
+        overlay = index_of(lambda run: "origin main" in run and "scripts/release" in run)
+        restore = index_of(lambda run: "checkout --quiet --" in run and "scripts/release" in run)
+        split = index_of(lambda run: "subtree split" in run)
+
+        # Act / Assert
+        self.assertEqual(
+            (overlay is not None, split is not None,
+             restore is not None and overlay < restore < split),
+            (True, True, True))
+
     def test_Given_TheOverlayAndTheRules_When_TheEventIsAPush_Then_NeitherRuns(self):
         # Arrange -- a push to main is the mirror split, not a release, and has no version to check.
         guarded = [step.get("if") for step in steps()

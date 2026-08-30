@@ -60,6 +60,16 @@ jobs:
         if: github.event_name == 'workflow_dispatch'
         run: python3 scripts/test_quality/run_suite.py scripts/release/test_release_notes.py
 
+      # The overlay leaves main's bytes in the working tree and this line's in the index, which is a
+      # modified tracked file. `git subtree split` below checks out a package-at-root commit whose tree
+      # holds none of `scripts/`, and a checkout refuses to remove a modified file -- measured, `Entry
+      # 'scripts/release/…' not uptodate. Cannot merge.`, exit 128, after the note is built and before
+      # any tag is pushed. Put back rather than forced away at the split, so the split keeps refusing a
+      # modification nobody here made.
+      - name: Put the release rules back
+        if: github.event_name == 'workflow_dispatch'
+        run: git checkout --quiet -- scripts/release scripts/test_quality/run_suite.py
+
       - name: Verify version matches package.json (release only)
         if: github.event_name == 'workflow_dispatch'
         env:
