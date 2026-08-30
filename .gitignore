@@ -13,6 +13,13 @@
 # Test-result XML from a hand-run sweep. The harnesses under scripts/ default to Logs/, already ignored
 # above; this covers the directory a hand-run names instead, after nine such files reached a commit.
 /merged/
+# What Window ▸ General ▸ Test Runner writes, which is neither of the two above: a run from the editor
+# names these whatever the CLI was told, and the results XML it leaves at the root outlives the tree
+# it measured. 968 of them were sitting untracked when this was added.
+/Test results (EditMode)/
+/Test results (PlayMode)/
+/Code coverage (EditMode)/
+/Code coverage (PlayMode)/
 /[Uu]ser[Ss]ettings/
 /[Mm]emoryCaptures/
 
