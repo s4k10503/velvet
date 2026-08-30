@@ -382,9 +382,9 @@ class UnreadableTests(unittest.TestCase):
             self.assertIn(str(ran.project), said)
 
     # GREEN_ON_BASE(construction): the base has no precondition to fire, so it passes for want of
-    # one. What this holds is the shape the first attempt at one refused: replacing
-    # `measured_elsewhere` with a reading of whether each named file sits under `project` fails this
-    # case, and nothing else in the suite notices.
+    # one. What this holds is the shape the first attempt at one refused, and it is the case named
+    # for it: replacing `measured_elsewhere` with a reading of whether each named file sits under
+    # `project` fails it, along with 23 others that keep their output beside the project too.
     def test_Given_ARunOfThisProjectWritingItsResultsElsewhere_When_ItIsRead_Then_ItIsNotRefused(self):
         # Arrange -- CONTRIBUTING's story-capture recipe: -projectPath the checkout, -testResults
         # /tmp. Where the files sit says nothing; what the run opened is the question.
@@ -402,13 +402,14 @@ class UnreadableTests(unittest.TestCase):
             self.assertEqual(code, 0)
 
     # GREEN_ON_BASE(construction): the base passes for want of a precondition. Dropping the
-    # `named.is_dir()` term from `measured_elsewhere` fails this case, and it is the one CI takes on
-    # every pull request — the container path a downloaded artifact names is on no runner.
+    # `named.is_dir()` term from `measured_elsewhere` fails this case and no other, and it is the
+    # one CI takes on every pull request — the container path a run names is on no runner.
     def test_Given_ALogNamingAProjectThisMachineDoesNotHave_When_ItIsRead_Then_ItIsNotRefused(self):
-        # Arrange -- an artifact downloaded out of a container names the container's path, and the
-        # run it came from is not one this machine can locate. CI reads exactly this.
+        # Arrange -- a run inside a container names the container's path, and the tree it opened is
+        # not one this machine has. This is the shape CI reads on every pull request.
         with workspace() as tree:
-            tree.wrote(log="Successfully changed project path to: /github/workspace\n"
+            # The trailing "/." is what game-ci's own logs carry, and Path normalises it away.
+            tree.wrote(log="Successfully changed project path to: /github/workspace/.\n"
                            "Saving results to: {}\n".format(tree.results))
 
             # Act

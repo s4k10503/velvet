@@ -429,9 +429,14 @@ is refused rather than taken. Pointing it at another worktree's results with `--
 default measured exit 0 where the two trees declare the same fixtures, and where they do not it
 names a fixture as a stranger — the sentence for a stale `Library`, about work that is fine. Where
 the results file *sits* is not the question: the story-capture recipe above writes to `/tmp` from a
-run whose project is the checkout, and a path the log names that this machine does not have is an
-artifact out of a container, which is what CI reads. What it still cannot separate is two runs of
-the same project writing a results file of the same name; what answers that is the headless recipe's
+run whose project is the checkout.
+
+Two runs are stood aside for rather than compared, because their tree is not here: one inside a
+container, which names the container's path and is what CI reads, and one whose tree has since been
+deleted — the base tree the base-red harness builds and removes. A results file of either read
+against this checkout's sources passes unremarked, and what keeps the second out of the way is the
+rule that a directory argument is not descended into. It still cannot separate two runs of the same
+project writing a results file of the same name; what answers that is the headless recipe's
 per-worktree logs directory, not the guard.
 
 Each Unity job in CI runs it after the suite, and CLAUDE.md's headless recipe runs it beside
