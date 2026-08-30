@@ -162,7 +162,10 @@ def unusable(key, now=None):
         return None
 
     fields = matching[-1].split()
-    stamp = epoch(fields[-1])
+    # The same reading `deferred` takes, because the two run over one line: updated there and not
+    # here, a signed line was honoured and reported unusable in the same breath.
+    session = written_by(fields)
+    stamp = epoch(fields[-2] if session else fields[-1])
     if stamp is None:
         return f"its last field is {fields[-1]!r}, not the epoch second it was written"
     if (time.time() if now is None else now) - stamp < 0:
