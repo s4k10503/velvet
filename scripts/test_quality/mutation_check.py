@@ -629,6 +629,10 @@ def closes_a_do_block(text, mask, spans, number):
     return False
 
 
+# A control header whose body is the next line: deleting that line leaves the header with none.
+AWAITING_A_BODY = re.compile(r"(?:^|[;{}])\s*(?:if|for|foreach|while|else\s+if)\s*\(.*\)$|(?:^|[;{}])\s*else$")
+
+
 def deletable_line(text, mask, spans, number):
     """Whether removing line `number`'s code leaves what surrounds it standing.
 
@@ -835,8 +839,17 @@ def mutations_for(path, text, target_lines):
             if DECLARES_A_NAME.search(code_only(text, mask, start + column, start + column + len(cut))):
                 continue
             found.append(Mutant(path, number, column, cut, "", "clause removed"))
+        # This operator deletes a whole line too, so it owes the same two questions the removal
+        # operator asks -- but not the third. `deletable_line` also requires the code above to have
+        # ended a statement, which is about a declaration's tail and rejects a fragment that starts
+        # on the line under test; a guard is a whole statement by the pattern that matched it.
+        # What it does owe: the line above must not be a control header still waiting for its body,
+        # and the line below must not be an `else`. Neither is in the package today -- 396 mutants
+        # either way -- so what moves is that the next one cannot be emitted unread.
         if (GUARD_STATEMENT.match(stripped) and all(mask[start:start + limit])
-                and not DECLARES_A_NAME.search(code_only(text, mask, start, start + limit))):
+                and not DECLARES_A_NAME.search(code_only(text, mask, start, start + limit))
+                and not AWAITING_A_BODY.search(code_above(text, mask, spans, number))
+                and not code_below(text, mask, spans, number).startswith("else")):
             found.append(Mutant(path, number, line.index(stripped), stripped, "", "guard removed"))
     return found
 
