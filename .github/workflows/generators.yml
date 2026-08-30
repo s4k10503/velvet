@@ -51,6 +51,15 @@ concurrency:
 permissions:
   contents: read
 
+# Python validates a cached bytecode file against the source's mtime in whole seconds and its size,
+# so a length-preserving edit made and undone inside one second leaves the cache valid and the next
+# run executes the previous state's bytecode. base_red_check withdraws a carried file and asks the
+# tree again, which is exactly that window. -B is not the fix -- it stops the write and not the
+# read, so a cache written by one invocation is still read by the next; the setting has to reach
+# every invocation, and at job level it does.
+env:
+  PYTHONDONTWRITEBYTECODE: "1"
+
 jobs:
   # ---------------------------------------------------------------------------
   # Source-generator tests (.NET / xUnit). No Unity license required.
@@ -81,6 +90,8 @@ jobs:
       # other than the pin — which a run over a healthy checkout does not reach.
       - name: Committed generator DLL check tests
         run: python3 scripts/test_quality/run_suite.py scripts/generators/test_deployed_dll_check.py
+
+      - run: python3 scripts/test_quality/run_suite.py scripts/hooks/test_workflow_bytecode_env.py
 
       - name: Cohesion report
         run: python3 scripts/test_quality/cohesion_report.py
