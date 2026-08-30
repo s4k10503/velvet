@@ -24,6 +24,10 @@ concurrency:
   group: upm
   cancel-in-progress: false
 
+# Same reason test.yml gives: the setting is worth nothing unless every invocation carries it.
+env:
+  PYTHONDONTWRITEBYTECODE: "1"
+
 jobs:
   split:
     name: Split package to upm branch
