@@ -116,6 +116,44 @@ def declaration(line, category="equivalent", reason="a reason of four words", wr
         return mutation_check.Declaration(category, reason, line, written_here=written_here)
 
 
+class NeighbouringCampaignTests(unittest.TestCase):
+    """A receipt says whether the verdict was reached with the machine to itself.
+
+    wait_for_quiet counts editors, and a campaign holds none between its mutants -- it applies the
+    mutation, restores the previous one and writes its record. So two can sample zero in the same gap
+    and launch together, and a case reddened by that load reads KILLED in both receipts, with nothing
+    in either to tell it from a mutant a test really killed.
+
+    Recorded rather than gated: whether a lock is worth its deadlock is a question about how often
+    two are live at once, and that is not answerable from what this repository keeps -- two receipts
+    survive locally, ninety minutes apart.
+    """
+
+    def test_Given_ACampaignsOwnCommandLine_When_TheProcessListIsRead_Then_ItCounts(self):
+        # Arrange — what this campaign looks like from outside.
+        line = "/usr/bin/python3 /repo/scripts/test_quality/mutation_check.py --base origin/main"
+
+        # Act / Assert
+        self.assertIsNotNone(mutation_check.CAMPAIGN_RUNNING.match(line))
+
+    def test_Given_ASiblingHarness_When_TheProcessListIsRead_Then_ItDoesNotCount(self):
+        # Arrange — the control: base_red_check and neuter_check wait for a quiet machine
+        # themselves, and counting them here would make a campaign wait out something that is not a
+        # second explanation for its own failures.
+        line = "/usr/bin/python3 /repo/scripts/test_quality/base_red_check.py --lane csharp"
+
+        # Act / Assert
+        self.assertIsNone(mutation_check.CAMPAIGN_RUNNING.match(line))
+
+    def test_Given_AnEditorRunningTests_When_TheProcessListIsRead_Then_ItIsNotACampaign(self):
+        # Arrange — the other control: an editor is what the existing wait already counts, and
+        # counting it twice would report a neighbour where there is one explanation, not two.
+        line = "/Applications/Unity/Hub/Editor/6000.3.11f1/Unity.app/Contents/MacOS/Unity -runTests"
+
+        # Act / Assert
+        self.assertIsNone(mutation_check.CAMPAIGN_RUNNING.match(line))
+
+
 class CodeMaskTests(unittest.TestCase):
     """Which offsets count as code. Everything downstream of the mask reads only what it leaves.
 
