@@ -405,6 +405,67 @@ class StrandedTests(unittest.TestCase):
             self.assertEqual(code, 1)
 
 
+    ONE_WORD_BEFORE = """namespace Velvet
+{
+    internal static class Probe
+    {
+        internal static int Guards(int at) => at;
+
+        internal static int Read(int at) => Guards(at);
+    }
+}
+"""
+
+    ONE_WORD_AFTER = """namespace Velvet
+{
+    internal static class Probe
+    {
+        // Guards the index, which the caller has already made absolute.
+        internal static int Read(int at) => at;
+    }
+}
+"""
+
+    def test_Given_ARemovedNameOfOneWord_When_ACommentSpellsIt_Then_ItIsNotRefused(self):
+        # Arrange -- measured on the change beside this one, which removed a method called `Guards`:
+        # the check reported two doc comments reading "Guards the cohesion scanner" and "Guards".
+        # No rule over the occurrence separates that from a real reference, because both are the
+        # bare word in prose.
+        with repository() as tree:
+            tree.source.write_text(self.ONE_WORD_BEFORE, encoding="utf-8")
+            tree.commit("one word")
+            tree.changed_to(self.ONE_WORD_AFTER)
+
+            # Act
+            code, _ = tree.verdict()
+
+            # Assert
+            self.assertEqual(code, 0)
+
+    # GREEN_ON_BASE(characterization): the control for the narrowing beside it, and a control is
+    # green on both sides by construction -- one that reddened would mean the narrowing had moved
+    # the ordinary reading rather than carved the one-word class out of it.
+    def test_Given_ARemovedNameOfTwoWords_When_ACommentSpellsIt_Then_ItIsStillRefused(self):
+        # Arrange -- the control: a narrowing that dropped every removal would satisfy the case
+        # above while losing what this exists for. Two humps is the only difference between them.
+        with repository() as tree:
+            tree.changed_to("""namespace Velvet
+{
+    internal static class Probe
+    {
+        // The caller rebases first (see RebaseSlots).
+        internal static int Read(int at) => at;
+    }
+}
+""")
+
+            # Act
+            code, _ = tree.verdict()
+
+            # Assert
+            self.assertEqual(code, 1)
+
+
 class RepositoryHistoryTests(unittest.TestCase):
     """Held against real commits, since a guard that fires only on invented text is untested."""
 

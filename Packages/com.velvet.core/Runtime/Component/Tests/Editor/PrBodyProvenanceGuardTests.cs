@@ -10,9 +10,9 @@ namespace Velvet.Tests
     /// <summary>
     /// Poses <c>.claude/hooks/refuse/pr_body_of_another_branch.py</c> a body of each shape it decides
     /// about and an event varying what those commands hold fixed, and reads the verdict it returns.
-    /// <see cref="GuardCommandCoverageTests"/> asks what that guard recognises in a command
-    /// and <see cref="PreExpansionPolicyTests"/> asks the single verdict its own probe poses; what it
-    /// decides about a body was asked by neither. Of ten one-line changes to it, nine left both of
+    /// <see cref="GuardCommandCoverageTests"/> asks what that guard recognises in a command, and
+    /// <c>scripts/hooks/test_pre_expansion_policy.py</c> asks the single verdict its own probe poses;
+    /// what it decides about a body was asked by neither. Of ten one-line changes to it, nine left both of
     /// those green — including one that accepted every body.
     /// </summary>
     /// <remarks>

@@ -153,10 +153,20 @@ def removed_declarations(base, head):
     return names
 
 
+# A name of one word is one English uses too. Measured: removing a method called `Guards` reported
+# two doc comments reading "Guards the cohesion scanner" and "Guards", and no rule over the
+# occurrence separates that from a real reference -- both are the bare word in prose. Two humps is
+# what a declaration this repository writes has and a sentence does not, and it costs the names that
+# are one word: a removed `Answer` or `Read` stranded in a comment goes unreported.
+MULTI_HUMP = re.compile(r"^[A-Z][a-z0-9]+(?:[A-Z][a-z0-9]*)+$")
+
+
 def stranded(base, head):
     """(name, files) for every removed name the tree still spells, in comments and nowhere else."""
     left = []
     for name in sorted(removed_declarations(base, head)):
+        if not MULTI_HUMP.match(name):
+            continue
         # C# only. A name a removed declaration leaves behind in USS, JSON or an asmdef is content
         # rather than a reference to the declaration. CONTRIBUTING owns the rest of what this
         # declines to judge.
