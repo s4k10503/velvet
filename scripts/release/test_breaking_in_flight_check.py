@@ -194,5 +194,42 @@ class Decisions(unittest.TestCase):
         self.assertEqual(done.returncode, 0)
 
 
+class RecordingIsNotClosing(unittest.TestCase):
+    """A version the remote already tags is carried across, not closed.
+
+    Carrying a maintenance line's released section forward brings its heading with it, and read as a
+    release it puts the question to a body that decides nothing about it: the version shipped before
+    the pull request existed.
+    """
+
+    def setUp(self):
+        self.root, self.base, self.branch = repository()
+        # An origin to ask, pointing at the tree itself: the reading is of the remote's tags, and a
+        # checkout with none reads as none, which is the direction that asks about everything.
+        git(self.root, "remote", "add", "origin", str(self.root))
+
+    def test_Given_AVersionTheRemoteTags_When_TheChangeCarriesIt_Then_NothingIsAsked(self):
+        # Arrange -- the forward-carry: the section arrives, the tag is already out.
+        git(self.root, "tag", "v3.0.0")
+
+        # Act
+        done = run(self.root, self.base, listing(377, self.branch))
+
+        # Assert
+        self.assertEqual((done.returncode, "closes no version" in done.stdout), (0, True))
+
+    # GREEN_ON_BASE(characterization): the control, and it is what the base does for every version.
+    # Reddening it would mean this change had moved the ordinary reading rather than carved one
+    # state out of it.
+    def test_Given_AVersionNoTagNames_When_TheChangeAddsIt_Then_TheBodyIsAsked(self):
+        # Arrange -- the control: with no tag the same tree is a release, which is what every
+        # ordinary one looks like here, and the body has to decide about the work in flight.
+        # Act
+        done = run(self.root, self.base, listing(377, self.branch))
+
+        # Assert
+        self.assertEqual(done.returncode, 2)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
