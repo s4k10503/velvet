@@ -142,6 +142,9 @@ class SignedLineIsNotUnusable(unittest.TestCase):
         # Act / Assert
         self.assertIsNone(deferrals.unusable("377", NOW + 60))
 
+    # GREEN_ON_BASE(characterization): the control, and the base names a malformed line too -- that
+    # reading is what this widens rather than replaces. One that reddened would mean the widening had
+    # taken the rejection with it.
     def test_Given_ALineWhoseStampIsMissing_When_ItIsReadForRejection_Then_ItIsStillNamed(self):
         # Arrange -- the control: the reading that catches a malformed line has to keep catching it.
         self.file.write_text("377 waiting on review later {}\n".format(MINE), encoding="utf-8")
