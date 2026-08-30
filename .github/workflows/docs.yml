@@ -122,6 +122,7 @@ jobs:
           echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
 
       - name: Build docs
+        id: site
         env:
           # Linux editor image: engine managed assemblies live under <Editor>/Data.
           UnityEditorContents: /opt/unity/Editor/Data
@@ -130,18 +131,12 @@ jobs:
             echo "::error::Compiled assemblies were not restored — the compile job did not produce Library/ScriptAssemblies."
             exit 1
           }
-          cd docs
-          # Stage a disposable copy of the Documentation~ guides so DocFX's TOC/xref resolution
-          # can see them (see docs/build.py for why this can't reference Documentation~ in place).
-          rm -rf guides
-          mkdir -p guides
-          cp ../Packages/com.velvet.core/Documentation~/*.md guides/
-          docfx metadata docfx.json
-          docfx build docfx.json
+          python3 docs/build.py
+          echo "path=$(python3 docs/build.py --site-path)" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
-          path: docs/_site
+          path: ${{ steps.site.outputs.path }}
 
   deploy:
     name: Deploy to GitHub Pages

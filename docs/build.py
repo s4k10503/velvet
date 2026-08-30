@@ -12,14 +12,21 @@ For a non-default Unity install, point at its managed-assemblies parent:
 MSBuild reads UnityEditorContents from the environment automatically.
 """
 
+import json
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+DOCFX = HERE / "docfx.json"
 GUIDES = HERE / "guides"
 DOCUMENTATION = HERE.parent / "Packages" / "com.velvet.core" / "Documentation~"
+
+
+def site():
+    """Where DocFX writes the built site, which docfx.json owns."""
+    return HERE / json.loads(DOCFX.read_text(encoding="utf-8"))["build"]["output"]
 
 
 def run(command):
@@ -29,6 +36,12 @@ def run(command):
 
 
 def main():
+    # The caller that publishes the site asks for the path rather than repeating it, so a rename in
+    # docfx.json moves the upload with it instead of leaving it pointed at an empty directory.
+    if "--site-path" in sys.argv[1:]:
+        print(site().relative_to(HERE.parent).as_posix())
+        return 0
+
     # The hand-authored guides under Packages/com.velvet.core/Documentation~ are the single source
     # of truth (that directory is also the standard Unity Package Manager offline-docs location, so
     # it must stay put). DocFX's TOC/xref resolution only matches conceptual pages that live under
@@ -42,7 +55,7 @@ def main():
     run(["docfx", "metadata", "docfx.json"])
     run(["docfx", "build", "docfx.json"])
 
-    print(f"Velvet API site generated at: {HERE / '_site' / 'index.html'}")
+    print(f"Velvet API site generated at: {site() / 'index.html'}")
     return 0
 
 

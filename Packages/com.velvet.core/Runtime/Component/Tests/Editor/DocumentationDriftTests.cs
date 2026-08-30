@@ -1517,6 +1517,30 @@ namespace Velvet.Tests
         private static readonly Regex DocfxOutputPattern =
             new(@"""(?:dest|output)""\s*:\s*""([^""]+)""", RegexOptions.Compiled);
 
+        [Test]
+        public void Given_TheDocfxGeneratedDirectories_When_TheWorkflowsAreScanned_Then_NoneIsWrittenOutAgain()
+        {
+            // Arrange - the Pages upload used to carry docs/_site as a literal beside the docfx.json that
+            // declares it. Renaming the key there moves what docfx writes and leaves the upload pointed at
+            // a directory that is now empty, which publishes an empty site with the workflow green.
+            var generated = DocfxGeneratedDirectories();
+
+            // Act
+            var restated = (from workflow in Directory
+                                .EnumerateFiles(Path.GetFullPath(".github/workflows"), "*.yml")
+                                .Concat(Directory.EnumerateFiles(Path.GetFullPath(".github/workflows"), "*.yaml"))
+                            let text = File.ReadAllText(workflow)
+                            from directory in generated
+                            where text.Contains(directory, StringComparison.Ordinal)
+                            select $"{Path.GetFileName(workflow)} names {directory}")
+                .ToList();
+
+            // Assert - how many directories were derived rides along, because a derivation finding none
+            // leaves this reporting the same silence a workflow that restates none does.
+            Assert.That((generated.Count, string.Join("\n", restated)), Is.EqualTo((2, string.Empty)),
+                "docs/docfx.json owns where DocFX writes; a workflow repeating it drifts in silence");
+        }
+
         // GREEN_ON_BASE(characterization): the exclusion this pins lives in DocumentationCorpus.
         // That is a test-assembly file the base run carries from the branch along with the case, so the
         // base answers over the branch's own list. What stands in for the base run is the entry removed
