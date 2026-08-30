@@ -154,17 +154,21 @@ namespace Velvet.Tests
         public void Given_AnOutletLeftWithoutAScope_When_ItIsPatchedAtTheSameRoute_Then_TheRetryIsContainedToo()
         {
             // Arrange — the mount's own create failed, so no scope is registered and the patch takes the
-            // branch that builds one for a route it is already holding.
+            // branch that builds one for a route it is already holding. The arrangement goes through
+            // EscapesFrom as well, because on a tree with no containment it is the mount that throws and
+            // the case would raise out of its own Arrange rather than reach the comparison below.
             s_throwOnDispose = false;
             _scopeFactory.ThrowOnCreate = true;
             LogAssert.Expect(LogType.Exception,
                              new Regex("InvalidOperationException: " + CreateFailureMessage));
-            var mounted = MountRoutedApp();
+            VNode[] mounted = null;
+            var escapedTheMount = EscapesFrom(() => mounted = MountRoutedApp());
             LogAssert.Expect(LogType.Exception,
                              new Regex("InvalidOperationException: " + CreateFailureMessage));
 
             // Act
-            var escaped = EscapesFrom(() => ReRenderAppAtCurrentLocation(mounted));
+            var escaped = escapedTheMount
+                          || EscapesFrom(() => ReRenderAppAtCurrentLocation(mounted));
 
             // Assert
             Assert.That((escaped, LabelTextsUnder(_root)), Is.EqualTo((false, "route")));
