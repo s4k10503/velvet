@@ -224,6 +224,54 @@ class NeighbouringCampaignTests(unittest.TestCase):
         self.assertIsNone(mutation_check.CAMPAIGN_RUNNING.match(line))
 
 
+class RewritesThatCannotCompile(unittest.TestCase):
+    """Two of the three mechanisms behind a mutant that cannot compile from a rewrite.
+
+    `-` has no string overload, so a `+` joining a literal rewrites into CS0019; and `while (true)`
+    is how a method with no other returning path returns at all, so `while (false)` leaves it with
+    none and the file stops compiling with CS0161. Neither is behaviour a test could notice.
+
+    Measured over this package's production sources: arithmetic 807 to 743, literal 1709 to 1707 --
+    66 of the 208 the issue counts. The third mechanism, a flip leaving a pattern variable
+    unassigned, is 113 of them and is not a line reading.
+    """
+
+    def operators(self, line, wanted):
+        lines = set(range(1, line.count("\n") + 2))
+        return [m for m in mutation_check.mutations_for("C.cs", line, lines)
+                if m.operator == wanted]
+
+    def test_Given_APlusJoiningALiteral_When_TheMutantsAreRead_Then_ItIsNotOffered(self):
+        # Arrange -- `"a" - name` is not an expression.
+        # Act / Assert
+        self.assertEqual(self.operators('Log("a" + name);\n', "arithmetic"), [])
+
+    # GREEN_ON_BASE(characterization): the control, and the base offers this one too -- that is the
+    # operator working, which this narrows rather than replaces.
+    def test_Given_APlusBetweenNumbers_When_TheMutantsAreRead_Then_ItIsStillOffered(self):
+        # Arrange -- the control: a reading that skipped every `+` would satisfy the case above and
+        # take the operator with it.
+        # Act / Assert
+        self.assertEqual(len(self.operators("total = a + b;\n", "arithmetic")), 1)
+
+    def test_Given_BothOnOneLine_When_TheMutantsAreRead_Then_OnlyTheArithmeticOneIsOffered(self):
+        # Arrange -- read per occurrence rather than per line: skipping the line took 650 where the
+        # mechanism is 64.
+        # Act / Assert
+        self.assertEqual(len(self.operators('Log("a" + name, x + y);\n', "arithmetic")), 1)
+
+    def test_Given_AForeverLoop_When_TheMutantsAreRead_Then_ItsTrueIsNotFlipped(self):
+        # Arrange -- `while (false)` leaves a method with no returning path.
+        # Act / Assert
+        self.assertEqual(self.operators("while (true)\n", "literal"), [])
+
+    # GREEN_ON_BASE(characterization): as above, on the other operator.
+    def test_Given_AnOrdinaryTrue_When_TheMutantsAreRead_Then_ItIsStillFlipped(self):
+        # Arrange -- the control on the other side.
+        # Act / Assert
+        self.assertEqual(len(self.operators("var ready = true;\n", "literal")), 1)
+
+
 class GuardRemovalReadsTheStatement(unittest.TestCase):
     """The guard operator deletes a whole line, so it takes the reading the removal operator does.
 
