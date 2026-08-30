@@ -392,6 +392,17 @@ OPERATORS = [
 
 WORD_OPERATORS = [("true", "false", "literal"), ("false", "true", "literal")]
 
+def joins_a_string(line, index):
+    """Whether the ` + ` at `index` has a string literal for one of its operands.
+
+    Read on either side of that one operator rather than over the line, which holds both kinds at
+    once: `Log("x" + name)` beside `total = a + b` is one line and one of the two is arithmetic.
+    """
+    return line[:index].rstrip().endswith('"') or line[index + 3:].lstrip().startswith('"')
+
+# `while (true)`, which is how a method with no other returning path returns at all.
+FOREVER_LOOP = re.compile(r"\bwhile\s*\(\s*true\s*$")
+
 # An identifier, an optional type argument list, a parenthesised head, a semicolon-terminated tail.
 # The word in front of the parenthesis is no part of that, so what the removal takes is everything the
 # line runs rather than one call -- which is what its verdict is named for.
@@ -809,13 +820,23 @@ def mutations_for(path, text, target_lines):
                 continue
             index = line.find(before)
             while index >= 0:
-                if all(mask[start + index:start + index + len(before)]):
+                # `"a" - "b"` is not an expression: `-` has no string overload, so a `+` with a
+                # literal on either side rewrites into CS0019 rather than into behaviour a test
+                # could notice. Read per occurrence -- a line can hold one of each, and skipping
+                # the line took 650 arithmetic mutants where the mechanism is 93.
+                if (all(mask[start + index:start + index + len(before)])
+                        and not (before == " + " and joins_a_string(line, index))):
                     found.append(Mutant(path, number, index, before.strip(), after.strip(), operator))
                 index = line.find(before, index + 1)
         for before, after, operator in WORD_OPERATORS:
             for match in re.finditer(r"\b{}\b".format(before), line):
-                if all(mask[start + match.start():start + match.end()]):
-                    found.append(Mutant(path, number, match.start(), before, after, operator))
+                if not all(mask[start + match.start():start + match.end()]):
+                    continue
+                # `while (true)` is how a method's only returning path is reached; `while (false)`
+                # leaves it with none and the file stops compiling -- CS0161 rather than a verdict.
+                if before == "true" and FOREVER_LOOP.search(line[:match.end()]):
+                    continue
+                found.append(Mutant(path, number, match.start(), before, after, operator))
         stripped = line.strip()
         limit = len(line.rstrip())
         # The masked code rather than the raw line: `;$` fails wherever anything follows the
