@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.4] - 2026-08-30
+
+### Highlights
+
+- A `V.NavLink` whose `to` is relative navigated correctly and never lit up. The click resolved the
+  target through the router while the active comparison used the string as written, so `to: ".."`
+  was measured against a path that starts with `/` and never matched. Both sides resolve the same
+  way now.
+
+- A pending indicator could stay on screen after its transition finished, or never come up at all.
+  `isPending` answered for the lanes of the component that called `startTransition` rather than for
+  the work the callback did, so a transition whose writes all landed elsewhere read as settled the
+  moment the callback returned, and two concurrent transitions credited each other.
+
+- `startTransition(() => setItemsFromParent(heavyList))` — the shape a child uses to defer an
+  expensive update through a setter it was handed — did not defer. The update was classified against
+  the component that owns the state, which is in no transition, so it took the Normal lane, or the
+  Urgent one inside a click. `Store` writes made in the callback behaved the same way.
+
+- An update that merely happened to land while an async action was awaiting — a timer tick, a
+  `UseStore` notification, a `UseMutation` callback — was taken for the action's own continuation and
+  given the Transition lane, where it waited out the delayed tier's 100 ms instead of committing at
+  the next frame boundary. Nothing is inferred from in-flight fiber state any more.
+
+- The async action the migration guide asks callers to write — one that wraps its post-`await` update
+  in the starter again — did nothing when the component that started it had gone away. The starter
+  short-circuited before opening a scope, so every update it made, on components still alive, took
+  the Normal lane. React sets its ambient flag with no fiber in hand and this now does too.
+
+- **Breaking:** `SearchParams.Empty` hands back a fresh instance on every read instead of one shared
+  for the process. It was a `static readonly` field, and `Append` mutates in place, so the shape the
+  member invites wrote into the instance every other reader saw. Reading it is spelled the same and
+  still yields an empty `SearchParams`; what two reads no longer share is the object. A reference
+  comparison against `SearchParams.Empty` therefore no longer recognises an instance from an earlier
+  read, and binding a readonly reference to it — an explicit `in` argument, a `ref readonly` local or
+  return — stops compiling. No Velvet signature declares a `SearchParams` parameter, so reaching the
+  last of those takes a declaration of your own over the concrete type.
+
 ### Fixed
 
 - `startTransition(() => setItemsFromParent(heavyList))` — a child deferring an expensive update
