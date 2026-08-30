@@ -169,6 +169,10 @@ def _stubs(mode, directory, log, table=None):
         script.chmod(0o755)
 
 
+# The session every guard here runs under, and the one a case writes its deferrals as.
+SESSION = "velvet-unreadable-state-check"
+
+
 def run_guard(hook, payload, mode, cwd, home, table=None):
     """(exit code, stdout, stderr, whether the broken program was consulted) for one run."""
     workspace = Path(tempfile.mkdtemp(prefix="velvet-unreadable-"))
@@ -180,6 +184,11 @@ def run_guard(hook, payload, mode, cwd, home, table=None):
         environment[STUB_LOG] = str(log)
         # The session's own project would otherwise decide what a guard reads instead of `cwd`.
         environment.pop("CLAUDE_PROJECT_DIR", None)
+        # And its own id would decide whose a deferral is, so a case writing one wrote a line the
+        # guard then disowned — three of them passed only where the variable was absent, which is CI
+        # and not a session. Pinned rather than popped: with no id at all every line suppresses,
+        # which is the reading a case has to be able to fail against.
+        environment["CLAUDE_CODE_SESSION_ID"] = SESSION
         _stubs(mode, workspace, log, table)
         environment["PATH"] = str(workspace) + os.pathsep + environment.get("PATH", "")
 
