@@ -19,6 +19,7 @@ import importlib.util
 import json
 import os
 import shutil
+import subprocess
 import tempfile
 import time
 import unittest
@@ -793,28 +794,46 @@ class WatcherDeferralTests(unittest.TestCase):
                           "tool_input": {"file_path": "CHANGELOG.md",
                                          "old_string": "a", "new_string": "b"}})
 
-    def verdict(self, deferral):
-        """The guard's exit code with no watcher state at all, under a HOME of its own."""
-        home = Path(tempfile.mkdtemp(prefix="velvet-watcher-home-"))
-        try:
-            if deferral is not None:
-                (home / ".velvet-pr-deferrals").write_text(deferral, encoding="utf-8")
-            code, _, _, _ = check.run_guard(self.GUARD, self.PAYLOAD, "gh-empty", REPO_ROOT, home)
-            return code
-        finally:
-            shutil.rmtree(home, ignore_errors=True)
+    def home(self):
+        made = Path(tempfile.mkdtemp(prefix="velvet-watcher-home-"))
+        self.addCleanup(shutil.rmtree, made, ignore_errors=True)
+        return made
+
+    def follow(self, home):
+        """Run the deferral recipe the guard prints, and return how many it printed.
+
+        Read out of the refusal rather than written here. A recipe and the reader that honours it are
+        two statements of one format, and a case that writes its own line holds only the reader:
+        measured, four recipes named no session while only a session's own line suppresses anything,
+        and following one printed the same refusal again with nothing to do about it.
+        """
+        _, _, refusal, _ = check.run_guard(self.GUARD, self.PAYLOAD, "gh-empty", REPO_ROOT, home)
+        recipes = [line.strip() for line in refusal.splitlines()
+                   if line.strip().startswith('echo "') and ">>" in line]
+        for recipe in recipes[:1]:
+            subprocess.run(recipe, shell=True, check=True,
+                           env=dict(os.environ, HOME=str(home),
+                                    CLAUDE_CODE_SESSION_ID=check.SESSION))
+        return len(recipes)
 
     def test_Given_NothingWatchingAndNoDeferral_When_AWriteIsAttempted_Then_ItIsRefused(self):
-        # Act / Assert — the control: an escape that is always open is not an escape.
-        self.assertEqual(self.verdict(None), 2)
+        # Act
+        code, _, _, _ = check.run_guard(self.GUARD, self.PAYLOAD, "gh-empty", REPO_ROOT, self.home())
 
-    def test_Given_NothingWatchingAndTheWatcherHeld_When_AWriteIsAttempted_Then_ItGoesThrough(self):
-        # Arrange — the deferral the guard's own message describes, armed with a live stamp.
-        deferral = ("watcher the network is down until the VPN is back "
-                    f"{int(time.time())} {check.SESSION}\n")
+        # Assert — the control: an escape that is always open is not an escape.
+        self.assertEqual(code, 2)
 
-        # Act / Assert
-        self.assertEqual(self.verdict(deferral), 0)
+    def test_Given_TheRecipeItPrints_When_ItIsFollowed_Then_TheNextWriteGoesThrough(self):
+        # Arrange
+        home = self.home()
+        printed = self.follow(home)
+
+        # Act
+        code, _, _, _ = check.run_guard(self.GUARD, self.PAYLOAD, "gh-empty", REPO_ROOT, home)
+
+        # Assert — how many recipes were found rides along, since finding none writes nothing and
+        # leaves the guard refusing for the reason it would anyway.
+        self.assertEqual((code, printed), (0, 1))
 
 
 class GuardSessionTests(unittest.TestCase):
