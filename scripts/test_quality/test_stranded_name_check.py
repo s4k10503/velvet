@@ -442,6 +442,9 @@ class StrandedTests(unittest.TestCase):
             # Assert
             self.assertEqual(code, 0)
 
+    # GREEN_ON_BASE(characterization): the control for the narrowing beside it, and a control is
+    # green on both sides by construction -- one that reddened would mean the narrowing had moved
+    # the ordinary reading rather than carved the one-word class out of it.
     def test_Given_ARemovedNameOfTwoWords_When_ACommentSpellsIt_Then_ItIsStillRefused(self):
         # Arrange -- the control: a narrowing that dropped every removal would satisfy the case
         # above while losing what this exists for. Two humps is the only difference between them.

@@ -62,6 +62,9 @@ def answer(path, probe):
 
 
 class PreExpansionPolicyTests(unittest.TestCase):
+    # GREEN_ON_BASE(characterization): the guards are the same on both trees and so is what they
+    # declare. What this change moves is which lane reads them, and a lane is not something a case
+    # can be red about.
     def test_Given_EveryRefusingGuard_When_ItsSourceIsRead_Then_ItStatesAPreExpansionPolicy(self):
         # Arrange -- "n/a" is a guard that reads no shell operand at all, so it owes no probe.
         found = guards()
@@ -72,6 +75,8 @@ class PreExpansionPolicyTests(unittest.TestCase):
         # Act / Assert -- the count rides along, since an empty directory states nothing either.
         self.assertEqual((len(found) > FLOOR, silent), (True, []))
 
+    # GREEN_ON_BASE(characterization): as above -- the base answers its own probes the same way,
+    # since neither the guards nor their probes are what moved.
     def test_Given_EveryStatedPolicy_When_ItsOwnProbeIsPosed_Then_TheGuardAnswersWhatItStates(self):
         # Arrange
         posed = [(path, policy, probe) for path in guards()
