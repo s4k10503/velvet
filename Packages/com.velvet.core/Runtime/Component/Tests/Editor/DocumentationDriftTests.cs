@@ -1517,6 +1517,33 @@ namespace Velvet.Tests
         private static readonly Regex DocfxOutputPattern =
             new(@"""(?:dest|output)""\s*:\s*""([^""]+)""", RegexOptions.Compiled);
 
+        [Test]
+        public void Given_TheDocfxGeneratedDirectories_When_TheWorkflowsAreScanned_Then_NoneIsWrittenOutAgain()
+        {
+            // Arrange - the Pages upload carried docs/_site as a literal beside the docfx.json that
+            // declares it, and a rename of that key moves what docfx writes while the upload stays where
+            // it was. Which of the two then reports it is the action's to decide and is not stated here.
+            var generated = DocfxGeneratedDirectories();
+            var workflows = Directory
+                .EnumerateFiles(Path.GetFullPath(".github/workflows"), "*.yml")
+                .Concat(Directory.EnumerateFiles(Path.GetFullPath(".github/workflows"), "*.yaml"))
+                .ToList();
+
+            // Act
+            var restated = (from workflow in workflows
+                            let text = File.ReadAllText(workflow)
+                            from directory in generated
+                            where text.Contains(directory, StringComparison.Ordinal)
+                            select $"{Path.GetFileName(workflow)} names {directory}")
+                .ToList();
+
+            // Assert - both counts ride along, because a derivation finding none and a directory holding
+            // no workflow each leave this reporting the silence a repository restating none does.
+            Assert.That((generated.Count, workflows.Count > 1, string.Join("\n", restated)),
+                Is.EqualTo((2, true, string.Empty)),
+                "docs/docfx.json owns where DocFX writes; a workflow repeating it is a second place to change");
+        }
+
         // GREEN_ON_BASE(characterization): the exclusion this pins lives in DocumentationCorpus.
         // That is a test-assembly file the base run carries from the branch along with the case, so the
         // base answers over the branch's own list. What stands in for the base run is the entry removed
