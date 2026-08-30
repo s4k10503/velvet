@@ -31,6 +31,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 
+from pr_body import valued as gh_valued  # noqa: E402
 from shell_commands import (  # noqa: E402
     UNRESOLVED_CD, git_invocations, leading_cd, program_invocations, unexpanded)
 
@@ -59,9 +60,31 @@ UNREADABLE_PROBE = {"command": "git commit -F /tmp/velvet-message-probe.txt"}
 
 
 def valued(operands, flags):
-    """The last value given to any of `flags`, or None. `--flag=value` counts."""
+    """The last value given to any of `flags`, or None. `--flag=value` and `-Fvalue` count.
+
+    `git commit`'s reading, and only its. gh's goes through `pr_body`, which knows which options carry
+    a value -- this one does not, and measured, `gh pr create -dF /tmp/x.md` reads no body file here
+    while gh posts one.
+
+    The union `pr_body` falls back to is gh's table rather than git's, and neither reading covers the
+    other. Measured over the flags this looks for:
+
+        --file <path>       here /tmp/m.txt      under the union None
+        -F <path>           here /tmp/m.txt      under the union /tmp/m.txt
+        -F<path>            here /tmp/m.txt      under the union /tmp/m.txt
+
+    `--file` is not one of gh's options at all, which is why the two stay apart. The attached form was
+    read by neither until now: measured, `git commit -F/tmp/m.txt` reads that file and this guard let
+    it through.
+
+    A cluster -- `-aF <path>` -- is still not read, and closing it would take git's own table of which
+    short options carry a value. That is the parse this repository has reduced twice, so what is done
+    instead is the unambiguous half: `-F` at the head of the token, where no other letter can have
+    claimed the tail.
+    """
     found = None
     index = 0
+    short = tuple(flag for flag in flags if len(flag) == 2 and flag.startswith("-"))
     while index < len(operands):
         token = operands[index]
         flag, separator, attached = token.partition("=")
@@ -72,6 +95,11 @@ def valued(operands, flags):
             else:
                 found = operands[index + 1] if index + 1 < len(operands) else None
                 index += 2
+            continue
+        head = next((flag for flag in short if token.startswith(flag) and len(token) > 2), None)
+        if head is not None:
+            found = token[len(head):]
+            index += 1
             continue
         index += 1
     return found
@@ -122,13 +150,14 @@ def judge(command, cwd):
         return 2
     here = os.path.join(cwd, moved) if moved else cwd
 
-    asked = [("git commit", operands, MESSAGE_FLAGS)
+    asked = [("git commit", operands, MESSAGE_FLAGS, None)
              for _, _, operands in git_invocations(command, ("commit",))]
     for words in GH_WORDS:
         for operands in program_invocations(command, "gh", words):
-            asked.append(("gh " + " ".join(words), operands, BODY_FILE_FLAGS))
+            asked.append(("gh " + " ".join(words), operands, BODY_FILE_FLAGS, words))
 
-    named = [(what, valued(operands, flags)) for what, operands, flags in asked]
+    named = [(what, valued(operands, flags) if words is None else gh_valued(operands, flags, words))
+             for what, operands, flags, words in asked]
     named = [(what, path) for what, path in named if path is not None]
     if not named:
         return 0
