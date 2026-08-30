@@ -41,6 +41,15 @@ class Verdicts(unittest.TestCase):
                               capture_output=True, text=True, timeout=30)
         return done.returncode, done.stderr
 
+    def test_Given_AMessageAttachedToItsShortFlag_When_Judged_Then_ItIsRefused(self):
+        # Arrange — git reads `-F/path` as readily as `-F /path`, and this guard read neither the
+        # attached form nor a cluster. The attached one is unambiguous: no other letter can have
+        # claimed the tail.
+        code, said = self.judge(f"git commit -F{self.elsewhere}/msg.txt")
+
+        # Act / Assert
+        self.assertEqual((code, "the worktree it describes" in said), (2, True))
+
     # GREEN_ON_BASE(characterization): the base refuses this because it reads every command with one
     # table, and this branch keeps refusing it because it reads git's with git's. What the case holds is
     # that routing gh through `pr_body` did not take `--file` with it — measured by posing git's operands
