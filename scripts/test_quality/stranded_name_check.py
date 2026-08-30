@@ -2,8 +2,10 @@
 """Refuse a change that removes a declaration whose name survives only in a comment.
 
 DocumentationDriftTests resolves the names markdown spells, and strips comments from every format
-that has them, so a name a removal leaves behind in a C# comment is caught by nothing. That is not a
-formatting complaint: the comment was true when it was written and the removal is what made it
+that has them. CrefTargetTests pins every XML-doc cref in the package against that same corpus, so a
+name left behind in one of those is caught; a name left behind in any other comment is caught by
+nothing, and the three this was written for were ordinary line comments. That is not a formatting
+complaint: the comment was true when it was written and the removal is what made it
 false, which is the shape CLAUDE.md's corrected-sentence list is about -- a reader who trusts a
 reason that no longer holds is worse off than one who finds none.
 
@@ -53,9 +55,9 @@ def split_comments(text):
     An interpolated string is followed by its braces: what a hole holds is code and reaches the code
     stream, the literal text around it is dropped like any other string, and the closing quote is the
     one at brace depth zero. Read as an ordinary literal instead, a hole holding a string of its own
-    ends the outer one early and everything to the next quote leaves both streams -- measured, 17 of
-    this repository's files lost code words that way, and a name whose only use was among them read
-    as stranded.
+    ends the outer one early and everything to the next quote leaves both streams. Measured as the
+    files whose code stream loses an identifier when the brace following is taken out: 56 of this
+    repository's 742, and a name whose only use is among them reads as stranded.
     """
     comments, code, i, size = [], [], 0, len(text)
     while i < size:

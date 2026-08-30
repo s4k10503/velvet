@@ -312,10 +312,9 @@ class StrandedTests(unittest.TestCase):
             self.assertEqual(code, 1)
 
     def test_Given_AnInterpolatedStringHoldingTheOnlyCall_When_TheChangeIsRead_Then_ItIsNotRefused(self):
-        # Arrange -- the holes in an interpolated string are code, and separating them needs a
-        # brace-matching pass this does not do. Its text goes to the code stream instead. Dropped
-        # like an ordinary string, the only call goes with it and the comment below reads as a
-        # strand.
+        # Arrange -- what a hole holds is code and reaches the code stream. Read as an ordinary
+        # literal the whole string is dropped, the only call goes with it, and the comment below is
+        # then all that names it.
         with repository() as tree:
             tree.changed_to("""namespace Velvet
 {
