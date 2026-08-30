@@ -826,6 +826,17 @@ class WatcherDeferralTests(unittest.TestCase):
         # Assert — the control: an escape that is always open is not an escape.
         self.assertEqual(code, 2)
 
+    @staticmethod
+    def signature(line):
+        """The last field of the line a recipe appends, which is the only place a session is read.
+
+        `deferrals.written_by` takes `fields[-1]`, so an id anywhere else signs nothing — measured, the
+        id moved to the front of both `<pr>` recipes leaves a reading over the whole line green while
+        an agent following either is disowned exactly as before.
+        """
+        quoted = line.split('"')
+        return quoted[1].split()[-1] if len(quoted) > 1 and quoted[1].split() else ""
+
     def arrange(self, home, shape):
         """Put the guard into one of its three refusing branches, named by the sentence it prints."""
         now = int(time.time())
@@ -850,7 +861,7 @@ class WatcherDeferralTests(unittest.TestCase):
                        if line.strip().startswith('echo "') and ">>" in line]
             reached.append((shape in refusal, len(recipes) == said))
             unsigned += [f"{shape} ({code}): {line}" for line in recipes
-                         if "$CLAUDE_CODE_SESSION_ID" not in line]
+                         if self.signature(line) != "$CLAUDE_CODE_SESSION_ID"]
 
         # Act / Assert — the branch each arrangement reached, by the sentence only that branch prints,
         # rather than by how many recipes came back. Two of the three print one recipe each, so a count
