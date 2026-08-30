@@ -535,6 +535,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a splat stops the walk where it matches. A splat is a leaf, as it is in React Router, and declaring
   children under one is now refused where the mid-path spelling already was.
 
+- Every public signature that named a UniTask type now names `VelvetTask` / `VelvetTask<T>`, and they do
+  not all name it in the same position. Returning one: `Router.NavigateAsync`, `Router.GoBack`,
+  `Router.GoForward`, `MutationResult.MutateAsync` and the no-argument `MutationResultExtensions`
+  shorthand beside it. Returning a delegate that returns one: `Hooks.UseNavigate`. Taking a delegate that
+  returns one: the asynchronous `Hooks.UseBlocker` overloads, both `Hooks.Use` overloads,
+  `V.Route(loader:)`, `RouteBlockerManager.Register`, each `MutationOptions` constructor, and
+  `TransitionStarter.Invoke` — the async form of the starter `Hooks.UseTransition` hands back, which takes
+  a `Func<VelvetTask>` and returns `void`, so it changes type without returning a task at all. Holding one:
+  `RouteDefinition.Loader` and each `MutationOptions.MutationFn`. Velvet ships the awaitable
+  itself under `Velvet`, so UniTask is no longer a package dependency and installing Velvet is a single
+  package add. A caller's own loaders, blockers, mutation functions and transition actions change type with
+  them: a declaration becomes `async VelvetTask<T>`, a value already to hand comes from
+  `VelvetTask.FromResult`, and a source the caller completes by hand is a `VelvetTaskCompletionSource<T>`.
+  Inside an `async VelvetTask` body a `UnityEngine.Awaitable` and a `System.Threading.Tasks.Task` are
+  awaited as they stand, with no conversion. Reading a suspended task's result a second
+  time throws `InvalidOperationException`, where UniTask returned reset state; a task completed inline —
+  `VelvetTask.FromResult`, and an `async` method that returned without suspending — may be read more than
+  once, as UniTask allowed. A suspended task also carries one awaiter, so any delegate Velvet invokes more
+  than once — a route loader, a blocker predicate, a mutation function, a `Hooks.Use` factory — hands back
+  a fresh one each time rather than a task it returned before, which throws on the second invocation instead
+  of resolving again. The Back/Forward re-run of a suspend-mode loader is where a shared task meets that.
+  The async guide states the type's surface and how its continuations are driven.
+
 - Registering a portal target id again with a different element now moves the portals already mounted
   into the old one, instead of leaving them writing into an element the UI has replaced. A
   `"modal-root"` that a screen owns — torn down on navigation and re-registered from the rebuilt
