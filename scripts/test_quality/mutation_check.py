@@ -1372,6 +1372,10 @@ def read_verdict(output, index, digest, mutant, project):
     Keyed on the digest AND on what the mutant is, because an index is only this mutant's while the
     list is the same list. The digest covers the working tree rather than a commit, so an edit to a
     mutated file since moves it and the record is refused rather than reused.
+
+    What it does not cover is a test-side change, and that is `scope_digest`'s own limit rather than
+    one this adds: removing a test can make a killed mutant survive, and the receipt stays valid
+    across it for the reason stated there. A resumed verdict inherits exactly that, no more.
     """
     try:
         held = json.loads(verdict_path(output, index).read_text())
