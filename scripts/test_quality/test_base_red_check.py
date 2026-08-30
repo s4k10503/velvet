@@ -714,6 +714,32 @@ class DeclarationTests(unittest.TestCase):
             "characterization", "the ordering the base already commits to").complaint)
 
 
+class BudgetShortfallTests(unittest.TestCase):
+    """What the loop can say before spending a round, rather than after spending all of them.
+
+    The reading beside this one is the loop's history, which costs the whole budget to produce. This
+    is read off the carried set instead, before a round is spent, and it is a lower bound: a round
+    that compiles ends the loop, so a budget that clears the bound may still be enough or not.
+    """
+
+    def test_Given_FewerFilesThanRounds_When_TheBudgetIsRead_Then_ItSaysNothing(self):
+        # Arrange — the budget could be enough, and this cannot say that it is.
+        # Act / Assert
+        self.assertEqual(base_red_check.budget_shortfall(3, 8), "")
+
+    def test_Given_AsManyFilesAsRounds_When_TheBudgetIsRead_Then_ItSaysNothing(self):
+        # Arrange — the boundary: eight files can come off in eight rounds.
+        # Act / Assert
+        self.assertEqual(base_red_check.budget_shortfall(8, 8), "")
+
+    def test_Given_MoreFilesThanRounds_When_TheBudgetIsRead_Then_ItNamesTheFlagAndTheBound(self):
+        # Arrange — the EditMode side of the branch replacing UniTask: 23 carried files, default 8.
+        said = base_red_check.budget_shortfall(23, 8)
+
+        # Act / Assert
+        self.assertEqual(("--max-rounds 23" in said, "--max-rounds 8" in said), (True, True))
+
+
 class ExhaustedLoopTests(unittest.TestCase):
     """What the withdrawing loop says when it runs out of rounds having compiled nothing.
 
