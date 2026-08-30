@@ -32,6 +32,10 @@ on:
       # The jobs below run these, and a push editing one used to start only test.yml — whose Unity jobs
       # are skipped without a licence, so the ratchet that push was about executed nowhere.
       - 'scripts/**'
+      # The guards those suites judge. They moved with nothing: `.claude` appeared in no workflow's
+      # filter, so a hook changed on `main` started no run and was checked on its pull request and
+      # never again.
+      - '.claude/**'
       - '!**.md'
       - 'Packages/com.velvet.core/Documentation~/setup.md'
       - 'Packages/com.velvet.core/Generators~/README.md'
