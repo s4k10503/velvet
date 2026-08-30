@@ -26,6 +26,28 @@ from release_notes import (
 )
 
 REPO = "s4k10503/velvet"
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def breaking_highlight_in(text, version):
+    """Whether that version's Highlights claim a break."""
+    return "**Breaking:**" in "\n".join(
+        split_highlights(extract_version_section(text, version), version)[0])
+
+
+def claims_a_break_outside_a_major(text, versions, published):
+    """Versions claiming a break that neither bump a major nor are already published.
+
+    `published` is what the remote tags. A note somebody has already installed against cannot be
+    re-versioned, so the remedy for one published wrong is the next release rather than an edit to
+    the record of it -- the same distinction published_check.drain_reason draws between closing a
+    version and recording one.
+    """
+    bumps = {version for version in versions
+             if published_check.is_major_bump(versions, version)}
+    return [version for version in versions
+            if version not in bumps and "v" + version not in published
+            and breaking_highlight_in(text, version)]
 
 
 def named(version, entry):
@@ -400,6 +422,58 @@ class BuildNotes(unittest.TestCase):
         self.assertIn("[the repo](https://github.com/other/repo)", notes)
 
 
+SYNTHETIC = """# Changelog
+
+## [1.1.0] - 2026-01-02
+
+### Highlights
+
+- **Breaking:** the member is a property now.
+
+### Changed
+
+- The member is a property now.
+
+## [1.0.0] - 2026-01-01
+
+### Highlights
+
+- The first release.
+
+### Added
+
+- Everything.
+"""
+
+
+class BreakOutsideAMajor(unittest.TestCase):
+    """The rule is asked of what this repository can still change, and of nothing else."""
+
+    VERSIONS = ["1.1.0", "1.0.0"]
+
+    def test_Given_AnUnpublishedMinorClaimingABreak_When_TheRuleIsAsked_Then_ItIsNamed(self):
+        # Arrange -- what the rule exists for: a releaser closing a waiting break as a minor, caught
+        # while the version can still be renumbered.
+        # Act / Assert
+        self.assertEqual(claims_a_break_outside_a_major(SYNTHETIC, self.VERSIONS, set()),
+                         ["1.1.0"])
+
+    def test_Given_ThatSameMinorAlreadyPublished_When_TheRuleIsAsked_Then_ItIsNotNamed(self):
+        # Arrange -- a tag on the remote is a note somebody has installed against; the remedy is the
+        # next release, and a record that cannot carry the mistake has to lie about it.
+        # Act / Assert
+        self.assertEqual(
+            claims_a_break_outside_a_major(SYNTHETIC, self.VERSIONS, {"v1.1.0"}), [])
+
+    def test_Given_AMajorClaimingABreak_When_TheRuleIsAsked_Then_ItIsNotNamed(self):
+        # Arrange -- the control: a rule that named every breaking highlight would satisfy the first
+        # case and forbid the one place a break belongs.
+        # Act / Assert
+        self.assertEqual(
+            claims_a_break_outside_a_major(SYNTHETIC.replace("1.1.0", "2.0.0"),
+                                           ["2.0.0", "1.0.0"], set()), [])
+
+
 class ThisRepositorysChangelog(unittest.TestCase):
     """The guards that make a release fail here rather than publish an empty note."""
 
@@ -515,8 +589,7 @@ class ThisRepositorysChangelog(unittest.TestCase):
                 if published_check.is_major_bump(self.versions, version)]
 
     def breaking_highlight(self, version):
-        return "**Breaking:**" in "\n".join(
-            split_highlights(extract_version_section(self.text, version), version)[0])
+        return breaking_highlight_in(self.text, version)
 
     # GREEN_ON_BASE(characterization): the only major bump here already names its breaks.
     def test_Given_a_major_release_When_reading_its_highlights_Then_they_name_what_breaks(self):
@@ -533,11 +606,17 @@ class ThisRepositorysChangelog(unittest.TestCase):
         # Arrange — the other half of the same rule. A releaser who spots a waiting break and closes
         # it as a minor writes the bullet anyway, which is a trace the file still carries once the
         # entry itself has moved.
-        bumps = set(self.major_bumps())
+        #
+        # Asked only of versions this repository can still change. A tag on the remote is a note
+        # somebody has already installed against, and re-versioning it is not available: the remedy
+        # for one published wrong is the next release, not an edit to the record of it. The same
+        # distinction published_check.drain_reason draws, for the same reason — recording a version
+        # is not closing one, and a CHANGELOG that cannot carry a published mistake is a CHANGELOG
+        # that has to lie about it.
+        published = published_check.remote_tags(REPO_ROOT)
 
         # Act
-        claimed = [version for version in self.versions
-                   if version not in bumps and self.breaking_highlight(version)]
+        claimed = claims_a_break_outside_a_major(self.text, self.versions, published)
 
         # Assert
         self.assertEqual(claimed, [])
