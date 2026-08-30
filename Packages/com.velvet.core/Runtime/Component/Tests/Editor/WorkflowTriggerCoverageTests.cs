@@ -171,13 +171,19 @@ namespace Velvet.Tests
                 .ToList();
             var invoked = Workflows().SelectMany(RunCommandLines).ToList();
             var swept = new HashSet<string>(invoked.SelectMany(GlobMatches), StringComparer.Ordinal);
+            // A block scalar's body is yielded whole, shell comments included, so a note naming a suite
+            // inside the sweep's own step read as a step naming it.
+            var commands = invoked.Where(line => !line.TrimStart().StartsWith("#", StringComparison.Ordinal))
+                .ToList();
 
             // Act — a step naming one is what regrows the region, and the sweep covering it as well is
             // no answer to that. Asking only whether the sweep covers them is a question the sweep's own
             // glob settles: it enumerates this directory with this pattern, so it matches every file
-            // here for as long as the line exists, and a step added beside it is invisible.
+            // here for as long as the line exists, and a step added beside it is invisible. What this
+            // reads is a suite spelled as its repo-relative path; a step that spells one some other way
+            // — a narrower glob, a relative name under `working-directory` — is not reached.
             var regrown = suites
-                .Where(path => invoked.Any(line => line.Contains(path, StringComparison.Ordinal)))
+                .Where(path => commands.Any(line => line.Contains(path, StringComparison.Ordinal)))
                 .Select(path => path + " is named by a step of its own")
                 .Concat(suites.Where(path => !swept.Contains(path))
                             .Select(path => path + " is outside the sweep"))
