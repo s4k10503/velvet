@@ -224,6 +224,74 @@ class NeighbouringCampaignTests(unittest.TestCase):
         self.assertIsNone(mutation_check.CAMPAIGN_RUNNING.match(line))
 
 
+class GuardRemovalReadsTheStatement(unittest.TestCase):
+    """The guard operator deletes a whole line, so it takes the reading the removal operator does.
+
+    Emitted without it, a guard nested under another `if` leaves that `if` with no body, and one
+    whose next line is an `else` strands the `else` -- the two shapes `deletable_line` was written
+    for. No such line is in this package today: the operator emits 396 mutants with the reading and
+    396 without, so this is a ratchet against the next one rather than a count that moved.
+    """
+
+    NESTED = """class C
+{
+    void M(bool outer, bool inner)
+    {
+        if (outer)
+            if (inner) return;
+        Body();
+    }
+    void Body() { }
+}
+"""
+
+    ELSE_BELOW = """class C
+{
+    void M(bool guard)
+    {
+        if (guard) return;
+        else Body();
+    }
+    void Body() { }
+}
+"""
+
+    PLAIN = """class C
+{
+    void M(bool guard)
+    {
+        if (guard) return;
+        Body();
+    }
+    void Body() { }
+}
+"""
+
+    def guards(self, source):
+        lines = set(range(1, source.count("\n") + 2))
+        return [mutant for mutant in mutation_check.mutations_for("C.cs", source, lines)
+                if mutant.operator == "guard removed"]
+
+    def test_Given_AGuardNestedUnderAnotherIf_When_TheMutantsAreRead_Then_ItIsNotEmitted(self):
+        # Arrange -- deleting it leaves `if (outer)` with no body.
+        # Act / Assert
+        self.assertEqual(self.guards(self.NESTED), [])
+
+    def test_Given_AGuardWhoseNextLineIsAnElse_When_TheMutantsAreRead_Then_ItIsNotEmitted(self):
+        # Arrange -- deleting it takes the `if` and strands the `else`.
+        # Act / Assert
+        self.assertEqual(self.guards(self.ELSE_BELOW), [])
+
+    # GREEN_ON_BASE(characterization): the control, and the base emits this one too -- that is the
+    # operator working, which this narrows rather than replaces. One that reddened would mean the
+    # narrowing had taken the operator with it.
+    def test_Given_AnOrdinaryGuard_When_TheMutantsAreRead_Then_ItIsStillEmitted(self):
+        # Arrange -- the control: a reading that emitted nothing would satisfy both cases above and
+        # take the operator with it.
+        # Act / Assert
+        self.assertEqual(len(self.guards(self.PLAIN)), 1)
+
+
 class CodeMaskTests(unittest.TestCase):
     """Which offsets count as code. Everything downstream of the mask reads only what it leaves.
 
