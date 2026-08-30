@@ -125,6 +125,10 @@ namespace Velvet.Tests
                 "a workflow runs these files and does not start when one of them changes");
         }
 
+        // GREEN_ON_BASE(construction): both sides are this repository's own — the suites under
+        // `scripts/` and the commands its workflows run — so no base run perturbs it. What shows it
+        // still fails is deleting the `Hook guard suites` step: measured, the case then reported all
+        // 21 suites under scripts/hooks/.
         [Test]
         public void Given_EveryHarnessUnitTest_When_TheWorkflowsAreScanned_Then_SomeJobRunsIt()
         {
