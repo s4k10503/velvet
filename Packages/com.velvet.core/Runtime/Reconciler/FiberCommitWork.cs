@@ -67,6 +67,15 @@ namespace Velvet
                     continue;
                 }
 
+                // The chain is creation order, and NextInlineSiblingSlotStart says a keyed reorder
+                // does not resync it -- so a following sibling can hold rows that sit BEFORE this
+                // growth, and shifting one moves its next write off the rows it owns. Growth at an
+                // index cannot move what starts before it.
+                if (sibling.MountSlotStart < fiber.MountSlotStart)
+                {
+                    continue;
+                }
+
                 sibling.MountSlotStart += actualDelta;
                 // A following sibling whose own time-sliced reconcile is parked captured its slotStart as an
                 // absolute offset into the shared parent. This shift moved its already-committed rows within
