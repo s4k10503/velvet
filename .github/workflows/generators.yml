@@ -93,6 +93,8 @@ jobs:
 
       - run: python3 scripts/test_quality/run_suite.py scripts/hooks/test_workflow_bytecode_env.py
 
+      - run: python3 scripts/test_quality/run_suite.py scripts/hooks/test_pre_expansion_policy.py
+
       - name: Cohesion report
         run: python3 scripts/test_quality/cohesion_report.py
 
