@@ -55,6 +55,43 @@ VALUE_FLAGS = {
 SHORT_BOOLEAN_FLAGS = {"-d", "-e", "-f", "-h", "-w"}
 LONG_BOOLEAN_FLAGS = {"--dry-run", "--help"}
 
+# Where a subcommand's table disagrees with the union above. `scripts/hooks/test_pr_body_flags.py`
+# holds each of these against gh's, per subcommand and in both directions, which is what stops them
+# drifting; the shape of the cost is the same in both: a flag wrongly value-taking spends the body
+# flag behind it, and one wrongly boolean lets its own value be read as one. Read as the union,
+# `gh pr merge 7 -m -b "text"` finds no body, and a guard that found none exits 0 -- which is what it
+# exits having read one and been satisfied.
+SUBCOMMAND_FLAGS = {
+    ("pr", "merge"): (
+        {"--author-email", "--body", "--body-file", "--match-head-commit", "--repo", "--subject",
+         "-A", "-F", "-R", "-b", "-t"},
+        {"-d", "-m", "-r", "-s"},
+    ),
+    ("pr", "review"): (
+        {"--body", "--body-file", "--repo", "-F", "-R", "-b"},
+        {"-a", "-c", "-r"},
+    ),
+    ("pr", "close"): (
+        {"--comment", "--repo", "-R", "-c"},
+        {"-d"},
+    ),
+    ("pr", "reopen"): (
+        {"--comment", "--repo", "-R", "-c"},
+        set(),
+    ),
+}
+
+
+def tables(words):
+    """(value-taking, boolean shorthand) for an invocation of `words`, or the union for anything else.
+
+    The union answers for `pr create`, `pr new`, `pr edit` and `pr comment`, whose tables agree with it
+    and with each other. It is not a safe default for a subcommand nobody checked: a claim over one
+    takes a row above before it takes this.
+    """
+    return SUBCOMMAND_FLAGS.get(tuple(words) if words else (),
+                                (VALUE_FLAGS, SHORT_BOOLEAN_FLAGS))
+
 # Why a body could not be read, decided in this order.
 UNEXPANDED_PATH = "unexpanded-path"
 STDIN = "stdin"
@@ -65,7 +102,7 @@ UNREADABLE = "unreadable"
 MOVERS = {"cd", "pushd", "popd"}
 
 
-def options(operands):
+def options(operands, words=None):
     """Every parsed (option, value), preserving order and excluding positional operands.
 
     gh takes a value in more spellings than the obvious one: after the flag, after an `=`, attached
@@ -74,6 +111,7 @@ def options(operands):
     this: the invocation was claimed, no body was found, and the command took the exemption for
     carrying no body operand at all. That is the accident these guards exist for, one letter apart.
     """
+    value_flags, boolean_shorthand = tables(words)
     found = []
     index = 0
     while index < len(operands):
@@ -85,7 +123,7 @@ def options(operands):
             found.append((name, inline if separator else None))
             index += 1
             continue
-        if name in VALUE_FLAGS:
+        if name in value_flags:
             if separator:
                 found.append((name, inline))
                 index += 1
@@ -102,14 +140,14 @@ def options(operands):
             cluster = token[1:]
             for offset, shorthand in enumerate(cluster):
                 flag = "-" + shorthand
-                if flag in SHORT_BOOLEAN_FLAGS:
+                if flag in boolean_shorthand:
                     attached = cluster[offset + 1:]
                     if attached.startswith("="):
                         found.append((flag, attached[1:]))
                         break
                     found.append((flag, None))
                     continue
-                if flag in VALUE_FLAGS:
+                if flag in value_flags:
                     attached = cluster[offset + 1:]
                     if attached.startswith("="):
                         attached = attached[1:]
@@ -125,13 +163,13 @@ def options(operands):
     return found
 
 
-def valued(operands, flags):
+def valued(operands, flags, words=None):
     """The last value given to one of `flags`, or None.
 
     Repeated scalar options use their last value. Options are parsed before names are matched so a
     value belonging to another option is not treated as a body flag.
     """
-    values = [value for name, value in options(operands) if name in flags]
+    values = [value for name, value in options(operands, words) if name in flags]
     return values[-1] if values else None
 
 
@@ -146,7 +184,7 @@ def exempted(operands, words=None):
     applies, which is what a caller reading one subcommand already knows.
     """
     last = {}
-    for name, value in options(operands):
+    for name, value in options(operands, words):
         if name not in EXEMPT_FLAGS:
             continue
         resolved = EXEMPT_FLAGS[name]
@@ -161,11 +199,11 @@ def effective_body(operands, cwd, after_a_move, words=None):
     """(text, obstruction, file path) for a `--body-file`'s body, or else the inline one."""
     if exempted(operands, words):
         return None, None, None
-    path = valued(operands, BODY_FILE_FLAGS)
+    path = valued(operands, BODY_FILE_FLAGS, words)
     if path is not None:
         text, obstruction = read_body_file(path, cwd, after_a_move)
         return text, obstruction, path
-    return valued(operands, BODY_FLAGS), None, None
+    return valued(operands, BODY_FLAGS, words), None, None
 
 
 def moves_directory(segment):
