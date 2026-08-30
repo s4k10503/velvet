@@ -12,6 +12,7 @@ import published_check
 import release_notes
 from published_check import RELEASE_DATE
 from release_notes import (
+    items_under_no_subsection,
     BREAKING_SECTION,
     DEFAULT_CHANGELOG,
     DEFAULT_PACKAGE_JSON,
@@ -517,6 +518,21 @@ class ThisRepositorysChangelog(unittest.TestCase):
     def test_Given_the_shipped_changelog_When_reading_Then_it_lists_versions(self):
         # Arrange / Act / Assert — every case below is vacuous on an empty list.
         self.assertGreater(len(self.versions), 0)
+
+    def test_Given_every_section_When_reading_its_items_Then_each_sits_under_a_subsection(self):
+        # Arrange — every section, the two open ones included. The readings that need Highlights
+        # cannot be asked of a section that has none and never will, and this one does not need
+        # them: an entry under a heading of the wrong depth is invisible to the walkers, and stays
+        # invisible until the version closes and the note is built from what they can see.
+        #
+        # Measured before this: `#### Fixed` in a closed version is caught, as "Highlights and
+        # nothing else"; the same edit in `[Unreleased]` was caught by nothing.
+        every = [version for version, _ in self.headings]
+        stray = [(version, item) for version in every
+                 for item in items_under_no_subsection(extract_version_section(self.text, version))]
+
+        # Act / Assert — the section count rides along, since a file with no headings has no strays.
+        self.assertEqual((len(every) > len(self.versions), stray), (True, []))
 
     def test_Given_every_listed_version_When_building_its_note_Then_none_raises(self):
         # Arrange
