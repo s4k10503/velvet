@@ -13,6 +13,7 @@ and a 4.x are cut the same way and inherit the same staleness the day they are c
 Run: python3 scripts/release/test_publish_rules_come_from_main.py
 """
 
+import shlex
 import unittest
 from pathlib import Path
 
@@ -26,6 +27,17 @@ RULES = "scripts/release/test_release_notes.py"
 def steps():
     job = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))["jobs"]
     return next(iter(job.values()))["steps"]
+
+
+def pathspecs(step):
+    """The repository paths a step's `run:` hands git, however they are quoted.
+
+    Split on whitespace alone, a quoted pathspec is a token starting with a quote and the comparison
+    below stops seeing it — measured, quoting the overlay's two leaves the case green with the restore
+    naming nothing.
+    """
+    return {word.strip("'\"") for word in shlex.split(step.get("run") or "", comments=True)
+            if word.strip("'\"").startswith("scripts/")}
 
 
 def index_of(predicate):
@@ -48,6 +60,27 @@ class PublishRulesTests(unittest.TestCase):
 
         # Act / Assert
         self.assertEqual((rules is not None, overlay is not None and rules > overlay), (True, True))
+
+    def test_Given_TheOverlay_When_TheSplitRuns_Then_TheTreeIsCleanAgain(self):
+        # Arrange -- the overlay leaves main's bytes in the working tree and this line's in the index,
+        # which is a modified tracked file. The split checks out a package-at-root commit holding none
+        # of `scripts/`, and a checkout refuses to remove a modified file: measured, `Entry
+        # 'scripts/release/...' not uptodate. Cannot merge.`, exit 128, after the note is built and
+        # before any tag is pushed.
+        overlay = index_of(lambda run: "origin main" in run and "scripts/release" in run)
+        restore = index_of(lambda run: "checkout --quiet --" in run and "scripts/release" in run)
+        split = index_of(lambda run: "subtree split" in run)
+        # Every path the overlay writes, against the ones the restore names. Ordering alone left the
+        # restore free to name fewer, and a path it misses is one still holding main's bytes.
+        overlaid = pathspecs(steps()[overlay]) if overlay is not None else set()
+        putback = pathspecs(steps()[restore]) if restore is not None else set()
+
+        # Act / Assert
+        self.assertEqual(
+            (overlay is not None, split is not None,
+             restore is not None and overlay < restore < split,
+             sorted(overlaid - putback)),
+            (True, True, True, []))
 
     def test_Given_TheOverlayAndTheRules_When_TheEventIsAPush_Then_NeitherRuns(self):
         # Arrange -- a push to main is the mirror split, not a release, and has no version to check.
