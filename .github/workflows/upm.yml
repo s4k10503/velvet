@@ -58,7 +58,7 @@ jobs:
 
       - name: Release rules (release only)
         if: github.event_name == 'workflow_dispatch'
-        run: python3 scripts/release/test_release_notes.py
+        run: python3 scripts/test_quality/run_suite.py scripts/release/test_release_notes.py
 
       - name: Verify version matches package.json (release only)
         if: github.event_name == 'workflow_dispatch'
