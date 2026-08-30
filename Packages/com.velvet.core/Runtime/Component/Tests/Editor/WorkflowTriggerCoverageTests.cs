@@ -159,6 +159,42 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AWorkflowRunningAGuardsSuite_When_ItsPathFilterIsRead_Then_AChangeToThatGuardStartsIt()
+        {
+            // Arrange — the suites judge the guards, and the two travelled apart: the suites move with
+            // `scripts/**` and `.claude` appeared in no filter at all, so a guard changed on main started
+            // no run and was asked again by nothing until some later change carried a file inside a filter.
+            var guards = Directory
+                .EnumerateFiles(Path.GetFullPath(".claude/hooks"), "*.py", SearchOption.AllDirectories)
+                .Select(RepoRelative)
+                .ToList();
+            var suites = Directory
+                .EnumerateFiles(Path.GetFullPath("scripts/hooks"), "test_*.py")
+                .Select(RepoRelative)
+                .ToList();
+
+            // Act — which workflows run one, read the way the two cases above read it: a literal name or
+            // a glob that expands to one.
+            var judging = (from workflow in Workflows()
+                           let invoked = RunCommandLines(workflow).ToList()
+                           let swept = new HashSet<string>(invoked.SelectMany(GlobMatches), StringComparer.Ordinal)
+                           where suites.Any(suite => swept.Contains(suite)
+                                                     || invoked.Any(line => line.Contains(suite, StringComparison.Ordinal)))
+                           select workflow).ToList();
+            var uncovered = (from workflow in judging
+                             from filter in ReadPathFilters(workflow)
+                             from guard in guards
+                             where !filter.Includes(guard)
+                             select $"{workflow}: {filter.Label} does not start for {guard}").ToList();
+
+            // Assert — both counts ride along, because a workflow running no suite and a directory holding
+            // no guard each leave this reporting the silence a covered repository does.
+            Assert.That((judging.Count > 0, guards.Count > 0, string.Join("\n", uncovered)),
+                Is.EqualTo((true, true, string.Empty)),
+                "a guard's suite runs in a workflow that a change to that guard does not start");
+        }
+
+        [Test]
         public void Given_TheHookGuardSuites_When_TheWorkflowsAreScanned_Then_ASweepRunsThemRatherThanAStepEach()
         {
             // Arrange — the case above is satisfied by a step per suite, and that is what this refuses:
