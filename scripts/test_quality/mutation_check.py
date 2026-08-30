@@ -1126,6 +1126,47 @@ def build_error(log):
     return found.group(1).replace("\\", "/") if found else None
 
 
+# What a fixture reads when it walks this repository's own text rather than running its code. A
+# mutation edits a source file, so such a fixture reddens on the edit itself -- measured on the
+# campaign for Hooks.cs:1603, where a clause-removal mutant was recorded killed by three cases and
+# one of them was DocumentationDriftTests walking an identifier allowlist against the sources.
+TEXT_CORPUS = ("DocumentationCorpus", "TrackedFiles")
+
+FIXTURE_CLASS = re.compile(r"\bclass\s+([A-Z][A-Za-z0-9_]*)")
+
+
+def text_reading_fixtures(project):
+    """Fixture names whose own source reads the repository's text.
+
+    Derived rather than listed: the set is what references the corpus, so a fixture added to it
+    later is covered by having been written that way. A list would be the mirror shape this
+    repository pins against, and it is the shape that goes stale silently.
+    """
+    found = set()
+    for path in Path(project).rglob("*Tests.cs"):
+        if "Library" in path.parts or "obj" in path.parts:
+            continue
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        if any(name in text for name in TEXT_CORPUS):
+            found.update(FIXTURE_CLASS.findall(text))
+    return found
+
+
+def killed_by_behaviour(names, text_readers):
+    """The failing cases that are not a text-reading fixture's.
+
+    A mutant killed only by those was not killed by anything a user could notice: the fixture
+    reddened because the mutation edited a source file, not because a behaviour changed. Counting it
+    as a kill hides exactly what a campaign exists to find, and hides it on the lines most worth
+    mutating -- an identifier the documentation names is one that is public.
+    """
+    return [name for name in names
+            if not any(part in text_readers for part in name.split("."))]
+
+
 def failing_names(results):
     root = ET.parse(str(results)).getroot()
     return [
@@ -1643,6 +1684,8 @@ def main():
     baseline_hashes = {path.name: sha(path) for path in assemblies_dir.glob("*.dll")}
 
     originals = {path: path.read_text() for path in targets}
+    # Derived once: which fixtures redden on the edit rather than on what it does.
+    text_readers = text_reading_fixtures(project)
     started = time.time()
     try:
         for index, mutant in enumerate(mutants, start=1):
@@ -1701,9 +1744,16 @@ def main():
                 # Naming the killers, because a mutant killed only by a test that also fails on an
                 # unmutated tree was not killed by anything.
                 names = failing_names(results)
-                mutant.verdict = KILLED
-                mutant.detail = "{} failed: {}".format(
-                    counts["failed"], ", ".join(name.split(".")[-1] for name in names[:3]))
+                behavioural = killed_by_behaviour(names, text_readers)
+                if behavioural:
+                    mutant.verdict = KILLED
+                    mutant.detail = "{} failed: {}".format(
+                        len(behavioural),
+                        ", ".join(name.split(".")[-1] for name in behavioural[:3]))
+                else:
+                    mutant.verdict = SURVIVED
+                    mutant.detail = "{} failed, every one a fixture reading this tree's text: {}".format(
+                        counts["failed"], ", ".join(name.split(".")[-1] for name in names[:3]))
             elif counts["inconclusive"]:
                 mutant.verdict = INCONCLUSIVE
                 mutant.detail = "{} inconclusive, 0 failed".format(counts["inconclusive"])
