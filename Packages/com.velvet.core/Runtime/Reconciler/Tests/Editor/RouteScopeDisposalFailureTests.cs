@@ -18,7 +18,7 @@ namespace Velvet.Tests
     /// <list type="bullet">
     /// <item>Building a scope, at each of the three sites that ask for one — the mount, a route change,
     /// and a patch of a route the Outlet is already holding: the route renders without a scope rather
-    /// than not at all, and one case mounts a boundary, which shows its fallback instead.</item>
+    /// than not at all. Two cases mount a boundary, and there the fallback takes over instead.</item>
     /// <item>Changing route: the Outlet still mounts the route it navigated to, the incoming route's own
     /// scope is built regardless of the failure, and the scope it left behind is disposed once rather
     /// than again by the teardown sweep.</item>
@@ -186,9 +186,12 @@ namespace Velvet.Tests
             // Act
             var escaped = EscapesFrom(() => MountBoundedApp());
 
-            // Assert
-            Assert.That((escaped, NamesOf(_root), LabelTextsUnder(_root)),
-                        Is.EqualTo((false, "fallback", string.Empty)));
+            // Assert — the Outlet's own container is read for as well as the names directly under the
+            // root, because a failed route left beside the fallback would be a descendant of neither.
+            Assert.That((escaped, NamesOf(_root),
+                            _root.Q<VisualElement>(className: FiberNodeFactory.OutletContainerClass) != null,
+                            LabelTextsUnder(_root)),
+                        Is.EqualTo((false, "fallback", false, string.Empty)));
         }
 
         [Test]
@@ -204,7 +207,8 @@ namespace Velvet.Tests
             // Act
             var escaped = EscapesFrom(() => ReRenderBoundedAppAtCurrentLocation(mounted));
 
-            // Assert — no log line: the boundary consumed it, where the case above has none to consume it.
+            // Assert — no log line: the boundary consumed it, where the three cases with none mounted
+            // fall through to Debug.LogException.
             Assert.That((escaped, _root.Q<VisualElement>("fallback") != null, LabelTextsUnder(_root)),
                         Is.EqualTo((false, true, string.Empty)));
         }

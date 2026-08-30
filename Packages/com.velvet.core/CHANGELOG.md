@@ -66,9 +66,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - An `IRouteScopeFactory.CreateScope` that throws no longer takes the reconcile with it. The scope's
   *disposal* was already contained; its creation was not, at any of the three sites that ask for one —
   so an application whose factory failed on a route change lost the render as well as the scope. The
-  route now renders without a scope and the exception reaches the nearest error boundary, where an
-  application that wants a scope-less route refused can refuse it. The disposal beside it drops and
-  logs instead, which is the deviation from React the two paths still carry between them.
+  route now renders without a scope and the exception is propagated: an application with an error
+  boundary above the Outlet gets to refuse a scope-less route there, and one with none gets the
+  `Debug.LogException` the propagation falls through to. The disposal beside it drops and logs
+  instead, which is the deviation from React the two paths still carry between them.
 
 - A navigation no longer allocates a snapshot of the registered blockers on every pass. The pass walks
   a copy because a decision taken in it may unregister, and the copy was a fresh array each time — so
