@@ -869,6 +869,21 @@ class WatcherDeferralTests(unittest.TestCase):
         # the recipe it stopped reaching would then be unsigned with this green.
         self.assertEqual((reached, unsigned), ([(True, True)] * 3, []))
 
+    def test_Given_AnotherSessionDeferredIt_When_TheGuardRefuses_Then_ItSaysSoRatherThanNothing(self):
+        # Arrange — a deferral this session did not write suppresses nothing, which is the ownership
+        # rule. What it must not do is vanish: the reader is refused with a line about their pull
+        # request sitting, while a line about that pull request is in the file saying it was held.
+        home = self.home()
+        self.arrange(home, "green and unmerged long enough to have been forgotten")
+        (home / ".velvet-pr-deferrals").write_text(
+            f"777 waiting on the other half {int(time.time())} another-0002\n", encoding="utf-8")
+
+        # Act
+        _, _, refusal, _ = check.run_guard(self.GUARD, self.PAYLOAD, "gh-empty", REPO_ROOT, home)
+
+        # Assert
+        self.assertIn("another-0002", refusal)
+
     def test_Given_TheRecipesItPrints_When_TheyAreFollowed_Then_TheNextWriteGoesThrough(self):
         # Arrange — both branches whose recipe can be followed as printed. The other two key their
         # line on `<pr>`, a placeholder a person fills in, so a verbatim run writes a line about no
