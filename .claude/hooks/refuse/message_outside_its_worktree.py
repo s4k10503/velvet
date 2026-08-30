@@ -64,8 +64,15 @@ def valued(operands, flags):
 
     `git commit`'s reading, and only its. gh's goes through `pr_body`, which knows which options carry
     a value -- this one does not, and measured, `gh pr create -dF /tmp/x.md` reads no body file here
-    while gh posts one. The union `pr_body` falls back to is the wrong table for `git commit`: under
-    it `git commit -am "..."` parses as `[('-a', 'm')]` and the message goes unfound.
+    while gh posts one. The union `pr_body` falls back to is gh's table, not git's, and measured over
+    the flags this looks for it loses every one of them:
+
+        --file <path>       here /tmp/m.txt      under the union None
+        --file=<path>       here /tmp/m.txt      under the union None
+        -a -F <path>        here /tmp/m.txt      under the union None
+
+    `--file` is not one of gh's options at all, and `-a` is `--assignee` there and takes the `-F`
+    behind it. Each is a path this refuses today and would stop seeing.
     """
     found = None
     index = 0
