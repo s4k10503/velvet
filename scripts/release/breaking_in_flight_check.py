@@ -25,6 +25,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import published_check
+
 CHANGELOG = "Packages/com.velvet.core/CHANGELOG.md"
 BREAKING = "Unreleased — breaking"
 VERSION_HEADING = re.compile(r"^## \[(\d+\.\d+\.\d+)\]", re.M)
@@ -61,9 +63,16 @@ def at(rev, path):
     return out
 
 
-def closing(base, result):
-    """The versions this change closes, which is the whole of when the question is asked."""
-    return sorted(released(at(result, CHANGELOG)) - released(at(base, CHANGELOG)))
+def closing(base, result, tags=()):
+    """The versions this change closes, which is the whole of when the question is asked.
+
+    A version the remote already tags is one this change records rather than closes -- carrying a
+    maintenance line's released section forward brings it across, and asked without the tags that
+    reads as a release, so the question goes to a body that decides nothing about it. The same
+    reading published_check.drain_reason takes, for the same reason.
+    """
+    return sorted(named for named in released(at(result, CHANGELOG)) - released(at(base, CHANGELOG))
+                  if "v" + named not in tags)
 
 
 def open_pull_requests(repo):
@@ -114,7 +123,14 @@ def main():
     parser.add_argument("--repo", help="owner/name, when gh cannot infer it")
     args = parser.parse_args()
 
-    versions = closing(args.base, args.result)
+    # Asked of the remote rather than of a local tag list, for the reason published_check gives. A
+    # checkout with no remote to ask reads as no tags, which is the stricter direction: every
+    # version then counts as closing, which is what this did before it could ask at all.
+    try:
+        tags = published_check.remote_tags(Path.cwd())
+    except Exception:
+        tags = set()
+    versions = closing(args.base, args.result, tags)
     if not versions:
         print("closes no version, so nothing is asked about work in flight")
         return 0
