@@ -1294,11 +1294,11 @@ def import_directories(case, tree):
 def loaded_by_path(case, tree):
     """module name -> the repository file a `spec_from_file_location` in the case binds it to.
 
-    A suite here loads its subject by explicit path more often than by import: 18 of the 22 that do
-    also put nothing on `sys.path`, so `import_directories` has only the case's own directory to
-    offer and the join below misses. The verdict then falls through to `could not answer there`,
-    which fails the run — for a case that is red on the base for exactly the reason the tolerated
-    verdict records.
+    A suite here loads its subject by explicit path more often than by import, and the join below has
+    nowhere to look unless the module's name happens to be a sibling of the case's own file. Measured
+    over this repository: a binding is read in 10 suites, the join already resolves 2 of them, and the
+    other 8 were reaching `could not answer there` — a verdict that fails the run, for a case that is
+    red on the base for exactly the reason the tolerated one records.
 
     The path expression is folded the way an insert's is, so a call this cannot read contributes
     nothing rather than a guess.
