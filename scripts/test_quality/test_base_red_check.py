@@ -1549,6 +1549,26 @@ class PythonNamedSurfaceTests(unittest.TestCase):
             output, root / "base", root / "branch",
             base_red_check.Case("T.test_a", case_path, 1, 2))
 
+    def test_Given_ASuiteLoadingItsSubjectByPath_When_ItReachesAnAddedName_Then_TheReachIsPlaced(self):
+        # Arrange -- the shape 18 of this repository's 22 such suites take: the module is loaded through
+        # `spec_from_file_location` under a name of its own and nothing is put on `sys.path`, so the
+        # directory join has only the case's own folder to offer and the file is never found.
+        preamble = ("import importlib.util\n"
+                    "from pathlib import Path\n"
+                    "_spec = importlib.util.spec_from_file_location(\n"
+                    "    'subject', Path(__file__).resolve().parents[1] / 'lib' / 'subject.py')\n"
+                    "subject = importlib.util.module_from_spec(_spec)\n"
+                    "_spec.loader.exec_module(subject)\n")
+        base = {"lib/subject.py": "OLD = 1\n"}
+        branch = {"lib/subject.py": "OLD = 1\nADDED = 2\n"}
+
+        # Act
+        placed = self.read("AttributeError: module 'subject' has no attribute 'ADDED'",
+                           "suite/test_subject.py", base, branch, "subject.ADDED", preamble)
+
+        # Assert
+        self.assertTrue(placed)
+
     def raised_importing(self, module, files):
         """The exception line a real import leaves, rather than one transcribed into this file.
 
