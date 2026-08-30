@@ -776,13 +776,13 @@ class NoWithdrawalReachesTests(unittest.TestCase):
         # Act / Assert
         self.assertIs(base_red_check.no_withdrawal_reaches(SHAPES_ONLY, set()), False)
 
-    def test_Given_TheRemedyForShapes_When_ItIsPrinted_Then_ItNamesTheWholeCarriedSet(self):
-        # Arrange -- the budget has to cover every carried file, since the base compiles only once
-        # they are all out.
+    def test_Given_TheRemedyForShapes_When_ItIsPrinted_Then_ItOffersNoBudget(self):
+        # Arrange -- it named one, and measured on the branch replacing UniTask a budget above that
+        # count still ran out of files to withdraw with three fixtures carried and compiled nothing.
         said = base_red_check.shapes_remedy(31)
 
         # Act / Assert
-        self.assertIn("--max-rounds 31", said)
+        self.assertNotIn("--max-rounds", said)
 
 
 class ExhaustedLoopTests(unittest.TestCase):
