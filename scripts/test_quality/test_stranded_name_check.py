@@ -405,12 +405,18 @@ class StrandedTests(unittest.TestCase):
             self.assertEqual(code, 1)
 
 
-    def test_Given_ARemovedNameOfOneWord_When_ACommentSpellsIt_Then_ItIsNotRefused(self):
-        # Arrange -- measured on the change that removed a method called `Guards`: two doc comments
-        # reading "Guards the cohesion scanner" and "Guards", where no rule over the occurrence
-        # separates prose from a reference because both are the bare word.
-        with repository() as tree:
-            tree.changed_to("""namespace Velvet
+    ONE_WORD_BEFORE = """namespace Velvet
+{
+    internal static class Probe
+    {
+        internal static int Guards(int at) => at;
+
+        internal static int Read(int at) => Guards(at);
+    }
+}
+"""
+
+    ONE_WORD_AFTER = """namespace Velvet
 {
     internal static class Probe
     {
@@ -418,7 +424,17 @@ class StrandedTests(unittest.TestCase):
         internal static int Read(int at) => at;
     }
 }
-""")
+"""
+
+    def test_Given_ARemovedNameOfOneWord_When_ACommentSpellsIt_Then_ItIsNotRefused(self):
+        # Arrange -- measured on the change beside this one, which removed a method called `Guards`:
+        # the check reported two doc comments reading "Guards the cohesion scanner" and "Guards".
+        # No rule over the occurrence separates that from a real reference, because both are the
+        # bare word in prose.
+        with repository() as tree:
+            tree.source.write_text(self.ONE_WORD_BEFORE, encoding="utf-8")
+            tree.commit("one word")
+            tree.changed_to(self.ONE_WORD_AFTER)
 
             # Act
             code, _ = tree.verdict()
@@ -428,7 +444,7 @@ class StrandedTests(unittest.TestCase):
 
     def test_Given_ARemovedNameOfTwoWords_When_ACommentSpellsIt_Then_ItIsStillRefused(self):
         # Arrange -- the control: a narrowing that dropped every removal would satisfy the case
-        # above while losing what this exists for.
+        # above while losing what this exists for. Two humps is the only difference between them.
         with repository() as tree:
             tree.changed_to("""namespace Velvet
 {
