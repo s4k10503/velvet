@@ -1897,6 +1897,26 @@ def local_remedy(since, cases):
                 "".join(" --platform " + platform for platform in platforms), since or "origin/main"))
 
 
+def budget_shortfall(standing, budget):
+    """What the loop can say before spending a round, or "" when the budget could be enough.
+
+    A lower bound rather than an estimate. One round withdraws one file, so a run where none of the
+    carried files builds needs at least as many rounds as there are of them, and saying so before
+    the first round costs nothing where saying it afterwards costs the whole budget. Measured on the
+    branch replacing UniTask: 23 carried files on the EditMode side, against a default of 8.
+
+    It cannot say the budget IS enough -- a round that compiles ends the loop, and which round that
+    is depends on which file the log names first. Nor is the bound tight the other way: a file the
+    static reading in `--emit` would have withdrawn still counts here, because the local flow does
+    not take that reading.
+    """
+    if standing <= budget:
+        return ""
+    return ("  {} carried file(s) are not statically withdrawable and one round withdraws one, so\n"
+            "  --max-rounds {} cannot reach a compiling base if none of them builds:\n"
+            "  --max-rounds {}".format(standing, budget, standing))
+
+
 def exhausted_reason(spent, withdrawn, carried):
     """What a loop that ran out of rounds without ever compiling the base has to say for itself.
 
@@ -2156,6 +2176,14 @@ def main():
             wanted = [case for case in cases + control
                       if kind_of(case.path) == "csharp" and platform_of(case.path) == platform]
             withdrawn = set()
+            # Every carried file a round on this platform could be spent withdrawing: its own, and
+            # the ones belonging to no platform, which are the shared helpers that compile into both.
+            note = budget_shortfall(
+                len([name for name in carry if name.endswith(".cs")
+                     and platform_of(name) in (platform, None)]),
+                args.max_rounds)
+            if note:
+                print(note, flush=True)
             for attempt in range(1, args.max_rounds + 1):
                 rounds_spent = max(rounds_spent, attempt)
                 put_back |= withdrawn
