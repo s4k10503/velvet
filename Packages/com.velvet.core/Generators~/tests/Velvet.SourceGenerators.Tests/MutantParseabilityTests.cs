@@ -82,9 +82,13 @@ namespace Velvet.SourceGenerators.Tests
                 (mutants.Count > 1000, rejected.Count));
         }
 
+        // Read under every configuration MutantParseReadings names, because a line inside an `#if`
+        // region nothing lights is trivia to the default one -- there are no tokens there to be
+        // unparseable, and a mutant on such a line passed this guard unread.
         private static int ErrorCount(string source) =>
-            CSharpSyntaxTree.ParseText(source)
-                .GetDiagnostics()
-                .Count(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+            MutantParseReadings.For(source)
+                .Sum(options => CSharpSyntaxTree.ParseText(source, options)
+                    .GetDiagnostics()
+                    .Count(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error));
     }
 }
