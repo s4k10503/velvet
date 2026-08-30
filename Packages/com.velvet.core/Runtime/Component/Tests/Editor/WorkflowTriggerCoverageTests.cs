@@ -70,6 +70,14 @@ namespace Velvet.Tests
         // A negation is a whole pattern, so a ! with anything before it is being used as something else.
         private static readonly Regex UnsupportedGlobPattern = new(@"[?+\[\]{}]|.!", RegexOptions.Compiled);
 
+        // A command naming a glob runs the files it expands to, and a reading that takes the token
+        // literally finds none of them. Only a single * within one segment is expanded: a pattern this
+        // does not read leaves its files reported as run by nothing, which is the direction that fails
+        // loudly rather than covering them in silence.
+        private static readonly Regex SingleStarGlobPattern =
+            new(@"(?<dir>[A-Za-z0-9_.~-]+(?:/[A-Za-z0-9_.~-]+)*)/(?<name>[A-Za-z0-9_.~-]*\*[A-Za-z0-9_.~-]*)",
+                RegexOptions.Compiled);
+
         [Test]
         public void Given_TheMarkdownThisSuiteScans_When_MatchedAgainstTheWorkflowPathFilter_Then_EveryFileStartsTheRun()
         {
@@ -132,16 +140,41 @@ namespace Velvet.Tests
                 .OrderBy(path => path, StringComparer.Ordinal)
                 .ToList();
             var invoked = Workflows().SelectMany(RunCommandLines).ToList();
+            var swept = new HashSet<string>(invoked.SelectMany(GlobMatches), StringComparer.Ordinal);
 
             // Act
             var unrun = harnessTests
-                .Where(path => !invoked.Any(line => line.Contains(path, StringComparison.Ordinal)))
+                .Where(path => !swept.Contains(path)
+                               && !invoked.Any(line => line.Contains(path, StringComparison.Ordinal)))
                 .ToList();
 
             // Assert — a floor rather than the count, because a directory that yielded nothing leaves
             // nothing unrun. Raise it with the tree, or a deletion answers the same way an empty scan does.
             Assert.That((harnessTests.Count >= 6, string.Join("\n", unrun)), Is.EqualTo((true, string.Empty)),
                 "a harness under scripts/ has unit tests that no workflow job runs");
+        }
+
+        [Test]
+        public void Given_TheHookGuardSuites_When_TheWorkflowsAreScanned_Then_ASweepRunsThemRatherThanAStepEach()
+        {
+            // Arrange — the case above is satisfied by a step per suite, and that is what this refuses:
+            // every branch adding a guard appended its step to one region, so a queue of them conflicted
+            // pairwise and the last resolved once per branch ahead of it.
+            var suites = Directory
+                .EnumerateFiles(Path.GetFullPath("scripts/hooks"), "test_*.py")
+                .Select(RepoRelative)
+                .OrderBy(path => path, StringComparer.Ordinal)
+                .ToList();
+            var swept = new HashSet<string>(
+                Workflows().SelectMany(RunCommandLines).SelectMany(GlobMatches), StringComparer.Ordinal);
+
+            // Act
+            var outside = suites.Where(path => !swept.Contains(path)).ToList();
+
+            // Assert — a floor rather than the count, because a directory that yielded nothing leaves
+            // nothing outside. Raise it with the tree, or a deletion answers the same way an empty scan does.
+            Assert.That((suites.Count >= 15, string.Join("\n", outside)), Is.EqualTo((true, string.Empty)),
+                "a hook guard's suite is run by a step naming it rather than by the sweep over the directory");
         }
 
         /// <summary>Every line of every command a workflow's <c>run:</c> steps execute.</summary>
@@ -177,6 +210,34 @@ namespace Velvet.Tests
                     continue;
                 }
                 yield return line;
+            }
+        }
+
+        /// <summary>The repo files a glob anywhere in <paramref name="text"/> expands to.</summary>
+        /// <remarks>
+        /// Posed the command lines, never a whole workflow: a path filter is itself written in globs, so
+        /// reading the file expanded the filter's own patterns and then required it to start for what they
+        /// matched — docs.yml narrows to <c>Runtime/**/*.cs</c> and was asked to start for every .meta and
+        /// .asmdef beside them.
+        /// </remarks>
+        private static IEnumerable<string> GlobMatches(string text)
+        {
+            foreach (Match match in SingleStarGlobPattern.Matches(text))
+            {
+                var directory = Path.GetFullPath(match.Groups["dir"].Value);
+                if (!Directory.Exists(directory))
+                {
+                    continue;
+                }
+                var name = new Regex(
+                    "^" + Regex.Escape(match.Groups["name"].Value).Replace("\\*", "[^/]*") + "$");
+                foreach (var file in Directory.EnumerateFiles(directory))
+                {
+                    if (name.IsMatch(Path.GetFileName(file)))
+                    {
+                        yield return RepoRelative(file);
+                    }
+                }
             }
         }
 

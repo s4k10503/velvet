@@ -548,6 +548,10 @@ PowerShell copy that nothing compared.
   after the tool has already run, so it writes into the transcript and exits 0 whatever it finds.
 - `lib/` — imported by the rest, wired to no event of its own.
 
+Its suites under `scripts/hooks/` are run by one sweep over the directory, so adding a guard adds no
+workflow line — which is the point: a step per suite put every new guard's line in one region, and a
+queue of branches each adding one conflicted pairwise.
+
 A Python-only edit here can redden a C# fixture, because several read the directory rather
 than any one guard. Which ones is derived rather than listed, since a list of thirty files
 goes stale the first time somebody adds a seventeenth:
