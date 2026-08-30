@@ -116,6 +116,38 @@ def declaration(line, category="equivalent", reason="a reason of four words", wr
         return mutation_check.Declaration(category, reason, line, written_here=written_here)
 
 
+class NeighbourDuringAMutantTests(unittest.TestCase):
+    """A second editor arriving after the wait is recorded rather than missed.
+
+    The campaign waits before every mutant, and then waits on the child without sampling. A
+    neighbour arriving ten seconds in can redden a timing-sensitive case, `counts["failed"]` is
+    non-zero, and the mutant is recorded killed -- a mutant that actually survived, which is a hole
+    in the tests, reported as covered. `wait_for_quiet`'s own docstring states the invariant this
+    breaks, and enforces it at one instant.
+    """
+
+    @staticmethod
+    def reading():
+        """What one run reports, as a tuple, so a shorter one fails rather than raises."""
+        return tuple(mutation_check.run_suite(
+            sys.executable, ".", "EditMode", ["-c", "pass"],
+            Path("/dev/null"), Path("/dev/null"), 30))
+
+    def test_Given_ARunThatMetNoNeighbour_When_ItIsRead_Then_ThePeakIsZero(self):
+        # Arrange -- a command that exits at once, so the loop samples and finds only this run.
+        reading = self.reading()
+
+        # Act / Assert -- the other two readings ride along, since a peak of zero from a run that
+        # never started says nothing.
+        self.assertEqual((len(reading), reading[-1], reading[1], reading[0] >= 0),
+                         (3, 0, False, True))
+
+    def test_Given_TheRunner_When_ItReturns_Then_ItCarriesAllThreeReadings(self):
+        # Arrange -- read as a shape, so a tree reporting a pair fails here rather than raising.
+        # Act / Assert
+        self.assertEqual(len(self.reading()), 3)
+
+
 class TextReadingKillerTests(unittest.TestCase):
     """A mutant killed only by a fixture that walks this tree's text was killed by nothing.
 
@@ -190,6 +222,122 @@ class NeighbouringCampaignTests(unittest.TestCase):
 
         # Act / Assert
         self.assertIsNone(mutation_check.CAMPAIGN_RUNNING.match(line))
+
+
+class RewritesThatCannotCompile(unittest.TestCase):
+    """Two of the three mechanisms behind a mutant that cannot compile from a rewrite.
+
+    `-` has no string overload, so a `+` joining a literal rewrites into CS0019; and `while (true)`
+    is how a method with no other returning path returns at all, so `while (false)` leaves it with
+    none and the file stops compiling with CS0161. Neither is behaviour a test could notice.
+
+    Measured over this package's production sources: arithmetic 807 to 743, literal 1709 to 1707 --
+    66 of the 208 the issue counts. The third mechanism, a flip leaving a pattern variable
+    unassigned, is 113 of them and is not a line reading.
+    """
+
+    def operators(self, line, wanted):
+        lines = set(range(1, line.count("\n") + 2))
+        return [m for m in mutation_check.mutations_for("C.cs", line, lines)
+                if m.operator == wanted]
+
+    def test_Given_APlusJoiningALiteral_When_TheMutantsAreRead_Then_ItIsNotOffered(self):
+        # Arrange -- `"a" - name` is not an expression.
+        # Act / Assert
+        self.assertEqual(self.operators('Log("a" + name);\n', "arithmetic"), [])
+
+    # GREEN_ON_BASE(characterization): the control, and the base offers this one too -- that is the
+    # operator working, which this narrows rather than replaces.
+    def test_Given_APlusBetweenNumbers_When_TheMutantsAreRead_Then_ItIsStillOffered(self):
+        # Arrange -- the control: a reading that skipped every `+` would satisfy the case above and
+        # take the operator with it.
+        # Act / Assert
+        self.assertEqual(len(self.operators("total = a + b;\n", "arithmetic")), 1)
+
+    def test_Given_BothOnOneLine_When_TheMutantsAreRead_Then_OnlyTheArithmeticOneIsOffered(self):
+        # Arrange -- read per occurrence rather than per line: skipping the line took 650 where the
+        # mechanism is 64.
+        # Act / Assert
+        self.assertEqual(len(self.operators('Log("a" + name, x + y);\n', "arithmetic")), 1)
+
+    def test_Given_AForeverLoop_When_TheMutantsAreRead_Then_ItsTrueIsNotFlipped(self):
+        # Arrange -- `while (false)` leaves a method with no returning path.
+        # Act / Assert
+        self.assertEqual(self.operators("while (true)\n", "literal"), [])
+
+    # GREEN_ON_BASE(characterization): as above, on the other operator.
+    def test_Given_AnOrdinaryTrue_When_TheMutantsAreRead_Then_ItIsStillFlipped(self):
+        # Arrange -- the control on the other side.
+        # Act / Assert
+        self.assertEqual(len(self.operators("var ready = true;\n", "literal")), 1)
+
+
+class GuardRemovalReadsTheStatement(unittest.TestCase):
+    """The guard operator deletes a whole line, so it takes the reading the removal operator does.
+
+    Emitted without it, a guard nested under another `if` leaves that `if` with no body, and one
+    whose next line is an `else` strands the `else` -- the two shapes `deletable_line` was written
+    for. No such line is in this package today: the operator emits 396 mutants with the reading and
+    396 without, so this is a ratchet against the next one rather than a count that moved.
+    """
+
+    NESTED = """class C
+{
+    void M(bool outer, bool inner)
+    {
+        if (outer)
+            if (inner) return;
+        Body();
+    }
+    void Body() { }
+}
+"""
+
+    ELSE_BELOW = """class C
+{
+    void M(bool guard)
+    {
+        if (guard) return;
+        else Body();
+    }
+    void Body() { }
+}
+"""
+
+    PLAIN = """class C
+{
+    void M(bool guard)
+    {
+        if (guard) return;
+        Body();
+    }
+    void Body() { }
+}
+"""
+
+    def guards(self, source):
+        lines = set(range(1, source.count("\n") + 2))
+        return [mutant for mutant in mutation_check.mutations_for("C.cs", source, lines)
+                if mutant.operator == "guard removed"]
+
+    def test_Given_AGuardNestedUnderAnotherIf_When_TheMutantsAreRead_Then_ItIsNotEmitted(self):
+        # Arrange -- deleting it leaves `if (outer)` with no body.
+        # Act / Assert
+        self.assertEqual(self.guards(self.NESTED), [])
+
+    def test_Given_AGuardWhoseNextLineIsAnElse_When_TheMutantsAreRead_Then_ItIsNotEmitted(self):
+        # Arrange -- deleting it takes the `if` and strands the `else`.
+        # Act / Assert
+        self.assertEqual(self.guards(self.ELSE_BELOW), [])
+
+    # GREEN_ON_BASE(characterization): the control, and the base emits this one too -- that is the
+    # operator working, which this narrows rather than replaces. One that reddened would mean the
+    # narrowing had taken the operator with it.
+    def test_Given_AnOrdinaryGuard_When_TheMutantsAreRead_Then_ItIsStillEmitted(self):
+        # Arrange -- the control: a reading that emitted nothing would satisfy both cases above and
+        # take the operator with it.
+        # Act / Assert
+        self.assertEqual(len(self.guards(self.PLAIN)), 1)
 
 
 class CodeMaskTests(unittest.TestCase):
@@ -1815,16 +1963,16 @@ class StubbedCampaign:
         wall = 0.0 if mutant else self.baseline_seconds
         if mutant and self.no_results:
             Path(log).write_text("")
-            return wall, False
+            return wall, False, 0
         if self.not_rebuilt:
             (self.project / "Library" / "ScriptAssemblies" / "None.dll").write_bytes(b"same")
         if mutant and self.times_out:
-            return wall, True
+            return wall, True, 0
         Path(results).write_text(FAILING_RESULTS if (mutant and self.kills) else GREEN_RESULTS)
         Path(log).write_text(
             "Packages/com.velvet.core/Runtime/Probe.cs(5,9): error VEL501: too many branches\n"
             if (mutant and self.build_error) else "")
-        return wall, False
+        return wall, False, 0
 
     def unity_busy(self):
         self.seen.append(self.source.read_text())

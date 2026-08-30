@@ -392,6 +392,17 @@ OPERATORS = [
 
 WORD_OPERATORS = [("true", "false", "literal"), ("false", "true", "literal")]
 
+def joins_a_string(line, index):
+    """Whether the ` + ` at `index` has a string literal for one of its operands.
+
+    Read on either side of that one operator rather than over the line, which holds both kinds at
+    once: `Log("x" + name)` beside `total = a + b` is one line and one of the two is arithmetic.
+    """
+    return line[:index].rstrip().endswith('"') or line[index + 3:].lstrip().startswith('"')
+
+# `while (true)`, which is how a method with no other returning path returns at all.
+FOREVER_LOOP = re.compile(r"\bwhile\s*\(\s*true\s*$")
+
 # An identifier, an optional type argument list, a parenthesised head, a semicolon-terminated tail.
 # The word in front of the parenthesis is no part of that, so what the removal takes is everything the
 # line runs rather than one call -- which is what its verdict is named for.
@@ -629,6 +640,10 @@ def closes_a_do_block(text, mask, spans, number):
     return False
 
 
+# A control header whose body is the next line: deleting that line leaves the header with none.
+AWAITING_A_BODY = re.compile(r"(?:^|[;{}])\s*(?:if|for|foreach|while|else\s+if)\s*\(.*\)$|(?:^|[;{}])\s*else$")
+
+
 def deletable_line(text, mask, spans, number):
     """Whether removing line `number`'s code leaves what surrounds it standing.
 
@@ -805,13 +820,23 @@ def mutations_for(path, text, target_lines):
                 continue
             index = line.find(before)
             while index >= 0:
-                if all(mask[start + index:start + index + len(before)]):
+                # `"a" - "b"` is not an expression: `-` has no string overload, so a `+` with a
+                # literal on either side rewrites into CS0019 rather than into behaviour a test
+                # could notice. Read per occurrence -- a line can hold one of each, and skipping
+                # the line took 650 arithmetic mutants where the mechanism is 93.
+                if (all(mask[start + index:start + index + len(before)])
+                        and not (before == " + " and joins_a_string(line, index))):
                     found.append(Mutant(path, number, index, before.strip(), after.strip(), operator))
                 index = line.find(before, index + 1)
         for before, after, operator in WORD_OPERATORS:
             for match in re.finditer(r"\b{}\b".format(before), line):
-                if all(mask[start + match.start():start + match.end()]):
-                    found.append(Mutant(path, number, match.start(), before, after, operator))
+                if not all(mask[start + match.start():start + match.end()]):
+                    continue
+                # `while (true)` is how a method's only returning path is reached; `while (false)`
+                # leaves it with none and the file stops compiling -- CS0161 rather than a verdict.
+                if before == "true" and FOREVER_LOOP.search(line[:match.end()]):
+                    continue
+                found.append(Mutant(path, number, match.start(), before, after, operator))
         stripped = line.strip()
         limit = len(line.rstrip())
         # The masked code rather than the raw line: `;$` fails wherever anything follows the
@@ -835,8 +860,17 @@ def mutations_for(path, text, target_lines):
             if DECLARES_A_NAME.search(code_only(text, mask, start + column, start + column + len(cut))):
                 continue
             found.append(Mutant(path, number, column, cut, "", "clause removed"))
+        # This operator deletes a whole line too, so it owes the same two questions the removal
+        # operator asks -- but not the third. `deletable_line` also requires the code above to have
+        # ended a statement, which is about a declaration's tail and rejects a fragment that starts
+        # on the line under test; a guard is a whole statement by the pattern that matched it.
+        # What it does owe: the line above must not be a control header still waiting for its body,
+        # and the line below must not be an `else`. Neither is in the package today -- 396 mutants
+        # either way -- so what moves is that the next one cannot be emitted unread.
         if (GUARD_STATEMENT.match(stripped) and all(mask[start:start + limit])
-                and not DECLARES_A_NAME.search(code_only(text, mask, start, start + limit))):
+                and not DECLARES_A_NAME.search(code_only(text, mask, start, start + limit))
+                and not AWAITING_A_BODY.search(code_above(text, mask, spans, number))
+                and not code_below(text, mask, spans, number).startswith("else")):
             found.append(Mutant(path, number, line.index(stripped), stripped, "", "guard removed"))
     return found
 
@@ -1080,7 +1114,8 @@ def wait_for_quiet(seconds):
 
 
 def run_suite(unity, project, platform, scope, results, log, timeout, holder=None):
-    """Returns the wall clock and whether the editor had to be killed.
+    """Returns the wall clock, whether the editor had to be killed, and the most other
+    editors seen at once.
 
     A mutation can turn a loop bound into one that never terminates, and the run would otherwise
     wait on it for as long as the machine is left alone.
@@ -1098,13 +1133,22 @@ def run_suite(unity, project, platform, scope, results, log, timeout, holder=Non
     child = subprocess.Popen(command)
     if holder is not None:
         holder.child = child
+    # Sampled for the run's whole life, not once before it. The campaign waits before every mutant,
+    # and a neighbour arriving ten seconds in is invisible for the rest of that mutant -- where it
+    # can redden a timing-sensitive case, and the mutant is then recorded killed. A mutant that
+    # actually survived, which is a hole in the tests, reported as covered.
+    peak = 0
     try:
-        child.wait(timeout=timeout)
-        return time.time() - start, False
-    except subprocess.TimeoutExpired:
-        child.kill()
-        child.wait()
-        return time.time() - start, True
+        while True:
+            try:
+                child.wait(timeout=3)
+                return time.time() - start, False, peak
+            except subprocess.TimeoutExpired:
+                if time.time() - start > timeout:
+                    child.kill()
+                    child.wait()
+                    return time.time() - start, True, peak
+                peak = max(peak, max(0, unity_busy() - 1))
     finally:
         if holder is not None:
             holder.child = None
@@ -1659,7 +1703,7 @@ def main():
     # the baseline's editor outliving a killed campaign holds the project lock against the next one.
     holder.guard()
     baseline_results = output / "baseline.xml"
-    baseline_wall, baseline_timed_out = run_suite(args.unity, project, args.platform, scope,
+    baseline_wall, baseline_timed_out, _ = run_suite(args.unity, project, args.platform, scope,
                                                   baseline_results, output / "baseline.log",
                                                   args.timeout, holder)
     if baseline_timed_out:
@@ -1702,7 +1746,7 @@ def main():
             mutated = apply_mutation(originals[mutant.path], mutant)
             holder.hold(mutant.path, originals[mutant.path], mutated, mutant.describe(project))
             mutant.path.write_text(mutated)
-            wall, timed_out = run_suite(args.unity, project, args.platform, scope, results, log,
+            wall, timed_out, neighbours = run_suite(args.unity, project, args.platform, scope, results, log,
                                         args.timeout, holder)
             if holder.release() is None:
                 # The record is still there naming a file still mutated. Going on would apply the
@@ -1759,6 +1803,9 @@ def main():
                 mutant.detail = "{} inconclusive, 0 failed".format(counts["inconclusive"])
             else:
                 mutant.verdict = SURVIVED
+            if neighbours:
+                mutant.detail = "{}; {} other editor(s) were up".format(
+                    mutant.detail or "-", neighbours)
             average = (time.time() - started) / index
             print("      {} ({}) in {:.0f}s; {:.0f}s left at {:.0f}s each".format(
                 mutant.verdict, mutant.detail or "-", wall, average * (len(mutants) - index), average))

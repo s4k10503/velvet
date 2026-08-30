@@ -116,5 +116,42 @@ class WhoseDeferral(unittest.TestCase):
         self.assertIsNone(deferrals.deferred("377", NOW + deferrals.TTL))
 
 
+class SignedLineIsNotUnusable(unittest.TestCase):
+    """`deferred` and `unusable` read one line, so they read it the same way.
+
+    Updated in one and not the other, a signed line was honoured and reported unusable in the same
+    breath -- the guard printed it under "Held on purpose" and under "Deferrals that were ignored".
+    """
+
+    def setUp(self):
+        root = Path(tempfile.mkdtemp(prefix="deferral-"))
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        self.file = root / "deferrals"
+        self.addCleanup(setattr, deferrals, "DEFERRALS", deferrals.DEFERRALS)
+        deferrals.DEFERRALS = self.file
+        before = os.environ.get("CLAUDE_CODE_SESSION_ID")
+        self.addCleanup(
+            lambda: os.environ.__setitem__("CLAUDE_CODE_SESSION_ID", before) if before
+            else os.environ.pop("CLAUDE_CODE_SESSION_ID", None))
+        os.environ["CLAUDE_CODE_SESSION_ID"] = MINE
+
+    def test_Given_ALineThisSessionSigned_When_ItIsReadForRejection_Then_NothingIsWrongWithIt(self):
+        # Arrange
+        self.file.write_text("377 waiting on review {} {}\n".format(NOW, MINE), encoding="utf-8")
+
+        # Act / Assert
+        self.assertIsNone(deferrals.unusable("377", NOW + 60))
+
+    # GREEN_ON_BASE(characterization): the control, and the base names a malformed line too -- that
+    # reading is what this widens rather than replaces. One that reddened would mean the widening had
+    # taken the rejection with it.
+    def test_Given_ALineWhoseStampIsMissing_When_ItIsReadForRejection_Then_ItIsStillNamed(self):
+        # Arrange -- the control: the reading that catches a malformed line has to keep catching it.
+        self.file.write_text("377 waiting on review later {}\n".format(MINE), encoding="utf-8")
+
+        # Act / Assert
+        self.assertIsNotNone(deferrals.unusable("377", NOW + 60))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

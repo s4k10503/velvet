@@ -979,17 +979,34 @@ def next_to_withdraw(log_text, carry, withdrawn, silent):
 
 
 def run_unity(unity, tree, platform, fixtures, results, log, timeout):
+    """(wall clock, the most other editors seen at once) for one base run.
+
+    Sampled for the run's whole life rather than once before it. The wait at the top of the lane
+    covers the instant it happens in, and a neighbour arriving after it is invisible for every round
+    that follows -- where it can redden a timing-sensitive case on the base tree, and `red on the
+    base` is exactly the evidence this harness is asked for. Contention there does not produce a
+    confusing verdict; it produces a confident wrong one.
+
+    `neuter_check.run_suite` already samples this way and prints what it saw. Recorded rather than
+    refused: what a non-zero peak should cost a verdict wants measuring against how often a
+    neighbour actually appears, and silence is the one answer that cannot be re-examined later.
+    """
     command = [
         unity, "-runTests", "-batchmode", "-projectPath", str(tree),
         "-testPlatform", platform, "-testResults", str(results), "-logFile", str(log),
         "-testFilter", ";".join(sorted(fixtures)),
     ]
     started = time.time()
-    try:
-        subprocess.run(command, timeout=timeout)
-    except subprocess.TimeoutExpired:
-        pass
-    return time.time() - started
+    peak = 0
+    process = subprocess.Popen(command)
+    while process.poll() is None:
+        if time.time() - started > timeout:
+            process.kill()
+            process.wait()
+            break
+        peak = max(peak, max(0, unity_busy() - 1))
+        time.sleep(3)
+    return time.time() - started, peak
 
 
 # The source a stack-trace frame names, matched under the two roots a Unity project's own code sits
@@ -1993,6 +2010,20 @@ def shapes_remedy(carried):
             "land is yours to decide, and this has nothing further to say about it.".format(carried))
 
 
+# How many rounds of no progress are a fixed point rather than a slow one. Two says nothing -- a
+# withdrawal can take a file with no cases and the next round is the one that moves -- and three is
+# where the loop has asked the same question three times running.
+STILL_ROUNDS = 3
+
+
+def standing_still_reason(platform, attempt, fixtures):
+    """What to print where the loop has stopped moving rather than run out of budget."""
+    return ("\n{} asked the same {} fixture(s) {} rounds running and measured nothing each time.\n"
+            "Withdrawing is taking files that hold no case, so the next round is the one before it:\n"
+            "this is a fixed point rather than a budget. Spending the rest of --max-rounds would\n"
+            "report the cap instead of this.".format(platform, fixtures, STILL_ROUNDS))
+
+
 def exhausted_reason(spent, withdrawn, carried):
     """What a loop that ran out of rounds without ever compiling the base has to say for itself.
 
@@ -2234,6 +2265,7 @@ def main():
     transcript = []
     canaries = {}
     last_log = None
+    met_a_neighbour = False
     ever_wrote = not any(kind_of(case.path) == "csharp" for case in cases)
     rounds_spent = 0
     put_back = set()
@@ -2274,6 +2306,12 @@ def main():
                 args.max_rounds)
             if note:
                 print(note, flush=True)
+            # A round that measures nothing and leaves the fixture count where it was is the loop
+            # standing still: it withdrew a file with no cases in it, so the next round asks exactly
+            # what this one did. Measured on the branch replacing UniTask: EditMode stopped
+            # withdrawing after round 1 and repeated the same round seven more times, four seconds
+            # each, and the run then reported the round cap rather than the fixed point.
+            standing_still, last_count = 0, None
             for attempt in range(1, args.max_rounds + 1):
                 rounds_spent = max(rounds_spent, attempt)
                 put_back |= withdrawn
@@ -2286,18 +2324,28 @@ def main():
                 for stale in (results, log):
                     if stale.exists():
                         stale.unlink()
-                wall = run_unity(args.unity, base_tree, platform, fixtures, results, log, args.timeout)
+                wall, neighbours = run_unity(
+                    args.unity, base_tree, platform, fixtures, results, log, args.timeout)
+                met_a_neighbour = met_a_neighbour or neighbours > 0
                 last_log = log
                 seen, wrote = results_from(results)
                 ever_wrote = ever_wrote or wrote
                 reported.update(seen)
-                print("{} attempt {}: {} case(s) over {} fixture(s) in {:.0f}s".format(
-                    platform, attempt, len(seen), len(fixtures), wall), flush=True)
+                print("{} attempt {}: {} case(s) over {} fixture(s) in {:.0f}s{}".format(
+                    platform, attempt, len(seen), len(fixtures), wall,
+                    "" if not neighbours else
+                    "; {} other editor(s) were up".format(neighbours)), flush=True)
 
                 # One file per attempt. A round that reports nothing says only that something the
                 # tree holds did not build, never which file, so withdrawing every silent one at
                 # once would take out the files that were merely standing next to the offender and
                 # leave their cases unmeasured behind somebody else's error.
+                standing_still = standing_still + 1 if not seen and len(fixtures) == last_count else 0
+                last_count = len(fixtures)
+                if standing_still >= STILL_ROUNDS:
+                    print(standing_still_reason(platform, attempt, len(fixtures)), flush=True)
+                    break
+
                 ran = fixtures_that_ran(seen)
                 silent = sorted({case.path for case in live if case.fixture not in ran})
                 if not silent:
@@ -2326,6 +2374,10 @@ def main():
             print(shapes_remedy(len(carry)), flush=True)
         elif rounds_spent >= args.max_rounds:
             print(exhausted_reason(rounds_spent, put_back, len(carry)), flush=True)
+    if met_a_neighbour:
+        print("\nA second editor was up during at least one of these runs, so a failure here has a\n"
+              "second explanation. Nothing below distinguishes one it caused from one the branch did.",
+              flush=True)
     offenders = report(cases, control, reported, canaries, ever_wrote)
     print("\nlogs: {}".format(output), flush=True)
     return 1 if offenders else 0
