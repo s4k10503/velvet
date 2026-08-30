@@ -171,6 +171,23 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AnErrorBoundaryAboveTheOutlet_When_TheFirstMountsFactoryThrows_Then_OnlyTheFallbackIsInTheTree()
+        {
+            // Arrange — the mount path inserts the element it created whether the pass aborted or not, so
+            // a boundary above the Outlet rather than beneath it is where a failed route could be left
+            // beside the fallback instead of replaced by it.
+            s_throwOnDispose = false;
+            _scopeFactory.ThrowOnCreate = true;
+
+            // Act
+            var escaped = EscapesFrom(() => MountBoundedApp());
+
+            // Assert
+            Assert.That((escaped, NamesOf(_root), LabelTextsUnder(_root)),
+                        Is.EqualTo((false, "fallback", string.Empty)));
+        }
+
+        [Test]
         public void Given_AnErrorBoundaryAboveTheOutlet_When_TheFactoryThrows_Then_ItShowsItsFallback()
         {
             // Arrange — with a boundary mounted the propagation has somewhere to land, which is the whole
