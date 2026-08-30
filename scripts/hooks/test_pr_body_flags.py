@@ -166,6 +166,50 @@ class ValueFlagMirrorTests(unittest.TestCase):
                          "gh prints a boolean shorthand SHORT_BOOLEAN_FLAGS does not carry")
 
 
+class SubcommandTableTests(unittest.TestCase):
+    """The subcommands whose own table the parse carries, against gh's.
+
+    Held apart from the union above because the union covers the ones that agree, and this covers the
+    one that does not: read as the union, `gh pr merge 7 -m -b "text"` spends `-b` as `-m`'s value,
+    finds no body, and a guard that found none exits 0 — which is what it exits having read one and
+    been satisfied.
+    """
+
+    def test_Given_ghsOwnOptionTables_When_EachCarriedSubcommandIsRead_Then_ItsTableSpellsThemExactly(self):
+        # Arrange — both directions and both kinds, per subcommand rather than unioned: a flag
+        # wrongly value-taking swallows the body flag behind it, and one wrongly boolean lets its own
+        # value be read as one.
+        disagreement = []
+        for words, (value_taking, boolean) in sorted(pr_body.SUBCOMMAND_FLAGS.items()):
+            printed_value, printed_boolean = option_table(words[1])
+            printed_boolean = {flag for flag in printed_boolean if not flag.startswith("--")}
+            disagreement += [f"{' '.join(words)}: {kind} {sorted(missing)}"
+                             for kind, missing in (("value-taking, unmirrored",
+                                                    printed_value - value_taking),
+                                                   ("value-taking, not gh's",
+                                                    value_taking - printed_value),
+                                                   ("boolean shorthand, unmirrored",
+                                                    printed_boolean - boolean),
+                                                   ("boolean shorthand, not gh's",
+                                                    boolean - printed_boolean))
+                             if missing]
+
+        # Act / Assert — how many subcommands were read rides along, since an empty table disagrees
+        # with nothing.
+        self.assertEqual((len(pr_body.SUBCOMMAND_FLAGS), disagreement), (1, []))
+
+    def test_Given_AMergeBodyBehindAValuelessShorthand_When_TheOperandsAreParsed_Then_TheBodyIsFound(self):
+        # Arrange — `-m` is `--merge` here and carries no value, so the token after it is the next
+        # option rather than its operand.
+        operands = ["736", "-m", "-b", "the body"]
+
+        # Act
+        found = pr_body.valued(operands, pr_body.BODY_FLAGS, ("pr", "merge"))
+
+        # Assert
+        self.assertEqual(found, "the body")
+
+
 class ExemptionScopeTests(unittest.TestCase):
     """Where an exemption is real, against gh's own tables.
 
