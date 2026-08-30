@@ -171,14 +171,18 @@ class StrandedTests(unittest.TestCase):
             self.assertEqual(code, 0)
 
     def test_Given_AMethodMovedRatherThanRemoved_When_TheChangeIsRead_Then_ItIsNotRefused(self):
-        # Arrange -- the declaration leaves one place and is written in another, which the diff
-        # reports as a removal and the tree answers for.
+        # Arrange -- the declaration leaves one place and is written in another, spelled differently
+        # so the diff reports the removal rather than matching the line as context. The tree answers
+        # for it, and that answer is the code-side reading: without it this refuses a live name.
         with repository() as tree:
             tree.changed_to("""namespace Velvet
 {
     internal static class Slots
     {
-        internal static int RebaseSlots(int at) => at;
+        internal static int RebaseSlots(int at)
+        {
+            return at;
+        }
     }
 
     internal static class Probe
@@ -261,6 +265,131 @@ class StrandedTests(unittest.TestCase):
             self.assertEqual(code, 1)
 
 
+    def test_Given_ARegionLabelSpellingTheRemovedName_When_TheChangeIsRead_Then_ItIsStillFound(self):
+        # Arrange -- a directive line declares nothing. Routed to the code stream, one #region label
+        # spelling the name answers for it everywhere and the strand below goes unreported.
+        with repository() as tree:
+            (tree.root / "Other.cs").write_text("""namespace Velvet
+{
+    internal static class Other
+    {
+        #region RebaseSlots and friends
+        internal static int Keep() => 1;
+        #endregion
+    }
+}
+""", encoding="utf-8")
+            tree.changed_to("""namespace Velvet
+{
+    internal static class Probe
+    {
+        // The caller rebases first (see RebaseSlots).
+        internal static int Read(int at) => at;
+    }
+}
+""")
+
+            # Act
+            code, _ = tree.verdict()
+
+            # Assert
+            self.assertEqual(code, 1)
+
+    def test_Given_AnInterpolatedStringHoldingTheOnlyCall_When_TheChangeIsRead_Then_ItIsNotRefused(self):
+        # Arrange -- the holes in an interpolated string are code, and separating them needs a
+        # brace-matching pass this does not do. Its text goes to the code stream instead. Dropped
+        # like an ordinary string, the only call goes with it and the comment below reads as a
+        # strand.
+        with repository() as tree:
+            tree.changed_to("""namespace Velvet
+{
+    internal static class Probe
+    {
+        // The caller rebases first (see RebaseSlots).
+        internal static string Read(int at) => $"slot {RebaseSlots(at)}";
+    }
+}
+""")
+
+            # Act
+            code, _ = tree.verdict()
+
+            # Assert
+            self.assertEqual(code, 0)
+
+    def test_Given_AVerbatimStringEndingInABackslash_When_TheCallFollowsIt_Then_ItIsStillCode(self):
+        # Arrange -- a verbatim string takes no escapes, so its closing quote is the one after the
+        # backslash. Read as an ordinary literal that quote is escaped, the string runs on past the
+        # call, and the comment above is all that is left naming it.
+        with repository() as tree:
+            tree.changed_to("""namespace Velvet
+{
+    internal static class Probe
+    {
+        // The caller rebases first (see RebaseSlots).
+        internal static int Read(int at) => Url(@"a directory\\") + RebaseSlots(at);
+
+        internal static int Url(string held) => held.Length;
+    }
+}
+""")
+
+            # Act
+            code, _ = tree.verdict()
+
+            # Assert
+            self.assertEqual(code, 0)
+
+
+    def test_Given_ADirectiveLineCarryingAComment_When_TheCommentNamesIt_Then_ItIsStillRead(self):
+        # Arrange -- a #pragma is dropped, but the comment after it on the same line is a comment.
+        with repository() as tree:
+            tree.changed_to("""namespace Velvet
+{
+    internal static class Probe
+    {
+#pragma warning disable CS8524 // the caller rebases first (see RebaseSlots)
+        internal static int Read(int at) => at;
+#pragma warning restore CS8524
+    }
+}
+""")
+
+            # Act
+            code, _ = tree.verdict()
+
+            # Assert
+            self.assertEqual(code, 1)
+
+    def test_Given_ASourceWhoseNameHoldsASpace_When_ItCarriesTheStrand_Then_ItIsStillRead(self):
+        # Arrange -- git grep -l reports one path per line, and splitting that on whitespace makes
+        # two paths of this one, neither of which any revision holds.
+        with repository() as tree:
+            (tree.root / "Route Link.cs").write_text("""namespace Velvet
+{
+    internal static class Other
+    {
+        // The caller rebases first (see RebaseSlots).
+        internal static int Keep() => 1;
+    }
+}
+""", encoding="utf-8")
+            tree.changed_to("""namespace Velvet
+{
+    internal static class Probe
+    {
+        internal static int Read(int at) => at;
+    }
+}
+""")
+
+            # Act
+            code, _ = tree.verdict()
+
+            # Assert
+            self.assertEqual(code, 1)
+
+
 class RepositoryHistoryTests(unittest.TestCase):
     """Held against real commits, since a guard that fires only on invented text is untested."""
 
@@ -290,10 +419,10 @@ class RepositoryHistoryTests(unittest.TestCase):
             (1, True, True, True))
 
     def test_Given_ACommitNamingTheBaseTreesMethodOnPurpose_When_ItIsRead_Then_ItStillFires(self):
-        # Arrange -- c8d5b151d's GREEN_ON_BASE declaration names a method the base has and this tree
-        # does not. It is the one firing in the 320 commits measured, and it is a false positive:
-        # pinned so that excluding its shape is a decision somebody takes deliberately, against a
-        # case that fails when they do.
+        # Arrange -- c8d5b151d's base-red declaration names a method the base has and this tree does
+        # not. It is one of the two firings in the 320 commits measured and the only false positive
+        # among them: pinned so that excluding its shape is a decision somebody takes deliberately,
+        # against a case that fails when they do.
         code, said = self.read("c8d5b151d")
 
         # Assert

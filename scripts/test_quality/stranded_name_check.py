@@ -78,6 +78,18 @@ def split_comments(text):
                 code.append(" ")
                 i = literal.end()
                 continue
+        if char == "#" and (i == 0 or text[i - 1] == "\n" or text[:i].rsplit("\n", 1)[-1].isspace()):
+            # A directive line declares nothing and refers to nothing, and a #region label is prose:
+            # routed to the code stream it answers for any name it happens to spell, tree-wide. Only
+            # as far as a `//` on it, because a #pragma carrying one is carrying a comment.
+            end = text.find("\n", i)
+            end = size if end < 0 else end
+            spoken = text.find("//", i)
+            if 0 <= spoken < end:
+                end = spoken
+            code.append("\n")
+            i = end
+            continue
         if text.startswith("//", i):
             end = text.find("\n", i)
             end = size if end < 0 else end
@@ -123,7 +135,8 @@ def stranded(base, head):
     left = []
     for name in sorted(removed_declarations(base, head)):
         # C# only. A name a removed declaration leaves behind in USS, JSON or an asmdef is content
-        # rather than a reference, which is how every other reader here treats one.
+        # rather than a reference to the declaration -- which is the reading DocumentationDriftTests
+        # takes of those formats too, where it keeps the string and resolves nothing from it.
         pattern = re.compile(r"\b{}\b".format(re.escape(name)))
         files = git("grep", "-l", "-w", name, head, "--", "*.cs").splitlines()
         if not files:

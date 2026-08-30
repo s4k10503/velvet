@@ -1292,7 +1292,7 @@ namespace Velvet.Tests
 
         #endregion
 
-        #region Self-park double-rebase on a container-creating resume tick
+        #region A resume tick that creates the container and re-parks
 
         [Test]
         public void Given_AParkedFibersOwnResumeTickCreatesItsContainerAndReParks_When_ItFinishes_Then_TrailingItemsLandAtCorrectIndices()
@@ -1315,21 +1315,18 @@ namespace Velvet.Tests
 
             // Act — tick 2 (a single manual resume, which continues at the tiny budget tick 1 captured on the
             // fiber): processes item1, creating the shared parent's first back container INSIDE this tick's drain,
-            // then re-parks immediately after (item2..item9 remain) — so the fiber is STILL registered in
-            // ParkedBaselineFibers while its own resumed drain is rebasing that same PendingIndexedState.
+            // then re-parks immediately after (item2..item9 remain), still registered in
+            // ParkedBaselineFibers.
             FiberWorkLoop.ContinueReconcile(s_drainFiber);
             var resumeTickCreatedTheBackContainer = FindLayerContainer(root, front: false) != null;
             var reParkedWhileStillRegistered = s_drainFiber.HasPendingReconcileWorkForTest();
 
-            // Act — drain the remainder; the double-rebase this test targets is already fully determined by
-            // tick 2 above.
+            // Act — drain the remainder; what this case reads is already fully determined by tick 2 above.
             s_drainFiber.DrainTimeSlicedReconcileForTest();
 
-            // Assert — RED without the fix: the container-creating tick's own +1 delta is applied twice to
-            // the very same PendingIndexedState (current's own self-rebase, then the SAME fiber matched
-            // again in the ParkedBaselineFibers loop, since nothing yet removed it from that registry), so
-            // every trailing item resumes two physical slots ahead of where the container's single
-            // insertion actually left it.
+            // Assert — RED without the fix: every trailing item resumes two physical slots ahead of where
+            // the container's single insertion left it, the container-creating tick's one-slot delta having
+            // reached the same suspended state twice.
             Assert.That(
                 (noBackContainerBeforeTheReRender, parkedAfterItem0, registeredAsParkedBaseline,
                     resumeTickCreatedTheBackContainer, reParkedWhileStillRegistered, TrailingItemOrder(root)),
