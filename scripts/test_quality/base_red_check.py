@@ -1291,8 +1291,44 @@ def import_directories(case, tree):
     return found
 
 
+def loaded_by_path(case, tree):
+    """module name -> the repository file a `spec_from_file_location` in the case binds it to.
+
+    A suite here loads its subject by explicit path more often than by import, and the join below has
+    nowhere to look unless the module's name happens to be a sibling of the case's own file. Measured
+    over this repository: a binding is read in 10 suites, the join already resolves 2 of them, and the
+    other 8 were reaching `could not answer there` — a verdict that fails the run, for a case that is
+    red on the base for exactly the reason the tolerated one records.
+
+    The path expression is folded the way an insert's is, so a call this cannot read contributes
+    nothing rather than a guess.
+    """
+    home = Path(case.path)
+    source = tree / case.path
+    try:
+        parsed = ast.parse(source.read_text(encoding="utf-8", errors="replace")
+                           if source.is_file() else "")
+    except SyntaxError:
+        return {}
+    bound = path_bindings(parsed)
+    found = {}
+    for node in ast.walk(parsed):
+        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "spec_from_file_location" and len(node.args) >= 2):
+            continue
+        named = node.args[0]
+        if not (isinstance(named, ast.Constant) and isinstance(named.value, str)):
+            continue
+        for relative in sorted(folded_path(node.args[1], home, bound)):
+            found.setdefault(named.value, relative)
+    return found
+
+
 def module_relatives(case, module, tree):
     """The files the module named in a traceback could be, one per directory the run searches."""
+    bound = loaded_by_path(case, tree).get(module)
+    if bound is not None:
+        return [Path(bound)]
     parts = module.split(".")
     return [directory.joinpath(*parts).with_suffix(".py")
             for directory in import_directories(case, tree)]
