@@ -1952,16 +1952,22 @@ def budget_shortfall(standing, budget):
 def shapes_remedy(carried):
     """What to print where no withdrawal reaches what the base raised.
 
-    The generic line sends the author to sharpen the case, and there is nothing to sharpen: the base
-    holds the members these cases spell under the shapes this change replaced, so no case can be red
-    there until every carried file has come out -- at which point the budget is the whole set. That
-    is a number this can name before the rounds are spent.
+    Not a budget. This said the base compiles once the whole carried set is out and named that
+    count as `--max-rounds`, and measured on the branch replacing UniTask with an in-tree awaitable
+    it is false: given more rounds than the count, the loop spent 27, ran out of files it could
+    withdraw with three fixtures still carried, and compiled nothing. What it was left holding was
+    123 errors of one code, every one a receiver type an extension method does not take.
+
+    So the remedy is to say the harness has no reading here, and stop offering one. What to do about
+    a change base-red cannot answer for is the author's, and it is not a number.
     """
     return ("\nNothing the base raised on a carried file is a name it has not got, so no withdrawal\n"
-            "reaches it: the members resolve and their shapes differ. Every round therefore withdraws\n"
-            "a file whose cases it then cannot measure, and the base compiles only once the whole\n"
-            "carried set is out. Give it the whole set:\n"
-            "  --max-rounds {}".format(carried))
+            "reaches it: the file that fails is the file the case is in, and putting it back removes\n"
+            "the case rather than the obstacle. More rounds do not help -- measured on a change of\n"
+            "this shape, the loop ran out of files it could withdraw with {} still carried and\n"
+            "compiled nothing.\n"
+            "\nThere is no reading here to take. Whether a change base-red cannot answer for should\n"
+            "land is yours to decide, and this has nothing further to say about it.".format(carried))
 
 
 def exhausted_reason(spent, withdrawn, carried):
