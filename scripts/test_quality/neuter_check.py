@@ -171,6 +171,18 @@ def path_in_harness_output(project, path, output_dir):
         return False
 
 
+# Where a neutered run can leave something behind: the fixtures drive an editor over the project, and
+# what it rewrites is the project. A file that goes dirty outside these did not go dirty because of
+# the sweep, and this used to restore it anyway -- measured, three uncommitted edits to
+# .github/workflows/test.yml were discarded during one, logged as "restored" as they went.
+HARNESS_TERRITORY = ("Assets/", "ProjectSettings/", "Packages/manifest.json",
+                     "Packages/packages-lock.json")
+
+
+def in_harness_territory(path):
+    return any(path == one or path.startswith(one) for one in HARNESS_TERRITORY)
+
+
 def restore_foreign_dirty(project, cut, before_dirty, output_dir):
     """A cut's revert() only puts back files listed in the cut map.
 
@@ -178,6 +190,10 @@ def restore_foreign_dirty(project, cut, before_dirty, output_dir):
     run wrote. Cutting the revert of BundledShaderBuildInclusion and BundledStyleSheetBuildInclusion left
     ProjectSettings/GraphicsSettings.asset and ProjectSettings/ProjectSettings.asset modified after the
     sweep finished.
+
+    Scoped, because "went dirty because the harness wrote it" and "went dirty because a person typed
+    in it" are the same reading after the fact. Anything outside the harness's territory is reported
+    and left alone: a sweep that cannot say whose edit it is does not get to decide.
     """
     try:
         after_dirty = git_porcelain(project)
@@ -185,10 +201,17 @@ def restore_foreign_dirty(project, cut, before_dirty, output_dir):
         print(f"    failed to read git status: {exc}", flush=True)
         return
     cut_files = {edit["file"] for edit in cut["edits"]}
-    foreign = sorted(
+    went_dirty = sorted(
         path for path in set(after_dirty) - set(before_dirty) - cut_files
         if not path_in_harness_output(project, path, output_dir)
     )
+    stranger = [path for path in went_dirty if not in_harness_territory(path)]
+    if stranger:
+        print("    left alone, dirty and outside what a run here writes -- yours, or somebody's:",
+              flush=True)
+        for path in stranger:
+            print(f"      {path}", flush=True)
+    foreign = [path for path in went_dirty if in_harness_territory(path)]
     for path in foreign:
         if after_dirty[path] == "??":
             command = ["git", "-C", str(project), "clean", "-fd", "--", path]

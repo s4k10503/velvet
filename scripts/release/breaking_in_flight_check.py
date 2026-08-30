@@ -49,6 +49,12 @@ def released(text):
     return set(VERSION_HEADING.findall(text or ""))
 
 
+def released_in_order(text):
+    """The dated headings newest first, which is what is_major_bump reads a version's place in."""
+    return [named for named in VERSION_HEADING.findall(text or "")
+            if named not in ("Unreleased", BREAKING)]
+
+
 def section(text, heading):
     start = (text or "").find(f"## [{heading}]")
     if start < 0:
@@ -108,6 +114,24 @@ def adds_breaking(pull, base):
             if entry not in section(at(base, CHANGELOG), BREAKING)]
 
 
+def lost_from_breaking(base, result):
+    """Entries the breaking section held at the base that the result carries nowhere at all.
+
+    Moving one out is legitimate -- reclassifying an entry as non-breaking is what moving the
+    TabIndex one was -- and a move leaves it somewhere in the file. A removal leaves it nowhere, and
+    the emptiness reading only ever saw a section emptied completely: measured, moving a single
+    entry out moved no case at all.
+    """
+    before = section(at(base, CHANGELOG), BREAKING)
+    after = (at(result, CHANGELOG) or "")
+    return [entry for entry in before if entry.strip() not in after]
+
+
+def left_in_breaking(result):
+    """What the breaking section still holds."""
+    return section(at(result, CHANGELOG), BREAKING)
+
+
 def unnamed(pulls, body):
     """Pull requests the body does not name, by number."""
     said = set(re.findall(r"#(\d+)", body or ""))
@@ -130,10 +154,47 @@ def main():
         tags = published_check.remote_tags(Path.cwd())
     except Exception:
         tags = set()
+    # Before the version reading, because it holds whatever this change closes and also when it
+    # closes nothing: an entry moved out of the section and into no other is lost, and the reading
+    # that watched the section only ever saw it emptied completely.
+    lost = lost_from_breaking(args.base, args.result)
+    if lost:
+        sys.stderr.write(
+            "{} entries left '{}' and the result carries them nowhere:\n{}\n\n"
+            "Reclassifying one is a move -- it lands in another section and is still in the file.\n"
+            "Nothing here removes a break from the record, so this is a move that lost its\n"
+            "destination.\n".format(len(lost), BREAKING, "\n".join("  " + one for one in lost)))
+        return UNNAMED
+
     versions = closing(args.base, args.result, tags)
     if not versions:
         print("closes no version, so nothing is asked about work in flight")
         return 0
+
+    # A major ships the breaks written for it, and the heading guard cannot see where the entries
+    # went. Measured: a 3.0.0 closed with all ten entries left behind passes every other reading,
+    # and its note describes none of the breaks it ships. Left behind on purpose is a decision --
+    # an entry can wait for the major after this one -- so it is asked for rather than refused.
+    majors = [named for named in versions
+              if published_check.is_major_bump(
+                  released_in_order(at(args.result, CHANGELOG)), named)]
+    behind = left_in_breaking(args.result) if majors else []
+    if behind:
+        body_text = ""
+        if args.body_file:
+            try:
+                body_text = Path(args.body_file).read_text()
+            except OSError:
+                body_text = ""
+        if BREAKING not in body_text:
+            sys.stderr.write(
+                "{} closes a major and leaves {} entr(y|ies) in '{}':\n{}\n\n"
+                "A major moves the breaking entries up into the section it closes. One left behind\n"
+                "waits for the major after this, which is a decision -- say in the body which of\n"
+                "these this version carries and which it does not, naming the section.\n".format(
+                    ", ".join(majors), len(behind), BREAKING,
+                    "\n".join("  " + one for one in behind)))
+            return UNNAMED
 
     pulls, failure = open_pull_requests(args.repo)
     if pulls is None:

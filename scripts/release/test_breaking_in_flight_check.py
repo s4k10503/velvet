@@ -10,6 +10,7 @@ Run: python3 scripts/release/test_breaking_in_flight_check.py
 """
 
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -189,6 +190,88 @@ class Decisions(unittest.TestCase):
 
         # Act — measured against its own HEAD, so no version opens across the pair.
         done = run(root, "HEAD", listing(377, branch), body="No release here.")
+
+        # Assert
+        self.assertEqual(done.returncode, 0)
+
+
+WITH_ENTRY = OPEN.replace(
+    "## [Unreleased — breaking]\n",
+    "## [Unreleased — breaking]\n\n### Changed\n\n- An API a caller has to edit around.\n")
+
+
+class WhereTheEntriesWent(unittest.TestCase):
+    """The heading guard cannot see where the entries went, and two edits passed every reading."""
+
+    def tree(self, before, after):
+        root = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        git(root, "init", "--quiet", "--initial-branch=main")
+        git(root, "config", "user.email", "t@example.com")
+        git(root, "config", "user.name", "t")
+        (root / CHANGELOG).parent.mkdir(parents=True)
+        (root / CHANGELOG).write_text(before)
+        git(root, "add", CHANGELOG)
+        git(root, "commit", "--quiet", "-m", "base")
+        base = subprocess.run(["git", "-C", str(root), "rev-parse", "HEAD"],
+                              capture_output=True, text=True).stdout.strip()
+        (root / CHANGELOG).write_text(after)
+        git(root, "commit", "--quiet", "-am", "after")
+        git(root, "remote", "add", "origin", str(root))
+        return root, base
+
+    def test_Given_AnEntryThatLeftTheSection_When_TheResultCarriesItNowhere_Then_ItIsRefused(self):
+        # Arrange -- the emptiness reading only ever saw a section emptied completely; measured,
+        # moving a single entry out moved no case at all.
+        root, base = self.tree(WITH_ENTRY, OPEN)
+
+        # Act
+        done = run(root, base, "[]")
+
+        # Assert
+        self.assertEqual((done.returncode, "carries them nowhere" in done.stderr), (UNNAMED, True))
+
+    # GREEN_ON_BASE(characterization): the control for the reading beside it, and a control is
+    # green on both sides -- the base passes this because it passes everything of this shape, which
+    # is the defect the red case names.
+    def test_Given_AnEntryReclassified_When_ItLandsInAnotherSection_Then_ItPasses(self):
+        # Arrange -- the control, and the legitimate case the static forms refuse: moving one out
+        # is a reclassification, and it is still in the file.
+        moved = OPEN.replace("## [Unreleased]\n",
+                             "## [Unreleased]\n\n### Changed\n\n- An API a caller has to edit around.\n")
+        root, base = self.tree(WITH_ENTRY, moved)
+
+        # Act
+        done = run(root, base, "[]")
+
+        # Assert
+        self.assertEqual(done.returncode, 0)
+
+    def test_Given_AMajorThatLeavesItsEntries_When_TheBodyIsSilent_Then_ItIsRefused(self):
+        # Arrange -- measured: a 3.0.0 closed with every entry left behind passes every other
+        # reading, and its note describes none of the breaks it ships.
+        closing_major = WITH_ENTRY.replace("## [Unreleased]\n",
+                                           "## [Unreleased]\n\n## [3.0.0] - 2026-09-01\n")
+        root, base = self.tree(WITH_ENTRY, closing_major)
+
+        # Act
+        done = run(root, base, "[]", body="Closes something.")
+
+        # Assert
+        self.assertEqual((done.returncode, "leaves 1 entr" in done.stderr), (UNNAMED, True))
+
+    # GREEN_ON_BASE(characterization): as above. The base asks nothing about where the entries
+    # went, so it passes whatever the body says; what this pins is that saying so is what clears it.
+    def test_Given_AMajorThatLeavesItsEntries_When_TheBodySaysSo_Then_ItPasses(self):
+        # Arrange -- the control: an entry can wait for the major after this one, which is a
+        # decision rather than a defect, so it is asked for rather than refused.
+        closing_major = WITH_ENTRY.replace("## [Unreleased]\n",
+                                           "## [Unreleased]\n\n## [3.0.0] - 2026-09-01\n")
+        root, base = self.tree(WITH_ENTRY, closing_major)
+
+        # Act
+        done = run(root, base, "[]",
+                   body="The one entry left in Unreleased — breaking waits for 4.0.0.")
 
         # Assert
         self.assertEqual(done.returncode, 0)
