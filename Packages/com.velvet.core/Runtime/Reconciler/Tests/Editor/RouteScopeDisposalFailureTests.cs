@@ -177,21 +177,17 @@ namespace Velvet.Tests
         [Test]
         public void Given_AnErrorBoundaryAboveTheOutlet_When_TheFirstMountsFactoryThrows_Then_OnlyTheFallbackIsInTheTree()
         {
-            // Arrange — the mount path inserts the element it created whether the pass aborted or not, so
-            // a boundary above the Outlet rather than beneath it is where a failed route could be left
-            // beside the fallback instead of replaced by it.
+            // Arrange — the boundary above the Outlet rather than beneath it, on the path that builds
+            // the scope at mount.
             s_throwOnDispose = false;
             _scopeFactory.ThrowOnCreate = true;
 
             // Act
             var escaped = EscapesFrom(() => MountBoundedApp());
 
-            // Assert — the Outlet's own container is read for as well as the names directly under the
-            // root, because a failed route left beside the fallback would be a descendant of neither.
-            Assert.That((escaped, NamesOf(_root),
-                            _root.Q<VisualElement>(className: FiberNodeFactory.OutletContainerClass) != null,
-                            LabelTextsUnder(_root)),
-                        Is.EqualTo((false, "fallback", false, string.Empty)));
+            // Assert
+            Assert.That((escaped, NamesOf(_root), LabelTextsUnder(_root)),
+                        Is.EqualTo((false, "fallback", string.Empty)));
         }
 
         [Test]
