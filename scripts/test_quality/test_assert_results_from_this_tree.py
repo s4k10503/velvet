@@ -115,7 +115,8 @@ class Workspace:
         self.results.write_text(results if results is not None else results_xml(assemblies),
                                 encoding="utf-8")
         self.log.write_text(
-            "Saving results to: {}\n".format(self.results) if log is None else log,
+            "Successfully changed project path to: {}\nSaving results to: {}\n".format(
+                self.project, self.results) if log is None else log,
             encoding="utf-8")
         return self
 
@@ -353,6 +354,70 @@ class LogTests(unittest.TestCase):
 
 class UnreadableTests(unittest.TestCase):
     """Every reading the guard cannot take is a refusal, since exiting 0 unread looks like a pass."""
+
+    def test_Given_ARunOfAnotherWorktree_When_TheProjectIsThisOne_Then_TheReadingIsRefused(self):
+        # Arrange -- an absolute path to another worktree's output with --project left where the
+        # call started. Where the two trees declare the same fixtures this was exit 0; where they
+        # do not it names a fixture as a stranger, which is the sentence for a stale Library.
+        with workspace() as here, workspace() as ran:
+            ran.wrote()
+
+            # Act
+            code, _ = here.verdict(str(ran.results), "--log", str(ran.log),
+                                   "--project", str(here.project))
+
+            # Assert
+            self.assertEqual(code, 2)
+
+    def test_Given_ARunOfAnotherWorktree_When_TheProjectIsThisOne_Then_TheRefusalNamesTheTree(self):
+        # Arrange
+        with workspace() as here, workspace() as ran:
+            ran.wrote()
+
+            # Act
+            _, said = here.verdict(str(ran.results), "--log", str(ran.log),
+                                   "--project", str(here.project))
+
+            # Assert
+            self.assertIn(str(ran.project), said)
+
+    # GREEN_ON_BASE(construction): the base has no precondition to fire, so it passes for want of
+    # one. What this holds is the shape the first attempt at one refused, and it is the case named
+    # for it: replacing `measured_elsewhere` with a reading of whether each named file sits under
+    # `project` fails it, along with 23 others that keep their output beside the project too.
+    def test_Given_ARunOfThisProjectWritingItsResultsElsewhere_When_ItIsRead_Then_ItIsNotRefused(self):
+        # Arrange -- CONTRIBUTING's story-capture recipe: -projectPath the checkout, -testResults
+        # /tmp. Where the files sit says nothing; what the run opened is the question.
+        with workspace() as tree:
+            outside = tree.root / "elsewhere"
+            outside.mkdir()
+            tree.results, tree.log = outside / "capture.xml", outside / "capture.log"
+            tree.wrote()
+
+            # Act
+            code, _ = tree.verdict(str(tree.results), "--log", str(tree.log),
+                                   "--project", str(tree.project))
+
+            # Assert
+            self.assertEqual(code, 0)
+
+    # GREEN_ON_BASE(construction): the base passes for want of a precondition. Dropping the
+    # `named.is_dir()` term from `measured_elsewhere` fails this case and no other, and it is the
+    # one CI takes on every pull request — the container path a run names is on no runner.
+    def test_Given_ALogNamingAProjectThisMachineDoesNotHave_When_ItIsRead_Then_ItIsNotRefused(self):
+        # Arrange -- a run inside a container names the container's path, and the tree it opened is
+        # not one this machine has. This is the shape CI reads on every pull request.
+        with workspace() as tree:
+            # The trailing "/." is what game-ci's own logs carry, and Path normalises it away.
+            tree.wrote(log="Successfully changed project path to: /github/workspace/.\n"
+                           "Saving results to: {}\n".format(tree.results))
+
+            # Act
+            code, _ = tree.verdict(str(tree.results), "--log", str(tree.log),
+                                   "--project", str(tree.project))
+
+            # Assert
+            self.assertEqual(code, 0)
 
     def test_Given_NoEditorLogAtAll_When_TheRunIsRead_Then_TheReadingIsRefused(self):
         # Arrange
