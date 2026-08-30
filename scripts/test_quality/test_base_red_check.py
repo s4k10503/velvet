@@ -714,6 +714,36 @@ class DeclarationTests(unittest.TestCase):
             "characterization", "the ordering the base already commits to").complaint)
 
 
+class StandingStillTests(unittest.TestCase):
+    """A loop that asks the same question three rounds running has stopped, not slowed.
+
+    Measured on the branch replacing UniTask: EditMode stopped withdrawing after round 1 and repeated
+    the same round seven more times at four seconds each -- the compile abort rather than a run --
+    and the verdict then named the round cap. The cap is a budget finding; this is not one.
+    """
+
+    def test_Given_TheFixedPoint_When_ItIsReported_Then_ItSaysTheRoundsAskedTheSameThing(self):
+        # Arrange
+        said = base_red_check.standing_still_reason("EditMode", 8, 23)
+
+        # Act / Assert
+        self.assertIn("same 23 fixture(s) 3 rounds running", said)
+
+    def test_Given_TheFixedPoint_When_ItIsReported_Then_ItSaysItIsNotABudget(self):
+        # Arrange -- the remedy for a budget is a bigger one, and giving it here spends the rest of
+        # --max-rounds to reach the same place.
+        said = base_red_check.standing_still_reason("PlayMode", 4, 9)
+
+        # Act / Assert
+        self.assertIn("fixed point rather than a budget", said)
+
+    def test_Given_TheThreshold_When_ItIsRead_Then_TwoRoundsAreNotEnough(self):
+        # Arrange -- a withdrawal can take a file holding no case, and the round after it is the one
+        # that moves. Two says nothing; three is the same question asked three times.
+        # Act / Assert
+        self.assertEqual(base_red_check.STILL_ROUNDS, 3)
+
+
 class BudgetShortfallTests(unittest.TestCase):
     """What the loop can say before spending a round, rather than after spending all of them.
 

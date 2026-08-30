@@ -1993,6 +1993,20 @@ def shapes_remedy(carried):
             "land is yours to decide, and this has nothing further to say about it.".format(carried))
 
 
+# How many rounds of no progress are a fixed point rather than a slow one. Two says nothing -- a
+# withdrawal can take a file with no cases and the next round is the one that moves -- and three is
+# where the loop has asked the same question three times running.
+STILL_ROUNDS = 3
+
+
+def standing_still_reason(platform, attempt, fixtures):
+    """What to print where the loop has stopped moving rather than run out of budget."""
+    return ("\n{} asked the same {} fixture(s) {} rounds running and measured nothing each time.\n"
+            "Withdrawing is taking files that hold no case, so the next round is the one before it:\n"
+            "this is a fixed point rather than a budget. Spending the rest of --max-rounds would\n"
+            "report the cap instead of this.".format(platform, fixtures, STILL_ROUNDS))
+
+
 def exhausted_reason(spent, withdrawn, carried):
     """What a loop that ran out of rounds without ever compiling the base has to say for itself.
 
@@ -2274,6 +2288,12 @@ def main():
                 args.max_rounds)
             if note:
                 print(note, flush=True)
+            # A round that measures nothing and leaves the fixture count where it was is the loop
+            # standing still: it withdrew a file with no cases in it, so the next round asks exactly
+            # what this one did. Measured on the branch replacing UniTask: EditMode stopped
+            # withdrawing after round 1 and repeated the same round seven more times, four seconds
+            # each, and the run then reported the round cap rather than the fixed point.
+            standing_still, last_count = 0, None
             for attempt in range(1, args.max_rounds + 1):
                 rounds_spent = max(rounds_spent, attempt)
                 put_back |= withdrawn
@@ -2298,6 +2318,12 @@ def main():
                 # tree holds did not build, never which file, so withdrawing every silent one at
                 # once would take out the files that were merely standing next to the offender and
                 # leave their cases unmeasured behind somebody else's error.
+                standing_still = standing_still + 1 if not seen and len(fixtures) == last_count else 0
+                last_count = len(fixtures)
+                if standing_still >= STILL_ROUNDS:
+                    print(standing_still_reason(platform, attempt, len(fixtures)), flush=True)
+                    break
+
                 ran = fixtures_that_ran(seen)
                 silent = sorted({case.path for case in live if case.fixture not in ran})
                 if not silent:
