@@ -826,6 +826,34 @@ class WatcherDeferralTests(unittest.TestCase):
         # Assert — the control: an escape that is always open is not an escape.
         self.assertEqual(code, 2)
 
+    def arrange(self, home, shape):
+        """Put the guard into one of its three refusing branches, under this HOME."""
+        now = int(time.time())
+        if shape == "unreadable beat":
+            (home / ".velvet-pr-watch.heartbeat").write_text(str(now), encoding="utf-8")
+        elif shape == "a pull request sitting":
+            (home / ".velvet-pr-watch.heartbeat").write_text(f"{now} {os.getpid()}", encoding="utf-8")
+            (home / ".velvet-pr-ready").write_text(f"777 {now - 3600}\n", encoding="utf-8")
+
+    def test_Given_EveryBranchItRefusesFrom_When_TheRecipeIsRead_Then_EachNamesTheSession(self):
+        # Arrange — the round trip below runs one branch's recipe end to end, and there are four
+        # recipes over three branches. A recipe the reading disowns is one an agent follows and is
+        # refused again with nothing left to try, so each is read wherever the guard prints it.
+        unsigned, printed = [], 0
+        for shape in ("nothing watching", "unreadable beat", "a pull request sitting"):
+            home = self.home()
+            self.arrange(home, shape)
+            code, _, refusal, _ = check.run_guard(self.GUARD, self.PAYLOAD, "gh-empty", REPO_ROOT, home)
+            recipes = [line.strip() for line in refusal.splitlines()
+                       if line.strip().startswith('echo "') and ">>" in line]
+            printed += len(recipes)
+            unsigned += [f"{shape} ({code}): {line}" for line in recipes
+                         if "$CLAUDE_CODE_SESSION_ID" not in line]
+
+        # Act / Assert — how many were read rides along, since a branch this arrangement stopped
+        # reaching prints none and disagrees with nothing.
+        self.assertEqual((printed, unsigned), (4, []))
+
     def test_Given_TheRecipeItPrints_When_ItIsFollowed_Then_TheNextWriteGoesThrough(self):
         # Arrange
         home = self.home()
