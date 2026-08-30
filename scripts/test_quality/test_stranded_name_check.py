@@ -405,6 +405,48 @@ class StrandedTests(unittest.TestCase):
             self.assertEqual(code, 1)
 
 
+    def test_Given_ARemovedNameOfOneWord_When_ACommentSpellsIt_Then_ItIsNotRefused(self):
+        # Arrange -- measured on the change that removed a method called `Guards`: two doc comments
+        # reading "Guards the cohesion scanner" and "Guards", where no rule over the occurrence
+        # separates prose from a reference because both are the bare word.
+        with repository() as tree:
+            tree.changed_to("""namespace Velvet
+{
+    internal static class Probe
+    {
+        // Guards the index, which the caller has already made absolute.
+        internal static int Read(int at) => at;
+    }
+}
+""")
+
+            # Act
+            code, _ = tree.verdict()
+
+            # Assert
+            self.assertEqual(code, 0)
+
+    def test_Given_ARemovedNameOfTwoWords_When_ACommentSpellsIt_Then_ItIsStillRefused(self):
+        # Arrange -- the control: a narrowing that dropped every removal would satisfy the case
+        # above while losing what this exists for.
+        with repository() as tree:
+            tree.changed_to("""namespace Velvet
+{
+    internal static class Probe
+    {
+        // The caller rebases first (see RebaseSlots).
+        internal static int Read(int at) => at;
+    }
+}
+""")
+
+            # Act
+            code, _ = tree.verdict()
+
+            # Assert
+            self.assertEqual(code, 1)
+
+
 class RepositoryHistoryTests(unittest.TestCase):
     """Held against real commits, since a guard that fires only on invented text is untested."""
 
