@@ -41,6 +41,43 @@ class Verdicts(unittest.TestCase):
                               capture_output=True, text=True, timeout=30)
         return done.returncode, done.stderr
 
+    def test_Given_AMessageAttachedToItsShortFlag_When_Judged_Then_ItIsRefused(self):
+        # Arrange — git reads `-F/path` as readily as `-F /path`, and this guard read neither the
+        # attached form nor a cluster. The attached one is unambiguous: no other letter can have
+        # claimed the tail.
+        code, said = self.judge(f"git commit -F{self.elsewhere}/msg.txt")
+
+        # Act / Assert
+        self.assertEqual((code, "the worktree it describes" in said), (2, True))
+
+    # GREEN_ON_BASE(characterization): the base refuses this because it reads every command with one
+    # table, and this branch keeps refusing it because it reads git's with git's. What the case holds is
+    # that routing gh through `pr_body` did not take `--file` with it — measured by posing git's operands
+    # to `pr_body` too, which answers None and lets the path through.
+    def test_Given_AGitCommitFileInGhsSpelling_When_Judged_Then_ItIsStillRefused(self):
+        # Arrange — `--file` is not one of gh's options at all, so reading git's operands through gh's
+        # table would lose this path. The two readings are kept apart for that, and this is what says so.
+        code, said = self.judge(f"git commit --file {self.elsewhere}/msg.txt")
+
+        # Act / Assert
+        self.assertEqual((code, "the worktree it describes" in said), (2, True))
+
+    def test_Given_ABodyFileBehindABooleanShorthand_When_Judged_Then_ItIsStillRefused(self):
+        # Arrange — one character, and the guard saw no body file at all: a cluster is read a letter
+        # at a time, so `-d` has to be known before `-F` behind it is. gh posts the file either way.
+        code, said = self.judge(f"gh pr create --title x -dF {self.elsewhere}/body.md")
+
+        # Act / Assert
+        self.assertEqual((code, "the worktree it describes" in said), (2, True))
+
+    def test_Given_APathStandingWhereAnotherOptionsValueGoes_When_Judged_Then_ItIsNotRefused(self):
+        # Arrange — the other direction. `--title` takes a value, so gh reads `-F` as that value and
+        # posts nothing from a file; refusing here is a refusal over a path the command never opens.
+        code, said = self.judge(f"gh pr create --title -F {self.elsewhere}/body.md")
+
+        # Act / Assert
+        self.assertEqual((code, said), (0, ""))
+
     def test_Given_ACommitMessageAtASharedPath_When_Judged_Then_ItIsRefused(self):
         # Arrange — the shape that landed one change's message on another: a generic path outside
         # every worktree, written by whichever agent wrote it last.
