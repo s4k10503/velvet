@@ -42,6 +42,7 @@ already touching, and two of them reached a commit that way.
 import argparse
 import bisect
 import hashlib
+import collections
 import json
 import os
 import re
@@ -935,6 +936,46 @@ def merge_base_of(project, base):
     return found.stdout.strip()
 
 
+def held_at(project, since, relative):
+    """The file's text at the merge base, or None where the base has not got it."""
+    done = subprocess.run(["git", "-C", str(project), "show", "{}:{}".format(since, relative)],
+                          capture_output=True, text=True)
+    return done.stdout if done.returncode == 0 else None
+
+
+def written_here(project, since, path, numbers):
+    """`numbers`, less the lines whose content the base already holds as many copies of.
+
+    A changed line is a proxy for authorship, and which lines a diff calls changed is git's choice:
+    over a large rewrite the aligner is free to describe an untouched tail as deleted and re-added,
+    and every line in it then reads as this branch's. A campaign then mutates code somebody else
+    owns, and the author answers a MUTANT_SURVIVES declaration for a line they never wrote.
+
+    Compared as a multiset over the whole file rather than position by position, so a line the branch
+    genuinely added is kept even where the base holds one like it -- and a line the branch only moved
+    is dropped, because moving it wrote no behaviour to mutate. What that cannot see is a line moved
+    into a different context, which base_red_check's own reading cannot see either at its granularity.
+    """
+    try:
+        before = held_at(project, since, path.relative_to(project).as_posix())
+    except ValueError:
+        return numbers
+    if before is None:
+        return numbers
+    was = collections.Counter(line.strip() for line in before.splitlines() if line.strip())
+    now = collections.Counter(line.strip() for line in path.read_text().splitlines() if line.strip())
+    spans = path.read_text().splitlines()
+    kept = set()
+    for number in numbers:
+        if number > len(spans):
+            continue
+        text = spans[number - 1].strip()
+        if text and was[text] >= now[text]:
+            continue
+        kept.add(number)
+    return kept
+
+
 def changed_files_and_lines(project, base):
     since = merge_base_of(project, base)
     # Diffing the merge base against the working tree rather than against HEAD, so a branch whose
@@ -966,7 +1007,8 @@ def changed_files_and_lines(project, base):
                 start = int(match.group(1))
                 count = int(match.group(2) or 1)
                 changed.setdefault(current, set()).update(range(start, start + count))
-    return changed
+    return {path: written_here(project, since, path, numbers) if path.exists() else numbers
+            for path, numbers in changed.items()}
 
 
 def mutable(path, project):

@@ -21,6 +21,7 @@ import json
 import os
 import re
 import signal
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -3043,6 +3044,61 @@ class MaskRefusalTests(unittest.TestCase):
 
         # Assert
         self.assertIn("swallows code", str(code))
+
+
+class AttributedLineTests(unittest.TestCase):
+    """Which of a diff's added lines the campaign treats as this branch's.
+
+    git's aligner is free to describe an untouched tail as deleted and re-added over a large rewrite,
+    and a campaign then mutates code somebody else owns — the author answers a declaration for a line
+    they never wrote, or the receipt is refused over one.
+    """
+
+    def setUp(self):
+        self.project = Path(tempfile.mkdtemp(prefix="mutation-attributed-"))
+        self.addCleanup(shutil.rmtree, self.project, ignore_errors=True)
+        self.source = self.project / "Source.cs"
+        for command in (["init", "-q", "-b", "main"],):
+            subprocess.run(["git", "-C", str(self.project), *command], capture_output=True)
+
+    def commit(self, text):
+        self.source.write_text(text)
+        for command in (["add", "Source.cs"],
+                        ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "base"]):
+            subprocess.run(["git", "-C", str(self.project), *command], capture_output=True)
+
+    def attributed(self):
+        found = mutation_check.changed_files_and_lines(self.project, "HEAD")
+        numbers = found.get(self.source, set())
+        lines = self.source.read_text().splitlines()
+        return sorted(lines[number - 1].strip() for number in numbers if number <= len(lines))
+
+    def test_Given_StatementsTheBranchOnlyReIndented_When_TheChangedLinesAreRead_Then_TheyAreNotThisBranchs(self):
+        # Arrange — the shape measured on this repository: a run of statements wrapped in a new
+        # construct, so every one of them is re-indented and the diff calls all of them added while
+        # the branch wrote none of their behaviour. Sixteen of one file's fifty-seven were this.
+        self.commit("class A {\n    void M() {\n        if (a) { return; }\n        var x = 1;\n"
+                    "        var y = 2;\n        Use(x, y);\n    }\n}\n")
+        self.source.write_text("class A {\n    void M() {\n        foreach (var a in all) {\n"
+                               "            if (a) { return; }\n            var x = 1;\n"
+                               "            var y = 2;\n            Use(x, y);\n        }\n    }\n}\n")
+
+        # Act / Assert — the wrapper is the branch's; what it wrapped is not. The closing brace rides
+        # with it because the branch really did add one, and no operator reaches a bare brace.
+        self.assertEqual(self.attributed(), ["foreach (var a in all) {", "}"])
+
+    # GREEN_ON_BASE(characterization): the control for the narrowing beside it. A reading over content
+    # alone would drop this line, and the base keeps it for the plainer reason that it narrows nothing —
+    # what this holds is that the multiset comparison did not take the control's own case with it.
+    def test_Given_ALineTheBaseAlreadyHeldOnceAndTheBranchHoldsTwice_When_TheChangedLinesAreRead_Then_TheSecondIsThisBranchs(self):
+        # Arrange — the control: a branch adding a line like one already there wrote it, and a reading
+        # over content alone would drop it. The comparison is a multiset, so the extra copy survives.
+        self.commit("class A {\n    void M() {\n        var a = 1;\n    }\n}\n")
+        self.source.write_text("class A {\n    void M() {\n        var a = 1;\n        var a = 1;\n"
+                               "    }\n}\n")
+
+        # Act / Assert
+        self.assertEqual(self.attributed(), ["var a = 1;"])
 
 
 if __name__ == "__main__":
