@@ -89,6 +89,26 @@ class WhoseDeferral(unittest.TestCase):
         self.assertEqual(disowned("377", NOW + 60),
                          [("waiting on review", "other-0002")])
 
+    def test_Given_AnotherSessionWroteLater_When_TheKeyIsRead_Then_ThisSessionsLineStillSuppresses(self):
+        # Arrange -- both sessions hold the same pull request, and the other one wrote second. One
+        # file, one key, and appending is the only thing a writer does.
+        self.file.write_text(f"377 waiting on review {NOW} {MINE}\n"
+                             f"377 waiting on something else {NOW} other-0002\n",
+                             encoding="utf-8")
+
+        # Act / Assert
+        self.assertEqual(deferrals.deferred("377", NOW + 60), ("waiting on review", 1))
+
+    def test_Given_AnotherSessionWroteAMalformedLineLater_When_TheKeyIsRead_Then_ItIsNotReportedAsThisOnes(self):
+        # Arrange -- what `unusable` says goes to the session that wrote a deferral and saw nothing
+        # happen, so a stamp somebody else fumbled is not an answer to that.
+        self.file.write_text(f"377 waiting on review {NOW} {MINE}\n"
+                             "377 waiting on review tomorrow other-0002\n",
+                             encoding="utf-8")
+
+        # Act / Assert
+        self.assertIsNone(deferrals.unusable("377", NOW + 60))
+
     def test_Given_ALineSigningNothing_When_TheKeyIsRead_Then_ItSuppressesNothing(self):
         # Arrange -- every line written before this was recorded. Grandfathering them would keep the
         # hole open for exactly as long as the file lives.

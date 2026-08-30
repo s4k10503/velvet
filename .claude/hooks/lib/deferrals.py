@@ -56,6 +56,20 @@ def written_by(fields):
         else None
 
 
+def own(lines, key):
+    """The lines for `key` this session wrote, in file order, or all of them where nothing attributes.
+
+    Read before the last one is taken rather than after. Taking the file's last line for the key and
+    then asking whose it was let any other session's later line stand in for this one's: `deferred`
+    saw a line it had to disown and answered None, and `unusable` reported somebody else's malformed
+    entry as the reason this session's deferral did nothing.
+    """
+    mine = writer()
+    return [line for line in lines
+            if line.startswith(f"{key} ")
+            and (mine is None or written_by(line.split()) == mine)]
+
+
 def deferred(key, now=None):
     """Return (reason, minutes) when a live deferral covers the key, else None.
 
@@ -70,8 +84,7 @@ def deferred(key, now=None):
     except OSError:
         return None
 
-    prefix = f"{key} "
-    matching = [line for line in lines if line.startswith(prefix)]
+    matching = own(lines, key)
     if not matching:
         return None
 
@@ -85,16 +98,6 @@ def deferred(key, now=None):
     # clock step — was live indefinitely, which is the permanent silence the expiry exists to prevent.
     age = (time.time() if now is None else now) - stamp
     if age < 0 or age >= TTL:
-        return None
-
-    # Whose it is decides whether it suppresses. A process with no view of what the key is about can
-    # append a line as readily as the one holding it -- measured, a subagent blocked by a guard
-    # naming six pull requests it neither owned nor could merge deferred all six, which was the only
-    # route forward it had and silenced the guard that holds the merge queue. A line another session
-    # wrote is reported by `disowned` instead, and one written before this was recorded goes the same
-    # way rather than being grandfathered: the whole point is that nothing says who stood behind it.
-    mine = writer()
-    if mine is not None and session != mine:
         return None
 
     return " ".join(fields[1:-2] if session else fields[1:-1]), int(age // 60)
@@ -157,7 +160,7 @@ def unusable(key, now=None):
     except OSError:
         return None
 
-    matching = [line for line in lines if line.startswith(f"{key} ")]
+    matching = own(lines, key)
     if not matching:
         return None
 
