@@ -421,9 +421,23 @@ leaves the previous one there to be read; the guard refuses a results file no lo
 a log carrying a line rendered as a compiler error whichever analyzer raised it, and a fixture no
 source here declares reported under any assembly but one a resolved package owns alone — the last of
 these asking nothing of the log at all. Every reading it cannot take is a refusal too, since a guard
-exiting 0 unread looks exactly like one that checked. What it cannot separate is two runs writing a
-results file of the same name; what answers that is the headless recipe's per-worktree logs
-directory, not the guard.
+exiting 0 unread looks exactly like one that checked.
+
+Before those three it asks whether the run and the sources are of one tree at all. The log names the
+project the editor opened; if that directory is on this machine and is not `--project`, the reading
+is refused rather than taken. Pointing it at another worktree's results with `--project` left to
+default measured exit 0 where the two trees declare the same fixtures, and where they do not it
+names a fixture as a stranger — the sentence for a stale `Library`, about work that is fine. Where
+the results file *sits* is not the question: the story-capture recipe above writes to `/tmp` from a
+run whose project is the checkout.
+
+Two runs are stood aside for rather than compared, because their tree is not here: one inside a
+container, which names the container's path and is what CI reads, and one whose tree has since been
+deleted — the base tree the base-red harness builds and removes. A results file of either read
+against this checkout's sources passes unremarked, and what keeps the second out of the way is the
+rule that a directory argument is not descended into. It still cannot separate two runs of the same
+project writing a results file of the same name; what answers that is the headless recipe's
+per-worktree logs directory, not the guard.
 
 Each Unity job in CI runs it after the suite, and CLAUDE.md's headless recipe runs it beside
 `assert_no_inconclusive.py`. `scripts/test_quality/test_assert_results_from_this_tree.py` holds it,

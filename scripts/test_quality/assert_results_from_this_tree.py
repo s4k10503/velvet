@@ -9,6 +9,21 @@ passing case named for a fixture no source in the tree declares -- under a -test
 something else, which is what makes it read as a result rather than as a failure to run. Unity's
 exit code is the caller's to notice, and nobody was reading it.
 
+One precondition before any of them: the log says which project the editor opened, and that has to
+be the project this is pointed at. A caller who spells an absolute path to another worktree's output
+and lets --project default is naming two trees, and the third reading below is then a comparison
+across them. Measured on two worktrees of this repository declaring the same fixtures: exit 0,
+having compared one tree's sources against the other's results. Without this the pairing is caught
+in two narrow directions only -- where the tree that ran declares a fixture this one does not, and
+where it declares no assembly this one names at all -- and the first of those reports a stranger,
+which is the sentence for a stale Library rather than for a call pointed at two trees.
+
+Read off the log rather than from where the files sit. Location is not the same question: the
+story-capture recipe in CONTRIBUTING.md writes its results to /tmp from a run whose project is the
+checkout, and refusing that would be refusing a correct pairing. What the log names is the project
+the run measured, which is the thing this has to agree with. What it cannot reach is a run whose
+tree is not here to compare -- `measured_elsewhere` owns which those are.
+
 Three readings, and the run has to survive all of them:
 
   - the log names the results file, which is how a run says the file is its own;
@@ -315,8 +330,45 @@ def foreign_fixtures(reported, ours, resolved, types):
     return ran, found
 
 
+PROJECT_OPENED = re.compile(r"^Successfully changed project path to:\s*(.+?)\s*$", re.MULTILINE)
+
+
+def measured_elsewhere(project, logs):
+    """Every log whose run opened a project that is not this one, and that this machine can find.
+
+    Only a path that is a directory here is compared, and two classes of run are stood aside for by
+    that: one out of a container, which names the container's path -- what CI reads on every pull
+    request -- and one whose tree has since been deleted, which is the permanent state of the base
+    tree `base_red_check.py` builds and removes. So a results file from either is read against this
+    tree's sources without this saying anything, and what keeps the second out of reach is the rule
+    in `named_files` that a directory argument is not descended into.
+
+    A log carrying no such line is stood aside for too. Measured over this repository's logs: 68 of
+    69 carry it exactly once, and the one that does not is a shader compiler's.
+    """
+    root = project.resolve()
+    found = []
+    for path in logs:
+        opened = PROJECT_OPENED.search(read_text(path))
+        if not opened:
+            continue
+        named = Path(opened.group(1))
+        if named.is_dir() and named.resolve() != root:
+            found.append((path, named))
+    return found
+
+
 def refusals(project, results, logs):
     """Every reason the results are not this worktree's reading. Empty means none of them said so."""
+    # Before the compile reading below: a log of another tree's run says nothing about whether this
+    # one compiled, and refusing it for the diagnostic it carries would name the wrong tree's fault.
+    crossed = measured_elsewhere(project, logs)
+    if crossed:
+        raise Unreadable(
+            "{}, so the run measured a tree this is not pointed at. Pass --project for the tree "
+            "the run happened in.".format(
+                "; ".join("{} is of a run in {}".format(path, named) for path, named in crossed)))
+
     # First, and returning on its own: a run that did not compile wrote no results, so every reading
     # below would refuse it for the absence rather than for the cause, and the caller would be told
     # a file is missing while the diagnostic explaining why sits unread in the log beside it.
