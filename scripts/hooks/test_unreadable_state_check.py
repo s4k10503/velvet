@@ -816,6 +816,9 @@ class WatcherDeferralTests(unittest.TestCase):
                                     CLAUDE_CODE_SESSION_ID=check.SESSION))
         return len(recipes)
 
+    # GREEN_ON_BASE(characterization): the refusal the case below has to escape from, which this branch
+    # does not change. An escape that is always open is not one, and without this the round trip could be
+    # satisfied by a guard that stopped refusing.
     def test_Given_NothingWatchingAndNoDeferral_When_AWriteIsAttempted_Then_ItIsRefused(self):
         # Act
         code, _, _, _ = check.run_guard(self.GUARD, self.PAYLOAD, "gh-empty", REPO_ROOT, self.home())
