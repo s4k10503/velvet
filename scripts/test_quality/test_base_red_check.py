@@ -718,8 +718,8 @@ class BudgetShortfallTests(unittest.TestCase):
     """What the loop can say before spending a round, rather than after spending all of them.
 
     The reading beside this one is the loop's history, which costs the whole budget to produce. This
-    is the same number read off the carried set, and it is a lower bound: a round that compiles ends
-    the loop, so a budget that clears the bound may still be enough or not.
+    is read off the carried set instead, before a round is spent, and it is a lower bound: a round
+    that compiles ends the loop, so a budget that clears the bound may still be enough or not.
     """
 
     def test_Given_FewerFilesThanRounds_When_TheBudgetIsRead_Then_ItSaysNothing(self):
@@ -733,11 +733,11 @@ class BudgetShortfallTests(unittest.TestCase):
         self.assertEqual(base_red_check.budget_shortfall(8, 8), "")
 
     def test_Given_MoreFilesThanRounds_When_TheBudgetIsRead_Then_ItNamesTheFlagAndTheBound(self):
-        # Arrange — the shape measured on the branch replacing UniTask.
-        said = base_red_check.budget_shortfall(26, 8)
+        # Arrange — the EditMode side of the branch replacing UniTask: 23 carried files, default 8.
+        said = base_red_check.budget_shortfall(23, 8)
 
         # Act / Assert
-        self.assertEqual(("--max-rounds 26" in said, "--max-rounds 8" in said), (True, True))
+        self.assertEqual(("--max-rounds 23" in said, "--max-rounds 8" in said), (True, True))
 
 
 class ExhaustedLoopTests(unittest.TestCase):

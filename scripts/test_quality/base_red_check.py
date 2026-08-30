@@ -1903,10 +1903,12 @@ def budget_shortfall(standing, budget):
     A lower bound rather than an estimate. One round withdraws one file, so a run where none of the
     carried files builds needs at least as many rounds as there are of them, and saying so before
     the first round costs nothing where saying it afterwards costs the whole budget. Measured on the
-    branch replacing UniTask: 26 files the static pass could not reach, against a default of 8.
+    branch replacing UniTask: 23 carried files on the EditMode side, against a default of 8.
 
     It cannot say the budget IS enough -- a round that compiles ends the loop, and which round that
-    is depends on which file the log names first.
+    is depends on which file the log names first. Nor is the bound tight the other way: a file the
+    static reading in `--emit` would have withdrawn still counts here, because the local flow does
+    not take that reading.
     """
     if standing <= budget:
         return ""
@@ -2145,21 +2147,9 @@ def main():
     ever_wrote = not any(kind_of(case.path) == "csharp" for case in cases)
     rounds_spent = 0
     put_back = set()
-    unbuildable = {}
     try:
         print("  building the base tree at {}".format(base_tree), flush=True)
         build_base_tree(project, since, base_tree, carry, drop, args.warm_library)
-
-        # The same static withdrawal --emit performs, for the same reason and so that the two flows
-        # answer alike. Without it the loop rediscovers each of these from a compile log, one round
-        # per file: measured on the branch replacing UniTask, 4 of 30 carried C# files come off here
-        # and the loop was spending a round on each of them.
-        unbuildable = unbuildable_on_base(project, since, base_tree, carry)
-        for relative, name in sorted(unbuildable.items()):
-            withdraw(base_tree, relative)
-            print("  withdrawn: {} spells {}, which the base has not got, so the base builds no "
-                  "fixture\n             of its assembly and the run would report none of them"
-                  .format(relative, name), flush=True)
 
         python_lane = [case for case in cases + control if kind_of(case.path) == "python"]
         if python_lane:
@@ -2184,10 +2174,14 @@ def main():
             # Accumulated across platforms, unlike `withdrawn`: what the message below is evidence
             # for is that the base built none of the carried set, which both lanes are asking about.
             wanted = [case for case in cases + control
-                      if kind_of(case.path) == "csharp" and platform_of(case.path) == platform
-                      and case.path not in unbuildable]
+                      if kind_of(case.path) == "csharp" and platform_of(case.path) == platform]
             withdrawn = set()
-            note = budget_shortfall(len({case.path for case in wanted}), args.max_rounds)
+            # Every carried file a round on this platform could be spent withdrawing: its own, and
+            # the ones belonging to no platform, which are the shared helpers that compile into both.
+            note = budget_shortfall(
+                len([name for name in carry if name.endswith(".cs")
+                     and platform_of(name) in (platform, None)]),
+                args.max_rounds)
             if note:
                 print(note, flush=True)
             for attempt in range(1, args.max_rounds + 1):
@@ -2234,7 +2228,7 @@ def main():
         print("no round wrote a result, so nothing any of them was asked was measured", flush=True)
         if rounds_spent >= args.max_rounds:
             print(exhausted_reason(rounds_spent, put_back, len(carry)), flush=True)
-    offenders = report(cases, control, reported, canaries, ever_wrote, unbuildable)
+    offenders = report(cases, control, reported, canaries, ever_wrote)
     print("\nlogs: {}".format(output), flush=True)
     return 1 if offenders else 0
 
