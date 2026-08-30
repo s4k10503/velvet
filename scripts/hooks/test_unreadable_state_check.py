@@ -17,11 +17,13 @@ Run: python3 scripts/hooks/test_unreadable_state_check.py
 
 import importlib.util
 import json
+import os
 import shutil
 import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -720,7 +722,8 @@ class AllHeldTests(unittest.TestCase):
 
     def held(self, *numbers):
         stamp = int(time.time())
-        return "".join(f"{number} waiting on a review {stamp}\n" for number in numbers)
+        return "".join(f"{number} waiting on a review {stamp} {check.SESSION}\n"
+                       for number in numbers)
 
     def test_Given_EveryOpenPullRequestHeld_When_TheSessionEnds_Then_ItSaysNoneWasRead(self):
         # Act / Assert
@@ -807,10 +810,38 @@ class WatcherDeferralTests(unittest.TestCase):
 
     def test_Given_NothingWatchingAndTheWatcherHeld_When_AWriteIsAttempted_Then_ItGoesThrough(self):
         # Arrange — the deferral the guard's own message describes, armed with a live stamp.
-        deferral = f"watcher the network is down until the VPN is back {int(time.time())}\n"
+        deferral = ("watcher the network is down until the VPN is back "
+                    f"{int(time.time())} {check.SESSION}\n")
 
         # Act / Assert
         self.assertEqual(self.verdict(deferral), 0)
+
+
+class GuardSessionTests(unittest.TestCase):
+    """Whose session a guard reads while a case is deciding what it may suppress.
+
+    The deferral cases above write a line and ask whether the guard honours it. Reading the id of
+    whoever ran the suite makes that line another session's, and it is disowned — so the three of
+    them passed on CI, where nothing sets the variable, and failed in every session that ran them.
+    """
+
+    def test_Given_TheRunnerHasASessionOfItsOwn_When_AGuardIsRun_Then_ItReadsTheSuitesInstead(self):
+        # Arrange
+        workspace = Path(tempfile.mkdtemp(prefix="velvet-session-probe-"))
+        try:
+            probe = workspace / "probe.py"
+            probe.write_text("import os, sys\n"
+                             "sys.stdout.write(os.environ.get('CLAUDE_CODE_SESSION_ID', ''))\n",
+                             encoding="utf-8")
+
+            # Act
+            with mock.patch.dict(os.environ, {"CLAUDE_CODE_SESSION_ID": "the-runners-own-session"}):
+                _, said, _, _ = check.run_guard(probe, "{}", "gh-empty", REPO_ROOT, workspace)
+
+            # Assert
+            self.assertEqual(said, check.SESSION)
+        finally:
+            shutil.rmtree(workspace, ignore_errors=True)
 
 
 if __name__ == "__main__":
