@@ -55,16 +55,29 @@ VALUE_FLAGS = {
 SHORT_BOOLEAN_FLAGS = {"-d", "-e", "-f", "-h", "-w"}
 LONG_BOOLEAN_FLAGS = {"--dry-run", "--help"}
 
-# One union holds while the tables agree, and `pr merge`'s does not: `-m` is `--milestone` and takes
-# a value on create and edit, and is `--merge` and takes none on merge; `-r` is `--reviewer` and
-# `--rebase` the same way. Read as the union, `gh pr merge 7 -m -b "text"` spends `-b` as `-m`'s
-# value and no body is found -- and a guard that found none exits 0, which is what it exits having
-# read one and been satisfied.
+# Where a subcommand's table disagrees with the union above. `scripts/hooks/test_pr_body_flags.py`
+# holds each of these against gh's, per subcommand and in both directions, which is what stops them
+# drifting; the shape of the cost is the same in both: a flag wrongly value-taking spends the body
+# flag behind it, and one wrongly boolean lets its own value be read as one. Read as the union,
+# `gh pr merge 7 -m -b "text"` finds no body, and a guard that found none exits 0 -- which is what it
+# exits having read one and been satisfied.
 SUBCOMMAND_FLAGS = {
     ("pr", "merge"): (
-        {"--author-email", "-A", "--body", "-b", "--body-file", "-F", "--match-head-commit",
-         "--repo", "-R", "--subject", "-t"},
+        {"--author-email", "--body", "--body-file", "--match-head-commit", "--repo", "--subject",
+         "-A", "-F", "-R", "-b", "-t"},
         {"-d", "-m", "-r", "-s"},
+    ),
+    ("pr", "review"): (
+        {"--body", "--body-file", "--repo", "-F", "-R", "-b"},
+        {"-a", "-c", "-r"},
+    ),
+    ("pr", "close"): (
+        {"--comment", "--repo", "-R", "-c"},
+        {"-d"},
+    ),
+    ("pr", "reopen"): (
+        {"--comment", "--repo", "-R", "-c"},
+        set(),
     ),
 }
 
@@ -72,7 +85,9 @@ SUBCOMMAND_FLAGS = {
 def tables(words):
     """(value-taking, boolean shorthand) for an invocation of `words`, or the union for anything else.
 
-    A `git commit` reaches here too, and its `-m` and `-F` are the union's.
+    The union answers for `pr create`, `pr new`, `pr edit` and `pr comment`, whose tables agree with it
+    and with each other. It is not a safe default for a subcommand nobody checked: a claim over one
+    takes a row above before it takes this.
     """
     return SUBCOMMAND_FLAGS.get(tuple(words) if words else (),
                                 (VALUE_FLAGS, SHORT_BOOLEAN_FLAGS))

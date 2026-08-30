@@ -48,7 +48,10 @@ SUBCOMMANDS = ("create", "edit")
 def load_pr_body():
     """Imports .claude/hooks/lib/pr_body.py by path, since .claude holds no packages."""
     path = REPO_ROOT / ".claude/hooks/lib/pr_body.py"
-    spec = importlib.util.spec_from_file_location("pr_body_lib", path)
+    # Named for the file, the way every sibling suite here names one: `base_red_check.py` relates a
+    # missing attribute to the file that adds it through the module name, and under an alias it
+    # cannot -- a case red on the base for a name the branch adds read as one that raised.
+    spec = importlib.util.spec_from_file_location("pr_body", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -57,8 +60,22 @@ def load_pr_body():
 pr_body = load_pr_body()
 
 
-def option_table(subcommand):
-    """(value-taking, boolean) flag names gh prints for `gh pr <subcommand>`, both spellings of each.
+# Both reached the way `test_deferral_writer.py` reaches `disowned`, so a tree without them answers
+# with the union rather than raising: a case that dies before comparing carries no reading either way,
+# and what these have to say is that the union is the wrong table.
+def subcommand_flags():
+    return getattr(pr_body, "SUBCOMMAND_FLAGS", {})
+
+
+def valued(operands, flags, words):
+    try:
+        return pr_body.valued(operands, flags, words)
+    except TypeError:
+        return pr_body.valued(operands, flags)
+
+
+def option_table(*words):
+    """(value-taking, boolean) flag names gh prints for `gh <words>`, both spellings of each.
 
     Raised rather than returned empty: a table that parsed to nothing agrees with any mirror at all
     in the covering direction, which is the reading this exists to refuse.
@@ -68,11 +85,12 @@ def option_table(subcommand):
             "gh is not on PATH, so the option table these guards parse against cannot be read. "
             "The guards gate gh commands, so a checkout without gh cannot show that their parse "
             "is still right.")
-    printed = subprocess.run(["gh", "pr", subcommand, "--help"],
+    printed = subprocess.run(["gh", *words, "--help"],
                              capture_output=True, text=True, check=True).stdout
     blocks = BLOCK.findall(printed)
     if not blocks:
-        raise RuntimeError(f"gh pr {subcommand} --help printed no FLAGS block this can read.")
+        raise RuntimeError("gh {} --help printed no FLAGS block this can read.".format(
+            " ".join(words)))
     value_taking, boolean = set(), set()
     for block in blocks:
         for line in block.splitlines():
@@ -89,7 +107,7 @@ def option_table(subcommand):
 def across_subcommands(index):
     found = set()
     for subcommand in SUBCOMMANDS:
-        found |= option_table(subcommand)[index]
+        found |= option_table("pr", subcommand)[index]
     return found
 
 
@@ -169,10 +187,8 @@ class ValueFlagMirrorTests(unittest.TestCase):
 class SubcommandTableTests(unittest.TestCase):
     """The subcommands whose own table the parse carries, against gh's.
 
-    Held apart from the union above because the union covers the ones that agree, and this covers the
-    one that does not: read as the union, `gh pr merge 7 -m -b "text"` spends `-b` as `-m`'s value,
-    finds no body, and a guard that found none exits 0 — which is what it exits having read one and
-    been satisfied.
+    Held apart from the union above because the union covers the ones that agree. The module owns why
+    each of these does not.
     """
 
     def test_Given_ghsOwnOptionTables_When_EachCarriedSubcommandIsRead_Then_ItsTableSpellsThemExactly(self):
@@ -180,8 +196,8 @@ class SubcommandTableTests(unittest.TestCase):
         # wrongly value-taking swallows the body flag behind it, and one wrongly boolean lets its own
         # value be read as one.
         disagreement = []
-        for words, (value_taking, boolean) in sorted(pr_body.SUBCOMMAND_FLAGS.items()):
-            printed_value, printed_boolean = option_table(words[1])
+        for words, (value_taking, boolean) in sorted(subcommand_flags().items()):
+            printed_value, printed_boolean = option_table(*words)
             printed_boolean = {flag for flag in printed_boolean if not flag.startswith("--")}
             disagreement += [f"{' '.join(words)}: {kind} {sorted(missing)}"
                              for kind, missing in (("value-taking, unmirrored",
@@ -194,9 +210,9 @@ class SubcommandTableTests(unittest.TestCase):
                                                     boolean - printed_boolean))
                              if missing]
 
-        # Act / Assert — how many subcommands were read rides along, since an empty table disagrees
-        # with nothing.
-        self.assertEqual((len(pr_body.SUBCOMMAND_FLAGS), disagreement), (1, []))
+        # Act / Assert — that any subcommand was read rides along, since an empty table disagrees
+        # with nothing. Not the count: a second correct entry is not a regression.
+        self.assertEqual((bool(subcommand_flags()), disagreement), (True, []))
 
     def test_Given_AMergeBodyBehindAValuelessShorthand_When_TheOperandsAreParsed_Then_TheBodyIsFound(self):
         # Arrange — `-m` is `--merge` here and carries no value, so the token after it is the next
@@ -204,7 +220,7 @@ class SubcommandTableTests(unittest.TestCase):
         operands = ["736", "-m", "-b", "the body"]
 
         # Act
-        found = pr_body.valued(operands, pr_body.BODY_FLAGS, ("pr", "merge"))
+        found = valued(operands, pr_body.BODY_FLAGS, ("pr", "merge"))
 
         # Assert
         self.assertEqual(found, "the body")
@@ -218,12 +234,14 @@ class ExemptionScopeTests(unittest.TestCase):
     what a reader has to trust when they see one.
     """
 
+    # GREEN_ON_BASE(refactor): the exemption table is unchanged; what moved is how this case spells the
+    # lookup, now that `option_table` takes the whole command rather than a `gh pr` subcommand.
     def test_Given_ghsOwnOptionTables_When_TheDryRunExemptionIsRead_Then_ItNamesTheSubcommandsThatTakeIt(self):
         # Arrange — `pr new` is `pr create`'s alias and prints the same table, so it rides with it.
         # `merge` is read here though the body guard does not claim it: the exemption table is what
         # says where a flag exists, and that answer does not depend on who is asking.
         taking = {("pr", subcommand) for subcommand in SUBCOMMANDS + ("merge",)
-                  if "--dry-run" in option_table(subcommand)[1]}
+                  if "--dry-run" in option_table("pr", subcommand)[1]}
         if ("pr", "create") in taking:
             taking.add(("pr", "new"))
 
