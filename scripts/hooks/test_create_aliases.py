@@ -86,20 +86,27 @@ class MetadataSpellingTests(unittest.TestCase):
 class ReceiptSpellingTests(unittest.TestCase):
     """The gate this one holds is posed once and nowhere else."""
 
+    # GREEN_ON_BASE(characterization): the guard is not what this changes. The base refuses a `new`
+    # over a checkout that owes a receipt, and the point of pointing it at a stub is that it does so
+    # for the spelling rather than for whatever the tree the suite runs in happens to hold.
     def test_Given_APullRequestOpenedAsNew_When_NoCampaignMeasuredIt_Then_ItIsRefused(self):
         # Arrange — a checkout that owes one, so the case is about the spelling.
         with checkout_owing(True) as root:
             # Act / Assert
             self.assertEqual(judge(RECEIPT, "gh pr new --title x --label tooling", root), 2)
 
-    # GREEN_ON_BASE(characterization): the base refuses this too, and it is the half the
-    # widening could take with it — only running it says whether it did.
+    # GREEN_ON_BASE(characterization): the guard is not what this changes, so the base refuses this
+    # too. It stays beside the `new` case because a widening that lost the spelling it already had
+    # would satisfy that one and not this.
     def test_Given_APullRequestOpenedAsCreate_When_NoCampaignMeasuredIt_Then_ItIsStillRefused(self):
         # Arrange — the half that already worked.
         with checkout_owing(True) as root:
             # Act / Assert
             self.assertEqual(judge(RECEIPT, "gh pr create --title x --label tooling", root), 2)
 
+    # GREEN_ON_BASE(characterization): the control, and controls are green on both sides by
+    # construction — one that reddened on the base would be pinning the change rather than bounding
+    # the cases above it.
     def test_Given_ACheckoutThatOwesNothing_When_APullRequestIsOpened_Then_ItGoesThrough(self):
         # Arrange — the control the two above need: a guard that refused whatever the harness said
         # would satisfy them.
