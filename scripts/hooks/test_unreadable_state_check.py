@@ -17,11 +17,14 @@ Run: python3 scripts/hooks/test_unreadable_state_check.py
 
 import importlib.util
 import json
+import os
 import shutil
+import subprocess
 import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -720,7 +723,8 @@ class AllHeldTests(unittest.TestCase):
 
     def held(self, *numbers):
         stamp = int(time.time())
-        return "".join(f"{number} waiting on a review {stamp}\n" for number in numbers)
+        return "".join(f"{number} waiting on a review {stamp} {check.SESSION}\n"
+                       for number in numbers)
 
     def test_Given_EveryOpenPullRequestHeld_When_TheSessionEnds_Then_ItSaysNoneWasRead(self):
         # Act / Assert
@@ -790,27 +794,126 @@ class WatcherDeferralTests(unittest.TestCase):
                           "tool_input": {"file_path": "CHANGELOG.md",
                                          "old_string": "a", "new_string": "b"}})
 
-    def verdict(self, deferral):
-        """The guard's exit code with no watcher state at all, under a HOME of its own."""
-        home = Path(tempfile.mkdtemp(prefix="velvet-watcher-home-"))
-        try:
-            if deferral is not None:
-                (home / ".velvet-pr-deferrals").write_text(deferral, encoding="utf-8")
-            code, _, _, _ = check.run_guard(self.GUARD, self.PAYLOAD, "gh-empty", REPO_ROOT, home)
-            return code
-        finally:
-            shutil.rmtree(home, ignore_errors=True)
+    def home(self):
+        made = Path(tempfile.mkdtemp(prefix="velvet-watcher-home-"))
+        self.addCleanup(shutil.rmtree, made, ignore_errors=True)
+        return made
 
+    def follow(self, home):
+        """Run the first deferral recipe the guard prints, and return how many it printed.
+
+        Read out of the refusal rather than written here. A recipe and the reader that honours it are
+        two statements of one format, and a case that writes its own line holds only the reader:
+        measured, four recipes named no session while only a session's own line suppresses anything,
+        and following one printed the same refusal again with nothing to do about it.
+        """
+        _, _, refusal, _ = check.run_guard(self.GUARD, self.PAYLOAD, "gh-empty", REPO_ROOT, home)
+        recipes = [line.strip() for line in refusal.splitlines()
+                   if line.strip().startswith('echo "') and ">>" in line]
+        for recipe in recipes[:1]:
+            subprocess.run(recipe, shell=True, check=True,
+                           env=dict(os.environ, HOME=str(home),
+                                    CLAUDE_CODE_SESSION_ID=check.SESSION))
+        return len(recipes)
+
+    # GREEN_ON_BASE(characterization): the refusal the case below has to escape from, which this branch
+    # does not change. An escape that is always open is not one, and without this the round trip could be
+    # satisfied by a guard that stopped refusing.
     def test_Given_NothingWatchingAndNoDeferral_When_AWriteIsAttempted_Then_ItIsRefused(self):
-        # Act / Assert — the control: an escape that is always open is not an escape.
-        self.assertEqual(self.verdict(None), 2)
+        # Act
+        code, _, _, _ = check.run_guard(self.GUARD, self.PAYLOAD, "gh-empty", REPO_ROOT, self.home())
 
-    def test_Given_NothingWatchingAndTheWatcherHeld_When_AWriteIsAttempted_Then_ItGoesThrough(self):
-        # Arrange — the deferral the guard's own message describes, armed with a live stamp.
-        deferral = f"watcher the network is down until the VPN is back {int(time.time())}\n"
+        # Assert — the control: an escape that is always open is not an escape.
+        self.assertEqual(code, 2)
 
-        # Act / Assert
-        self.assertEqual(self.verdict(deferral), 0)
+    @staticmethod
+    def signature(line):
+        """The last field of the line a recipe appends, which is the only place a session is read.
+
+        `deferrals.written_by` takes `fields[-1]`, so an id anywhere else signs nothing — measured, the
+        id moved to the front of both `<pr>` recipes leaves a reading over the whole line green while
+        an agent following either is disowned exactly as before.
+        """
+        quoted = line.split('"')
+        return quoted[1].split()[-1] if len(quoted) > 1 and quoted[1].split() else ""
+
+    def arrange(self, home, shape):
+        """Put the guard into one of its three refusing branches, named by the sentence it prints."""
+        now = int(time.time())
+        if shape.startswith("a watcher is writing"):
+            (home / ".velvet-pr-watch.heartbeat").write_text(str(now), encoding="utf-8")
+        elif shape.startswith("green and unmerged"):
+            (home / ".velvet-pr-watch.heartbeat").write_text(f"{now} {os.getpid()}", encoding="utf-8")
+            (home / ".velvet-pr-ready").write_text(f"777 {now - 3600}\n", encoding="utf-8")
+
+    def test_Given_EveryBranchItRefusesFrom_When_TheRecipeIsRead_Then_EachNamesTheSession(self):
+        # Arrange — the round trip below runs one branch's recipe end to end, and there are four
+        # recipes over three branches. A recipe the reading disowns is one an agent follows and is
+        # refused again with nothing left to try, so each is read wherever the guard prints it.
+        unsigned, reached = [], []
+        for shape, said in (("nothing is watching the open pull requests", 1),
+                            ("a watcher is writing the heartbeat in a form this cannot read", 1),
+                            ("green and unmerged long enough to have been forgotten", 2)):
+            home = self.home()
+            self.arrange(home, shape)
+            code, _, refusal, _ = check.run_guard(self.GUARD, self.PAYLOAD, "gh-empty", REPO_ROOT, home)
+            recipes = [line.strip() for line in refusal.splitlines()
+                       if line.strip().startswith('echo "') and ">>" in line]
+            reached.append((shape in refusal, len(recipes) == said))
+            unsigned += [f"{shape} ({code}): {line}" for line in recipes
+                         if self.signature(line) != "$CLAUDE_CODE_SESSION_ID"]
+
+        # Act / Assert — the branch each arrangement reached, by the sentence only that branch prints,
+        # rather than by how many recipes came back. Two of the three print one recipe each, so a count
+        # cannot tell an arrangement that stopped reaching one of them from one that still does — and
+        # the recipe it stopped reaching would then be unsigned with this green.
+        self.assertEqual((reached, unsigned), ([(True, True)] * 3, []))
+
+    def test_Given_TheRecipesItPrints_When_TheyAreFollowed_Then_TheNextWriteGoesThrough(self):
+        # Arrange — both branches whose recipe can be followed as printed. The other two key their
+        # line on `<pr>`, a placeholder a person fills in, so a verbatim run writes a line about no
+        # pull request — measured, exit 2, which is the guard being right rather than a drift.
+        followed = []
+        for shape in ("nothing is watching the open pull requests",
+                      "a watcher is writing the heartbeat in a form this cannot read"):
+            home = self.home()
+            self.arrange(home, shape)
+            printed = self.follow(home)
+
+            # Act
+            code, _, _, _ = check.run_guard(self.GUARD, self.PAYLOAD, "gh-empty", REPO_ROOT, home)
+            followed.append((code, printed))
+
+        # Assert — how many recipes were found rides along, since finding none writes nothing and
+        # leaves the guard refusing for the reason it would anyway.
+        self.assertEqual(followed, [(0, 1), (0, 1)])
+
+
+class GuardSessionTests(unittest.TestCase):
+    """Whose session a guard reads while a case is deciding what it may suppress.
+
+    The deferral cases above write a line and ask whether the guard honours it. Reading the id of
+    whoever ran the suite makes that line another session's, and it is disowned — so the three of
+    them passed on CI, where nothing sets the variable, and failed in every session that ran them.
+    """
+
+    def test_Given_TheRunnerHasASessionOfItsOwn_When_AGuardIsRun_Then_ItReadsTheSuitesInstead(self):
+        # Arrange
+        workspace = Path(tempfile.mkdtemp(prefix="velvet-session-probe-"))
+        try:
+            probe = workspace / "probe.py"
+            probe.write_text("import os, sys\n"
+                             "sys.stdout.write(os.environ.get('CLAUDE_CODE_SESSION_ID', ''))\n",
+                             encoding="utf-8")
+
+            # Act
+            with mock.patch.dict(os.environ, {"CLAUDE_CODE_SESSION_ID": "the-runners-own-session"}):
+                _, said, _, _ = check.run_guard(probe, "{}", "gh-empty", REPO_ROOT, workspace)
+
+            # Assert
+            self.assertEqual(said, check.SESSION)
+        finally:
+            shutil.rmtree(workspace, ignore_errors=True)
 
 
 if __name__ == "__main__":
