@@ -212,6 +212,9 @@ class GuardRemovalReadsTheStatement(unittest.TestCase):
         # Act / Assert
         self.assertEqual(self.guards(self.ELSE_BELOW), [])
 
+    # GREEN_ON_BASE(characterization): the control, and the base emits this one too -- that is the
+    # operator working, which this narrows rather than replaces. One that reddened would mean the
+    # narrowing had taken the operator with it.
     def test_Given_AnOrdinaryGuard_When_TheMutantsAreRead_Then_ItIsStillEmitted(self):
         # Arrange -- the control: a reading that emitted nothing would satisfy both cases above and
         # take the operator with it.
