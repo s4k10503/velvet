@@ -213,6 +213,10 @@ class PublishedHeadTests(GuardCase):
         # Assert
         self.assertEqual((code, text), (ALLOW, ""))
 
+    # GREEN_ON_BASE(characterization): the reading this holds landed with #814 and nothing asserted
+    # it. The base answers because the guard there already follows the cd; what was missing is the
+    # direction a guard that did not would read as allowed, which is why the case is worth having and
+    # why it cannot be red.
     def test_Given_AnAmendAfterACdIntoAPublishedTree_When_ItIsPosed_Then_ItIsRefused(self):
         # Arrange — the other direction of the case above, and the one a fail-open guard reads as
         # allowed: the tool call starts somewhere with nothing published and the amend lands where
