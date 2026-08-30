@@ -213,6 +213,20 @@ class PublishedHeadTests(GuardCase):
         # Assert
         self.assertEqual((code, text), (ALLOW, ""))
 
+    def test_Given_AnAmendAfterACdIntoAPublishedTree_When_ItIsPosed_Then_ItIsRefused(self):
+        # Arrange — the other direction of the case above, and the one a fail-open guard reads as
+        # allowed: the tool call starts somewhere with nothing published and the amend lands where
+        # the commit is.
+        elsewhere = self.root / "elsewhere"
+        git(self.root, "clone", "-q", str(self.root / "remote.git"), "elsewhere")
+        commit(elsewhere, "two")
+
+        # Act
+        answer = self.answer(f"cd {self.clone} && git commit --amend", cwd=elsewhere)
+
+        # Assert
+        self.assertEqual((answer[0], answer[1].splitlines()[0]), (REFUSE, PUBLISHED))
+
     def test_Given_ACdTheShellHasNotExpanded_When_AnAmendFollows_Then_ItIsRefused(self):
         # Arrange — reading `$SP` as a literal directory answers about a path nothing holds, and
         # answering about the wrong tree is what this guard exists to stop.
