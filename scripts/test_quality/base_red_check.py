@@ -895,19 +895,51 @@ def wait_for_quiet(seconds):
     return True
 
 
-COMPILE_ERROR = re.compile(r"^(?:.*?[\\/])?((?:Assets|Packages)[\\/][^(]+)\(\d+,\d+\): error CS")
+COMPILE_ERROR = re.compile(
+    r"^(?:.*?[\\/])?((?:Assets|Packages)[\\/][^(]+)\(\d+,\d+\): error (CS\d+)")
+
+# The compiler saying a name does not resolve. One of these on a carried file means withdrawing that
+# file lets the rest be measured, which is what the round loop is for.
+NAME_IS_ABSENT = frozenset({"CS0246", "CS0103", "CS0117", "CS1061", "CS0234"})
+
+
+def compile_errors_in(log_text):
+    """(repository-relative source, CS code) for each compile error a Unity log blames on a file."""
+    found = []
+    for line in log_text.splitlines():
+        match = COMPILE_ERROR.match(line.strip())
+        if match:
+            entry = (match.group(1).replace("\\", "/"), match.group(2))
+            if entry not in found:
+                found.append(entry)
+    return found
 
 
 def compile_error_files(log_text):
     """The repository-relative sources a Unity log blames a compile error on."""
     named = []
-    for line in log_text.splitlines():
-        match = COMPILE_ERROR.match(line.strip())
-        if match:
-            relative = match.group(1).replace("\\", "/")
-            if relative not in named:
-                named.append(relative)
+    for relative, _ in compile_errors_in(log_text):
+        if relative not in named:
+            named.append(relative)
     return named
+
+
+def no_withdrawal_reaches(log_text, carry):
+    """Whether nothing the base raised on a carried file is a name it has not got.
+
+    A withdrawal answers one kind of failure: a carried file spelling a name the base lacks comes
+    out, and the rest of its assembly builds. It answers none of the other kind -- an argument, a
+    return, an inferred type -- where the name resolves and the shape does not, because the file
+    that fails is the file the case is in.
+
+    This decides which remedy to print, and nothing else. It is not evidence that the base cannot
+    answer: `exhausted_reason` records a run on the branch replacing UniTask where a budget of 60
+    reached a compiling base on round 38 and gave every case a verdict, at the same default of 8
+    that reported nothing measured. So a round that wrote nothing under these codes is a budget
+    finding, and telling the author to sharpen the case is what this exists to stop.
+    """
+    blamed = [code for relative, code in compile_errors_in(log_text) if relative in carry]
+    return bool(blamed) and not any(code in NAME_IS_ABSENT for code in blamed)
 
 
 def next_to_withdraw(log_text, carry, withdrawn, silent):
@@ -1917,6 +1949,21 @@ def budget_shortfall(standing, budget):
             "  --max-rounds {}".format(standing, budget, standing))
 
 
+def shapes_remedy(carried):
+    """What to print where no withdrawal reaches what the base raised.
+
+    The generic line sends the author to sharpen the case, and there is nothing to sharpen: the base
+    holds the members these cases spell under the shapes this change replaced, so no case can be red
+    there until every carried file has come out -- at which point the budget is the whole set. That
+    is a number this can name before the rounds are spent.
+    """
+    return ("\nNothing the base raised on a carried file is a name it has not got, so no withdrawal\n"
+            "reaches it: the members resolve and their shapes differ. Every round therefore withdraws\n"
+            "a file whose cases it then cannot measure, and the base compiles only once the whole\n"
+            "carried set is out. Give it the whole set:\n"
+            "  --max-rounds {}".format(carried))
+
+
 def exhausted_reason(spent, withdrawn, carried):
     """What a loop that ran out of rounds without ever compiling the base has to say for itself.
 
@@ -2144,6 +2191,7 @@ def main():
     reported = {}
     transcript = []
     canaries = {}
+    last_log = None
     ever_wrote = not any(kind_of(case.path) == "csharp" for case in cases)
     rounds_spent = 0
     put_back = set()
@@ -2197,6 +2245,7 @@ def main():
                     if stale.exists():
                         stale.unlink()
                 wall = run_unity(args.unity, base_tree, platform, fixtures, results, log, args.timeout)
+                last_log = log
                 seen, wrote = results_from(results)
                 ever_wrote = ever_wrote or wrote
                 reported.update(seen)
@@ -2226,7 +2275,14 @@ def main():
 
     if not ever_wrote:
         print("no round wrote a result, so nothing any of them was asked was measured", flush=True)
-        if rounds_spent >= args.max_rounds:
+        # Which of the two the run hit, because the remedies differ. A name the base has not got is
+        # what a withdrawal answers, so more rounds reach it; nothing but shapes means every round
+        # withdraws a file whose case it then cannot measure, and the budget has to cover the whole
+        # carried set before the base compiles at all.
+        if last_log and last_log.exists() and no_withdrawal_reaches(
+                last_log.read_text(errors="replace"), set(carry)):
+            print(shapes_remedy(len(carry)), flush=True)
+        elif rounds_spent >= args.max_rounds:
             print(exhausted_reason(rounds_spent, put_back, len(carry)), flush=True)
     offenders = report(cases, control, reported, canaries, ever_wrote)
     print("\nlogs: {}".format(output), flush=True)
