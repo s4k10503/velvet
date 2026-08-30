@@ -171,12 +171,7 @@ namespace Velvet
                 {
                     FiberLogger.LogException("FiberNodePatcher", exception);
                 }
-                var scopeFactory = Router.Current?.ScopeFactory;
-                if (scopeFactory != null)
-                {
-                    newOutlet.Scope = scopeFactory.CreateScope(match!.Route, null);
-                    _ctx.OutletScopes[element] = newOutlet.Scope;
-                }
+                newOutlet.Scope = FiberOutletScope.CreateOutletScope(_ctx, match!.Route, element);
             }
             else if (_ctx.OutletScopes.TryGetValue(element, out var existingScope))
             {
@@ -185,12 +180,7 @@ namespace Velvet
             else
             {
                 // First match: no fiber exists yet, and no scope is registered.
-                var scopeFactory = Router.Current?.ScopeFactory;
-                if (scopeFactory != null)
-                {
-                    newOutlet.Scope = scopeFactory.CreateScope(match!.Route, null);
-                    _ctx.OutletScopes[element] = newOutlet.Scope;
-                }
+                newOutlet.Scope = FiberOutletScope.CreateOutletScope(_ctx, match!.Route, element);
             }
 
             // Mount the matched route Component with Depth+1 pushed live so the next nested
