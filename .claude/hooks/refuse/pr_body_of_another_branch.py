@@ -175,7 +175,7 @@ def check(operands, cwd, after_a_move, command="gh pr create", words=None):
         return 0
     if path is None:
         return judge_inline(text, command)
-    inline = valued(operands, BODY_FLAGS)
+    inline = valued(operands, BODY_FLAGS, words)
     if inline is not None and answered(inline) != answered(text):
         return refuse_command(command, TWO_BODIES)
     return 0 if answered(text) else refuse_command(command, NO_ANSWER)
