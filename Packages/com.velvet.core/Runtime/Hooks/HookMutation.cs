@@ -1,7 +1,6 @@
 #nullable enable annotations
 using System;
 using System.Threading;
-using Cysharp.Threading.Tasks;
 
 namespace Velvet
 {
@@ -26,7 +25,7 @@ namespace Velvet
     /// <see cref="MutationResult{TVariables, TData}.MutateAsync"/>.
     /// </summary>
     public sealed record MutationOptions<TVariables, TData>(
-        Func<TVariables, CancellationToken, UniTask<TData>> MutationFn,
+        Func<TVariables, CancellationToken, VelvetTask<TData>> MutationFn,
         Action<TData, TVariables>? OnSuccess = null,
         Action<Exception, TVariables>? OnError = null);
 
@@ -35,7 +34,7 @@ namespace Velvet
     /// Use this overload when the mutation is fire-and-forget (typical for Store actions that update state internally).
     /// </summary>
     public sealed record MutationOptions<TVariables>(
-        Func<TVariables, CancellationToken, UniTask> MutationFn,
+        Func<TVariables, CancellationToken, VelvetTask> MutationFn,
         Action<TVariables>? OnSuccess = null,
         Action<Exception, TVariables>? OnError = null);
 
@@ -44,7 +43,7 @@ namespace Velvet
     /// "logout" / "reset" actions where everything is captured in closure.
     /// </summary>
     public sealed record MutationOptions(
-        Func<CancellationToken, UniTask> MutationFn,
+        Func<CancellationToken, VelvetTask> MutationFn,
         Action? OnSuccess = null,
         Action<Exception>? OnError = null);
 
@@ -114,7 +113,7 @@ namespace Velvet
         }
 
         internal Action<TVariables>? MutateAction;
-        internal Func<TVariables, UniTask<TData>>? MutateAsyncFunc;
+        internal Func<TVariables, VelvetTask<TData>>? MutateAsyncFunc;
         internal Action? ResetAction;
 
         /// <summary>
@@ -126,8 +125,8 @@ namespace Velvet
         /// Awaitable mutation. Rethrows the underlying exception
         /// on failure so callers can <c>try</c> / <c>catch</c>; <see cref="Error"/> is also populated.
         /// </summary>
-        public UniTask<TData> MutateAsync(TVariables variables) =>
-            MutateAsyncFunc?.Invoke(variables) ?? UniTask.FromResult(default(TData)!);
+        public VelvetTask<TData> MutateAsync(TVariables variables) =>
+            MutateAsyncFunc?.Invoke(variables) ?? VelvetTask.FromResult(default(TData)!);
 
         /// <summary>
         /// Resets status to <see cref="MutationStatus.Idle"/> and clears <see cref="Data"/> / <see cref="Error"/> /
@@ -150,7 +149,7 @@ namespace Velvet
             result.Mutate(Unit.Default);
 
         /// <summary>Awaitable mutation with no input. Shorthand for <c>MutateAsync(Unit.Default)</c>.</summary>
-        public static UniTask<TData> MutateAsync<TData>(this MutationResult<Unit, TData> result) =>
+        public static VelvetTask<TData> MutateAsync<TData>(this MutationResult<Unit, TData> result) =>
             result.MutateAsync(Unit.Default);
     }
 }

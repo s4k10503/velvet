@@ -68,9 +68,9 @@
 [Velvet] ctor Velvet.MemoizeMethodAttribute.ctor(): System.Void
 [Velvet] ctor Velvet.MotionNode.ctor(): System.Void
 [Velvet] ctor Velvet.MutableRef`1[T].ctor(T): System.Void
-[Velvet] ctor Velvet.MutationOptions.ctor(System.Func`2[System.Threading.CancellationToken, Cysharp.Threading.Tasks.UniTask], System.Action?, System.Action`1[System.Exception]?): System.Void
-[Velvet] ctor Velvet.MutationOptions`1[TVariables].ctor(System.Func`3[TVariables, System.Threading.CancellationToken, Cysharp.Threading.Tasks.UniTask], System.Action`1[TVariables]?, System.Action`2[System.Exception, TVariables]?): System.Void
-[Velvet] ctor Velvet.MutationOptions`2[TVariables, TData].ctor(System.Func`3[TVariables, System.Threading.CancellationToken, Cysharp.Threading.Tasks.UniTask`1[TData]], System.Action`2[TData, TVariables]?, System.Action`2[System.Exception, TVariables]?): System.Void
+[Velvet] ctor Velvet.MutationOptions.ctor(System.Func`2[System.Threading.CancellationToken, Velvet.VelvetTask], System.Action?, System.Action`1[System.Exception]?): System.Void
+[Velvet] ctor Velvet.MutationOptions`1[TVariables].ctor(System.Func`3[TVariables, System.Threading.CancellationToken, Velvet.VelvetTask], System.Action`1[TVariables]?, System.Action`2[System.Exception, TVariables]?): System.Void
+[Velvet] ctor Velvet.MutationOptions`2[TVariables, TData].ctor(System.Func`3[TVariables, System.Threading.CancellationToken, Velvet.VelvetTask`1[TData]], System.Action`2[TData, TVariables]?, System.Action`2[System.Exception, TVariables]?): System.Void
 [Velvet] ctor Velvet.MutationResult`2[TVariables, TData].ctor(): System.Void
 [Velvet] ctor Velvet.NavigationAttempt.ctor(): System.Void
 [Velvet] ctor Velvet.NullStoreLogger.ctor(): System.Void
@@ -296,8 +296,8 @@
 [Velvet] method Velvet.Hooks.UseAnimationSequence(System.Collections.Generic.IReadOnlyList`1[Velvet.AnimationSequenceStep], System.Boolean, System.Boolean, System.Object?[]?): System.ValueTuple`2[Velvet.AnimationSequenceState, Velvet.AnimationSequenceControls]
 [Velvet] method Velvet.Hooks.UseBlocker(System.Func`2[Velvet.NavigationAttempt, System.Boolean]): Velvet.RouteBlockerState
 [Velvet] method Velvet.Hooks.UseBlocker(System.Func`2[Velvet.NavigationAttempt, System.Boolean], System.Object?[]?): Velvet.RouteBlockerState
-[Velvet] method Velvet.Hooks.UseBlocker(System.Func`3[Velvet.NavigationAttempt, System.Threading.CancellationToken, Cysharp.Threading.Tasks.UniTask`1[System.Boolean]]): Velvet.RouteBlockerState
-[Velvet] method Velvet.Hooks.UseBlocker(System.Func`3[Velvet.NavigationAttempt, System.Threading.CancellationToken, Cysharp.Threading.Tasks.UniTask`1[System.Boolean]], System.Object?[]?): Velvet.RouteBlockerState
+[Velvet] method Velvet.Hooks.UseBlocker(System.Func`3[Velvet.NavigationAttempt, System.Threading.CancellationToken, Velvet.VelvetTask`1[System.Boolean]]): Velvet.RouteBlockerState
+[Velvet] method Velvet.Hooks.UseBlocker(System.Func`3[Velvet.NavigationAttempt, System.Threading.CancellationToken, Velvet.VelvetTask`1[System.Boolean]], System.Object?[]?): Velvet.RouteBlockerState
 [Velvet] method Velvet.Hooks.UseCallback`1(T): T
 [Velvet] method Velvet.Hooks.UseCallback`1(T, System.Object?[]?): T
 [Velvet] method Velvet.Hooks.UseContext`1(Velvet.ComponentContext`1[T]): T?
@@ -326,7 +326,7 @@
 [Velvet] method Velvet.Hooks.UseMutation(Velvet.MutationOptions): Velvet.MutationResult`2[Velvet.Unit, Velvet.Unit]
 [Velvet] method Velvet.Hooks.UseMutation`1(Velvet.MutationOptions`1[TVariables]): Velvet.MutationResult`2[TVariables, Velvet.Unit]
 [Velvet] method Velvet.Hooks.UseMutation`2(Velvet.MutationOptions`2[TVariables, TData]): Velvet.MutationResult`2[TVariables, TData]
-[Velvet] method Velvet.Hooks.UseNavigate(System.Boolean): System.Func`2[System.String, Cysharp.Threading.Tasks.UniTask`1[Velvet.NavigationResult]]
+[Velvet] method Velvet.Hooks.UseNavigate(System.Boolean): System.Func`2[System.String, Velvet.VelvetTask`1[Velvet.NavigationResult]]
 [Velvet] method Velvet.Hooks.UseNavigation(): Velvet.NavigationState
 [Velvet] method Velvet.Hooks.UseOptimistic`2(TState, System.Func`3[TState, TAction, TState]): System.ValueTuple`2[TState, System.Action`1[TAction]]
 [Velvet] method Velvet.Hooks.UseOutletContext`1(): T?
@@ -342,8 +342,8 @@
 [Velvet] method Velvet.Hooks.UseState`1(T): System.ValueTuple`2[T, Velvet.StateUpdater`1[T]]
 [Velvet] method Velvet.Hooks.UseStore`2(Velvet.Store`1[TStore], System.Func`2[TStore, TSel], System.Collections.Generic.IEqualityComparer`1[TSel]?): TSel
 [Velvet] method Velvet.Hooks.UseTransition(): System.ValueTuple`2[System.Boolean, Velvet.TransitionStarter]
-[Velvet] method Velvet.Hooks.Use`1(System.Func`1[Cysharp.Threading.Tasks.UniTask`1[T]], System.Object?): T
-[Velvet] method Velvet.Hooks.Use`1(System.Func`2[System.Threading.CancellationToken, Cysharp.Threading.Tasks.UniTask`1[T]], System.Object?): T
+[Velvet] method Velvet.Hooks.Use`1(System.Func`1[Velvet.VelvetTask`1[T]], System.Object?): T
+[Velvet] method Velvet.Hooks.Use`1(System.Func`2[System.Threading.CancellationToken, Velvet.VelvetTask`1[T]], System.Object?): T
 [Velvet] method Velvet.IHookServiceResolver.Resolve`1(): T
 [Velvet] method Velvet.IRouteScope.Resolve`1(): T
 [Velvet] method Velvet.IRouteScopeFactory.CreateScope(Velvet.RouteDefinition?, Velvet.IRouteScope?): Velvet.IRouteScope
@@ -353,10 +353,10 @@
 [Velvet] method Velvet.IStoreWriter`1[TState].Mutate(System.Func`2[TState, TState]): System.Void
 [Velvet] method Velvet.IStoreWriter`1[TState].SetState(System.Func`2[TState, TState]): System.Boolean
 [Velvet] method Velvet.MountedTree.Dispose(): System.Void
-[Velvet] method Velvet.MutationResultExtensions.MutateAsync`1(Velvet.MutationResult`2[Velvet.Unit, TData]): Cysharp.Threading.Tasks.UniTask`1[TData]
+[Velvet] method Velvet.MutationResultExtensions.MutateAsync`1(Velvet.MutationResult`2[Velvet.Unit, TData]): Velvet.VelvetTask`1[TData]
 [Velvet] method Velvet.MutationResultExtensions.Mutate`1(Velvet.MutationResult`2[Velvet.Unit, TData]): System.Void
 [Velvet] method Velvet.MutationResult`2[TVariables, TData].Mutate(TVariables): System.Void
-[Velvet] method Velvet.MutationResult`2[TVariables, TData].MutateAsync(TVariables): Cysharp.Threading.Tasks.UniTask`1[TData]
+[Velvet] method Velvet.MutationResult`2[TVariables, TData].MutateAsync(TVariables): Velvet.VelvetTask`1[TData]
 [Velvet] method Velvet.MutationResult`2[TVariables, TData].Reset(): System.Void
 [Velvet] method Velvet.NullStoreLogger.Log(System.String): System.Void
 [Velvet] method Velvet.NullStoreLogger.LogError(System.String): System.Void
@@ -365,17 +365,17 @@
 [Velvet] method Velvet.ParticlesElement.Stop(): System.Void
 [Velvet] method Velvet.Ref`1[T].Set(T?): System.Void
 [Velvet] method Velvet.RouteBlockerManager.Register(System.Func`2[Velvet.NavigationAttempt, System.Boolean], Velvet.RouteBlockerState): System.IDisposable
-[Velvet] method Velvet.RouteBlockerManager.Register(System.Func`3[Velvet.NavigationAttempt, System.Threading.CancellationToken, Cysharp.Threading.Tasks.UniTask`1[System.Boolean]], Velvet.RouteBlockerState): System.IDisposable
+[Velvet] method Velvet.RouteBlockerManager.Register(System.Func`3[Velvet.NavigationAttempt, System.Threading.CancellationToken, Velvet.VelvetTask`1[System.Boolean]], Velvet.RouteBlockerState): System.IDisposable
 [Velvet] method Velvet.RouteBlockerManager.ResetAllBlocked(): System.Void
 [Velvet] method Velvet.RouteBlockerState.Proceed(): System.Void
 [Velvet] method Velvet.RouteBlockerState.Reset(): System.Void
 [Velvet] method Velvet.RouteTree.Match(System.String): System.Collections.Generic.IReadOnlyList`1[Velvet.RouteMatch]?
 [Velvet] method Velvet.Router.Dispose(): System.Void
 [Velvet] method Velvet.Router.GetLoaderData(System.String): System.Object
-[Velvet] method Velvet.Router.GoBack(System.Threading.CancellationToken): Cysharp.Threading.Tasks.UniTask`1[Velvet.NavigationResult]
-[Velvet] method Velvet.Router.GoForward(System.Threading.CancellationToken): Cysharp.Threading.Tasks.UniTask`1[Velvet.NavigationResult]
-[Velvet] method Velvet.Router.NavigateAsync(System.String, Velvet.NavigationMode, System.Int32, System.Threading.CancellationToken): Cysharp.Threading.Tasks.UniTask`1[Velvet.NavigationResult]
-[Velvet] method Velvet.Router.NavigateAsync(System.String, Velvet.NavigationMode, System.Threading.CancellationToken): Cysharp.Threading.Tasks.UniTask`1[Velvet.NavigationResult]
+[Velvet] method Velvet.Router.GoBack(System.Threading.CancellationToken): Velvet.VelvetTask`1[Velvet.NavigationResult]
+[Velvet] method Velvet.Router.GoForward(System.Threading.CancellationToken): Velvet.VelvetTask`1[Velvet.NavigationResult]
+[Velvet] method Velvet.Router.NavigateAsync(System.String, Velvet.NavigationMode, System.Int32, System.Threading.CancellationToken): Velvet.VelvetTask`1[Velvet.NavigationResult]
+[Velvet] method Velvet.Router.NavigateAsync(System.String, Velvet.NavigationMode, System.Threading.CancellationToken): Velvet.VelvetTask`1[Velvet.NavigationResult]
 [Velvet] method Velvet.SearchParams.Append(System.String, System.String): System.Void
 [Velvet] method Velvet.SearchParams.Get(System.String): System.String?
 [Velvet] method Velvet.SearchParams.GetAll(System.String): System.Collections.Generic.IReadOnlyList`1[System.String]
@@ -427,7 +427,7 @@
 [Velvet] method Velvet.TransitionStarter.Equals(Velvet.TransitionStarter): System.Boolean
 [Velvet] method Velvet.TransitionStarter.GetHashCode(): System.Int32
 [Velvet] method Velvet.TransitionStarter.Invoke(System.Action): System.Void
-[Velvet] method Velvet.TransitionStarter.Invoke(System.Func`1[Cysharp.Threading.Tasks.UniTask]): System.Void
+[Velvet] method Velvet.TransitionStarter.Invoke(System.Func`1[Velvet.VelvetTask]): System.Void
 [Velvet] method Velvet.Unit.Equals(System.Object?): System.Boolean
 [Velvet] method Velvet.Unit.Equals(Velvet.Unit): System.Boolean
 [Velvet] method Velvet.Unit.GetHashCode(): System.Int32
@@ -493,7 +493,7 @@
 [Velvet] method Velvet.V.Provider`1(Velvet.ComponentContext`1[T], T, Velvet.VNode?[]?, System.String?): Velvet.ContextProviderNode`1[T]
 [Velvet] method Velvet.V.RadioButton(System.String?, System.Nullable`1[System.Boolean], System.Action`1[System.Boolean]?, System.String?, System.String?, System.String?, System.Nullable`1[System.Boolean], System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?): Velvet.ElementNode
 [Velvet] method Velvet.V.RadioButtonGroup(System.String?, System.Nullable`1[System.Int32], System.Collections.Generic.List`1[System.String]?, System.Action`1[System.Int32]?, System.String?, System.String?, System.String?, System.Nullable`1[System.Boolean], System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?): Velvet.ElementNode
-[Velvet] method Velvet.V.Route(System.String?, Velvet.ComponentNode?, System.String?, System.Func`3[Velvet.RouteLoaderContext, System.Threading.CancellationToken, Cysharp.Threading.Tasks.UniTask`1[System.Object]]?, Velvet.LoaderMode, Velvet.ComponentNode?, Velvet.RouteDefinition[]?, System.String?, System.Func`2[Velvet.RouteLoaderContext, System.String]?, System.Boolean): Velvet.RouteDefinition
+[Velvet] method Velvet.V.Route(System.String?, Velvet.ComponentNode?, System.String?, System.Func`3[Velvet.RouteLoaderContext, System.Threading.CancellationToken, Velvet.VelvetTask`1[System.Object]]?, Velvet.LoaderMode, Velvet.ComponentNode?, Velvet.RouteDefinition[]?, System.String?, System.Func`2[Velvet.RouteLoaderContext, System.String]?, System.Boolean): Velvet.RouteDefinition
 [Velvet] method Velvet.V.Routes(Velvet.RouteDefinition[]): Velvet.RouteDefinition[]
 [Velvet] method Velvet.V.SceneView(UnityEngine.Camera?, System.String?, System.String?, System.String?, System.Single, Velvet.StyleOverrides?, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?): Velvet.ElementNode
 [Velvet] method Velvet.V.ScrollView(System.String, Velvet.VNode?[]): Velvet.ElementNode
@@ -785,13 +785,13 @@
 [Velvet] property Velvet.MotionNode.Transition: Velvet.StyleTransitionConfig?
 [Velvet] property Velvet.MotionNode.Variants: System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?
 [Velvet] property Velvet.MutableRef`1[T].Current: T
-[Velvet] property Velvet.MutationOptions.MutationFn: System.Func`2[System.Threading.CancellationToken, Cysharp.Threading.Tasks.UniTask]
+[Velvet] property Velvet.MutationOptions.MutationFn: System.Func`2[System.Threading.CancellationToken, Velvet.VelvetTask]
 [Velvet] property Velvet.MutationOptions.OnError: System.Action`1[System.Exception]?
 [Velvet] property Velvet.MutationOptions.OnSuccess: System.Action?
-[Velvet] property Velvet.MutationOptions`1[TVariables].MutationFn: System.Func`3[TVariables, System.Threading.CancellationToken, Cysharp.Threading.Tasks.UniTask]
+[Velvet] property Velvet.MutationOptions`1[TVariables].MutationFn: System.Func`3[TVariables, System.Threading.CancellationToken, Velvet.VelvetTask]
 [Velvet] property Velvet.MutationOptions`1[TVariables].OnError: System.Action`2[System.Exception, TVariables]?
 [Velvet] property Velvet.MutationOptions`1[TVariables].OnSuccess: System.Action`1[TVariables]?
-[Velvet] property Velvet.MutationOptions`2[TVariables, TData].MutationFn: System.Func`3[TVariables, System.Threading.CancellationToken, Cysharp.Threading.Tasks.UniTask`1[TData]]
+[Velvet] property Velvet.MutationOptions`2[TVariables, TData].MutationFn: System.Func`3[TVariables, System.Threading.CancellationToken, Velvet.VelvetTask`1[TData]]
 [Velvet] property Velvet.MutationOptions`2[TVariables, TData].OnError: System.Action`2[System.Exception, TVariables]?
 [Velvet] property Velvet.MutationOptions`2[TVariables, TData].OnSuccess: System.Action`2[TData, TVariables]?
 [Velvet] property Velvet.MutationResult`2[TVariables, TData].Data: TData?
@@ -834,7 +834,7 @@
 [Velvet] property Velvet.RouteDefinition.Element: Velvet.ComponentNode?
 [Velvet] property Velvet.RouteDefinition.ErrorElement: Velvet.ComponentNode?
 [Velvet] property Velvet.RouteDefinition.Guard: System.Func`2[Velvet.RouteLoaderContext, System.String]?
-[Velvet] property Velvet.RouteDefinition.Loader: System.Func`3[Velvet.RouteLoaderContext, System.Threading.CancellationToken, Cysharp.Threading.Tasks.UniTask`1[System.Object]]?
+[Velvet] property Velvet.RouteDefinition.Loader: System.Func`3[Velvet.RouteLoaderContext, System.Threading.CancellationToken, Velvet.VelvetTask`1[System.Object]]?
 [Velvet] property Velvet.RouteDefinition.LoaderMode: Velvet.LoaderMode
 [Velvet] property Velvet.RouteDefinition.Path: System.String?
 [Velvet] property Velvet.RouteDefinition.RedirectTo: System.String?
