@@ -200,8 +200,7 @@ class StrandedTests(unittest.TestCase):
             self.assertEqual(code, 0)
 
     def test_Given_ARemovedNameSurvivingOnlyInAStringLiteral_When_TheChangeIsRead_Then_ItIsNotRefused(self):
-        # Arrange -- a string is content rather than a reference to the declaration, which is how
-        # every other reader here treats one.
+        # Arrange -- a string is content rather than a reference to the declaration.
         with repository() as tree:
             tree.changed_to("""namespace Velvet
 {
@@ -239,21 +238,18 @@ class StrandedTests(unittest.TestCase):
             # Assert
             self.assertEqual(code, 0)
 
-    def test_Given_AnApostropheAboveAStrandedName_When_ARemovalIsRead_Then_ItIsStillFound(self):
-        # Arrange -- an apostrophe read as an opening char literal closes nowhere, and every line after
-        # it leaves both streams, so the comment below goes unread and the removal reports clean.
-        # Measured on the tree before this was narrowed: ErrorBoundaryTests.cs lost 42% of its text.
+    def test_Given_AnEscapedApostropheLiteral_When_ACallFollowsIt_Then_ItIsStillCode(self):
+        # Arrange -- the shape three files in this repository carry: a char literal holding a quote
+        # beside one holding an escaped apostrophe. Read as "everything to the next apostrophe", the
+        # two pair wrongly and the call after them leaves the code stream, so the comment above is
+        # all that is left naming it.
         with repository() as tree:
             tree.changed_to("""namespace Velvet
 {
     internal static class Probe
     {
-        #region What the caller's index means
-
-        // The caller rebases first (see RebaseSlots), so the index is already absolute here.
-        internal static int Read(int at) => at;
-
-        #endregion
+        // The caller rebases first (see RebaseSlots).
+        internal static bool Read(char c) => c == '"' || c == '\\'' || RebaseSlots(c) > 0 || c == 'x';
     }
 }
 """)
@@ -262,7 +258,27 @@ class StrandedTests(unittest.TestCase):
             code, _ = tree.verdict()
 
             # Assert
-            self.assertEqual(code, 1)
+            self.assertEqual(code, 0)
+
+    def test_Given_AnInterpolationHoleHoldingAString_When_ItCarriesTheOnlyCall_Then_ItIsStillCode(self):
+        # Arrange -- read as an ordinary literal, the outer string ends at the quote inside the hole
+        # and everything to the next one leaves both streams, taking the call with it.
+        with repository() as tree:
+            tree.changed_to("""namespace Velvet
+{
+    internal static class Probe
+    {
+        // The caller rebases first (see RebaseSlots).
+        internal static string Read(int[] xs) => $"a {string.Join(", ", xs)} b {RebaseSlots(1)}";
+    }
+}
+""")
+
+            # Act
+            code, _ = tree.verdict()
+
+            # Assert
+            self.assertEqual(code, 0)
 
 
     def test_Given_ARegionLabelSpellingTheRemovedName_When_TheChangeIsRead_Then_ItIsStillFound(self):
@@ -419,8 +435,8 @@ class RepositoryHistoryTests(unittest.TestCase):
             (1, True, True, True))
 
     def test_Given_ACommitNamingTheBaseTreesMethodOnPurpose_When_ItIsRead_Then_ItStillFires(self):
-        # Arrange -- c8d5b151d's base-red declaration names a method the base has and this tree does
-        # not. It is one of the two firings in the 320 commits measured and the only false positive
+        # Arrange -- c8d5b151d's GREEN_ON_BASE(refactor) declaration names a method the base has and
+        # this tree does not. It is one of the two firings in the 320 commits measured and the only false positive
         # among them: pinned so that excluding its shape is a decision somebody takes deliberately,
         # against a case that fails when they do.
         code, said = self.read("c8d5b151d")

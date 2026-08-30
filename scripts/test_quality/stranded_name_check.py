@@ -50,26 +50,47 @@ CHAR_LITERAL = re.compile(r"'(?:\\.|[^'\\\n])'")
 def split_comments(text):
     """(comment text, code text) -- one scan, so a `//` inside a string literal is not a comment.
 
-    An interpolated string keeps its text in the code stream rather than being dropped, because the
-    holes in it are code and separating them needs a brace-matching pass. That counts a name written
-    in the string's own text as written in code, which is the direction that makes this guard say
-    nothing rather than say something wrong.
+    An interpolated string is followed by its braces: what a hole holds is code and reaches the code
+    stream, the literal text around it is dropped like any other string, and the closing quote is the
+    one at brace depth zero. Read as an ordinary literal instead, a hole holding a string of its own
+    ends the outer one early and everything to the next quote leaves both streams -- measured, 17 of
+    this repository's files lost code words that way, and a name whose only use was among them read
+    as stranded.
     """
     comments, code, i, size = [], [], 0, len(text)
     while i < size:
         char = text[i]
         if char == '"':
-            verbatim = i and text[i - 1] == "@"
+            verbatim = i and text[i - 1] == "@" or text[max(i - 2, 0):i] in ("@$", "$@")
             interpolated = "$" in text[max(i - 2, 0):i]
-            j = i + 1
+            j, depth = i + 1, 0
             while j < size:
-                if text[j] == '"':
+                here = text[j]
+                if interpolated and here in "{}":
+                    if text[j:j + 2] in ("{{", "}}"):
+                        j += 2
+                        continue
+                    depth += 1 if here == "{" else -1
+                    code.append(" ")
+                    j += 1
+                    continue
+                if here == '"':
                     if verbatim and j + 1 < size and text[j + 1] == '"':
                         j += 2
                         continue
-                    break
-                j += 2 if not verbatim and text[j] == "\\" else 1
-            code.append(text[i:j + 1] if interpolated else " ")
+                    if depth <= 0:
+                        break
+                    # A string of its own, inside a hole. Its own text is not code, but the scan has
+                    # to pass it or the brace it holds would close a hole it never opened.
+                    j += 1
+                    while j < size and text[j] != '"':
+                        j += 2 if text[j] == "\\" else 1
+                    j += 1
+                    continue
+                if depth > 0:
+                    code.append(here)
+                j += 2 if not verbatim and here == "\\" else 1
+            code.append(" ")
             i = j + 1
             continue
         if char == "'":
@@ -135,8 +156,8 @@ def stranded(base, head):
     left = []
     for name in sorted(removed_declarations(base, head)):
         # C# only. A name a removed declaration leaves behind in USS, JSON or an asmdef is content
-        # rather than a reference to the declaration -- which is the reading DocumentationDriftTests
-        # takes of those formats too, where it keeps the string and resolves nothing from it.
+        # rather than a reference to the declaration. CONTRIBUTING owns the rest of what this
+        # declines to judge.
         pattern = re.compile(r"\b{}\b".format(re.escape(name)))
         files = git("grep", "-l", "-w", name, head, "--", "*.cs").splitlines()
         if not files:

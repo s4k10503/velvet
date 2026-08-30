@@ -488,15 +488,21 @@ shapes with a clean ratio — a `cref` attribute at 0.46%, a name with a trailin
 with both halves PascalCase — hold none of the four. Asked from the removal side it was two firings
 over 320 commits.
 
-Three things it declines to judge. A name surviving only inside a string literal, which is content
-rather than a reference and is how every other reader here treats one. A property or a field, since
-the yield above was measured over types and methods and a widening is a fresh measurement rather
-than an edit. And a comment that went stale for any reason other than a removal in the same change —
-a renamed parameter, a reversed condition, a mechanism that still exists and no longer does that.
+What it declines to judge, and this list is what it claims rather than everything it misses:
 
-There is no way to declare an exception, and one of the two firings did not want one: a base-red
-declaration naming the base tree's method is a true sentence that does not need the identifier to
-say what it says.
+- a name surviving only inside a string literal, which is content rather than a reference;
+- a name surviving only in a `#region` or `#pragma` label, which is prose on a line that declares
+  nothing — routed to the code stream instead, one such label answers for that name tree-wide;
+- a property or a field, since the yield above was measured over types and methods and a widening is
+  a fresh measurement rather than an edit;
+- a declaration removed from C# written inside a verbatim string, which the diff reading cannot tell
+  from one removed from the source around it;
+- a comment that went stale for any reason other than a removal in the same change — a renamed
+  parameter, a reversed condition, a mechanism that still exists and no longer does that.
+
+There is no way to declare an exception, and one of the two firings did not want one: a
+base-red declaration, of the refactor category, naming the base tree's method is a true sentence that does not
+need the identifier to say what it says.
 
 ### Repository scripts
 

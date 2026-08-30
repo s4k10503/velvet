@@ -1325,8 +1325,7 @@ namespace Velvet.Tests
             s_drainFiber.DrainTimeSlicedReconcileForTest();
 
             // Assert — RED without the fix: every trailing item resumes two physical slots ahead of where
-            // the container's single insertion left it, the container-creating tick's one-slot delta having
-            // reached the same suspended state twice.
+            // the container's single insertion left it.
             Assert.That(
                 (noBackContainerBeforeTheReRender, parkedAfterItem0, registeredAsParkedBaseline,
                     resumeTickCreatedTheBackContainer, reParkedWhileStillRegistered, TrailingItemOrder(root)),
