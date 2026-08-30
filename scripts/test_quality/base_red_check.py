@@ -674,6 +674,29 @@ def spanned_code(lines, case):
                      if line.strip())
 
 
+def shared_material_differs(relative, before, after):
+    """Whether what the cases share -- everything outside every case body -- is not the base's.
+
+    A line reading is not enough on its own: git describes a reorder as one block deleted and
+    re-added, so the lines between two swapped cases read as changed while every one of them is the
+    base's own text. Compared as a multiset, a reorder is no difference and an added row is.
+    """
+    if before is None:
+        return True
+
+    def shared(text):
+        if not text:
+            return []
+        found = cases_in(relative, text)
+        inside = set()
+        for case in found:
+            inside |= set(range(case.first_line, case.last_line + 1))
+        return sorted(line.strip() for number, line in enumerate(text.splitlines(), 1)
+                      if number not in inside and line.strip())
+
+    return shared(before) != shared(after)
+
+
 def authored(relative, cases, before, after):
     """(the cases whose code this branch changed, the ones it left standing while editing their text).
 
@@ -2064,6 +2087,19 @@ def collect(project, base, lane):
                 case.declaration.written_here = case.declaration.written_in(lines)
         wanted = {case.name for case in authored(relative, touched(cases, lines),
                                                  held_at(project, since, relative), text)[0]}
+        # A change wholly outside every case body, in a file that has cases: a static readonly table
+        # the cases drive, a SetUp, a helper. `authored` keeps such a case out, correctly -- the
+        # branch did not write it -- and with nothing else selected the lane exits 0 having measured
+        # a genuinely base-red change as nothing at all. Measured on a branch adding rows to a table
+        # in CommitGuardParsingTests, and 88 of this repository's 276 C# fixtures declare such data
+        # outside every case body.
+        #
+        # Only where nothing was selected. Widening it to every file with a shared line was tried
+        # and puts every case a fixture has on trial for a line added to SetUp; `outside` reports
+        # that instead. What is left here is the state where reporting it is all that happens.
+        if (cases and lines is not None and not wanted and outside(cases, lines)
+                and shared_material_differs(relative, held_at(project, since, relative), text)):
+            wanted = {case.name for case in cases}
         changed.extend(as_the_runner_names_them(
             [case for case in cases if case.name in wanted], heirs))
         loose = outside(cases, lines)

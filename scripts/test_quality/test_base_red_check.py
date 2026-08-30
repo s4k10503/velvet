@@ -3642,6 +3642,43 @@ class BranchReadingTests(unittest.TestCase):
         run("commit", "-qm", "branch")
         return root
 
+    def test_Given_ABranchThatChangedOnlyATable_When_ItIsRead_Then_TheFixturesCasesAreSelected(self):
+        # Arrange -- a static readonly the cases drive, changed outside every case body. Nothing was
+        # selected before this and the lane exited 0 having measured a genuinely base-red change as
+        # nothing at all. Measured on a branch adding rows to a table in CommitGuardParsingTests,
+        # and 88 of this repository's 276 C# fixtures declare such data outside every case body.
+        table = '        static readonly string[] Rows = { "one" };\n'
+        root = self.repository(self.source().replace("        [SetUp]", table + "        [SetUp]"),
+                               self.source().replace("        [SetUp]",
+                                                     table.replace('"one"', '"one", "two"')
+                                                     + "        [SetUp]"))
+
+        # Act
+        _, cases, _, _, _ = base_red_check.collect(root, "HEAD~1", "csharp")
+
+        # Assert
+        self.assertEqual(sorted(case.name for case in cases),
+                         ["N.ProbeTests.Given_A_When_B_Then_C", "N.ProbeTests.Given_D_When_E_Then_F"])
+
+    # GREEN_ON_BASE(characterization): the control for the reading beside it. The base selects the
+    # one case whose body moved and nothing else, which is what this narrows rather than replaces --
+    # a control that reddened would mean the widening had taken every fixture with a shared line.
+    def test_Given_ABranchThatChangedOneCaseAndATable_When_ItIsRead_Then_OnlyThatCaseIsSelected(self):
+        # Arrange -- the control, and the reading this must not widen into: selecting the file whole
+        # whenever a shared line moved puts every case a fixture has on trial for a line in SetUp,
+        # which `outside` reports instead. Only where nothing at all was selected does this apply.
+        table = '        static readonly string[] Rows = { "one" };\n'
+        root = self.repository(self.source().replace("        [SetUp]", table + "        [SetUp]"),
+                               self.source(first="Assert.Fail()").replace(
+                                   "        [SetUp]", table.replace('"one"', '"one", "two"')
+                                   + "        [SetUp]"))
+
+        # Act
+        _, cases, _, _, _ = base_red_check.collect(root, "HEAD~1", "csharp")
+
+        # Assert
+        self.assertEqual([case.name for case in cases], ["N.ProbeTests.Given_A_When_B_Then_C"])
+
     def test_Given_ABranchThatChangedASetUp_When_ItIsRead_Then_ItsOtherCasesAreNotControls(self):
         # Arrange -- the untouched case is not the base's own text any more: what it shares with the
         # case beside it moved. Reading the tree by it converts the sharpest red-on-base evidence
