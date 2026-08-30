@@ -116,6 +116,44 @@ def declaration(line, category="equivalent", reason="a reason of four words", wr
         return mutation_check.Declaration(category, reason, line, written_here=written_here)
 
 
+class TextReadingKillerTests(unittest.TestCase):
+    """A mutant killed only by a fixture that walks this tree's text was killed by nothing.
+
+    A mutation edits a source file, so such a fixture reddens on the edit itself. Measured on the
+    campaign for `Hooks.cs:1603`: the clause-removal mutant was recorded killed by three cases, and
+    the first of them walks an identifier allowlist against the sources. Where a mutated line carries
+    an identifier the allowlist names, that fixture kills every mutant on it -- and those are the
+    lines most worth mutating, since an identifier the documentation names is one that is public.
+    """
+
+    READERS = {"DocumentationDriftTests", "CrefTargetTests"}
+
+    def test_Given_ATextReaderBesideABehaviourCase_When_TheKillersAreRead_Then_TheBehaviourOneStands(self):
+        # Arrange -- the ordinary kill, which must keep counting.
+        names = ["Velvet.Tests.DocumentationDriftTests.Given_X", "Velvet.Tests.HookTests.Given_Y"]
+
+        # Act / Assert
+        self.assertEqual(mutation_check.killed_by_behaviour(names, self.READERS),
+                         ["Velvet.Tests.HookTests.Given_Y"])
+
+    def test_Given_OnlyTextReaders_When_TheKillersAreRead_Then_NothingKilledIt(self):
+        # Arrange -- the shape the campaign reported as covered.
+        names = ["Velvet.Tests.DocumentationDriftTests.Given_X",
+                 "Velvet.Tests.CrefTargetTests.Given_Z"]
+
+        # Act / Assert
+        self.assertEqual(mutation_check.killed_by_behaviour(names, self.READERS), [])
+
+    def test_Given_TheFixturesOfThisPackage_When_TheyAreDerived_Then_TheDriftOneIsAmongThem(self):
+        # Arrange -- derived from what references the corpus rather than listed, so a fixture written
+        # that way later is covered by having been written that way.
+        found = mutation_check.text_reading_fixtures(REPO_ROOT / "Packages/com.velvet.core")
+
+        # Act / Assert
+        self.assertEqual(("DocumentationDriftTests" in found, "HookBailoutEqualityTests" in found),
+                         (True, False))
+
+
 class NeighbouringCampaignTests(unittest.TestCase):
     """A receipt says whether the verdict was reached with the machine to itself.
 
