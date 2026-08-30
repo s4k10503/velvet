@@ -120,7 +120,7 @@ def disowned(key, now=None):
     Read by all four guards that suppress on a deferral, so a suppression that did not happen is in
     front of the reader rather than behind them — the same principle `deferred` states about a stale
     reason. Written for a while before any of them called it, which is a helper claiming a behaviour
-    the tree did not have.
+    the tree did not have, in a module that said so twice.
     """
     mine = writer()
     if mine is None:
