@@ -44,6 +44,22 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
+      # A release dispatched on a maintenance line runs that line's copy of these checks, which is
+      # main's copy as of the cut -- so every rule main adds afterwards is one the line can ship
+      # against. Measured: main forbids a Breaking highlight outside a major, 2.x carries no such
+      # case, and v2.1.4 published one from the line. Overlaid rather than named per line, so a
+      # 3.x and a 4.x are covered by having been cut at all.
+      - name: Take the release rules from main, whatever line this is
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          git fetch --quiet --depth=1 origin main
+          git checkout --quiet FETCH_HEAD -- scripts/release
+          git reset --quiet -- scripts/release
+
+      - name: Release rules (release only)
+        if: github.event_name == 'workflow_dispatch'
+        run: python3 scripts/release/test_release_notes.py
+
       - name: Verify version matches package.json (release only)
         if: github.event_name == 'workflow_dispatch'
         env:
