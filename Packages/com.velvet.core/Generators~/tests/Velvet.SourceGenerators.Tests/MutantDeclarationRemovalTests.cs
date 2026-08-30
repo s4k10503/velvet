@@ -51,7 +51,12 @@ namespace Velvet.SourceGenerators.Tests
             foreach (var byFile in mutants.GroupBy(mutant => mutant.Path, StringComparer.Ordinal))
             {
                 var lines = File.ReadAllLines(Path.Combine(repository, byFile.Key));
-                var original = CSharpSyntaxTree.ParseText(string.Join("\n", lines));
+                var text = string.Join("\n", lines);
+                // Read under the configuration that lights the most of the file. Under the default
+                // one a line inside an `#if` region nothing defines is trivia: there is no
+                // designation on it to lose, so a mutant there was examined by nothing.
+                var reading = MutantParseReadings.Widest(text);
+                var original = CSharpSyntaxTree.ParseText(text, reading);
                 var declared = DesignationsByLine(original);
                 foreach (var mutant in byFile)
                 {
@@ -63,7 +68,7 @@ namespace Velvet.SourceGenerators.Tests
                     examined++;
                     var swapped = (string[])lines.Clone();
                     swapped[mutant.Line - 1] = mutant.Text;
-                    var mutated = CSharpSyntaxTree.ParseText(string.Join("\n", swapped));
+                    var mutated = CSharpSyntaxTree.ParseText(string.Join("\n", swapped), reading);
                     var survivors = DesignationsByLine(mutated).TryGetValue(mutant.Line, out var after)
                         ? after.Select(designation => designation.Identifier.ValueText).ToHashSet(StringComparer.Ordinal)
                         : new HashSet<string>(StringComparer.Ordinal);
@@ -127,7 +132,10 @@ namespace Velvet.SourceGenerators.Tests
             foreach (var byFile in mutants.GroupBy(mutant => mutant.Path, StringComparer.Ordinal))
             {
                 var lines = File.ReadAllLines(Path.Combine(repository, byFile.Key));
-                var original = CSharpSyntaxTree.ParseText(string.Join("\n", lines));
+                var text = string.Join("\n", lines);
+                // Same reading as the case above, for the reason stated there.
+                var reading = MutantParseReadings.Widest(text);
+                var original = CSharpSyntaxTree.ParseText(text, reading);
                 var assigned = AssignedOutArgumentsByLine(original);
                 foreach (var mutant in byFile)
                 {
@@ -139,7 +147,7 @@ namespace Velvet.SourceGenerators.Tests
                     examined++;
                     var swapped = (string[])lines.Clone();
                     swapped[mutant.Line - 1] = mutant.Text;
-                    var mutated = CSharpSyntaxTree.ParseText(string.Join("\n", swapped));
+                    var mutated = CSharpSyntaxTree.ParseText(string.Join("\n", swapped), reading);
                     var survivors = AssignedOutArgumentsByLine(mutated).TryGetValue(mutant.Line, out var after)
                         ? new List<string>(after)
                         : new List<string>();

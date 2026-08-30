@@ -37,9 +37,6 @@ namespace Velvet.SourceGenerators.Tests
     {
         private const string Operator = "line removed";
 
-        private static readonly Regex ConditionalSymbol = new(
-            @"^\s*#\s*(?:if|elif)\s+(.*)$", RegexOptions.Multiline);
-
         [Fact]
         public void Given_EveryLineRemovalThisPackageGenerates_When_ItIsApplied_Then_NothingExecutableIsLeftOnTheLine()
         {
@@ -57,7 +54,7 @@ namespace Velvet.SourceGenerators.Tests
             {
                 var lines = File.ReadAllLines(Path.Combine(repository, byFile.Key));
                 var source = string.Join("\n", lines);
-                var readings = Readings(source).Select(options =>
+                var readings = MutantParseReadings.For(source).Select(options =>
                     (Options: options, Original: CSharpSyntaxTree.ParseText(source, options))).ToList();
                 foreach (var mutant in byFile)
                 {
@@ -111,42 +108,6 @@ namespace Velvet.SourceGenerators.Tests
                 (examined > 1000, mutants.Count - examined, surviving.Count));
         }
 
-        /// <summary>The configurations a file is read under: nothing defined, everything it tests,
-        /// and everything it never negates.</summary>
-        /// <remarks>
-        /// The third because a region nested inside one the second lights can turn on the absence of a
-        /// symbol that one defines, which leaves it dark under both of the others.
-        /// </remarks>
-        private static IEnumerable<CSharpParseOptions> Readings(string source)
-        {
-            var conditions = ConditionalSymbol.Matches(source)
-                .Select(match => match.Groups[1].Value)
-                .ToList();
-            var symbols = conditions
-                .SelectMany(condition => Names(condition))
-                .Distinct(StringComparer.Ordinal)
-                .ToList();
-            var negated = conditions
-                .SelectMany(condition => Regex.Matches(condition, @"!\s*([A-Za-z_][A-Za-z0-9_]*)")
-                    .Select(match => match.Groups[1].Value))
-                .ToHashSet(StringComparer.Ordinal);
-            var sets = new List<List<string>>
-            {
-                new(),
-                symbols,
-                symbols.Where(name => !negated.Contains(name)).ToList(),
-            };
-            var seen = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var set in sets.Where(set => seen.Add(string.Join(",", set.OrderBy(n => n, StringComparer.Ordinal)))))
-            {
-                yield return CSharpParseOptions.Default.WithPreprocessorSymbols(set);
-            }
-        }
-
-        private static IEnumerable<string> Names(string condition) =>
-            Regex.Matches(condition, @"[A-Za-z_][A-Za-z0-9_]*")
-                .Select(match => match.Value)
-                .Where(name => name != "true" && name != "false");
 
         /// <summary>Every token starting on a one-based line, comments and whitespace aside.</summary>
         private static List<SyntaxToken> LeftOnLine(SyntaxTree tree, int line) =>
