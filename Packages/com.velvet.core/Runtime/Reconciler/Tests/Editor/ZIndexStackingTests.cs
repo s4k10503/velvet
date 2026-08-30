@@ -1104,7 +1104,8 @@ namespace Velvet.Tests
 
         // Keyed mirror of CrossParkARender/CrossParkSiblingHost: every one of A's own children carries an
         // explicit key, so its park goes through PendingKeyedState (ContinueKeyed) instead of
-        // PendingIndexedState (ContinueIndexed), which the positional cross-fiber tests above never reach.
+        // PendingIndexedState (ContinueIndexed). The keyed branch is the one the positional cross-fiber
+        // tests above never reach.
         [Component]
         private static VNode CrossParkKeyedSiblingHost() => V.Div(
             name: "cross-park-keyed-host", className: "relative", children: new VNode[]
@@ -1384,7 +1385,7 @@ namespace Velvet.Tests
             store.Set(true);
             mounted.FlushStateForTest();
 
-            // Assert — RED without subtracting LeadingOffset: the re-derived sweep would read "ordinary" as
+            // Assert — RED if the re-derived sweep counts the back container as a sibling: it would read "ordinary" as
             // sibling index 1 (the back container counted as index 0) and "second" as index 2, matching neither
             // first: nor nth-child(2) (which expects 0-based index 1) — un-applying the payload each correctly
             // held after the mount.
@@ -1401,7 +1402,7 @@ namespace Velvet.Tests
         // addressing) without StructuralPatchParentHost itself ever re-rendering. That is deliberate: "parent"
         // itself getting patched would ALSO re-run its own post-children container sweep (ApplyStructuralVariants
         // — the same hunk StructuralSweepHost above exercises), which would re-derive (and so silently mask a
-        // broken) LeadingOffset subtraction in ApplyStructuralVariantConfig moments later in the very same
+        // broken) logical-index conversion in ApplyStructuralVariantConfig moments later in the very same
         // patch. Only isolating "ordinary"'s own re-render like this exercises ApplyStructuralVariantConfig's
         // immediate-evaluation branch on its own.
         [Component]
@@ -1434,7 +1435,7 @@ namespace Velvet.Tests
             store.Set(true);
             mounted.FlushStateForTest();
 
-            // Assert — RED without subtracting LeadingOffset in ApplyStructuralVariantConfig specifically: the
+            // Assert — RED if ApplyStructuralVariantConfig evaluates on physical indices: the
             // immediate evaluation would read "ordinary"'s raw physical index (1, the back container counted as
             // index 0) against the raw count, never matching first: (which expects index 0).
             Assert.That(

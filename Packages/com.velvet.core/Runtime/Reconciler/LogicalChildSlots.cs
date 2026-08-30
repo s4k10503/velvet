@@ -9,8 +9,8 @@ namespace Velvet
     /// </summary>
     /// <remarks>
     /// The reconciler used to assume the invisible children were only ever a LEADING run (a z-index layer
-    /// container) or a TRAILING one (a filter bounds spacer), which let it treat
-    /// <c>physical = logical + LeadingOffset</c> as true across a whole child list: slot arithmetic was done
+    /// container) or a TRAILING one (a filter bounds spacer), which let it treat a physical index as a
+    /// logical one shifted by a single leading offset across a whole child list: slot arithmetic was done
     /// on physical indices and clamped against a count that trimmed only those two runs. That assumption is
     /// what confined every invisible child to an end of the list, and a paint that must sit BESIDE the
     /// element it decorates — a ring band, which has to occlude its own element but not its later siblings —

@@ -483,8 +483,9 @@ name still occurs on a code line anywhere in the tree. If it occurs only in comm
 
 The direction is what makes it decidable. Asked from the comment side it is not: over this package's
 comments, bare PascalCase tokens resolving to no declaration numbered 518 for 4 real ones, and the
-shapes with a clean ratio — `cref` at 0.46%, `Foo()`, `Foo.Bar` — hold none of the four. Asked from
-the removal side it was two firings over 320 commits.
+shapes with a clean ratio — a `cref` attribute at 0.46%, a name with a trailing call, a dotted pair
+with both halves PascalCase — hold none of the four. Asked from the removal side it was two firings
+over 320 commits.
 
 Three things it declines to judge. A name surviving only inside a string literal, which is content
 rather than a reference and is how every other reader here treats one. A property or a field, since
@@ -492,9 +493,9 @@ the yield above was measured over types and methods and a widening is a fresh me
 than an edit. And a comment that went stale for any reason other than a removal in the same change —
 a renamed parameter, a reversed condition, a mechanism that still exists and no longer does that.
 
-There is no way to declare an exception, and one of the two firings did not want one: a
-`GREEN_ON_BASE` line naming the base tree's method is a true sentence that does not need the
-identifier to say what it says.
+There is no way to declare an exception, and one of the two firings did not want one: a base-red
+declaration naming the base tree's method is a true sentence that does not need the identifier to
+say what it says.
 
 ### Repository scripts
 

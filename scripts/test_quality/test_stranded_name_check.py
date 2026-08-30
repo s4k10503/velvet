@@ -215,15 +215,13 @@ class StrandedTests(unittest.TestCase):
             self.assertEqual(code, 0)
 
     def test_Given_ADoubleSlashInsideAStringLiteral_When_TheRestOfTheLineNamesIt_Then_ItIsNotAComment(self):
-        # Arrange -- read as a comment, the trailing call would be invisible and the name would
-        # report as stranded.
+        # Arrange -- the declaration goes and its one surviving call sits after a string holding `//`.
+        # Truncating the line there hides the call, and the name then reads as stranded when it is not.
         with repository() as tree:
             tree.changed_to("""namespace Velvet
 {
     internal static class Probe
     {
-        internal static int RebaseSlots(int at) => at;
-
         internal static int Read(int at) => Url("http://x") + RebaseSlots(at);
 
         internal static int Url(string held) => held.Length;
@@ -236,6 +234,31 @@ class StrandedTests(unittest.TestCase):
 
             # Assert
             self.assertEqual(code, 0)
+
+    def test_Given_AnApostropheAboveAStrandedName_When_ARemovalIsRead_Then_ItIsStillFound(self):
+        # Arrange -- an apostrophe read as an opening char literal closes nowhere, and every line after
+        # it leaves both streams, so the comment below goes unread and the removal reports clean.
+        # Measured on the tree before this was narrowed: ErrorBoundaryTests.cs lost 42% of its text.
+        with repository() as tree:
+            tree.changed_to("""namespace Velvet
+{
+    internal static class Probe
+    {
+        #region What the caller's index means
+
+        // The caller rebases first (see RebaseSlots), so the index is already absolute here.
+        internal static int Read(int at) => at;
+
+        #endregion
+    }
+}
+""")
+
+            # Act
+            code, _ = tree.verdict()
+
+            # Assert
+            self.assertEqual(code, 1)
 
 
 class RepositoryHistoryTests(unittest.TestCase):

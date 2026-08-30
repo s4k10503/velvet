@@ -41,13 +41,26 @@ def git(*arguments):
     return done.stdout
 
 
+# A char literal, and only that: an apostrophe in prose closes nothing, and reading one as an opening
+# quote swallows the rest of the file out of both streams. Measured before this was narrowed:
+# ErrorBoundaryTests.cs lost 42% of its text to the apostrophes in its #region labels.
+CHAR_LITERAL = re.compile(r"'(?:\\.|[^'\\\n])'")
+
+
 def split_comments(text):
-    """(comment text, code text) -- one scan, so a `//` inside a string literal is not a comment."""
+    """(comment text, code text) -- one scan, so a `//` inside a string literal is not a comment.
+
+    An interpolated string keeps its text in the code stream rather than being dropped, because the
+    holes in it are code and separating them needs a brace-matching pass. That counts a name written
+    in the string's own text as written in code, which is the direction that makes this guard say
+    nothing rather than say something wrong.
+    """
     comments, code, i, size = [], [], 0, len(text)
     while i < size:
         char = text[i]
         if char == '"':
             verbatim = i and text[i - 1] == "@"
+            interpolated = "$" in text[max(i - 2, 0):i]
             j = i + 1
             while j < size:
                 if text[j] == '"':
@@ -56,14 +69,15 @@ def split_comments(text):
                         continue
                     break
                 j += 2 if not verbatim and text[j] == "\\" else 1
-            i, _ = j + 1, code.append(" ")
+            code.append(text[i:j + 1] if interpolated else " ")
+            i = j + 1
             continue
         if char == "'":
-            j = i + 1
-            while j < size and text[j] != "'":
-                j += 2 if text[j] == "\\" else 1
-            i, _ = j + 1, code.append(" ")
-            continue
+            literal = CHAR_LITERAL.match(text, i)
+            if literal:
+                code.append(" ")
+                i = literal.end()
+                continue
         if text.startswith("//", i):
             end = text.find("\n", i)
             end = size if end < 0 else end
@@ -84,7 +98,13 @@ def split_comments(text):
 
 
 def removed_declarations(base, head):
-    """Every type or method name this change's removed lines declare."""
+    """Every name a removed line declares that reads as a type or a method.
+
+    Read off the diff rather than off the two trees, so a declaration that moved counts as removed
+    here and is answered for by the tree below, which still spells it. A property or a field is not
+    read: the yield this was chosen on was measured over types and methods, and widening it is a
+    fresh measurement.
+    """
     diff = git("diff", "--unified=0", "--format=", base + "..." + head, "--", "*.cs")
     names = set()
     for line in diff.splitlines():
@@ -102,8 +122,10 @@ def stranded(base, head):
     """(name, files) for every removed name the tree still spells, in comments and nowhere else."""
     left = []
     for name in sorted(removed_declarations(base, head)):
+        # C# only. A name a removed declaration leaves behind in USS, JSON or an asmdef is content
+        # rather than a reference, which is how every other reader here treats one.
         pattern = re.compile(r"\b{}\b".format(re.escape(name)))
-        files = git("grep", "-l", "-w", name, head, "--", "*.cs").split()
+        files = git("grep", "-l", "-w", name, head, "--", "*.cs").splitlines()
         if not files:
             continue
         naming = []
