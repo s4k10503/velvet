@@ -1,7 +1,6 @@
 // annotations only: incremental nullable hygiene. See the leading comment in Velvet core Hooks.cs for details.
 #nullable enable annotations
 using System;
-using Cysharp.Threading.Tasks;
 using NUnit.Framework;
 using UnityEngine.UIElements;
 using Velvet;
@@ -88,7 +87,7 @@ namespace Velvet.Tests
 
         private static bool HasLabel(VisualElement element, string text) => element.FindLabelByText(text) != null;
 
-        private static Func<RouteLoaderContext, System.Threading.CancellationToken, UniTask<object>> ThrowingLoader(string message)
+        private static Func<RouteLoaderContext, System.Threading.CancellationToken, VelvetTask<object>> ThrowingLoader(string message)
             => (_, _) => throw new InvalidOperationException(message);
 
         private Router BuildParentBoundaryRouter()

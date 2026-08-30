@@ -1,7 +1,6 @@
 using System;
 using System.Text.RegularExpressions;
 using System.Threading;
-using Cysharp.Threading.Tasks;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
@@ -107,7 +106,7 @@ namespace Velvet.Tests
             var resource = new FiberAsyncResource<int>(Array.Empty<object>());
 
             // Act
-            resource.Start(_ => UniTask.FromResult(42));
+            resource.Start(_ => VelvetTask.FromResult(42));
 
             // Assert
             Assert.That(resource.Status, Is.EqualTo(FiberAsyncResourceStatus.Success), "A sync-completed task transitions to Success");
@@ -120,7 +119,7 @@ namespace Velvet.Tests
             var resource = new FiberAsyncResource<int>(Array.Empty<object>());
 
             // Act
-            resource.Start(_ => UniTask.FromResult(42));
+            resource.Start(_ => VelvetTask.FromResult(42));
 
             // Assert
             Assert.That(resource.Result, Is.EqualTo(42), "The result holds the task value");
@@ -133,7 +132,7 @@ namespace Velvet.Tests
             var resource = new FiberAsyncResource<int>(Array.Empty<object>());
 
             // Act
-            resource.Start(_ => UniTask.FromException<int>(new InvalidOperationException("boom")));
+            resource.Start(_ => VelvetTask.FromException<int>(new InvalidOperationException("boom")));
 
             // Assert
             Assert.That(resource.Status, Is.EqualTo(FiberAsyncResourceStatus.Error), "A sync-faulted task transitions to Error");
@@ -147,7 +146,7 @@ namespace Velvet.Tests
             var ex = new InvalidOperationException("boom");
 
             // Act
-            resource.Start(_ => UniTask.FromException<int>(ex));
+            resource.Start(_ => VelvetTask.FromException<int>(ex));
 
             // Assert
             Assert.That(resource.Error, Is.SameAs(ex), "The error holds the task exception");
@@ -158,7 +157,7 @@ namespace Velvet.Tests
         {
             // Arrange
             var resource = new FiberAsyncResource<int>(Array.Empty<object>());
-            var source = new UniTaskCompletionSource<int>();
+            var source = new VelvetTaskCompletionSource<int>();
 
             // Act
             resource.Start(_ => source.Task);
@@ -173,7 +172,7 @@ namespace Velvet.Tests
             // Arrange
             var resource = new FiberAsyncResource<int>(Array.Empty<object>());
             CancellationToken capturedToken = default;
-            var source = new UniTaskCompletionSource<int>();
+            var source = new VelvetTaskCompletionSource<int>();
             resource.Start(ct => { capturedToken = ct; return source.Task; });
 
             // Act
@@ -189,7 +188,7 @@ namespace Velvet.Tests
             // Arrange
             var resource = new FiberAsyncResource<int>(Array.Empty<object>());
             CancellationToken capturedToken = default;
-            var source = new UniTaskCompletionSource<int>();
+            var source = new VelvetTaskCompletionSource<int>();
             resource.Start(ct => { capturedToken = ct; return source.Task; });
 
             // Act
@@ -209,7 +208,7 @@ namespace Velvet.Tests
             resource.OnCompleted = () => fired = true;
 
             // Act
-            resource.Start(_ => UniTask.FromResult(7));
+            resource.Start(_ => VelvetTask.FromResult(7));
 
             // Assert
             Assert.That(fired, Is.False, "The completion callback is suppressed for a synchronously completed task");
@@ -220,7 +219,7 @@ namespace Velvet.Tests
         {
             // Arrange
             var resource = new FiberAsyncResource<int>(Array.Empty<object>());
-            var source = new UniTaskCompletionSource<int>();
+            var source = new VelvetTaskCompletionSource<int>();
             var fired = false;
             resource.OnCompleted = () => fired = true;
             resource.Start(_ => source.Task);
@@ -237,7 +236,7 @@ namespace Velvet.Tests
         {
             // Arrange
             var resource = new FiberAsyncResource<int>(Array.Empty<object>());
-            var source = new UniTaskCompletionSource<int>();
+            var source = new VelvetTaskCompletionSource<int>();
             var fired = false;
             resource.OnCompleted = () => fired = true;
             resource.Start(_ => source.Task);
@@ -257,7 +256,7 @@ namespace Velvet.Tests
             // so it has to reach a terminal state; staying Pending would suspend the boundary with no restart.
             var resource = new FiberAsyncResource<int>(Array.Empty<object>());
             using var consumerCts = new CancellationTokenSource();
-            var source = new UniTaskCompletionSource<int>();
+            var source = new VelvetTaskCompletionSource<int>();
             resource.Start(_ => source.Task.AttachExternalCancellation(consumerCts.Token));
             Assume.That(resource.Status, Is.EqualTo(FiberAsyncResourceStatus.Pending),
                 "Precondition: the loader is still in flight before the consumer cancels");
@@ -277,7 +276,7 @@ namespace Velvet.Tests
             // Velvet's own teardown surface an exception the consumer never asked about. The loader reports
             // whether the cancellation reached it, because Pending is also the state before anything happens.
             var resource = new FiberAsyncResource<int>(Array.Empty<object>());
-            var source = new UniTaskCompletionSource<int>();
+            var source = new VelvetTaskCompletionSource<int>();
             var reachedLoader = false;
             resource.Start(async ct =>
             {
@@ -308,7 +307,7 @@ namespace Velvet.Tests
         public void Given_SyncCompletedFactory_When_Rendered_Then_ReturnsValue()
         {
             // Arrange
-            s_useAsyncFactory = _ => UniTask.FromResult(42);
+            s_useAsyncFactory = _ => VelvetTask.FromResult(42);
 
             // Act
             using var mounted = V.Mount(_root, V.Component(UseAsyncRender, key: "async"));
@@ -321,7 +320,7 @@ namespace Velvet.Tests
         public void Given_PendingFactoryWithoutBoundary_When_Rendered_Then_SuspendsWithUnsetValue()
         {
             // Arrange — without a Suspense boundary the suspend goes to Debug.LogWarning and the render is aborted.
-            var source = new UniTaskCompletionSource<int>();
+            var source = new VelvetTaskCompletionSource<int>();
             s_useAsyncFactory = _ => source.Task;
             LogAssert.Expect(LogType.Warning, new Regex("Suspense"));
 
@@ -336,7 +335,7 @@ namespace Velvet.Tests
         public void Given_FaultedFactory_When_Rendered_Then_LogsException()
         {
             // Arrange — a faulted factory surfaces its exception through the root path via Debug.LogException.
-            s_useAsyncFactory = _ => UniTask.FromException<int>(new ArgumentException("boom"));
+            s_useAsyncFactory = _ => VelvetTask.FromException<int>(new ArgumentException("boom"));
             LogAssert.Expect(LogType.Exception, new Regex("ArgumentException: boom"));
 
             // Act
@@ -350,7 +349,7 @@ namespace Velvet.Tests
         {
             // Arrange
             var resourceKey = new object();
-            s_useAsyncFactory = _ => UniTask.FromResult(1);
+            s_useAsyncFactory = _ => VelvetTask.FromResult(1);
             s_useAsyncResourceKey = resourceKey;
             using var mounted = V.Mount(_root, V.Component(UseAsyncRender, key: "async"));
             Assume.That(s_useAsyncCapturedFiber.AsyncSlots, Has.Count.EqualTo(1), "Precondition: the first render allocated one slot");
@@ -368,7 +367,7 @@ namespace Velvet.Tests
         {
             // Arrange
             var resourceKey = new object();
-            s_useAsyncFactory = _ => UniTask.FromResult(1);
+            s_useAsyncFactory = _ => VelvetTask.FromResult(1);
             s_useAsyncResourceKey = resourceKey;
             using var mounted = V.Mount(_root, V.Component(UseAsyncRender, key: "async"));
             var firstSlot = s_useAsyncCapturedFiber.AsyncSlots[0];
@@ -386,7 +385,7 @@ namespace Velvet.Tests
         public void Given_ChangedResourceKey_When_ReRendered_Then_ReplacesResourceInstance()
         {
             // Arrange
-            s_useAsyncFactory = _ => UniTask.FromResult(1);
+            s_useAsyncFactory = _ => VelvetTask.FromResult(1);
             s_useAsyncResourceKey = new object();
             using var mounted = V.Mount(_root, V.Component(UseAsyncRender, key: "async"));
             var firstSlot = s_useAsyncCapturedFiber.AsyncSlots[0];
@@ -406,7 +405,7 @@ namespace Velvet.Tests
         {
             // Arrange — without a Suspense boundary the suspend is routed to Debug.LogWarning at Mount.
             LogAssert.Expect(LogType.Warning, new Regex("Suspense"));
-            var source = new UniTaskCompletionSource<int>();
+            var source = new VelvetTaskCompletionSource<int>();
             s_useAsyncFactory = _ => source.Task;
             using var mounted = V.Mount(_root, V.Component(UseAsyncRender, key: "async"));
             Assume.That(s_useAsyncLastValue, Is.Null, "Precondition: the first render is suspended and the value is unset");
@@ -425,7 +424,7 @@ namespace Velvet.Tests
             // Arrange — without a Suspense boundary the suspend is routed to Debug.LogWarning at Mount.
             LogAssert.Expect(LogType.Warning, new Regex("Suspense"));
             CancellationToken capturedToken = default;
-            var source = new UniTaskCompletionSource<int>();
+            var source = new VelvetTaskCompletionSource<int>();
             s_useAsyncFactory = ct => { capturedToken = ct; return source.Task; };
             var mounted = V.Mount(_root, V.Component(UseAsyncRender, key: "async"));
 
@@ -531,7 +530,7 @@ namespace Velvet.Tests
         {
             var (tick, setTick) = Hooks.UseState(0);
             s_changingKeySetTick = setTick;
-            _ = Hooks.Use<int>((CancellationToken _) => UniTask.FromResult(tick), resourceKey: tick.ToString());
+            _ = Hooks.Use<int>((CancellationToken _) => VelvetTask.FromResult(tick), resourceKey: tick.ToString());
             return V.Label(text: tick.ToString());
         }
 
@@ -546,7 +545,7 @@ namespace Velvet.Tests
             s_inlineLambdaFactoryRender++;
             // Footgun: an inline lambda is a fresh delegate each render, and without an explicit resourceKey it
             // becomes the key — the resource restarts every render.
-            _ = Hooks.Use<int>((CancellationToken _) => UniTask.FromResult(tick));
+            _ = Hooks.Use<int>((CancellationToken _) => VelvetTask.FromResult(tick));
             return V.Label(text: tick.ToString());
         }
 
@@ -566,7 +565,7 @@ namespace Velvet.Tests
                 (CancellationToken _) =>
                 {
                     s_explicitKeyFactoryRuns++;
-                    return UniTask.FromResult(s_explicitKeyValue + tick);
+                    return VelvetTask.FromResult(s_explicitKeyValue + tick);
                 },
                 resourceKey: "stable-key");
             return V.Label(text: tick.ToString());
@@ -645,10 +644,10 @@ namespace Velvet.Tests
             return V.Label(text: tick.ToString());
         }
 
-        private static UniTask<int> ComputedStringKeyFactory(CancellationToken _)
+        private static VelvetTask<int> ComputedStringKeyFactory(CancellationToken _)
         {
             s_computedStringKeyRuns++;
-            return UniTask.FromResult(7);
+            return VelvetTask.FromResult(7);
         }
 
         private static int s_boxedIntKeyRuns;
@@ -665,13 +664,13 @@ namespace Velvet.Tests
             return V.Label(text: tick.ToString());
         }
 
-        private static UniTask<int> BoxedIntKeyFactory(CancellationToken _)
+        private static VelvetTask<int> BoxedIntKeyFactory(CancellationToken _)
         {
             s_boxedIntKeyRuns++;
-            return UniTask.FromResult(7);
+            return VelvetTask.FromResult(7);
         }
 
-        private static UniTaskCompletionSource<int> s_boundaryKeyLatestSource;
+        private static VelvetTaskCompletionSource<int> s_boundaryKeyLatestSource;
 
         [Component]
         private static VNode ComputedStringKeyBoundaryHostRender()
@@ -689,9 +688,9 @@ namespace Velvet.Tests
 
         // A single shared completion source would already be settled when a restarted resource read it,
         // which would hide the restart this case exists to catch, so each call gets its own pending task.
-        private static UniTask<int> BoundaryKeyFactory(CancellationToken _)
+        private static VelvetTask<int> BoundaryKeyFactory(CancellationToken _)
         {
-            s_boundaryKeyLatestSource = new UniTaskCompletionSource<int>();
+            s_boundaryKeyLatestSource = new VelvetTaskCompletionSource<int>();
             return s_boundaryKeyLatestSource.Task;
         }
 
@@ -699,7 +698,7 @@ namespace Velvet.Tests
 
         #region UseAsync component (Hooks.Use + UseState tick)
 
-        private static Func<CancellationToken, UniTask<int>> s_useAsyncFactory;
+        private static Func<CancellationToken, VelvetTask<int>> s_useAsyncFactory;
         private static object s_useAsyncResourceKey;
         private static int? s_useAsyncLastValue;
         private static Action<int> s_useAsyncSetTick;

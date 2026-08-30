@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using Cysharp.Threading.Tasks;
 using NUnit.Framework;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
@@ -337,7 +336,7 @@ namespace Velvet.Tests
             // Arrange
             using var mounted = MountThree();
             var scheduler = mounted.GetSchedulerForTest();
-            var gate = new UniTaskCompletionSource();
+            var gate = new VelvetTaskCompletionSource();
             RunAfterAwait(gate, () => { s_setA.Invoke("a-async"); s_setB.Invoke("b-async"); });
             var callbacksBefore = scheduler.ScheduledCallbackCount;
             Assume.That(scheduler.ImmediatePendingCount, Is.EqualTo(0), "Precondition: nothing queued while awaiting");
@@ -355,7 +354,7 @@ namespace Velvet.Tests
         {
             // Arrange
             using var mounted = MountThree();
-            var gate = new UniTaskCompletionSource();
+            var gate = new VelvetTaskCompletionSource();
             RunAfterAwait(gate, () => { s_setA.Invoke("a-async"); s_setB.Invoke("b-async"); });
 
             // Act
@@ -372,7 +371,7 @@ namespace Velvet.Tests
             // Arrange
             using var mounted = MountThree();
             Assume.That((s_renderCountA, s_renderCountB), Is.EqualTo((1, 1)), "Precondition: each rendered once on mount");
-            var gate = new UniTaskCompletionSource();
+            var gate = new VelvetTaskCompletionSource();
             RunAfterAwait(gate, () => { s_setA.Invoke("a-async"); s_setB.Invoke("b-async"); });
 
             // Act
@@ -387,7 +386,7 @@ namespace Velvet.Tests
         {
             // Arrange
             using var mounted = MountThree();
-            var gate = new UniTaskCompletionSource();
+            var gate = new VelvetTaskCompletionSource();
             RunAfterAwait(gate, () => { s_setA.Invoke("a-async"); s_setB.Invoke("b-async"); });
             gate.TrySetResult();
 
@@ -404,7 +403,7 @@ namespace Velvet.Tests
         {
             // Arrange
             using var mounted = MountThree();
-            var gate = new UniTaskCompletionSource();
+            var gate = new VelvetTaskCompletionSource();
             RunAfterAwait(gate, () => { s_setA.Invoke("a-async"); s_setB.Invoke("b-async"); });
             gate.TrySetResult();
 
@@ -435,13 +434,13 @@ namespace Velvet.Tests
 
         // Runs `body` as a fire-and-forget async handler whose continuation resumes when `gate` completes,
         // standing in for a setState performed after an await in a plain (non-transition) async handler.
-        private static void RunAfterAwait(UniTaskCompletionSource gate, Action body)
+        private static void RunAfterAwait(VelvetTaskCompletionSource gate, Action body)
         {
             RunAsync(gate, body).Forget();
         }
 
-        private static async UniTask RunAsync(
-            UniTaskCompletionSource gate, Action body)
+        private static async VelvetTask RunAsync(
+            VelvetTaskCompletionSource gate, Action body)
         {
             await gate.Task.Bounded();
             body();

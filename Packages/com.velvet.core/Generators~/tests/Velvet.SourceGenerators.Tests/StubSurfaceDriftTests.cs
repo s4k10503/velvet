@@ -50,11 +50,6 @@ namespace Velvet.SourceGenerators.Tests
         /// </summary>
         private static readonly Dictionary<string, string> StubSimplifications = new()
         {
-            ["Cysharp.Threading.Tasks.UniTask"] =
-                "UniTask lives in an external package the netstandard test project has no reference to, and " +
-                "UseBlocker's async overload is part of the deps-comparison surface, so a placeholder of the " +
-                "same name and arity stands in — that keeps the overload's true parameter types, and therefore " +
-                "its predicate arity, exercised end to end",
             ["Velvet.VNode"] =
                 "the runtime's VNode is abstract and every concrete node carries required members; the stub " +
                 "makes it instantiable so a fixture can hand a VNode-shaped value to a memoized factory " +

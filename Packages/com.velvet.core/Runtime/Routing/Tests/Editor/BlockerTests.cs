@@ -2,7 +2,6 @@ using System;
 using System.Collections;
 using System.Reflection;
 using System.Threading;
-using Cysharp.Threading.Tasks;
 using NUnit.Framework;
 using UnityEngine.UIElements;
 using Velvet;
@@ -222,7 +221,7 @@ namespace Velvet.Tests
         {
             // Arrange
             var manager = new RouteBlockerManager();
-            manager.Register((_, __) => UniTask.FromResult(true), new RouteBlockerState());
+            manager.Register((_, __) => VelvetTask.FromResult(true), new RouteBlockerState());
 
             // Act
             var blocked = manager.CheckAsync(Attempt(), NoResume).GetAwaiter().GetResult();
@@ -237,7 +236,7 @@ namespace Velvet.Tests
             // Arrange
             var manager = new RouteBlockerManager();
             var state = new RouteBlockerState();
-            manager.Register((_, __) => UniTask.FromResult(true), state);
+            manager.Register((_, __) => VelvetTask.FromResult(true), state);
 
             // Act
             manager.CheckAsync(Attempt(), NoResume).GetAwaiter().GetResult();
@@ -251,7 +250,7 @@ namespace Velvet.Tests
         {
             // Arrange
             var manager = new RouteBlockerManager();
-            manager.Register((_, __) => UniTask.FromResult(false), new RouteBlockerState());
+            manager.Register((_, __) => VelvetTask.FromResult(false), new RouteBlockerState());
 
             // Act
             var blocked = manager.CheckAsync(Attempt(), NoResume).GetAwaiter().GetResult();
@@ -266,7 +265,7 @@ namespace Velvet.Tests
             // Arrange
             var manager = new RouteBlockerManager();
             var state = new RouteBlockerState();
-            manager.Register((_, __) => UniTask.FromResult(false), state);
+            manager.Register((_, __) => VelvetTask.FromResult(false), state);
 
             // Act
             manager.CheckAsync(Attempt(), NoResume).GetAwaiter().GetResult();
@@ -283,7 +282,7 @@ namespace Velvet.Tests
             var syncState = new RouteBlockerState();
             var asyncState = new RouteBlockerState();
             manager.Register(_ => true, syncState);
-            manager.Register((_, __) => UniTask.FromResult(true), asyncState);
+            manager.Register((_, __) => VelvetTask.FromResult(true), asyncState);
 
             // Act
             manager.CheckAsync(Attempt(), NoResume).GetAwaiter().GetResult();
@@ -377,7 +376,7 @@ namespace Velvet.Tests
         {
             // Arrange
             var router = BuildRouter("/home", Route("home"), Route("other"));
-            router.RouteBlockerManager.Register((_, __) => UniTask.FromResult(true), new RouteBlockerState());
+            router.RouteBlockerManager.Register((_, __) => VelvetTask.FromResult(true), new RouteBlockerState());
 
             // Act
             var result = router.NavigateSync("/other");
@@ -631,7 +630,7 @@ namespace Velvet.Tests
         {
             var (isDirty, setDirty) = Hooks.UseState(false);
             s_omittedDepsAsyncSetDirty = setDirty;
-            Hooks.UseBlocker((_, _) => UniTask.FromResult(isDirty));
+            Hooks.UseBlocker((_, _) => VelvetTask.FromResult(isDirty));
             return V.Label(text: isDirty ? "dirty" : "clean");
         }
 
@@ -872,7 +871,7 @@ namespace Velvet.Tests
             using var registration = manager.Register((attempt, token) =>
             {
                 cts.Cancel();
-                return UniTask.FromResult(true);
+                return VelvetTask.FromResult(true);
             }, state);
 
             // Act

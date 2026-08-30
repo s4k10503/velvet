@@ -1,4 +1,3 @@
-using Cysharp.Threading.Tasks;
 using NUnit.Framework;
 using Velvet.TestUtilities;
 
@@ -18,7 +17,7 @@ namespace Velvet.Tests
             var manager = new RouteBlockerManager();
             for (var index = 0; index < blockers; index++)
             {
-                manager.Register((_, __) => UniTask.FromResult(false), new RouteBlockerState());
+                manager.Register((_, __) => VelvetTask.FromResult(false), new RouteBlockerState());
             }
             return manager;
         }
