@@ -13,13 +13,15 @@
 # Test-result XML from a hand-run sweep. The harnesses under scripts/ default to Logs/, already ignored
 # above; this covers the directory a hand-run names instead, after nine such files reached a commit.
 /merged/
-# What Window ▸ General ▸ Test Runner writes, which is neither of the two above: a run from the editor
-# names these whatever the CLI was told, and the results XML it leaves at the root outlives the tree
-# it measured. 968 of them were sitting untracked when this was added.
+# Generated at the root, where the command above would sweep them in. The platform-named four are
+# what `gh run download` leaves — it extracts each artifact into a directory of that artifact's name,
+# and test.yml names its two for the platform. `CodeCoverage/` is the separate thing a local run with
+# coverage on writes, which the package names.
 /Test results (EditMode)/
 /Test results (PlayMode)/
 /Code coverage (EditMode)/
 /Code coverage (PlayMode)/
+/CodeCoverage/
 /[Uu]ser[Ss]ettings/
 /[Mm]emoryCaptures/
 
