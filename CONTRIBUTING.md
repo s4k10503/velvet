@@ -548,6 +548,14 @@ PowerShell copy that nothing compared.
   after the tool has already run, so it writes into the transcript and exits 0 whatever it finds.
 - `lib/` — imported by the rest, wired to no event of its own.
 
+A Python-only edit here can redden a C# fixture, because several read the directory rather
+than any one guard. Which ones is derived rather than listed, since a list of thirty files
+goes stale the first time somebody adds a seventeenth:
+
+```bash
+grep -rl 'claude/hooks' --include='*.cs' --include='*.py' Packages scripts
+```
+
 A guard over state that is shared rather than owned by one session — a branch, the stash — belongs
 in `.claude/settings.json`, where it runs for every session. An agent's frontmatter can only narrow
 that: a guard named there and nowhere else is absent from the main session and from every other
