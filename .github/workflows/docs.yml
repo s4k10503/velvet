@@ -39,6 +39,12 @@ concurrency:
   group: docs
   cancel-in-progress: true
 
+# Carried at job level for the reason test_workflow_bytecode_env.py states, and required by it.
+# Named without its path: a workflow that names a repo file is one this repository's push filter has
+# to start for, and a pointer in prose is not a reason to run the docs build.
+env:
+  PYTHONDONTWRITEBYTECODE: "1"
+
 jobs:
   license-check:
     name: Check Unity license secret

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate the Velvet API reference site into docs/_site.
+"""Generate the Velvet API reference site into the directory docs/docfx.json names.
 
 Prerequisites:
   1. A prior Unity compile so Library/ScriptAssemblies/{UniTask,Unity.Addressables,
@@ -37,7 +37,7 @@ def run(command):
 
 def main():
     # The caller that publishes the site asks for the path rather than repeating it, so a rename in
-    # docfx.json moves the upload with it instead of leaving it pointed at an empty directory.
+    # docfx.json moves the upload with it.
     if "--site-path" in sys.argv[1:]:
         print(site().relative_to(HERE.parent).as_posix())
         return 0
@@ -49,8 +49,15 @@ def main():
     # rather than referencing Documentation~ in place — nothing under docs/guides/ is ever committed.
     shutil.rmtree(GUIDES, ignore_errors=True)
     GUIDES.mkdir(parents=True)
+    staged = 0
     for guide in DOCUMENTATION.glob("*.md"):
         shutil.copyfile(guide, GUIDES / guide.name)
+        staged += 1
+    # `glob` over a directory that is not there yields nothing and raises nothing, so a move or a
+    # rename of the guides leaves DocFX building the API pages alone and the site publishing without
+    # them. The shell this replaced could not reach that state: its `cp` had no files to name.
+    if not staged:
+        raise SystemExit(f"error: no guides staged from {DOCUMENTATION}")
 
     run(["docfx", "metadata", "docfx.json"])
     run(["docfx", "build", "docfx.json"])
