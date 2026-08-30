@@ -259,7 +259,7 @@ def main():
 Holding one on purpose is allowed and expires after 45 minutes, so the reason gets re-examined
 rather than forgotten:
 
-  echo "<pr> <what clears it> $(date +%s)" >> {DEFERRALS}
+  echo "<pr> <what clears it> $(date +%s) $CLAUDE_CODE_SESSION_ID" >> {DEFERRALS}
 
 Otherwise: wait for it with a Monitor that emits on both pass and fail, or keep working on
 something that is itself on the critical path. Work that is off the critical path satisfies
