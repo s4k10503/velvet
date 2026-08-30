@@ -294,6 +294,32 @@ def git(project, *args, timeout=5):
     return result.stdout
 
 
+BREAKING_MARKER = "**Breaking:**"
+
+
+def breaking_highlight_in(text, version):
+    """Whether that version's Highlights claim a break."""
+    import release_notes
+    return BREAKING_MARKER in "\n".join(
+        release_notes.split_highlights(
+            release_notes.extract_version_section(text, version), version)[0])
+
+
+def claims_a_break_outside_a_major(text, versions, published):
+    """Versions claiming a break that neither bump a major nor are already published.
+
+    `published` is what the remote tags. A note somebody has already installed against cannot be
+    re-versioned, so the remedy for a version published wrong is the next release rather than an
+    edit to the record of it -- and a rule asked of every version forever makes a CHANGELOG that
+    cannot carry a published mistake, which is one that has to lie about it. The same distinction
+    drain_reason draws between closing a version and recording one.
+    """
+    bumps = {version for version in versions if is_major_bump(versions, version)}
+    return [version for version in versions
+            if version not in bumps and "v" + version not in published
+            and breaking_highlight_in(text, version)]
+
+
 def remote_tags(project, remote="origin", timeout=5):
     """Tag names on the remote.
 

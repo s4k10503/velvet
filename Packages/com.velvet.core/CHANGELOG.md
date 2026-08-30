@@ -610,6 +610,101 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   flow, including what changes with more than one Blocker registered, where React Router supports a
   single one.
 
+## [2.1.4] - 2026-08-30
+
+### Highlights
+
+- A `V.NavLink` whose `to` is relative navigated correctly and never lit up. The click resolved the
+  target through the router while the active comparison used the string as written, so `to: ".."`
+  was measured against a path that starts with `/` and never matched. Both sides resolve the same
+  way now.
+
+- A pending indicator could stay on screen after its transition finished, or never come up at all.
+  `isPending` answered for the lanes of the component that called `startTransition` rather than for
+  the work the callback did, so a transition whose writes all landed elsewhere read as settled the
+  moment the callback returned, and two concurrent transitions credited each other.
+
+- `startTransition(() => setItemsFromParent(heavyList))` — the shape a child uses to defer an
+  expensive update through a setter it was handed — did not defer. The update was classified against
+  the component that owns the state, which is in no transition, so it took the Normal lane, or the
+  Urgent one inside a click. `Store` writes made in the callback behaved the same way.
+
+- An update that merely happened to land while an async action was awaiting — a timer tick, a
+  `UseStore` notification, a `UseMutation` callback — was taken for the action's own continuation and
+  given the Transition lane, where it waited out the delayed tier's 100 ms instead of committing at
+  the next frame boundary. Nothing is inferred from in-flight fiber state any more.
+
+- The async action the migration guide asks callers to write — one that wraps its post-`await` update
+  in the starter again — did nothing when the component that started it had gone away. The starter
+  short-circuited before opening a scope, so every update it made, on components still alive, took
+  the Normal lane. React sets its ambient flag with no fiber in hand and this now does too.
+
+- **Breaking:** `SearchParams.Empty` hands back a fresh instance on every read instead of one shared
+  for the process. It was a `static readonly` field, and `Append` mutates in place, so the shape the
+  member invites wrote into the instance every other reader saw. Reading it is spelled the same and
+  still yields an empty `SearchParams`; what two reads no longer share is the object. A reference
+  comparison against `SearchParams.Empty` therefore no longer recognises an instance from an earlier
+  read, and binding a readonly reference to it — an explicit `in` argument, a `ref readonly` local or
+  return — stops compiling. No Velvet signature declares a `SearchParams` parameter, so reaching the
+  last of those takes a declaration of your own over the concrete type.
+
+### Fixed
+
+- `startTransition(() => setItemsFromParent(heavyList))` — a child deferring an expensive update
+  through a setter it received as a prop — had that update classified against the component that
+  *owns* the state, which was in no transition, so it took the Normal lane, or the Urgent lane
+  inside a click. The same held for a `Store` write made inside the callback.
+- A starter whose declaring component had gone away short-circuited before opening any scope, so
+  every update its callback made — on components still alive — took the Normal lane. React has no
+  such short-circuit; it sets its ambient flag with no fiber in hand. The scope now opens on that
+  path too and only the bookkeeping is skipped. That is the shape the migration guide asks callers
+  to write: an `async` action wrapping its post-`await` update in the starter again, having outlived
+  the component that started it.
+- `isPending` answered for the calling component's lanes rather than for the callback's work, so a
+  transition whose writes all landed elsewhere settled the moment its callback returned; an `async`
+  action's completion cleared the flag and scheduled nothing, stranding the indicator on screen; a
+  synchronous callback that drove a flush of its own ran the transition with the indicator down; and
+  two concurrent transitions credited each other's writes.
+- An unrelated update landing while an async action awaited — a timer tick, a `UseStore`
+  notification, a `UseMutation` callback — was indistinguishable from the action's own continuation
+  and got the Transition lane, so it waited out the delayed tier's 100 ms instead of committing at
+  the next frame boundary. Nothing is inferred from in-flight fiber state now.
+
+React sets its transition flag before the callback and restores it in a `finally`, with no `await`
+in between — so for an async scope the restore runs the moment the callback hands back its promise,
+and nothing re-establishes it for the continuation. Its lane decision reads that ambient flag rather
+than the component the update belongs to, apart from one legacy branch its current default flag set
+turns off. react.dev states the same contract from the outside and files the post-`await` case as a
+known limitation it means to fix.
+
+
+- `SearchParams.Empty` hands back a new instance on each read. It was a `static readonly` field
+  holding one instance for the whole process, and `SearchParams.Append` mutates the instance it is
+  called on, so the shape the member invites — `var next = SearchParams.Empty; next.Append("q",
+  term);` — wrote into that one instance, and a read of `SearchParams.Empty` anywhere else in the
+  process carried `q` from then on. `SearchParams` declares no member that removes a value, so the
+  written-into instance stayed that way. Reading the member is spelled the same and still yields an
+  empty `SearchParams`; what two reads no longer share is the object. A reference comparison against
+  `SearchParams.Empty` therefore no longer recognises an instance taken from an earlier read, and
+  binding a readonly reference to the member — an argument written with an explicit `in`, a
+  `ref readonly` local, a `ref readonly` return — stops compiling. Reaching that last one takes a
+  declaration over the concrete `SearchParams` type, and no Velvet signature declares a
+  `SearchParams` parameter.
+
+- `V.NavLink` with a relative `to` takes its active class. The click path resolved the target through
+  the router — `..` against the enclosing route, a bare segment appended to it — while the active
+  comparison used the string as written, so `to: ".."` was compared against a current path beginning
+  with `/` and did not match: the link navigated to the right place and stayed unhighlighted. The
+  target is now resolved through the same `Router` call the click makes, anchored at the caller's
+  Outlet depth, before it is normalised and compared. An absolute target is returned by that call
+  unchanged, so `end`, `caseSensitive`, a trailing slash and a query answer as before; with no router
+  mounted to resolve through, the target is compared as written, as it was.
+  One shape that was active is active elsewhere now: a query-only `to` such as `"?tab=1"` normalised
+  to `/`, so with `end` left false it lit up wherever the user was. It now resolves against the
+  current route and the comparison strips the query from what comes back, so it is active on that
+  route's path and under it — what an absolute `to` naming that path gives. Where clicking it takes
+  the user is unchanged.
+
 ## [2.1.3] - 2026-08-27
 
 ### Highlights
