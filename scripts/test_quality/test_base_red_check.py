@@ -714,6 +714,38 @@ class DeclarationTests(unittest.TestCase):
             "characterization", "the ordering the base already commits to").complaint)
 
 
+class NeighbourDuringTheRunTests(unittest.TestCase):
+    """A second editor arriving after the one quiet check is recorded rather than missed.
+
+    The wait at the top of the lane covers the instant it happens in, and the lane then runs
+    platforms x rounds without looking again. A neighbour arriving after it can redden a
+    timing-sensitive case on the base tree, and `red on the base` is exactly the evidence this
+    harness is asked for -- so contention there produces a confident wrong verdict rather than a
+    confusing one. `neuter_check.run_suite` already samples for its run's whole life.
+    """
+
+    @staticmethod
+    def reading():
+        """What one run reports, as a flat tuple -- a bare float is a run that reported one thing."""
+        result = base_red_check.run_unity(
+            sys.executable, ".", "EditMode", ["X"], Path("/dev/null"), Path("/dev/null"), 30)
+        return tuple(result) if isinstance(result, tuple) else (result,)
+
+    def test_Given_ARunThatMetNoNeighbour_When_ItIsRead_Then_ThePeakIsZero(self):
+        # Arrange -- a command that exits at once, so the loop samples and finds only this run.
+        reading = self.reading()
+
+        # Act / Assert -- the wall clock rides along, since a peak of zero from a run that never
+        # started says nothing.
+        self.assertEqual((len(reading), reading[-1], reading[0] >= 0), (2, 0, True))
+
+    def test_Given_TheRunner_When_ItReturns_Then_ItCarriesBothReadings(self):
+        # Arrange -- read as a shape rather than unpacked, so a tree reporting one thing fails here
+        # instead of raising: a case that raises carries no reading either way.
+        # Act / Assert
+        self.assertEqual(len(self.reading()), 2)
+
+
 class StandingStillTests(unittest.TestCase):
     """A loop that asks the same question three rounds running has stopped, not slowed.
 
