@@ -597,12 +597,7 @@ namespace Velvet
                 return container;
             }
 
-            var scopeFactory = Router.Current?.ScopeFactory;
-            if (scopeFactory != null)
-            {
-                outletNode.Scope = scopeFactory.CreateScope(match.Route, null);
-                _ctx.OutletScopes[container] = outletNode.Scope;
-            }
+            outletNode.Scope = FiberOutletScope.CreateOutletScope(_ctx, match.Route, container);
 
             // Mount the matched route Component with Depth+1 pushed live so its UseContext
             // reads the incremented router depth: an Outlet provides the

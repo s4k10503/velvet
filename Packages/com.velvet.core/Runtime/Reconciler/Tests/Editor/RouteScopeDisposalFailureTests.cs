@@ -1,17 +1,24 @@
 using System;
 using System.Collections.Generic;
+using System.Text.RegularExpressions;
 using NUnit.Framework;
+using UnityEngine;
+using UnityEngine.TestTools;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
 
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies what an <see cref="IRouteScope"/> whose <c>Dispose</c> throws does to the teardown that
-    /// invoked it. The scope is built by the application's <see cref="IRouteScopeFactory"/>, so every
-    /// entrance below reaches the caller's code, and each contains it the way a <c>refCallback</c>
-    /// cleanup is contained.
+    /// Specifies what an <see cref="IRouteScopeFactory"/> that throws does to the pass that called it —
+    /// out of <c>CreateScope</c>, and out of the <c>Dispose</c> of the scope it built. Every entrance
+    /// below is a call into the application's own code. The disposals drop the exception and log it; the
+    /// creations propagate it to the nearest error boundary, and a case with none mounted logs it too,
+    /// through the fallback <c>Debug.LogException</c> the propagation ends at.
     /// <list type="bullet">
+    /// <item>Building a scope, at each of the three sites that ask for one — the mount, a route change,
+    /// and a patch of a route the Outlet is already holding: the route renders without a scope rather
+    /// than not at all. Two cases mount a boundary, and there the fallback takes over instead.</item>
     /// <item>Changing route: the Outlet still mounts the route it navigated to, the incoming route's own
     /// scope is built regardless of the failure, and the scope it left behind is disposed once rather
     /// than again by the teardown sweep.</item>
@@ -53,12 +60,20 @@ namespace Velvet.Tests
             }
         }
 
+        private const string CreateFailureMessage = "arranged failure out of a route scope CreateScope";
+
         private sealed class ThrowingRouteScopeFactory : IRouteScopeFactory
         {
             public List<ThrowingRouteScope> Scopes { get; } = new();
 
+            public bool ThrowOnCreate { get; set; }
+
             public IRouteScope CreateScope(RouteDefinition? route, IRouteScope? parent)
             {
+                if (ThrowOnCreate)
+                {
+                    throw new InvalidOperationException(CreateFailureMessage);
+                }
                 var scope = new ThrowingRouteScope();
                 Scopes.Add(scope);
                 return scope;
@@ -95,6 +110,103 @@ namespace Velvet.Tests
             s_throwOnDispose = false;
             _router.Dispose();
             _reconciler.Dispose();
+        }
+
+        [Test]
+        public void Given_AFactoryThatThrowsOnCreate_When_TheRouteChanges_Then_TheThrowDoesNotEscapeTheReconcile()
+        {
+            // Arrange — the outgoing scope disposes cleanly, so the only failure is the replacement's
+            // creation: the entrance the containment work around it left open.
+            s_throwOnDispose = false;
+            var mounted = MountRoutedApp();
+            _router.NavigateAsync("/other").GetAwaiter().GetResult();
+            _scopeFactory.ThrowOnCreate = true;
+            // One line, not two: with no error boundary mounted the propagation falls back to
+            // Debug.LogException, where the drop-and-log shape beside it logs a tag and the exception.
+            LogAssert.Expect(LogType.Exception,
+                             new Regex("InvalidOperationException: " + CreateFailureMessage));
+
+            // Act
+            var escaped = EscapesFrom(() => ReRenderAppAtCurrentLocation(mounted));
+
+            // Assert — what the incoming route renders rides along, because a reconcile that escaped
+            // would leave the old label standing and satisfy neither half on its own.
+            Assert.That((escaped, LabelTextsUnder(_root)), Is.EqualTo((false, "other")));
+        }
+
+        [Test]
+        public void Given_AFactoryThatThrowsOnCreate_When_TheAppFirstMounts_Then_TheThrowDoesNotEscapeTheReconcile()
+        {
+            // Arrange — the mount path builds the scope, which is the entrance FiberNodeFactory owns.
+            s_throwOnDispose = false;
+            _scopeFactory.ThrowOnCreate = true;
+            LogAssert.Expect(LogType.Exception,
+                             new Regex("InvalidOperationException: " + CreateFailureMessage));
+
+            // Act
+            var escaped = EscapesFrom(() => MountRoutedApp());
+
+            // Assert
+            Assert.That((escaped, LabelTextsUnder(_root)), Is.EqualTo((false, "route")));
+        }
+
+        [Test]
+        public void Given_AnOutletLeftWithoutAScope_When_ItIsPatchedAtTheSameRoute_Then_TheRetryIsContainedToo()
+        {
+            // Arrange — the mount's own create failed, so no scope is registered and the patch takes the
+            // branch that builds one for a route it is already holding. The arrangement goes through
+            // EscapesFrom as well, because on a tree with no containment it is the mount that throws and
+            // the case would raise out of its own Arrange rather than reach the comparison below.
+            s_throwOnDispose = false;
+            _scopeFactory.ThrowOnCreate = true;
+            LogAssert.Expect(LogType.Exception,
+                             new Regex("InvalidOperationException: " + CreateFailureMessage));
+            VNode[] mounted = null;
+            var escapedTheMount = EscapesFrom(() => mounted = MountRoutedApp());
+            LogAssert.Expect(LogType.Exception,
+                             new Regex("InvalidOperationException: " + CreateFailureMessage));
+
+            // Act
+            var escaped = escapedTheMount
+                          || EscapesFrom(() => ReRenderAppAtCurrentLocation(mounted));
+
+            // Assert
+            Assert.That((escaped, LabelTextsUnder(_root)), Is.EqualTo((false, "route")));
+        }
+
+        [Test]
+        public void Given_AnErrorBoundaryAboveTheOutlet_When_TheFirstMountsFactoryThrows_Then_OnlyTheFallbackIsInTheTree()
+        {
+            // Arrange — the boundary above the Outlet rather than beneath it, on the path that builds
+            // the scope at mount.
+            s_throwOnDispose = false;
+            _scopeFactory.ThrowOnCreate = true;
+
+            // Act
+            var escaped = EscapesFrom(() => MountBoundedApp());
+
+            // Assert
+            Assert.That((escaped, NamesOf(_root), LabelTextsUnder(_root)),
+                        Is.EqualTo((false, "fallback", string.Empty)));
+        }
+
+        [Test]
+        public void Given_AnErrorBoundaryAboveTheOutlet_When_TheFactoryThrows_Then_ItShowsItsFallback()
+        {
+            // Arrange — with a boundary mounted the propagation has somewhere to land, which is the whole
+            // of what containment buys over a drop: the application decides what a scope-less route does.
+            s_throwOnDispose = false;
+            var mounted = MountBoundedApp();
+            _router.NavigateAsync("/other").GetAwaiter().GetResult();
+            _scopeFactory.ThrowOnCreate = true;
+
+            // Act
+            var escaped = EscapesFrom(() => ReRenderBoundedAppAtCurrentLocation(mounted));
+
+            // Assert — no log line: the boundary consumed it, where the three cases with none mounted
+            // fall through to Debug.LogException.
+            Assert.That((escaped, _root.Q<VisualElement>("fallback") != null, LabelTextsUnder(_root)),
+                        Is.EqualTo((false, true, string.Empty)));
         }
 
         [Test]
@@ -241,6 +353,26 @@ namespace Velvet.Tests
             return tree;
         }
 
+        private VNode[] BoundedApp() => new VNode[]
+        {
+            V.ErrorBoundary(fallback: _ => V.Div(name: "fallback"),
+                            children: new VNode[]
+                            {
+                                V.Component(RoutedApp, _router.CurrentLocation!, key: "app"),
+                            },
+                            key: "boundary"),
+        };
+
+        private VNode[] MountBoundedApp()
+        {
+            var tree = BoundedApp();
+            _reconciler.Reconcile(_root, Array.Empty<VNode>(), tree);
+            return tree;
+        }
+
+        private void ReRenderBoundedAppAtCurrentLocation(VNode[] mounted)
+            => _reconciler.Reconcile(_root, mounted, BoundedApp());
+
         private void ReRenderAppAtCurrentLocation(VNode[] mounted)
             => _reconciler.Reconcile(_root, mounted,
                 new VNode[] { V.Component(RoutedApp, _router.CurrentLocation!, key: "app") });
@@ -275,7 +407,9 @@ namespace Velvet.Tests
             return ("escaped:" + escaped, NamesOf(root));
         }
 
-        // Filtered on the arranged message so any other InvalidOperationException still leaves the case.
+        // Filtered on the arranged messages so any other InvalidOperationException still leaves the case.
+        // Both of them, so that a case whose arrangement is uncontained answers `true` rather than
+        // raising: a reader of this suite that has no containment is one of the two readings it takes.
         private static bool EscapesFrom(Action reconcile)
         {
             try
@@ -283,7 +417,8 @@ namespace Velvet.Tests
                 reconcile();
                 return false;
             }
-            catch (InvalidOperationException exception) when (exception.Message == DisposeFailureMessage)
+            catch (InvalidOperationException exception) when (exception.Message == DisposeFailureMessage
+                                                              || exception.Message == CreateFailureMessage)
             {
                 return true;
             }
