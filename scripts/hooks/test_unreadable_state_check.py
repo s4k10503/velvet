@@ -800,7 +800,7 @@ class WatcherDeferralTests(unittest.TestCase):
         return made
 
     def follow(self, home):
-        """Run the deferral recipe the guard prints, and return how many it printed.
+        """Run the first deferral recipe the guard prints, and return how many it printed.
 
         Read out of the refusal rather than written here. A recipe and the reader that honours it are
         two statements of one format, and a case that writes its own line holds only the reader:
@@ -827,11 +827,11 @@ class WatcherDeferralTests(unittest.TestCase):
         self.assertEqual(code, 2)
 
     def arrange(self, home, shape):
-        """Put the guard into one of its three refusing branches, under this HOME."""
+        """Put the guard into one of its three refusing branches, named by the sentence it prints."""
         now = int(time.time())
-        if shape == "unreadable beat":
+        if shape.startswith("a watcher is writing"):
             (home / ".velvet-pr-watch.heartbeat").write_text(str(now), encoding="utf-8")
-        elif shape == "a pull request sitting":
+        elif shape.startswith("green and unmerged"):
             (home / ".velvet-pr-watch.heartbeat").write_text(f"{now} {os.getpid()}", encoding="utf-8")
             (home / ".velvet-pr-ready").write_text(f"777 {now - 3600}\n", encoding="utf-8")
 
@@ -839,32 +839,43 @@ class WatcherDeferralTests(unittest.TestCase):
         # Arrange — the round trip below runs one branch's recipe end to end, and there are four
         # recipes over three branches. A recipe the reading disowns is one an agent follows and is
         # refused again with nothing left to try, so each is read wherever the guard prints it.
-        unsigned, printed = [], 0
-        for shape in ("nothing watching", "unreadable beat", "a pull request sitting"):
+        unsigned, reached = [], []
+        for shape, said in (("nothing is watching the open pull requests", 1),
+                            ("a watcher is writing the heartbeat in a form this cannot read", 1),
+                            ("green and unmerged long enough to have been forgotten", 2)):
             home = self.home()
             self.arrange(home, shape)
             code, _, refusal, _ = check.run_guard(self.GUARD, self.PAYLOAD, "gh-empty", REPO_ROOT, home)
             recipes = [line.strip() for line in refusal.splitlines()
                        if line.strip().startswith('echo "') and ">>" in line]
-            printed += len(recipes)
+            reached.append((shape in refusal, len(recipes) == said))
             unsigned += [f"{shape} ({code}): {line}" for line in recipes
                          if "$CLAUDE_CODE_SESSION_ID" not in line]
 
-        # Act / Assert — how many were read rides along, since a branch this arrangement stopped
-        # reaching prints none and disagrees with nothing.
-        self.assertEqual((printed, unsigned), (4, []))
+        # Act / Assert — the branch each arrangement reached, by the sentence only that branch prints,
+        # rather than by how many recipes came back. Two of the three print one recipe each, so a count
+        # cannot tell an arrangement that stopped reaching one of them from one that still does — and
+        # the recipe it stopped reaching would then be unsigned with this green.
+        self.assertEqual((reached, unsigned), ([(True, True)] * 3, []))
 
-    def test_Given_TheRecipeItPrints_When_ItIsFollowed_Then_TheNextWriteGoesThrough(self):
-        # Arrange
-        home = self.home()
-        printed = self.follow(home)
+    def test_Given_TheRecipesItPrints_When_TheyAreFollowed_Then_TheNextWriteGoesThrough(self):
+        # Arrange — both branches whose recipe can be followed as printed. The other two key their
+        # line on `<pr>`, a placeholder a person fills in, so a verbatim run writes a line about no
+        # pull request — measured, exit 2, which is the guard being right rather than a drift.
+        followed = []
+        for shape in ("nothing is watching the open pull requests",
+                      "a watcher is writing the heartbeat in a form this cannot read"):
+            home = self.home()
+            self.arrange(home, shape)
+            printed = self.follow(home)
 
-        # Act
-        code, _, _, _ = check.run_guard(self.GUARD, self.PAYLOAD, "gh-empty", REPO_ROOT, home)
+            # Act
+            code, _, _, _ = check.run_guard(self.GUARD, self.PAYLOAD, "gh-empty", REPO_ROOT, home)
+            followed.append((code, printed))
 
         # Assert — how many recipes were found rides along, since finding none writes nothing and
         # leaves the guard refusing for the reason it would anyway.
-        self.assertEqual((code, printed), (0, 1))
+        self.assertEqual(followed, [(0, 1), (0, 1)])
 
 
 class GuardSessionTests(unittest.TestCase):
