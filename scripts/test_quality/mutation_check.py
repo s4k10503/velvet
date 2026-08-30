@@ -1344,6 +1344,40 @@ def write_receipt(output, digest, base, verdict, detail):
     return path
 
 
+def verdict_path(output, index):
+    return output / "mutant-{:03d}.json".format(index)
+
+
+def write_verdict(output, index, digest, mutant, project):
+    """Record one mutant's verdict beside its results, keyed on what the campaign measured.
+
+    A campaign is all-or-nothing today: killed at mutant 24 of 32, it leaves 24 sound verdicts on disk
+    that mean nothing to the next run, which starts at 1. The results XML alone cannot answer for them
+    -- HUNG reads the wall clock, NOT_BUILT reads an assembly hash the restart has already restored --
+    so what is kept is the verdict itself.
+    """
+    verdict_path(output, index).write_text(json.dumps({
+        "digest": digest, "index": index, "mutant": mutant.describe(project),
+        "verdict": mutant.verdict, "detail": mutant.detail,
+    }, indent=2))
+
+
+def read_verdict(output, index, digest, mutant, project):
+    """(verdict, detail) a previous run of this same campaign reached for this mutant, or None.
+
+    Keyed on the digest AND on what the mutant is, because an index is only this mutant's while the
+    list is the same list. The digest covers the working tree rather than a commit, so an edit to a
+    mutated file since moves it and the record is refused rather than reused.
+    """
+    try:
+        held = json.loads(verdict_path(output, index).read_text())
+    except (OSError, ValueError):
+        return None
+    if held.get("digest") != digest or held.get("mutant") != mutant.describe(project):
+        return None
+    return held.get("verdict"), held.get("detail")
+
+
 def read_receipt(output, digest):
     path = receipt_path(output, digest)
     if not path.exists():
@@ -1731,9 +1765,19 @@ def main():
     # Derived once: which fixtures redden on the edit rather than on what it does.
     text_readers = text_reading_fixtures(project)
     started = time.time()
+    # What the receipt is keyed on, computed here so a verdict written mid-campaign can carry it.
+    campaign = scope_digest(merge_base_of(project, args.base), targets, project, args.platform)
+    resumed = 0
     try:
         for index, mutant in enumerate(mutants, start=1):
             print("[{}/{}] {}".format(index, len(mutants), mutant.describe(project)), flush=True)
+            kept = read_verdict(output, index, campaign, mutant, project)
+            if kept is not None:
+                mutant.verdict, mutant.detail = kept
+                resumed += 1
+                print("      {} ({}) from a previous run of this campaign".format(
+                    mutant.verdict, mutant.detail or "-"))
+                continue
             results = output / "mutant-{:03d}.xml".format(index)
             log = output / "mutant-{:03d}.log".format(index)
             if results.exists():
@@ -1806,13 +1850,20 @@ def main():
             if neighbours:
                 mutant.detail = "{}; {} other editor(s) were up".format(
                     mutant.detail or "-", neighbours)
-            average = (time.time() - started) / index
+            write_verdict(output, index, campaign, mutant, project)
+            average = (time.time() - started) / max(1, index - resumed)
             print("      {} ({}) in {:.0f}s; {:.0f}s left at {:.0f}s each".format(
-                mutant.verdict, mutant.detail or "-", wall, average * (len(mutants) - index), average))
+                mutant.verdict, mutant.detail or "-", wall,
+                average * (len(mutants) - index), average))
     finally:
         holder.release()
         for path, text in originals.items():
             path.write_text(text)
+
+    if resumed:
+        print("\n{} of {} verdict(s) came from a previous run of this campaign, which is why the "
+              "wall\nclock below is shorter than the work it reports".format(resumed, len(mutants)),
+              flush=True)
 
     declared = declarations_for(targets, changed) if whole else {}
     unanswered, stale = answered(mutants, deferred, declared)
