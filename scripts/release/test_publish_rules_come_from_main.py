@@ -13,6 +13,7 @@ and a 4.x are cut the same way and inherit the same staleness the day they are c
 Run: python3 scripts/release/test_publish_rules_come_from_main.py
 """
 
+import shlex
 import unittest
 from pathlib import Path
 
@@ -26,6 +27,17 @@ RULES = "scripts/release/test_release_notes.py"
 def steps():
     job = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))["jobs"]
     return next(iter(job.values()))["steps"]
+
+
+def pathspecs(step):
+    """The repository paths a step's `run:` hands git, however they are quoted.
+
+    Split on whitespace alone, a quoted pathspec is a token starting with a quote and the comparison
+    below stops seeing it — measured, quoting the overlay's two leaves the case green with the restore
+    naming nothing.
+    """
+    return {word.strip("'\"") for word in shlex.split(step.get("run") or "", comments=True)
+            if word.strip("'\"").startswith("scripts/")}
 
 
 def index_of(predicate):
@@ -60,10 +72,8 @@ class PublishRulesTests(unittest.TestCase):
         split = index_of(lambda run: "subtree split" in run)
         # Every path the overlay writes, against the ones the restore names. Ordering alone left the
         # restore free to name fewer, and a path it misses is one still holding main's bytes.
-        overlaid = {word for word in (steps()[overlay].get("run") or "").split()
-                    if word.startswith("scripts/")} if overlay is not None else set()
-        putback = {word for word in (steps()[restore].get("run") or "").split()
-                   if word.startswith("scripts/")} if restore is not None else set()
+        overlaid = pathspecs(steps()[overlay]) if overlay is not None else set()
+        putback = pathspecs(steps()[restore]) if restore is not None else set()
 
         # Act / Assert
         self.assertEqual(

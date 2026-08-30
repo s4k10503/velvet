@@ -75,8 +75,14 @@ jobs:
         # the overlay created it and removing it is the restore.
         run: |
           git checkout --quiet -- scripts/release
-          git checkout --quiet -- scripts/test_quality/run_suite.py \
-            || git clean --quiet --force -- scripts/test_quality/run_suite.py
+          # The `||` reaches every failure, not only the pathspec mismatch it is for. Narrowed by
+          # asking first: where the line tracks the file, the checkout is the restore and a failure
+          # from it is one this should not swallow.
+          if git ls-files --error-unmatch scripts/test_quality/run_suite.py >/dev/null 2>&1; then
+            git checkout --quiet -- scripts/test_quality/run_suite.py
+          else
+            git clean --quiet --force -- scripts/test_quality/run_suite.py
+          fi
 
       - name: Verify version matches package.json (release only)
         if: github.event_name == 'workflow_dispatch'
