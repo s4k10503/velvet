@@ -1348,7 +1348,7 @@ def verdict_path(output, index):
     return output / "mutant-{:03d}.json".format(index)
 
 
-def write_verdict(output, index, digest, mutant, project):
+def write_verdict(output, index, digest, mutant, project, killers=()):
     """Record one mutant's verdict beside its results, keyed on what the campaign measured.
 
     A campaign is all-or-nothing today: killed at mutant 24 of 32, it leaves 24 sound verdicts on disk
@@ -1359,6 +1359,10 @@ def write_verdict(output, index, digest, mutant, project):
     verdict_path(output, index).write_text(json.dumps({
         "digest": digest, "index": index, "mutant": mutant.describe(project),
         "verdict": mutant.verdict, "detail": mutant.detail,
+        # Every case that failed under this mutation, not the three the detail names. Which cases kill
+        # which mutant is the reading #713 wants and a receipt does not carry, and it is on disk here
+        # anyway -- the detail truncates it for a reader rather than because that is all there was.
+        "killers": sorted(killers),
     }, indent=2))
 
 
@@ -1799,6 +1803,7 @@ def main():
                                  "at {} names what is outstanding".format(mutant.path, holder.sentinel))
 
             counts = read_counts(results)
+            killers = ()
             dll = assemblies_dir / "{}.dll".format(assembly_of(mutant.path))
             blamed = build_error(log)
             if timed_out and baseline_wall * HANG_MARGIN <= args.timeout:
@@ -1832,6 +1837,7 @@ def main():
                 # Naming the killers, because a mutant killed only by a test that also fails on an
                 # unmutated tree was not killed by anything.
                 names = failing_names(results)
+                killers = names
                 behavioural = killed_by_behaviour(names, text_readers)
                 if behavioural:
                     mutant.verdict = KILLED
@@ -1850,7 +1856,7 @@ def main():
             if neighbours:
                 mutant.detail = "{}; {} other editor(s) were up".format(
                     mutant.detail or "-", neighbours)
-            write_verdict(output, index, campaign, mutant, project)
+            write_verdict(output, index, campaign, mutant, project, killers)
             average = (time.time() - started) / max(1, index - resumed)
             print("      {} ({}) in {:.0f}s; {:.0f}s left at {:.0f}s each".format(
                 mutant.verdict, mutant.detail or "-", wall,

@@ -3064,6 +3064,16 @@ class KeptVerdictTests(unittest.TestCase):
         self.mutant.detail = "0 failed"
         mutation_check.write_verdict(self.output, 7, "digest-1", self.mutant, self.project)
 
+    def test_Given_ACampaignThatKilledAMutant_When_TheRecordIsRead_Then_ItNamesEveryKiller(self):
+        # Arrange — the detail names three for a reader. Which cases kill which mutant is a reading
+        # nothing else carries, and it is on disk here anyway.
+        mutation_check.write_verdict(self.output, 8, "digest-1", self.mutant, self.project,
+                                     ("N.C.b", "N.C.a", "N.C.c", "N.C.d"))
+
+        # Act / Assert
+        self.assertEqual(json.loads((self.output / "mutant-008.json").read_text())["killers"],
+                         ["N.C.a", "N.C.b", "N.C.c", "N.C.d"])
+
     def test_Given_AVerdictThisCampaignWrote_When_TheSameMutantIsReached_Then_ItIsAnswered(self):
         # Act / Assert
         self.assertEqual(
