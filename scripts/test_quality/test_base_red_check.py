@@ -740,6 +740,51 @@ class BudgetShortfallTests(unittest.TestCase):
         self.assertEqual(("--max-rounds 23" in said, "--max-rounds 8" in said), (True, True))
 
 
+SHAPES_ONLY = ("Packages/x/Runtime/Tests/Editor/A.cs(41,17): error CS1503: argument 1\n"
+               "Packages/x/Runtime/Tests/Editor/B.cs(9,1): error CS0029: cannot convert\n")
+
+WITH_A_NAME = SHAPES_ONLY + \
+    "Packages/x/Runtime/Tests/Editor/C.cs(3,3): error CS0246: the type could not be found\n"
+
+CARRIED_THREE = {"Packages/x/Runtime/Tests/Editor/A.cs", "Packages/x/Runtime/Tests/Editor/B.cs",
+                 "Packages/x/Runtime/Tests/Editor/C.cs"}
+
+
+class NoWithdrawalReachesTests(unittest.TestCase):
+    """Which of two remedies a run that compiled nothing has earned.
+
+    A withdrawal answers one kind of failure and not the other, and the difference is in the codes.
+    It decides what to print and nothing else: `exhausted_reason` records a run where a budget of 60
+    reached a compiling base on round 38 at the same default of 8 that measured nothing, so a run
+    under these codes is a budget finding rather than a base that cannot answer.
+    """
+
+    def test_Given_NothingButShapes_When_TheLogIsRead_Then_NoWithdrawalReachesIt(self):
+        # Arrange -- the file that fails is the file the case is in, so putting it back removes the
+        # case rather than the obstacle.
+        # Act / Assert
+        self.assertIs(base_red_check.no_withdrawal_reaches(SHAPES_ONLY, CARRIED_THREE), True)
+
+    def test_Given_OneNameTheBaseHasNotGot_When_TheLogIsRead_Then_AWithdrawalReachesIt(self):
+        # Arrange -- one of these and the loop has something to do, which is the other remedy.
+        # Act / Assert
+        self.assertIs(base_red_check.no_withdrawal_reaches(WITH_A_NAME, CARRIED_THREE), False)
+
+    def test_Given_ErrorsOnFilesNothingCarried_When_TheLogIsRead_Then_TheyDecideNothing(self):
+        # Arrange -- a base failing to build its own sources says nothing about which remedy the
+        # carried cases have earned.
+        # Act / Assert
+        self.assertIs(base_red_check.no_withdrawal_reaches(SHAPES_ONLY, set()), False)
+
+    def test_Given_TheRemedyForShapes_When_ItIsPrinted_Then_ItNamesTheWholeCarriedSet(self):
+        # Arrange -- the budget has to cover every carried file, since the base compiles only once
+        # they are all out.
+        said = base_red_check.shapes_remedy(31)
+
+        # Act / Assert
+        self.assertIn("--max-rounds 31", said)
+
+
 class ExhaustedLoopTests(unittest.TestCase):
     """What the withdrawing loop says when it runs out of rounds having compiled nothing.
 
