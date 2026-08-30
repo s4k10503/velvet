@@ -12,9 +12,13 @@ namespace Velvet.Tests
     /// <summary>
     /// Specifies what an <see cref="IRouteScopeFactory"/> that throws does to the pass that called it —
     /// out of <c>CreateScope</c>, and out of the <c>Dispose</c> of the scope it built. Every entrance
-    /// below is a call into the application's own code. The disposals drop and log; the creations reach
-    /// the nearest error boundary, which the last case here mounts.
+    /// below is a call into the application's own code. The disposals drop the exception and log it; the
+    /// creations propagate it to the nearest error boundary, and a case with none mounted logs it too,
+    /// through the fallback <c>Debug.LogException</c> the propagation ends at.
     /// <list type="bullet">
+    /// <item>Building a scope, at each of the three sites that ask for one — the mount, a route change,
+    /// and a patch of a route the Outlet is already holding: the route renders without a scope rather
+    /// than not at all, and one case mounts a boundary, which shows its fallback instead.</item>
     /// <item>Changing route: the Outlet still mounts the route it navigated to, the incoming route's own
     /// scope is built regardless of the failure, and the scope it left behind is disposed once rather
     /// than again by the teardown sweep.</item>
