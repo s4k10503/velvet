@@ -21,6 +21,7 @@ import json
 import os
 import re
 import signal
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -3043,6 +3044,55 @@ class MaskRefusalTests(unittest.TestCase):
 
         # Assert
         self.assertIn("swallows code", str(code))
+
+
+class KeptVerdictTests(unittest.TestCase):
+    """What a killed campaign leaves behind for the next run of the same one.
+
+    A campaign is all-or-nothing: killed at mutant 24 of 32 it leaves 24 sound verdicts on disk and
+    the next run starts at 1. Each is recorded as it is reached so a later run answers from it — and
+    refused where the tree it measured has moved, since a verdict about other bytes is not a verdict.
+    """
+
+    def setUp(self):
+        self.output = Path(tempfile.mkdtemp(prefix="mutation-kept-"))
+        self.addCleanup(shutil.rmtree, self.output, ignore_errors=True)
+        self.project = Path(tempfile.mkdtemp(prefix="mutation-kept-project-"))
+        self.addCleanup(shutil.rmtree, self.project, ignore_errors=True)
+        self.mutant = mutation_check.Mutant(self.project / "A.cs", 3, 0, "a", "b", "literal")
+        self.mutant.verdict = "survived"
+        self.mutant.detail = "0 failed"
+        mutation_check.write_verdict(self.output, 7, "digest-1", self.mutant, self.project)
+
+    def test_Given_ACampaignThatKilledAMutant_When_TheRecordIsRead_Then_ItNamesEveryKiller(self):
+        # Arrange — the detail names three for a reader. Which cases kill which mutant is a reading
+        # nothing else carries, and it is on disk here anyway.
+        mutation_check.write_verdict(self.output, 8, "digest-1", self.mutant, self.project,
+                                     ("N.C.b", "N.C.a", "N.C.c", "N.C.d"))
+
+        # Act / Assert
+        self.assertEqual(json.loads((self.output / "mutant-008.json").read_text())["killers"],
+                         ["N.C.a", "N.C.b", "N.C.c", "N.C.d"])
+
+    def test_Given_AVerdictThisCampaignWrote_When_TheSameMutantIsReached_Then_ItIsAnswered(self):
+        # Act / Assert
+        self.assertEqual(
+            mutation_check.read_verdict(self.output, 7, "digest-1", self.mutant, self.project),
+            ("survived", "0 failed"))
+
+    def test_Given_TheTreeHasMovedSince_When_TheSameMutantIsReached_Then_TheVerdictIsRefused(self):
+        # Arrange — the digest covers the working tree, so an edit to a mutated file moves it.
+        # Act / Assert
+        self.assertIsNone(
+            mutation_check.read_verdict(self.output, 7, "digest-2", self.mutant, self.project))
+
+    def test_Given_ADifferentMutantAtThatIndex_When_ItIsReached_Then_TheVerdictIsRefused(self):
+        # Arrange — an index is this mutant's only while the list is the same list.
+        other = mutation_check.Mutant(self.project / "A.cs", 3, 0, "a", "b", "boundary")
+
+        # Act / Assert
+        self.assertIsNone(
+            mutation_check.read_verdict(self.output, 7, "digest-1", other, self.project))
 
 
 if __name__ == "__main__":
