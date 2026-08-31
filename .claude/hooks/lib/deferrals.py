@@ -117,8 +117,10 @@ def deferred(key, now=None):
 def disowned(key, now=None):
     """(reason, whose) for every live deferral on the key that this session did not write.
 
-    Read by the guards so a suppression that did not happen is in front of the reader rather than
-    behind them, which is the same principle `deferred` states about a stale reason.
+    Read by all four guards that suppress on a deferral, so a suppression that did not happen is in
+    front of the reader rather than behind them — the same principle `deferred` states about a stale
+    reason. Written for a while before any of them called it, which is a helper claiming a behaviour
+    the tree did not have, in a module that said so twice.
     """
     mine = writer()
     if mine is None:

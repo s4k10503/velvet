@@ -38,7 +38,7 @@ HOOK_DIRECTORY = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(HOOK_DIRECTORY / "lib"))
 sys.path.insert(0, str(HOOK_DIRECTORY.parent.parent / "scripts" / "pr"))
 
-from deferrals import DEFERRALS, deferred, unusable  # noqa: E402
+from deferrals import DEFERRALS, deferred, disowned, unusable  # noqa: E402
 from repository import SELF_REPORT, open_pull_requests, unreadable_report  # noqa: E402
 from watcher_state import HEARTBEAT, alive, unreadable_beat  # noqa: E402
 
@@ -221,6 +221,9 @@ def main():
         broken = unusable(pr)
         if broken is not None:
             ignored.append(f"  PR #{pr} — a deferral was written for it, and {broken}.")
+        for reason, whose in disowned(pr):
+            ignored.append(f"  PR #{pr} — session {whose} deferred it as \"{reason}\", which does "
+                           "not suppress here.")
         holding = deferred(pr)
         if holding is not None:
             reason, minutes = holding

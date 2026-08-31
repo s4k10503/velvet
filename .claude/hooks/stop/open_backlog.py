@@ -38,7 +38,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
-from deferrals import DEFERRALS, deferred, unusable  # noqa: E402
+from deferrals import DEFERRALS, deferred, disowned, unusable  # noqa: E402
 from repository import open_pull_requests, unreadable_report  # noqa: E402
 
 UNREADABLE_POLICY = "refuse"
@@ -92,6 +92,9 @@ def main():
     if broken is not None:
         print("A deferral was written for the backlog, and "
               f"{broken} — so it is being ignored.", file=sys.stderr)
+    for reason, whose in disowned("backlog"):
+        print(f"Session {whose} deferred the backlog as \"{reason}\", which does not suppress here.",
+              file=sys.stderr)
     holding = deferred("backlog")
     if holding is not None:
         reason, minutes = holding

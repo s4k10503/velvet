@@ -27,7 +27,7 @@ from pathlib import Path
 HOOK_DIRECTORY = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(HOOK_DIRECTORY / "lib"))
 sys.path.insert(0, str(HOOK_DIRECTORY.parent.parent / "scripts" / "pr"))
-from deferrals import DEFERRALS, deferred, unusable
+from deferrals import DEFERRALS, deferred, disowned, unusable
 from watcher_state import READY_STATE, STALE_AFTER, alive, unreadable_beat
 
 # Held on the editing tools, which carry a file path rather than a shell command, so there is no operand
@@ -65,6 +65,9 @@ def sitting(now):
         if broken is not None:
             print(f"A deferral was written for PR #{number}, and {broken} — so it is being ignored.",
                   file=sys.stderr)
+        for reason, whose in disowned(number, now):
+            print(f"Session {whose} deferred PR #{number} as \"{reason}\", which does not suppress "
+                  "here.", file=sys.stderr)
         if now - since < GRACE or deferred(number, now):
             continue
         found.append((number, int(now - since)))
@@ -95,6 +98,9 @@ def main():
         if broken is not None:
             sys.stderr.write(f"A deferral was written for {WATCHER_KEY}, and {broken} — so it is "
                              "being ignored.\n")
+        for reason, whose in disowned(WATCHER_KEY, now):
+            sys.stderr.write(f"Session {whose} deferred {WATCHER_KEY} as \"{reason}\", which does "
+                             "not suppress here.\n")
         # Two states reach here and they want opposite actions: start a watcher, or end one. Saying
         # "nothing is watching" of the second is this guard's blindness written as a fact about the
         # watcher, and the command it would name refuses while that watcher runs.

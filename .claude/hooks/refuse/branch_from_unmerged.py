@@ -19,7 +19,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-from deferrals import deferred, unusable
+from deferrals import deferred, disowned, unusable
 from shell_commands import command_segments, git_invocation, tokens_of, without_redirections
 from velvet_hooks import BRANCH_BASES
 
@@ -242,6 +242,9 @@ def main():
         broken = unusable(name)
         if broken is not None:
             print(f"A deferral was written for {name}, and {broken} — so it is being ignored.",
+                  file=sys.stderr)
+        for reason, whose in disowned(name):
+            print(f"Session {whose} deferred {name} as \"{reason}\", which does not suppress here.",
                   file=sys.stderr)
         if deferred(name):
             # Parent tip at branch creation is gone after squash-merge; rebase --onto needs it now.
