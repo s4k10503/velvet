@@ -1889,6 +1889,52 @@ def from_plan(entries):
     return cases
 
 
+# `<file>(line,col): error CSxxxx:` is how the compiler writes one into the editor log, and it is the
+# only line in that log that names a source file as the reason a run stopped.
+BLAMED = re.compile(r"^(\S+\.cs)\(\d+,\d+\): error ", re.M)
+
+
+def blamed_by_the_compiler(where):
+    """The source files a Unity log beside `where` reports a compile error against."""
+    path = Path(where)
+    logs = sorted(path.glob("*.log")) if path.is_dir() else ([path] if path.suffix == ".log" else [])
+    found = set()
+    for log in logs:
+        try:
+            found |= set(BLAMED.findall(log.read_text(encoding="utf-8", errors="replace")))
+        except OSError:
+            continue
+    return found
+
+
+def unbuilt_reason(project, since, blamed):
+    """What to say about a base run that wrote no results file, given what the compiler blamed.
+
+    A licence failure, an editor crash and a timeout all leave no results file, and so does a tree the
+    carried files took down. Nothing in the results directory separates them -- which is why the
+    message here used to name the cases and not the cause. The log does: those three blame no source
+    file at all, and a tree the branch's own test surface broke blames the files it carried.
+
+    Neither is a reading, so both still fail. What changes is that the second says which files to look
+    at, and that they are this branch's rather than the base's.
+    """
+    if not blamed:
+        return ("Nothing in the log names a source file, so the base tree did not fail to build -- it\n"
+                "failed to run. A licence, an editor crash and a timeout all land here.")
+    read = git(project, "diff", "--name-only", since, check=False) if since else None
+    changed = set(read.stdout.split()) if read is not None and read.returncode == 0 else set()
+    outside = sorted(name for name in blamed if name not in changed)
+    named = "\n".join("  " + name for name in sorted(blamed)[:8])
+    if outside:
+        return ("The base tree did not build, and {} of the {} file(s) the compiler blamed are not this\n"
+                "branch's:\n{}\nA base that cannot build its own sources is not a reading about this "
+                "change.".format(len(outside), len(blamed), "\n".join("  " + name for name in outside[:8])))
+    return ("The base tree did not build, and every file the compiler blamed is one this branch\n"
+            "carried onto it:\n{}\nSo the base was never asked. Make them build against the base -- "
+            "reaching new API by\nreflection is what the others do -- or withdraw them, or say why "
+            "this change cannot be\nmeasured here.".format(named))
+
+
 def results_from(where):
     """(what the run reported, whether it wrote a results file at all).
 
@@ -2216,6 +2262,11 @@ def main():
         reported, wrote = results_from(args.results)
         if not wrote:
             print("the base run wrote no result, so nothing it was asked was measured", flush=True)
+            # The cause is in the editor log, which sits beside the results the action left. Without
+            # it this said which cases went unanswered and nothing about why, and the two states that
+            # land here want opposite actions.
+            print(unbuilt_reason(Path(args.project).resolve(), plan.get("since"),
+                                 blamed_by_the_compiler(args.results)), flush=True)
         return 1 if report(from_plan(plan["cases"]), from_plan(plan["control"]), reported,
                            plan["canaries"], wrote, plan.get("withdrawn"),
                            plan.get("since")) else 0
