@@ -24,6 +24,7 @@ on:
       - 'ProjectSettings/**'
       - 'scripts/**'
       - '.github/workflows/test.yml'
+      - '.github/actions/**'
       - '!Packages/com.velvet.core/Generators~/**'
       - '**.md'
   pull_request:
@@ -281,12 +282,14 @@ jobs:
   # needs: unity-tests is load-bearing rather than tidiness. "It did not compile on the base" is only
   # evidence about the branch where the same file compiles ON the branch, and that job is what says so.
   #
-  # This is one round of a loop the local harness runs to a fixed point, and the difference decides
-  # what it can catch. A base that cannot build one carried file writes no results for anything, and
-  # a single round has no error list to say which file that was, so the `read` step below withdraws
-  # what it can prove branch-only before the round rather than after it. A round that still writes
-  # nothing measured nothing and fails here — `base_red_check.py` run locally is the sharper reading
-  # of the same branch, and the refusal names that command.
+  # Four rounds at most, where the local harness runs to a fixed point. A base that cannot build one
+  # carried file writes no results for anything, so the `read` step withdraws what it can prove
+  # branch-only before the first round. What that reading cannot prove, a round's own editor log
+  # names, and each round after the first is the action below: it withdraws every carried file the
+  # compiler blamed and asks again without them. Three of them, since the compiler reports a layer
+  # at a time — measured on the branch replacing UniTask, the base compiled on the fourth. A last
+  # round that still writes nothing measured nothing and fails here — `base_red_check.py` run
+  # locally is the sharper reading of the same branch, and the refusal names that command.
   # ---------------------------------------------------------------------------
   base-red:
     name: Base-red check (${{ matrix.testMode }})
@@ -339,6 +342,39 @@ jobs:
           artifactsPath: base-results
           githubToken: ${{ secrets.GITHUB_TOKEN }}
           customParameters: -testFilter "${{ steps.read.outputs.fixtures }}"
+
+      - id: round2
+        if: steps.read.outputs.fixtures != ''
+        uses: ./.github/actions/base-red-round
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          testMode: ${{ matrix.testMode }}
+          githubToken: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: round3
+        if: steps.round2.outputs.fixtures != ''
+        uses: ./.github/actions/base-red-round
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          testMode: ${{ matrix.testMode }}
+          githubToken: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: round4
+        if: steps.round3.outputs.fixtures != ''
+        uses: ./.github/actions/base-red-round
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          testMode: ${{ matrix.testMode }}
+          githubToken: ${{ secrets.GITHUB_TOKEN }}
 
       - if: steps.read.outputs.fixtures != ''
         run: |
