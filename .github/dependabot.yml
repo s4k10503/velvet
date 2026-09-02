@@ -12,6 +12,19 @@ updates:
         patterns:
           - "*"
 
+  # The composite action under .github/actions pins a SHA of its own, and the entry above reads only
+  # the workflows.
+  - package-ecosystem: github-actions
+    directory: /.github/actions/base-red-round
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: ci
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+
   # The same for the maintenance branch, which runs these workflows and pins the same SHAs; the
   # entry above does not reach it, and `target-branch` is what names it. Actions only: what a
   # maintenance line takes from here is the pins its own workflows resolve, and anything else it

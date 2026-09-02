@@ -48,16 +48,18 @@ For C#, a round that reports no case of a fixture is one where something the bra
 build: that file is withdrawn and the run repeated, so the rest is still measured rather than lost
 behind it. Which file is picked off the editor log, over every carried file rather than only the
 ones holding cases, since a shared helper takes its whole assembly down with it. A runner that hands
-back a results file and nothing else takes one round, and a compile failure there is an empty
-directory -- which is what an editor that never started leaves as well. So the Python lane's
-comparison is taken statically before that round: `unbuildable_on_base` withdraws a carried file
-spelling a name the base has not got and a production file the branch changed does have, ahead of
-the run rather than behind an error list that round will not produce. That withdrawal is a static
-approximation of what a compiler would say, so it does not outlive the round it stands beside: one
-that wrote no results file takes its platform down, withdrawals included. What the
-comparison cannot reach -- a signature the branch changed under a name both trees
-spell -- leaves a run that measured nothing, which fails, and the refusal names the loop that
-separates it.
+back a results directory takes four rounds at most, and a compile failure there leaves the editor
+log beside no results, where an editor that never started leaves neither.
+So the Python lane's comparison is taken statically before the first round: `unbuildable_on_base`
+withdraws a carried file spelling a name the base has not got and a production file the branch
+changed does have, ahead of the run rather than behind an error list that round may not produce.
+That withdrawal is a static approximation of what a compiler would say, so it does not outlive the
+round it stands beside: one that wrote no results file takes its platform down, withdrawals
+included. What the comparison cannot reach -- a signature the branch changed under a name both
+trees spell -- a round's own log does: `replan` withdraws every carried file the compiler blamed,
+at once, takes out the ones it blames again at the base's text, and the runner asks the base
+again, up to three times. A last round that still writes nothing measured nothing, which fails, and the
+refusal names the loop that separates it.
 
 *A case that stopped before it disagreed answered nothing.* Red on the base means the base ran the
 case and the case said no. Except for the statically proven branch-only surface above, a case that
@@ -111,6 +113,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import textwrap
 import time
 import tokenize
 import xml.etree.ElementTree as ET
@@ -680,6 +683,9 @@ def shared_material_differs(relative, before, after):
     A line reading is not enough on its own: git describes a reorder as one block deleted and
     re-added, so the lines between two swapped cases read as changed while every one of them is the
     base's own text. Compared as a multiset, a reorder is no difference and an added row is.
+
+    Read with the comments blanked, as `authored` reads a case: a remark rewritten above a helper is
+    not what any case's run decides on, and counting it put every case in the file on trial for it.
     """
     if before is None:
         return True
@@ -691,7 +697,7 @@ def shared_material_differs(relative, before, after):
         inside = set()
         for case in found:
             inside |= set(range(case.first_line, case.last_line + 1))
-        return sorted(line.strip() for number, line in enumerate(text.splitlines(), 1)
+        return sorted(line.strip() for number, line in enumerate(outside_comments(relative, text), 1)
                       if number not in inside and line.strip())
 
     return shared(before) != shared(after)
@@ -891,6 +897,14 @@ def withdraw(base_tree, relative):
             target.unlink()
 
 
+def remove(base_tree, relative):
+    """Takes one carried file out of the base tree altogether, its meta with it."""
+    for name in (relative, relative + ".meta"):
+        target = base_tree / name
+        if target.exists():
+            target.unlink()
+
+
 # --------------------------------------------------------------------------------------------------
 # Running
 # --------------------------------------------------------------------------------------------------
@@ -918,16 +932,12 @@ def wait_for_quiet(seconds):
     return True
 
 
+# Not pinned to CS, for the reason `mutation_check.BUILD_ERROR` records.
 COMPILE_ERROR = re.compile(
-    r"^(?:.*?[\\/])?((?:Assets|Packages)[\\/][^(]+)\(\d+,\d+\): error (CS\d+)")
-
-# The compiler saying a name does not resolve. One of these on a carried file means withdrawing that
-# file lets the rest be measured, which is what the round loop is for.
-NAME_IS_ABSENT = frozenset({"CS0246", "CS0103", "CS0117", "CS1061", "CS0234"})
-
+    r"^(?:.*?[\\/])?((?:Assets|Packages)[\\/][^(]+)\(\d+,\d+\): error ([A-Z]+\d+)")
 
 def compile_errors_in(log_text):
-    """(repository-relative source, CS code) for each compile error a Unity log blames on a file."""
+    """(repository-relative source, error code) for each error a Unity log blames on a source file."""
     found = []
     for line in log_text.splitlines():
         match = COMPILE_ERROR.match(line.strip())
@@ -947,35 +957,33 @@ def compile_error_files(log_text):
     return named
 
 
-def no_withdrawal_reaches(log_text, carry):
-    """Whether nothing the base raised on a carried file is a name it has not got.
+def withdrawals_for(log_text, carry, already):
+    """(the carried files to put back to the base's text, the ones to take out of the tree) before
+    the base is asked again, off a round that wrote nothing.
 
-    A withdrawal answers one kind of failure: a carried file spelling a name the base lacks comes
-    out, and the rest of its assembly builds. It answers none of the other kind -- an argument, a
-    return, an inferred type -- where the name resolves and the shape does not, because the file
-    that fails is the file the case is in.
-
-    This decides which remedy to print, and nothing else. It is not evidence that the base cannot
-    answer: `exhausted_reason` records a run on the branch replacing UniTask where a budget of 60
-    reached a compiling base on round 38 and gave every case a verdict, at the same default of 8
-    that reported nothing measured. So a round that wrote nothing under these codes is a budget
-    finding, and telling the author to sharpen the case is what this exists to stop.
+    Every carried file the log blames, at once: the compiler named each of them for its own text, so
+    none is merely standing next to the offender the way a silent file is. One it blames that is
+    already the base's text failed against something else the branch carried, and its cases already
+    read as unbuildable. Taking it out reaches the files that use what it declares; putting back
+    what it failed against reaches every file still building against the branch's text of that, for
+    the sake of a file no round asks about. Measured on the branch replacing UniTask, the first reach
+    was nothing and the second was five cases.
     """
-    blamed = [code for relative, code in compile_errors_in(log_text) if relative in carry]
-    return bool(blamed) and not any(code in NAME_IS_ABSENT for code in blamed)
+    blamed = [name for name in compile_error_files(log_text) if name in carry]
+    return ([name for name in blamed if name not in already],
+            [name for name in blamed if name in already])
 
 
-def next_to_withdraw(log_text, carry, withdrawn, silent):
-    """Which carried file to put back before asking the base again, after a round reported nothing.
-
-    Every carried file is a candidate, not only the ones holding cases. This repository's conventions
-    put a second fixture's shared reach into TestUtilities, that compiles into the same assembly as
-    the fixtures, and one the base cannot build takes every one of them down with it -- so a choice
-    made only over case-bearing files withdraws innocent fixtures one per round until there are none
-    left, and the run ends having measured nothing with nothing saying so.
-    """
-    return next((name for name in compile_error_files(log_text)
-                 if name in carry and name not in withdrawn), silent[0])
+def bases_own_reason(outside, blamed, removed):
+    """What to say where the compiler blamed a file the branch did not carry."""
+    said = ("  {} of the {} file(s) the compiler blamed are the base's own, so another round would "
+            "not build\n  either:\n{}".format(
+                len(outside), len(blamed), "\n".join("    " + name for name in outside)))
+    if removed:
+        said += ("\n  {} carried file(s) came out of the tree in earlier rounds, and a file of the "
+                 "base's failing\n  after that may be missing what they declared:\n{}".format(
+                     len(removed), "\n".join("    " + name for name in sorted(removed))))
+    return said
 
 
 def run_unity(unity, tree, platform, fixtures, results, log, timeout):
@@ -1889,6 +1897,129 @@ def from_plan(entries):
     return cases
 
 
+def log_text_beside(results):
+    """Every editor log the runner left in the results directory, as one text."""
+    path = Path(results)
+    logs = sorted(path.glob("*.log")) if path.is_dir() else []
+    return "\n".join(log.read_text(encoding="utf-8", errors="replace") for log in logs)
+
+
+BUILD_STOPPED = "Scripts have compiler errors"
+
+
+def carried_files(project, since):
+    """The files `build_base_tree` copies onto the base: the branch's test side, as it stands now."""
+    changed = changed_lines_by_file(project, since)
+    return {name for name in changed if is_test_side(name) and (project / name).exists()}
+
+
+def unbuilt_reason(project, since, log_text, withdrawn=(), removed=()):
+    """What to say about a base run that wrote no results file.
+
+    Nothing in the results file's absence separates the ways a run comes to write none -- which is
+    why the message here used to name the cases and not the cause. The editor log does, by being
+    there at all and by what it blames.
+
+    None of them is a reading, so all of them still fail. What changes is what is said.
+    """
+    if not log_text:
+        return ("The run left no editor log beside its results: the test run's editor was never started,\n"
+                "and the job log has what stopped the run before it.")
+    blamed = compile_error_files(log_text)
+    if not blamed:
+        if BUILD_STOPPED in log_text:
+            return ("The base tree did not build, and the compiler blamed no line of a source under\n"
+                    "Assets or Packages for it. The editor log has what it did say.")
+        return ("The editor log blames no error on a source file and does not say the scripts did not\n"
+                "build. It ends where the editor stopped.")
+    named = "\n".join("  " + name for name in blamed)
+    try:
+        carried = carried_files(project, since) if since else set()
+    except subprocess.CalledProcessError as failed:
+        return ("The base tree did not build. The compiler blamed:\n{}\nWhether they are this branch's "
+                "cannot be read here -- git cannot diff this checkout against\n{}: {}".format(
+                    named, since, failed.stderr.strip()))
+    outside = [name for name in blamed if name not in carried]
+    if outside:
+        return ("The base tree did not build, and {} of the {} file(s) the compiler blamed are not "
+                "ones this\nbranch carried onto it:\n{}\nA base that cannot build its own sources is "
+                "not a reading about this change.{}".format(
+                    len(outside), len(blamed), "\n".join("  " + name for name in outside),
+                    "" if not removed else
+                    "\nA file of the base's failing after these were taken out may be missing what "
+                    "they declared:\n" + "\n".join("  " + name for name in sorted(removed))))
+    standing = [name for name in blamed if name in withdrawn]
+    if standing:
+        rest = [name for name in blamed if name not in withdrawn]
+        return ("The base tree did not build. {} of the {} blamed file(s) already stood at the base's "
+                "text,\nwithdrawn before the round, so what failed there is beside them -- something "
+                "else this\nbranch carried or dropped:\n{}{}".format(
+                    len(standing), len(blamed), "\n".join("  " + name for name in standing),
+                    "" if not rest else "\nThe rest are this branch's; make them build against the "
+                    "base or withdraw them:\n" + "\n".join("  " + name for name in rest)))
+    return ("The base tree did not build, and every file the compiler blamed is one this branch\n"
+            "carried onto it:\n{}\nSo the base was never asked. Make them build against the base -- "
+            "reaching new API by\nreflection is what the others do -- or withdraw them, or say why "
+            "this change cannot be\nmeasured here.".format(named))
+
+
+def replan(project, plan_path, results, base_tree):
+    """Prepares one more round after a round that wrote nothing, where a round can still answer.
+
+    Prints `fixtures=` only when it prepared one; the workflow reads that line the way it reads
+    `--emit`'s, and a run that printed none goes to the verdict on the round that already ran. The
+    results it read are moved aside so the round it prepared writes where the verdict reads.
+
+    A file the log blames that the branch did not carry is the base failing to build its own sources,
+    and a round without the carried files would not build either; nothing is withdrawn then, so the
+    verdict says so from this round's log rather than from another that could only repeat it.
+    """
+    plan = json.loads(plan_path.read_text())
+    if not plan["cases"]:
+        return 0
+    _, wrote = results_from(results)
+    if wrote:
+        return 0
+    log_text = log_text_beside(results)
+    blamed = compile_error_files(log_text)
+    if not blamed:
+        print("  the log names no source file, so there is nothing to withdraw", flush=True)
+        return 0
+    carry = carried_files(project, plan["since"])
+    outside = [name for name in blamed if name not in carry]
+    if outside:
+        print(bases_own_reason(outside, blamed, plan.get("removed", {})), flush=True)
+        return 0
+    already = set(plan.get("withdrawn", {})) | set(plan.get("blamed", {}))
+    restore, take_out = withdrawals_for(log_text, carry, already)
+    rounds = plan.get("rounds", 1)
+    codes = {}
+    for relative, code in compile_errors_in(log_text):
+        codes.setdefault(relative, code)
+    for relative in restore:
+        withdraw(base_tree, relative)
+        detail = "the compiler blamed it ({}) in round {}".format(codes[relative], rounds)
+        plan.setdefault("blamed", {})[relative] = detail
+        print("  withdrawn: {} -- {}".format(relative, detail), flush=True)
+    for relative in take_out:
+        remove(base_tree, relative)
+        detail = ("its base text did not build beside what the branch carried, so it came out in "
+                  "round {}".format(rounds))
+        plan.setdefault("removed", {})[relative] = detail
+        print("  removed: {} -- {}".format(relative, detail), flush=True)
+    out = set(plan.get("withdrawn", {})) | set(plan.get("blamed", {})) | set(plan.get("removed", {}))
+    wanted = {entry["fixture"] for entry in plan["cases"] + plan["control"]
+              if kind_of(entry["path"]) == "csharp" and entry["path"] not in out
+              and platform_of(entry["path"]) in plan["canaries"]}
+    for chosen_canaries in plan["canaries"].values():
+        wanted.update(chosen_canaries)
+    plan["rounds"] = rounds + 1
+    plan_path.write_text(json.dumps(plan, indent=2))
+    shutil.move(str(results), str(Path(results).with_name(Path(results).name + ".round{}".format(rounds))))
+    print("fixtures={}".format(";".join(sorted(wanted))), flush=True)
+    return 0
+
+
 def results_from(where):
     """(what the run reported, whether it wrote a results file at all).
 
@@ -1906,7 +2037,7 @@ def results_from(where):
 
 
 def report(cases, control, reported, canaries=None, wrote=True, unbuildable=None,
-           single_round=None):
+           single_round=None, blamed=None):
     """Prints each case's verdict and returns the ones that fail the run.
 
     `wrote` is whether the run produced a results file at all, and for a C# case it outranks
@@ -1924,10 +2055,15 @@ def report(cases, control, reported, canaries=None, wrote=True, unbuildable=None
     `single_round` is the merge base when this invocation decided from one round it did not itself
     run, and absent when the loop below it ran to a fixed point here -- which is what the remedy the
     first case prints would be sending its reader to do again.
+
+    `blamed` is what `replan` withdrew on the editor's own error list between rounds, each with the
+    detail it was withdrawn under, and it is read where `unbuildable` is: a compiler's reading of the
+    same question the static one approximates, and outranked by `wrote` for the same reason.
     """
     unsound = unsound_fixtures(control, reported)
     withdrawn = unsound_platforms(canaries or {}, reported)
     unbuildable = unbuildable or {}
+    blamed = blamed or {}
     unmeasured = {}
     if not wrote:
         unmeasured = {platform: "the run wrote no results file, so nothing was measured"
@@ -1940,6 +2076,8 @@ def report(cases, control, reported, canaries=None, wrote=True, unbuildable=None
         elif case.path in unbuildable:
             case.verdict, case.detail = COULD_NOT_COMPILE, "the base has no {}".format(
                 unbuildable[case.path])
+        elif case.path in blamed:
+            case.verdict, case.detail = COULD_NOT_COMPILE, blamed[case.path]
         elif case.fixture in unsound:
             case.verdict, case.detail = BASE_UNSOUND, unsound[case.fixture]
         elif measured_by(case.path) in withdrawn:
@@ -1997,97 +2135,54 @@ def local_remedy(since, cases):
     """
     platforms = sorted({platform_of(case.path) for case in cases
                         if kind_of(case.path) == "csharp"})
-    return ("\nThe editor wrote nothing, which a single round cannot tell from an editor that never\n"
-            "started. Take the reading where the loop runs -- it withdraws by the editor's own error\n"
-            "list and asks again until something answers:\n"
+    return ("\nWhere the loop runs it withdraws by the editor's own error list and asks again, round\n"
+            "by round. Take the reading there:\n"
             "  python3 scripts/test_quality/base_red_check.py --lane csharp{} --base {} \\\n"
             "    --warm-library Library".format(
                 "".join(" --platform " + platform for platform in platforms), since or "origin/main"))
 
 
-def budget_shortfall(standing, budget):
-    """What the loop can say before spending a round, or "" when the budget could be enough.
-
-    A lower bound rather than an estimate. One round withdraws one file, so a run where none of the
-    carried files builds needs at least as many rounds as there are of them, and saying so before
-    the first round costs nothing where saying it afterwards costs the whole budget. Measured on the
-    branch replacing UniTask: 23 carried files on the EditMode side, against a default of 8.
-
-    It cannot say the budget IS enough -- a round that compiles ends the loop, and which round that
-    is depends on which file the log names first. Nor is the bound tight the other way: a file the
-    static reading in `--emit` would have withdrawn still counts here, because the local flow does
-    not take that reading.
-    """
-    if standing <= budget:
-        return ""
-    return ("  {} carried file(s) are not statically withdrawable and one round withdraws one, so\n"
-            "  --max-rounds {} cannot reach a compiling base if none of them builds:\n"
-            "  --max-rounds {}".format(standing, budget, standing))
+# What a round does, said once: the exhausted reason carries it and `--max-rounds` explains
+# itself by it, and the two drifted apart in one edit when each carried its own copy.
+ROUND_TAKES = ("A round withdraws every file the editor blamed, or one it named nothing about, or "
+               "takes out the ones it blamed again")
 
 
-def shapes_remedy(carried):
-    """What to print where no withdrawal reaches what the base raised.
-
-    Not a budget. This said the base compiles once the whole carried set is out and named that
-    count as `--max-rounds`, and measured on the branch replacing UniTask with an in-tree awaitable
-    it is false: given more rounds than the count, the loop spent 27, ran out of files it could
-    withdraw with three fixtures still carried, and compiled nothing. What it was left holding was
-    123 errors of one code, every one a receiver type an extension method does not take.
-
-    So the remedy is to say the harness has no reading here, and stop offering one. What to do about
-    a change base-red cannot answer for is the author's, and it is not a number.
-    """
-    return ("\nNothing the base raised on a carried file is a name it has not got, so no withdrawal\n"
-            "reaches it: the file that fails is the file the case is in, and putting it back removes\n"
-            "the case rather than the obstacle. More rounds do not help -- measured on a change of\n"
-            "this shape, the loop ran out of files it could withdraw with {} still carried and\n"
-            "compiled nothing.\n"
-            "\nThere is no reading here to take. Whether a change base-red cannot answer for should\n"
-            "land is yours to decide, and this has nothing further to say about it.".format(carried))
-
-
-# How many rounds of no progress are a fixed point rather than a slow one. Two says nothing -- a
-# withdrawal can take a file with no cases and the next round is the one that moves -- and three is
-# where the loop has asked the same question three times running.
-STILL_ROUNDS = 3
-
-
-def standing_still_reason(platform, attempt, fixtures):
-    """What to print where the loop has stopped moving rather than run out of budget."""
-    return ("\n{} asked the same {} fixture(s) {} rounds running and measured nothing each time.\n"
-            "Withdrawing is taking files that hold no case, so the next round is the one before it:\n"
-            "this is a fixed point rather than a budget. Spending the rest of --max-rounds would\n"
-            "report the cap instead of this.".format(platform, fixtures, STILL_ROUNDS))
-
-
-def exhausted_reason(spent, withdrawn, carried):
+def exhausted_reason(spent, withdrawn, carried, removed=()):
     """What a loop that ran out of rounds without ever compiling the base has to say for itself.
 
     The generic line is the one a single round writes, and a reader who ran the loop has already done
     the thing that line would tell them to do. What separates the two is the loop's own history: how
     many rounds it spent, how much of the carried set it put back, and that the budget is a flag.
 
-    Naming the flag because the budget is what binds, not the shape of the change. Measured on the
-    branch replacing UniTask with an in-tree awaitable: at the default of 8 the loop reported nothing
-    measured, and at 60 it compiled the base on round 38 and gave every case a verdict. One round
-    withdraws one file, so a change touching many test modules needs about as many rounds as modules.
-
     Whether the budget is what ended the run is the caller's to know, and it does not print this
-    otherwise: a run that stopped short of its budget stopped for some other reason, and raising the
-    budget is not its remedy.
+    otherwise: a run that stopped for any other reason has some other remedy, and the loop's own
+    comment says why a count of rounds cannot answer that.
     """
     if not spent:
         return ""
-    put_back = "\n".join("    " + name for name in sorted(withdrawn)[:6])
-    more = len(withdrawn) - 6
+    every = sorted(withdrawn)
+    named = "\n".join("    " + name for name in every[:6])
+    more = len(every) - 6
     if more > 0:
-        put_back += "\n    and {} more".format(more)
-    return ("\n{} round(s) compiled nothing, having put {} of the {} carried file(s) back to what the\n"
-            "base holds. One round withdraws one file, so a change whose carried modules the base\n"
-            "cannot build needs about as many rounds as there are of them:\n"
+        named += "\n    and {} more".format(more)
+    # The floor is one more than the carried count, and the one-a-round regime is why. A round the
+    # log explains nothing about withdraws one silent file, so a run of those spends a round per
+    # file that still holds a live case and then needs one more to ask the tree it has emptied. That
+    # is at most the carried count, which also counts the other platform's files, the Python lane's
+    # and the helpers -- so the floor is an upper bound rather than the number, and over-advising
+    # costs nothing: the loop breaks as soon as nothing is left to ask. What the other regime needs
+    # is how deep the put-backs go, and the multiplier only guesses at that.
+    return ("\n{} round(s) compiled nothing, having withdrawn {} of the {} carried file(s){}.\n"
+            "{}\n"
             "  --max-rounds {}\n"
-            "{}".format(spent, len(withdrawn), carried, max(carried, spent * 4),
-                        put_back if withdrawn else ""))
+            "{}".format(spent, len(every), carried,
+                        "" if not removed else
+                        ", {} of them taken out of the tree".format(len(removed)),
+                        textwrap.fill(ROUND_TAKES + ", so the rounds a change needs is how deep "
+                                      "the put-backs go:", width=84),
+                        max(carried + 1, spent * 4),
+                        "  withdrawn:\n" + named if every else ""))
 
 
 def held_at(project, commit, relative):
@@ -2152,8 +2247,8 @@ def collect(project, base, lane):
         for case in cases:
             if case.declaration is not None and lines is not None:
                 case.declaration.written_here = case.declaration.written_in(lines)
-        wanted = {case.name for case in authored(relative, touched(cases, lines),
-                                                 held_at(project, since, relative), text)[0]}
+        before = held_at(project, since, relative)
+        wanted = {case.name for case in authored(relative, touched(cases, lines), before, text)[0]}
         # A change wholly outside every case body, in a file that has cases: a static readonly table
         # the cases drive, a SetUp, a helper. `authored` keeps such a case out, correctly -- the
         # branch did not write it -- and with nothing else selected the lane exits 0 having measured
@@ -2165,11 +2260,15 @@ def collect(project, base, lane):
         # and puts every case a fixture has on trial for a line added to SetUp; `outside` reports
         # that instead. What is left here is the state where reporting it is all that happens.
         if (cases and lines is not None and not wanted and outside(cases, lines)
-                and shared_material_differs(relative, held_at(project, since, relative), text)):
+                and shared_material_differs(relative, before, text)):
             wanted = {case.name for case in cases}
         changed.extend(as_the_runner_names_them(
             [case for case in cases if case.name in wanted], heirs))
+        # Read as the promotion above reads it: a changed line outside every case that is only a
+        # comment leaves the cases beside it the base's text, controls included.
         loose = outside(cases, lines)
+        if loose and not shared_material_differs(relative, before, text):
+            loose = set()
         if not loose and not shared_helper:
             control.extend(as_the_runner_names_them(
                 [case for case in cases if case.name not in wanted], heirs))
@@ -2194,17 +2293,29 @@ def main():
     parser.add_argument("--busy-timeout", type=int, default=1800,
                         help="seconds to wait for another Unity run to finish")
     parser.add_argument("--max-rounds", type=int, default=8,
-                        help="uncompilable files to withdraw before the C# lane gives up (default: 8)")
+                        help="rounds to ask the base in before the C# lane gives up (default: 8). "
+                             + ROUND_TAKES + ", so this is a count of rounds rather than of files")
     parser.add_argument("--plan", action="store_true", help="print the cases and exit without running")
     parser.add_argument("--emit", help="build the base tree, write the reading here and stop, for a "
                                        "runner that reaches Unity through something other than the "
                                        "editor binary. Needs --base-tree")
     parser.add_argument("--verdict", help="decide from an --emit reading and a results file or "
                                           "directory, without building or running anything")
-    parser.add_argument("--results", help="what --verdict reads the run from")
+    parser.add_argument("--replan", help="after a round that wrote nothing: put every carried file "
+                                          "its editor log blames back to the base's text, take out "
+                                          "the ones already there, record them in this --emit "
+                                          "reading, move --results aside, and print the fixtures "
+                                          "the next round should ask. Needs --results and --base-tree")
+    parser.add_argument("--results", help="what --verdict and --replan read the run from")
     parser.add_argument("--output", default="", help="directory for the base run's logs and results")
     args = parser.parse_args()
     speak_under_a_pipe()
+
+    if args.replan:
+        if not args.results or not args.base_tree:
+            raise SystemExit("--replan needs --results and --base-tree")
+        return replan(Path(args.project).resolve(), Path(args.replan), Path(args.results),
+                      Path(args.base_tree).resolve())
 
     if args.verdict:
         plan = json.loads(Path(args.verdict).read_text())
@@ -2216,9 +2327,24 @@ def main():
         reported, wrote = results_from(args.results)
         if not wrote:
             print("the base run wrote no result, so nothing it was asked was measured", flush=True)
+            # Every withdrawal the reading holds, static and per-round alike: a file the last round
+            # blames that an earlier one already put back is not the reader's to withdraw again.
+            stood = set(plan.get("withdrawn") or ()) | set(plan.get("blamed", {}))
+            print(unbuilt_reason(Path(args.project).resolve(), plan.get("since"),
+                                 log_text_beside(args.results), stood,
+                                 plan.get("removed", {})), flush=True)
+            if plan.get("rounds", 1) > 1:
+                # The files the rounds touched, with the share taken out named apart: a file in both
+                # records is one file, and a removal can reach a file no round withdrew, which is
+                # what `replan`'s own `already` decides.
+                touched = set(plan.get("blamed", {})) | set(plan.get("removed", {}))
+                print("That was round {}; the rounds before it touched {} carried file(s), {} of them "
+                      "taken out\nof the tree, and the base still did not build.".format(
+                          plan["rounds"], len(touched), len(plan.get("removed", {}))),
+                      flush=True)
         return 1 if report(from_plan(plan["cases"]), from_plan(plan["control"]), reported,
                            plan["canaries"], wrote, plan.get("withdrawn"),
-                           plan.get("since")) else 0
+                           plan.get("since"), plan.get("blamed")) else 0
 
     project = Path(args.project).resolve()
     since, cases, control, shared, shared_helper = collect(project, args.base, args.lane)
@@ -2305,6 +2431,9 @@ def main():
     ever_wrote = not any(kind_of(case.path) == "csharp" for case in cases)
     rounds_spent = 0
     put_back = set()
+    removed = set()
+    stopped_for_cause = False
+    out_of_rounds = False
     try:
         print("  building the base tree at {}".format(base_tree), flush=True)
         build_base_tree(project, since, base_tree, carry, drop, args.warm_library)
@@ -2329,29 +2458,19 @@ def main():
             raise SystemExit("another Unity test run is still in flight")
         canaries.update(canaries_for(base_tree, cases, carry, platforms))
         for platform in platforms:
-            # Accumulated across platforms, unlike `withdrawn`: what the message below is evidence
-            # for is that the base built none of the carried set, which both lanes are asking about.
             wanted = [case for case in cases + control
                       if kind_of(case.path) == "csharp" and platform_of(case.path) == platform]
-            withdrawn = set()
-            # Every carried file a round on this platform could be spent withdrawing: its own, and
-            # the ones belonging to no platform, which are the shared helpers that compile into both.
-            note = budget_shortfall(
-                len([name for name in carry if name.endswith(".cs")
-                     and platform_of(name) in (platform, None)]),
-                args.max_rounds)
-            if note:
-                print(note, flush=True)
-            # A round that measures nothing and leaves the fixture count where it was is the loop
-            # standing still: it withdrew a file with no cases in it, so the next round asks exactly
-            # what this one did. Measured on the branch replacing UniTask: EditMode stopped
-            # withdrawing after round 1 and repeated the same round seven more times, four seconds
-            # each, and the run then reported the round cap rather than the fixed point.
-            standing_still, last_count = 0, None
+            # `for ... else` rather than a round count: a loop that found nothing left to withdraw
+            # on the round its budget happens to equal has spent every round and run out of
+            # nothing, and telling its reader to raise the budget points away from why no round
+            # wrote. A round count cannot tell that from a loop the budget stopped mid-withdrawal.
             for attempt in range(1, args.max_rounds + 1):
                 rounds_spent = max(rounds_spent, attempt)
-                put_back |= withdrawn
-                live = [case for case in wanted if case.path not in withdrawn]
+                # `put_back` is one set across platforms rather than one per platform: the tree is
+                # one, so a file an earlier platform's round put back stands at the base's text when
+                # this one asks, and asking its fixture would read the base's own result as the
+                # branch's case. `LocalLoopTests` fails when it is asked.
+                live = [case for case in wanted if case.path not in put_back]
                 fixtures = sorted({case.fixture for case in live} | set(canaries[platform]))
                 if not fixtures:
                     break
@@ -2372,25 +2491,51 @@ def main():
                     "" if not neighbours else
                     "; {} other editor(s) were up".format(neighbours)), flush=True)
 
-                # One file per attempt. A round that reports nothing says only that something the
-                # tree holds did not build, never which file, so withdrawing every silent one at
-                # once would take out the files that were merely standing next to the offender and
-                # leave their cases unmeasured behind somebody else's error.
-                standing_still = standing_still + 1 if not seen and len(fixtures) == last_count else 0
-                last_count = len(fixtures)
-                if standing_still >= STILL_ROUNDS:
-                    print(standing_still_reason(platform, attempt, len(fixtures)), flush=True)
-                    break
-
                 ran = fixtures_that_ran(seen)
                 silent = sorted({case.path for case in live if case.fixture not in ran})
-                if not silent:
+                # A round that wrote nothing has not read the canaries either, so it goes on
+                # withdrawing after the last live case is out: what the tree then answers is that
+                # the withdrawn files are unbuildable there, rather than that nothing was measured.
+                if wrote and not silent:
                     break
-                offender = next_to_withdraw(
-                    log.read_text(errors="replace") if log.exists() else "",
-                    carry, withdrawn, silent)
-                withdraw(base_tree, offender)
-                withdrawn.add(offender)
+                log_text = log.read_text(errors="replace") if log.exists() else ""
+                blamed = compile_error_files(log_text)
+                outside = [name for name in blamed if name not in carry]
+                if outside:
+                    print(bases_own_reason(outside, blamed, removed), flush=True)
+                    stopped_for_cause = True
+                    break
+                restore, take_out = withdrawals_for(log_text, carry, put_back)
+                # A round the log does not explain says only that something the tree holds did not
+                # build, never which file, so the silent ones come out one per round: taking them
+                # all would take out the files merely standing next to the offender and leave their
+                # cases unmeasured behind somebody else's error.
+                if not restore and not take_out:
+                    if not silent:
+                        break
+                    restore = silent[:1]
+                codes = {}
+                for relative, code in compile_errors_in(log_text):
+                    codes.setdefault(relative, code)
+                # Printed rather than carried into the verdict. What a round put back is not a
+                # reading about the case: the silent one was chosen by the fixture that went
+                # missing, not by an error list, and a verdict off either would outrank the
+                # canaries that say whether the platform answered at all.
+                for offender in restore:
+                    withdraw(base_tree, offender)
+                    put_back.add(offender)
+                    print("  withdrawn: {} -- {}".format(offender, (
+                        "the compiler blamed it ({})".format(codes[offender]) if offender in codes
+                        else "its fixture reported nothing and the log named no file")), flush=True)
+                for offender in take_out:
+                    remove(base_tree, offender)
+                    removed.add(offender)
+                    print("  removed: {} -- its base text did not build beside what the branch "
+                          "carried".format(offender), flush=True)
+            else:
+                out_of_rounds = True
+            if stopped_for_cause:
+                break
     finally:
         if holder is not None:
             git(project, "worktree", "remove", "--force", str(base_tree), check=False)
@@ -2401,15 +2546,8 @@ def main():
 
     if not ever_wrote:
         print("no round wrote a result, so nothing any of them was asked was measured", flush=True)
-        # Which of the two the run hit, because the remedies differ. A name the base has not got is
-        # what a withdrawal answers, so more rounds reach it; nothing but shapes means every round
-        # withdraws a file whose case it then cannot measure, and the budget has to cover the whole
-        # carried set before the base compiles at all.
-        if last_log and last_log.exists() and no_withdrawal_reaches(
-                last_log.read_text(errors="replace"), set(carry)):
-            print(shapes_remedy(len(carry)), flush=True)
-        elif rounds_spent >= args.max_rounds:
-            print(exhausted_reason(rounds_spent, put_back, len(carry)), flush=True)
+        if out_of_rounds and not stopped_for_cause:
+            print(exhausted_reason(rounds_spent, put_back, len(carry), removed), flush=True)
     if met_a_neighbour:
         print("\nA second editor was up during at least one of these runs, so a failure here has a\n"
               "second explanation. Nothing below distinguishes one it caused from one the branch did.",
