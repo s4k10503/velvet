@@ -4131,6 +4131,8 @@ class SharedMaterialTests(unittest.TestCase):
         self.assertFalse(base_red_check.shared_material_differs(
             self.FIXTURE, self.text("what it was", "1"), self.text("what it is", "1")))
 
+    # GREEN_ON_BASE(characterization): a helper's code changed already reads as the branch's, and the
+    # comment reading beside it must not lose that direction.
     def test_Given_AHelpersCodeChanged_When_TheSharedMaterialIsRead_Then_ItIsTheBranchs(self):
         # Act / Assert
         self.assertTrue(base_red_check.shared_material_differs(
