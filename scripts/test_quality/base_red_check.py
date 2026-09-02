@@ -1784,6 +1784,24 @@ def unsound_platforms(canaries, reported):
     return broken
 
 
+def unvouched_excuses(cases, withdrawn):
+    """(platform, its cases, why) where an excuse decided every one of them and no canary vouched.
+
+    `report` decides a withdrawn file's cases above the reading that says whether the platform
+    answered at all, so a platform excuses covered entirely never reaches that reading. Here it
+    stands anyway: nothing there was measured, and nothing said it could be.
+    """
+    found = []
+    for platform, reason in sorted(withdrawn.items()):
+        theirs = [case for case in cases if measured_by(case.path) == platform]
+        # COULD_NOT_LOAD is not in this comparison because no case here can hold it: `decide` is the
+        # only place that hands it out, and `report` reaches `decide` only where the platform is not
+        # withdrawn. Moving that reading above the withdrawal reopens what this closes.
+        if theirs and all(case.verdict == COULD_NOT_COMPILE for case in theirs):
+            found.append((platform, theirs, reason))
+    return found
+
+
 def unsound_fixtures(control, reported):
     """Fixture -> the control case that says the base tree is answering about itself.
 
@@ -2059,6 +2077,9 @@ def report(cases, control, reported, canaries=None, wrote=True, unbuildable=None
     `blamed` is what `replan` withdrew on the editor's own error list between rounds, each with the
     detail it was withdrawn under, and it is read where `unbuildable` is: a compiler's reading of the
     same question the static one approximates, and outranked by `wrote` for the same reason.
+
+    A platform they covered every case of leaves the canary reading unread, and
+    `unvouched_excuses` is where it stands instead.
     """
     unsound = unsound_fixtures(control, reported)
     withdrawn = unsound_platforms(canaries or {}, reported)
@@ -2085,6 +2106,10 @@ def report(cases, control, reported, canaries=None, wrote=True, unbuildable=None
         else:
             case.verdict, case.detail = decide(case, outcome_for(case.key, reported),
                                                case.fixture in ran)
+    unvouched = unvouched_excuses(cases, withdrawn)
+    for _, excused, reason in unvouched:
+        for case in excused:
+            case.verdict, case.detail = BASE_UNSOUND, "{}, and {}".format(case.detail, reason)
     print("\n--- what the base said ---", flush=True)
     for case in cases:
         print("{:<32} {}  ({})".format(case.verdict, case.name, case.detail), flush=True)
@@ -2105,6 +2130,10 @@ def report(cases, control, reported, canaries=None, wrote=True, unbuildable=None
     if unbuilt:
         print("\n{} of {} case(s) sit in a fixture the base built none of, so the reading is that "
               "fixture's rather than each case's".format(len(unbuilt), len(cases)), flush=True)
+    for platform, excused, reason in unvouched:
+        print("\nnothing vouched for {}: all {} of its case(s) were excused rather than measured, "
+              "and\n{} -- so the excuses are this platform's whole reading and nothing there stands "
+              "behind them".format(platform, len(excused), reason), flush=True)
     offenders = [case for case in cases if case.verdict in FAILING_VERDICTS]
     # Split by whether a behavioural verdict exists, because one remedy does not cover both. Offering
     # a declaration where the run produced none sends the author to sharpen a case that may be perfectly
