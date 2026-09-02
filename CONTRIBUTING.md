@@ -594,11 +594,13 @@ them, and every entry has a case posing the shape it names.
 
 Reading a redirect on a heredoc opener's line, and anything after a `<<<` here-string, meant
 changing `mask_shell_literals`, which every caller of `command_segments` shares. What decided it was
-measured rather than judged: the change makes `log`, `push`, `status`, `merge` and `diff` newly
-visible and no guard reads any of them, while it corrects `git commit`'s operand list in all 55
-readings of it that move — today's masker appends the following command's tokens there, and the two
-verdicts that change on this project's transcripts both go from refusing to allowing, one of them a
-commit refused over an unexpanded operand belonging to the next command.
+measured on those transcripts rather than judged: over them the change makes `log`, `push`,
+`status`, `merge` and `diff` newly visible and none is in the set the guards read, while it corrects
+`git commit`'s operand list in all 55 readings of it that move — the masker before it appended the
+following command's tokens there, and the two verdicts that change both go from refusing to
+allowing, one of them a commit refused over an unexpanded operand belonging to the next command. A
+`git add` or a `git stash` written after an opener does become visible, and is refused correctly;
+what the corpus shows is that none occurs, not that none could.
 
 `edit_while_a_ready_pr_sits.py` reaches the verdict it reaches for an edit, for the shell writes it
 can place on a tracked file — an Edit of an untracked file is held and a redirect onto one is not.

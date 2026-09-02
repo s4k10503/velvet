@@ -58,6 +58,9 @@ def mask_shell_literals(command):
     out = list(command)
     i = 0
     n = len(command)
+    # Delimiters whose bodies start at the next newline. A list because `cat <<A <<B` opens two on
+    # one line, and the shell takes their bodies in the order they were written.
+    pending = []
     while i < n:
         ch = command[i]
         if ch in "'\"":
@@ -81,8 +84,8 @@ def mask_shell_literals(command):
         elif command.startswith("<<<", i):
             # A here-string is not a heredoc, and `<<` matches its first two characters. Read as one
             # it took `<word` for the delimiter, blanked the rest of the line hunting a body line
-            # equal to it, and never found one -- so every remaining line of the command went with
-            # it, and a guard reading the command saw nothing after the here-string at all.
+            # equal to it, and never found one -- so every line after the opener's own went with it,
+            # and a guard reading a command of more than one line saw none of the rest.
             out[i] = out[i + 1] = out[i + 2] = " "
             i += 3
         elif command.startswith("<<", i):
@@ -112,33 +115,38 @@ def mask_shell_literals(command):
             # this project's transcripts, that put the FOLLOWING command's tokens into `git commit`'s
             # operand list in 55 of 55 readings, and the three guards that read those operands took
             # an unexpanded one belonging to another command as the commit's own.
-            while i < n and command[i] != "\n":
-                i += 1
-            if i < n:
-                out[i] = "\n"
-                i += 1
-            while i < n:
-                line_start = i
-                line_end = command.find("\n", i)
-                if line_end == -1:
-                    line_end = n
-                line = command[line_start:line_end]
-                body = line.lstrip("\t") if strip_tabs else line
-                if body == delimiter:
+            #
+            # So the body waits here rather than being consumed now, and the loop goes on lexing.
+            # Skipping to the newline instead left the tail unlexed, and a `|` inside a quoted word
+            # there became a segment boundary -- which handed a guard the inside of an argument as
+            # a command to judge.
+            pending.append((delimiter, strip_tabs))
+        elif ch == "\n" and pending:
+            i += 1
+            for delimiter, strip_tabs in pending:
+                while i < n:
+                    line_start = i
+                    line_end = command.find("\n", i)
+                    if line_end == -1:
+                        line_end = n
+                    line = command[line_start:line_end]
+                    body = line.lstrip("\t") if strip_tabs else line
+                    if body == delimiter:
+                        for k in range(line_start, line_end):
+                            out[k] = " "
+                        if line_end < n:
+                            i = line_end + 1
+                        else:
+                            i = line_end
+                        break
                     for k in range(line_start, line_end):
                         out[k] = " "
                     if line_end < n:
+                        out[line_end] = " "
                         i = line_end + 1
                     else:
                         i = line_end
-                    break
-                for k in range(line_start, line_end):
-                    out[k] = " "
-                if line_end < n:
-                    out[line_end] = " "
-                    i = line_end + 1
-                else:
-                    i = line_end
+            pending = []
         else:
             i += 1
     return "".join(out)

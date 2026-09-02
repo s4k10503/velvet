@@ -68,6 +68,52 @@ class LeadingWordTests(unittest.TestCase):
         self.assertEqual(self.subcommands("echo 'if git commit --amend'"), [])
 
 
+class HeredocOpenerTailTests(unittest.TestCase):
+    """What follows a heredoc's delimiter on the opener's own line.
+
+    Blanking that region hid where the opening command's operands end, so a following command's
+    tokens landed in `git commit`'s. Skipping it instead left it unlexed, which is worse in the
+    other direction: a separator inside a quoted word became a segment boundary, and the inside of
+    an argument reached a guard as a command to judge.
+    """
+
+    def test_Given_ASeparatorInsideAQuotedWordOnTheOpenersLine_When_TheSegmentsAreRead_Then_ItIsNotABoundary(self):
+        # Arrange — a regular alternation, whose bar is a shell word rather than a pipe.
+        command = "cat <<'EOF' | grep -E \"^a|git add .|^b\"\nbody\nEOF\n"
+
+        # Act
+        found = shell_commands.command_segments(command)
+
+        # Assert — the argument stays whole, so nothing inside it is offered as a command.
+        self.assertIn('grep -E "^a|git add .|^b"', found)
+
+    def test_Given_AGitCallInsideAQuotedWordOnTheOpenersLine_When_TheInvocationsAreRead_Then_NothingIsSeen(self):
+        # Arrange / Act — the same text asked the way a guard asks it.
+        found = shell_commands.git_invocations(
+            "cat <<'EOF' | grep -E \"^a|git add .|^b\"\nbody\nEOF\n", ("add",))
+
+        # Assert
+        self.assertEqual(found, [])
+
+    def test_Given_ARedirectAfterTheDelimiter_When_TheSegmentsAreRead_Then_ItStaysWithTheOpener(self):
+        # Arrange / Act — the half blanking the tail used to cost, and the reason it was unblanked.
+        found = shell_commands.command_segments("cat <<'EOF' > notes.md\nbody\nEOF\n")
+
+        # Assert
+        self.assertIn("cat <<'EOF' > notes.md", found)
+
+    def test_Given_TwoHeredocsOpenedOnOneLine_When_TheSegmentsAreRead_Then_BothBodiesAreConsumed(self):
+        # Arrange — the shell takes the bodies in the order the delimiters were written, so a queue
+        # of one would leave the second body's text standing as shell.
+        command = "cat <<A <<B > notes.md\na1\nA\nb1\nB\n"
+
+        # Act
+        found = shell_commands.command_segments(command)
+
+        # Assert — the masked spans are what a caller drops; what must survive is the opener alone.
+        self.assertIn("cat <<A <<B > notes.md", found)
+
+
 class LoopHeadReaderTests(unittest.TestCase):
     """A guard whose subject is the keyword itself cannot read it through this table.
 

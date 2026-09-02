@@ -159,6 +159,22 @@ class ReadingTests(unittest.TestCase):
         # Assert
         self.assertEqual(found, [])
 
+    def test_Given_AnArrowInsideAShellComment_When_TheCommandIsRead_Then_NoFileIsNamed(self):
+        # Arrange / Act — `->` in a comment is not a redirect, and the name after it is not written.
+        # A refusal here names a file the command never touches, which its author cannot answer.
+        found = self.named("printf x > /tmp/out.txt  # rename: old.md -> notes.md")
+
+        # Assert — the scratch path the command does write, and nothing after the `#`.
+        self.assertEqual(found, ["/tmp/out.txt"])
+
+    def test_Given_AQuotedSeparatorOnAHeredocOpenersLine_When_TheCommandIsRead_Then_TheRedirectIsRead(self):
+        # Arrange / Act — the bar belongs to a regular alternation. Read as a pipe it split the
+        # line, and the redirect after it landed in a segment of its own with the operator gone.
+        found = self.named("cat <<'EOF' | grep -E \"^a|^b\" > notes.md\nbody\nEOF\n")
+
+        # Assert
+        self.assertEqual(found, [self.under("notes.md")])
+
     def test_Given_ARedirectAfterAHeredocOpener_When_TheCommandIsRead_Then_ThatFileIsNamed(self):
         # Arrange / Act — the opener's line carries the redirect, and the mask used to blank that
         # line from the delimiter on. This is how a session writes a file from the shell.
@@ -218,9 +234,10 @@ class ReadingTests(unittest.TestCase):
         self.assertEqual(found, [])
 
     def test_Given_AWriterReachedThroughAnotherProgram_When_TheCommandIsRead_Then_ItIsNotNamed(self):
-        # Arrange / Act — the segment's leading program is `xargs`, so the shared parser claims no
-        # `sed` here. A declared gap; enumerating wrappers is what this reading declines to do.
-        found = self.named("echo notes.md | xargs sed -i '' -e s/a/b/")
+        # Arrange / Act — the path is an operand of the `sed`, so only the wrapper in front of it
+        # keeps this out of the reading. Written with the path upstream of a pipe instead, the case
+        # passes whether or not the wrapper is read, which is no case at all.
+        found = self.named("xargs sed -i '' -e s/a/b/ notes.md")
 
         # Assert
         self.assertEqual(found, [])

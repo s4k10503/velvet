@@ -15,13 +15,15 @@ That makes the reading an under-approximation, and a refusal built on it has to 
 imply coverage: `UNREAD` is the list of what it gives up and `LIMITS` the sentence built from it,
 owned here so two guards cannot state it two ways.
 
-Two shapes that were on that list are now read instead, and closing them meant changing
-`mask_shell_literals`, which every caller of `command_segments` shares. What decided it was that no
-guard reads any of the git subcommands the change makes newly visible -- they are `log`, `push`,
-`status`, `merge` and `diff`, against a guarded set of `add`, `checkout`, `commit`, `stage`, `stash`
-and `switch` -- while the change corrects `git commit`'s operand list in every reading of it that
-moves. The two verdicts that move on this project's transcripts both move from refusal to allowing,
-one of them a commit refused over an unexpanded operand belonging to the command after it.
+One shape that was on that list is now read instead, along with a here-string that never reached
+it, and closing them meant changing `mask_shell_literals`, which every caller of `command_segments`
+shares. What decided it was measured on this project's transcripts rather than argued: over those,
+the git subcommands the change makes newly visible are `log`, `push`, `status`, `merge` and `diff`,
+and none is in the guarded set of `add`, `checkout`, `commit`, `stage`, `stash` and `switch` -- a
+`git add` or a `git stash` written there does become visible and is refused, correctly, but none
+occurs. Against that, the change corrects `git commit`'s operand list in every reading of it that
+moves, and the two verdicts that move both move from refusal to allowing, one of them a commit
+refused over an unexpanded operand belonging to the command after it.
 
 `tee` is the obvious fourth shape and is not read: two independent readings of those transcripts put
 it at no tracked file at all. Nor is `git mv`, which wants a criterion of its own rather than another
@@ -106,11 +108,17 @@ def _redirect_targets(segment):
     # trailing `>`, so a `make >& log`, which does write the file, is missed rather than refused --
     # the direction an under-approximation is allowed to be wrong in. A quoted `&` is not a
     # separator and does survive into a segment, which changes none of the above: it is blanked in
-    # the mask this scans.
+    # the mask this scans -- which holds because the opener's tail is lexed rather than skipped.
     masked = mask_shell_literals(segment)
     found = []
     index = 0
     while index < len(masked):
+        # A `#` opening a word comments out the rest of the line, and an arrow in one -- `notes.md
+        # -> CONTRIBUTING.md` -- is otherwise read as a redirect onto the name after it. That is the
+        # refusal this reading calls unanswerable: the command writes nothing for its author to
+        # point at. A quoted `#` is blanked in the mask and does not reach here.
+        if masked[index] == "#" and (index == 0 or masked[index - 1] in " \t"):
+            break
         if masked[index] != ">" or (index and masked[index - 1] in "<>"):
             index += 1
             continue
