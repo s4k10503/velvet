@@ -57,6 +57,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   above gives, and so do the ones behind `divide-*` colours, `clip-path` radius keywords, `animate-*`
   transition slots and the structural variants — each already answered every named member as it does now.
 
+- `V.Portal(layer:)` refuses a `UILayer` value naming no member of the enum at construction, with an
+  `ArgumentOutOfRangeException` that names the parameter and carries the value. Such a value used to
+  build a node, and what reported it was the layer offset switch's own exception from the deferred host
+  mount after the pass, whose message named neither `V.Portal`, `UILayer` nor the parameter, with the
+  portal absent and its siblings rendered.
+
 - `StyleVariantClass.BreakpointPx` and `StyleVariantClass.IsResponsive` throw for a `StyleVariantKind`
   value naming no member of the enum, where they returned `0f` and `false`. Both have done so since
   2.0.1.
