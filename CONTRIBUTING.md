@@ -406,12 +406,13 @@ costs; `--warm-library` copies an existing `Library` into it, sharing blocks whe
 `Test ▸ base-red` runs the C# lane where one is configured, in at most four rounds where the local run
 goes to a fixed point: a base that cannot build one carried file writes no results for anything, so
 the workflow withdraws what the static comparison above proves before its first round, and what each
-round's own editor log blames before the next — every carried file the compiler named, at once, and
-where a blamed file is already the base's text, the carried files holding no case beside it. Both
-flows withdraw by that one rule. A file the log blames that the branch did not carry is the base
-failing to build itself, and no further round is spent on it. A last round that still writes nothing
-measured nothing, fails, and prints the local command. Run it locally on a branch whose tests are the
-point.
+round's own editor log blames before the next — every carried file the compiler named, put back to
+the base's text at once, and one it names again at that text taken out of the tree, since its cases
+already read as unbuildable and putting back what it failed against would cost every file still
+building against the branch's text its reading. Both flows withdraw by that one rule. A file the log
+blames that the branch did not carry is the base failing to build itself, and neither flow spends a
+further round on it. A last round that still writes nothing measured nothing, fails, and prints the
+local command. Run it locally on a branch whose tests are the point.
 `scripts/test_quality/test_base_red_check.py` holds the reader against every test file in this
 repository and runs in `Test ▸ test-quality`.
 

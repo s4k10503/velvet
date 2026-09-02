@@ -746,31 +746,6 @@ class NeighbourDuringTheRunTests(unittest.TestCase):
         self.assertEqual(len(self.reading()), 2)
 
 
-class StandingStillTests(unittest.TestCase):
-    """A loop that asks the same question three rounds running has stopped, not slowed."""
-
-    def test_Given_TheFixedPoint_When_ItIsReported_Then_ItSaysTheRoundsAskedTheSameThing(self):
-        # Arrange
-        said = base_red_check.standing_still_reason("EditMode", 8, 23)
-
-        # Act / Assert
-        self.assertIn("same 23 fixture(s) 3 rounds running", said)
-
-    def test_Given_TheFixedPoint_When_ItIsReported_Then_ItSaysItIsNotABudget(self):
-        # Arrange -- the remedy for a budget is a bigger one, and giving it here spends the rest of
-        # --max-rounds to reach the same place.
-        said = base_red_check.standing_still_reason("PlayMode", 4, 9)
-
-        # Act / Assert
-        self.assertIn("fixed point rather than a budget", said)
-
-    def test_Given_TheThreshold_When_ItIsRead_Then_TwoRoundsAreNotEnough(self):
-        # Arrange -- a withdrawal can take a file holding no case, and the round after it is the one
-        # that moves. Two says nothing; three is the same question asked three times.
-        # Act / Assert
-        self.assertEqual(base_red_check.STILL_ROUNDS, 3)
-
-
 class ExhaustedLoopTests(unittest.TestCase):
     """What the withdrawing loop says when it runs out of rounds having compiled nothing.
 
@@ -3230,10 +3205,9 @@ class InstrumentTests(unittest.TestCase):
 
 
 class WithdrawalPolicyTests(unittest.TestCase):
-    """Which carried files go back when a round of the base run wrote nothing."""
+    """Which carried files go back, and which come out, when a round of the base run wrote nothing."""
 
     HELPER = "Packages/p/TestUtilities/PanelTestBase.cs"
-    ASMDEF = "Packages/p/TestUtilities/P.TestUtilities.asmdef"
     FIXTURE = "Packages/p/Runtime/A/Tests/Editor/ProbeTests.cs"
     OTHER = "Packages/p/Runtime/A/Tests/Editor/OtherTests.cs"
 
@@ -3245,83 +3219,116 @@ class WithdrawalPolicyTests(unittest.TestCase):
         # Arrange -- the compiler named each for its own text, so neither is standing next to the
         # other the way a silent file is.
         # Act
-        chosen = base_red_check.withdrawals_for(
+        restore, _ = base_red_check.withdrawals_for(
             self.log(self.FIXTURE, self.OTHER), carry=[self.FIXTURE, self.OTHER, self.HELPER],
-            already=set(), caseless=[self.HELPER])
+            already=set())
 
         # Assert
-        self.assertEqual(chosen, [self.FIXTURE, self.OTHER])
+        self.assertEqual(restore, [self.FIXTURE, self.OTHER])
 
     def test_Given_TheLogBlamesACarriedHelper_When_TheRoundIsPlanned_Then_TheHelperGoesBack(self):
         # Arrange -- the helper holds no case, so a choice made over case-bearing files alone cannot
         # name it, and every fixture in its assembly is silent behind it.
         # Act
-        chosen = base_red_check.withdrawals_for(
-            self.log(self.HELPER), carry=[self.HELPER, self.FIXTURE], already=set(),
-            caseless=[self.HELPER])
+        restore, _ = base_red_check.withdrawals_for(
+            self.log(self.HELPER), carry=[self.HELPER, self.FIXTURE], already=set())
 
         # Assert
-        self.assertEqual(chosen, [self.HELPER])
+        self.assertEqual(restore, [self.HELPER])
 
-    def test_Given_ABlamedFileAlreadyAtTheBasesText_When_TheRoundIsPlanned_Then_TheCaselessFilesGoBackWithIt(self):
-        # Arrange -- the base's own text of it failed, so what did not build is something else the
-        # branch carried and the compiler has no case-bearing file to name it by.
+    def test_Given_ABlamedFileAlreadyAtTheBasesText_When_TheRoundIsPlanned_Then_ItComesOutRatherThanGoingBackAgain(self):
+        # Arrange -- the base's own text of it failed against what the branch still carries, and its
+        # cases already read as unbuildable; putting back what it failed against would cost every
+        # file building against the branch's text its reading, for a file no round asks about.
         # Act
-        chosen = base_red_check.withdrawals_for(
-            self.log(self.FIXTURE), carry=[self.FIXTURE, self.HELPER, self.ASMDEF, self.OTHER],
-            already={self.FIXTURE}, caseless=[self.HELPER, self.ASMDEF])
+        restore, take_out = base_red_check.withdrawals_for(
+            self.log(self.FIXTURE), carry=[self.FIXTURE, self.HELPER, self.OTHER],
+            already={self.FIXTURE})
 
         # Assert
-        self.assertEqual(chosen, [self.HELPER, self.ASMDEF])
+        self.assertEqual((restore, take_out), ([], [self.FIXTURE]))
 
     def test_Given_ABlamedFileTheBranchDidNotCarry_When_TheRoundIsPlanned_Then_NothingGoesBack(self):
         # Arrange -- the base's own source; putting a carried file back does not reach it.
         # Act
         chosen = base_red_check.withdrawals_for(
-            self.log("Packages/p/Runtime/A/Status.cs"), carry=[self.FIXTURE], already=set(),
-            caseless=[])
+            self.log("Packages/p/Runtime/A/Status.cs"), carry=[self.FIXTURE], already=set())
 
         # Assert
-        self.assertEqual(chosen, [])
+        self.assertEqual(chosen, ([], []))
 
-    def test_Given_AHelperAlreadyWithdrawn_When_ARepeatIsPlanned_Then_ItIsNotChosenAgain(self):
-        # Arrange -- choosing it twice is a round that changes nothing, and there are only so many.
+
+class LocalLoopTests(unittest.TestCase):
+    """The withdrawing loop itself, with the editor replaced by what its log would say.
+
+    `main` is driven the way the command line drives it, over a repository whose base holds a
+    fixture the branch changed; `run_unity` writes the log the case describes and no results.
+    """
+
+    ENUM = "Packages/p/Runtime/A/Status.cs"
+    FIXTURE = "Packages/p/Runtime/A/Tests/Editor/ProbeTests.cs"
+    CANARY = "Packages/p/Runtime/A/Tests/Editor/CanaryTests.cs"
+
+    def fixture(self, name, body):
+        return ("namespace N\n{\n    class " + name + "\n    {\n        [Test]\n"
+                "        public void Given_A_When_B_Then_C() => " + body + ";\n    }\n}\n")
+
+    def loop(self, log_for):
+        """(what the loop printed, the tree's state each round as `log_for` saw it) over a branch that
+        changed ProbeTests, with the editor writing `log_for(tree, attempt)` and no results."""
+        base = {self.ENUM: "enum Status { Idle }\n",
+                self.CANARY: self.fixture("CanaryTests", "Assert.Pass()"),
+                self.FIXTURE: self.fixture("ProbeTests", "Assert.Pass()")}
+        branch = dict(base, **{self.FIXTURE: self.fixture("ProbeTests", "Assert.That(1, Is.EqualTo(1))")})
+        root, since = two_commit_repo(self, base, branch)
+        rounds = []
+
+        def fake_run_unity(unity, tree, platform, fixtures, results, log, timeout):
+            rounds.append((tree / self.FIXTURE).exists())
+            Path(log).write_text(log_for(tree, len(rounds)))
+            return 1.0, 0
+
+        held = io.StringIO()
+        argv, run_unity, wait = sys.argv, base_red_check.run_unity, base_red_check.wait_for_quiet
+        sys.argv = ["base_red_check.py", "--project", str(root), "--base", since, "--lane", "csharp",
+                    "--platform", "EditMode", "--output", str(root / "out"), "--max-rounds", "4"]
+        base_red_check.run_unity, base_red_check.wait_for_quiet = fake_run_unity, lambda seconds: True
+        try:
+            with contextlib.redirect_stdout(held):
+                base_red_check.main()
+        finally:
+            sys.argv, base_red_check.run_unity, base_red_check.wait_for_quiet = argv, run_unity, wait
+        return held.getvalue(), rounds
+
+    def test_Given_TheLogBlamesTheBasesOwnFile_When_TheLoopRuns_Then_ItStopsAfterOneRoundAndSaysSo(self):
+        # Arrange -- a round spent withdrawing a silent file cannot reach a base that does not build
+        # its own sources, and the budget is not what binds there.
         # Act
-        chosen = base_red_check.withdrawals_for(
-            self.log(self.FIXTURE), carry=[self.FIXTURE, self.HELPER], already={self.FIXTURE, self.HELPER},
-            caseless=[self.HELPER])
+        printed, rounds = self.loop(lambda tree, attempt: "Scripts have compiler errors\n"
+                                    + self.ENUM + "(1,1): error CS0103: x\n")
 
         # Assert
-        self.assertEqual(chosen, [])
+        self.assertEqual((len(rounds), "the base's own" in printed), (1, True))
 
+    def test_Given_TheLogBlamesTheSameFileAtTheBasesText_When_TheLoopRuns_Then_TheFileComesOut(self):
+        # Arrange -- round one puts ProbeTests back to the base's text; round two blames it again,
+        # so round three runs without it rather than with the branch's helpers put back.
+        # Act
+        _, rounds = self.loop(lambda tree, attempt: "Scripts have compiler errors\n"
+                              + self.FIXTURE + "(1,1): error CS1929: x\n")
 
-class CaselessFilesTests(unittest.TestCase):
-    """The carried files a fixture compiles beside and no case names."""
+        # Assert -- present in rounds one and two, gone by the round after the second blame.
+        self.assertEqual(rounds[:3], [True, True, False])
 
-    def files(self):
-        root = Path(tempfile.mkdtemp(prefix="base-red-caseless-"))
-        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
-        held = {"Packages/p/TestUtilities/Helper.cs": "static class Helper {}\n",
-                "Packages/p/TestUtilities/P.TestUtilities.asmdef": "{}\n",
-                "Packages/p/Runtime/A/Tests/Editor/Stubs.cs": "class Stubs {}\n",
-                "Packages/p/Runtime/A/Tests/Editor/ProbeTests.cs":
-                    "namespace N\n{\n    class ProbeTests\n    {\n        [Test]\n"
-                    "        public void Given_A_When_B_Then_C() => Assert.Pass();\n    }\n}\n",
-                "scripts/test_thing.py": "def test_Given_A_When_B_Then_C():\n    pass\n"}
-        for relative, text in held.items():
-            (root / relative).parent.mkdir(parents=True, exist_ok=True)
-            (root / relative).write_text(text)
-        return root, sorted(held)
+    def test_Given_ALogNamingNothing_When_TheLoopRuns_Then_ItWithdrawsOneSilentFileAndAsksAgain(self):
+        # Arrange -- a round the log does not explain: the silent file goes back to the base's text
+        # on its own, one per round, and the round after it finds nothing left to ask. Without the
+        # fallback the loop ends on the first round.
+        # Act
+        _, rounds = self.loop(lambda tree, attempt: "Aborting batchmode due to failure:\n")
 
-    def test_Given_HelpersStubsAndAFixture_When_TheCarriedSetIsRead_Then_OnlyTheFixtureIsLeftOut(self):
-        # Arrange -- a Python module is the other lane's and no C# round withdraws it.
-        root, carry = self.files()
-
-        # Act / Assert
-        self.assertEqual(base_red_check.caseless_files(root, carry),
-                         ["Packages/p/Runtime/A/Tests/Editor/Stubs.cs",
-                          "Packages/p/TestUtilities/Helper.cs",
-                          "Packages/p/TestUtilities/P.TestUtilities.asmdef"])
+        # Assert
+        self.assertEqual(len(rounds), 2)
 
 
 class UnmeasuredRunTests(unittest.TestCase):
@@ -4305,9 +4312,10 @@ class ReplanTests(unittest.TestCase):
         # Assert
         self.assertEqual(self.asked(printed), [])
 
-    def test_Given_ABlamedFileAlreadyAtTheBasesText_When_Replanned_Then_TheCarriedHelperGoesBackWithIt(self):
-        # Arrange -- the first round blamed ProbeTests and it went back; the base's own text of it
-        # then failed, so what did not build is the helper the branch carried beside it.
+    def blamed_again(self):
+        """(the repository, the base tree, the carried helper) after a round blamed ProbeTests at the
+        base's text: the first round put it back, and its base text then failed against the helper
+        the branch carries beside it."""
         root, tree = self.emitted()
         helper = "Packages/p/TestUtilities/Helper.cs"
         (root / helper).parent.mkdir(parents=True, exist_ok=True)
@@ -4323,13 +4331,32 @@ class ReplanTests(unittest.TestCase):
         results = root / "results"
         results.mkdir()
         (results / "editmode.log").write_text(self.BLAMED + "(6,9): error CS1929: x\n")
-
-        # Act
         with contextlib.redirect_stdout(io.StringIO()):
             base_red_check.replan(root, root / "plan.json", results, tree)
+        return root, tree, helper
+
+    def test_Given_ABlamedFileAlreadyAtTheBasesText_When_Replanned_Then_ItComesOutOfTheTree(self):
+        # Act
+        _, tree, _ = self.blamed_again()
 
         # Assert
-        self.assertFalse((tree / helper).exists())
+        self.assertFalse((tree / self.BLAMED).exists())
+
+    def test_Given_ABlamedFileAlreadyAtTheBasesText_When_Replanned_Then_TheCarriedHelperStays(self):
+        # Arrange -- the helper is what the file's base text failed against, and what every file
+        # still building holds its reading through.
+        # Act
+        _, tree, helper = self.blamed_again()
+
+        # Assert
+        self.assertTrue((tree / helper).exists())
+
+    def test_Given_ABlamedFileAlreadyAtTheBasesText_When_Replanned_Then_TheReadingRecordsTheRemoval(self):
+        # Act
+        root, _, _ = self.blamed_again()
+
+        # Assert
+        self.assertEqual(sorted(json.loads((root / "plan.json").read_text())["removed"]), [self.BLAMED])
 
     def test_Given_TheFlag_When_ItIsInvoked_Then_ItRunsTheReplan(self):
         # Arrange -- the one case that goes through the command line, since the rest reach the
@@ -4349,8 +4376,7 @@ class ReplanTests(unittest.TestCase):
         self.assertEqual((printed.returncode, "N.OtherTests" in printed.stdout), (0, True))
 
     def test_Given_ARoundIsPrepared_When_Replanned_Then_TheResultsItReadAreMovedAside(self):
-        # Arrange -- the next round writes where the verdict reads, and this round's log is what a
-        # reader of the job wants kept.
+        # Arrange -- the next round writes where the verdict reads.
         # Act
         root, _, _ = self.replanned(self.BLAMED + "(6,9): error CS0012: x\n")
 

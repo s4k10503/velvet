@@ -285,11 +285,14 @@ jobs:
   # Four rounds at most, where the local harness runs to a fixed point. A base that cannot build one
   # carried file writes no results for anything, so the `read` step withdraws what it can prove
   # branch-only before the first round. What that reading cannot prove, a round's own editor log
-  # names, and each round after the first is the action below: it withdraws every carried file the
-  # compiler blamed and asks again without them. Three of them, since the compiler reports a layer
-  # at a time — measured on the branch replacing UniTask, the base compiled on the fourth. A last
-  # round that still writes nothing measured nothing and fails here — `base_red_check.py` run
-  # locally is the sharper reading of the same branch, and the refusal names that command.
+  # names, and each round after the first is the action below: it puts every carried file the
+  # compiler blamed back to the base's text, takes out one it blames again at that text, and asks
+  # again. Each put-back can uncover the next round's failures — a file at the base's text fails
+  # against what the branch still carries, a sibling that built against the branch's text of it
+  # fails against the base's — which is what the rounds after the first are for; measured on the
+  # branch replacing UniTask, the base compiled on the third. A last round that still
+  # writes nothing measured nothing and fails here — `base_red_check.py` run locally is the sharper
+  # reading of the same branch, and the refusal names that command.
   # ---------------------------------------------------------------------------
   base-red:
     name: Base-red check (${{ matrix.testMode }})

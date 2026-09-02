@@ -57,9 +57,9 @@ That withdrawal is a static approximation of what a compiler would say, so it do
 round it stands beside: one that wrote no results file takes its platform down, withdrawals
 included. What the comparison cannot reach -- a signature the branch changed under a name both
 trees spell -- a round's own log does: `replan` withdraws every carried file the compiler blamed,
-at once, and the runner asks the base again without them, up to three times. A last round that
-still writes nothing measured nothing, which fails, and the refusal names the loop that separates
-it.
+at once, takes out one it blames again at the base's text, and the runner asks the base again, up
+to three times. A last round that still writes nothing measured nothing, which fails, and the
+refusal names the loop that separates it.
 
 *A case that stopped before it disagreed answered nothing.* Red on the base means the base ran the
 case and the case said no. Except for the statically proven branch-only surface above, a case that
@@ -893,6 +893,14 @@ def withdraw(base_tree, relative):
             target.unlink()
 
 
+def remove(base_tree, relative):
+    """Takes one carried file out of the base tree altogether, its meta with it."""
+    for name in (relative, relative + ".meta"):
+        target = base_tree / name
+        if target.exists():
+            target.unlink()
+
+
 # --------------------------------------------------------------------------------------------------
 # Running
 # --------------------------------------------------------------------------------------------------
@@ -945,37 +953,32 @@ def compile_error_files(log_text):
     return named
 
 
-def caseless_files(project, carry):
-    """The carried files holding no case: the helpers, stubs and assembly definitions a fixture compiles beside."""
-    found = []
-    for relative in sorted(carry):
-        if kind_of(relative) == "python":
-            continue
-        if relative.endswith(".cs") and csharp_cases(
-                (project / relative).read_text(encoding="utf-8", errors="replace"), relative):
-            continue
-        found.append(relative)
-    return found
-
-
-def withdrawals_for(log_text, carry, already, caseless):
-    """Which carried files to put back before the base is asked again, off a round that wrote nothing.
+def withdrawals_for(log_text, carry, already):
+    """(the carried files to put back to the base's text, the ones to take out of the tree) before
+    the base is asked again, off a round that wrote nothing.
 
     Every carried file the log blames, at once: the compiler named each of them for its own text, so
     none is merely standing next to the offender the way a silent file is. One it blames that is
-    already the base's text failed against something else the branch carried -- the helper it calls,
-    the assembly definition it compiles under -- and those hold no case to be blamed under, so the
-    carried files holding no case come out with it.
-
-    Every carried file is a candidate, not only the ones holding cases. This repository's conventions
-    put a second fixture's shared reach into TestUtilities, that compiles into the same assembly as
-    the fixtures, and one the base cannot build takes every one of them down with it.
+    already the base's text failed against something else the branch carried, and its cases already
+    read as unbuildable, so taking it out of the tree costs nothing further -- where putting back
+    what it failed against would cost every file that builds against the branch's text of that its
+    reading, for the sake of a file no round asks about.
     """
     blamed = [name for name in compile_error_files(log_text) if name in carry]
-    chosen = [name for name in blamed if name not in already]
-    if any(name in already for name in blamed):
-        chosen += [name for name in caseless if name not in already and name not in chosen]
-    return chosen
+    return ([name for name in blamed if name not in already],
+            [name for name in blamed if name in already])
+
+
+def bases_own_reason(outside, blamed, removed):
+    """What to say where the compiler blamed a file the branch did not carry."""
+    said = ("  {} of the {} file(s) the compiler blamed are the base's own, so another round would "
+            "not build\n  either:\n{}".format(
+                len(outside), len(blamed), "\n".join("    " + name for name in outside)))
+    if removed:
+        said += ("\n  {} carried file(s) came out of the tree in earlier rounds, and a file of the "
+                 "base's failing\n  after that may be missing what they declared:\n{}".format(
+                     len(removed), "\n".join("    " + name for name in sorted(removed))))
+    return said
 
 
 def run_unity(unity, tree, platform, fixtures, results, log, timeout):
@@ -1967,37 +1970,34 @@ def replan(project, plan_path, results, base_tree):
     carry = carried_files(project, plan["since"])
     outside = [name for name in blamed if name not in carry]
     if outside:
-        print("  {} of the {} file(s) the compiler blamed are the base's own, so another round would "
-              "not build\n  either:\n{}".format(
-                  len(outside), len(blamed), "\n".join("    " + name for name in outside)),
-              flush=True)
+        print(bases_own_reason(outside, blamed, plan.get("removed", {})), flush=True)
         return 0
     already = set(plan.get("withdrawn", {})) | set(plan.get("blamed", {}))
-    chosen = withdrawals_for(log_text, carry, already, caseless_files(project, carry))
-    if not chosen:
-        print("  every file the compiler blamed is already the base's text, and nothing carried is\n"
-              "  left to put back beside it, so another round would ask what this one did", flush=True)
-        return 0
+    restore, take_out = withdrawals_for(log_text, carry, already)
     rounds = plan.get("rounds", 1)
     codes = {}
     for relative, code in compile_errors_in(log_text):
         codes.setdefault(relative, code)
-    for relative in chosen:
+    for relative in restore:
         withdraw(base_tree, relative)
-        detail = ("the compiler blamed it ({}) in round {}".format(codes[relative], rounds)
-                  if relative in codes else
-                  "put back in round {} with the files the compiler blamed".format(rounds))
+        detail = "the compiler blamed it ({}) in round {}".format(codes[relative], rounds)
         plan.setdefault("blamed", {})[relative] = detail
         print("  withdrawn: {} -- {}".format(relative, detail), flush=True)
-    plan["rounds"] = rounds + 1
-    plan_path.write_text(json.dumps(plan, indent=2))
-    shutil.move(str(results), str(Path(results).with_name(Path(results).name + ".round{}".format(rounds))))
-    out = set(plan.get("withdrawn", {})) | set(plan["blamed"])
+    for relative in take_out:
+        remove(base_tree, relative)
+        detail = ("its base text did not build beside what the branch carried, so it came out in "
+                  "round {}".format(rounds))
+        plan.setdefault("removed", {})[relative] = detail
+        print("  removed: {} -- {}".format(relative, detail), flush=True)
+    out = set(plan.get("withdrawn", {})) | set(plan.get("blamed", {})) | set(plan.get("removed", {}))
     wanted = {entry["fixture"] for entry in plan["cases"] + plan["control"]
               if kind_of(entry["path"]) == "csharp" and entry["path"] not in out
               and platform_of(entry["path"]) in plan["canaries"]}
     for chosen_canaries in plan["canaries"].values():
         wanted.update(chosen_canaries)
+    plan["rounds"] = rounds + 1
+    plan_path.write_text(json.dumps(plan, indent=2))
+    shutil.move(str(results), str(Path(results).with_name(Path(results).name + ".round{}".format(rounds))))
     print("fixtures={}".format(";".join(sorted(wanted))), flush=True)
     return 0
 
@@ -2125,20 +2125,6 @@ def local_remedy(since, cases):
                 "".join(" --platform " + platform for platform in platforms), since or "origin/main"))
 
 
-# How many rounds of no progress are a fixed point rather than a slow one. Two says nothing -- a
-# withdrawal can take a file with no cases and the next round is the one that moves -- and three is
-# where the loop has asked the same question three times running.
-STILL_ROUNDS = 3
-
-
-def standing_still_reason(platform, attempt, fixtures):
-    """What to print where the loop has stopped moving rather than run out of budget."""
-    return ("\n{} asked the same {} fixture(s) {} rounds running and measured nothing each time.\n"
-            "Withdrawing is taking files that hold no case, so the next round is the one before it:\n"
-            "this is a fixed point rather than a budget. Spending the rest of --max-rounds would\n"
-            "report the cap instead of this.".format(platform, fixtures, STILL_ROUNDS))
-
-
 def exhausted_reason(spent, withdrawn, carried):
     """What a loop that ran out of rounds without ever compiling the base has to say for itself.
 
@@ -2158,7 +2144,7 @@ def exhausted_reason(spent, withdrawn, carried):
         put_back += "\n    and {} more".format(more)
     return ("\n{} round(s) compiled nothing, having put {} of the {} carried file(s) back to what the\n"
             "base holds. A round withdraws every file the editor blamed, and the next sees what those\n"
-            "were hiding, so the rounds a change needs is how deep that goes:\n"
+            "put-backs uncovered, so the rounds a change needs is how deep that goes:\n"
             "  --max-rounds {}\n"
             "{}".format(spent, len(withdrawn), carried, spent * 2, put_back if withdrawn else ""))
 
@@ -2302,8 +2288,9 @@ def main():
             print(unbuilt_reason(Path(args.project).resolve(), plan.get("since"),
                                  log_text_beside(args.results)), flush=True)
             if plan.get("rounds", 1) > 1:
-                print("That was round {}; the rounds before it put back {} carried file(s), and the "
-                      "base still did\nnot build.".format(plan["rounds"], len(plan.get("blamed", {}))),
+                print("That was round {}; the rounds before it put back {} carried file(s) and took {} "
+                      "out, and the\nbase still did not build.".format(
+                          plan["rounds"], len(plan.get("blamed", {})), len(plan.get("removed", {}))),
                       flush=True)
         return 1 if report(from_plan(plan["cases"]), from_plan(plan["control"]), reported,
                            plan["canaries"], wrote, plan.get("withdrawn"),
@@ -2394,6 +2381,7 @@ def main():
     ever_wrote = not any(kind_of(case.path) == "csharp" for case in cases)
     rounds_spent = 0
     put_back = set()
+    removed = set()
     try:
         print("  building the base tree at {}".format(base_tree), flush=True)
         build_base_tree(project, since, base_tree, carry, drop, args.warm_library)
@@ -2417,19 +2405,12 @@ def main():
         if platforms and not wait_for_quiet(args.busy_timeout):
             raise SystemExit("another Unity test run is still in flight")
         canaries.update(canaries_for(base_tree, cases, carry, platforms))
-        caseless = caseless_files(project, carry)
         for platform in platforms:
             # Accumulated across platforms, unlike `withdrawn`: what the message below is evidence
             # for is that the base built none of the carried set, which both lanes are asking about.
             wanted = [case for case in cases + control
                       if kind_of(case.path) == "csharp" and platform_of(case.path) == platform]
             withdrawn = set()
-            # A round that measures nothing and leaves the fixture count where it was is the loop
-            # standing still: it withdrew a file with no cases in it, so the next round asks exactly
-            # what this one did. Measured on the branch replacing UniTask: EditMode stopped
-            # withdrawing after round 1 and repeated the same round seven more times, four seconds
-            # each, and the run then reported the round cap rather than the fixed point.
-            standing_still, last_count = 0, None
             for attempt in range(1, args.max_rounds + 1):
                 rounds_spent = max(rounds_spent, attempt)
                 put_back |= withdrawn
@@ -2454,25 +2435,34 @@ def main():
                     "" if not neighbours else
                     "; {} other editor(s) were up".format(neighbours)), flush=True)
 
-                standing_still = standing_still + 1 if not seen and len(fixtures) == last_count else 0
-                last_count = len(fixtures)
-                if standing_still >= STILL_ROUNDS:
-                    print(standing_still_reason(platform, attempt, len(fixtures)), flush=True)
-                    break
-
                 ran = fixtures_that_ran(seen)
                 silent = sorted({case.path for case in live if case.fixture not in ran})
-                if not silent:
+                # A round that wrote nothing has not read the canaries either, so it goes on
+                # withdrawing after the last live case is out: what the tree then answers is that
+                # the withdrawn files are unbuildable there, rather than that nothing was measured.
+                if wrote and not silent:
                     break
+                log_text = log.read_text(errors="replace") if log.exists() else ""
+                blamed = compile_error_files(log_text)
+                outside = [name for name in blamed if name not in carry]
+                if outside:
+                    print(bases_own_reason(outside, blamed, removed), flush=True)
+                    break
+                restore, take_out = withdrawals_for(log_text, carry, withdrawn)
                 # A round the log does not explain says only that something the tree holds did not
                 # build, never which file, so the silent ones come out one per round: taking them
                 # all would take out the files merely standing next to the offender and leave their
                 # cases unmeasured behind somebody else's error.
-                chosen = withdrawals_for(log.read_text(errors="replace") if log.exists() else "",
-                                         carry, withdrawn, caseless) or silent[:1]
-                for offender in chosen:
+                if not restore and not take_out:
+                    if not silent:
+                        break
+                    restore = silent[:1]
+                for offender in restore:
                     withdraw(base_tree, offender)
                     withdrawn.add(offender)
+                for offender in take_out:
+                    remove(base_tree, offender)
+                    removed.add(offender)
     finally:
         if holder is not None:
             git(project, "worktree", "remove", "--force", str(base_tree), check=False)
