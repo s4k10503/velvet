@@ -678,12 +678,13 @@ namespace Velvet
         internal VNode?[]? PreviousTree { get; set; }
 
         /// <summary>
-        /// The <see cref="ComponentNode"/> occurrence in the parent's committed tree this fiber currently
-        /// answers for. Written on every <c>ComponentRegistry.GetOrCreate</c> that reaches the fiber, beside
-        /// <see cref="Body"/>, so it names an occurrence of the same render that fixed the parent's
-        /// <see cref="PreviousTree"/>. <see cref="FiberContextSpine"/> reads it while descending that tree to
-        /// tell apart two positions whose registry keys differ only in the container, which the descent has
-        /// no reading of.
+        /// The <see cref="ComponentNode"/> occurrence this fiber currently answers for: written on every
+        /// <c>ComponentRegistry.GetOrCreate</c> that reaches the fiber, beside <see cref="Body"/>, so it
+        /// names an occurrence of the most recent render to reach it. That is what makes it comparable
+        /// against an ancestor's <see cref="PreviousTree"/>, which the same render fixed, and NOT against an
+        /// array captured at an earlier render and not rewritten since. <see cref="FiberContextSpine"/>
+        /// compares it on the first of those to tell apart two positions whose registry keys differ only in
+        /// the container; its <c>SpineWalk</c> owns which descent is which.
         /// </summary>
         internal ComponentNode? SourceNode { get; set; }
 

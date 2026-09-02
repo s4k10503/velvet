@@ -59,9 +59,17 @@ namespace Velvet
             // Both are therefore constants of one edge rather than readings of where the descent has
             // got to, so the key resolves SpineChild at every container holding the same position and
             // cannot say which of them the walk is in. MatchesInlineSpineChild separates them by the
-            // node instead.
+            // node instead, where WalksCommittedTree says that node can be compared. Two occurrences a
+            // declaring body builds from one shared node instance are one node, so those stay
+            // unseparated and the walk still takes the first.
             internal VisualElement? PortalScope { get; init; }
             internal VisualElement? Container { get; init; }
+
+            // Whether the nodes being walked are Ancestor's current PreviousTree. False for a detached
+            // mount's captured DescendantNodes, which is stamped onto a fiber only on the drain that
+            // created it — so after the declaring body renders again that array still holds the nodes
+            // of the render that captured it, which ComponentFiber.SourceNode no longer names.
+            internal bool WalksCommittedTree { get; init; }
         }
 
         // Pushes the Provider values that enclose target onto the live cursor and
@@ -142,6 +150,7 @@ namespace Velvet
                             IsInlineSpineChild = true,
                             PortalScope = detachedScope,
                             Container = detachedContainer,
+                            WalksCommittedTree = false,
                         };
                         PushEnclosingProviders(
                             detached.DescendantNodes, FiberKeying.WalkRoot, in detachedWalk);
@@ -166,6 +175,7 @@ namespace Velvet
                     IsInlineSpineChild = isInline,
                     PortalScope = childScope,
                     Container = childContainer,
+                    WalksCommittedTree = true,
                 };
                 PushEnclosingProviders(tree, FiberKeying.WalkRoot, in walk);
             }
@@ -347,7 +357,7 @@ namespace Velvet
             int nodeIndex,
             in SpineWalk walk)
         {
-            if (!ReferenceEquals(component, walk.SpineChild.SourceNode)) return false;
+            if (walk.WalksCommittedTree && !ReferenceEquals(component, walk.SpineChild.SourceNode)) return false;
             var registry = walk.Registry;
             var identity = component.ResolvedIdentity;
             var slotKey = component.Key ?? FiberKeying.ResolveInlinePositionKey(

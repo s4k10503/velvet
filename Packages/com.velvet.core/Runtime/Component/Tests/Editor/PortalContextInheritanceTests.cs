@@ -42,6 +42,7 @@ namespace Velvet.Tests
 
         private static string s_lastSeen;
         private static StateUpdater<int> s_setCount;
+        private static StateUpdater<int> s_setHostTick;
 
         [Test]
         public void Given_ProviderAbovePortal_When_ChildMounts_Then_ReadsProvidedValue()
@@ -80,6 +81,39 @@ namespace Velvet.Tests
             // Assert: the spine rebuilds the enclosing Provider for the isolated re-render.
             Assert.That(s_lastSeen, Is.EqualTo("provided"),
                 "An isolated re-render of a portal child reconstructs the context enclosing the Portal's tree position");
+        }
+
+        // The Provider sits INSIDE the Portal's children, which is the layer the enclosing snapshot does
+        // not carry — FiberContextSpine recovers it by walking DetachedMountContext.DescendantNodes. The
+        // host re-renders between the mount and the child's own setState: a drain stamps only the fibers
+        // it newly created, so a child that survives that re-render keeps the DescendantNodes captured at
+        // its mount while the declaring body's next render builds fresh nodes for the same positions.
+        // GREEN_ON_BASE(characterization): the base reads the in-portal Provider here and this must keep
+        // it. The node comparison this change adds is what an ungated form breaks: it would weigh a node
+        // the drain stamped once against a record every patch rewrites, and read the context default
+        // from the declaring component's second render onward.
+        [Test]
+        public void Given_AProviderInsideThePortal_When_TheHostReRendersAndThenTheChildReRendersAlone_Then_ItStillReadsTheInPortalValue()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(InPortalProviderHostRender, key: "host"));
+            var atMount = s_lastSeen;
+            s_setHostTick.Invoke(1);
+            mounted.FlushStateForTest();
+            var afterHostRender = s_lastSeen;
+
+            // Act
+            s_lastSeen = null;
+            s_setCount.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert — the two earlier readings are folded in because they are what put a wrong value
+            // below on the isolated re-render rather than on the mount or on the host's own pass; and the
+            // field is cleared first so a consumer that did not re-render at all reads as null rather
+            // than as the value its previous render left.
+            Assert.That(
+                (atMount, afterHostRender, s_lastSeen),
+                Is.EqualTo(("inside", "inside", "inside")));
         }
 
         [Test]
@@ -153,6 +187,26 @@ namespace Velvet.Tests
                     V.Component(RerenderConsumerRender, key: "consumer"),
                 }),
             });
+
+        // A tick the host renders is what makes its re-render build a fresh tree rather than bail, so the
+        // portal's children on the second pass are new node instances at the same positions.
+        [Component]
+        private static VNode InPortalProviderHostRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setHostTick = setTick;
+            return V.Div(name: "shell", children: new VNode?[]
+            {
+                V.Label(name: "tick", text: tick.ToString()),
+                V.Portal("ctx-portal-target", children: new VNode?[]
+                {
+                    V.Provider(ThemeContext, "inside", new VNode[]
+                    {
+                        V.Component(RerenderConsumerRender, key: "consumer"),
+                    }),
+                }),
+            });
+        }
 
         [Component]
         private static VNode RerenderMotionConsumerRender()
