@@ -678,6 +678,16 @@ namespace Velvet
         internal VNode?[]? PreviousTree { get; set; }
 
         /// <summary>
+        /// The <see cref="ComponentNode"/> occurrence in the parent's committed tree this fiber currently
+        /// answers for. Written on every <c>ComponentRegistry.GetOrCreate</c> that reaches the fiber, beside
+        /// <see cref="Body"/>, so it names an occurrence of the same render that fixed the parent's
+        /// <see cref="PreviousTree"/>. <see cref="FiberContextSpine"/> reads it while descending that tree to
+        /// tell apart two positions whose registry keys differ only in the container, which the descent has
+        /// no reading of.
+        /// </summary>
+        internal ComponentNode? SourceNode { get; set; }
+
+        /// <summary>
         /// Set where <c>FiberErrorBoundary.TryShowFallback</c> writes the fallback over
         /// <see cref="PreviousTree"/>, cleared at the top of every <c>FiberRenderer.RenderAndReconcile</c>
         /// for this fiber. What it answers that the reconciler's own abort flag cannot is which fiber the

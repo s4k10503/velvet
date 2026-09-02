@@ -352,6 +352,7 @@ namespace Velvet
             fiber.DetachedMountContext = null;
 
             fiber.PreviousTree = null;
+            fiber.SourceNode = null;
             fiber.Reconciler?.Context.ParkedBaselineFibers.Remove(fiber);
             // Detach the parked baseline BEFORE the sweep — the mark treats owner.PendingOldTree as
             // live, and a still-attached reference would spare this very sweep's target.

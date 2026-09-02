@@ -156,6 +156,7 @@ namespace Velvet
             // V.Component<TProps> overload allocates a fresh closure each render that captures
             // the latest props; sync Body so the next render sees the current values.
             existingFiber.Body = node.Body;
+            existingFiber.SourceNode = node;
             // Only a memoized component bails a parent-driven re-render on
             // shallow-equal props. A plain component re-renders whenever its parent does, so the
             // props-equality bail is gated on opt-in memoization. Memoization is opted into either by
@@ -218,6 +219,9 @@ namespace Velvet
             _ctx.FiberStack.Current?.AppendChild(fiber);
             fiber.ExternalRef = node.ExternalRef;
             fiber.Props = node.Props;
+            // Written before the mount: the FiberSuspendSignal arm below registers the fiber and
+            // rethrows, so a write placed after the try would not run for it.
+            fiber.SourceNode = node;
 
             try
             {

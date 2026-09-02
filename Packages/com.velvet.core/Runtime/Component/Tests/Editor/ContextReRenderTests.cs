@@ -22,6 +22,8 @@ namespace Velvet.Tests
     /// default rather than throwing or reading a stale value.</item>
     /// <item>When a Provider value changes, a consumer that reads it via UseContext re-renders and observes
     /// the new value — including when the consumer sits behind a memoized subtree.</item>
+    /// <item>A consumer that re-renders on its own setState AFTER such a change reads the value the
+    /// Provider holds then, not the one it held when the consumer mounted.</item>
     /// <item>A plain (non-memoized) sibling re-renders because its parent re-rendered, since the
     /// props-equality bail is an opt-in gate a plain sibling does not have; a memoized sibling that does not
     /// read the context with unchanged props is neither re-rendered by the props bail nor spuriously
@@ -32,7 +34,7 @@ namespace Velvet.Tests
     /// Uses the <c>[Component] static VNode</c> + <c>V.Mount</c> + static-field exposure pattern. Each
     /// isolated-re-render consumer exposes a local-state bumper that triggers an isolated re-render and
     /// records the value it last read from context. The live-tracking parents each expose a setter over the
-    /// Provider value itself; four parent variants exist and each test mounts exactly one, so sharing the
+    /// Provider value itself; five parent variants exist and each test mounts exactly one, so sharing the
     /// <c>Action&lt;string&gt;</c> setter across parents is safe. Static fields are reset in <see cref="SetUp"/>.
     /// </remarks>
     [TestFixture]
@@ -290,6 +292,48 @@ namespace Velvet.Tests
             // Assert
             Assert.That(s_nonConsumerRenderCount, Is.EqualTo(nonConsumerRenderCountAtStart + 1),
                 "A plain sibling re-renders because its parent re-rendered, lacking the opt-in props bail");
+        }
+
+        // The consumer's own setState is taken AFTER the Provider's value has moved, so the spine rebuilds
+        // the enclosing Providers once more with nothing having changed since. A rebuild that read a copy
+        // of the enclosing values taken when the consumer mounted would answer with the mount-time value
+        // here; reading the ancestor's committed tree answers with the value it holds now.
+        // GREEN_ON_BASE(characterization): the base reads that committed tree already and answers
+        // "changed". What the case pins is what a mount-time snapshot of the enclosing Providers would
+        // cost, which the change keeps by going on reading the tree.
+        [Test]
+        public void Given_AProviderValueChangedAfterMount_When_TheConsumerReRendersOnItsOwnSetState_Then_ItReadsTheChangedValue()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(SettableProviderSelfBumpingHostRender, key: "host"));
+            var atMount = s_consumerLastSeen;
+            s_parentSetValue.Invoke("changed");
+            mounted.FlushStateForTest();
+            var afterChange = s_consumerLastSeen;
+            var rendersBeforeBump = s_consumerRenderCount;
+
+            // Act
+            s_consumerBump.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert — the two earlier readings are folded in because "changed" below is vacuous without
+            // them: it is also what a Provider that never moved off that value would report. The render
+            // count is folded in on the other side, because a consumer that did not re-render on its own
+            // setState would still be holding the value its last render read.
+            Assert.That(
+                (atMount, afterChange, s_consumerLastSeen, s_consumerRenderCount > rendersBeforeBump),
+                Is.EqualTo(("initial", "changed", "changed", true)));
+        }
+
+        [Component]
+        private static VNode SettableProviderSelfBumpingHostRender()
+        {
+            var (value, setValue) = Hooks.UseState("initial");
+            s_parentSetValue = setValue;
+            return V.Provider(ThemeContext, value, new VNode[]
+            {
+                V.Component(SelfBumpingConsumerRender, key: "consumer"),
+            });
         }
 
         [Test]

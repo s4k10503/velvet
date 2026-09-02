@@ -57,18 +57,9 @@ namespace Velvet
             // The Portal scope and container members of SpineChild's own registration key, read back
             // from the registry rather than derived here — ComponentRegistry.TryGetInlineKey owns why.
             // Both are therefore constants of one edge rather than readings of where the descent has
-            // got to, and Container being one is a known hole rather than a closed question: two
-            // containers holding the same position resolve the same fiber, so the match below fires at
-            // whichever the committed tree reaches first and the Providers pushed are that one's — a
-            // stranger's value where that container carries one, and none at all where it does not, so
-            // an instance can equally lose the Provider it is written inside. MotionContext.ActiveLabel
-            // is pushed through the same mechanism by PushMotionSubtree, so a descendant of the second
-            // of two sibling Motions animates to the first one's label. All three readings are pinned
-            // in ComponentContainerIdentityTests. Closing it by making this a reading of the descent needs
-            // the container it is currently inside, which means resolving each element node to the
-            // element it committed — the emitted-leaf coordinate GeneralPathReconciler.CommitLeaf owns,
-            // reproduced in a second walker that FiberKeying's header requires to stay in lockstep with
-            // the first.
+            // got to, so the key resolves SpineChild at every container holding the same position and
+            // cannot say which of them the walk is in. MatchesInlineSpineChild separates them by the
+            // node instead.
             internal VisualElement? PortalScope { get; init; }
             internal VisualElement? Container { get; init; }
         }
@@ -356,6 +347,7 @@ namespace Velvet
             int nodeIndex,
             in SpineWalk walk)
         {
+            if (!ReferenceEquals(component, walk.SpineChild.SourceNode)) return false;
             var registry = walk.Registry;
             var identity = component.ResolvedIdentity;
             var slotKey = component.Key ?? FiberKeying.ResolveInlinePositionKey(

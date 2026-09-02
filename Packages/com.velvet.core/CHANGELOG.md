@@ -67,6 +67,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A component's own re-render now reads the Providers of the container it is written into. Two sibling
+  containers each holding the same component at the same position already mounted two instances, but
+  the walk that rebuilds a consumer's enclosing Providers for a re-render the consumer scheduled itself
+  looked every candidate up under that consumer's own container — so each container holding the
+  position answered, and the walk took the first. The instance in the second container read the first
+  container's value where the two Providers carried one context, and the context default where they
+  carried different ones, which is an instance losing the Provider it is written inside. A `V.Motion`'s
+  active label reaches a descendant through the same walk, so a descendant of the second of two sibling
+  Motions read the first one's label. A candidate is now matched against the node the instance
+  last rendered from as well as against its key; a declaring body that writes the component into each
+  container gives the two positions separate nodes, which is what tells them apart.
+
 - An `IRouteScopeFactory.CreateScope` that throws no longer takes the reconcile with it. The scope's
   *disposal* was already contained; its creation was not, at any of the three sites that ask for one —
   so an application whose factory failed on a route change lost the render as well as the scope. The

@@ -27,13 +27,12 @@ namespace Velvet.Tests
     /// fresh instance behind there and runs the departing instance's cleanup.</item>
     /// <item>A container returned to the primitive-element pool and rented again carries no registry entry
     /// into its next use.</item>
-    /// <item>What the separation does NOT reach: where two instances also share a position key, an
-    /// instance's own isolated re-render reads the Providers of whichever container the committed tree
-    /// reaches first, because the spine that rebuilds its context cannot tell the containers apart. That
-    /// is a value from elsewhere where the two Providers carry the same context, and the context default
-    /// where the other container's carries a different one — so an instance can lose the Provider it is
-    /// written inside. A <c>V.Motion</c>'s active label travels the same path and reads the same way. All
-    /// three are pinned here.</item>
+    /// <item>Where two instances also share a position key, an instance's own isolated re-render reads
+    /// the Providers of the container it is written into rather than of whichever the committed tree
+    /// reaches first — both where the two containers' Providers carry one context, and where they
+    /// carry different ones, which is an instance keeping the Provider it is inside rather than
+    /// acquiring a stranger's. A <c>V.Motion</c>'s active label travels the same path and reads the
+    /// same way. All three are pinned here.</item>
     /// </list>
     /// <see cref="PortalChildFiberContinuityTests"/> owns the portal-scope member of the same key, and
     /// holds the shape where a shared container leaves that member the only thing separating two
@@ -314,15 +313,13 @@ namespace Velvet.Tests
                 }),
             });
 
-        // The separation this fixture pins reaches the reconcile and not the context spine, and the "L" in
-        // the expectation below is that gap rather than the value this position should read. The spine
-        // searches an ancestor's committed tree for the fiber it is re-rendering and resolves each
-        // candidate under that fiber's own container, so both containers answer and it stops at the first
-        // — FiberContextSpine's SpineWalk owns what closing it would cost. Whichever container the
-        // committed tree reaches first is the one whose Providers every instance of that position then
-        // reads; the instances are still separate, which is what the left container's own value says.
+        // The separation reaches the context spine as well as the reconcile: the spine searches an
+        // ancestor's committed tree for the fiber it is re-rendering and resolves each candidate under
+        // that fiber's own container, so both containers answer the key — and the node each instance
+        // answers for is what tells the two apart. Without that the walk stops at the first container
+        // and every instance of this position reads its Providers.
         [Test]
-        public void Given_TwoContainersEachWithItsOwnProvider_When_TheSecondInstanceReRendersAlone_Then_ItReadsTheFirstContainersProvider()
+        public void Given_TwoContainersEachWithItsOwnProvider_When_TheSecondInstanceReRendersAlone_Then_ItReadsItsOwnContainersProvider()
         {
             // Arrange
             var container = new VisualElement();
@@ -338,21 +335,21 @@ namespace Velvet.Tests
             s_setters[0].Invoke(5);
             _mounted.FlushStateForTest();
 
-            // Assert — the mount reading is folded in rather than assumed, because it is what says the
-            // wrong value below belongs to the spine rather than to the walk that commits these two; and
-            // the first container's own re-render, because it reads correctly either way and a single
-            // shared instance would leave it at its mount text instead of carrying 5.
+            // Assert — the mount reading is folded in rather than assumed, because it is what puts the
+            // value below on the spine rather than on the walk that commits these two; and the first
+            // container's own value, because a single instance answering for both would leave one of the
+            // two at its mount text.
             Assert.That(
                 (atMount.Item1, atMount.Item2, TextIn(left), TextIn(right)),
-                Is.EqualTo(("L:0", "R:0", "L:5", "L:7")));
+                Is.EqualTo(("L:0", "R:0", "L:5", "R:7")));
         }
 
         // The mirror of the case above: the two Providers carry DIFFERENT contexts, so the first
-        // container's supplies nothing the second container's instance reads. That instance is inside the
-        // Theme Provider and reads it at mount, and reads the context default once it re-renders alone.
-        // Both Providers sit at one position, which is what leaves the first container's instance
-        // answering to the second's key; a Provider only one of them carried would put the two instances
-        // at positions that no longer collide, and the spine would reach the right one.
+        // container's supplies nothing the second container's instance reads, and reaching the first
+        // container costs that instance the Provider it is written inside rather than handing it a
+        // stranger's value. Both Providers sit at one position, which is what makes the first
+        // container's instance answer to the second's key; a Provider only one of them carried would
+        // put the two instances at positions that no longer collide.
         [Component]
         private static VNode ProvidersOfTwoContextsPerContainerHost()
             => V.Div(name: "shell", children: new VNode?[]
@@ -367,11 +364,8 @@ namespace Velvet.Tests
                 }),
             });
 
-        // GREEN_ON_BASE(characterization): the base reads the same here, since its position key collides
-        // for two components at one index of two containers whether or not a Provider encloses them. This
-        // shape is what keeps the reading once the key stops colliding on the Provider level alone.
         [Test]
-        public void Given_TwoContainersWhoseProvidersCarryDifferentContexts_When_TheSecondInstanceReRendersAlone_Then_ItReadsTheContextDefault()
+        public void Given_TwoContainersWhoseProvidersCarryDifferentContexts_When_TheSecondInstanceReRendersAlone_Then_ItKeepsTheProviderItIsInside()
         {
             // Arrange
             var container = new VisualElement();
@@ -388,17 +382,17 @@ namespace Velvet.Tests
             _mounted.FlushStateForTest();
 
             // Assert — the mount reading is folded in because reading "R" there is what makes the value
-            // below a loss rather than a position that never had a Provider, and the first container's own
-            // value because a single instance answering for both would leave it at its mount text.
+            // below a Provider kept rather than a position that never had one, and the first container's
+            // own value because a single instance answering for both would leave one of the two at its
+            // mount text.
             Assert.That(
                 (atMount.Item1, atMount.Item2, TextIn(left), TextIn(right)),
-                Is.EqualTo(("default:0", "R:0", "default:5", "default:6")));
+                Is.EqualTo(("default:0", "R:0", "default:5", "R:6")));
         }
 
         // MotionContext.ActiveLabel reaches a descendant as a Provider does — FiberContextSpine's
         // PushMotionSubtree re-pushes it for an isolated re-render — so a Motion container is the same
-        // shape as the two above with the label in place of the context value, and the consequence is
-        // visible rather than only readable: the descendant animates to the wrong label.
+        // shape as the two above with the label in place of the context value.
         [Component]
         private static VNode LabelReader()
         {
@@ -417,7 +411,7 @@ namespace Velvet.Tests
             });
 
         [Test]
-        public void Given_TwoSiblingMotionContainersWithDifferentLabels_When_TheSecondsDescendantReRendersAlone_Then_ItReadsTheFirstsLabel()
+        public void Given_TwoSiblingMotionContainersWithDifferentLabels_When_TheSecondsDescendantReRendersAlone_Then_ItReadsItsOwnMotionsLabel()
         {
             // Arrange
             var container = new VisualElement();
@@ -434,11 +428,12 @@ namespace Velvet.Tests
             _mounted.FlushStateForTest();
 
             // Assert — the mount reading is folded in because reading "beta" there is what makes the value
-            // below the wrong label rather than one this position never had, and the first container's own
-            // value because a single instance answering for both would leave it at its mount text.
+            // below a label kept rather than one this position never had, and the first container's own
+            // value because a single instance answering for both would leave one of the two at its mount
+            // text.
             Assert.That(
                 (atMount.Item1, atMount.Item2, TextIn(left), TextIn(right)),
-                Is.EqualTo(("alpha:0", "beta:0", "alpha:5", "alpha:7")));
+                Is.EqualTo(("alpha:0", "beta:0", "alpha:5", "beta:7")));
         }
 
         // The occupant emits no poolable primitive of its own, so the only element this shape returns to
