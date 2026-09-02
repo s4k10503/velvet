@@ -329,8 +329,8 @@ def block(lines, index):
 
 def files_as_published(lines, index, copy, where):
     """Whether the note goes on filing each line under the heading that published it: the put-back
-    under the heading the copy files it under, and, where the put-back is itself a heading, nothing
-    but what the copy publishes under that name.
+    under the heading the copy files it under, and, where the put-back is itself a heading, at least
+    one line and none whose published name it changes.
 
     The order readings admit both `## [1.4.0]`'s repair -- a heading put back above the entry the
     copy ends its block with, against a base that merged the two blocks -- and an entry put back
@@ -340,15 +340,21 @@ def files_as_published(lines, index, copy, where):
 
     A heading put back under one of the same name leaves what it comes to file reading as it did, so
     a line the section gained after its release does not stand in the way of it, as it does not of
-    `touching`. And a heading coming to file fewer lines than the copy files under it passes, since
-    a section short of a whole block takes the heading back before its entries.
+    `touching`. A heading that comes to file nothing is refused ahead of both, since the note would
+    then carry the name with no entry beneath it. Three repairs that might have wanted it were
+    measured and all pass without it: a block restored whole, a heading put back over entries the
+    base already carries, and a heading with the first of its entries. That last one files fewer
+    lines than the copy does, which stays allowed.
     """
     if not release_notes.SUBSECTION_HEADING.match(lines[index]):
         return under(lines, index) == under(copy, where)
+    comes = list(block(lines, index))
+    if not comes:
+        return False
     if under(lines, index) == lines[index]:
         return True
     filed = {one for at, one in enumerate(copy) if under(copy, at) == copy[where]}
-    return all(one in filed for one in block(lines, index))
+    return all(one in filed for one in comes)
 
 
 def in_its_place(lines, index, copy):
