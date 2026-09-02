@@ -59,7 +59,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `V.Portal(layer:)` refuses a `UILayer` value naming no member of the enum at construction, with an
   `ArgumentOutOfRangeException` that names the parameter and carries the value. 2.1.4 answered such a
-  value by rendering the portal on the `Overlay` host without a word.
+  value with a host of its own at the `Overlay` sorting offset, without a word.
 
 - `StyleVariantClass.BreakpointPx` and `StyleVariantClass.IsResponsive` throw for a `StyleVariantKind`
   value naming no member of the enum, where they returned `0f` and `false`. Both have done so since
