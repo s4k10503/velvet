@@ -680,6 +680,9 @@ def shared_material_differs(relative, before, after):
     A line reading is not enough on its own: git describes a reorder as one block deleted and
     re-added, so the lines between two swapped cases read as changed while every one of them is the
     base's own text. Compared as a multiset, a reorder is no difference and an added row is.
+
+    Read with the comments blanked, as `authored` reads a case: a remark rewritten above a helper is
+    not what any case's run decides on, and counting it put every case in the file on trial for it.
     """
     if before is None:
         return True
@@ -691,7 +694,7 @@ def shared_material_differs(relative, before, after):
         inside = set()
         for case in found:
             inside |= set(range(case.first_line, case.last_line + 1))
-        return sorted(line.strip() for number, line in enumerate(text.splitlines(), 1)
+        return sorted(line.strip() for number, line in enumerate(outside_comments(relative, text), 1)
                       if number not in inside and line.strip())
 
     return shared(before) != shared(after)

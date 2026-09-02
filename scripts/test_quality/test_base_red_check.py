@@ -4113,5 +4113,45 @@ class RepositoryTests(unittest.TestCase):
         self.assertEqual([name for name, (wrote, carries) in uneven if wrote != carries], [])
 
 
+class SharedMaterialTests(unittest.TestCase):
+    """What the cases share -- everything outside every case body -- read the way a case is read."""
+
+    FIXTURE = "Packages/p/Runtime/A/Tests/Editor/ProbeTests.cs"
+
+    def text(self, remark, helper):
+        return ("namespace N\n{\n    class ProbeTests\n    {\n"
+                "        /// <summary>" + remark + "</summary>\n"
+                "        static int Helper() => " + helper + ";\n\n"
+                "        [Test]\n        public void Given_A_When_B_Then_C() => Assert.That(Helper(), Is.EqualTo(1));\n"
+                "    }\n}\n")
+
+    def test_Given_ARemarkRewrittenAboveAHelper_When_TheSharedMaterialIsRead_Then_ItIsTheBases(self):
+        # Arrange -- a comment is not what any case's run decides on, outside a case as inside one.
+        # Act / Assert
+        self.assertFalse(base_red_check.shared_material_differs(
+            self.FIXTURE, self.text("what it was", "1"), self.text("what it is", "1")))
+
+    def test_Given_AHelpersCodeChanged_When_TheSharedMaterialIsRead_Then_ItIsTheBranchs(self):
+        # Act / Assert
+        self.assertTrue(base_red_check.shared_material_differs(
+            self.FIXTURE, self.text("the same", "1"), self.text("the same", "2")))
+
+    def test_Given_ARemarkRewrittenAboveAHelper_When_ThePlanIsTaken_Then_TheFilesCasesAreNotInIt(self):
+        # Arrange -- the whole reading, since a plan that holds every case of a fixture for a
+        # remark is what put twenty-six cases on trial on the branch that measured this.
+        root, since = two_commit_repo(
+            self, {self.FIXTURE: self.text("what it was", "1")},
+            {self.FIXTURE: self.text("what it is", "1")})
+
+        # Act
+        printed = subprocess.run(
+            [sys.executable, str(REPO_ROOT / "scripts/test_quality/base_red_check.py"),
+             "--project", str(root), "--base", since, "--lane", "csharp", "--plan"],
+            capture_output=True, text=True).stdout
+
+        # Assert
+        self.assertNotIn("N.ProbeTests.Given_A_When_B_Then_C", printed)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
