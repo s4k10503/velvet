@@ -527,12 +527,15 @@ class TagCommitTests(unittest.TestCase):
         # tag object where it expects a commit gets a different answer per tag kind.
         path, head = self.repository()
         git(path, "tag", "-a", "v9.9.9-main", "-m", "annotated")
+        kind = subprocess.run(["git", "-C", str(path), "cat-file", "-t", "v9.9.9-main"],
+                              capture_output=True, text=True).stdout.strip()
 
         # Act
         named = published_check.remote_tag_shas(path)["v9.9.9-main"]
 
-        # Assert
-        self.assertEqual(named, head)
+        # Assert -- the tag's kind rides along, because a lightweight one names the commit itself
+        # and reaches this outcome with the peeled line never read.
+        self.assertEqual((kind, named), ("tag", head))
 
 
 if __name__ == "__main__":

@@ -400,13 +400,17 @@ class SinceTheLastRelease(ReleaseHistory):
         # which the one-step reading of the breaking section does not watch, then closed past.
         root, commits = self.history(WITH_ENTRY, RECLASSIFIED, OPEN, MAJOR_OVER_NOTHING,
                                      tags={0: RELEASE})
+        dropped = "edit around" not in subprocess.run(
+            ["git", "-C", str(root), "show", f"{commits[2]}:{CHANGELOG}"],
+            capture_output=True, text=True).stdout
 
         # Act
         drop = run(root, commits[1], "[]", result=commits[2])
         close = run(root, commits[2], "[]", body="A major.")
 
-        # Assert
-        self.assertEqual((drop.returncode, close.returncode), (0, UNNAMED))
+        # Assert -- the drop rides along: kept anywhere in the file, the entry reaches the same
+        # refusal, and what this pins is that leaving the file is not what the one-step reading sees.
+        self.assertEqual((dropped, drop.returncode, close.returncode), (True, 0, UNNAMED))
 
     def test_Given_AMajorCarryingTheSection_When_ItCloses_Then_ThePassSaysWhatItReadBackTo(self):
         # Arrange -- the entry the release's copy holds is in the major being closed.
@@ -504,13 +508,15 @@ class ATagWhoseCommitIsNotHere(ReleaseHistory):
         (root / CHANGELOG).write_text(OPEN.replace("- A release.\n", "- A release.\n- A patch.\n"))
         git(root, "commit", "--quiet", "-am", "a patch on the line")
         git(root, "tag", "v2.1.4-main")
+        lined = subprocess.run(["git", "-C", str(root), "rev-parse", "HEAD"],
+                               capture_output=True, text=True).stdout.strip()
         git(root, "checkout", "--quiet", "main")
         clone = Path(tempfile.mkdtemp()) / "clone"
         self.addCleanup(shutil.rmtree, clone.parent, ignore_errors=True)
         subprocess.run(["git", "clone", "--quiet", "--no-local", "--no-tags", "--single-branch",
                         "--branch", "main", str(root), str(clone)], check=True, capture_output=True)
-        absent = subprocess.run(["git", "-C", str(clone), "rev-parse", "--verify", "--quiet",
-                                 "v2.1.4-main^{commit}"], capture_output=True).returncode != 0
+        absent = subprocess.run(["git", "-C", str(clone), "cat-file", "-e", lined],
+                                capture_output=True).returncode != 0
 
         # Act
         done = run(clone, commits[0], "[]")
