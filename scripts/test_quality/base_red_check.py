@@ -57,8 +57,8 @@ That withdrawal is a static approximation of what a compiler would say, so it do
 round it stands beside: one that wrote no results file takes its platform down, withdrawals
 included. What the comparison cannot reach -- a signature the branch changed under a name both
 trees spell -- a round's own log does: `replan` withdraws every carried file the compiler blamed,
-at once, takes out one it blames again at the base's text, and the runner asks the base again, up
-to three times. A last round that still writes nothing measured nothing, which fails, and the
+at once, takes out the ones it blames again at the base's text, and the runner asks the base
+again, up to three times. A last round that still writes nothing measured nothing, which fails, and the
 refusal names the loop that separates it.
 
 *A case that stopped before it disagreed answered nothing.* Red on the base means the base ran the
@@ -2158,9 +2158,11 @@ def exhausted_reason(spent, withdrawn, carried, removed=()):
         named += "\n    and {} more".format(more)
     # The floor is one more than the carried count, and the one-a-round regime is why. A round the
     # log explains nothing about withdraws one silent file, so a run of those spends a round per
-    # carried file and then needs one more to ask the tree it has finally emptied. A round the log
-    # does explain withdraws every file it blamed, so what that regime needs is how deep the
-    # put-backs go, which the multiplier guesses at; the floor is exact and the multiplier is not.
+    # file that still holds a live case and then needs one more to ask the tree it has emptied. That
+    # is at most the carried count, which also counts the other platform's files, the Python lane's
+    # and the helpers -- so the floor is an upper bound rather than the number, and over-advising
+    # costs nothing: the loop breaks as soon as nothing is left to ask. What the other regime needs
+    # is how deep the put-backs go, and the multiplier only guesses at that.
     return ("\n{} round(s) compiled nothing, having withdrawn {} of the {} carried file(s){}.\n"
             "A round withdraws every file the editor blamed, or one it named nothing about,\n"
             "so the rounds a change needs is how deep the put-backs go:\n"
@@ -2278,7 +2280,7 @@ def main():
     parser.add_argument("--max-rounds", type=int, default=8,
                         help="rounds to ask the base in before the C# lane gives up (default: 8). "
                              "A round withdraws every file the editor blamed, or one it named "
-                             "nothing about, or takes out one it blamed again, so this is a "
+                             "nothing about, or takes out the ones it blamed again, so this is "
                              "count of rounds rather than of files")
     parser.add_argument("--plan", action="store_true", help="print the cases and exit without running")
     parser.add_argument("--emit", help="build the base tree, write the reading here and stop, for a "
@@ -2311,17 +2313,20 @@ def main():
         reported, wrote = results_from(args.results)
         if not wrote:
             print("the base run wrote no result, so nothing it was asked was measured", flush=True)
+            # Every withdrawal the reading holds, static and per-round alike: a file the last round
+            # blames that an earlier one already put back is not the reader's to withdraw again.
+            stood = set(plan.get("withdrawn") or ()) | set(plan.get("blamed", {}))
             print(unbuilt_reason(Path(args.project).resolve(), plan.get("since"),
-                                 log_text_beside(args.results), plan.get("withdrawn") or (),
+                                 log_text_beside(args.results), stood,
                                  plan.get("removed", {})), flush=True)
             if plan.get("rounds", 1) > 1:
-                # One count of files with a share of it named apart, for the reason `exhausted_reason`
-                # reads the same way: a file `replan` put back and a later round took out is in both
-                # records and is one file, and the run did withdraw it.
+                # The files the rounds touched, with the share taken out named apart. A file in both
+                # records is one file, and `replan` reaches a removal from the static withdrawal as
+                # well as from its own, so the union is what "of them" can be said of.
+                touched = set(plan.get("blamed", {})) | set(plan.get("removed", {}))
                 print("That was round {}; the rounds before it withdrew {} carried file(s), {} of them "
                       "taken out\nof the tree, and the base still did not build.".format(
-                          plan["rounds"], len(plan.get("blamed", {})),
-                          len(plan.get("removed", {}))),
+                          plan["rounds"], len(touched), len(plan.get("removed", {}))),
                       flush=True)
         return 1 if report(from_plan(plan["cases"]), from_plan(plan["control"]), reported,
                            plan["canaries"], wrote, plan.get("withdrawn"),

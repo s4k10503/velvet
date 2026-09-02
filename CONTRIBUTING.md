@@ -403,12 +403,13 @@ The base tree is a checkout the machine has never imported, and that import is m
 costs; `--warm-library` copies an existing `Library` into it, sharing blocks where the filesystem will.
 
 `Test ▸ base-red-python` runs the Python lane on every pull request and needs no licence.
-`Test ▸ base-red` runs the C# lane where one is configured, in at most four rounds where the local run
-takes `--max-rounds` of them: a base that cannot build one carried file writes no results for anything, so
+`Test ▸ base-red` runs the C# lane where one is configured, in at most four rounds where the local
+run takes up to `--max-rounds` of them: a base that cannot build one carried file writes no results
+for anything, so
 the workflow withdraws what the static comparison above proves before its first round, and what each
 round's own editor log blames before the next — every carried file the compiler named, put back to
-the base's text at once, and one it names again at that text taken out of the tree, since its cases
-already read as unbuildable and putting back what it failed against would cost every file still
+the base's text at once, and the ones it names again at that text taken out of the tree, since
+their cases already read as unbuildable and putting back what it failed against would cost every file still
 building against the branch's text its reading. Both flows withdraw by that rule, and the local loop
 alone keeps a second for a round whose log names nothing: one silent file at a time, which it says
 as it goes rather than making it the case's verdict. A file the log

@@ -798,13 +798,23 @@ class ExhaustedLoopTests(unittest.TestCase):
 
     def test_Given_MoreCarriedFilesThanTheMultiplierReaches_When_TheReasonIsBuilt_Then_TheFloorClearsTheCarriedCount(self):
         # Arrange -- a run whose rounds the log explains nothing about withdraws one silent file each,
-        # so it spends a round per carried file and then needs one more to ask the tree it has
-        # emptied. Advice equal to the carried count sends the reader back for the same message.
+        # so it spends a round per file holding a live case and then needs one more to ask the tree
+        # it has emptied. Advice equal to the carried count sends the reader back for the same
+        # message; the count is the bound on those files, so one past it is the advice that reaches.
         # Act
         said = base_red_check.exhausted_reason(1, {"a.cs"}, 5)
 
         # Assert
         self.assertIn("--max-rounds 6", said)
+
+    def test_Given_ARunThatSpentMoreThanTheCarriedCount_When_TheReasonIsBuilt_Then_TheMultiplierCarriesTheAdvice(self):
+        # Arrange -- past the floor the advice is the multiplier's, and how deep a round's put-backs
+        # go is what it guesses at; the branch halved it once with nothing going red.
+        # Act
+        said = base_red_check.exhausted_reason(4, {"a.cs"}, 3)
+
+        # Assert
+        self.assertIn("--max-rounds 16", said)
 
     def test_Given_RoundsThatCompiledNothing_When_TheReasonIsBuilt_Then_ItNamesTheFlagThatRaisesThem(self):
         # Arrange — the budget is what binds, so the message names the flag that raises it.
@@ -3475,8 +3485,8 @@ class LocalLoopTests(unittest.TestCase):
         self.assertEqual((len(rounds), "the base's own" in printed), (1, True))
 
     def test_Given_ALoopThatSpentItsBudgetTakingAFileOut_When_ItReports_Then_ItCountsTheWithdrawalAndTheRemoval(self):
-        # Arrange -- the loop holds what it removed and the reason it prints has to be handed it, or
-        # the count says a file stands at the base's text that is not in the tree.
+        # Arrange -- the loop holds what it withdrew and what it took out, and the reason it prints
+        # has to be handed the second or it names no removal at all.
         # Act
         printed, _ = self.loop(lambda tree, attempt: "Scripts have compiler errors\n"
                                + self.FIXTURE + "(1,1): error CS1929: x\n")
@@ -4489,6 +4499,53 @@ class UnbuiltBaseTreeTests(unittest.TestCase):
 
         # Assert
         self.assertEqual((printed.returncode, "GoneTests.cs" in printed.stdout), (1, True))
+
+    def test_Given_AFileTheStaticReadingWithdrewAndARoundTookOut_When_TheVerdictLaneRuns_Then_ItIsCounted(self):
+        # Arrange -- `replan` reaches a removal from the static withdrawal as well as from its own,
+        # so a file can be in `removed` and in no other record; a count off the per-round withdrawals
+        # alone says the rounds took out more files than they touched.
+        holder = tempfile.mkdtemp(prefix="base-red-static-out-")
+        self.addCleanup(shutil.rmtree, holder, ignore_errors=True)
+        case = base_red_check.Case("N.NewTests.Given_A_When_B_Then_C", self.CARRIED, 1, 2)
+        plan = base_red_check.as_plan(self.since, [case], [], {}, {"EditMode": ["N.CanaryTests"]},
+                                      withdrawn={self.CARRIED: "Proceeding"})
+        plan["rounds"] = 2
+        plan["removed"] = {self.CARRIED: "taken out in round 1"}
+        Path(holder, "plan.json").write_text(json.dumps(plan))
+        Path(holder, "results").mkdir()
+        Path(holder, "results", "editmode.log").write_text("")
+
+        # Act
+        printed = subprocess.run(
+            [sys.executable, str(REPO_ROOT / "scripts/test_quality/base_red_check.py"),
+             "--project", str(self.project), "--verdict", str(Path(holder, "plan.json")),
+             "--results", str(Path(holder, "results"))], capture_output=True, text=True)
+
+        # Assert
+        self.assertIn("withdrew 1 carried file(s), 1 of them taken out", printed.stdout)
+
+    def test_Given_AFileAnEarlierRoundPutBack_When_TheLastRoundBlamesIt_Then_ItIsNotTheReadersToWithdraw(self):
+        # Arrange -- the last round has no replan after it, so its log reaches the verdict directly;
+        # a reason built off the static withdrawals alone tells the reader to withdraw a file the
+        # run itself put back, one line above the line saying it did.
+        holder = tempfile.mkdtemp(prefix="base-red-blamed-again-")
+        self.addCleanup(shutil.rmtree, holder, ignore_errors=True)
+        case = base_red_check.Case("N.NewTests.Given_A_When_B_Then_C", self.CARRIED, 1, 2)
+        plan = base_red_check.as_plan(self.since, [case], [], {}, {"EditMode": ["N.CanaryTests"]})
+        plan["rounds"] = 4
+        plan["blamed"] = {self.CARRIED: "the compiler blamed it (CS0246) in round 3"}
+        Path(holder, "plan.json").write_text(json.dumps(plan))
+        Path(holder, "results").mkdir()
+        Path(holder, "results", "editmode.log").write_text(self.CARRIED + "(1,1): error CS0246: x\n")
+
+        # Act
+        printed = subprocess.run(
+            [sys.executable, str(REPO_ROOT / "scripts/test_quality/base_red_check.py"),
+             "--project", str(self.project), "--verdict", str(Path(holder, "plan.json")),
+             "--results", str(Path(holder, "results"))], capture_output=True, text=True)
+
+        # Assert
+        self.assertIn("already stood at the base's text", printed.stdout)
 
     def test_Given_AFileWithdrawnAndThenTakenOut_When_TheVerdictLaneRuns_Then_ItCountsItOnce(self):
         # Arrange -- `replan` records a removal without taking the file out of what it withdrew, so
