@@ -1605,10 +1605,16 @@ namespace Velvet
         /// <param name="layer">The framework-managed layer panel to attach the children to.</param>
         /// <param name="children">Descendant VNodes mounted into the layer panel.</param>
         /// <param name="key">Key used to disambiguate siblings at the same position.</param>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="layer"/> names no member of <see cref="UILayer"/>.</exception>
         /// <returns>The created <see cref="PortalNode"/>.</returns>
         public static PortalNode Portal(UILayer layer, VNode?[]? children = null, string? key = null,
             PanelFocusOrder focusOrder = PanelFocusOrder.Isolated)
         {
+            if (!Enum.IsDefined(typeof(UILayer), layer))
+            {
+                throw new ArgumentOutOfRangeException(nameof(layer), layer,
+                    "V.Portal takes a member of UILayer as its layer.");
+            }
             return new PortalNode
             {
                 Key = key,

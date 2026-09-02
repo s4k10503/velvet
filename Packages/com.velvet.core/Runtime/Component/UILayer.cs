@@ -2,7 +2,7 @@
 namespace Velvet
 {
     /// <summary>
-    /// Framework-managed screen-space layer panels a <see cref="V.Portal(UILayer, VNode?[], string?)"/>
+    /// Framework-managed screen-space layer panels a <see cref="V.Portal(UILayer, VNode[], string, PanelFocusOrder)"/>
     /// can target, sorted around the app's main panel. Screen-space panels always composite over the
     /// 3D scene (the engine's compositor draws overlay panels after cameras) — UI that must sit among
     /// or behind scene geometry is <see cref="V.WorldSpace"/>'s depth-tested territory instead.
