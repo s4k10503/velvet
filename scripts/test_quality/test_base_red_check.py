@@ -3777,13 +3777,16 @@ class WithdrawnFileVerdictTests(unittest.TestCase):
         self.assertEqual((verdicts[self.UNBUILDABLE], verdicts[self.BESIDE]),
                          (base_red_check.BASE_UNSOUND, base_red_check.BASE_UNSOUND))
 
+    # GREEN_ON_BASE(characterization): the excuse a plan carries still names what proved it.
+    # This read the exit code before, on a canary that failed -- which is the state the refusal
+    # this branch adds exists to catch, so the reading had to move off it.
     def test_Given_AWithdrawalTheReadingTook_When_ADifferentProcessDecides_Then_ItStillReadsIt(self):
         # Arrange -- the two halves are separate invocations with a JSON file between them, and a
         # field the emitting half writes that the deciding half never asks for is a silent fail-closed
         # on exactly the branches this exists to let through. Built by `as_plan` for the reason its
         # own round trip is: a literal here would go on carrying what the emitter had stopped writing.
-        # The canary reports and fails, so the platform is withdrawn and only the plan's own field
-        # can leave the case anything but a failing verdict.
+        # The canary passes, so the fixture's own silence excuses the case whether or not the field
+        # arrives and the verdict separates nothing -- the detail is what only the field can name.
         holder = tempfile.mkdtemp(prefix="base-red-roundtrip-")
         self.addCleanup(shutil.rmtree, holder, ignore_errors=True)
         case = base_red_check.Case("N.NewTests.Given_A_When_B_Then_C", self.UNBUILDABLE, 1, 2)
@@ -3792,17 +3795,17 @@ class WithdrawnFileVerdictTests(unittest.TestCase):
             withdrawn={self.UNBUILDABLE: "Proceeding"})))
         Path(holder, "results").mkdir()
         Path(holder, "results", "r.xml").write_text(
-            '<test-run><test-case fullname="N.CanaryTests.Given_X_When_Y_Then_Z" result="Failed" />'
+            '<test-run><test-case fullname="N.CanaryTests.Given_X_When_Y_Then_Z" result="Passed" />'
             '</test-run>')
 
         # Act
-        status = subprocess.run(
+        printed = subprocess.run(
             [sys.executable, str(REPO_ROOT / "scripts/test_quality/base_red_check.py"),
              "--verdict", str(Path(holder, "plan.json")),
-             "--results", str(Path(holder, "results"))], capture_output=True, text=True).returncode
+             "--results", str(Path(holder, "results"))], capture_output=True, text=True).stdout
 
         # Assert
-        self.assertEqual(status, 0)
+        self.assertIn("the base has no Proceeding", printed)
 
 
 class RemedyTests(unittest.TestCase):
@@ -4935,11 +4938,14 @@ class BlamedFileVerdictTests(unittest.TestCase):
         # Assert
         self.assertEqual(case.verdict, base_red_check.BASE_UNSOUND)
 
+    # GREEN_ON_BASE(characterization): the code a round blamed still reaches the detail.
+    # This read the exit code before, on a canary that failed -- which is the state the refusal
+    # this branch adds exists to catch, so the reading had to move off it.
     def test_Given_ABlamedFileInTheReading_When_ADifferentProcessDecides_Then_ItStillReadsIt(self):
         # Arrange -- the field `--replan` writes is one `--verdict` has to ask for. The canary
-        # reports and fails, so the platform is withdrawn and only that field can leave the case
-        # anything but a failing verdict; beside a passing canary the fixture's silence alone
-        # would excuse it, and the field could go unread without this noticing.
+        # passes, so the fixture's own silence excuses the case whether or not the field arrives and
+        # the verdict separates nothing; the code the compiler gave is what only the field carries,
+        # and a lane that never asked for it would print the silence instead.
         holder = tempfile.mkdtemp(prefix="base-red-blamed-")
         self.addCleanup(shutil.rmtree, holder, ignore_errors=True)
         case = base_red_check.Case("N.NewTests.Given_A_When_B_Then_C", self.BLAMED, 1, 2)
@@ -4948,17 +4954,84 @@ class BlamedFileVerdictTests(unittest.TestCase):
         Path(holder, "plan.json").write_text(json.dumps(plan))
         Path(holder, "results").mkdir()
         Path(holder, "results", "r.xml").write_text(
-            '<test-run><test-case fullname="N.CanaryTests.Given_X_When_Y_Then_Z" result="Failed" />'
+            '<test-run><test-case fullname="N.CanaryTests.Given_X_When_Y_Then_Z" result="Passed" />'
             '</test-run>')
 
         # Act
-        status = subprocess.run(
+        printed = subprocess.run(
             [sys.executable, str(REPO_ROOT / "scripts/test_quality/base_red_check.py"),
              "--verdict", str(Path(holder, "plan.json")),
-             "--results", str(Path(holder, "results"))], capture_output=True, text=True).returncode
+             "--results", str(Path(holder, "results"))], capture_output=True, text=True).stdout
 
         # Assert
-        self.assertEqual(status, 0)
+        self.assertIn("the compiler blamed it (CS0012) in round 1", printed)
+
+
+class UnvouchedExcuseTests(unittest.TestCase):
+    """What the deciding half does where an excuse covered every case a platform had.
+
+    Both excuses are read above the canaries, so a platform they cover entirely decides every case
+    before that reading is reached -- and the reading has to stand there anyway.
+    """
+
+    UNBUILDABLE = "Packages/p/Runtime/A/Tests/Editor/NewTests.cs"
+    BLAMED = "Packages/p/Runtime/A/Tests/Editor/OldTests.cs"
+
+    BLAME = "the compiler blamed it (CS0246) in round 2"
+
+    def excused(self, canary):
+        """The cases, the offenders and the output, where each excuse covered one of two cases."""
+        cases = [base_red_check.Case("N.NewTests.Given_A_When_B_Then_C", self.UNBUILDABLE, 1, 2),
+                 base_red_check.Case("N.OldTests.Given_D_When_E_Then_F", self.BLAMED, 1, 2)]
+        printed = io.StringIO()
+        with contextlib.redirect_stdout(printed):
+            offenders = base_red_check.report(
+                cases, [], {"N.CanaryTests.Given_X_When_Y_Then_Z": canary},
+                {"EditMode": ["N.CanaryTests"]}, True, {self.UNBUILDABLE: "Proceeding"},
+                blamed={self.BLAMED: self.BLAME})
+        return cases, offenders, printed.getvalue()
+
+    def test_Given_EveryCaseExcusedAndNoCanaryPassing_When_TheVerdictsAreTaken_Then_TheRunFails(self):
+        # Arrange -- what the rounds can grow into: every carried file put back, a last round asking
+        # only the canaries, and what it wrote vouching for nothing. Both excuses in one comparison,
+        # because either alone leaves the other a way through the same run, and each detail beside
+        # its verdict, because the excuse is what an author has to be told was overruled.
+        # Act
+        _, offenders, _ = self.excused("Failed")
+
+        # Assert
+        self.assertEqual(
+            [(case.verdict, case.detail) for case in offenders],
+            [(base_red_check.BASE_UNSOUND,
+              "the base has no Proceeding, and none of CanaryTests passed there"),
+             (base_red_check.BASE_UNSOUND, self.BLAME + ", and none of CanaryTests passed there")])
+
+    # GREEN_ON_BASE(characterization): a platform its canaries vouched for still passes here.
+    # It is the half the refusal beside it must not take with it, and no base run can show that.
+    def test_Given_EveryCaseExcusedAndACanaryPassing_When_TheVerdictsAreTaken_Then_TheRunPasses(self):
+        # Arrange -- the shape a branch whose every changed test names a symbol the base has not got
+        # leaves, and the one the refusal above must not take with it: the excuses are the whole
+        # reading here too, and a tree that answered is the whole difference. The details are folded
+        # in because a fixture nobody built is excused without either of them, so an empty offender
+        # list alone holds whether or not this run read them.
+        # Act
+        cases, offenders, _ = self.excused("Passed")
+
+        # Assert
+        self.assertEqual(([case.verdict for case in offenders], [case.detail for case in cases]),
+                         ([], ["the base has no Proceeding", self.BLAME]))
+
+    def test_Given_APlatformNothingVouchedFor_When_TheRefusalIsPrinted_Then_ItSaysWhatWasMissing(self):
+        # Arrange -- a verdict line carries its own case's reason and names neither the platform nor
+        # how much of it the excuses covered, which is the difference between a list and a refusal.
+        # An author whose run was green until now has to be told which platform stopped counting,
+        # how far the excuses reached there, and what did not pass.
+        # Act
+        _, _, printed = self.excused("Failed")
+
+        # Assert
+        self.assertIn("nothing vouched for EditMode: all 2 of its case(s) were excused rather than "
+                      "measured, and\nnone of CanaryTests passed there", printed)
 
 
 if __name__ == "__main__":
