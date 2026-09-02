@@ -785,14 +785,15 @@ class ExhaustedLoopTests(unittest.TestCase):
         self.assertIn("and 2 more", said)
 
     def test_Given_AFilePutBackAndThenTakenOut_When_TheReasonIsBuilt_Then_ItIsNotCountedAsStandingThere(self):
-        # Arrange -- the count is of files standing at the base's text, and one taken out again is
-        # not in the tree at all.
+        # Arrange -- the count and the list below it are one reading: a file taken out again is not
+        # in the tree, so neither the number nor the names may carry it.
         # Act
         said = base_red_check.exhausted_reason(8, {"a.cs", "b.cs"}, 24, removed={"b.cs"})
 
         # Assert
-        self.assertIn("put 1 of the 24 carried file(s) back to what the\nbase holds and taken 1 of "
-                      "them out again", said)
+        self.assertEqual(("put 1 of the 24 carried file(s) back" in said,
+                          "and taken 1 more out again" in said, "b.cs" in said),
+                         (True, True, False))
 
     def test_Given_RoundsThatCompiledNothing_When_TheReasonIsBuilt_Then_ItNamesTheFlagThatRaisesThem(self):
         # Arrange — the budget is what binds, so the message names the flag that raises it.
@@ -3432,6 +3433,16 @@ class LocalLoopTests(unittest.TestCase):
         # Assert
         self.assertEqual((len(rounds), "the base's own" in printed), (1, True))
 
+    def test_Given_ALoopThatSpentItsBudgetTakingAFileOut_When_ItReports_Then_TheCountLeavesItOut(self):
+        # Arrange -- the loop holds what it removed and the reason it prints has to be handed it, or
+        # the count says a file stands at the base's text that is not in the tree.
+        # Act
+        printed, _ = self.loop(lambda tree, attempt: "Scripts have compiler errors\n"
+                               + self.FIXTURE + "(1,1): error CS1929: x\n")
+
+        # Assert
+        self.assertIn("put 0 of the 1 carried file(s) back", printed)
+
     def test_Given_TheLoopStoppedOnTheBasesOwnFileAtTheBudget_When_ItReports_Then_TheBudgetIsNotTheRemedy(self):
         # Arrange -- a budget of one, spent on the round that found the base's own file: raising the
         # budget is not what a run stopped for a cause wants told.
@@ -3458,6 +3469,16 @@ class LocalLoopTests(unittest.TestCase):
 
         # Act / Assert
         self.assertEqual(("the base's own" in held.getvalue(), "--max-rounds" in held.getvalue()), (True, False))
+
+    def test_Given_TheLogBlamesTheSameFileAtTheBasesText_When_TheLoopRuns_Then_ItSaysTheFileCameOut(self):
+        # Arrange -- the other half of what the loop says as it goes: a removal is not a put-back,
+        # and a reader of the run has only what it printed.
+        # Act
+        printed, _ = self.loop(lambda tree, attempt: "Scripts have compiler errors\n"
+                               + self.FIXTURE + "(1,1): error CS1929: x\n")
+
+        # Assert
+        self.assertIn("removed: " + self.FIXTURE + " -- its base text did not build", printed)
 
     def test_Given_TheLogBlamesTheSameFileAtTheBasesText_When_TheLoopRuns_Then_TheFileComesOut(self):
         # Arrange -- round one puts ProbeTests back to the base's text; round two blames it again,
@@ -4406,6 +4427,27 @@ class UnbuiltBaseTreeTests(unittest.TestCase):
         # Assert
         self.assertIn("The rest are this branch's; make them build against the base or withdraw them:\n  "
                       + other, said)
+
+    def test_Given_FilesTakenOutInTheReading_When_TheVerdictLaneRuns_Then_ItNamesThemBesideABaseFailure(self):
+        # Arrange -- the reading knows what the rounds took out, and a base file failing after that
+        # may be missing what they declared; the lane is what carries it there.
+        holder = tempfile.mkdtemp(prefix="base-red-removed-")
+        self.addCleanup(shutil.rmtree, holder, ignore_errors=True)
+        case = base_red_check.Case("N.NewTests.Given_A_When_B_Then_C", self.CARRIED, 1, 2)
+        plan = base_red_check.as_plan(self.since, [case], [], {}, {"EditMode": ["N.CanaryTests"]})
+        plan["removed"] = {"Packages/p/Runtime/A/Tests/Editor/GoneTests.cs": "took it out"}
+        Path(holder, "plan.json").write_text(json.dumps(plan))
+        Path(holder, "results").mkdir()
+        Path(holder, "results", "editmode.log").write_text(self.PRODUCTION + "(1,1): error CS0103: x\n")
+
+        # Act
+        printed = subprocess.run(
+            [sys.executable, str(REPO_ROOT / "scripts/test_quality/base_red_check.py"),
+             "--project", str(self.project), "--verdict", str(Path(holder, "plan.json")),
+             "--results", str(Path(holder, "results"))], capture_output=True, text=True)
+
+        # Assert
+        self.assertEqual((printed.returncode, "GoneTests.cs" in printed.stdout), (1, True))
 
     def test_Given_AWithdrawnFileInTheReading_When_TheVerdictLaneRuns_Then_ItReadsTheWithdrawal(self):
         # Arrange -- the plan's field has to reach the reason through the lane, or the message

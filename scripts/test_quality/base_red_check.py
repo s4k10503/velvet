@@ -2151,17 +2151,20 @@ def exhausted_reason(spent, withdrawn, carried, removed=()):
     """
     if not spent:
         return ""
-    put_back = "\n".join("    " + name for name in sorted(withdrawn)[:6])
-    more = len(withdrawn) - 6
+    standing = sorted(set(withdrawn) - set(removed))
+    named = "\n".join("    " + name for name in standing[:6])
+    more = len(standing) - 6
     if more > 0:
-        put_back += "\n    and {} more".format(more)
-    return ("\n{} round(s) compiled nothing, having put {} of the {} carried file(s) back to what the\n"
-            "base holds{}. A round withdraws every file the editor blamed, and the next sees what\n"
-            "those put-backs uncovered, so the rounds a change needs is how deep that goes:\n"
+        named += "\n    and {} more".format(more)
+    return ("\n{} round(s) compiled nothing, having put {} of the {} carried file(s) back to what\n"
+            "the base holds{}. A round withdraws every file the editor blamed, and the\n"
+            "next sees what those put-backs uncovered, so the rounds a change needs is how deep\n"
+            "that goes:\n"
             "  --max-rounds {}\n"
-            "{}".format(spent, len(withdrawn) - len(removed), carried,
-                        "" if not removed else " and taken {} of them out again".format(len(removed)),
-                        spent * 2, put_back if withdrawn else ""))
+            "{}".format(spent, len(standing), carried,
+                        "" if not removed else
+                        " and taken {} more out again".format(len(removed)),
+                        spent * 2, "  still standing at the base's text:\n" + named if standing else ""))
 
 
 def held_at(project, commit, relative):
@@ -2268,7 +2271,9 @@ def main():
     parser.add_argument("--busy-timeout", type=int, default=1800,
                         help="seconds to wait for another Unity run to finish")
     parser.add_argument("--max-rounds", type=int, default=8,
-                        help="uncompilable files to withdraw before the C# lane gives up (default: 8)")
+                        help="rounds to ask the base in before the C# lane gives up (default: 8). "
+                             "A round withdraws every file the editor blamed, so this is not a "
+                             "count of files")
     parser.add_argument("--plan", action="store_true", help="print the cases and exit without running")
     parser.add_argument("--emit", help="build the base tree, write the reading here and stop, for a "
                                        "runner that reaches Unity through something other than the "
