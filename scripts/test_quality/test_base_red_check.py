@@ -784,28 +784,27 @@ class ExhaustedLoopTests(unittest.TestCase):
         # Assert
         self.assertIn("and 2 more", said)
 
-    def test_Given_AFilePutBackAndThenTakenOut_When_TheReasonIsBuilt_Then_ItIsNotCountedAsStandingThere(self):
-        # Arrange -- the count and the list below it are one reading: a file taken out again is not
-        # in the tree, so neither the number nor the names may carry it.
+    def test_Given_AFileWithdrawnAndThenTakenOut_When_TheReasonIsBuilt_Then_ItIsCountedOnceAndSaidToBeOut(self):
+        # Arrange -- the run withdrew both, and took one of those out afterwards. A count that
+        # subtracted the second would say it withdrew one, against its own transcript, which named
+        # both as it withdrew them.
         # Act
         said = base_red_check.exhausted_reason(8, {"a.cs", "b.cs"}, 24, removed={"b.cs"})
 
         # Assert
-        self.assertEqual(("withdrawn 1 of the 24 carried file(s)" in said,
-                          "taken 1 more out of the tree" in said, "b.cs" in said),
-                         (True, True, False))
+        self.assertEqual(("withdrawn 2 of the 24 carried file(s)" in said,
+                          "1 of them taken out of the tree" in said, "b.cs" in said),
+                         (True, True, True))
 
-    # GREEN_ON_BASE(characterization): the base already floors the advice at the carried count.
-    # This branch dropped that floor and put it back, so the case is what holds it there.
-    def test_Given_MoreCarriedFilesThanDoublingReaches_When_TheReasonIsBuilt_Then_TheFloorIsTheCarriedCount(self):
-        # Arrange -- a round the log explains nothing about withdraws one silent file, so a run of
-        # those needs a round per carried file however few it has spent; doubling what it spent
-        # advises fewer rounds than the run it is advising about.
+    def test_Given_MoreCarriedFilesThanTheMultiplierReaches_When_TheReasonIsBuilt_Then_TheFloorClearsTheCarriedCount(self):
+        # Arrange -- a run whose rounds the log explains nothing about withdraws one silent file each,
+        # so it spends a round per carried file and then needs one more to ask the tree it has
+        # emptied. Advice equal to the carried count sends the reader back for the same message.
         # Act
-        said = base_red_check.exhausted_reason(1, {"a.cs"}, 4)
+        said = base_red_check.exhausted_reason(1, {"a.cs"}, 5)
 
         # Assert
-        self.assertIn("--max-rounds 4", said)
+        self.assertIn("--max-rounds 6", said)
 
     def test_Given_RoundsThatCompiledNothing_When_TheReasonIsBuilt_Then_ItNamesTheFlagThatRaisesThem(self):
         # Arrange — the budget is what binds, so the message names the flag that raises it.
@@ -3241,7 +3240,7 @@ class WithdrawalTests(unittest.TestCase):
         return tree
 
     # GREEN_ON_BASE(characterization): the base removes such a file too, its docstring says so.
-    # What is new here is a message that would be false about it, which this pins the reason for.
+    # What a message about withdrawn files may claim of them is what this pins the reason for.
     def test_Given_AFileTheBaseNeverHad_When_ItIsWithdrawn_Then_ItLeavesTheTree(self):
         # Arrange -- a new test file has no text at the base to be put back to, so what a withdrawal
         # leaves is nothing at all. A message calling every withdrawal a file standing at the base's
@@ -3475,7 +3474,7 @@ class LocalLoopTests(unittest.TestCase):
         # Assert
         self.assertEqual((len(rounds), "the base's own" in printed), (1, True))
 
-    def test_Given_ALoopThatSpentItsBudgetTakingAFileOut_When_ItReports_Then_TheCountLeavesItOut(self):
+    def test_Given_ALoopThatSpentItsBudgetTakingAFileOut_When_ItReports_Then_ItCountsTheWithdrawalAndTheRemoval(self):
         # Arrange -- the loop holds what it removed and the reason it prints has to be handed it, or
         # the count says a file stands at the base's text that is not in the tree.
         # Act
@@ -3483,7 +3482,7 @@ class LocalLoopTests(unittest.TestCase):
                                + self.FIXTURE + "(1,1): error CS1929: x\n")
 
         # Assert
-        self.assertIn("withdrawn 0 of the 1 carried file(s)", printed)
+        self.assertIn("withdrawn 1 of the 1 carried file(s), 1 of them taken out", printed)
 
     def test_Given_TheLoopStoppedOnTheBasesOwnFileAtTheBudget_When_ItReports_Then_TheBudgetIsNotTheRemedy(self):
         # Arrange -- a budget of one, spent on the round that found the base's own file: raising the
@@ -4512,7 +4511,7 @@ class UnbuiltBaseTreeTests(unittest.TestCase):
              "--results", str(Path(holder, "results"))], capture_output=True, text=True)
 
         # Assert
-        self.assertIn("withdrew 0 carried file(s) and took 1 of them", printed.stdout)
+        self.assertIn("withdrew 1 carried file(s), 1 of them taken out", printed.stdout)
 
     def test_Given_AWithdrawnFileInTheReading_When_TheVerdictLaneRuns_Then_ItReadsTheWithdrawal(self):
         # Arrange -- the plan's field has to reach the reason through the lane, or the message

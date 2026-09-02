@@ -2151,24 +2151,25 @@ def exhausted_reason(spent, withdrawn, carried, removed=()):
     """
     if not spent:
         return ""
-    standing = sorted(set(withdrawn) - set(removed))
-    named = "\n".join("    " + name for name in standing[:6])
-    more = len(standing) - 6
+    every = sorted(withdrawn)
+    named = "\n".join("    " + name for name in every[:6])
+    more = len(every) - 6
     if more > 0:
         named += "\n    and {} more".format(more)
-    # The floor is what the one-a-round regime needs. A round the log explains withdraws every file
-    # it blamed, so the rounds a change needs is how deep the put-backs go and doubling reaches it;
-    # a round the log explains nothing about withdraws one silent file, so a run of those needs a
-    # round per carried file however many it has spent.
+    # The floor is one more than the carried count, and the one-a-round regime is why. A round the
+    # log explains nothing about withdraws one silent file, so a run of those spends a round per
+    # carried file and then needs one more to ask the tree it has finally emptied. A round the log
+    # does explain withdraws every file it blamed, so what that regime needs is how deep the
+    # put-backs go, which the multiplier guesses at; the floor is exact and the multiplier is not.
     return ("\n{} round(s) compiled nothing, having withdrawn {} of the {} carried file(s){}.\n"
-            "A round withdraws every file the editor blamed, or one it named nothing about, so\n"
-            "the rounds a change needs is how deep that goes:\n"
+            "A round withdraws every file the editor blamed, or one it named nothing about,\n"
+            "so the rounds a change needs is how deep the put-backs go:\n"
             "  --max-rounds {}\n"
-            "{}".format(spent, len(standing), carried,
+            "{}".format(spent, len(every), carried,
                         "" if not removed else
-                        " and taken {} more out of the tree".format(len(removed)),
-                        max(carried, spent * 2),
-                        "  withdrawn:\n" + named if standing else ""))
+                        ", {} of them taken out of the tree".format(len(removed)),
+                        max(carried + 1, spent * 4),
+                        "  withdrawn:\n" + named if every else ""))
 
 
 def held_at(project, commit, relative):
@@ -2277,7 +2278,8 @@ def main():
     parser.add_argument("--max-rounds", type=int, default=8,
                         help="rounds to ask the base in before the C# lane gives up (default: 8). "
                              "A round withdraws every file the editor blamed, or one it named "
-                             "nothing about, so this is a count of rounds rather than of files")
+                             "nothing about, or takes out one it blamed again, so this is a "
+                             "count of rounds rather than of files")
     parser.add_argument("--plan", action="store_true", help="print the cases and exit without running")
     parser.add_argument("--emit", help="build the base tree, write the reading here and stop, for a "
                                        "runner that reaches Unity through something other than the "
@@ -2313,12 +2315,12 @@ def main():
                                  log_text_beside(args.results), plan.get("withdrawn") or (),
                                  plan.get("removed", {})), flush=True)
             if plan.get("rounds", 1) > 1:
-                # Minus the removals, for the reason `exhausted_reason` counts them apart: a file
-                # `replan` put back and a later round took out is in both records and is one file.
-                print("That was round {}; the rounds before it withdrew {} carried file(s) and took {} "
-                      "of them\nout of the tree, and the base still did not build.".format(
-                          plan["rounds"],
-                          len(set(plan.get("blamed", {})) - set(plan.get("removed", {}))),
+                # One count of files with a share of it named apart, for the reason `exhausted_reason`
+                # reads the same way: a file `replan` put back and a later round took out is in both
+                # records and is one file, and the run did withdraw it.
+                print("That was round {}; the rounds before it withdrew {} carried file(s), {} of them "
+                      "taken out\nof the tree, and the base still did not build.".format(
+                          plan["rounds"], len(plan.get("blamed", {})),
                           len(plan.get("removed", {}))),
                       flush=True)
         return 1 if report(from_plan(plan["cases"]), from_plan(plan["control"]), reported,

@@ -404,7 +404,7 @@ costs; `--warm-library` copies an existing `Library` into it, sharing blocks whe
 
 `Test ▸ base-red-python` runs the Python lane on every pull request and needs no licence.
 `Test ▸ base-red` runs the C# lane where one is configured, in at most four rounds where the local run
-goes to a fixed point: a base that cannot build one carried file writes no results for anything, so
+takes `--max-rounds` of them: a base that cannot build one carried file writes no results for anything, so
 the workflow withdraws what the static comparison above proves before its first round, and what each
 round's own editor log blames before the next — every carried file the compiler named, put back to
 the base's text at once, and one it names again at that text taken out of the tree, since its cases
