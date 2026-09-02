@@ -330,6 +330,8 @@ namespace Velvet.Tests
 
         #region Async batching
 
+        // GREEN_ON_BASE(refactor): two post-await setters already shared one drain callback.
+        // Swapping the completion source they resume from must not split them into two.
         [Test]
         public void Given_TwoSettersAfterTheSameAwait_When_ContinuationRuns_Then_SchedulesSingleDrainCallback()
         {
@@ -349,6 +351,8 @@ namespace Velvet.Tests
                 "Two setStates after the same await coalesce into a single frame-boundary drain callback");
         }
 
+        // GREEN_ON_BASE(refactor): a post-await setter lands on the immediate tier already.
+        // Which tier is the continuation's to decide, and this change replaces what resumes it.
         [Test]
         public void Given_TwoSettersAfterTheSameAwait_When_ContinuationRuns_Then_BothQueueOnTheImmediateTier()
         {
@@ -365,6 +369,8 @@ namespace Velvet.Tests
                 "Post-await setStates enqueue on the immediate tier, not the delayed tier");
         }
 
+        // GREEN_ON_BASE(refactor): completing the gate renders nothing on its own already.
+        // A completion source that rendered where it resumed would be seen here and nowhere else.
         [Test]
         public void Given_TwoSettersAfterTheSameAwait_When_NotYetDrained_Then_NoIntermediateRender()
         {
@@ -381,6 +387,8 @@ namespace Velvet.Tests
             Assert.AreEqual((1, 1), (s_renderCountA, s_renderCountB), "No render runs before the frame-boundary drain");
         }
 
+        // GREEN_ON_BASE(refactor): each fiber already renders once for a batch of two setters.
+        // A continuation the new source resumed twice would render each of them twice.
         [Test]
         public void Given_TwoSettersAfterTheSameAwait_When_BatchDrained_Then_EachRendersExactlyOnce()
         {
@@ -398,6 +406,8 @@ namespace Velvet.Tests
                 "Each fiber renders exactly once for setStates batched after an await");
         }
 
+        // GREEN_ON_BASE(refactor): each fiber already commits the value its own setter wrote.
+        // What the new completion source resumes is what makes those writes happen at all.
         [Test]
         public void Given_TwoSettersAfterTheSameAwait_When_BatchDrained_Then_EachCommitsItsLatestValue()
         {
