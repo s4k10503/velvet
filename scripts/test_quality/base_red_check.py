@@ -680,6 +680,9 @@ def shared_material_differs(relative, before, after):
     A line reading is not enough on its own: git describes a reorder as one block deleted and
     re-added, so the lines between two swapped cases read as changed while every one of them is the
     base's own text. Compared as a multiset, a reorder is no difference and an added row is.
+
+    Read with the comments blanked, as `authored` reads a case: a remark rewritten above a helper is
+    not what any case's run decides on, and counting it put every case in the file on trial for it.
     """
     if before is None:
         return True
@@ -691,7 +694,7 @@ def shared_material_differs(relative, before, after):
         inside = set()
         for case in found:
             inside |= set(range(case.first_line, case.last_line + 1))
-        return sorted(line.strip() for number, line in enumerate(text.splitlines(), 1)
+        return sorted(line.strip() for number, line in enumerate(outside_comments(relative, text), 1)
                       if number not in inside and line.strip())
 
     return shared(before) != shared(after)
@@ -918,8 +921,9 @@ def wait_for_quiet(seconds):
     return True
 
 
+# Not pinned to CS, for the reason `mutation_check.BUILD_ERROR` records.
 COMPILE_ERROR = re.compile(
-    r"^(?:.*?[\\/])?((?:Assets|Packages)[\\/][^(]+)\(\d+,\d+\): error (CS\d+)")
+    r"^(?:.*?[\\/])?((?:Assets|Packages)[\\/][^(]+)\(\d+,\d+\): error ([A-Z]+\d+)")
 
 # The compiler saying a name does not resolve. One of these on a carried file means withdrawing that
 # file lets the rest be measured, which is what the round loop is for.
@@ -927,7 +931,7 @@ NAME_IS_ABSENT = frozenset({"CS0246", "CS0103", "CS0117", "CS1061", "CS0234"})
 
 
 def compile_errors_in(log_text):
-    """(repository-relative source, CS code) for each compile error a Unity log blames on a file."""
+    """(repository-relative source, error code) for each error a Unity log blames on a source file."""
     found = []
     for line in log_text.splitlines():
         match = COMPILE_ERROR.match(line.strip())
@@ -1889,6 +1893,69 @@ def from_plan(entries):
     return cases
 
 
+def log_text_beside(results):
+    """Every editor log the runner left in the results directory, as one text."""
+    path = Path(results)
+    logs = sorted(path.glob("*.log")) if path.is_dir() else []
+    return "\n".join(log.read_text(encoding="utf-8", errors="replace") for log in logs)
+
+
+BUILD_STOPPED = "Scripts have compiler errors"
+
+
+def carried_files(project, since):
+    """The files `build_base_tree` copies onto the base: the branch's test side, as it stands now."""
+    changed = changed_lines_by_file(project, since)
+    return {name for name in changed if is_test_side(name) and (project / name).exists()}
+
+
+def unbuilt_reason(project, since, log_text, withdrawn=()):
+    """What to say about a base run that wrote no results file.
+
+    Nothing in the results file's absence separates the ways a run comes to write none -- which is
+    why the message here used to name the cases and not the cause. The editor log does, by being
+    there at all and by what it blames.
+
+    None of them is a reading, so all of them still fail. What changes is what is said.
+    """
+    if not log_text:
+        return ("The run left no editor log beside its results: the test run's editor was never started,\n"
+                "and the job log has what stopped the run before it.")
+    blamed = compile_error_files(log_text)
+    if not blamed:
+        if BUILD_STOPPED in log_text:
+            return ("The base tree did not build, and the compiler blamed no line of a source under\n"
+                    "Assets or Packages for it. The editor log has what it did say.")
+        return ("The editor log blames no error on a source file and does not say the scripts did not\n"
+                "build. It ends where the editor stopped.")
+    named = "\n".join("  " + name for name in blamed)
+    try:
+        carried = carried_files(project, since) if since else set()
+    except subprocess.CalledProcessError as failed:
+        return ("The base tree did not build. The compiler blamed:\n{}\nWhether they are this branch's "
+                "cannot be read here -- git cannot diff this checkout against\n{}: {}".format(
+                    named, since, failed.stderr.strip()))
+    outside = [name for name in blamed if name not in carried]
+    if outside:
+        return ("The base tree did not build, and {} of the {} file(s) the compiler blamed are not "
+                "ones this\nbranch carried onto it:\n{}\nA base that cannot build its own sources is "
+                "not a reading about this change.".format(
+                    len(outside), len(blamed), "\n".join("  " + name for name in outside)))
+    standing = [name for name in blamed if name in withdrawn]
+    if standing:
+        rest = [name for name in blamed if name not in withdrawn]
+        return ("The base tree did not build. {} of the {} blamed file(s) already stood at the base's "
+                "text,\nwithdrawn before the round, so what failed there is beside them -- something "
+                "else this\nbranch carried or dropped:\n{}{}".format(
+                    len(standing), len(blamed), "\n".join("  " + name for name in standing),
+                    "" if not rest else "\nThe rest are this branch's; make them build against the "
+                    "base or withdraw them:\n" + "\n".join("  " + name for name in rest)))
+    return ("The base tree did not build, and every file the compiler blamed is one this branch\n"
+            "carried onto it:\n{}\nSo the base was never asked. Make them build against the base -- "
+            "reaching new API by\nreflection is what the others do -- or withdraw them, or say why "
+            "this change cannot be\nmeasured here.".format(named))
+
+
 def results_from(where):
     """(what the run reported, whether it wrote a results file at all).
 
@@ -1997,9 +2064,8 @@ def local_remedy(since, cases):
     """
     platforms = sorted({platform_of(case.path) for case in cases
                         if kind_of(case.path) == "csharp"})
-    return ("\nThe editor wrote nothing, which a single round cannot tell from an editor that never\n"
-            "started. Take the reading where the loop runs -- it withdraws by the editor's own error\n"
-            "list and asks again until something answers:\n"
+    return ("\nWhere the loop runs it withdraws by the editor's own error list and asks again, round\n"
+            "by round. Take the reading there:\n"
             "  python3 scripts/test_quality/base_red_check.py --lane csharp{} --base {} \\\n"
             "    --warm-library Library".format(
                 "".join(" --platform " + platform for platform in platforms), since or "origin/main"))
@@ -2152,8 +2218,8 @@ def collect(project, base, lane):
         for case in cases:
             if case.declaration is not None and lines is not None:
                 case.declaration.written_here = case.declaration.written_in(lines)
-        wanted = {case.name for case in authored(relative, touched(cases, lines),
-                                                 held_at(project, since, relative), text)[0]}
+        before = held_at(project, since, relative)
+        wanted = {case.name for case in authored(relative, touched(cases, lines), before, text)[0]}
         # A change wholly outside every case body, in a file that has cases: a static readonly table
         # the cases drive, a SetUp, a helper. `authored` keeps such a case out, correctly -- the
         # branch did not write it -- and with nothing else selected the lane exits 0 having measured
@@ -2165,11 +2231,15 @@ def collect(project, base, lane):
         # and puts every case a fixture has on trial for a line added to SetUp; `outside` reports
         # that instead. What is left here is the state where reporting it is all that happens.
         if (cases and lines is not None and not wanted and outside(cases, lines)
-                and shared_material_differs(relative, held_at(project, since, relative), text)):
+                and shared_material_differs(relative, before, text)):
             wanted = {case.name for case in cases}
         changed.extend(as_the_runner_names_them(
             [case for case in cases if case.name in wanted], heirs))
+        # Read as the promotion above reads it: a changed line outside every case that is only a
+        # comment leaves the cases beside it the base's text, controls included.
         loose = outside(cases, lines)
+        if loose and not shared_material_differs(relative, before, text):
+            loose = set()
         if not loose and not shared_helper:
             control.extend(as_the_runner_names_them(
                 [case for case in cases if case.name not in wanted], heirs))
@@ -2216,6 +2286,8 @@ def main():
         reported, wrote = results_from(args.results)
         if not wrote:
             print("the base run wrote no result, so nothing it was asked was measured", flush=True)
+            print(unbuilt_reason(Path(args.project).resolve(), plan.get("since"),
+                                 log_text_beside(args.results), plan.get("withdrawn") or ()), flush=True)
         return 1 if report(from_plan(plan["cases"]), from_plan(plan["control"]), reported,
                            plan["canaries"], wrote, plan.get("withdrawn"),
                            plan.get("since")) else 0
