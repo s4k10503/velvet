@@ -784,6 +784,16 @@ class ExhaustedLoopTests(unittest.TestCase):
         # Assert
         self.assertIn("and 2 more", said)
 
+    def test_Given_AFilePutBackAndThenTakenOut_When_TheReasonIsBuilt_Then_ItIsNotCountedAsStandingThere(self):
+        # Arrange -- the count is of files standing at the base's text, and one taken out again is
+        # not in the tree at all.
+        # Act
+        said = base_red_check.exhausted_reason(8, {"a.cs", "b.cs"}, 24, removed={"b.cs"})
+
+        # Assert
+        self.assertIn("put 1 of the 24 carried file(s) back to what the\nbase holds and taken 1 of "
+                      "them out again", said)
+
     def test_Given_RoundsThatCompiledNothing_When_TheReasonIsBuilt_Then_ItNamesTheFlagThatRaisesThem(self):
         # Arrange — the budget is what binds, so the message names the flag that raises it.
         # Act / Assert
@@ -3308,7 +3318,7 @@ class LocalLoopTests(unittest.TestCase):
     PLAY_FIXTURE = "Packages/p/Runtime/A/Tests/PlayMode/PlayProbeTests.cs"
     PLAY_CANARY = "Packages/p/Runtime/A/Tests/PlayMode/PlayCanaryTests.cs"
 
-    def rounds_over_both_platforms(self, max_rounds=4, bases_own=False):
+    def rounds_over_both_platforms(self, max_rounds=4, bases_own=False, writes_on=None):
         """(what the loop printed, (platform, the fixtures asked) per round) over a branch that changed
         a fixture on each platform. The first round's log blames the PlayMode file -- or the base's
         own file, with `bases_own` -- and the rounds after it write results."""
@@ -3324,6 +3334,16 @@ class LocalLoopTests(unittest.TestCase):
 
         def fake_run_unity(unity, tree, platform, fixtures, results, log, timeout):
             rounds.append((platform, sorted(fixtures)))
+            if writes_on is not None:
+                Path(log).write_text("")
+                if platform == writes_on:
+                    # The branch's own case red there, its canary green: that platform is answered
+                    # and carries no failing verdict, so what the run exits on is the other one.
+                    Path(results).write_text('<test-run>' + "".join(
+                        '<test-case fullname="{}.Given_A_When_B_Then_C" result="{}" />'.format(
+                            name, "Failed" if "Probe" in name else "Passed")
+                        for name in fixtures) + '</test-run>')
+                return 1.0, 0
             if bases_own:
                 Path(log).write_text("Scripts have compiler errors\n" + self.ENUM + "(1,1): error CS0103: x\n")
             elif len(rounds) == 1:
@@ -3344,7 +3364,7 @@ class LocalLoopTests(unittest.TestCase):
         base_red_check.run_unity, base_red_check.wait_for_quiet = fake_run_unity, lambda seconds: True
         try:
             with contextlib.redirect_stdout(held):
-                base_red_check.main()
+                self.status = base_red_check.main()
         finally:
             sys.argv, base_red_check.run_unity, base_red_check.wait_for_quiet = argv, run_unity, wait
         return held.getvalue(), rounds
@@ -3379,16 +3399,26 @@ class LocalLoopTests(unittest.TestCase):
         # Assert
         self.assertEqual((len(rounds), printed.count("the base's own")), (1, 1))
 
-    def test_Given_AFileTheLoopPutBack_When_ItReports_Then_TheCaseSaysWhichRoundBlamedIt(self):
-        # Arrange -- the loop holds the round and the code, and the report used to say only that
-        # the base built none of the fixture.
+    def test_Given_AFileTheLoopPutBack_When_ItRuns_Then_ItSaysWhichFileAndWhatBlamedIt(self):
+        # Arrange -- said rather than carried into the verdict: a put-back is what the loop did, and
+        # the case's own verdict is the run's to give.
         # Act
         printed, _ = self.loop(lambda tree, attempt: "Scripts have compiler errors\n"
                                + self.FIXTURE + "(1,1): error CS1929: x\n" if attempt == 1 else "",
                                writes_from=2)
 
         # Assert
-        self.assertIn("the compiler blamed it (CS1929) in round 1", printed)
+        self.assertIn("withdrawn: " + self.FIXTURE + " -- the compiler blamed it (CS1929)", printed)
+
+    def test_Given_APlatformWhoseEditorNeverWrote_When_AnotherPlatformDid_Then_TheRunStillFails(self):
+        # Arrange -- EditMode answers and PlayMode's editor writes nothing, so the one flag saying
+        # some platform wrote is set and what fails PlayMode is its own canaries. A verdict handed
+        # the loop's put-backs would outrank them and pass the platform that answered nothing.
+        # Act
+        self.rounds_over_both_platforms(writes_on="EditMode")
+
+        # Assert
+        self.assertEqual(self.status, 1)
 
     def test_Given_TheLogBlamesTheBasesOwnFile_When_TheLoopRuns_Then_ItStopsAfterOneRoundAndSaysSo(self):
         # Arrange -- a round spent withdrawing a silent file cannot reach a base that does not build

@@ -48,8 +48,8 @@ For C#, a round that reports no case of a fixture is one where something the bra
 build: that file is withdrawn and the run repeated, so the rest is still measured rather than lost
 behind it. Which file is picked off the editor log, over every carried file rather than only the
 ones holding cases, since a shared helper takes its whole assembly down with it. A runner that hands
-back a results directory takes four rounds at most, and a compile failure there is a directory with
-the editor log and no results in it -- which is what an editor that never started leaves as well.
+back a results directory takes four rounds at most, and a compile failure there leaves the editor
+log beside no results, where an editor that never started leaves neither.
 So the Python lane's comparison is taken statically before the first round: `unbuildable_on_base`
 withdraws a carried file spelling a name the base has not got and a production file the branch
 changed does have, ahead of the run rather than behind an error list that round may not produce.
@@ -2138,7 +2138,7 @@ def local_remedy(since, cases):
                 "".join(" --platform " + platform for platform in platforms), since or "origin/main"))
 
 
-def exhausted_reason(spent, withdrawn, carried):
+def exhausted_reason(spent, withdrawn, carried, removed=()):
     """What a loop that ran out of rounds without ever compiling the base has to say for itself.
 
     The generic line is the one a single round writes, and a reader who ran the loop has already done
@@ -2156,10 +2156,12 @@ def exhausted_reason(spent, withdrawn, carried):
     if more > 0:
         put_back += "\n    and {} more".format(more)
     return ("\n{} round(s) compiled nothing, having put {} of the {} carried file(s) back to what the\n"
-            "base holds. A round withdraws every file the editor blamed, and the next sees what those\n"
-            "put-backs uncovered, so the rounds a change needs is how deep that goes:\n"
+            "base holds{}. A round withdraws every file the editor blamed, and the next sees what\n"
+            "those put-backs uncovered, so the rounds a change needs is how deep that goes:\n"
             "  --max-rounds {}\n"
-            "{}".format(spent, len(withdrawn), carried, spent * 2, put_back if withdrawn else ""))
+            "{}".format(spent, len(withdrawn) - len(removed), carried,
+                        "" if not removed else " and taken {} of them out again".format(len(removed)),
+                        spent * 2, put_back if withdrawn else ""))
 
 
 def held_at(project, commit, relative):
@@ -2396,7 +2398,6 @@ def main():
     rounds_spent = 0
     put_back = set()
     removed = set()
-    details = {}
     stopped_for_cause = False
     try:
         print("  building the base tree at {}".format(base_tree), flush=True)
@@ -2426,10 +2427,10 @@ def main():
                       if kind_of(case.path) == "csharp" and platform_of(case.path) == platform]
             for attempt in range(1, args.max_rounds + 1):
                 rounds_spent = max(rounds_spent, attempt)
-                # `put_back` is one set across platforms: the tree is one, the editor compiles every
-                # assembly whatever platform is asked, and a file an earlier platform's round put
-                # back is the base's text for this one too -- asking its fixture would read the
-                # base's own result as the branch's case.
+                # `put_back` is one set across platforms rather than one per platform: the tree is
+                # one, so a file an earlier platform's round put back stands at the base's text when
+                # this one asks, and asking its fixture would read the base's own result as the
+                # branch's case. `LocalLoopTests` fails when it is asked.
                 live = [case for case in wanted if case.path not in put_back]
                 fixtures = sorted({case.fixture for case in live} | set(canaries[platform]))
                 if not fixtures:
@@ -2477,18 +2478,21 @@ def main():
                 codes = {}
                 for relative, code in compile_errors_in(log_text):
                     codes.setdefault(relative, code)
+                # Printed rather than carried into the verdict. What a round put back is not a
+                # reading about the case: the silent one was chosen by the fixture that went
+                # missing, not by an error list, and a verdict off either would outrank the
+                # canaries that say whether the platform answered at all.
                 for offender in restore:
                     withdraw(base_tree, offender)
                     put_back.add(offender)
-                    details[offender] = (
-                        "the compiler blamed it ({}) in round {}".format(codes[offender], attempt)
-                        if offender in codes else
-                        "put back in round {}, the log naming nothing".format(attempt))
+                    print("  withdrawn: {} -- {}".format(offender, (
+                        "the compiler blamed it ({})".format(codes[offender]) if offender in codes
+                        else "its fixture reported nothing and the log named no file")), flush=True)
                 for offender in take_out:
                     remove(base_tree, offender)
                     removed.add(offender)
-                    details[offender] = ("its base text did not build beside what the branch "
-                                         "carried, so it came out in round {}".format(attempt))
+                    print("  removed: {} -- its base text did not build beside what the branch "
+                          "carried".format(offender), flush=True)
             if stopped_for_cause:
                 break
     finally:
@@ -2502,12 +2506,12 @@ def main():
     if not ever_wrote:
         print("no round wrote a result, so nothing any of them was asked was measured", flush=True)
         if rounds_spent >= args.max_rounds and not stopped_for_cause:
-            print(exhausted_reason(rounds_spent, put_back, len(carry)), flush=True)
+            print(exhausted_reason(rounds_spent, put_back, len(carry), removed), flush=True)
     if met_a_neighbour:
         print("\nA second editor was up during at least one of these runs, so a failure here has a\n"
               "second explanation. Nothing below distinguishes one it caused from one the branch did.",
               flush=True)
-    offenders = report(cases, control, reported, canaries, ever_wrote, blamed=details)
+    offenders = report(cases, control, reported, canaries, ever_wrote)
     print("\nlogs: {}".format(output), flush=True)
     return 1 if offenders else 0
 
