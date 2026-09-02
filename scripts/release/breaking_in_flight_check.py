@@ -340,11 +340,12 @@ def files_as_published(lines, index, copy, where):
 
     A heading put back under one of the same name leaves what it comes to file reading as it did, so
     a line the section gained after its release does not stand in the way of it, as it does not of
-    `touching`. A heading that comes to file nothing is refused ahead of both, since the note would
-    then carry the name with no entry beneath it. Three repairs that might have wanted it were
-    measured and all pass without it: a block restored whole, a heading put back over entries the
-    base already carries, and a heading with the first of its entries. That last one files fewer
-    lines than the copy does, which stays allowed.
+    `touching`. A heading put back that heads nothing is refused ahead of both. The question is
+    asked of the put-back's own line, so it does not answer for every empty block a result can
+    carry: one the put-back empties above itself passes, and so does the first of two identical
+    headings it makes adjacent, since `added_positions` charges only one of them. What it costs a
+    contributor is the heading-first half of a two-step restore, which the refusal says to make in
+    one edit with an entry it heads.
     """
     if not release_notes.SUBSECTION_HEADING.match(lines[index]):
         return under(lines, index) == under(copy, where)

@@ -177,6 +177,12 @@ LAST_LINE = RELEASED.replace(
     "### Changed\n\n- A change that shipped.\n- Another change that shipped.\n"
     "\n### Fixed\n\n- A thing that shipped.\n- Another thing that shipped.\n")
 
+# A published section of two blocks, against a file short of the second one entire, so its heading
+# can go back where the copy has it and still head nothing.
+WHOLE_BLOCK = RELEASED.replace(
+    "### Fixed\n\n- A thing that shipped.\n",
+    "### Fixed\n\n- A thing that shipped.\n\n### Changed\n\n- A change that shipped.\n")
+
 BLOCKS_SWAPPED = RELEASED.replace(
     "### Fixed\n\n- A thing that shipped.\n",
     "### Fixed\n\n- A thing that shipped.\n"
@@ -464,6 +470,25 @@ class AgainstTheTag(unittest.TestCase):
 
         # Assert
         self.assertEqual((code, "v2.0.1-main" in said), (2, True))
+
+    def test_Given_AHeadingPutBackOnItsOwn_When_ItIsRefused_Then_TheOneEditRemedyIsNamed(self):
+        # Arrange -- the file is short of a whole block, and the heading goes back where the copy
+        # has it, ahead of nothing. Refusing it is right, and the advice above says a line put back
+        # where the copy has it is what gets through, which is what this contributor just did.
+        root, changelog = published(self, WHOLE_BLOCK, "closed-version-whole-")
+        changelog.write_text(RELEASED)
+        one_edit, _ = judged(root, changelog, "- A thing that shipped.\n",
+                             "- A thing that shipped.\n\n### Changed\n\n- A change that shipped.\n")
+        changelog.write_text(RELEASED)
+
+        # Act
+        code, said = judged(root, changelog, "- A thing that shipped.\n",
+                            "- A thing that shipped.\n\n### Changed\n")
+
+        # Assert -- the one-edit route passing rides along, since advice naming a way through is
+        # worth nothing if that way is refused too.
+        self.assertEqual((one_edit, code, "in the same edit as an entry it heads" in said),
+                         (0, 2, True))
 
     def test_Given_APutBackMadeHere_When_ItIsUndone_Then_ItIsRefusedTowardsGit(self):
         # Arrange -- the file has lost a line against the tag, and the put-back this guard lets
