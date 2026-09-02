@@ -58,10 +58,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   transition slots and the structural variants — each already answered every named member as it does now.
 
 - `V.Portal(layer:)` refuses a `UILayer` value naming no member of the enum at construction, with an
-  `ArgumentOutOfRangeException` that names the parameter and carries the value. Such a value used to
-  build a node, and what reported it was the layer offset switch's own exception from the deferred host
-  mount after the pass, whose message named neither `V.Portal`, `UILayer` nor the parameter, with the
-  portal absent and its siblings rendered.
+  `ArgumentOutOfRangeException` that names the parameter and carries the value. 2.1.4 answered such a
+  value by rendering the portal on the `Overlay` host without a word.
 
 - `StyleVariantClass.BreakpointPx` and `StyleVariantClass.IsResponsive` throw for a `StyleVariantKind`
   value naming no member of the enum, where they returned `0f` and `false`. Both have done so since
