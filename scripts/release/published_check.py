@@ -320,15 +320,29 @@ def claims_a_break_outside_a_major(text, versions, published):
             and breaking_highlight_in(text, version)]
 
 
-def remote_tags(project, remote="origin", timeout=5):
-    """Tag names on the remote.
+def remote_tag_shas(project, remote="origin", timeout=5):
+    """Tag names on the remote, each with the commit it names.
 
     Asked of the remote so a stale local tag list cannot report an unpublished version as published,
-    and so the reading needs neither a tag fetch nor a checkout deep enough to carry one.
+    and so the reading needs neither a tag fetch nor a checkout deep enough to carry one. An
+    annotated tag's peeled line is the one kept; test_published_check.py holds that it is the commit.
     """
-    lines = git(project, "ls-remote", "--tags", remote, timeout=timeout).splitlines()
-    return {line.split("refs/tags/", 1)[1].removesuffix("^{}")
-            for line in lines if "refs/tags/" in line}
+    named = {}
+    for line in git(project, "ls-remote", "--tags", remote, timeout=timeout).splitlines():
+        if "refs/tags/" not in line:
+            continue
+        sha, ref = line.split(None, 1)
+        name = ref.split("refs/tags/", 1)[1]
+        if name.endswith("^{}"):
+            named[name.removesuffix("^{}")] = sha
+        else:
+            named.setdefault(name, sha)
+    return named
+
+
+def remote_tags(project, remote="origin", timeout=5):
+    """Tag names on the remote, read the way remote_tag_shas reads them."""
+    return set(remote_tag_shas(project, remote, timeout))
 
 
 def read_at(project, rev, path):
