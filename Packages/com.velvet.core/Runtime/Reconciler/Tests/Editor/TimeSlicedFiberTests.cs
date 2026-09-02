@@ -28,10 +28,12 @@ namespace Velvet.Tests
     /// sibling that is itself time-sliced (its delta committed across slices), and a nested growth absorbed by a
     /// wrapper (which must NOT shift the following sibling, since propagation is scoped to the shared mount
     /// point).</item>
-    /// <item>The resume re-records every row it commits, so a row that re-renders on its own after the drain
-    /// reads its own row's Provider. Before the resume it does not: the host's output is committed while the
-    /// slice is still parked, so a row the pass never reached is looked up by key alone and answers to
-    /// whichever container the committed tree reaches first — the reading recorded here.</item>
+    /// <item>A row the resume commits reads its own row's Provider when it re-renders on its own, whether
+    /// the transition was declared by the list's own host or by a sibling — the second is what asks the
+    /// resume itself, since the first is re-recorded by the settle's own re-render of the host. Before the
+    /// resume neither holds: the host's output is committed while the slice is still parked, so a row the
+    /// pass never reached is looked up by key alone and answers to whichever container the committed tree
+    /// reaches first — the reading recorded here.</item>
     /// </list>
     /// </summary>
     /// <remarks>
@@ -924,9 +926,10 @@ namespace Velvet.Tests
                 Is.EqualTo((true, "g0-7", "g0-7", "g1-0", 1)));
         }
 
-        // The resume commits the rows the park left, so every row's own node is re-recorded there. A row that
-        // re-renders alone afterwards must read the Provider of its own row rather than of whichever row the
-        // committed tree reaches first.
+        // A row the drain committed reads its own row's Provider afterwards rather than whichever row the
+        // committed tree reaches first. The host declares the transition here, so the settle after the
+        // terminal chunk schedules the host itself and every row is recorded again by that render — which
+        // is why this case does not isolate the resume. The sibling-declared case below does.
         [Test]
         public void Given_AParkedKeyedListDrainedToCompletion_When_ARowReRendersAlone_Then_ItReadsItsOwnRowsProvider()
         {
@@ -940,6 +943,70 @@ namespace Velvet.Tests
             var afterDrain = s_parkSeen[target];
 
             // Act
+            s_parkBumps[target].Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert — the post-drain reading is folded in because the value below is what a row that never
+            // re-rendered would still be holding, and the row's own count because that is what says it did.
+            Assert.That(
+                (afterDrain, s_parkSeen[target], s_parkCount[target]),
+                Is.EqualTo(("g1-7", "g1-7", 1)));
+        }
+
+
+        private static ComponentFiber s_sibListFiber;
+        private static StateUpdater<int> s_sibSetGen;
+        private static TransitionStarter s_sibStart;
+
+        // The transition is declared by a SIBLING of the list, so the settle after the drain schedules the
+        // toolbar rather than the list: the list itself never re-renders, and the rows the resume committed
+        // are left with whatever the resume recorded on them.
+        [Component]
+        private static VNode SiblingToolbarRender()
+        {
+            var (_, start) = Hooks.UseTransition();
+            s_sibStart = start;
+            return V.Label(name: "sib-toolbar", text: "toolbar");
+        }
+
+        [Component]
+        private static VNode SiblingListRender()
+        {
+            var (gen, setGen) = Hooks.UseState(0);
+            s_sibSetGen = setGen;
+            s_sibListFiber = FiberAmbientStack.Current;
+            var children = new VNode[ParkRowCount];
+            for (var i = 0; i < ParkRowCount; i++)
+            {
+                children[i] = V.Div(key: "sk" + i, name: "sib-cell-" + i, children: new VNode?[]
+                {
+                    V.Provider(RowCtx, $"g{gen}-{i}", new VNode[] { V.Component(ParkRowBody, i, key: "row") }),
+                });
+            }
+            return V.Fragment(children: children);
+        }
+
+        [Component]
+        private static VNode SiblingTransitionHostRender()
+            => V.Div(name: "sib-shell", children: new VNode?[]
+            {
+                V.Component(SiblingToolbarRender, key: "toolbar"),
+                V.Component(SiblingListRender, key: "list"),
+            });
+
+        [Test]
+        public void Given_AListWhoseTransitionASiblingDeclares_When_ARowReRendersAloneAfterTheDrain_Then_ItReadsItsOwnRowsProvider()
+        {
+            // Arrange
+            ResetParkList();
+            using var mounted = V.Mount(_root, V.Component(SiblingTransitionHostRender, key: "sib-host"));
+            const int target = ParkRowCount - 1;
+
+            // Act — the sibling's starter moves the list's state, the list parks, and the drain completes it.
+            s_sibStart.Invoke(() => s_sibSetGen.Invoke(1));
+            s_sibListFiber.FlushStateWithTinyBudgetForTest();
+            s_sibListFiber.DrainTimeSlicedReconcileForTest();
+            var afterDrain = s_parkSeen[target];
             s_parkBumps[target].Invoke(1);
             mounted.FlushStateForTest();
 

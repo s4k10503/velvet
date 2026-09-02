@@ -122,9 +122,8 @@ namespace Velvet
             RenderAndReconcile(fiber, deferReconcile: true);
             // The render above can dispose this fiber, which nulls Reconciler — RenderAndReconcile's own
             // post-render arm reads the field for that same reason and names the cascade that does it.
-            // There is then no pass left to subsume into: the three steps below would queue a layout
-            // effect and a paint-tick effect against a disposed fiber and re-enrol lanes the unmount
-            // has already cleared, along with the batch-scheduler entry it already dropped.
+            // There is then no pass left to subsume into: the two effect queues below would stage a layout
+            // effect and a paint-tick effect against a disposed fiber.
             var subsumedReconciler = fiber.Reconciler;
             if (subsumedReconciler == null) return;
             // Update commit: drain side runs prior cleanup + new setup (deps-comparing) without
