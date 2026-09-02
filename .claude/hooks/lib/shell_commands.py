@@ -78,6 +78,13 @@ def mask_shell_literals(command):
         elif ch == "\\" and i + 1 < n:
             out[i] = out[i + 1] = " "
             i += 2
+        elif command.startswith("<<<", i):
+            # A here-string is not a heredoc, and `<<` matches its first two characters. Read as one
+            # it took `<word` for the delimiter, blanked the rest of the line hunting a body line
+            # equal to it, and never found one -- so every remaining line of the command went with
+            # it, and a guard reading the command saw nothing after the here-string at all.
+            out[i] = out[i + 1] = out[i + 2] = " "
+            i += 3
         elif command.startswith("<<", i):
             j = i + 2
             strip_tabs = j < n and command[j] == "-"
@@ -100,8 +107,12 @@ def mask_shell_literals(command):
             while i < j:
                 out[i] = " "
                 i += 1
+            # Past the delimiter the line is ordinary shell -- a redirect, a separator, the next
+            # command -- and blanking it hid where the opening command's operands end. Measured over
+            # this project's transcripts, that put the FOLLOWING command's tokens into `git commit`'s
+            # operand list in 55 of 55 readings, and the three guards that read those operands took
+            # an unexpanded one belonging to another command as the commit's own.
             while i < n and command[i] != "\n":
-                out[i] = " "
                 i += 1
             if i < n:
                 out[i] = "\n"

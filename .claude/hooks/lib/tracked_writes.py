@@ -15,13 +15,13 @@ That makes the reading an under-approximation, and a refusal built on it has to 
 imply coverage: `UNREAD` is the list of what it gives up and `LIMITS` the sentence built from it,
 owned here so two guards cannot state it two ways.
 
-One of those entries is a shape measured and declined rather than missed by oversight. A redirect
-written after a heredoc opener on the same line -- `cat <<'EOF' > file` -- is invisible here because
-`mask_shell_literals` blanks that line from the delimiter on, and unblanking it is shared with every
-caller of `command_segments`: measured over the transcripts above, it moves the segmentation of 71
-commands and makes 90 git invocations newly visible to seven guards, against three occurrences of
-the shape and none of them onto a tracked file. The other ordering, `cat > file <<'EOF'`, occurs a
-thousand times and is read.
+Two shapes that were on that list are now read instead, and closing them meant changing
+`mask_shell_literals`, which every caller of `command_segments` shares. What decided it was that no
+guard reads any of the git subcommands the change makes newly visible -- they are `log`, `push`,
+`status`, `merge` and `diff`, against a guarded set of `add`, `checkout`, `commit`, `stage`, `stash`
+and `switch` -- while the change corrects `git commit`'s operand list in every reading of it that
+moves. The two verdicts that move on this project's transcripts both move from refusal to allowing,
+one of them a commit refused over an unexpanded operand belonging to the command after it.
 
 `tee` is the obvious fourth shape and is not read: two independent readings of those transcripts put
 it at no tracked file at all. Nor is `git mv`, which wants a criterion of its own rather than another
@@ -48,8 +48,8 @@ from shell_commands import (SEPARATORS, UNRESOLVED_CD, command_segments, leading
 UNREAD = (
     "a target the shell has yet to expand",
     "a directory the command moves into partway through",
-    "a redirect written after a heredoc opener on the same line",
     "`>&`, which writes the file it names",
+    "`>|`, whose bar the segment split takes for a separator",
     "a destination `cp -t` takes off the end of the operands",
     "`tee`, and `git mv`",
     "a writing command reached through another, as `xargs` and `sudo` reach one",
@@ -100,12 +100,13 @@ def _redirect_targets(segment):
     it then reads as a file being written. That refusal cannot be argued with, since the command
     writes nothing for its author to point at.
     """
-    # No `&` survives into a segment -- the split consumes every unquoted one as a separator -- so
-    # nothing here reads the descriptor spellings, and none of them needs a branch. `2>&1` leaves a
-    # `>` at a segment's end with no operand after it, which is why a descriptor move yields
-    # nothing. `&>` arrives as a segment opening on `>` and is read like any other write. `>&` leaves
-    # the same trailing `>` as `2>&1`, so a `make >& log`, which does write the file, is missed here
-    # rather than refused -- the direction an under-approximation is allowed to be wrong in.
+    # The descriptor spellings need no branch, because the split has already decided them. `&` is a
+    # separator, so `2>&1` leaves a `>` at a segment's end with no operand after it and yields
+    # nothing; `&>` opens a segment on `>` and is read like any other write; `>&` leaves that same
+    # trailing `>`, so a `make >& log`, which does write the file, is missed rather than refused --
+    # the direction an under-approximation is allowed to be wrong in. A quoted `&` is not a
+    # separator and does survive into a segment, which changes none of the above: it is blanked in
+    # the mask this scans.
     masked = mask_shell_literals(segment)
     found = []
     index = 0

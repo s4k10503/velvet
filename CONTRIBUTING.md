@@ -589,15 +589,19 @@ problem the body guard above was reduced for twice — and narrow from the same 
 than from a guess about what a session does. `tee` reached a tracked file in none of them, and
 `git mv` wants a criterion of its own rather than another spelling of that one. What the reading
 gives up it does not leave a reader to infer: `tracked_writes.UNREAD` is the list, the refusal is
-built from it, and `scripts/hooks/test_tracked_writes.py` holds the refusal to every entry and
-counts them. One of those entries is a shape this branch measured and declined to close — a
-redirect written after a heredoc opener on the same line, which needs `mask_shell_literals` to stop
-blanking that line. Measured over the same transcripts, the ordering that works occurs 1,047 times
-and the one that does not occurs 3, none onto a tracked file, while the masker change moves what
-seven guards see for 71 commands and makes 90 git invocations newly visible to them. So it is
-stated as a gap rather than closed here.
+built from it, `scripts/hooks/test_tracked_writes.py` holds the refusal to every entry and counts
+them, and every entry has a case posing the shape it names.
 
-`edit_while_a_ready_pr_sits.py` reaches the same verdict on a shell write as on an edit.
+Reading a redirect on a heredoc opener's line, and anything after a `<<<` here-string, meant
+changing `mask_shell_literals`, which every caller of `command_segments` shares. What decided it was
+measured rather than judged: the change makes `log`, `push`, `status`, `merge` and `diff` newly
+visible and no guard reads any of them, while it corrects `git commit`'s operand list in all 55
+readings of it that move — today's masker appends the following command's tokens there, and the two
+verdicts that change on this project's transcripts both go from refusing to allowing, one of them a
+commit refused over an unexpanded operand belonging to the next command.
+
+`edit_while_a_ready_pr_sits.py` reaches the verdict it reaches for an edit, for the shell writes it
+can place on a tracked file — an Edit of an untracked file is held and a redirect onto one is not.
 `changelog_into_closed_version.py` cannot: its reading compares the section before against the
 section proposed, and a shell command carries no proposed text, so it refuses a write onto a
 CHANGELOG whatever that write would have said and names the tools that present the text.

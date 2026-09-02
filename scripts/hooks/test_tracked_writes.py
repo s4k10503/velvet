@@ -39,8 +39,8 @@ CHANGELOG_REL = "Packages/com.velvet.core/CHANGELOG.md"
 UNREAD_GAPS = [
     "yet to expand",
     "moves into partway through",
-    "after a heredoc opener",
     "`>&`",
+    "`>|`",
     "`cp -t`",
     "`tee`, and `git mv`",
     "`xargs` and `sudo`",
@@ -155,6 +155,80 @@ class ReadingTests(unittest.TestCase):
         # Arrange / Act — `pushd` moves the shell as surely as `cd`, so the operand below belongs
         # to the directory it moved into rather than to the one the tool call started in.
         found = self.named("pushd /tmp && printf 'x\\n' > notes.md")
+
+        # Assert
+        self.assertEqual(found, [])
+
+    def test_Given_ARedirectAfterAHeredocOpener_When_TheCommandIsRead_Then_ThatFileIsNamed(self):
+        # Arrange / Act — the opener's line carries the redirect, and the mask used to blank that
+        # line from the delimiter on. This is how a session writes a file from the shell.
+        found = self.named("cat <<'EOF' > notes.md\nbody\nEOF\n")
+
+        # Assert
+        self.assertEqual(found, [self.under("notes.md")])
+
+    def test_Given_AWriteOnALaterLineThanAHereString_When_TheCommandIsRead_Then_ThatFileIsNamed(self):
+        # Arrange / Act — the write is on a LATER LINE, which is what the here-string reading costs:
+        # read as a heredoc, `<<<` takes `<` for a delimiter, finds no body line equal to it and
+        # blanks every remaining line. On one line the opener's own tail survives either way, so a
+        # single-line case passes with the here-string reading left broken.
+        found = self.named("grep -q velvet <<< foo\necho mid\nprintf 'x\\n' > notes.md")
+
+        # Assert
+        self.assertEqual(found, [self.under("notes.md")])
+
+    def test_Given_ADescriptorSpellingThatWritesAFile_When_TheCommandIsRead_Then_ItIsNotNamed(self):
+        # Arrange / Act — `>&` names a file here rather than a descriptor, and the split leaves the
+        # `>` at a segment's end. A declared gap, so the case says so rather than pretending.
+        found = self.named("make >& notes.md")
+
+        # Assert
+        self.assertEqual(found, [])
+
+    def test_Given_ARedirectPastTheClobberGuard_When_TheCommandIsRead_Then_ItIsNotNamed(self):
+        # Arrange / Act — the bar of `>|` is a separator to the segment split, so the operand lands
+        # in a segment of its own with no operator before it. A declared gap.
+        found = self.named("printf x >| notes.md")
+
+        # Assert
+        self.assertEqual(found, [])
+
+    def test_Given_ACopyWithItsDestinationMovedOffTheEnd_When_TheCommandIsRead_Then_ItIsNotNamed(self):
+        # Arrange / Act — `-t` puts the destination first, and a destination read off the wrong end
+        # names a source. A declared gap rather than a guess at which end is which.
+        found = self.named("cp -t sub notes.md")
+
+        # Assert
+        self.assertEqual(found, [])
+
+    def test_Given_ATee_When_TheCommandIsRead_Then_ItIsNotNamed(self):
+        # Arrange / Act — in the issue's own list of shapes, and it reached a tracked file in none
+        # of this project's transcripts. A declared gap.
+        found = self.named("echo x | tee notes.md")
+
+        # Assert
+        self.assertEqual(found, [])
+
+    def test_Given_AGitMove_When_TheCommandIsRead_Then_ItIsNotNamed(self):
+        # Arrange / Act — its destination is ordinarily a path git does not yet track, so it wants a
+        # criterion of its own rather than this one. A declared gap.
+        found = self.named("git mv old.md notes.md")
+
+        # Assert
+        self.assertEqual(found, [])
+
+    def test_Given_AWriterReachedThroughAnotherProgram_When_TheCommandIsRead_Then_ItIsNotNamed(self):
+        # Arrange / Act — the segment's leading program is `xargs`, so the shared parser claims no
+        # `sed` here. A declared gap; enumerating wrappers is what this reading declines to do.
+        found = self.named("echo notes.md | xargs sed -i '' -e s/a/b/")
+
+        # Assert
+        self.assertEqual(found, [])
+
+    def test_Given_AWriteMadeFromInsideAProgram_When_TheCommandIsRead_Then_ItIsNotNamed(self):
+        # Arrange / Act — the path is an argument to an interpreter rather than an operand of a
+        # write, and reading a program for its writes is the problem this declines to solve.
+        found = self.named("python3 -c \"open('notes.md','w')\"")
 
         # Assert
         self.assertEqual(found, [])
