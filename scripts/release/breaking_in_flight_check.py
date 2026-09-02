@@ -30,8 +30,11 @@ has to carry the copy in order, and one gone that the base or the last release o
 is refused, whatever the change closes, since the file cannot tell a correction from a deletion.
 Where the remote tags no release the result descends from -- a repository before its first
 release -- the breaking section is read one step deep from `--base`, and the pass says so. A remote
-that cannot be listed, a tag whose commit is not here, and a history cut short under the result are
-refused as unread instead, since none is the reading that passes.
+that cannot be listed is refused as unread instead, since none is the reading that passes, and so is
+a history cut short under the result, where a tag the result is not found to descend from may sit
+below the cut. A tag whose commit is not here is otherwise passed over, as a maintenance line's is,
+until the result carries a dated section for its version -- reading that release's note is then what
+fails, and that is refused as unread too.
 
 Exit 2 when a pull request goes unnamed, 1 when the state could not be read, 0 otherwise. A read that
 did not happen is not a read that found nothing, and it must not pass.
@@ -285,11 +288,51 @@ def carries_in_order(lines, published):
     return reached == len(published)
 
 
+def added_positions(lines, before):
+    """Which of `lines` are not `before`'s own, by index, or None where `before` is not carried in
+    order at all -- a line lost, reworded or moved."""
+    reached, added = 0, []
+    for index, line in enumerate(lines):
+        if reached < len(before) and line == before[reached]:
+            reached += 1
+        else:
+            added.append(index)
+    return added if reached == len(before) else None
+
+
+def in_its_place(lines, index, copy):
+    """Whether the line at `index` sits where `copy` has it: after the line the copy puts above it
+    and before the one it puts below, of those here at all.
+
+    Either side of the one line rather than over the section, since asking the section to carry the
+    copy in order would refuse every change to one reordered against it, and two of main's carry
+    every line of their copy in another order.
+    """
+    for where, published in enumerate(copy):
+        if published != lines[index]:
+            continue
+        above = copy[where - 1] if where else None
+        below = copy[where + 1] if where + 1 < len(copy) else None
+        if ((above is None or above not in lines or above in lines[:index])
+                and (below is None or below not in lines or below in lines[index + 1:])):
+            return True
+    return False
+
+
 def only_put_back(lines, before, copy):
-    """Whether `lines` are `before` with nothing lost or moved and nothing added but lines of `copy`:
-    the one edit a section already here takes, since a line of the tag's put back is the repair."""
-    return (carries_in_order(lines, before)
-            and not ((Counter(lines) - Counter(before)) - Counter(copy)))
+    """Whether `lines` are `before` with nothing lost or moved, and nothing added but a line of
+    `copy` that `before` is short of, put back where `copy` has it: the one kind of change a section
+    already here takes, since the note the release shipped is what a repair restores.
+
+    Short of the base as well as in the copy, because a line the section already carries is in the
+    copy too -- allowed on the copy alone, a second one arrives and the note ships the bullet twice.
+    """
+    added = added_positions(lines, before)
+    if added is None:
+        return False
+    if Counter(lines[index] for index in added) - (Counter(copy) - Counter(before)):
+        return False
+    return all(in_its_place(lines, index, copy) for index in added)
 
 
 def published_copy(version, tags, read):
@@ -423,18 +466,18 @@ def main():
         sys.stderr.write(
             "{} dated section(s) of {} do not carry the note their release shipped:\n{}\n\n"
             "A file cannot tell a correction from a deletion, so neither is made past the tag: a\n"
-            "dated section is the base's but for a line of its tag's copy put back, and one brought\n"
-            "in whole carries that copy in order. Put each back, reading the copy from its tag:\n{}\n"
+            "dated section is the base's but for a line its tag's copy has and the base is short\n"
+            "of, put back where that copy has it, and one brought in whole carries that copy in\n"
+            "order. Read each copy from the commit the remote tags:\n{}\n"
             "and put what this change has to say under '## [Unreleased]'.\n".format(
                 len(gone) + len(changed), args.result,
                 "\n".join(["  ## [{}]: gone, and {} carries it".format(version, tag)
                            for version, tag in gone]
                           + ["  ## [{}]: {}".format(version, how)
                              for version, _, how in changed]),
-                "\n".join(sorted({"  git show {}:{}".format(tag, CHANGELOG)
-                                  for _, tag in gone} |
-                                 {"  git show {}:{}".format(tag, CHANGELOG)
-                                  for _, tag, _ in changed}))))
+                "\n".join(sorted(
+                    "  git show {}:{}   # {}".format(tagged[tag], CHANGELOG, tag)
+                    for tag in {tag for _, tag in gone} | {tag for _, tag, _ in changed}))))
         return UNNAMED
 
     versions = closing(args.base, args.result, tags)

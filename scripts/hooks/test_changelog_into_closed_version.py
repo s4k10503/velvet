@@ -349,6 +349,21 @@ class AgainstTheTag(unittest.TestCase):
         # Assert
         self.assertEqual((code, "v2.0.1-main" in said), (2, True))
 
+    def test_Given_APutBackMadeHere_When_ItIsUndone_Then_ItIsRefusedTowardsGit(self):
+        # Arrange -- the file has lost a line against the tag, and the put-back this guard lets
+        # through is made in the editor.
+        self.changelog.write_text(TAGGED.replace("- Another thing that shipped.\n", ""))
+        put_back, _ = judged(self.root, self.changelog, "- A thing that shipped.\n",
+                             "- A thing that shipped.\n- Another thing that shipped.\n")
+        self.changelog.write_text(TAGGED)
+
+        # Act -- undoing it. What the file was before the put-back is not something this reads: it
+        # compares the edit against the file, where the merge-time check has the base commit.
+        undone, said = judged(self.root, self.changelog, "- Another thing that shipped.\n", "")
+
+        # Assert
+        self.assertEqual((put_back, undone, "Revert it with git" in said), (0, 2, True))
+
     def test_Given_ASectionGrownPastItsTag_When_TheAddedLineIsDeleted_Then_ItIsRefused(self):
         # Arrange -- a line the tag's copy never carried, which is what main's older sections hold;
         # deleting it leaves the section the tag's copy to the letter, and the file cannot tell that

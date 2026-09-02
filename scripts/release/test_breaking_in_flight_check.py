@@ -348,6 +348,17 @@ GROWN = OPEN.replace("- A release.\n", "- A release.\n- A highlight written afte
 ON_THE_LINE = OPEN.replace(
     "## [2.1.0]", "## [2.1.4] - 2026-08-30\n\n### Fixed\n\n- A patch on the line.\n\n## [2.1.0]")
 
+SUBSECTIONS = OPEN.replace(
+    "### Highlights\n\n- A release.\n",
+    "### Highlights\n\n- A release.\n\n### Changed\n\n- Changed one.\n- Changed two.\n"
+    "\n### Fixed\n\n- Fixed one.\n")
+
+SHORT_OF_ONE = SUBSECTIONS.replace("- Changed two.\n", "")
+
+PUT_BACK_ELSEWHERE = SHORT_OF_ONE.replace("- Fixed one.\n", "- Changed two.\n- Fixed one.\n")
+
+DUPLICATED = SUBSECTIONS.replace("- Changed one.\n", "- Changed one.\n- Changed one.\n")
+
 
 def revision(root, name="HEAD"):
     return subprocess.run(["git", "-C", str(root), "rev-parse", name],
@@ -667,6 +678,19 @@ class PublishedSections(ReleaseHistory):
         # Assert
         self.assertEqual((done.returncode, "## [2.1.0]: gone" in done.stderr), (UNNAMED, True))
 
+    def test_Given_ARefusal_When_ItSaysWhereToReadTheCopy_Then_ItNamesTheCommitTheRemoteTags(self):
+        # Arrange -- the copy compared came from the commit `ls-remote` named, and a checkout's own
+        # tag of that name can be another commit or none: this one holds a `v3.0.0-main` for a
+        # release that was withdrawn.
+        root, commits = self.history(OPEN, OPEN.replace("- A release.\n", ""), tags={0: RELEASE})
+        named = revision(root, RELEASE)
+
+        # Act
+        done = run(root, commits[0], "[]")
+
+        # Assert
+        self.assertEqual((done.returncode, f"git show {named}:" in done.stderr), (UNNAMED, True))
+
     def test_Given_ADatedHeadingsDateChanged_When_Decided_Then_ItIsRefused(self):
         # Arrange -- the heading is a line of the note too.
         root, commits = self.history(
@@ -749,6 +773,68 @@ class PublishedSections(ReleaseHistory):
         # Assert
         self.assertEqual((done.returncode, "## [2.1.4]: brought in without every line of v2.1.4-main"
                           in done.stderr), (UNNAMED, True))
+
+    def test_Given_ALineTheCopyHasPutBackWhereItHasIt_When_Decided_Then_ItPasses(self):
+        # Arrange -- the repair the refusal advertises: the base is short of a line its tag's copy
+        # carries, and the change puts that line back.
+        root, commits = self.history(SUBSECTIONS, SHORT_OF_ONE, SUBSECTIONS, tags={0: RELEASE})
+        was_short = "- Changed two." not in subprocess.run(
+            ["git", "-C", str(root), "show", f"{commits[1]}:{CHANGELOG}"],
+            capture_output=True, text=True).stdout
+
+        # Act
+        done = run(root, commits[1], "[]")
+
+        # Assert -- what the base was short of rides along, and the reading having run with it: a
+        # change touching no dated section passes without going near this branch, and a run that
+        # read no tag at all passes every dated-section shape with it.
+        self.assertEqual((was_short, done.returncode,
+                          "each dated section to its own release's tag" in done.stdout),
+                         (True, 0, True))
+
+    def test_Given_ALineTheCopyHasPutBackElsewhere_When_Decided_Then_ItIsRefused(self):
+        # Arrange -- the same line, under `### Fixed` rather than where the copy has it. The note
+        # would then describe it as a fix.
+        root, commits = self.history(SUBSECTIONS, SHORT_OF_ONE, PUT_BACK_ELSEWHERE,
+                                     tags={0: RELEASE})
+
+        # Act
+        done = run(root, commits[1], "[]")
+
+        # Assert
+        self.assertEqual((done.returncode, "## [2.1.0]: changed against the base" in done.stderr),
+                         (UNNAMED, True))
+
+    def test_Given_ALineTheSectionAlreadyCarriesAddedAgain_When_Decided_Then_ItIsRefused(self):
+        # Arrange -- the copy carries that line, so a reading asking only which lines may arrive
+        # allows a second one, and the note ships the bullet twice.
+        root, commits = self.history(SUBSECTIONS, DUPLICATED, tags={0: RELEASE})
+
+        # Act
+        done = run(root, commits[0], "[]")
+
+        # Assert
+        self.assertEqual((done.returncode, "## [2.1.0]: changed against the base" in done.stderr),
+                         (UNNAMED, True))
+
+    def test_Given_AMaintenanceSectionCarriedInWhole_When_Decided_Then_ItPasses(self):
+        # Arrange -- the other branch that lets a change through: a section the base has not got,
+        # brought in carrying its tag's copy in order.
+        root, commits = self.history(OPEN, tags={0: RELEASE})
+        self.line(root, ON_THE_LINE, "v2.1.4-main")
+        self.commit(root, ON_THE_LINE, "carried forward")
+        published = "v2.1.4-main" in subprocess.run(
+            ["git", "-C", str(root), "ls-remote", "--tags", "origin"],
+            capture_output=True, text=True).stdout
+
+        # Act
+        done = run(root, commits[0], "[]")
+
+        # Assert -- the tag rides along, and the reading having run with it: a section no release
+        # tags is unpublished and passes without being held at all.
+        self.assertEqual((published, done.returncode,
+                          "each dated section to its own release's tag" in done.stdout),
+                         (True, 0, True))
 
     def test_Given_ACarriedMaintenanceSectionDeleted_When_Decided_Then_ItIsRefusedAsGone(self):
         # Arrange -- the base carried it and no release on this line did, so the base is what holds

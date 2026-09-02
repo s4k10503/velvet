@@ -27,16 +27,20 @@ The reading is a released section's PUBLISHED LINES, before against the proposed
   is the accepted cost — the refusal says what a genuine reword should do instead. A reflowed line
   matches itself, because the join that unwraps it is the publisher's own.
 - A released section whose version the remote tags — `vX.Y.Z-main`, whichever line published it
-  — is refused every edit but two: putting a line of that tag's copy back, with nothing else lost
-  or moved, and bringing the section in whole, carrying that copy in order. Removal, reword,
-  reorder and a changed date alike, since the note is the tag's and the file cannot tell a
-  correction from a deletion; not equality with the tag's copy, because main's older sections were
-  reworded and reordered after their releases and carry a Highlights block their tags' copies do
-  not. The remote's tags rather than the checkout's, for the reason
-  `published_check.remote_tag_shas` gives. Where the remote tags no such version, or the remote or
-  git does not answer, the reading is the one above: growth is refused and removal is not, so
-  deleting an entry from such a section still runs. Deleting the whole SECTION does not either way,
-  because the heading goes with it — see below.
+  — is refused every change to it but two: putting back a line that copy has and the section is
+  short of, where the copy has it and with nothing else lost or moved, and bringing the section in
+  whole, carrying that copy in order. Removal, reword, reorder and a changed date alike, since the
+  note is the tag's and the file cannot tell a correction from a deletion; not equality with the
+  tag's copy, because main's sections already differ from their copies, each of those carrying a
+  Highlights block the copy has not got. The remote's tags rather than the checkout's, for the
+  reason `published_check.remote_tag_shas` gives. Where the remote tags no such version, or the
+  remote or git does not answer, the reading is the one above: growth is refused and removal is not,
+  so deleting an entry from such a section still runs. Deleting the whole SECTION does not either
+  way, because the heading goes with it — see below.
+- What the edit is measured against is the FILE, where the merge-time reading has the base commit,
+  so undoing a put-back made in the editor is refused as the deletion it looks like here. Reverting
+  it with git is the way back, as with the heading below; a base to compare against is what this
+  has not got, and the merge-time reading is what decides the change either way.
 - Only versions dated on BOTH sides are compared. Closing `## [Unreleased]` into `## [X.Y.Z] - DATE`
   newly dates a whole section, which under a first-seen-is-growth reading refused every release —
   including through the advice this hook prints, which left no in-band way to clear it. A heading
@@ -88,8 +92,9 @@ def repeated(text):
 
 
 def published_copies(path, versions):
-    """Those of `versions` the remote tags, each with the tag naming its release and that tag's copy
-    of the section, as {version: (tag, lines)}, and the path `git show` reads the file by.
+    """Those of `versions` the remote tags, each with the tag naming its release, the commit the
+    remote has it at and that tag's copy of the section, as {version: (tag, sha, lines)}, and the
+    path `git show` reads the file by.
 
     A version the remote does not tag is unpublished and absent here. So is one whose copy this
     checkout cannot show, and every one where the remote could not be listed: the guard then reads
@@ -113,7 +118,7 @@ def published_copies(path, versions):
         except drain.UnreadableRelease:
             continue
         if found is not None:
-            copies[version] = found
+            copies[version] = (found[0], tagged[found[0]], found[1])
     return copies, tracked
 
 
@@ -229,21 +234,24 @@ def main():
     copies, tracked = published_copies(path, moved)
     # A section the edit brings in whole -- a maintenance line's, carried forward -- is held to its
     # tag's copy; one already here is held to what it was, but for a line of that copy put back.
-    restored = {v for v, (tag, copy) in copies.items()
+    restored = {v for v, (tag, sha, copy) in copies.items()
                 if (drain.only_put_back(becomes[v], was[v], copy) if v in was
                     else drain.carries_in_order(becomes[v], copy))}
     held = [v for v in moved if v in copies and v not in restored]
     if held:
-        tag, _ = copies[held[0]]
+        tag, sha, _ = copies[held[0]]
         print(f"Refusing this {CHANGELOG} edit: it changes `## [{held[0]}]`, and {tag} on the "
               "remote is the release that shipped that section.\n\n"
               "A dated section is the note its release shipped. Nothing in the file separates a "
               "correction from a deletion, so neither is made past the tag; an edit that only puts "
-              "a line of the tag's copy back, or brings the section in carrying that copy whole, "
-              "is what this lets through:\n\n"
-              f"  git show {tag}:{tracked}\n\n"
+              "back a line that copy has and the section is short of, where the copy has it, or "
+              "brings the section in carrying that copy whole, is what this lets through:\n\n"
+              f"  git show {sha}:{tracked}   # {tag} on the remote\n\n"
               "Put what this change has to say under `## [Unreleased]`, or "
-              "`## [Unreleased — breaking]` where it has to wait for a major.", file=sys.stderr)
+              "`## [Unreleased — breaking]` where it has to wait for a major.\n\n"
+              "Undoing a put-back made in the editor arrives here as that deletion, because this "
+              "reads the file rather than a base commit. Revert it with git, which this check "
+              "never reads.", file=sys.stderr)
         return 2
     versions = sorted(v for v, listed in after.items()
                       if v in before and listed - before[v] and v not in restored)
