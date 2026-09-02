@@ -807,6 +807,8 @@ class ExhaustedLoopTests(unittest.TestCase):
         # Assert
         self.assertIn("--max-rounds 6", said)
 
+    # GREEN_ON_BASE(characterization): the multiplier is the base's own, four times what was spent.
+    # This branch halved it once with nothing going red, so the case is what holds it there.
     def test_Given_ARunThatSpentMoreThanTheCarriedCount_When_TheReasonIsBuilt_Then_TheMultiplierCarriesTheAdvice(self):
         # Arrange -- past the floor the advice is the multiplier's, and how deep a round's put-backs
         # go is what it guesses at; the branch halved it once with nothing going red.
