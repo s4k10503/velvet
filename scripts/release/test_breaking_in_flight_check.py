@@ -359,6 +359,52 @@ PUT_BACK_ELSEWHERE = SHORT_OF_ONE.replace("- Fixed one.\n", "- Changed two.\n- F
 
 DUPLICATED = SUBSECTIONS.replace("- Changed one.\n", "- Changed one.\n- Changed one.\n")
 
+# A copy whose missing lines sit next to each other, so the one put back has no copy-neighbour of
+# its own on one side. Both directions, since a bound is written per side.
+THREE_CHANGED = SUBSECTIONS.replace("- Changed two.\n", "- Changed two.\n- Changed three.\n")
+
+SHORT_OF_TWO_CHANGED = THREE_CHANGED.replace("- Changed two.\n- Changed three.\n", "")
+
+PUT_BACK_BELOW_ITS_BLOCK = SHORT_OF_TWO_CHANGED.replace(
+    "- Fixed one.\n", "- Changed two.\n- Fixed one.\n")
+
+PUT_BACK_IN_ITS_BLOCK = SHORT_OF_TWO_CHANGED.replace(
+    "- Changed one.\n", "- Changed one.\n- Changed two.\n")
+
+THREE_FIXED = SUBSECTIONS.replace("- Fixed one.\n", "- Fixed one.\n- Fixed two.\n- Fixed three.\n")
+
+SHORT_OF_TWO_FIXED = THREE_FIXED.replace("- Fixed one.\n- Fixed two.\n", "")
+
+PUT_BACK_ABOVE_ITS_BLOCK = SHORT_OF_TWO_FIXED.replace(
+    "- Changed two.\n", "- Changed two.\n- Fixed two.\n")
+
+# A copy carrying one line twice, against a base that merged the two blocks it heads and moved the
+# block between them up -- the shape a section reordered after its release takes.
+TWO_FIXED_BLOCKS = OPEN.replace(
+    "### Highlights\n\n- A release.\n",
+    "### Highlights\n\n- A release.\n\n### Fixed\n\n- Fixed one.\n"
+    "\n### Changed\n\n- Changed one.\n\n### Fixed\n\n- Fixed two.\n")
+
+MERGED_FIXED = OPEN.replace(
+    "### Highlights\n\n- A release.\n",
+    "### Highlights\n\n- A release.\n\n### Changed\n\n- Changed one.\n"
+    "\n### Fixed\n\n- Fixed one.\n- Fixed two.\n")
+
+FIXED_SPLITTING_CHANGED = MERGED_FIXED.replace(
+    "### Changed\n\n- Changed one.\n", "### Changed\n\n### Fixed\n\n- Changed one.\n")
+
+# A base whose blocks are in the other order, so the line the copy puts below the missing one is
+# above the line it puts above it.
+BLOCKS_REORDERED = SUBSECTIONS.replace(
+    "### Changed\n\n- Changed one.\n- Changed two.\n\n### Fixed\n\n- Fixed one.\n",
+    "### Fixed\n\n- Fixed one.\n\n### Changed\n\n- Changed one.\n")
+
+PUT_BACK_ABOVE_THE_BLOCKS = BLOCKS_REORDERED.replace(
+    "### Fixed\n", "- Changed two.\n\n### Fixed\n")
+
+CARRIED_GROWN = ON_THE_LINE.replace(
+    "- A patch on the line.\n", "- A patch on the line.\n- A bullet that release never shipped.\n")
+
 
 def revision(root, name="HEAD"):
     return subprocess.run(["git", "-C", str(root), "rev-parse", name],
@@ -771,7 +817,7 @@ class PublishedSections(ReleaseHistory):
         done = run(root, commits[0], "[]")
 
         # Assert
-        self.assertEqual((done.returncode, "## [2.1.4]: brought in without every line of v2.1.4-main"
+        self.assertEqual((done.returncode, "## [2.1.4]: brought in changed against v2.1.4-main's copy"
                           in done.stderr), (UNNAMED, True))
 
     def test_Given_ALineTheCopyHasPutBackWhereItHasIt_When_Decided_Then_ItPasses(self):
@@ -805,6 +851,81 @@ class PublishedSections(ReleaseHistory):
         self.assertEqual((done.returncode, "## [2.1.0]: changed against the base" in done.stderr),
                          (UNNAMED, True))
 
+    def test_Given_ALineWhoseCopyNeighbourBelowIsMissingToo_When_ItGoesBackUnderTheNextHeading_Then_ItIsRefused(self):
+        # Arrange -- two lines next to each other in the copy are missing, so the one put back has
+        # no copy-neighbour of its own below it, and it lands under `### Fixed`. The note would then
+        # describe a change as a fix.
+        root, commits = self.history(THREE_CHANGED, SHORT_OF_TWO_CHANGED, PUT_BACK_BELOW_ITS_BLOCK,
+                                     tags={0: RELEASE})
+
+        # Act
+        done = run(root, commits[1], "[]")
+
+        # Assert
+        self.assertEqual((done.returncode, "## [2.1.0]: changed against the base" in done.stderr),
+                         (UNNAMED, True))
+
+    def test_Given_ALineWhoseCopyNeighbourAboveIsMissingToo_When_ItGoesBackUnderThePreviousHeading_Then_ItIsRefused(self):
+        # Arrange -- the same absence on the other side: the line put back has no copy-neighbour
+        # above it, and it lands under `### Changed`. Each side is bounded separately, so one of
+        # them holding says nothing about the other.
+        root, commits = self.history(THREE_FIXED, SHORT_OF_TWO_FIXED, PUT_BACK_ABOVE_ITS_BLOCK,
+                                     tags={0: RELEASE})
+
+        # Act
+        done = run(root, commits[1], "[]")
+
+        # Assert
+        self.assertEqual((done.returncode, "## [2.1.0]: changed against the base" in done.stderr),
+                         (UNNAMED, True))
+
+    def test_Given_ALineWhoseCopyNeighbourBelowIsMissingToo_When_ItGoesBackInItsOwnBlock_Then_ItPasses(self):
+        # Arrange -- the repair the refusal advertises, for the same base: one of the two missing
+        # lines goes back where the copy has it, and the other stays missing.
+        root, commits = self.history(THREE_CHANGED, SHORT_OF_TWO_CHANGED, PUT_BACK_IN_ITS_BLOCK,
+                                     tags={0: RELEASE})
+        still_short = "- Changed three." not in subprocess.run(
+            ["git", "-C", str(root), "show", f"HEAD:{CHANGELOG}"],
+            capture_output=True, text=True).stdout
+
+        # Act
+        done = run(root, commits[1], "[]")
+
+        # Assert -- the other line still being absent rides along, and the reading having run with
+        # it: with both put back the placement is bounded by copy-neighbours that are here, which
+        # says nothing about the bound this pins, and a run that read no tag passes every shape.
+        self.assertEqual((still_short, done.returncode,
+                          "each dated section to its own release's tag" in done.stdout),
+                         (True, 0, True))
+
+    def test_Given_ACopyCarryingOneLineTwice_When_ThePutBackSplitsAHeadingFromItsEntry_Then_ItIsRefused(self):
+        # Arrange -- the base merged the two blocks that line heads and moved the block between them
+        # up, so the two occurrences bound a stretch the base reordered. The heading lands between
+        # `### Changed` and its only entry, publishing that entry as a fix.
+        root, commits = self.history(TWO_FIXED_BLOCKS, MERGED_FIXED, FIXED_SPLITTING_CHANGED,
+                                     tags={0: RELEASE})
+
+        # Act
+        done = run(root, commits[1], "[]")
+
+        # Assert
+        self.assertEqual((done.returncode, "## [2.1.0]: changed against the base" in done.stderr),
+                         (UNNAMED, True))
+
+    def test_Given_ABaseCarryingTheBlocksInTheOtherOrder_When_ALineGoesBackAboveThemBoth_Then_ItIsRefused(self):
+        # Arrange -- the copy puts `### Fixed` below the missing line and `- Changed one.` above it,
+        # and this base has them the other way round, so the line goes back above both with nothing
+        # between it and either end of that stretch to disagree.
+        root, commits = self.history(SUBSECTIONS, BLOCKS_REORDERED, PUT_BACK_ABOVE_THE_BLOCKS,
+                                     tags={0: RELEASE})
+
+        # Act
+        done = run(root, commits[1], "[]")
+
+        # Assert
+        self.assertEqual((done.returncode, "## [2.1.0]: changed against the base" in done.stderr),
+                         (UNNAMED, True))
+
     def test_Given_ALineTheSectionAlreadyCarriesAddedAgain_When_Decided_Then_ItIsRefused(self):
         # Arrange -- the copy carries that line, so a reading asking only which lines may arrive
         # allows a second one, and the note ships the bullet twice.
@@ -819,7 +940,7 @@ class PublishedSections(ReleaseHistory):
 
     def test_Given_AMaintenanceSectionCarriedInWhole_When_Decided_Then_ItPasses(self):
         # Arrange -- the other branch that lets a change through: a section the base has not got,
-        # brought in carrying its tag's copy in order.
+        # arriving as its tag's copy.
         root, commits = self.history(OPEN, tags={0: RELEASE})
         self.line(root, ON_THE_LINE, "v2.1.4-main")
         self.commit(root, ON_THE_LINE, "carried forward")
@@ -835,6 +956,20 @@ class PublishedSections(ReleaseHistory):
         self.assertEqual((published, done.returncode,
                           "each dated section to its own release's tag" in done.stdout),
                          (True, 0, True))
+
+    def test_Given_AMaintenanceSectionCarriedInGrown_When_Decided_Then_ItIsRefusedNamingItsTag(self):
+        # Arrange -- the base has not got the section, so once it lands the base is what holds it
+        # and no deletion is allowed: a bullet its release never published would be permanent.
+        root, commits = self.history(OPEN, tags={0: RELEASE})
+        self.line(root, ON_THE_LINE, "v2.1.4-main")
+        self.commit(root, CARRIED_GROWN, "carried forward, with one more")
+
+        # Act
+        done = run(root, commits[0], "[]")
+
+        # Assert
+        self.assertEqual((done.returncode, "## [2.1.4]: brought in changed against v2.1.4-main's copy"
+                          in done.stderr), (UNNAMED, True))
 
     def test_Given_ACarriedMaintenanceSectionDeleted_When_Decided_Then_ItIsRefusedAsGone(self):
         # Arrange -- the base carried it and no release on this line did, so the base is what holds

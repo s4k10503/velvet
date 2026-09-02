@@ -160,6 +160,16 @@ class Verdicts(unittest.TestCase):
 TAGGED = RELEASED.replace("- A thing that shipped.\n",
                           "- A thing that shipped.\n- Another thing that shipped.\n")
 
+# A published section with two blocks, so a line can go back under the wrong one, and with two of
+# its entries next to each other in the copy so the one put back has no copy-neighbour below it.
+SUBSECTIONED = RELEASED.replace(
+    "- A thing that shipped.\n",
+    "- A thing that shipped.\n- A second thing that shipped.\n- A third thing that shipped.\n"
+    "\n### Changed\n\n- A change that shipped.\n")
+
+SHORT_OF_TWO = SUBSECTIONED.replace(
+    "- A second thing that shipped.\n- A third thing that shipped.\n", "")
+
 
 def judged(root, changelog, old, new):
     """The guard's verdict on an Edit of `changelog` replacing `old` with `new`, as (exit code,
@@ -177,6 +187,58 @@ def git(root, *args):
                           capture_output=True, text=True).stdout.strip()
 
 
+def published(case, text, prefix):
+    """A repository whose `v2.0.0-main` commit carries `text`, itself as origin, cleaned up with
+    `case`. Returns (its root, its CHANGELOG)."""
+    root = Path(tempfile.mkdtemp(prefix=prefix))
+    case.addCleanup(shutil.rmtree, root, ignore_errors=True)
+    changelog = root / CHANGELOG_REL
+    changelog.parent.mkdir(parents=True)
+    changelog.write_text(text)
+    for args in (["init", "--quiet", "--initial-branch=main"],
+                 ["config", "user.email", "t@example.com"], ["config", "user.name", "t"],
+                 ["add", CHANGELOG_REL], ["commit", "--quiet", "-m", "release"],
+                 ["tag", "v2.0.0-main"], ["remote", "add", "origin", str(root)]):
+        git(root, *args)
+    return root, changelog
+
+
+class InItsPlace(unittest.TestCase):
+    """Where a line the copy has may go back, which is what separates a repair from a rewrite.
+
+    The merge-time twin holds the reading itself; these hold that this guard reaches it, in both
+    directions its verdict can go.
+    """
+
+    def setUp(self):
+        self.root, self.changelog = published(self, SUBSECTIONED, "closed-version-place-")
+        self.changelog.write_text(SHORT_OF_TWO)
+
+    def test_Given_ALineWhoseCopyNeighbourBelowIsMissingToo_When_ItGoesBackUnderTheNextHeading_Then_ItIsRefused(self):
+        # Arrange -- the file is short of two entries next to each other in the copy, so the one put
+        # back has no copy-neighbour of its own below it, and it lands under `### Changed`.
+
+        # Act
+        code, said = judged(self.root, self.changelog, "- A change that shipped.\n",
+                            "- A second thing that shipped.\n- A change that shipped.\n")
+
+        # Assert
+        self.assertEqual((code, "v2.0.0-main" in said), (2, True))
+
+    def test_Given_ALineWhoseCopyNeighbourBelowIsMissingToo_When_ItGoesBackInItsOwnBlock_Then_ItIsLetThrough(self):
+        # Arrange -- the repair the refusal advertises, over the same file: the entry goes back
+        # where the copy has it, and the one below it in the copy stays missing.
+        still_short = "- A third thing that shipped." not in self.changelog.read_text()
+
+        # Act
+        code, said = judged(self.root, self.changelog, "- A thing that shipped.\n",
+                            "- A thing that shipped.\n- A second thing that shipped.\n")
+
+        # Assert -- the other entry still being absent rides along: with both put back the placement
+        # is bounded by copy-neighbours that are here, which says nothing about the bound this pins.
+        self.assertEqual((still_short, code, said), (True, 0, ""))
+
+
 class AgainstTheTag(unittest.TestCase):
     """A released section is held to the newest `-main` tag on the remote that HEAD descends from.
 
@@ -185,16 +247,7 @@ class AgainstTheTag(unittest.TestCase):
     """
 
     def setUp(self):
-        self.root = Path(tempfile.mkdtemp(prefix="closed-version-tag-"))
-        self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
-        self.changelog = self.root / CHANGELOG_REL
-        self.changelog.parent.mkdir(parents=True)
-        self.changelog.write_text(TAGGED)
-        for args in (["init", "--quiet", "--initial-branch=main"],
-                     ["config", "user.email", "t@example.com"], ["config", "user.name", "t"],
-                     ["add", CHANGELOG_REL], ["commit", "--quiet", "-m", "release"],
-                     ["tag", "v2.0.0-main"], ["remote", "add", "origin", str(self.root)]):
-            git(self.root, *args)
+        self.root, self.changelog = published(self, TAGGED, "closed-version-tag-")
 
     def test_Given_AReleasedLineDeleted_When_Judged_Then_ItIsRefusedNamingTheTag(self):
         # Act
@@ -202,6 +255,18 @@ class AgainstTheTag(unittest.TestCase):
 
         # Assert
         self.assertEqual((code, "v2.0.0-main" in said), (2, True))
+
+    def test_Given_ARefusal_When_ItSaysWhereToReadTheCopy_Then_ItNamesTheCommitTheRemoteTags(self):
+        # Arrange -- the copy compared came from the commit `ls-remote` named, and a checkout's own
+        # tag of that name can be another commit or none, for the reason the declaration on
+        # `test_Given_ATagOnlyTheCheckoutHolds_...` gives.
+        named = git(self.root, "rev-parse", "v2.0.0-main")
+
+        # Act
+        code, said = judged(self.root, self.changelog, "- Another thing that shipped.\n", "")
+
+        # Assert
+        self.assertEqual((code, f"git show {named}:" in said), (2, True))
 
     def test_Given_AReleasedLineCorrected_When_Judged_Then_ItIsRefusedNamingTheTag(self):
         # Arrange -- the decision: the file cannot tell a correction from a deletion.
@@ -324,7 +389,8 @@ class AgainstTheTag(unittest.TestCase):
 
     # GREEN_ON_BASE(characterization): a section newly dated on one side is compared on neither by
     # the base, so the carry-forward runs there whatever it carries. What this pins is that the
-    # same carry-forward still runs once a section brought in whole is held to its tag's copy.
+    # same carry-forward still runs once a section the file has not got has to arrive as its
+    # tag's copy.
     def test_Given_AMaintenanceSectionCarriedInWhole_When_Judged_Then_ItIsLetThrough(self):
         # Arrange
         section = self.published_elsewhere()
@@ -336,6 +402,20 @@ class AgainstTheTag(unittest.TestCase):
         # Assert -- the tag rides along: a section no release tags is let through by not being held
         # at all, which is not what this pins.
         self.assertEqual((published, code, said), (True, 0, ""))
+
+    def test_Given_AMaintenanceSectionCarriedInGrown_When_Judged_Then_ItIsRefusedNamingItsTag(self):
+        # Arrange -- once the section lands, the file is what holds it and no deletion is allowed,
+        # so a bullet its release never published would be permanent.
+        section = self.published_elsewhere()
+
+        # Act
+        code, said = judged(self.root, self.changelog, "## [2.0.0]",
+                            section.replace("- A patch on the line.\n",
+                                            "- A patch on the line.\n- A bullet it never shipped.\n")
+                            + "## [2.0.0]")
+
+        # Assert
+        self.assertEqual((code, "v2.0.1-main" in said), (2, True))
 
     def test_Given_AMaintenanceSectionCarriedInShort_When_Judged_Then_ItIsRefusedNamingItsTag(self):
         # Arrange -- the base does not carry the section, so the tag's copy is the one memory of

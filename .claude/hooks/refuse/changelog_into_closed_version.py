@@ -29,10 +29,12 @@ The reading is a released section's PUBLISHED LINES, before against the proposed
 - A released section whose version the remote tags — `vX.Y.Z-main`, whichever line published it
   — is refused every change to it but two: putting back a line that copy has and the section is
   short of, where the copy has it and with nothing else lost or moved, and bringing the section in
-  whole, carrying that copy in order. Removal, reword, reorder and a changed date alike, since the
-  note is the tag's and the file cannot tell a correction from a deletion; not equality with the
-  tag's copy, because main's sections already differ from their copies, each of those carrying a
-  Highlights block the copy has not got. The remote's tags rather than the checkout's, for the
+  as that copy entire, that copy being the only text of it here and an addition to a note already
+  published belonging in the release that follows it. Removal, reword, reorder and a changed date
+  alike, since the note is the tag's and the file cannot tell a correction from a deletion. For a
+  section the file already carries it is not equality with the tag's copy, because main's sections
+  already differ from their copies, each of those carrying a Highlights block the copy has not got.
+  The remote's tags rather than the checkout's, for the
   reason `published_check.remote_tag_shas` gives. Where the remote tags no such version, or the
   remote or git does not answer, the reading is the one above: growth is refused and removal is not,
   so deleting an entry from such a section still runs. Deleting the whole SECTION does not either
@@ -232,11 +234,11 @@ def main():
     was, becomes = drain.dated_sections(text), drain.dated_sections(proposed)
     moved = [v for v in becomes if becomes[v] != was.get(v)]
     copies, tracked = published_copies(path, moved)
-    # A section the edit brings in whole -- a maintenance line's, carried forward -- is held to its
-    # tag's copy; one already here is held to what it was, but for a line of that copy put back.
+    # A section the edit brings in -- a maintenance line's, carried forward -- arrives as its tag's
+    # copy; one already here is held to what it was, but for a line of that copy put back in place.
     restored = {v for v, (tag, sha, copy) in copies.items()
                 if (drain.only_put_back(becomes[v], was[v], copy) if v in was
-                    else drain.carries_in_order(becomes[v], copy))}
+                    else becomes[v] == copy)}
     held = [v for v in moved if v in copies and v not in restored]
     if held:
         tag, sha, _ = copies[held[0]]
@@ -245,7 +247,8 @@ def main():
               "A dated section is the note its release shipped. Nothing in the file separates a "
               "correction from a deletion, so neither is made past the tag; an edit that only puts "
               "back a line that copy has and the section is short of, where the copy has it, or "
-              "brings the section in carrying that copy whole, is what this lets through:\n\n"
+              "brings the section in as that copy entire, is what this lets through — an addition "
+              "to a note already published belongs in the release that follows it:\n\n"
               f"  git show {sha}:{tracked}   # {tag} on the remote\n\n"
               "Put what this change has to say under `## [Unreleased]`, or "
               "`## [Unreleased — breaking]` where it has to wait for a major.\n\n"

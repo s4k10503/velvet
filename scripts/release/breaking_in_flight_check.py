@@ -24,10 +24,12 @@ and corrected without reaching main -- and an entry the section held at any of t
 carries neither there nor in a major closed since the tag, is refused. A change closing nothing is
 asked nothing by this reading. And a dated section is the note its release shipped: one whose version
 the remote tags, whichever line published it, has to be the base's but for a line of that tag's copy
-put back -- the base rather than the copy, since main's older sections were reworded and reordered
-after their releases and carry a Highlights block their tags' copies do not -- one brought in whole
-has to carry the copy in order, and one gone that the base or the last release on this line carried
-is refused, whatever the change closes, since the file cannot tell a correction from a deletion.
+put back where that copy has it -- the base rather than the copy, since main's older sections were
+reworded and reordered after their releases and carry a Highlights block their tags' copies do not --
+one the base has not got arrives as that copy and nothing else, the copy being the only text of it
+here and an addition to a published note belonging in the release that follows, and one gone that the
+base or the last release on this line carried is refused, whatever the change closes, since the file
+cannot tell a correction from a deletion.
 Where the remote tags no release the result descends from -- a repository before its first
 release -- the breaking section is read one step deep from `--base`, and the pass says so. A remote
 that cannot be listed is refused as unread instead, since none is the reading that passes, and so is
@@ -279,15 +281,6 @@ def dated_sections(text):
             for version, dated, heading, lines in published_sections(text) if dated}
 
 
-def carries_in_order(lines, published):
-    """Whether `lines` carry every line of `published` in its order, whatever sits between them."""
-    reached = 0
-    for line in lines:
-        if reached < len(published) and line == published[reached]:
-            reached += 1
-    return reached == len(published)
-
-
 def added_positions(lines, before):
     """Which of `lines` are not `before`'s own, by index, or None where `before` is not carried in
     order at all -- a line lost, reworded or moved."""
@@ -300,21 +293,40 @@ def added_positions(lines, before):
     return added if reached == len(before) else None
 
 
+def puts(copy, line, side):
+    """Whether `copy` carries `line` somewhere in `side`, a range of its indices, or does not carry
+    it at all -- a line the copy never held says nothing about which side of anything it belongs
+    on."""
+    return line not in copy or any(copy[where] == line for where in side)
+
+
 def in_its_place(lines, index, copy):
-    """Whether the line at `index` sits where `copy` has it: after the line the copy puts above it
-    and before the one it puts below, of those here at all.
+    """Whether the line at `index` may go back there: the copy has to agree about the lines around
+    it -- the two it puts either side of it, and everything between those two and it.
 
     Either side of the one line rather than over the section, since asking the section to carry the
-    copy in order would refuse every change to one reordered against it, and two of main's carry
-    every line of their copy in another order.
+    copy in order would refuse every change to a section reordered against its copy.
+
+    Where one of those two is not here the reading runs to that end of the section rather than
+    passing, and the lines between are read rather than only the two. Measured against the two
+    alone: a line missing beside another was unbounded on that side and could go back under any
+    later heading, and where a copy carries one line twice against a base that reordered what sits
+    between them, the two bounds together admitted that whole stretch.
     """
     for where, published in enumerate(copy):
         if published != lines[index]:
             continue
         above = copy[where - 1] if where else None
         below = copy[where + 1] if where + 1 < len(copy) else None
-        if ((above is None or above not in lines or above in lines[:index])
+        if not ((above is None or above not in lines or above in lines[:index])
                 and (below is None or below not in lines or below in lines[index + 1:])):
+            continue
+        start = max((at for at in range(index) if lines[at] == above), default=-1)
+        stop = min((at for at in range(index + 1, len(lines)) if lines[at] == below),
+                   default=len(lines))
+        if (all(puts(copy, lines[at], range(where)) for at in range(start + 1, index))
+                and all(puts(copy, lines[at], range(where + 1, len(copy)))
+                        for at in range(index + 1, stop))):
             return True
     return False
 
@@ -359,12 +371,14 @@ def drifted(result_text, base_text, tags, read):
     """The result's dated sections that a release tags and that do not carry its note, as
     (version, tag, how).
 
-    A section the base carries has to be the base's but for a line of its tag's copy put back,
-    heading and date included, so a line deleted, reworded or reordered is refused by the change
-    that does it. The base rather than the tag's copy: main's older sections were reworded and
-    reordered after their releases and carry a Highlights block their tags' copies do not, so the
-    copy says which lines may go back and the base says what is there. A section the base does not
-    carry -- a maintenance line's, brought in whole -- has to carry the copy in order.
+    A section the base carries has to be the base's but for a line of its tag's copy put back where
+    that copy has it, heading and date included, so a line deleted, reworded, reordered or put back
+    elsewhere is refused by the change that does it. The base rather than the tag's copy: main's
+    older sections were reworded and reordered after their releases and carry a Highlights block
+    their tags' copies do not, so the copy says which lines may go back and the base says what is
+    there. A section the base does not carry -- a maintenance line's, brought in -- arrives as its
+    tag's copy and nothing else: that copy is the only text of it here, and an addition to a note
+    already published belongs in the release that follows it.
     """
     ours, theirs = dated_sections(result_text), dated_sections(base_text)
     found = []
@@ -376,8 +390,8 @@ def drifted(result_text, base_text, tags, read):
         if version in theirs:
             if lines != theirs[version] and not only_put_back(lines, theirs[version], copy):
                 found.append((version, tag, f"changed against the base, and {tag} shipped it"))
-        elif not carries_in_order(lines, copy):
-            found.append((version, tag, f"brought in without every line of {tag}'s copy in order"))
+        elif lines != copy:
+            found.append((version, tag, f"brought in changed against {tag}'s copy"))
     return found
 
 
@@ -467,8 +481,9 @@ def main():
             "{} dated section(s) of {} do not carry the note their release shipped:\n{}\n\n"
             "A file cannot tell a correction from a deletion, so neither is made past the tag: a\n"
             "dated section is the base's but for a line its tag's copy has and the base is short\n"
-            "of, put back where that copy has it, and one brought in whole carries that copy in\n"
-            "order. Read each copy from the commit the remote tags:\n{}\n"
+            "of, put back where that copy has it, and one the base has not got arrives as that copy\n"
+            "entire -- an addition to a note already published belongs in the release that follows\n"
+            "it. Read each copy from the commit the remote tags:\n{}\n"
             "and put what this change has to say under '## [Unreleased]'.\n".format(
                 len(gone) + len(changed), args.result,
                 "\n".join(["  ## [{}]: gone, and {} carries it".format(version, tag)

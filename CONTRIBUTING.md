@@ -722,8 +722,8 @@ behaviour a working application would notice changing.
    `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD` **last**, once nothing further is going into it:
    `changelog_into_closed_version.py` refuses a write that adds to a dated section, or that changes
    one whose version the remote tags — `vX.Y.Z-main`, which the UPM dispatch leaves on the commit
-   each release was dispatched from, whichever line that was — unless the write only puts a line
-   of that tag's copy back; and the rename is what dates it. The breaking heading itself is never
+   each release was dispatched from, whichever line that was — otherwise than the dated-section
+   rule below allows; and the rename is what dates it. The breaking heading itself is never
    dated and never deleted, and a `**Breaking:**` bullet in `### Highlights` belongs to a major and
    to no other release; `test_release_notes.py` refuses each of those. Where the entries went is
    read from the change rather than the file, by `published_check.py` on the pull request that
@@ -749,8 +749,10 @@ behaviour a working application would notice changing.
    has it, heading and date included — the base rather than the tag's copy, because `main`'s older
    sections were reworded and reordered after their releases and carry a Highlights block their
    tags' copies do not, so the copy says which lines may go back and the base says what is there —
-   one brought in whole, a maintenance line's carried forward, has to carry that copy in order, and
-   one gone from the file that the base or the last release on this line carried is refused too. A
+   one the file has not got, a maintenance line's carried forward, arrives as that copy and nothing
+   else, that copy being the only text of it here and an addition to a note already published
+   belonging in the release that follows it, and one gone from the file that the base or the last
+   release on this line carried is refused too. A
    dated section whose version no tag names is unpublished and not held. Where the remote tags no
    release the result descends from — a repository before its first release — the breaking section
    is read one step deep and the check's pass says so; a remote that cannot be listed is refused as
