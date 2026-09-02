@@ -18,7 +18,8 @@ pooled element leaves with everything the session ever wrote restored.
   whether the element itself follows the pointer (`Translate`, the default — an inline
   `translate` written every move and restored afterward) or stays put (`None` — the
   `V.DragOverlay` ghost pattern); `whileDraggingClass:` is the zero-re-render styling channel for
-  the dragging state.
+  the dragging state. A `movement:` naming no `DragMovement` member is refused at construction:
+  the factory throws `ArgumentOutOfRangeException`, naming the parameter.
 - **`V.Droppable(id:)`** — a drop target, dnd-kit's `useDroppable`. `whileOverClass:` applies
   while it is the winning collision; `whileDragActiveClass:` applies to every enabled candidate
   while any drag is live in the scope (dnd-kit's droppable `active` cue). `dropData:` rides into
