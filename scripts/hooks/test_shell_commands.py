@@ -87,6 +87,9 @@ class HeredocOpenerTailTests(unittest.TestCase):
         # Assert — the argument stays whole, so nothing inside it is offered as a command.
         self.assertIn('grep -E "^a|git add .|^b"', found)
 
+    # GREEN_ON_BASE(characterization): the base answers this too, for the reason this change removes -- it
+    # blanks the opener's tail wholesale, so the quoted word never exists as shell there. What moved
+    # is the route to the answer, not the answer, and a base run cannot tell those apart.
     def test_Given_AGitCallInsideAQuotedWordOnTheOpenersLine_When_TheInvocationsAreRead_Then_NothingIsSeen(self):
         # Arrange / Act — the same text asked the way a guard asks it.
         found = shell_commands.git_invocations(
@@ -95,23 +98,26 @@ class HeredocOpenerTailTests(unittest.TestCase):
         # Assert
         self.assertEqual(found, [])
 
-    def test_Given_ARedirectAfterTheDelimiter_When_TheSegmentsAreRead_Then_ItStaysWithTheOpener(self):
-        # Arrange / Act — the half blanking the tail used to cost, and the reason it was unblanked.
-        found = shell_commands.command_segments("cat <<'EOF' > notes.md\nbody\nEOF\n")
+    def test_Given_ARedirectAfterTheDelimiter_When_TheLineIsMasked_Then_TheRedirectSurvives(self):
+        # Arrange / Act — a segment carries the ORIGINAL text of its span, so reading one says
+        # nothing about what the mask kept: the tail is there either way. What moved is the mask,
+        # which is where `tracked_writes` locates a redirect operator.
+        masked = shell_commands.mask_shell_literals("cat <<'EOF' > notes.md\nbody\nEOF\n")
 
         # Assert
-        self.assertIn("cat <<'EOF' > notes.md", found)
+        self.assertIn("> notes.md", masked)
 
-    def test_Given_TwoHeredocsOpenedOnOneLine_When_TheSegmentsAreRead_Then_BothBodiesAreConsumed(self):
-        # Arrange — the shell takes the bodies in the order the delimiters were written, so a queue
-        # of one would leave the second body's text standing as shell.
+    def test_Given_TwoHeredocsOpenedOnOneLine_When_TheLineIsMasked_Then_BothBodiesAreConsumed(self):
+        # Arrange — the shell takes the bodies in the order the delimiters were written. A reading
+        # that reaches only the first delimiter leaves the second body standing as shell, which is
+        # what the base does: its second `<<` sits inside the region it blanks.
         command = "cat <<A <<B > notes.md\na1\nA\nb1\nB\n"
 
         # Act
-        found = shell_commands.command_segments(command)
+        masked = shell_commands.mask_shell_literals(command)
 
-        # Assert — the masked spans are what a caller drops; what must survive is the opener alone.
-        self.assertIn("cat <<A <<B > notes.md", found)
+        # Assert — past the opener's own line the mask keeps nothing.
+        self.assertEqual([line.strip() for line in masked.splitlines() if line.strip()][1:], [])
 
 
 class LoopHeadReaderTests(unittest.TestCase):
