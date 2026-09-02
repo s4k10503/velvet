@@ -928,7 +928,7 @@ NAME_IS_ABSENT = frozenset({"CS0246", "CS0103", "CS0117", "CS1061", "CS0234"})
 
 
 def compile_errors_in(log_text):
-    """(repository-relative source, CS code) for each compile error a Unity log blames on a file."""
+    """(repository-relative source, error code) for each error a Unity log blames on a source file."""
     found = []
     for line in log_text.splitlines():
         match = COMPILE_ERROR.match(line.strip())
@@ -1918,12 +1918,16 @@ def unbuilt_reason(project, since, log_text):
     at, and that they are this branch's rather than the base's.
     """
     blamed = compile_error_files(log_text)
+    if not log_text:
+        return ("The run left no editor log beside its results, so nothing here can say why it wrote\n"
+                "nothing.")
     if not blamed:
         if BUILD_STOPPED in log_text:
-            return ("The base tree did not build, and the compiler named no source file for it, so the\n"
-                    "failure is an assembly's rather than a file's. The editor log has it.")
+            return ("The base tree did not build, and no file under Assets or Packages is blamed for it,\n"
+                    "so the failure sits where a branch carries nothing -- a package under Library, an\n"
+                    "assembly definition, the post-processor. The editor log has it.")
         return ("Nothing in the log names a source file, so the base tree did not fail to build -- it\n"
-                "failed to run. A licence, an editor crash and a timeout all land here.")
+                "failed to run. A licence failure and an editor crash land here.")
     named = "\n".join("  " + name for name in blamed)
     try:
         carried = carried_files(project, since) if since else set()

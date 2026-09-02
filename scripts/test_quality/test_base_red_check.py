@@ -4159,14 +4159,29 @@ class UnbuiltBaseTreeTests(unittest.TestCase):
         return base_red_check.unbuilt_reason(self.project, since or self.since, log)
 
     def test_Given_EveryBlamedFileIsOneTheBranchCarried_When_TheLogIsRead_Then_ItSaysTheBaseWasNeverAsked(self):
+        # Arrange -- the phrase the other reading shares is not enough: a carried set read as empty
+        # sends every blamed file down the other branch, which also says "carried onto it".
         # Act / Assert
-        self.assertIn("carried onto it", self.said(self.CARRIED + "(1,1): error CS0012: x\n"))
+        self.assertIn("every file the compiler blamed is one this branch\ncarried onto it",
+                      self.said(self.CARRIED + "(1,1): error CS0012: x\n"))
 
     def test_Given_ABlamedProductionFileTheBranchChanged_When_TheLogIsRead_Then_ItSaysTheBaseIsTheProblem(self):
-        # Arrange -- the branch changed it, and the base tree still holds its own text of it: only
-        # the test side is carried, so a blame there is the base failing to build itself.
-        # Act / Assert
+        # Act / Assert -- the branch changed it, and the base tree still holds its own text of it:
+        # only the test side is carried, so a blame there is the base failing to build itself.
         self.assertIn("not ones this\nbranch carried", self.said(self.PRODUCTION + "(1,1): error CS0103: x\n"))
+
+    def test_Given_NineBlamedProductionFiles_When_TheLogIsRead_Then_EveryOneIsNamed(self):
+        # Arrange -- the other list, which the same reader would otherwise stop short on.
+        names = ["Packages/p/Runtime/A/P{}.cs".format(n) for n in range(9)]
+        for name in names:
+            self.write(name, "class P {}\n")
+        self.commit("more")
+
+        # Act
+        said = self.said("".join(name + "(1,1): error CS0103: x\n" for name in names))
+
+        # Assert
+        self.assertEqual([name for name in names if name not in said], [])
 
     def test_Given_NineBlamedFiles_When_TheLogIsRead_Then_EveryOneIsNamed(self):
         # Arrange -- "every file the compiler blamed" over a list that stopped short would send the
@@ -4183,20 +4198,29 @@ class UnbuiltBaseTreeTests(unittest.TestCase):
         self.assertEqual([name for name in names if name not in said], [])
 
     def test_Given_ACheckoutThatCannotDiff_When_TheLogIsRead_Then_ItSaysSoRatherThanBlamingTheBase(self):
-        # Arrange -- a diff that fails leaves nothing carried, and a reading over that would call
-        # every blamed file the base's own.
-        # Act / Assert
+        # Act / Assert -- a diff that fails leaves nothing carried, and a reading over that would
+        # call every blamed file the base's own.
         self.assertIn("cannot be read here",
                       self.said(self.CARRIED + "(1,1): error CS0012: x\n", since="0" * 40))
 
-    def test_Given_ABuildStoppedWithNoFileNamed_When_TheLogIsRead_Then_ItSaysTheFailureIsAnAssemblys(self):
+    def test_Given_ABuildStoppedBlamingNothingUnderThePackages_When_TheLogIsRead_Then_ItSaysWhereToLook(self):
         # Act / Assert
-        self.assertIn("named no source file", self.said(base_red_check.BUILD_STOPPED + "\n"))
+        self.assertIn("where a branch carries nothing", self.said(base_red_check.BUILD_STOPPED + "\n"))
+
+    def test_Given_TheLineTheEditorWritesWhenScriptsDoNotBuild_When_Read_Then_TheConstantIsIt(self):
+        # Arrange -- the editor's own line, read from its logs on this machine and on the runner. A
+        # constant a typo away from it reads every stopped build as a run that never started.
+        # Act / Assert
+        self.assertIn(base_red_check.BUILD_STOPPED,
+                      "AssetDatabase: script compilation time: 4.383004s\nScripts have compiler errors.\n")
 
     def test_Given_ALogNamingNoSource_When_ItIsRead_Then_ItSaysTheRunFailedRatherThanTheBuild(self):
-        # Arrange -- what a licence failure, a crash and a timeout leave.
-        # Act / Assert
+        # Act / Assert -- what a licence failure and a crash leave.
         self.assertIn("failed to run", self.said("Failed to activate license\n"))
+
+    def test_Given_NoEditorLogAtAll_When_TheReasonIsBuilt_Then_ItSaysNothingCanBeRead(self):
+        # Act / Assert -- an empty text is not a log that names nothing.
+        self.assertIn("no editor log", self.said(""))
 
 
 if __name__ == "__main__":
