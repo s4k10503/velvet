@@ -4222,21 +4222,22 @@ class ReplanTests(unittest.TestCase):
         return root, tree
 
     def replanned(self, log, wrote=False):
-        """(the repository, the base tree, what `--replan` printed) over a round that left `log`."""
+        """(the repository, the base tree, what the replan printed) over a round that left `log`.
+
+        In this process rather than through the flag, so that a tree without the reading fails on the
+        name it lacks rather than on an exit status: the base-red lane reads the first as a surface
+        only the branch provides and the second as a case that answered nothing.
+        """
         root, tree = self.emitted()
         results = root / "results"
         results.mkdir()
         (results / "editmode.log").write_text(log)
         if wrote:
             (results / "editmode-results.xml").write_text("<test-run></test-run>")
-        printed = subprocess.run(
-            [sys.executable, str(REPO_ROOT / "scripts/test_quality/base_red_check.py"),
-             "--project", str(root), "--replan", str(root / "plan.json"),
-             "--results", str(results), "--base-tree", str(tree)],
-            capture_output=True, text=True)
-        if printed.returncode != 0:
-            raise RuntimeError("--replan did not run:\n" + printed.stdout + printed.stderr)
-        return root, tree, printed.stdout
+        held = io.StringIO()
+        with contextlib.redirect_stdout(held):
+            base_red_check.replan(root, root / "plan.json", results, tree)
+        return root, tree, held.getvalue()
 
     def asked(self, printed):
         return [line for line in printed.splitlines() if line.startswith("fixtures=")]
@@ -4324,13 +4325,28 @@ class ReplanTests(unittest.TestCase):
         (results / "editmode.log").write_text(self.BLAMED + "(6,9): error CS1929: x\n")
 
         # Act
-        subprocess.run(
-            [sys.executable, str(REPO_ROOT / "scripts/test_quality/base_red_check.py"),
-             "--project", str(root), "--replan", str(root / "plan.json"),
-             "--results", str(results), "--base-tree", str(tree)], check=True, capture_output=True)
+        with contextlib.redirect_stdout(io.StringIO()):
+            base_red_check.replan(root, root / "plan.json", results, tree)
 
         # Assert
         self.assertFalse((tree / helper).exists())
+
+    def test_Given_TheFlag_When_ItIsInvoked_Then_ItRunsTheReplan(self):
+        # Arrange -- the one case that goes through the command line, since the rest reach the
+        # reading directly and would not notice a flag wired to nothing.
+        root, tree = self.emitted()
+        results = root / "results"
+        results.mkdir()
+        (results / "editmode.log").write_text(self.BLAMED + "(6,9): error CS0012: x\n")
+
+        # Act
+        printed = subprocess.run(
+            [sys.executable, str(REPO_ROOT / "scripts/test_quality/base_red_check.py"),
+             "--project", str(root), "--replan", str(root / "plan.json"),
+             "--results", str(results), "--base-tree", str(tree)], capture_output=True, text=True)
+
+        # Assert
+        self.assertEqual((printed.returncode, "N.OtherTests" in printed.stdout), (0, True))
 
     def test_Given_ARoundIsPrepared_When_Replanned_Then_TheResultsItReadAreMovedAside(self):
         # Arrange -- the next round writes where the verdict reads, and this round's log is what a
