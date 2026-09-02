@@ -4371,6 +4371,74 @@ class RepositoryTests(unittest.TestCase):
         self.assertEqual([name for name, (wrote, carries) in uneven if wrote != carries], [])
 
 
+class SharedMaterialTests(unittest.TestCase):
+    """What the cases share -- everything outside every case body -- read the way a case is read."""
+
+    FIXTURE = "Packages/p/Runtime/A/Tests/Editor/ProbeTests.cs"
+
+    OTHER = "Packages/p/Runtime/A/Tests/Editor/OtherTests.cs"
+
+    def text(self, remark, helper, name="ProbeTests", expected="a"):
+        return ("namespace N\n{\n    class " + name + "\n    {\n"
+                "        /// <summary>" + remark + "</summary>\n"
+                "        static string Helper() => \"" + helper + "\";\n\n"
+                "        [Test]\n        public void Given_A_When_B_Then_C() => Assert.That(Helper(), "
+                "Is.EqualTo(\"" + expected + "\"));\n"
+                "    }\n}\n")
+
+    def planned(self):
+        """(exit status, what `--plan` printed) over a branch that rewrote the remark above
+        ProbeTests' helper and changed a case body in OtherTests, so the plan is not empty."""
+        root, since = two_commit_repo(
+            self, {self.FIXTURE: self.text("what it was", "a"),
+                   self.OTHER: self.text("the same", "a", "OtherTests")},
+            {self.FIXTURE: self.text("what it is", "a"),
+             self.OTHER: self.text("the same", "a", "OtherTests", expected="b")})
+        printed = subprocess.run(
+            [sys.executable, str(REPO_ROOT / "scripts/test_quality/base_red_check.py"),
+             "--project", str(root), "--base", since, "--lane", "csharp", "--plan"],
+            capture_output=True, text=True)
+        return printed.returncode, printed.stdout
+
+    def test_Given_ARemarkRewrittenAboveAHelper_When_TheSharedMaterialIsRead_Then_ItIsTheBases(self):
+        # Arrange -- a comment is not what any case's run decides on, outside a case as inside one.
+        # Act / Assert
+        self.assertFalse(base_red_check.shared_material_differs(
+            self.FIXTURE, self.text("what it was", "a"), self.text("what it is", "a")))
+
+    # GREEN_ON_BASE(characterization): a helper's literal changed already reads as the branch's, and
+    # a reading that blanked literals with the comments would lose it.
+    def test_Given_AHelpersLiteralChanged_When_TheSharedMaterialIsRead_Then_ItIsTheBranchs(self):
+        # Act / Assert
+        self.assertTrue(base_red_check.shared_material_differs(
+            self.FIXTURE, self.text("the same", "a"), self.text("the same", "b")))
+
+    def test_Given_ARemarkRewrittenAboveAHelper_When_ThePlanIsTaken_Then_TheFilesCasesAreNotInIt(self):
+        # Arrange -- the whole reading, since a plan that holds every case of a fixture for a
+        # remark is what put twenty-seven cases on trial on the branch that measured this. The exit
+        # status and the other file's case ride along: an absence over a plan that crashed, or that
+        # moved its listing elsewhere, is an absence over nothing.
+        # Act
+        status, printed = self.planned()
+
+        # Assert
+        self.assertEqual((status, "N.OtherTests.Given_A_When_B_Then_C" in printed,
+                          "N.ProbeTests.Given_A_When_B_Then_C" in printed), (0, True, False))
+
+    def test_Given_ARemarkRewrittenAboveAHelper_When_ThePlanIsTaken_Then_TheFilesCasesStayControls(self):
+        # Arrange -- the other reading of the same lines: a remark that put no case on trial must not
+        # take the file's controls away either, or the report says the cases are the branch's text.
+        # The control's presence rides along with the report's absence, since the report is only
+        # printed where the controls went, and a gate that dropped them without saying so would pass
+        # the absence alone.
+        # Act
+        status, printed = self.planned()
+
+        # Assert
+        self.assertEqual((status, "(1 control case(s) alongside)" in printed, "no control:" in printed),
+                         (0, True, False))
+
+
 class UnbuiltBaseTreeTests(unittest.TestCase):
     """What the verdict lane says about a base run that wrote no results file.
 

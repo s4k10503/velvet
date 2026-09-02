@@ -163,6 +163,9 @@ apps — give each main panel its own base when several run side by side. A host
 externally (a scene unload tearing down framework objects) is replaced the next time a portal
 mounts on that layer; portals already mounted into the dead host need a remount.
 
+A `layer:` naming no `UILayer` member is refused at construction: `V.Portal` throws
+`ArgumentOutOfRangeException` from the call itself, naming the parameter.
+
 ## World space: `V.WorldSpace`
 
 ```csharp

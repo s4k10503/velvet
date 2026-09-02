@@ -174,6 +174,8 @@ namespace Velvet.Tests
 
         // CreateLayerHost's ordering constraint, from the far side: a host whose record never reached
         // ReconcilerContext.LayerHosts is one no destroy sweep iterates to.
+        // GREEN_ON_BASE(refactor): the host-parts accounting this case pins is the base's own. What changed
+        // is the route to it: V.Portal now refuses the layer at construction, so the node is assembled directly.
         [Test]
         public void Given_APortalOnALayerNamingNoOffset_When_ItsHostIsAttempted_Then_NoHostPartsAreLeftBehind()
         {
@@ -184,12 +186,21 @@ namespace Velvet.Tests
             // Act
             MountAndLayout(V.Div(children: new VNode[]
             {
-                V.Portal((UILayer)99, children: new VNode[] { V.Div(name: "inside") }),
+                PortalOnAnUnnamedLayer(null, V.Div(name: "inside")),
             }));
 
             // Assert
             Assert.That((NewDocs().Count, NewSettings().Count), Is.EqualTo((0, 0)));
         }
+
+        // Assembled rather than built through V.Portal, which refuses this layer at construction: the drain
+        // sees such a layer from a caller that assembles the node itself.
+        private static PortalNode PortalOnAnUnnamedLayer(string? key, params VNode[] children) => new()
+        {
+            Key = key,
+            Layer = (UILayer)99,
+            Children = children,
+        };
 
         // What a layer naming no offset reports: FiberLogger.LogException's tag line, then the throw.
         private static void ExpectUnnamedLayerReport()
@@ -212,6 +223,8 @@ namespace Velvet.Tests
             return false;
         }
 
+        // GREEN_ON_BASE(refactor): the drain containment this case pins is the base's own. What changed is
+        // the route to it: V.Portal now refuses the layer at construction, so the node is assembled directly.
         [Test]
         public void Given_APortalOnANamedLayerQueuedBehindOneNamingNoOffset_When_Mounted_Then_ItStillReachesItsHost()
         {
@@ -221,7 +234,7 @@ namespace Velvet.Tests
             // Act
             MountAndLayout(V.Div(name: "queue-root", children: new VNode[]
             {
-                V.Portal((UILayer)99, key: "unnamed", children: new VNode[] { V.Div(name: "unnamed-child") }),
+                PortalOnAnUnnamedLayer("unnamed", V.Div(name: "unnamed-child")),
                 V.Portal(UILayer.Overlay, key: "named", children: new VNode[] { V.Div(name: "named-child") }),
             }));
 
@@ -231,6 +244,8 @@ namespace Velvet.Tests
                 Is.EqualTo((2, false, true)));
         }
 
+        // GREEN_ON_BASE(refactor): the drain containment this case pins is the base's own. What changed is
+        // the route to it: V.Portal now refuses the layer at construction, so the node is assembled directly.
         [Test]
         public void Given_AZLayerPlacementQueuedBehindAPortalNamingNoOffset_When_Mounted_Then_ItStillLands()
         {
@@ -240,7 +255,7 @@ namespace Velvet.Tests
             // Act
             MountAndLayout(V.Div(name: "queue-root", children: new VNode[]
             {
-                V.Portal((UILayer)99, key: "unnamed", children: new VNode[] { V.Div(name: "unnamed-child") }),
+                PortalOnAnUnnamedLayer("unnamed", V.Div(name: "unnamed-child")),
                 V.Div(name: "stacked", className: "absolute z-10"),
             }));
 
@@ -263,7 +278,7 @@ namespace Velvet.Tests
                 V.Label(text: "tick=" + tick),
                 tick == 0
                     ? null
-                    : V.Portal((UILayer)99, key: "unnamed", children: new VNode[] { V.Div(name: "unnamed-child") }),
+                    : PortalOnAnUnnamedLayer("unnamed", V.Div(name: "unnamed-child")),
             });
         }
 
