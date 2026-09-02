@@ -763,7 +763,7 @@ namespace Velvet
             IReadOnlyDictionary<string, string>? data = null,
             IReadOnlyDictionary<string, string>? aria = null)
         {
-            if (!Enum.IsDefined(typeof(PlayTrigger), playOn))
+            if (playOn is not (PlayTrigger.Mount or PlayTrigger.Manual))
             {
                 throw new ArgumentOutOfRangeException(nameof(playOn), playOn,
                     "V.Particles takes a member of PlayTrigger as its playOn.");
@@ -1618,12 +1618,12 @@ namespace Velvet
         public static PortalNode Portal(UILayer layer, VNode?[]? children = null, string? key = null,
             PanelFocusOrder focusOrder = PanelFocusOrder.Isolated)
         {
-            if (!Enum.IsDefined(typeof(UILayer), layer))
+            if (layer is not (UILayer.Background or UILayer.Overlay or UILayer.Topmost))
             {
                 throw new ArgumentOutOfRangeException(nameof(layer), layer,
                     "V.Portal takes a member of UILayer as its layer.");
             }
-            if (!Enum.IsDefined(typeof(PanelFocusOrder), focusOrder))
+            if (focusOrder is not (PanelFocusOrder.Isolated or PanelFocusOrder.Chained))
             {
                 throw new ArgumentOutOfRangeException(nameof(focusOrder), focusOrder,
                     "V.Portal takes a member of PanelFocusOrder as its focusOrder.");
@@ -1668,7 +1668,7 @@ namespace Velvet
             string? key = null,
             PanelFocusOrder focusOrder = PanelFocusOrder.Isolated)
         {
-            if (!Enum.IsDefined(typeof(PanelFocusOrder), focusOrder))
+            if (focusOrder is not (PanelFocusOrder.Isolated or PanelFocusOrder.Chained))
             {
                 throw new ArgumentOutOfRangeException(nameof(focusOrder), focusOrder,
                     "V.WorldSpace takes a member of PanelFocusOrder as its focusOrder.");
@@ -1914,8 +1914,8 @@ namespace Velvet
             IReadOnlyDictionary<string, string>? data = null,
             IReadOnlyDictionary<string, string>? aria = null)
         {
-            // Refused before the props bag is rented, so a throwing call strands none in the pool's rented set.
-            if (!Enum.IsDefined(typeof(DragMovement), movement))
+            // Above the rent below, so a refusal here strands no bag this factory rented.
+            if (movement is not (DragMovement.Translate or DragMovement.None))
             {
                 throw new ArgumentOutOfRangeException(nameof(movement), movement,
                     "V.Draggable takes a member of DragMovement as its movement.");
@@ -2097,7 +2097,7 @@ namespace Velvet
             AnimatePresenceMode mode = AnimatePresenceMode.Sync,
             Action? onExitComplete = null)
         {
-            if (!Enum.IsDefined(typeof(AnimatePresenceMode), mode))
+            if (mode is not (AnimatePresenceMode.Sync or AnimatePresenceMode.Wait or AnimatePresenceMode.PopLayout))
             {
                 throw new ArgumentOutOfRangeException(nameof(mode), mode,
                     "V.AnimatePresence takes a member of AnimatePresenceMode as its mode.");
@@ -2376,7 +2376,7 @@ namespace Velvet
                     "redirectTo and guard cannot be specified together. Use redirectTo for redirect-only routes and guard for pass-through routes.");
             }
 
-            if (!Enum.IsDefined(typeof(LoaderMode), loaderMode))
+            if (loaderMode is not (LoaderMode.Await or LoaderMode.Suspend))
             {
                 throw new ArgumentOutOfRangeException(nameof(loaderMode), loaderMode,
                     "V.Route takes a member of LoaderMode as its loaderMode.");
