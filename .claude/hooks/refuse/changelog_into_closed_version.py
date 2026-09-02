@@ -26,9 +26,23 @@ The reading is a released section's PUBLISHED LINES, before against the proposed
   like, and allowed the substitution; comparing the text itself refuses the reword with it, which
   is the accepted cost — the refusal says what a genuine reword should do instead. A reflowed line
   matches itself, because the join that unwraps it is the publisher's own.
-- Removal is not refused, so deleting an entry from a released section and moving one out of it
-  both still run. Deleting the whole SECTION does not, because the heading goes with it — see
-  below.
+- A released section whose version the remote tags — `vX.Y.Z-main`, whichever line published it
+  — is refused every change to it but two: putting back a line that copy has and the section is
+  short of, where the copy has it and with nothing else lost or moved, and bringing the section in
+  as that copy entire, that copy being the only text of it here and an addition to a note already
+  published belonging in the release that follows it. Removal, reword, reorder and a changed date
+  alike, since the note is the tag's and the file cannot tell a correction from a deletion. For a
+  section the file already carries it is not equality with the tag's copy, because main's older
+  sections already differ from theirs, each of those carrying a Highlights block the copy has not
+  got. The remote's tags rather than the checkout's, for the reason
+  `published_check.remote_tag_shas` gives. Where the remote tags no such version, or the remote or
+  git does not answer, the reading is the one above: growth is refused and removal is not,
+  so deleting an entry from such a section still runs. Deleting the whole SECTION does not either
+  way, because the heading goes with it — see below.
+- What the edit is measured against is the FILE, where the merge-time reading has the base commit,
+  so undoing a put-back made in the editor is refused as the deletion it looks like here. Reverting
+  it with git is the way back, as with the heading below; a base to compare against is what this
+  has not got, and the merge-time reading is what decides the change either way.
 - Only versions dated on BOTH sides are compared. Closing `## [Unreleased]` into `## [X.Y.Z] - DATE`
   newly dates a whole section, which under a first-seen-is-growth reading refused every release —
   including through the advice this hook prints, which left no in-band way to clear it. A heading
@@ -51,7 +65,7 @@ refusal names the editing tools instead, which present the text and get the read
 
 import json
 import os
-import re
+import subprocess
 import sys
 from collections import Counter
 from pathlib import Path
@@ -61,56 +75,64 @@ import repository
 import tracked_writes
 
 # The section this guard compares is the one `release_notes.py` publishes, so it is delimited and
-# unwrapped by that module rather than parsed a second time here. A heading only one of two grammars
+# unwrapped by that module -- through the reading `breaking_in_flight_check.py` shares with the
+# merge-time check -- rather than parsed a second time here. A heading only one of two grammars
 # recognises moves text across a version boundary for that one and not the other, and a disagreement
 # in either direction can leave a released section's text uncompared and still published. Soundness
 # would need the two to agree exactly, and nothing would hold them to it.
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts" / "release"))
-import release_notes
+import breaking_in_flight_check as drain
+import published_check
 
 HOOK_TOOLS = {"Bash", "Edit", "Write"}
 
 CHANGELOG = "CHANGELOG.md"
-DATED = re.compile(r"^\s*-\s*\d{4}-\d{2}-\d{2}")
-
-
-def sections(text):
-    """Each version heading in order, with whether it is dated and the lines published under it."""
-    lines = text.splitlines()
-    marks = []
-    for index, line in enumerate(lines):
-        match = release_notes.VERSION_HEADING.match(line)
-        if match:
-            marks.append((index, match))
-    for order, (index, match) in enumerate(marks):
-        end = marks[order + 1][0] if order + 1 < len(marks) else len(lines)
-        yield (match.group("version"),
-               bool(DATED.match(lines[index][match.end():])),
-               published_lines(lines[index + 1:end]))
-
-
-def published_lines(lines):
-    """Every non-blank line of one section body, in the shape the note carries it.
-
-    Indentation survives the collapse because it is what nests a line under another.
-    """
-    return [line[:len(line) - len(line.lstrip())] + " ".join(line.split())
-            for line in release_notes.unwrap_soft_breaks(lines) if line.strip()]
 
 
 def released(text):
-    """Published lines of each released version, counted by their collapsed text."""
+    """Published lines of each released version, heading included, counted by their collapsed text."""
     counted = {}
-    for version, dated, listed in sections(text):
+    for version, dated, heading, listed in drain.published_sections(text):
         if dated:
-            counted.setdefault(version, Counter()).update(listed)
+            counted.setdefault(version, Counter()).update([heading] + listed)
     return counted
 
 
 def repeated(text):
     """Versions carrying more than one heading."""
-    written = Counter(version for version, _, _ in sections(text))
+    written = Counter(version for version, _, _, _ in drain.published_sections(text))
     return {version for version, count in written.items() if count > 1}
+
+
+def published_copies(path, versions):
+    """Those of `versions` the remote tags, each with the tag naming its release, the commit the
+    remote has it at and that tag's copy of the section, as {version: (tag, sha, lines)}, and the
+    path `git show` reads the file by.
+
+    A version the remote does not tag is unpublished and absent here. So is one whose copy this
+    checkout cannot show, and every one where the remote could not be listed: the guard then reads
+    as it did before the repository had a release, and the merge-time check refuses what it let by.
+    """
+    where = Path(path).parent
+    prefix, _ = drain.run(["git", "rev-parse", "--show-prefix"], cwd=where)
+    if prefix is None or not versions:
+        return {}, None
+    tracked = prefix.strip() + Path(path).name
+    try:
+        tagged = published_check.remote_tag_shas(where)
+    except (OSError, subprocess.SubprocessError):
+        return {}, tracked
+    copies = {}
+    for version in versions:
+        try:
+            found = drain.published_copy(
+                version, tagged,
+                lambda revision: drain.run(["git", "show", f"{revision}:{tracked}"], cwd=where))
+        except drain.UnreadableRelease:
+            continue
+        if found is not None:
+            copies[version] = (found[0], tagged[found[0]], found[1])
+    return copies, tracked
 
 
 def common_git_dir(start):
@@ -233,7 +255,6 @@ def main():
         return 2
 
     before, after = released(text), released(proposed)
-    versions = sorted(v for v, listed in after.items() if v in before and listed - before[v])
     # A released heading that stops being one carries whatever is under it out of the comparison,
     # so renaming the version, stripping the date and deleting the section outright are one edit
     # reached three ways.
@@ -250,6 +271,36 @@ def main():
               "in the file tells that date from a published one. Revert it with git, which this "
               "check never reads.", file=sys.stderr)
         return 2
+
+    was, becomes = drain.dated_sections(text), drain.dated_sections(proposed)
+    moved = [v for v in becomes if becomes[v] != was.get(v)]
+    copies, tracked = published_copies(path, moved)
+    # A section the edit brings in -- a maintenance line's, carried forward -- arrives as its tag's
+    # copy; one already here is held to what it was, but for a line of that copy put back in place.
+    restored = {v for v, (tag, sha, copy) in copies.items()
+                if (drain.only_put_back(becomes[v], was[v], copy) if v in was
+                    else becomes[v] == copy)}
+    held = [v for v in moved if v in copies and v not in restored]
+    if held:
+        tag, sha, _ = copies[held[0]]
+        print(f"Refusing this {CHANGELOG} edit: it changes `## [{held[0]}]`, and {tag} on the "
+              "remote is the release that shipped that section.\n\n"
+              "A dated section is the note its release shipped. Nothing in the file separates a "
+              "correction from a deletion, so neither is made past the tag; an edit that only puts "
+              "back a line that copy has and the section is short of, where the copy has it — a "
+              "heading in the same edit as an entry it heads, since one that would head nothing "
+              "is refused — or brings the section in as that copy entire, is what this lets "
+              "through — an addition to a note already published belongs in the release "
+              "that follows it:\n\n"
+              f"  git show {sha}:{tracked}   # {tag} on the remote\n\n"
+              "Put what this change has to say under `## [Unreleased]`, or "
+              "`## [Unreleased — breaking]` where it has to wait for a major.\n\n"
+              "Undoing a put-back made in the editor arrives here as that deletion, because this "
+              "reads the file rather than a base commit. Revert it with git, which this check "
+              "never reads.", file=sys.stderr)
+        return 2
+    versions = sorted(v for v, listed in after.items()
+                      if v in before and listed - before[v] and v not in restored)
     if not versions:
         return 0
 
