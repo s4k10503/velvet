@@ -32,6 +32,20 @@ CLOSED_VERSION_GUARD = REPO_ROOT / ".claude/hooks/refuse/changelog_into_closed_v
 LIBRARY = REPO_ROOT / ".claude/hooks/lib/tracked_writes.py"
 
 CHANGELOG_REL = "Packages/com.velvet.core/CHANGELOG.md"
+
+# What a refusal has to admit the reading did not see, spelled here rather than read back from
+# `tracked_writes.UNREAD`: a comparison of that tuple against the sentence built from it is satisfied
+# by however many entries it has, so it holds when a gap quietly drops out of both.
+UNREAD_GAPS = [
+    "yet to expand",
+    "moves into partway through",
+    "after a heredoc opener",
+    "`>&`",
+    "`cp -t`",
+    "`tee`, and `git mv`",
+    "`xargs` and `sudo`",
+    "inside a script or a program",
+]
 RELEASED = """# Changelog
 
 ## [Unreleased]
@@ -90,6 +104,43 @@ class ReadingTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(found, [])
+
+    def test_Given_ASingleQuotedRedirectOperand_When_TheCommandIsRead_Then_ThatFileIsNamed(self):
+        # Arrange / Act — the mask blanks the quoted span, so an operand skip that reads the mask
+        # walks over the operand and off the end of the line.
+        found = self.named("printf x > 'notes.md'")
+
+        # Assert
+        self.assertEqual(found, [self.under("notes.md")])
+
+    def test_Given_ADoubleQuotedRedirectOperand_When_TheCommandIsRead_Then_ThatFileIsNamed(self):
+        # Arrange / Act
+        found = self.named('printf x > "notes.md"')
+
+        # Assert
+        self.assertEqual(found, [self.under("notes.md")])
+
+    def test_Given_AQuotedOperandAgainstAnAppend_When_TheCommandIsRead_Then_ThatFileIsNamed(self):
+        # Arrange / Act — `>>` with no space before the quote, which moves the operand's start.
+        found = self.named("printf x >>'notes.md'")
+
+        # Assert
+        self.assertEqual(found, [self.under("notes.md")])
+
+    def test_Given_AnEscapedRedirectOperand_When_TheCommandIsRead_Then_TheWholeNameIsRead(self):
+        # Arrange / Act — the escape is two blanked columns in the mask, so a skip reading the mask
+        # starts one character into the name and refuses a file whose name nothing carries.
+        found = self.named("printf x > \\notes.md")
+
+        # Assert
+        self.assertEqual(found, [self.under("notes.md")])
+
+    def test_Given_AQuotedOperandFollowedByAnArgument_When_TheCommandIsRead_Then_TheOperandIsNamed(self):
+        # Arrange / Act — what the redirect writes is the quoted word, not the argument after it.
+        found = self.named("cat > 'out.txt' notes.md")
+
+        # Assert
+        self.assertEqual(found, [self.under("out.txt")])
 
     def test_Given_ARedirectOperatorInsideAQuotedWord_When_TheCommandIsRead_Then_NoFileIsNamed(self):
         # Arrange / Act — a search for the character, which writes nothing. The quotes are gone by
@@ -202,6 +253,43 @@ class TrackingTests(unittest.TestCase):
         # Assert
         self.assertEqual(found, [])
 
+    def test_Given_APathInsideTheGitDirectory_When_TheTargetIsRead_Then_ItIsNotNamed(self):
+        # Arrange — git tracks nothing there, and asked about it from a `-C` inside the git directory
+        # it fails rather than answering, which the unreadable reading would take for a refusal.
+        subprocess.run(["git", "-C", str(self.root), "init", "--quiet"],
+                       check=True, capture_output=True)
+        (self.root / ".git" / "info").mkdir(parents=True, exist_ok=True)
+        (self.root / ".git" / "info" / "exclude").write_text("# nothing\n")
+
+        # Act
+        found = tracked_writes.tracked_writes("echo 'Logs/' >> .git/info/exclude", str(self.root))
+
+        # Assert
+        self.assertEqual(found, [])
+
+    def test_Given_ATrackedFileInAWorktree_When_TheTargetIsRead_Then_ItIsNamed(self):
+        # Arrange — a worktree carries `.git` as a file rather than a directory, and CONTRIBUTING.md
+        # says branch work here happens in one. A repository test that reads for a directory is
+        # silent in all of them and green on a plain checkout, which is what CI gives it.
+        checkout = self.root / "checkout"
+        checkout.mkdir()
+        git = lambda *a: subprocess.run(["git", "-C", str(checkout), *a], check=True,
+                                        capture_output=True)
+        git("init", "--quiet")
+        (checkout / "notes.md").write_text("x\n")
+        git("add", "notes.md")
+        git("-c", "user.email=a@b", "-c", "user.name=a", "commit", "-qm", "root")
+        worktree = self.root / "worktree"
+        git("worktree", "add", "-q", str(worktree), "--detach")
+
+        # Act
+        found = tracked_writes.tracked_writes("printf x > notes.md", str(worktree))
+
+        # Assert — the shape of the worktree's `.git` rides along, because a directory there would
+        # make this pass for the reason a plain checkout passes and pin nothing about a worktree.
+        self.assertEqual(((worktree / ".git").is_dir(), found),
+                         (False, [str(worktree / "notes.md")]))
+
     def test_Given_AGitThatRefusesTheRepository_When_TheTargetIsRead_Then_ItCountsAsTracked(self):
         # Arrange — a repository whose git answers `--version` and refuses every question about the
         # tree, which is what this project's Unity job meets: the container runs as root over a
@@ -275,16 +363,19 @@ class GuardTests(unittest.TestCase):
         self.assertEqual(code, 0)
 
     def test_Given_ARefusalOfAShellWrite_When_ItsTextIsRead_Then_ItStatesEveryGapInTheReading(self):
-        # Arrange — spelled here rather than read from the module, because a comparison of the
-        # module's own list against the sentence built from it holds however many it has come to
-        # name: both sides move together and a gap dropped from it reddens nothing.
-        gaps = ["yet to expand", "moves into partway through", "inside a script"]
-
-        # Act
+        # Arrange / Act
         _, said = self.verdict(READY_PR_GUARD, "printf 'x\\n' > CONTRIBUTING.md")
 
         # Assert
-        self.assertEqual([gap for gap in gaps if gap in said], gaps)
+        self.assertEqual([gap for gap in UNREAD_GAPS if gap in said], UNREAD_GAPS)
+
+    def test_Given_TheGapsThisSuiteKnows_When_TheModulesOwnListIsCounted_Then_ItCarriesTheSameNumber(self):
+        # Arrange / Act — the count rather than the text, which is the half the case above cannot
+        # hold: a gap added to the module and to nothing else leaves that one green.
+        declared = len(tracked_writes.UNREAD)
+
+        # Assert
+        self.assertEqual(declared, len(UNREAD_GAPS))
 
     def test_Given_AShellWriteOntoATrackedChangelog_When_TheClosedVersionGuardReadsIt_Then_ItIsRefused(self):
         # Arrange / Act — a reword of an entry, which the Edit path refuses where the entry is in a

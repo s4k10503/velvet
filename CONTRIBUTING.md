@@ -587,10 +587,15 @@ operand of a redirect, of an in-place `sed`, and the destination of a `cp` or an
 `git ls-files`. That is narrower than deciding what an arbitrary command writes, which is the
 problem the body guard above was reduced for twice — and narrow from the same transcripts rather
 than from a guess about what a session does. `tee` reached a tracked file in none of them, and
-`git mv` is out because its destination is a path git does not yet track. What the reading gives up,
-a refusal states rather than leaving a reader to infer coverage from it: an operand the shell has
-yet to expand, a directory the command moves into partway through, and a write made from inside a
-script or a program.
+`git mv` wants a criterion of its own rather than another spelling of that one. What the reading
+gives up it does not leave a reader to infer: `tracked_writes.UNREAD` is the list, the refusal is
+built from it, and `scripts/hooks/test_tracked_writes.py` holds the refusal to every entry and
+counts them. One of those entries is a shape this branch measured and declined to close — a
+redirect written after a heredoc opener on the same line, which needs `mask_shell_literals` to stop
+blanking that line. Measured over the same transcripts, the ordering that works occurs 1,047 times
+and the one that does not occurs 3, none onto a tracked file, while the masker change moves what
+seven guards see for 71 commands and makes 90 git invocations newly visible to them. So it is
+stated as a gap rather than closed here.
 
 `edit_while_a_ready_pr_sits.py` reaches the same verdict on a shell write as on an edit.
 `changelog_into_closed_version.py` cannot: its reading compares the section before against the

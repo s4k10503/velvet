@@ -12,9 +12,16 @@ the question here is narrowed to "is this literal operand a tracked file", which
 exactly. Where the shell has yet to expand the operand, nothing here resolves it.
 
 That makes the reading an under-approximation, and a refusal built on it has to say so rather than
-imply coverage: `LIMITS` is that sentence, owned here so two guards cannot state it two ways. What
-it gives up is above all that unexpanded operand, and the directory a command moves into partway
-through.
+imply coverage: `UNREAD` is the list of what it gives up and `LIMITS` the sentence built from it,
+owned here so two guards cannot state it two ways.
+
+One of those entries is a shape measured and declined rather than missed by oversight. A redirect
+written after a heredoc opener on the same line -- `cat <<'EOF' > file` -- is invisible here because
+`mask_shell_literals` blanks that line from the delimiter on, and unblanking it is shared with every
+caller of `command_segments`: measured over the transcripts above, it moves the segmentation of 71
+commands and makes 90 git invocations newly visible to seven guards, against three occurrences of
+the shape and none of them onto a tracked file. The other ordering, `cat > file <<'EOF'`, occurs a
+thousand times and is read.
 
 `tee` is the obvious fourth shape and is not read: two independent readings of those transcripts put
 it at no tracked file at all. Nor is `git mv`, which wants a criterion of its own rather than another
@@ -34,13 +41,18 @@ import repository  # noqa: E402
 from shell_commands import (SEPARATORS, UNRESOLVED_CD, command_segments, leading_cd,  # noqa: E402
                             mask_shell_literals, program_invocations, tokens_of, unexpanded)
 
-# Each gap the reading leaves, listed rather than prosed so that the sentence below cannot come to
-# name fewer of them than there are: `LIMITS` is built from this. The suite spells the gaps out on
-# its own side rather than reading them back from here, since a comparison against this tuple holds
-# however many it has come to hold.
+# Each gap the reading leaves. `LIMITS` is built from this so the sentence cannot name fewer of them
+# than the tuple carries; what stops the TUPLE naming fewer than the reading has is the suite, which
+# spells them out on its own side and counts them, a comparison against this tuple being satisfied by
+# however many it has come to hold. Every entry was measured against the reading rather than guessed.
 UNREAD = (
     "a target the shell has yet to expand",
     "a directory the command moves into partway through",
+    "a redirect written after a heredoc opener on the same line",
+    "`>&`, which writes the file it names",
+    "a destination `cp -t` takes off the end of the operands",
+    "`tee`, and `git mv`",
+    "a writing command reached through another, as `xargs` and `sudo` reach one",
     "a write made from inside a script or a program",
 )
 
@@ -102,7 +114,9 @@ def _redirect_targets(segment):
             index += 1
             continue
         end = index + 2 if masked.startswith(">>", index) else index + 1
-        while end < len(masked) and masked[end] in " \t":
+        # Skipped in the segment, not in the mask: a quoted or escaped operand is blanked there, so
+        # a skip that reads the mask walks straight over it and off the end of the line.
+        while end < len(segment) and segment[end] in " \t":
             end += 1
         operand = tokens_of(segment[end:])
         if operand:
@@ -262,6 +276,10 @@ def _tracked(path):
     """
     parent = os.path.dirname(path)
     if not os.path.isdir(parent) or not _inside_a_repository(parent):
+        return False
+    # git tracks nothing inside the git directory, and asked about a path there from a `-C` inside it
+    # it fails rather than answering -- which the reading below would take for a failure to read.
+    if ".git" in Path(path).parts:
         return False
     answer = repository.git_answer(["-C", parent, "ls-files", "--", path], cwd=None, timeout=10)
     return answer.code != 0 or bool(answer.stdout.strip())

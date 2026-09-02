@@ -47,6 +47,8 @@ namespace Velvet.Tests
         private static readonly Regex HookReferencePattern =
             new(@"\.claude/hooks/([A-Za-z0-9_./-]+)", RegexOptions.Compiled);
 
+        // GREEN_ON_BASE(construction): both sides are this repository's own files -- the paths `.claude/settings.json` names,
+        // against the scripts on disk. Rename one hook and this reddens; no base run can do that.
         [Test]
         public void Given_TheHookWiring_When_EachReferencedPathIsResolved_Then_EveryOneNamesAFileThatExists()
         {
@@ -66,6 +68,8 @@ namespace Velvet.Tests
                 "a hook is wired by path, so one that names nothing never fires:\n" + string.Join("\n", missing));
         }
 
+        // GREEN_ON_BASE(construction): the hook directory against the two files that run it, both the base's own. Add an unwired
+        // `refuse/nothing_runs_this.py` and this reddens, which no run of the base can arrange.
         [Test]
         public void Given_TheHookDirectory_When_EachScriptIsTracedBack_Then_EveryOneIsWiredOrSourced()
         {
@@ -134,6 +138,8 @@ namespace Velvet.Tests
         private const string NoScopeDeclared =
             "no hook declares HOOK_SCOPE, so neither scope check has a subject left";
 
+        // GREEN_ON_BASE(construction): the `HOOK_SCOPE` lines against the settings, both the base's own content. Unregister a
+        // guard that declares one and this reddens; a base run performs no such edit.
         [Test]
         public void Given_TheHooksDeclaringSessionScope_When_TheSettingsAreRead_Then_EveryOneIsRegisteredThere()
         {
@@ -157,6 +163,8 @@ namespace Velvet.Tests
                 + $"reachable only from there leaves every session outside it unguarded:\n{string.Join("\n", unregistered)}");
         }
 
+        // GREEN_ON_BASE(construction): the same declarations against the agent front matter. Name such a guard in
+        // `.claude/agents/velvet-implementer.md` and this reddens, which no base run arranges.
         [Test]
         public void Given_TheHooksDeclaringSessionScope_When_TheAgentFrontMatterIsRead_Then_NoneIsNarrowedThere()
         {
@@ -336,6 +344,8 @@ namespace Velvet.Tests
             "no PreToolUse registration was read out of " + SettingsFile
             + ", so neither tool-set check has a subject left";
 
+        // GREEN_ON_BASE(construction): each registered hook's source against the registration, both the base's own. Delete a
+        // `HOOK_TOOLS` line and this reddens; no run of the base can delete one.
         [Test]
         public void Given_ThePreToolUseRegistrations_When_EachHookIsRead_Then_EveryOneDeclaresItsToolSet()
         {
@@ -357,6 +367,8 @@ namespace Velvet.Tests
                 + $"compares:\n{string.Join("\n", silent)}");
         }
 
+        // GREEN_ON_BASE(construction): the settings matcher against each hook's `HOOK_TOOLS`, both the base's own text. Drop a
+        // tool from either side and this reddens, which no base run can perform.
         [Test]
         public void Given_ThePreToolUseRegistrations_When_EachMatcherIsComparedWithTheHooksOwnSet_Then_TheyNameTheSameTools()
         {
@@ -385,6 +397,8 @@ namespace Velvet.Tests
         private static string Quoted(IEnumerable<string> matchers) =>
             string.Join(" and ", matchers.Select(matcher => "\"" + matcher + "\""));
 
+        // GREEN_ON_BASE(construction): each gate against the set it sits beside, both the base's own. Replace a gate's
+        // `HOOK_TOOLS` with a literal and this reddens; no base run rewrites a gate.
         [Test]
         public void Given_TheHooksDeclaringAToolSet_When_TheirSourceIsRead_Then_EveryOneComparesToolNameAgainstIt()
         {
@@ -489,6 +503,8 @@ namespace Velvet.Tests
         // second one was meant.
         private static readonly string[] SearchedDirectories = { HookDirectory, "scripts" };
 
+        // GREEN_ON_BASE(construction): the names the scripts spell against the files beside them. Misspell `settle.py` in a
+        // refusal message and this reddens, which is an edit no base run makes.
         [Test]
         public void Given_TheHookScripts_When_EachScriptNameTheyBuildAPathFromIsResolved_Then_EveryOneExists()
         {
@@ -537,6 +553,8 @@ namespace Velvet.Tests
             ("a merge", "{\"tool_name\":\"Bash\",\"cwd\":\"%PROJECT%\",\"tool_input\":{\"command\":\"gh pr merge 1 --squash --delete-branch\"}}", true),
         };
 
+        // GREEN_ON_BASE(construction): every guard in the directory against payloads this file holds, both the base's own.
+        // Break an import in `tracked_writes.py` and this reddens; no base run breaks one.
         [Test]
         public void Given_EveryRefusingGuard_When_APayloadIsPosed_Then_ItRunsToAVerdict()
         {
@@ -645,6 +663,8 @@ namespace Velvet.Tests
         // reading something other than the event's tool name.
         private const string UnroutedTool = "VelvetNoToolIsCalledThis";
 
+        // GREEN_ON_BASE(construction): each gate against the tools its own file declares, both the base's own content. Invert a
+        // gate's `tool_name` comparison and this reddens, which no base run can arrange.
         [Test]
         public void Given_TheHooksDeclaringAToolSet_When_EachIsPosedUnderARoutedNameAndAnUnroutedOne_Then_OnlyTheRoutedOneAnswers()
         {
@@ -816,6 +836,8 @@ namespace Velvet.Tests
         private const string ReleasedHeadingBelowAnEmptyOne =
             ReleasedHeading + "\n\n### Fixed\n\n" + ReleasedHeading;
 
+        // GREEN_ON_BASE(characterization): the base already refuses an edit made in a worktree, and this change adds a shell route
+        // beside the editing one rather than altering what an Edit reaches.
         [Test]
         public void Given_ACheckoutAndAWorktreeOfIt_When_TheClosedVersionGuardIsPosedAnEditInTheWorktree_Then_ItRefuses()
         {
@@ -857,6 +879,8 @@ namespace Velvet.Tests
             }
         }
 
+        // GREEN_ON_BASE(characterization): the base already refuses a duplicated version heading, and nothing in this change reaches
+        // the reading that decides it.
         [Test]
         public void Given_AnEditWritingASecondHeadingForAReleasedVersion_When_TheClosedVersionGuardReadsIt_Then_ItRefuses()
         {
@@ -881,6 +905,8 @@ namespace Velvet.Tests
             }
         }
 
+        // GREEN_ON_BASE(characterization): the base already refuses a substitution in a released section, and this change leaves that
+        // comparison untouched.
         [Test]
         public void Given_AnEditSubstitutingTheOnlyEntryOfAReleasedSection_When_TheClosedVersionGuardReadsIt_Then_ItRefuses()
         {
@@ -906,6 +932,8 @@ namespace Velvet.Tests
             }
         }
 
+        // GREEN_ON_BASE(characterization): the base already refuses an indented entry there, and the published-lines reading is not
+        // what this change moves.
         [Test]
         public void Given_AnEntryNestedAboveAReleasedSectionsFirstColumnZeroBullet_When_TheClosedVersionGuardReadsIt_Then_ItRefuses()
         {
@@ -932,6 +960,8 @@ namespace Velvet.Tests
             }
         }
 
+        // GREEN_ON_BASE(characterization): the base already refuses an entry under a heading the notes do not read, and the heading
+        // grammar is untouched here.
         [Test]
         public void Given_AnEntryBelowAHeadingTheReleaseNotesDoNotRead_When_TheClosedVersionGuardReadsIt_Then_ItRefuses()
         {
@@ -958,6 +988,8 @@ namespace Velvet.Tests
             }
         }
 
+        // GREEN_ON_BASE(characterization): the base already refuses where the project directory cannot be placed, and the scoping
+        // this change adds is on the shell route rather than that one.
         [Test]
         public void Given_AProjectDirectoryGitCannotPlace_When_TheClosedVersionGuardIsPosedAGrowthEdit_Then_ItRefuses()
         {
@@ -987,6 +1019,8 @@ namespace Velvet.Tests
             }
         }
 
+        // GREEN_ON_BASE(characterization): the base already stands down for a changelog in no repository of ours, and that scoping
+        // is unchanged by this branch.
         [Test]
         public void Given_AChangelogInNoRepository_When_TheClosedVersionGuardIsPosedAGrowthEditFromAPlacedProject_Then_ItStandsDown()
         {
@@ -1017,6 +1051,8 @@ namespace Velvet.Tests
             }
         }
 
+        // GREEN_ON_BASE(characterization): the base already names the deletion rather than a rename, and this change writes no part
+        // of that message.
         [Test]
         public void Given_AnEditDeletingAReleasedSectionOutright_When_TheClosedVersionGuardRefusesIt_Then_ItDoesNotNameARename()
         {
