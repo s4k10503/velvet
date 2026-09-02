@@ -17,33 +17,40 @@ it gives up is above all that unexpanded operand, and the directory a command mo
 through.
 
 `tee` is the obvious fourth shape and is not read: two independent readings of those transcripts put
-it at no tracked file at all. Nor is `git mv`: its destination is by definition a path git does not
-yet track, so it wants a second criterion beside the one below rather than another spelling of it.
+it at no tracked file at all. Nor is `git mv`, which wants a criterion of its own rather than another
+spelling of the one below: its destination is ordinarily a path git does not yet track, and where
+`-f` overwrites one that it does, what git tracks is what the move is about rather than a test that
+separates it from a scratch write.
 """
 
 import os
-import re
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import pr_body  # noqa: E402
 import repository  # noqa: E402
 from shell_commands import (SEPARATORS, UNRESOLVED_CD, command_segments, leading_cd,  # noqa: E402
-                            leading_program, mask_shell_literals, program_invocations, tokens_of,
-                            unexpanded)
+                            mask_shell_literals, program_invocations, tokens_of, unexpanded)
+
+# Each gap the reading leaves, listed rather than prosed so that the sentence below cannot come to
+# name fewer of them than there are: `LIMITS` is built from this. The suite spells the gaps out on
+# its own side rather than reading them back from here, since a comparison against this tuple holds
+# however many it has come to hold.
+UNREAD = (
+    "a target the shell has yet to expand",
+    "a directory the command moves into partway through",
+    "a write made from inside a script or a program",
+)
 
 # What a refusal built on this must admit to. Three shapes and a literal operand is the whole of it.
 LIMITS = (
     "This reads three shapes carrying a literal operand — a redirect, an operand of an in-place "
-    "`sed`, and the destination of a `cp` or an `mv`. A target the shell has yet to expand, a write "
-    "made from inside a script or a program, and every other command that writes are not read at "
-    "all, so nothing refusing here is claiming to have seen them."
+    "`sed`, and the destination of a `cp` or an `mv`. Not read at all, so that nothing refusing "
+    "here is claiming to have seen them: " + ", ".join(UNREAD) + ", and every other command that "
+    "writes."
 )
-
-# `>` and `>>` alone. `>&` and `<&` move a descriptor and `<` reads, so none of them writes a file.
-# `&>` does, and is left out: over the transcripts above it named a tracked file no times at all.
-WRITING_REDIRECT = re.compile(r"^\d*>>?(?!&)")
 
 # sed options that swallow the token after them, so a script file's name is not offered as a file
 # being edited. `-i` is not among them and does not need to be: whatever follows it is offered like
@@ -72,20 +79,35 @@ def _visible_segments(command):
             for normalised in command_segments(command[first:last])]
 
 
-def _redirect_targets(tokens):
-    """Every operand a `>` or a `>>` in this segment writes to."""
+def _redirect_targets(segment):
+    """The operands a `>` or a `>>` in this segment writes to, less the spellings named below.
+
+    The operator is located in the masked text and the operand read out of the original, because a
+    token has lost its quotes by the time `shlex` hands it back: a shell word that IS `>` --
+    `grep -n '>' CHANGELOG.md` -- is indistinguishable there from the operator, and the word after
+    it then reads as a file being written. That refusal cannot be argued with, since the command
+    writes nothing for its author to point at.
+    """
+    # No `&` survives into a segment -- the split consumes every unquoted one as a separator -- so
+    # nothing here reads the descriptor spellings, and none of them needs a branch. `2>&1` leaves a
+    # `>` at a segment's end with no operand after it, which is why a descriptor move yields
+    # nothing. `&>` arrives as a segment opening on `>` and is read like any other write. `>&` leaves
+    # the same trailing `>` as `2>&1`, so a `make >& log`, which does write the file, is missed here
+    # rather than refused -- the direction an under-approximation is allowed to be wrong in.
+    masked = mask_shell_literals(segment)
     found = []
     index = 0
-    while index < len(tokens):
-        match = WRITING_REDIRECT.match(tokens[index])
-        if match:
-            attached = tokens[index][match.end():]
-            if attached:
-                found.append(attached)
-            elif index + 1 < len(tokens):
-                found.append(tokens[index + 1])
-                index += 1
-        index += 1
+    while index < len(masked):
+        if masked[index] != ">" or (index and masked[index - 1] in "<>"):
+            index += 1
+            continue
+        end = index + 2 if masked.startswith(">>", index) else index + 1
+        while end < len(masked) and masked[end] in " \t":
+            end += 1
+        operand = tokens_of(segment[end:])
+        if operand:
+            found.append(operand[0])
+        index = end
     return found
 
 
@@ -145,11 +167,14 @@ def _copy_targets(operands):
 
 
 def _moves(segments):
-    """How many of these segments run `cd`."""
-    return sum(1 for segment in segments
-               for tokens in [tokens_of(segment)]
-               for index in [leading_program(tokens)]
-               if index < len(tokens) and tokens[index] == "cd")
+    """How many of these segments change the directory a later one runs in.
+
+    `pr_body.moves_directory` rather than a comparison against `cd`, so that `pushd`, `popd` and a
+    path-qualified `/bin/cd` count here as they do there. A second set of the same words is the
+    drift the derived stylesheet table exists to prevent one level down, and this one has a fixture
+    behind it.
+    """
+    return sum(1 for segment in segments if pr_body.moves_directory(segment))
 
 
 def _base_directory(command, segments, cwd):
@@ -187,7 +212,7 @@ def literal_write_targets(command, cwd):
     base = _base_directory(command, segments, cwd)
     candidates = []
     for segment in segments:
-        candidates += _redirect_targets(tokens_of(segment))
+        candidates += _redirect_targets(segment)
         for operands in program_invocations(segment, "sed", ()):
             candidates += _sed_targets(operands)
         for program in ("cp", "mv"):
@@ -205,31 +230,41 @@ def literal_write_targets(command, cwd):
     return found
 
 
-_GIT_RUNS = None
+def _inside_a_repository(directory):
+    """Whether some ancestor of `directory` carries a `.git`, asked of the filesystem.
 
+    Not of git, and that is the whole point: a git that refuses a repository refuses every question
+    about it, this one included, so it cannot separate "no repository here" from "git would not read
+    the one that is here" -- and those want opposite answers. Reproduced against a git that answers
+    `--version` and refuses the tree: a reading that asked instead whether git runs at all took the
+    refusal for "no repository", stood both guards down, and left the wiring fixture reporting a
+    table with nothing in it they decide about. That is the shape this repository's Unity job fails
+    in, its container running as root over a checkout owned by another user while the safe.directory
+    the checkout action sets names the host's path.
 
-def _git_runs():
-    """Whether git can be started at all, asked once."""
-    global _GIT_RUNS
-    if _GIT_RUNS is None:
-        _GIT_RUNS = repository.git(["--version"], cwd=None, timeout=10) is not None
-    return _GIT_RUNS
+    A worktree carries `.git` as a file rather than a directory, so existence is what is asked.
+    """
+    current = Path(directory).resolve()
+    return any((candidate / ".git").exists() for candidate in (current, *current.parents))
 
 
 def _tracked(path):
     """Whether git names `path` a file it tracks.
 
-    A git that cannot answer counts as yes, because a guard reading "I cannot tell" as "nothing to
-    refuse" falls silent exactly where it is the only thing left. Being outside a repository is not
-    that state and must not reach it: git reports it with the same failure it reports being unable
-    to run with, so what separates the two is asking whether it runs.
+    Inside a repository, anything but an answer from git counts as tracked: a guard reading "I
+    cannot tell" as "nothing to refuse" falls silent exactly where it is the only thing left, and
+    a git that will not start, one that times out and one that refuses the repository are alike
+    that. Outside one there is nothing to be tracked in and no git is asked at all, which is also
+    what keeps a scratch path from costing a subprocess.
+
+    `ls-files` without `--error-unmatch`, because that spelling reports a path it does not track
+    with the same exit code git uses for never having run.
     """
     parent = os.path.dirname(path)
-    if not os.path.isdir(parent):
+    if not os.path.isdir(parent) or not _inside_a_repository(parent):
         return False
-    answer = repository.git_answer(
-        ["-C", parent, "ls-files", "--error-unmatch", "--", path], cwd=None, timeout=10)
-    return True if answer.code == 0 else not _git_runs()
+    answer = repository.git_answer(["-C", parent, "ls-files", "--", path], cwd=None, timeout=10)
+    return answer.code != 0 or bool(answer.stdout.strip())
 
 
 def tracked_writes(command, cwd):

@@ -91,6 +91,23 @@ class ReadingTests(unittest.TestCase):
         # Assert
         self.assertEqual(found, [])
 
+    def test_Given_ARedirectOperatorInsideAQuotedWord_When_TheCommandIsRead_Then_NoFileIsNamed(self):
+        # Arrange / Act — a search for the character, which writes nothing. The quotes are gone by
+        # the time a token is read back, so the word after it reads as a file being written, and
+        # the refusal that follows names a write the author cannot point at.
+        found = self.named("grep -n '>' notes.md")
+
+        # Assert
+        self.assertEqual(found, [])
+
+    def test_Given_AWriteAfterAPushd_When_TheCommandIsRead_Then_NoFileIsNamed(self):
+        # Arrange / Act — `pushd` moves the shell as surely as `cd`, so the operand below belongs
+        # to the directory it moved into rather than to the one the tool call started in.
+        found = self.named("pushd /tmp && printf 'x\\n' > notes.md")
+
+        # Assert
+        self.assertEqual(found, [])
+
     def test_Given_ASedWhoseAttachedScriptCarriesAnI_When_TheCommandIsRead_Then_NoFileIsNamed(self):
         # Arrange / Act — the script rides on its own option rather than in a token of its own, so
         # a reading that took `-e…` for a cluster of short options would find `-i` inside it.
@@ -185,12 +202,18 @@ class TrackingTests(unittest.TestCase):
         # Assert
         self.assertEqual(found, [])
 
-    def test_Given_AGitThatCannotBeStarted_When_TheTargetIsRead_Then_ItCountsAsTracked(self):
-        # Arrange — a git failing every call, which is how it reports both a directory outside any
-        # repository and its own absence. Read in a subprocess, since the reader asks once per run.
+    def test_Given_AGitThatRefusesTheRepository_When_TheTargetIsRead_Then_ItCountsAsTracked(self):
+        # Arrange — a repository whose git answers `--version` and refuses every question about the
+        # tree, which is what this project's Unity job meets: the container runs as root over a
+        # checkout owned by another user, so `safe.directory` does not cover it. Read in a
+        # subprocess, since the reading is of a program on PATH.
+        subprocess.run(["git", "-C", str(self.root), "init", "--quiet"],
+                       check=True, capture_output=True)
         stub = self.root / "bin"
         stub.mkdir()
-        (stub / "git").write_text("#!/bin/sh\necho 'fatal: probe' >&2\nexit 128\n")
+        (stub / "git").write_text(
+            "#!/bin/sh\ncase \"$*\" in *--version*) echo 'git version 0'; exit 0;; esac\n"
+            "echo 'fatal: detected dubious ownership in repository' >&2\nexit 128\n")
         (stub / "git").chmod(0o755)
         program = (f"import sys; sys.path.insert(0, {str(LIBRARY.parent)!r});"
                    " import tracked_writes;"
@@ -201,8 +224,8 @@ class TrackingTests(unittest.TestCase):
                               timeout=60, env=dict(os.environ, PATH=str(stub) + os.pathsep
                                                    + os.environ.get("PATH", "")))
 
-        # Assert — the count rides along, because a reader that named nothing would print an empty
-        # list whatever it decided about a git it could not start.
+        # Assert — the exit code rides along, because a reader that died would print nothing and an
+        # empty list is what standing down looks like.
         self.assertEqual((done.returncode, done.stdout.strip()),
                          (0, "[" + repr(str(self.root / "notes.md")) + "]"))
 
@@ -251,12 +274,17 @@ class GuardTests(unittest.TestCase):
         # Assert
         self.assertEqual(code, 0)
 
-    def test_Given_ARefusalOfAShellWrite_When_ItsTextIsRead_Then_ItStatesWhatWasNotRead(self):
-        # Arrange / Act
+    def test_Given_ARefusalOfAShellWrite_When_ItsTextIsRead_Then_ItStatesEveryGapInTheReading(self):
+        # Arrange — spelled here rather than read from the module, because a comparison of the
+        # module's own list against the sentence built from it holds however many it has come to
+        # name: both sides move together and a gap dropped from it reddens nothing.
+        gaps = ["yet to expand", "moves into partway through", "inside a script"]
+
+        # Act
         _, said = self.verdict(READY_PR_GUARD, "printf 'x\\n' > CONTRIBUTING.md")
 
         # Assert
-        self.assertIn(tracked_writes.LIMITS, said)
+        self.assertEqual([gap for gap in gaps if gap in said], gaps)
 
     def test_Given_AShellWriteOntoATrackedChangelog_When_TheClosedVersionGuardReadsIt_Then_ItIsRefused(self):
         # Arrange / Act — a reword of an entry, which the Edit path refuses where the entry is in a
