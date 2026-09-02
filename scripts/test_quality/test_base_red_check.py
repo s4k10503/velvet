@@ -746,107 +746,6 @@ class NeighbourDuringTheRunTests(unittest.TestCase):
         self.assertEqual(len(self.reading()), 2)
 
 
-class StandingStillTests(unittest.TestCase):
-    """A loop that asks the same question three rounds running has stopped, not slowed.
-
-    Measured on the branch replacing UniTask: EditMode stopped withdrawing after round 1 and repeated
-    the same round seven more times at four seconds each -- the compile abort rather than a run --
-    and the verdict then named the round cap. The cap is a budget finding; this is not one.
-    """
-
-    def test_Given_TheFixedPoint_When_ItIsReported_Then_ItSaysTheRoundsAskedTheSameThing(self):
-        # Arrange
-        said = base_red_check.standing_still_reason("EditMode", 8, 23)
-
-        # Act / Assert
-        self.assertIn("same 23 fixture(s) 3 rounds running", said)
-
-    def test_Given_TheFixedPoint_When_ItIsReported_Then_ItSaysItIsNotABudget(self):
-        # Arrange -- the remedy for a budget is a bigger one, and giving it here spends the rest of
-        # --max-rounds to reach the same place.
-        said = base_red_check.standing_still_reason("PlayMode", 4, 9)
-
-        # Act / Assert
-        self.assertIn("fixed point rather than a budget", said)
-
-    def test_Given_TheThreshold_When_ItIsRead_Then_TwoRoundsAreNotEnough(self):
-        # Arrange -- a withdrawal can take a file holding no case, and the round after it is the one
-        # that moves. Two says nothing; three is the same question asked three times.
-        # Act / Assert
-        self.assertEqual(base_red_check.STILL_ROUNDS, 3)
-
-
-class BudgetShortfallTests(unittest.TestCase):
-    """What the loop can say before spending a round, rather than after spending all of them.
-
-    The reading beside this one is the loop's history, which costs the whole budget to produce. This
-    is read off the carried set instead, before a round is spent, and it is a lower bound: a round
-    that compiles ends the loop, so a budget that clears the bound may still be enough or not.
-    """
-
-    def test_Given_FewerFilesThanRounds_When_TheBudgetIsRead_Then_ItSaysNothing(self):
-        # Arrange — the budget could be enough, and this cannot say that it is.
-        # Act / Assert
-        self.assertEqual(base_red_check.budget_shortfall(3, 8), "")
-
-    def test_Given_AsManyFilesAsRounds_When_TheBudgetIsRead_Then_ItSaysNothing(self):
-        # Arrange — the boundary: eight files can come off in eight rounds.
-        # Act / Assert
-        self.assertEqual(base_red_check.budget_shortfall(8, 8), "")
-
-    def test_Given_MoreFilesThanRounds_When_TheBudgetIsRead_Then_ItNamesTheFlagAndTheBound(self):
-        # Arrange — the EditMode side of the branch replacing UniTask: 23 carried files, default 8.
-        said = base_red_check.budget_shortfall(23, 8)
-
-        # Act / Assert
-        self.assertEqual(("--max-rounds 23" in said, "--max-rounds 8" in said), (True, True))
-
-
-SHAPES_ONLY = ("Packages/x/Runtime/Tests/Editor/A.cs(41,17): error CS1503: argument 1\n"
-               "Packages/x/Runtime/Tests/Editor/B.cs(9,1): error CS0029: cannot convert\n")
-
-WITH_A_NAME = SHAPES_ONLY + \
-    "Packages/x/Runtime/Tests/Editor/C.cs(3,3): error CS0246: the type could not be found\n"
-
-CARRIED_THREE = {"Packages/x/Runtime/Tests/Editor/A.cs", "Packages/x/Runtime/Tests/Editor/B.cs",
-                 "Packages/x/Runtime/Tests/Editor/C.cs"}
-
-
-class NoWithdrawalReachesTests(unittest.TestCase):
-    """Which of two remedies a run that compiled nothing has earned.
-
-    A withdrawal answers one kind of failure and not the other, and the difference is in the codes.
-    It decides what to print and nothing else: `exhausted_reason` records a run where a budget of 60
-    reached a compiling base on round 38 at the same default of 8 that measured nothing, so a run
-    under these codes is a budget finding rather than a base that cannot answer.
-    """
-
-    def test_Given_NothingButShapes_When_TheLogIsRead_Then_NoWithdrawalReachesIt(self):
-        # Arrange -- the file that fails is the file the case is in, so putting it back removes the
-        # case rather than the obstacle.
-        # Act / Assert
-        self.assertIs(base_red_check.no_withdrawal_reaches(SHAPES_ONLY, CARRIED_THREE), True)
-
-    def test_Given_OneNameTheBaseHasNotGot_When_TheLogIsRead_Then_AWithdrawalReachesIt(self):
-        # Arrange -- one of these and the loop has something to do, which is the other remedy.
-        # Act / Assert
-        self.assertIs(base_red_check.no_withdrawal_reaches(WITH_A_NAME, CARRIED_THREE), False)
-
-    def test_Given_ErrorsOnFilesNothingCarried_When_TheLogIsRead_Then_TheyDecideNothing(self):
-        # Arrange -- a base failing to build its own sources says nothing about which remedy the
-        # carried cases have earned.
-        # Act / Assert
-        self.assertIs(base_red_check.no_withdrawal_reaches(SHAPES_ONLY, set()), False)
-
-    def test_Given_TheRemedyForShapes_When_ItIsPrinted_Then_ItOffersNoBudget(self):
-        # Arrange -- it named one, and measured on the branch replacing UniTask a budget above that
-        # count still ran out of files to withdraw with three fixtures carried and compiled nothing.
-        said = base_red_check.shapes_remedy(31)
-
-        # Act / Assert
-        self.assertNotIn("--max-rounds", said)
-
-
 class ExhaustedLoopTests(unittest.TestCase):
     """What the withdrawing loop says when it runs out of rounds having compiled nothing.
 
@@ -885,9 +784,40 @@ class ExhaustedLoopTests(unittest.TestCase):
         # Assert
         self.assertIn("and 2 more", said)
 
+    def test_Given_AFileWithdrawnAndThenTakenOut_When_TheReasonIsBuilt_Then_ItIsCountedOnceAndSaidToBeOut(self):
+        # Arrange -- the run withdrew both, and took one of those out afterwards. A count that
+        # subtracted the second would say it withdrew one, against its own transcript, which named
+        # both as it withdrew them.
+        # Act
+        said = base_red_check.exhausted_reason(8, {"a.cs", "b.cs"}, 24, removed={"b.cs"})
+
+        # Assert
+        self.assertEqual(("withdrawn 2 of the 24 carried file(s)" in said,
+                          "1 of them taken out of the tree" in said, "b.cs" in said),
+                         (True, True, True))
+
+    def test_Given_MoreCarriedFilesThanTheMultiplierReaches_When_TheReasonIsBuilt_Then_TheFloorClearsTheCarriedCount(self):
+        # Arrange -- advice equal to the carried count sends the reader back for the same message,
+        # for the reason `exhausted_reason`'s own comment gives; one past it is what reaches.
+        # Act
+        said = base_red_check.exhausted_reason(1, {"a.cs"}, 5)
+
+        # Assert
+        self.assertIn("--max-rounds 6", said)
+
+    # GREEN_ON_BASE(characterization): the multiplier is the base's own, four times what was spent.
+    # Nothing held it there, which is what this case is for.
+    def test_Given_ARunThatSpentMoreThanTheCarriedCount_When_TheReasonIsBuilt_Then_TheMultiplierCarriesTheAdvice(self):
+        # Arrange -- past the floor the advice is the multiplier's, and how deep a round's put-backs
+        # go is what it guesses at.
+        # Act
+        said = base_red_check.exhausted_reason(4, {"a.cs"}, 3)
+
+        # Assert
+        self.assertIn("--max-rounds 16", said)
+
     def test_Given_RoundsThatCompiledNothing_When_TheReasonIsBuilt_Then_ItNamesTheFlagThatRaisesThem(self):
-        # Arrange — the budget is what binds: measured, the same branch that measured nothing at 8
-        # rounds compiled the base on round 38 at 60.
+        # Arrange — the budget is what binds, so the message names the flag that raises it.
         # Act / Assert
         self.assertIn("--max-rounds", base_red_check.exhausted_reason(8, {"a.cs"}, 24))
 
@@ -3307,34 +3237,353 @@ class InstrumentTests(unittest.TestCase):
 
 
 class WithdrawalTests(unittest.TestCase):
-    """Which carried file goes back when a round of the base run reported nothing of some fixture."""
+    """What withdrawing does to the tree, which is not the same thing for every carried file."""
+
+    def tree(self, base, branch):
+        root, _ = two_commit_repo(self, base, branch)
+        tree = worktree_beside(self, root)
+        subprocess.run(["git", "-C", str(root), "worktree", "add", "--quiet", "--detach",
+                        str(tree), "HEAD~1"], check=True, capture_output=True)
+        for relative, text in branch.items():
+            (tree / relative).parent.mkdir(parents=True, exist_ok=True)
+            (tree / relative).write_text(text)
+        return tree
+
+    # GREEN_ON_BASE(characterization): the base removes such a file too, its docstring says so.
+    # What a message about withdrawn files may claim of them is what this pins the reason for.
+    def test_Given_AFileTheBaseNeverHad_When_ItIsWithdrawn_Then_ItLeavesTheTree(self):
+        # Arrange -- a new test file has no text at the base to be put back to, so what a withdrawal
+        # leaves is nothing at all. A message calling every withdrawal a file standing at the base's
+        # text is false of this one.
+        added = "Packages/p/Runtime/A/Tests/Editor/NewTests.cs"
+        tree = self.tree({"Packages/p/Runtime/A/Old.cs": "class Old {}\n"},
+                         {"Packages/p/Runtime/A/Old.cs": "class Old {}\n", added: "class NewTests {}\n"})
+
+        # Act
+        base_red_check.withdraw(tree, added)
+
+        # Assert
+        self.assertFalse((tree / added).exists())
+
+
+class WithdrawalPolicyTests(unittest.TestCase):
+    """Which carried files go back, and which come out, when a round of the base run wrote nothing."""
 
     HELPER = "Packages/p/TestUtilities/PanelTestBase.cs"
     FIXTURE = "Packages/p/Runtime/A/Tests/Editor/ProbeTests.cs"
+    OTHER = "Packages/p/Runtime/A/Tests/Editor/OtherTests.cs"
 
-    def log(self, blamed):
-        return "/tmp/base/{}(12,34): error CS0117: 'V' has no definition for 'Portal'\n".format(blamed)
+    def log(self, *blamed):
+        return "".join("/tmp/base/{}(12,34): error CS0117: 'V' has no definition for 'Portal'\n"
+                       .format(name) for name in blamed)
 
-    def test_Given_TheLogBlamesACarriedHelper_When_TheOffenderIsChosen_Then_ItIsTheHelper(self):
+    def test_Given_TheLogBlamesTwoCarriedFiles_When_TheRoundIsPlanned_Then_BothGoBackAtOnce(self):
+        # Arrange -- the compiler named each for its own text, so neither is standing next to the
+        # other the way a silent file is.
+        # Act
+        restore, _ = base_red_check.withdrawals_for(
+            self.log(self.FIXTURE, self.OTHER), carry=[self.FIXTURE, self.OTHER, self.HELPER],
+            already=set())
+
+        # Assert
+        self.assertEqual(restore, [self.FIXTURE, self.OTHER])
+
+    def test_Given_TheLogBlamesACarriedHelper_When_TheRoundIsPlanned_Then_TheHelperGoesBack(self):
         # Arrange -- the helper holds no case, so a choice made over case-bearing files alone cannot
         # name it, and every fixture in its assembly is silent behind it.
         # Act
-        offender = base_red_check.next_to_withdraw(
-            self.log(self.HELPER), carry=[self.HELPER, self.FIXTURE], withdrawn=set(),
-            silent=[self.FIXTURE])
+        restore, _ = base_red_check.withdrawals_for(
+            self.log(self.HELPER), carry=[self.HELPER, self.FIXTURE], already=set())
 
         # Assert
-        self.assertEqual(offender, self.HELPER)
+        self.assertEqual(restore, [self.HELPER])
 
-    def test_Given_TheBlamedFileIsAlreadyWithdrawn_When_TheOffenderIsChosen_Then_ItIsNotChosenAgain(self):
-        # Arrange -- choosing it twice is a round that changes nothing, and there are only so many.
+    def test_Given_ABlamedFileAlreadyAtTheBasesText_When_TheRoundIsPlanned_Then_ItComesOutRatherThanGoingBackAgain(self):
+        # Arrange -- the base's own text of it failed against what the branch still carries, and its
+        # cases already read as unbuildable; putting back what it failed against would cost every
+        # file building against the branch's text its reading, for a file no round asks about.
         # Act
-        offender = base_red_check.next_to_withdraw(
-            self.log(self.HELPER), carry=[self.HELPER, self.FIXTURE], withdrawn={self.HELPER},
-            silent=[self.FIXTURE])
+        restore, take_out = base_red_check.withdrawals_for(
+            self.log(self.FIXTURE), carry=[self.FIXTURE, self.HELPER, self.OTHER],
+            already={self.FIXTURE})
 
         # Assert
-        self.assertEqual(offender, self.FIXTURE)
+        self.assertEqual((restore, take_out), ([], [self.FIXTURE]))
+
+    def test_Given_ABlamedFileTheBranchDidNotCarry_When_TheRoundIsPlanned_Then_NothingGoesBack(self):
+        # Arrange -- the base's own source; putting a carried file back does not reach it.
+        # Act
+        chosen = base_red_check.withdrawals_for(
+            self.log("Packages/p/Runtime/A/Status.cs"), carry=[self.FIXTURE], already=set())
+
+        # Assert
+        self.assertEqual(chosen, ([], []))
+
+
+class LocalLoopTests(unittest.TestCase):
+    """The withdrawing loop itself, with the editor replaced by what its log would say.
+
+    `main` is driven the way the command line drives it, over a repository whose base holds a
+    fixture the branch changed; `run_unity` writes the log the case describes and no results.
+    """
+
+    ENUM = "Packages/p/Runtime/A/Status.cs"
+    FIXTURE = "Packages/p/Runtime/A/Tests/Editor/ProbeTests.cs"
+    CANARY = "Packages/p/Runtime/A/Tests/Editor/CanaryTests.cs"
+
+    def fixture(self, name, body):
+        return ("namespace N\n{\n    class " + name + "\n    {\n        [Test]\n"
+                "        public void Given_A_When_B_Then_C() => " + body + ";\n    }\n}\n")
+
+    def loop(self, log_for, writes_from=None):
+        """(what the loop printed, the tree's state each round as `log_for` saw it) over a branch that
+        changed ProbeTests, with the editor writing `log_for(tree, attempt)` and, from attempt
+        `writes_from` on, results passing every fixture asked."""
+        base = {self.ENUM: "enum Status { Idle }\n",
+                self.CANARY: self.fixture("CanaryTests", "Assert.Pass()"),
+                self.FIXTURE: self.fixture("ProbeTests", "Assert.Pass()")}
+        branch = dict(base, **{self.FIXTURE: self.fixture("ProbeTests", "Assert.That(1, Is.EqualTo(1))")})
+        root, since = two_commit_repo(self, base, branch)
+        rounds = []
+
+        def fake_run_unity(unity, tree, platform, fixtures, results, log, timeout):
+            rounds.append((tree / self.FIXTURE).exists())
+            Path(log).write_text(log_for(tree, len(rounds)))
+            if writes_from is not None and len(rounds) >= writes_from:
+                Path(results).write_text('<test-run>' + "".join(
+                    '<test-case fullname="{}.Given_A_When_B_Then_C" result="Passed" />'.format(name)
+                    for name in fixtures) + '</test-run>')
+            return 1.0, 0
+
+        held = io.StringIO()
+        argv, run_unity, wait = sys.argv, base_red_check.run_unity, base_red_check.wait_for_quiet
+        sys.argv = ["base_red_check.py", "--project", str(root), "--base", since, "--lane", "csharp",
+                    "--platform", "EditMode", "--output", str(root / "out"), "--max-rounds", "4"]
+        base_red_check.run_unity, base_red_check.wait_for_quiet = fake_run_unity, lambda seconds: True
+        try:
+            with contextlib.redirect_stdout(held):
+                base_red_check.main()
+        finally:
+            sys.argv, base_red_check.run_unity, base_red_check.wait_for_quiet = argv, run_unity, wait
+        return held.getvalue(), rounds
+
+    PLAY_FIXTURE = "Packages/p/Runtime/A/Tests/PlayMode/PlayProbeTests.cs"
+    PLAY_CANARY = "Packages/p/Runtime/A/Tests/PlayMode/PlayCanaryTests.cs"
+
+    def rounds_over_both_platforms(self, max_rounds=4, bases_own=False, writes_on=None):
+        """(what the loop printed, (platform, the fixtures asked) per round) over a branch that changed
+        a fixture on each platform. The first round's log blames the PlayMode file -- or the base's
+        own file, with `bases_own` -- and the rounds after it write results."""
+        base = {self.ENUM: "enum Status { Idle }\n",
+                self.CANARY: self.fixture("CanaryTests", "Assert.Pass()"),
+                self.FIXTURE: self.fixture("ProbeTests", "Assert.Pass()"),
+                self.PLAY_CANARY: self.fixture("PlayCanaryTests", "Assert.Pass()"),
+                self.PLAY_FIXTURE: self.fixture("PlayProbeTests", "Assert.Pass()")}
+        branch = dict(base, **{self.FIXTURE: self.fixture("ProbeTests", "Assert.That(1, Is.EqualTo(1))"),
+                               self.PLAY_FIXTURE: self.fixture("PlayProbeTests", "Assert.That(2, Is.EqualTo(2))")})
+        root, since = two_commit_repo(self, base, branch)
+        rounds = []
+
+        def fake_run_unity(unity, tree, platform, fixtures, results, log, timeout):
+            rounds.append((platform, sorted(fixtures)))
+            if writes_on is not None:
+                Path(log).write_text("")
+                if platform == writes_on:
+                    # The branch's own case red there, its canary green: that platform is answered
+                    # and carries no failing verdict, so what the run exits on is the other one.
+                    Path(results).write_text('<test-run>' + "".join(
+                        '<test-case fullname="{}.Given_A_When_B_Then_C" result="{}" />'.format(
+                            name, "Failed" if "Probe" in name else "Passed")
+                        for name in fixtures) + '</test-run>')
+                return 1.0, 0
+            if bases_own:
+                Path(log).write_text("Scripts have compiler errors\n" + self.ENUM + "(1,1): error CS0103: x\n")
+            elif len(rounds) == 1:
+                Path(log).write_text("Scripts have compiler errors\n"
+                                     + self.PLAY_FIXTURE + "(1,1): error CS0012: x\n")
+            else:
+                Path(log).write_text("")
+                Path(results).write_text('<test-run>' + "".join(
+                    '<test-case fullname="{}.Given_A_When_B_Then_C" result="Passed" />'.format(name)
+                    for name in fixtures) + '</test-run>')
+            return 1.0, 0
+
+        held = io.StringIO()
+        argv, run_unity, wait = sys.argv, base_red_check.run_unity, base_red_check.wait_for_quiet
+        sys.argv = ["base_red_check.py", "--project", str(root), "--base", since, "--lane", "csharp",
+                    "--platform", "EditMode", "--platform", "PlayMode", "--output", str(root / "out"),
+                    "--max-rounds", str(max_rounds)]
+        base_red_check.run_unity, base_red_check.wait_for_quiet = fake_run_unity, lambda seconds: True
+        try:
+            with contextlib.redirect_stdout(held):
+                self.status = base_red_check.main()
+        finally:
+            sys.argv, base_red_check.run_unity, base_red_check.wait_for_quiet = argv, run_unity, wait
+        return held.getvalue(), rounds
+
+    def test_Given_AnEditModeRoundPutAPlayModeFileBack_When_ThePlayModeRoundRuns_Then_ItAsksOnlyTheCanary(self):
+        # Arrange -- one tree for both platforms, so a file the EditMode round put back to the base's
+        # text is the base's text when PlayMode asks; asking its fixture would read the base's own
+        # result as the branch's case. The canary is what the round is left with.
+        # Act
+        _, rounds = self.rounds_over_both_platforms()
+
+        # Assert
+        self.assertEqual([fixtures for platform, fixtures in rounds if platform == "PlayMode"],
+                         [["N.PlayCanaryTests"]])
+
+    def test_Given_TheEditModeBudgetSpentOnTheRoundThatPutItBack_When_PlayModeRuns_Then_ItStillDoesNotAskIt(self):
+        # Arrange -- a put-back made by the attempt that exhausts the budget is the one a reading
+        # taken at the top of the next attempt never sees.
+        # Act
+        _, rounds = self.rounds_over_both_platforms(max_rounds=1)
+
+        # Assert
+        self.assertEqual([fixtures for platform, fixtures in rounds if platform == "PlayMode"],
+                         [["N.PlayCanaryTests"]])
+
+    def test_Given_TheLogBlamesTheBasesOwnFile_When_TwoPlatformsAreAsked_Then_TheSecondIsNotRun(self):
+        # Arrange -- a tree that does not build its own sources does not build for the next
+        # platform either, and a second editor run would only repeat the reading.
+        # Act
+        printed, rounds = self.rounds_over_both_platforms(bases_own=True)
+
+        # Assert
+        self.assertEqual((len(rounds), printed.count("the base's own")), (1, 1))
+
+    def test_Given_AFileTheLoopPutBack_When_ItRuns_Then_ItSaysWhichFileAndWhatBlamedIt(self):
+        # Arrange -- said rather than carried into the verdict: a put-back is what the loop did, and
+        # the case's own verdict is the run's to give.
+        # Act
+        printed, _ = self.loop(lambda tree, attempt: "Scripts have compiler errors\n"
+                               + self.FIXTURE + "(1,1): error CS1929: x\n" if attempt == 1 else "",
+                               writes_from=2)
+
+        # Assert
+        self.assertIn("withdrawn: " + self.FIXTURE + " -- the compiler blamed it (CS1929)", printed)
+
+    # GREEN_ON_BASE(characterization): the base fails such a run through its own canaries.
+    # This change must not take that reading away.
+    def test_Given_APlatformWhoseEditorNeverWrote_When_AnotherPlatformDid_Then_TheRunStillFails(self):
+        # Arrange -- EditMode answers and PlayMode's editor writes nothing, so the one flag saying
+        # some platform wrote is set and what fails PlayMode is its own canaries. A verdict handed
+        # the loop's put-backs would outrank them and pass the platform that answered nothing.
+        # Act
+        self.rounds_over_both_platforms(writes_on="EditMode")
+
+        # Assert
+        self.assertEqual(self.status, 1)
+
+    def test_Given_TheLogBlamesTheBasesOwnFile_When_TheLoopRuns_Then_ItStopsAfterOneRoundAndSaysSo(self):
+        # Arrange -- a round spent withdrawing a silent file cannot reach a base that does not build
+        # its own sources, and the budget is not what binds there.
+        # Act
+        printed, rounds = self.loop(lambda tree, attempt: "Scripts have compiler errors\n"
+                                    + self.ENUM + "(1,1): error CS0103: x\n")
+
+        # Assert
+        self.assertEqual((len(rounds), "the base's own" in printed), (1, True))
+
+    def test_Given_ALoopThatSpentItsBudgetTakingAFileOut_When_ItReports_Then_ItCountsTheWithdrawalAndTheRemoval(self):
+        # Arrange -- the loop holds what it withdrew and what it took out, and the reason it prints
+        # has to be handed the second or it names no removal at all.
+        # Act
+        printed, _ = self.loop(lambda tree, attempt: "Scripts have compiler errors\n"
+                               + self.FIXTURE + "(1,1): error CS1929: x\n")
+
+        # Assert
+        self.assertIn("withdrawn 1 of the 1 carried file(s), 1 of them taken out", printed)
+
+    def test_Given_ALoopThatEmptiedTheTreeOnItsLastAllowedRound_When_ItReports_Then_TheBudgetIsNotTheRemedy(self):
+        # Arrange -- a round count cannot tell a loop that ran out from one that finished on the
+        # round its budget happens to equal, and raising the budget changes nothing for the second.
+        # The budget is two: the first round withdraws the one carried file, and the second asks
+        # the canary alone, finds nothing more to withdraw, and stops of its own accord on the last
+        # round it was allowed.
+        base = {self.ENUM: "enum Status { Idle }\n",
+                self.CANARY: self.fixture("CanaryTests", "Assert.Pass()"),
+                self.FIXTURE: self.fixture("ProbeTests", "Assert.Pass()")}
+        branch = dict(base, **{self.FIXTURE: self.fixture("ProbeTests", "Assert.That(1, Is.EqualTo(1))")})
+        root, since = two_commit_repo(self, base, branch)
+
+        def fake_run_unity(unity, tree, platform, fixtures, results, log, timeout):
+            Path(log).write_text("Scripts have compiler errors\n")
+            return 1.0, 0
+
+        held = io.StringIO()
+        argv, run_unity, wait = sys.argv, base_red_check.run_unity, base_red_check.wait_for_quiet
+        sys.argv = ["base_red_check.py", "--project", str(root), "--base", since, "--lane", "csharp",
+                    "--platform", "EditMode", "--output", str(root / "out"), "--max-rounds", "2"]
+        base_red_check.run_unity, base_red_check.wait_for_quiet = fake_run_unity, lambda seconds: True
+        try:
+            with contextlib.redirect_stdout(held):
+                base_red_check.main()
+        finally:
+            sys.argv, base_red_check.run_unity, base_red_check.wait_for_quiet = argv, run_unity, wait
+
+        # Act / Assert -- the round it reached rides along, since an absence over a run that never
+        # started a round is an absence over nothing.
+        self.assertEqual(("EditMode attempt 2" in held.getvalue(),
+                          "--max-rounds" in held.getvalue()), (True, False))
+
+    def test_Given_TheLoopStoppedOnTheBasesOwnFileAtTheBudget_When_ItReports_Then_TheBudgetIsNotTheRemedy(self):
+        # Arrange -- a budget of one, spent on the round that found the base's own file: raising the
+        # budget is not what a run stopped for a cause wants told.
+        base = {self.ENUM: "enum Status { Idle }\n",
+                self.CANARY: self.fixture("CanaryTests", "Assert.Pass()"),
+                self.FIXTURE: self.fixture("ProbeTests", "Assert.Pass()")}
+        branch = dict(base, **{self.FIXTURE: self.fixture("ProbeTests", "Assert.That(1, Is.EqualTo(1))")})
+        root, since = two_commit_repo(self, base, branch)
+
+        def fake_run_unity(unity, tree, platform, fixtures, results, log, timeout):
+            Path(log).write_text("Scripts have compiler errors\n" + self.ENUM + "(1,1): error CS0103: x\n")
+            return 1.0, 0
+
+        held = io.StringIO()
+        argv, run_unity, wait = sys.argv, base_red_check.run_unity, base_red_check.wait_for_quiet
+        sys.argv = ["base_red_check.py", "--project", str(root), "--base", since, "--lane", "csharp",
+                    "--platform", "EditMode", "--output", str(root / "out"), "--max-rounds", "1"]
+        base_red_check.run_unity, base_red_check.wait_for_quiet = fake_run_unity, lambda seconds: True
+        try:
+            with contextlib.redirect_stdout(held):
+                base_red_check.main()
+        finally:
+            sys.argv, base_red_check.run_unity, base_red_check.wait_for_quiet = argv, run_unity, wait
+
+        # Act / Assert
+        self.assertEqual(("the base's own" in held.getvalue(), "--max-rounds" in held.getvalue()), (True, False))
+
+    def test_Given_TheLogBlamesTheSameFileAtTheBasesText_When_TheLoopRuns_Then_ItSaysTheFileCameOut(self):
+        # Arrange -- the other half of what the loop says as it goes: a removal is not a put-back,
+        # and a reader of the run has only what it printed.
+        # Act
+        printed, _ = self.loop(lambda tree, attempt: "Scripts have compiler errors\n"
+                               + self.FIXTURE + "(1,1): error CS1929: x\n")
+
+        # Assert
+        self.assertIn("removed: " + self.FIXTURE + " -- its base text did not build", printed)
+
+    def test_Given_TheLogBlamesTheSameFileAtTheBasesText_When_TheLoopRuns_Then_TheFileComesOut(self):
+        # Arrange -- round one puts ProbeTests back to the base's text; round two blames it again,
+        # so round three runs without it rather than with the branch's helpers put back.
+        # Act
+        _, rounds = self.loop(lambda tree, attempt: "Scripts have compiler errors\n"
+                              + self.FIXTURE + "(1,1): error CS1929: x\n")
+
+        # Assert -- present in rounds one and two, gone by the round after the second blame.
+        self.assertEqual(rounds[:3], [True, True, False])
+
+    # GREEN_ON_BASE(characterization): the one-silent-file fallback the loop always had.
+    # A round the log does not explain reaches it on the base as it does here.
+    def test_Given_ALogNamingNothing_When_TheLoopRuns_Then_ItWithdrawsOneSilentFileAndAsksAgain(self):
+        # Arrange -- a round the log does not explain: the silent file goes back to the base's text
+        # on its own, one per round, and the round after it asks the canary alone and finds
+        # nothing more to withdraw.
+        # Act
+        _, rounds = self.loop(lambda tree, attempt: "Aborting batchmode due to failure:\n")
+
+        # Assert
+        self.assertEqual(len(rounds), 2)
 
 
 class UnmeasuredRunTests(unittest.TestCase):
@@ -4224,14 +4473,30 @@ class UnbuiltBaseTreeTests(unittest.TestCase):
                         ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", message]):
             subprocess.run(["git", "-C", str(self.project), *command], capture_output=True)
 
-    def said(self, log, since=None, withdrawn=()):
-        return base_red_check.unbuilt_reason(self.project, since or self.since, log, withdrawn)
+    def said(self, log, since=None, withdrawn=(), removed=()):
+        # By keyword, so a tree without the parameter fails on its name, which the base-red lane reads
+        # as a surface only the branch provides.
+        return base_red_check.unbuilt_reason(self.project, since or self.since, log,
+                                             withdrawn=withdrawn, removed=removed)
 
     def test_Given_EveryBlamedFileIsOneTheBranchCarried_When_TheLogIsRead_Then_ItSaysTheBaseWasNeverAsked(self):
         # Arrange -- the phrase the other reading shares is not enough: a carried set read as empty
         # sends every blamed file down the other branch, which also says "carried onto it".
         # Act / Assert
         self.assertIn("So the base was never asked", self.said(self.CARRIED + "(1,1): error CS0012: x\n"))
+
+    def test_Given_FilesTakenOutBeforeABaseFileFailed_When_TheLogIsRead_Then_TheReadingNamesThem(self):
+        # Arrange -- a base file failing after removals may be missing what they declared, and the
+        # reading that blames the base is where that has to be said.
+        # Act / Assert
+        self.assertIn("may be missing what they declared:\n  gone.cs",
+                      self.said(self.PRODUCTION + "(1,1): error CS0103: x\n", removed={"gone.cs"}))
+
+    def test_Given_FilesTakenOutBeforeACarriedFileFailed_When_TheLogIsRead_Then_TheReadingDoesNotSayIt(self):
+        # Arrange -- the note is about a file of the base's; beside a reading that blames the
+        # branch's own files it would contradict the reading it follows.
+        # Act / Assert
+        self.assertNotIn("may be missing", self.said(self.CARRIED + "(1,1): error CS0012: x\n", removed={"gone.cs"}))
 
     def test_Given_ABlamedProductionFileTheBranchChanged_When_TheLogIsRead_Then_ItSaysTheBaseIsTheProblem(self):
         # Act / Assert -- the branch changed it, and the base tree still holds its own text of it:
@@ -4315,6 +4580,97 @@ class UnbuiltBaseTreeTests(unittest.TestCase):
         self.assertIn("The rest are this branch's; make them build against the base or withdraw them:\n  "
                       + other, said)
 
+    def test_Given_FilesTakenOutInTheReading_When_TheVerdictLaneRuns_Then_ItNamesThemBesideABaseFailure(self):
+        # Arrange -- the reading knows what the rounds took out, and a base file failing after that
+        # may be missing what they declared; the lane is what carries it there.
+        holder = tempfile.mkdtemp(prefix="base-red-removed-")
+        self.addCleanup(shutil.rmtree, holder, ignore_errors=True)
+        case = base_red_check.Case("N.NewTests.Given_A_When_B_Then_C", self.CARRIED, 1, 2)
+        plan = base_red_check.as_plan(self.since, [case], [], {}, {"EditMode": ["N.CanaryTests"]})
+        plan["removed"] = {"Packages/p/Runtime/A/Tests/Editor/GoneTests.cs": "took it out"}
+        Path(holder, "plan.json").write_text(json.dumps(plan))
+        Path(holder, "results").mkdir()
+        Path(holder, "results", "editmode.log").write_text(self.PRODUCTION + "(1,1): error CS0103: x\n")
+
+        # Act
+        printed = subprocess.run(
+            [sys.executable, str(REPO_ROOT / "scripts/test_quality/base_red_check.py"),
+             "--project", str(self.project), "--verdict", str(Path(holder, "plan.json")),
+             "--results", str(Path(holder, "results"))], capture_output=True, text=True)
+
+        # Assert
+        self.assertEqual((printed.returncode, "GoneTests.cs" in printed.stdout), (1, True))
+
+    def test_Given_AFileTheStaticReadingWithdrewAndARoundTookOut_When_TheVerdictLaneRuns_Then_ItIsCounted(self):
+        # Arrange -- a file can be in `removed` and in no other record, for the reason `replan`'s
+        # `already` gives; a count off the per-round withdrawals alone then says the rounds took out
+        # more files than they touched.
+        holder = tempfile.mkdtemp(prefix="base-red-static-out-")
+        self.addCleanup(shutil.rmtree, holder, ignore_errors=True)
+        case = base_red_check.Case("N.NewTests.Given_A_When_B_Then_C", self.CARRIED, 1, 2)
+        plan = base_red_check.as_plan(self.since, [case], [], {}, {"EditMode": ["N.CanaryTests"]},
+                                      withdrawn={self.CARRIED: "Proceeding"})
+        plan["rounds"] = 2
+        plan["removed"] = {self.CARRIED: "taken out in round 1"}
+        Path(holder, "plan.json").write_text(json.dumps(plan))
+        Path(holder, "results").mkdir()
+        Path(holder, "results", "editmode.log").write_text("")
+
+        # Act
+        printed = subprocess.run(
+            [sys.executable, str(REPO_ROOT / "scripts/test_quality/base_red_check.py"),
+             "--project", str(self.project), "--verdict", str(Path(holder, "plan.json")),
+             "--results", str(Path(holder, "results"))], capture_output=True, text=True)
+
+        # Assert
+        self.assertIn("touched 1 carried file(s), 1 of them taken out", printed.stdout)
+
+    def test_Given_AFileAnEarlierRoundPutBack_When_TheLastRoundBlamesIt_Then_ItIsNotTheReadersToWithdraw(self):
+        # Arrange -- the last round has no replan after it, so its log reaches the verdict directly;
+        # a reason built off the static withdrawals alone tells the reader to withdraw a file the
+        # run itself put back, one line above the line saying it did.
+        holder = tempfile.mkdtemp(prefix="base-red-blamed-again-")
+        self.addCleanup(shutil.rmtree, holder, ignore_errors=True)
+        case = base_red_check.Case("N.NewTests.Given_A_When_B_Then_C", self.CARRIED, 1, 2)
+        plan = base_red_check.as_plan(self.since, [case], [], {}, {"EditMode": ["N.CanaryTests"]})
+        plan["rounds"] = 4
+        plan["blamed"] = {self.CARRIED: "the compiler blamed it (CS0246) in round 3"}
+        Path(holder, "plan.json").write_text(json.dumps(plan))
+        Path(holder, "results").mkdir()
+        Path(holder, "results", "editmode.log").write_text(self.CARRIED + "(1,1): error CS0246: x\n")
+
+        # Act
+        printed = subprocess.run(
+            [sys.executable, str(REPO_ROOT / "scripts/test_quality/base_red_check.py"),
+             "--project", str(self.project), "--verdict", str(Path(holder, "plan.json")),
+             "--results", str(Path(holder, "results"))], capture_output=True, text=True)
+
+        # Assert
+        self.assertIn("already stood at the base's text", printed.stdout)
+
+    def test_Given_AFileWithdrawnAndThenTakenOut_When_TheVerdictLaneRuns_Then_ItCountsItOnce(self):
+        # Arrange -- `replan` records a removal without taking the file out of what it withdrew, so
+        # a file in both records is one file and the reader is told two.
+        holder = tempfile.mkdtemp(prefix="base-red-counted-")
+        self.addCleanup(shutil.rmtree, holder, ignore_errors=True)
+        case = base_red_check.Case("N.NewTests.Given_A_When_B_Then_C", self.CARRIED, 1, 2)
+        plan = base_red_check.as_plan(self.since, [case], [], {}, {"EditMode": ["N.CanaryTests"]})
+        plan["rounds"] = 3
+        plan["blamed"] = {self.CARRIED: "blamed in round 1"}
+        plan["removed"] = {self.CARRIED: "taken out in round 2"}
+        Path(holder, "plan.json").write_text(json.dumps(plan))
+        Path(holder, "results").mkdir()
+        Path(holder, "results", "editmode.log").write_text("")
+
+        # Act
+        printed = subprocess.run(
+            [sys.executable, str(REPO_ROOT / "scripts/test_quality/base_red_check.py"),
+             "--project", str(self.project), "--verdict", str(Path(holder, "plan.json")),
+             "--results", str(Path(holder, "results"))], capture_output=True, text=True)
+
+        # Assert
+        self.assertIn("touched 1 carried file(s), 1 of them taken out", printed.stdout)
+
     def test_Given_AWithdrawnFileInTheReading_When_TheVerdictLaneRuns_Then_ItReadsTheWithdrawal(self):
         # Arrange -- the plan's field has to reach the reason through the lane, or the message
         # sends the reader to withdraw a file the reading already withdrew.
@@ -4336,6 +4692,273 @@ class UnbuiltBaseTreeTests(unittest.TestCase):
         # Assert
         self.assertEqual((printed.returncode, "already stood at the base's text" in printed.stdout),
                          (1, True))
+
+
+class ReplanTests(unittest.TestCase):
+    """What `--replan` prepares between a round that wrote nothing and the one the workflow may run.
+
+    The first round's editor log is the only reader of which file did not build; the reading half
+    ran before that round and the deciding half sees a results directory with no results in it.
+    """
+
+    ENUM = "Packages/p/Runtime/A/Status.cs"
+    BLAMED = "Packages/p/Runtime/A/Tests/Editor/ProbeTests.cs"
+    BESIDE = "Packages/p/Runtime/A/Tests/Editor/OtherTests.cs"
+
+    def fixture(self, name, body):
+        return ("namespace N\n{\n    class " + name + "\n    {\n        [Test]\n"
+                "        public void Given_A_When_B_Then_C() => " + body + ";\n    }\n}\n")
+
+    def emitted(self):
+        """(the repository, the base tree `--emit` built) with both fixtures carried and neither
+        statically withdrawable: no name is added, so the compiler is the only reader left."""
+        base = {self.ENUM: "enum Status { Idle }\n",
+                self.BLAMED: self.fixture("ProbeTests", "Assert.Pass()"),
+                self.BESIDE: self.fixture("OtherTests", "Assert.Pass()")}
+        branch = {self.ENUM: "enum Status { Idle }\n",
+                  self.BLAMED: self.fixture("ProbeTests", "Assert.That(1, Is.EqualTo(1))"),
+                  self.BESIDE: self.fixture("OtherTests", "Assert.That(2, Is.EqualTo(2))")}
+        root, since = two_commit_repo(self, base, branch)
+        tree = worktree_beside(self, root)
+        printed = subprocess.run(
+            [sys.executable, str(REPO_ROOT / "scripts/test_quality/base_red_check.py"),
+             "--project", str(root), "--base", since, "--lane", "csharp",
+             "--emit", str(root / "plan.json"), "--base-tree", str(tree)],
+            capture_output=True, text=True)
+        if printed.returncode != 0:
+            raise RuntimeError("--emit did not run:\n" + printed.stdout + printed.stderr)
+        return root, tree
+
+    def replanned(self, log, wrote=False):
+        """(the repository, the base tree, what the replan printed) over a round that left `log`.
+
+        In this process rather than through the flag, so that a tree without the reading fails on the
+        name it lacks rather than on an exit status: the base-red lane reads the first as a surface
+        only the branch provides and the second as a case that answered nothing.
+        """
+        root, tree = self.emitted()
+        results = root / "results"
+        results.mkdir()
+        (results / "editmode.log").write_text(log)
+        if wrote:
+            (results / "editmode-results.xml").write_text("<test-run></test-run>")
+        held = io.StringIO()
+        with contextlib.redirect_stdout(held):
+            base_red_check.replan(root, root / "plan.json", results, tree)
+        return root, tree, held.getvalue()
+
+    def asked(self, printed):
+        return [line for line in printed.splitlines() if line.startswith("fixtures=")]
+
+    def test_Given_TheLogBlamesACarriedFile_When_Replanned_Then_TheTreeHoldsTheBasesOwnText(self):
+        # Arrange / Act
+        _, tree, _ = self.replanned(self.BLAMED + "(6,9): error CS0012: x\n")
+
+        # Assert
+        self.assertEqual((tree / self.BLAMED).read_text(), self.fixture("ProbeTests", "Assert.Pass()"))
+
+    def test_Given_TheLogBlamesACarriedFile_When_Replanned_Then_TheSecondRoundAsksOnlyItsNeighbour(self):
+        # Arrange -- both halves in one comparison, since a line naming no fixture satisfies the
+        # first on its own.
+        _, _, printed = self.replanned(self.BLAMED + "(6,9): error CS0012: x\n")
+        asked = self.asked(printed)[0]
+
+        # Act
+        named = ("N.ProbeTests" in asked, "N.OtherTests" in asked)
+
+        # Assert
+        self.assertEqual(named, (False, True))
+
+    def test_Given_TheLogBlamesACarriedFile_When_Replanned_Then_TheReadingRecordsTheCode(self):
+        # Arrange / Act
+        root, _, _ = self.replanned(self.BLAMED + "(6,9): error CS0012: x\n")
+
+        # Assert
+        self.assertEqual(json.loads((root / "plan.json").read_text())["blamed"],
+                         {self.BLAMED: "the compiler blamed it (CS0012) in round 1"})
+
+    def test_Given_TheLogNamesTheFileUnderTheRunnersOwnPath_When_Replanned_Then_ItIsStillTheCarriedOne(self):
+        # Arrange -- the runner's editor writes the path from its own root, and the branch's names
+        # are repository-relative; the reading is over the latter.
+        # Act
+        root, _, _ = self.replanned(
+            "/github/workspace/base-tree/" + self.BLAMED + "(6,9): error CS0012: x\n")
+
+        # Assert
+        self.assertEqual(sorted(json.loads((root / "plan.json").read_text())["blamed"]), [self.BLAMED])
+
+    def test_Given_TheLogBlamesTheBasesOwnFile_When_Replanned_Then_NoSecondRoundIsPrepared(self):
+        # Arrange / Act
+        _, _, printed = self.replanned(self.ENUM + "(1,1): error CS0103: x\n")
+
+        # Assert
+        self.assertEqual(self.asked(printed), [])
+
+    def test_Given_TheLogBlamesTheBasesOwnFileBesideACarriedOne_When_Replanned_Then_TheCarriedOneStays(self):
+        # Arrange -- a round without the carried file would not build either, so withdrawing it
+        # would spend the round on a tree that answers nothing about it.
+        # Act
+        _, tree, _ = self.replanned(self.BLAMED + "(6,9): error CS0012: x\n"
+                                    + self.ENUM + "(1,1): error CS0103: x\n")
+
+        # Assert
+        self.assertEqual((tree / self.BLAMED).read_text(),
+                         self.fixture("ProbeTests", "Assert.That(1, Is.EqualTo(1))"))
+
+    def test_Given_ALogNamingNoSource_When_Replanned_Then_NoSecondRoundIsPrepared(self):
+        # Arrange -- what a licence failure, a crash and a timeout leave.
+        # Act
+        _, _, printed = self.replanned("Failed to activate license\n")
+
+        # Assert
+        self.assertEqual(self.asked(printed), [])
+
+    def blamed_again(self):
+        """(the repository, the base tree, the carried helper) after a round blamed ProbeTests at the
+        base's text: the first round put it back, and its base text then failed against the helper
+        the branch carries beside it."""
+        root, tree = self.emitted()
+        helper = "Packages/p/TestUtilities/Helper.cs"
+        (root / helper).parent.mkdir(parents=True, exist_ok=True)
+        (root / helper).write_text("static class Helper { public static int Two => 2; }\n")
+        subprocess.run(["git", "-C", str(root), "add", "-A"], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(root), "commit", "-qm", "helper"], check=True, capture_output=True)
+        (tree / helper).parent.mkdir(parents=True, exist_ok=True)
+        (tree / helper).write_text((root / helper).read_text())
+        plan = json.loads((root / "plan.json").read_text())
+        plan["blamed"] = {self.BLAMED: "the compiler blamed it (CS0012) in round 1"}
+        plan["rounds"] = 2
+        (root / "plan.json").write_text(json.dumps(plan))
+        results = root / "results"
+        results.mkdir()
+        (results / "editmode.log").write_text(self.BLAMED + "(6,9): error CS1929: x\n")
+        with contextlib.redirect_stdout(io.StringIO()):
+            base_red_check.replan(root, root / "plan.json", results, tree)
+        return root, tree, helper
+
+    def test_Given_ABlamedFileAlreadyAtTheBasesText_When_Replanned_Then_ItComesOutOfTheTree(self):
+        # Act
+        _, tree, _ = self.blamed_again()
+
+        # Assert
+        self.assertFalse((tree / self.BLAMED).exists())
+
+    def test_Given_ABlamedFileAlreadyAtTheBasesText_When_Replanned_Then_TheCarriedHelperStays(self):
+        # Arrange -- the helper is what the file's base text failed against, and what every file
+        # still building holds its reading through.
+        # Act
+        _, tree, helper = self.blamed_again()
+
+        # Assert
+        self.assertTrue((tree / helper).exists())
+
+    def test_Given_ABlamedFileAlreadyAtTheBasesText_When_Replanned_Then_TheReadingRecordsTheRemoval(self):
+        # Act
+        root, _, _ = self.blamed_again()
+
+        # Assert
+        self.assertEqual(sorted(json.loads((root / "plan.json").read_text())["removed"]), [self.BLAMED])
+
+    def test_Given_TheFlag_When_ItIsInvoked_Then_ItRunsTheReplan(self):
+        # Arrange -- the one case that goes through the command line, since the rest reach the
+        # reading directly and would not notice a flag wired to nothing.
+        root, tree = self.emitted()
+        results = root / "results"
+        results.mkdir()
+        (results / "editmode.log").write_text(self.BLAMED + "(6,9): error CS0012: x\n")
+
+        # Act
+        printed = subprocess.run(
+            [sys.executable, str(REPO_ROOT / "scripts/test_quality/base_red_check.py"),
+             "--project", str(root), "--replan", str(root / "plan.json"),
+             "--results", str(results), "--base-tree", str(tree)], capture_output=True, text=True)
+
+        # Assert
+        self.assertEqual((printed.returncode, "N.OtherTests" in printed.stdout), (0, True))
+
+    def test_Given_ARoundIsPrepared_When_Replanned_Then_TheResultsItReadAreMovedAside(self):
+        # Arrange -- the next round writes where the verdict reads.
+        # Act
+        root, _, _ = self.replanned(self.BLAMED + "(6,9): error CS0012: x\n")
+
+        # Assert
+        self.assertEqual(((root / "results").exists(), (root / "results.round1").is_dir()), (False, True))
+
+    def test_Given_ARoundIsPrepared_When_Replanned_Then_TheReadingCountsIt(self):
+        # Act
+        root, _, _ = self.replanned(self.BLAMED + "(6,9): error CS0012: x\n")
+
+        # Assert
+        self.assertEqual(json.loads((root / "plan.json").read_text())["rounds"], 2)
+
+    def test_Given_ARoundThatWrote_When_Replanned_Then_NothingIsWithdrawn(self):
+        # Arrange -- a results file beside a log that blames something is a round that ran, and
+        # what it blamed is that run's to report.
+        # Act
+        _, tree, _ = self.replanned(self.BLAMED + "(6,9): error CS0012: x\n", wrote=True)
+
+        # Assert
+        self.assertEqual((tree / self.BLAMED).read_text(),
+                         self.fixture("ProbeTests", "Assert.That(1, Is.EqualTo(1))"))
+
+
+class BlamedFileVerdictTests(unittest.TestCase):
+    """What the deciding half does with the files `--replan` took out between the rounds."""
+
+    BLAMED = "Packages/p/Runtime/A/Tests/Editor/NewTests.cs"
+    PASSED_CANARY = {"N.CanaryTests.Given_X_When_Y_Then_Z": "Passed"}
+
+    def decided(self, wrote):
+        case = base_red_check.Case("N.NewTests.Given_A_When_B_Then_C", self.BLAMED, 1, 2)
+        with contextlib.redirect_stdout(io.StringIO()):
+            base_red_check.report([case], [], self.PASSED_CANARY if wrote else {},
+                                  {"EditMode": ["N.CanaryTests"]}, wrote, None,
+                                  single_round="0" * 40,
+                                  blamed={self.BLAMED: "the compiler blamed it (CS0012) in round 1"})
+        return case
+
+    def test_Given_AFileTheCompilerBlamed_When_TheSecondRoundWrote_Then_ItsCaseCarriesTheCode(self):
+        # Arrange / Act
+        case = self.decided(wrote=True)
+
+        # Assert
+        self.assertEqual((case.verdict, case.detail),
+                         (base_red_check.COULD_NOT_COMPILE,
+                          "the compiler blamed it (CS0012) in round 1"))
+
+    def test_Given_AFileTheCompilerBlamed_When_TheSecondRoundWroteNothing_Then_ItStillFails(self):
+        # Arrange -- the withdrawal stands beside a round, and a round that wrote nothing leaves it
+        # unaccompanied for the reason a static one is.
+        # Act
+        case = self.decided(wrote=False)
+
+        # Assert
+        self.assertEqual(case.verdict, base_red_check.BASE_UNSOUND)
+
+    def test_Given_ABlamedFileInTheReading_When_ADifferentProcessDecides_Then_ItStillReadsIt(self):
+        # Arrange -- the field `--replan` writes is one `--verdict` has to ask for. The canary
+        # reports and fails, so the platform is withdrawn and only that field can leave the case
+        # anything but a failing verdict; beside a passing canary the fixture's silence alone
+        # would excuse it, and the field could go unread without this noticing.
+        holder = tempfile.mkdtemp(prefix="base-red-blamed-")
+        self.addCleanup(shutil.rmtree, holder, ignore_errors=True)
+        case = base_red_check.Case("N.NewTests.Given_A_When_B_Then_C", self.BLAMED, 1, 2)
+        plan = base_red_check.as_plan("0" * 40, [case], [], {}, {"EditMode": ["N.CanaryTests"]})
+        plan["blamed"] = {self.BLAMED: "the compiler blamed it (CS0012) in round 1"}
+        Path(holder, "plan.json").write_text(json.dumps(plan))
+        Path(holder, "results").mkdir()
+        Path(holder, "results", "r.xml").write_text(
+            '<test-run><test-case fullname="N.CanaryTests.Given_X_When_Y_Then_Z" result="Failed" />'
+            '</test-run>')
+
+        # Act
+        status = subprocess.run(
+            [sys.executable, str(REPO_ROOT / "scripts/test_quality/base_red_check.py"),
+             "--verdict", str(Path(holder, "plan.json")),
+             "--results", str(Path(holder, "results"))], capture_output=True, text=True).returncode
+
+        # Assert
+        self.assertEqual(status, 0)
 
 
 if __name__ == "__main__":
