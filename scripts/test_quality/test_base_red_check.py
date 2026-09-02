@@ -795,6 +795,8 @@ class ExhaustedLoopTests(unittest.TestCase):
                           "taken 1 more out of the tree" in said, "b.cs" in said),
                          (True, True, False))
 
+    # GREEN_ON_BASE(characterization): the base already floors the advice at the carried count.
+    # This branch dropped that floor and put it back, so the case is what holds it there.
     def test_Given_MoreCarriedFilesThanDoublingReaches_When_TheReasonIsBuilt_Then_TheFloorIsTheCarriedCount(self):
         # Arrange -- a round the log explains nothing about withdraws one silent file, so a run of
         # those needs a round per carried file however few it has spent; doubling what it spent
@@ -3238,6 +3240,8 @@ class WithdrawalTests(unittest.TestCase):
             (tree / relative).write_text(text)
         return tree
 
+    # GREEN_ON_BASE(characterization): the base removes such a file too, its docstring says so.
+    # What is new here is a message that would be false about it, which this pins the reason for.
     def test_Given_AFileTheBaseNeverHad_When_ItIsWithdrawn_Then_ItLeavesTheTree(self):
         # Arrange -- a new test file has no text at the base to be put back to, so what a withdrawal
         # leaves is nothing at all. A message calling every withdrawal a file standing at the base's
