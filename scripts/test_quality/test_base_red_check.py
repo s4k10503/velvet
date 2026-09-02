@@ -3273,9 +3273,10 @@ class LocalLoopTests(unittest.TestCase):
         return ("namespace N\n{\n    class " + name + "\n    {\n        [Test]\n"
                 "        public void Given_A_When_B_Then_C() => " + body + ";\n    }\n}\n")
 
-    def loop(self, log_for):
+    def loop(self, log_for, writes_from=None):
         """(what the loop printed, the tree's state each round as `log_for` saw it) over a branch that
-        changed ProbeTests, with the editor writing `log_for(tree, attempt)` and no results."""
+        changed ProbeTests, with the editor writing `log_for(tree, attempt)` and, from attempt
+        `writes_from` on, results passing every fixture asked."""
         base = {self.ENUM: "enum Status { Idle }\n",
                 self.CANARY: self.fixture("CanaryTests", "Assert.Pass()"),
                 self.FIXTURE: self.fixture("ProbeTests", "Assert.Pass()")}
@@ -3286,6 +3287,10 @@ class LocalLoopTests(unittest.TestCase):
         def fake_run_unity(unity, tree, platform, fixtures, results, log, timeout):
             rounds.append((tree / self.FIXTURE).exists())
             Path(log).write_text(log_for(tree, len(rounds)))
+            if writes_from is not None and len(rounds) >= writes_from:
+                Path(results).write_text('<test-run>' + "".join(
+                    '<test-case fullname="{}.Given_A_When_B_Then_C" result="Passed" />'.format(name)
+                    for name in fixtures) + '</test-run>')
             return 1.0, 0
 
         held = io.StringIO()
@@ -3303,10 +3308,10 @@ class LocalLoopTests(unittest.TestCase):
     PLAY_FIXTURE = "Packages/p/Runtime/A/Tests/PlayMode/PlayProbeTests.cs"
     PLAY_CANARY = "Packages/p/Runtime/A/Tests/PlayMode/PlayCanaryTests.cs"
 
-    def rounds_over_both_platforms(self):
-        """(platform, the fixtures asked) per round, over a branch that changed a fixture on each
-        platform, where the EditMode round's log blames the PlayMode file and the rounds after it
-        write results."""
+    def rounds_over_both_platforms(self, max_rounds=4, bases_own=False):
+        """(what the loop printed, (platform, the fixtures asked) per round) over a branch that changed
+        a fixture on each platform. The first round's log blames the PlayMode file -- or the base's
+        own file, with `bases_own` -- and the rounds after it write results."""
         base = {self.ENUM: "enum Status { Idle }\n",
                 self.CANARY: self.fixture("CanaryTests", "Assert.Pass()"),
                 self.FIXTURE: self.fixture("ProbeTests", "Assert.Pass()"),
@@ -3319,7 +3324,9 @@ class LocalLoopTests(unittest.TestCase):
 
         def fake_run_unity(unity, tree, platform, fixtures, results, log, timeout):
             rounds.append((platform, sorted(fixtures)))
-            if len(rounds) == 1:
+            if bases_own:
+                Path(log).write_text("Scripts have compiler errors\n" + self.ENUM + "(1,1): error CS0103: x\n")
+            elif len(rounds) == 1:
                 Path(log).write_text("Scripts have compiler errors\n"
                                      + self.PLAY_FIXTURE + "(1,1): error CS0012: x\n")
             else:
@@ -3329,27 +3336,59 @@ class LocalLoopTests(unittest.TestCase):
                     for name in fixtures) + '</test-run>')
             return 1.0, 0
 
+        held = io.StringIO()
         argv, run_unity, wait = sys.argv, base_red_check.run_unity, base_red_check.wait_for_quiet
         sys.argv = ["base_red_check.py", "--project", str(root), "--base", since, "--lane", "csharp",
                     "--platform", "EditMode", "--platform", "PlayMode", "--output", str(root / "out"),
-                    "--max-rounds", "4"]
+                    "--max-rounds", str(max_rounds)]
         base_red_check.run_unity, base_red_check.wait_for_quiet = fake_run_unity, lambda seconds: True
         try:
-            with contextlib.redirect_stdout(io.StringIO()):
+            with contextlib.redirect_stdout(held):
                 base_red_check.main()
         finally:
             sys.argv, base_red_check.run_unity, base_red_check.wait_for_quiet = argv, run_unity, wait
-        return rounds
+        return held.getvalue(), rounds
 
-    def test_Given_AnEditModeRoundPutAPlayModeFileBack_When_ThePlayModeRoundsRun_Then_TheyDoNotAskItsFixture(self):
+    def test_Given_AnEditModeRoundPutAPlayModeFileBack_When_ThePlayModeRoundRuns_Then_ItAsksOnlyTheCanary(self):
         # Arrange -- one tree for both platforms, so a file the EditMode round put back to the base's
         # text is the base's text when PlayMode asks; asking its fixture would read the base's own
-        # result as the branch's case.
+        # result as the branch's case. The canary is what the round is left with.
         # Act
-        asked = [fixtures for platform, fixtures in self.rounds_over_both_platforms() if platform == "PlayMode"]
+        _, rounds = self.rounds_over_both_platforms()
 
         # Assert
-        self.assertEqual([f for fixtures in asked for f in fixtures if "PlayProbe" in f], [])
+        self.assertEqual([fixtures for platform, fixtures in rounds if platform == "PlayMode"],
+                         [["N.PlayCanaryTests"]])
+
+    def test_Given_TheEditModeBudgetSpentOnTheRoundThatPutItBack_When_PlayModeRuns_Then_ItStillDoesNotAskIt(self):
+        # Arrange -- a put-back made by the attempt that exhausts the budget is the one a reading
+        # taken at the top of the next attempt never sees.
+        # Act
+        _, rounds = self.rounds_over_both_platforms(max_rounds=1)
+
+        # Assert
+        self.assertEqual([fixtures for platform, fixtures in rounds if platform == "PlayMode"],
+                         [["N.PlayCanaryTests"]])
+
+    def test_Given_TheLogBlamesTheBasesOwnFile_When_TwoPlatformsAreAsked_Then_TheSecondIsNotRun(self):
+        # Arrange -- a tree that does not build its own sources does not build for the next
+        # platform either, and a second editor run would only repeat the reading.
+        # Act
+        printed, rounds = self.rounds_over_both_platforms(bases_own=True)
+
+        # Assert
+        self.assertEqual((len(rounds), printed.count("the base's own")), (1, 1))
+
+    def test_Given_AFileTheLoopPutBack_When_ItReports_Then_TheCaseSaysWhichRoundBlamedIt(self):
+        # Arrange -- the loop holds the round and the code, and the report used to say only that
+        # the base built none of the fixture.
+        # Act
+        printed, _ = self.loop(lambda tree, attempt: "Scripts have compiler errors\n"
+                               + self.FIXTURE + "(1,1): error CS1929: x\n" if attempt == 1 else "",
+                               writes_from=2)
+
+        # Assert
+        self.assertIn("the compiler blamed it (CS1929) in round 1", printed)
 
     def test_Given_TheLogBlamesTheBasesOwnFile_When_TheLoopRuns_Then_ItStopsAfterOneRoundAndSaysSo(self):
         # Arrange -- a round spent withdrawing a silent file cannot reach a base that does not build

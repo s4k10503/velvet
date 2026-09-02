@@ -1909,7 +1909,7 @@ def carried_files(project, since):
     return {name for name in changed if is_test_side(name) and (project / name).exists()}
 
 
-def unbuilt_reason(project, since, log_text):
+def unbuilt_reason(project, since, log_text, removed=()):
     """What to say about a base run that wrote no results file.
 
     A licence failure, an editor crash and a timeout all leave no results file, and so does a tree the
@@ -1938,8 +1938,11 @@ def unbuilt_reason(project, since, log_text):
     if outside:
         return ("The base tree did not build, and {} of the {} file(s) the compiler blamed are not "
                 "ones this\nbranch carried onto it:\n{}\nA base that cannot build its own sources is "
-                "not a reading about this change.".format(
-                    len(outside), len(blamed), "\n".join("  " + name for name in outside)))
+                "not a reading about this change.{}".format(
+                    len(outside), len(blamed), "\n".join("  " + name for name in outside),
+                    "" if not removed else
+                    "\nA file of the base's failing after these were taken out may be missing what "
+                    "they declared:\n" + "\n".join("  " + name for name in sorted(removed))))
     return ("The base tree did not build, and every file the compiler blamed is one this branch\n"
             "carried onto it:\n{}\nSo the base was never asked. Make them build against the base -- "
             "reaching new API by\nreflection is what the others do -- or withdraw them, or say why "
@@ -2287,15 +2290,11 @@ def main():
         if not wrote:
             print("the base run wrote no result, so nothing it was asked was measured", flush=True)
             print(unbuilt_reason(Path(args.project).resolve(), plan.get("since"),
-                                 log_text_beside(args.results)), flush=True)
+                                 log_text_beside(args.results), plan.get("removed", {})), flush=True)
             if plan.get("rounds", 1) > 1:
                 print("That was round {}; the rounds before it put back {} carried file(s) and took {} "
                       "out, and the\nbase still did not build.".format(
                           plan["rounds"], len(plan.get("blamed", {})), len(plan.get("removed", {}))),
-                      flush=True)
-            if plan.get("removed"):
-                print("A file of the base's failing after those were taken out may be missing what they\n"
-                      "declared:\n{}".format("\n".join("  " + name for name in sorted(plan["removed"]))),
                       flush=True)
         return 1 if report(from_plan(plan["cases"]), from_plan(plan["control"]), reported,
                            plan["canaries"], wrote, plan.get("withdrawn"),
@@ -2387,6 +2386,7 @@ def main():
     rounds_spent = 0
     put_back = set()
     removed = set()
+    details = {}
     stopped_for_cause = False
     try:
         print("  building the base tree at {}".format(base_tree), flush=True)
@@ -2412,21 +2412,15 @@ def main():
             raise SystemExit("another Unity test run is still in flight")
         canaries.update(canaries_for(base_tree, cases, carry, platforms))
         for platform in platforms:
-            # Accumulated across platforms, unlike `withdrawn`: what the message below is evidence
-            # for is that the base built none of the carried set, which both lanes are asking about.
             wanted = [case for case in cases + control
                       if kind_of(case.path) == "csharp" and platform_of(case.path) == platform]
-            withdrawn = set()
             for attempt in range(1, args.max_rounds + 1):
                 rounds_spent = max(rounds_spent, attempt)
-                put_back |= withdrawn
-                # Across platforms, not per platform: the tree is one, the editor compiles every
+                # `put_back` is one set across platforms: the tree is one, the editor compiles every
                 # assembly whatever platform is asked, and a file an earlier platform's round put
-                # back or took out is the base's text for this one too -- asking its fixture would
-                # read the base's own result as the branch's case.
-                live = [case for case in wanted
-                        if case.path not in withdrawn and case.path not in put_back
-                        and case.path not in removed]
+                # back is the base's text for this one too -- asking its fixture would read the
+                # base's own result as the branch's case.
+                live = [case for case in wanted if case.path not in put_back]
                 fixtures = sorted({case.fixture for case in live} | set(canaries[platform]))
                 if not fixtures:
                     break
@@ -2461,7 +2455,7 @@ def main():
                     print(bases_own_reason(outside, blamed, removed), flush=True)
                     stopped_for_cause = True
                     break
-                restore, take_out = withdrawals_for(log_text, carry, withdrawn)
+                restore, take_out = withdrawals_for(log_text, carry, put_back)
                 # A round the log does not explain says only that something the tree holds did not
                 # build, never which file, so the silent ones come out one per round: taking them
                 # all would take out the files merely standing next to the offender and leave their
@@ -2470,12 +2464,23 @@ def main():
                     if not silent:
                         break
                     restore = silent[:1]
+                codes = {}
+                for relative, code in compile_errors_in(log_text):
+                    codes.setdefault(relative, code)
                 for offender in restore:
                     withdraw(base_tree, offender)
-                    withdrawn.add(offender)
+                    put_back.add(offender)
+                    details[offender] = (
+                        "the compiler blamed it ({}) in round {}".format(codes[offender], attempt)
+                        if offender in codes else
+                        "put back in round {}, the log naming nothing".format(attempt))
                 for offender in take_out:
                     remove(base_tree, offender)
                     removed.add(offender)
+                    details[offender] = ("its base text did not build beside what the branch "
+                                         "carried, so it came out in round {}".format(attempt))
+            if stopped_for_cause:
+                break
     finally:
         if holder is not None:
             git(project, "worktree", "remove", "--force", str(base_tree), check=False)
@@ -2492,7 +2497,7 @@ def main():
         print("\nA second editor was up during at least one of these runs, so a failure here has a\n"
               "second explanation. Nothing below distinguishes one it caused from one the branch did.",
               flush=True)
-    offenders = report(cases, control, reported, canaries, ever_wrote)
+    offenders = report(cases, control, reported, canaries, ever_wrote, blamed=details)
     print("\nlogs: {}".format(output), flush=True)
     return 1 if offenders else 0
 
