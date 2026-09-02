@@ -3320,6 +3320,8 @@ class LocalLoopTests(unittest.TestCase):
         # Assert -- present in rounds one and two, gone by the round after the second blame.
         self.assertEqual(rounds[:3], [True, True, False])
 
+    # GREEN_ON_BASE(characterization): the one-silent-file fallback the loop always had, which a round
+    # the log does not explain reaches on the base as it does here.
     def test_Given_ALogNamingNothing_When_TheLoopRuns_Then_ItWithdrawsOneSilentFileAndAsksAgain(self):
         # Arrange -- a round the log does not explain: the silent file goes back to the base's text
         # on its own, one per round, and the round after it finds nothing left to ask. Without the
