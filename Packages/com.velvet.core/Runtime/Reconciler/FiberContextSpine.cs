@@ -359,7 +359,7 @@ namespace Velvet
             in SpineWalk walk)
         {
             if (walk.WalksCommittedTree
-                && walk.SpineChild.SourceNodeEpoch == walk.Ancestor.TreeEpoch
+                && ReferenceEquals(walk.SpineChild.SourceTree, walk.Ancestor.PreviousTree)
                 && !ReferenceEquals(component, walk.SpineChild.SourceNode))
             {
                 return false;

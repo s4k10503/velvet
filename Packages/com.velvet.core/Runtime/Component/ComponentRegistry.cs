@@ -157,7 +157,7 @@ namespace Velvet
             // the latest props; sync Body so the next render sees the current values.
             existingFiber.Body = node.Body;
             existingFiber.SourceNode = node;
-            existingFiber.SourceNodeEpoch = (site.Anchor as ComponentFiber)?.TreeEpoch ?? 0;
+            existingFiber.SourceTree = _ctx.CurrentFiberTree;
             // Only a memoized component bails a parent-driven re-render on
             // shallow-equal props. A plain component re-renders whenever its parent does, so the
             // props-equality bail is gated on opt-in memoization. Memoization is opted into either by
@@ -223,7 +223,7 @@ namespace Velvet
             // Written before the mount: the FiberSuspendSignal arm below registers the fiber and
             // rethrows, so a write placed after the try would not run for it.
             fiber.SourceNode = node;
-            fiber.SourceNodeEpoch = (site.Anchor as ComponentFiber)?.TreeEpoch ?? 0;
+            fiber.SourceTree = _ctx.CurrentFiberTree;
 
             try
             {

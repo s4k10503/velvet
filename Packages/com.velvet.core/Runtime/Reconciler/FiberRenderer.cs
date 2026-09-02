@@ -360,7 +360,7 @@ namespace Velvet
 
             fiber.PreviousTree = null;
             fiber.SourceNode = null;
-            fiber.SourceNodeEpoch = 0;
+            fiber.SourceTree = null;
             fiber.Reconciler?.Context.ParkedBaselineFibers.Remove(fiber);
             // Detach the parked baseline BEFORE the sweep — the mark treats owner.PendingOldTree as
             // live, and a still-attached reference would spare this very sweep's target.
@@ -509,11 +509,6 @@ namespace Velvet
                     // retained PreviousTree baseline and must keep its pooled parts.
                     FiberTreeReturn.ReturnRetiredTree(newTree, fiber);
                     FiberCommitWork.ReturnSupersededParkedBaseline(fiber, prevPendingOldTree, oldTree);
-                    // ReconcileIntoSlotRange above already wrote this render's nodes onto the child fibers
-                    // it reached, and PreviousTree is about to stay at the previous render's tree. Moving
-                    // the epoch is what stops those children being compared against a tree that never
-                    // held them — ComponentFiber.TreeEpoch owns the pairing.
-                    fiber.TreeEpoch++;
                 }
                 else
                 {
@@ -536,9 +531,6 @@ namespace Velvet
             }
             catch (Exception ex)
             {
-                // Same pairing as the discard arm above: a throw out of ReconcileIntoSlotRange leaves
-                // children carrying this render's nodes while PreviousTree keeps the previous render's.
-                fiber.TreeEpoch++;
                 FiberCommitWork.ReturnSupersededParkedBaseline(fiber, prevPendingOldTree, oldTree);
                 if (fiber.PendingOldTree != null)
                 {

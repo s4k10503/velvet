@@ -28,6 +28,10 @@ namespace Velvet.Tests
     /// sibling that is itself time-sliced (its delta committed across slices), and a nested growth absorbed by a
     /// wrapper (which must NOT shift the following sibling, since propagation is scoped to the shared mount
     /// point).</item>
+    /// <item>The resume re-records every row it commits, so a row that re-renders on its own after the drain
+    /// reads its own row's Provider. Before the resume it does not: the host's output is committed while the
+    /// slice is still parked, so a row the pass never reached is looked up by key alone and answers to
+    /// whichever container the committed tree reaches first — the reading recorded here.</item>
     /// </list>
     /// </summary>
     /// <remarks>
@@ -837,6 +841,113 @@ namespace Velvet.Tests
             // A top-level Fragment of pure leaves is unwrapped to the flat array by NormalizeToArray, so the
             // fiber's own reconcile takes the time-sliceable fast path (no Component / Provider / Fragment leaf).
             return V.Fragment(children: children);
+        }
+
+        #endregion
+
+        #region Parked keyed list whose rows carry their own Provider
+
+        private static readonly ComponentContext<string> RowCtx = ComponentContext<string>.Create("DEFAULT");
+        private const int ParkRowCount = 8;
+        private static ComponentFiber s_parkListFiber;
+        private static StateUpdater<int> s_parkSetGen;
+        private static TransitionStarter s_parkStart;
+        private static readonly System.Collections.Generic.Dictionary<int, StateUpdater<int>> s_parkBumps = new();
+        private static readonly System.Collections.Generic.Dictionary<int, string> s_parkSeen = new();
+        private static readonly System.Collections.Generic.Dictionary<int, int> s_parkCount = new();
+
+        private static void ResetParkList()
+        {
+            s_parkBumps.Clear();
+            s_parkSeen.Clear();
+            s_parkCount.Clear();
+        }
+
+        private static VNode ParkRowBody(int index)
+        {
+            var (n, bump) = Hooks.UseState(0);
+            s_parkBumps[index] = bump;
+            s_parkCount[index] = n;
+            s_parkSeen[index] = Hooks.UseContext(RowCtx);
+            return V.Label(name: "park-row-" + index, text: s_parkSeen[index]);
+        }
+
+        // Each row is a keyed Div wrapping its own Provider, so the top level is plain keyed elements and the
+        // fiber's own reconcile takes the time-sliceable keyed path; the Provider and the Component sit one
+        // level down, where the Div's own ReconcileChildren reaches them only once that row is committed.
+        [Component]
+        private static VNode ParkListHost()
+        {
+            var (gen, setGen) = Hooks.UseState(0);
+            var (_, start) = Hooks.UseTransition();
+            s_parkSetGen = setGen;
+            s_parkStart = start;
+            s_parkListFiber = FiberAmbientStack.Current;
+            var children = new VNode[ParkRowCount];
+            for (var i = 0; i < ParkRowCount; i++)
+            {
+                children[i] = V.Div(key: "pk" + i, name: "park-cell-" + i, children: new VNode?[]
+                {
+                    V.Provider(RowCtx, $"g{gen}-{i}", new VNode[] { V.Component(ParkRowBody, i, key: "row") }),
+                });
+            }
+            return V.Fragment(children: children);
+        }
+
+        // GREEN_ON_BASE(characterization): the base reads the first row's value here too. The node comparison
+        // is off in this window because the row's recorded array is the one the host has moved off, so what is
+        // left is the key, which answers at every container holding this position — the hole issue #630 names,
+        // reached through a park rather than through two sibling containers.
+        [Test]
+        public void Given_AParkedKeyedListWhoseRowsCarryProviders_When_ARowPastTheParkPointReRendersAlone_Then_ItReadsTheFirstRowsProvider()
+        {
+            // Arrange
+            ResetParkList();
+            using var mounted = V.Mount(_root, V.Component(ParkListHost, key: "park-list"));
+            const int target = ParkRowCount - 1;
+            var atMount = s_parkSeen[target];
+
+            // Act — a transition-lane flush under a budget too small for one node parks after the first row,
+            // then the last row re-renders on its own before the resume.
+            s_parkStart.Invoke(() => s_parkSetGen.Invoke(1));
+            s_parkListFiber.FlushStateWithTinyBudgetForTest();
+            var parked = s_parkListFiber.HasPendingReconcileWorkForTest();
+            var beforeBump = s_parkSeen[target];
+            s_parkBumps[target].Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert — the parked state and the pre-bump reading are folded in because they are what put the
+            // value below on the park rather than on the mount, and the row's own count because a row that did
+            // not re-render would still be holding whatever its last render read.
+            Assert.That(
+                (parked, atMount, beforeBump, s_parkSeen[target], s_parkCount[target]),
+                Is.EqualTo((true, "g0-7", "g0-7", "g1-0", 1)));
+        }
+
+        // The resume commits the rows the park left, so every row's own node is re-recorded there. A row that
+        // re-renders alone afterwards must read the Provider of its own row rather than of whichever row the
+        // committed tree reaches first.
+        [Test]
+        public void Given_AParkedKeyedListDrainedToCompletion_When_ARowReRendersAlone_Then_ItReadsItsOwnRowsProvider()
+        {
+            // Arrange
+            ResetParkList();
+            using var mounted = V.Mount(_root, V.Component(ParkListHost, key: "park-list"));
+            const int target = ParkRowCount - 1;
+            s_parkStart.Invoke(() => s_parkSetGen.Invoke(1));
+            s_parkListFiber.FlushStateWithTinyBudgetForTest();
+            s_parkListFiber.DrainTimeSlicedReconcileForTest();
+            var afterDrain = s_parkSeen[target];
+
+            // Act
+            s_parkBumps[target].Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert — the post-drain reading is folded in because the value below is what a row that never
+            // re-rendered would still be holding, and the row's own count because that is what says it did.
+            Assert.That(
+                (afterDrain, s_parkSeen[target], s_parkCount[target]),
+                Is.EqualTo(("g1-7", "g1-7", 1)));
         }
 
         #endregion

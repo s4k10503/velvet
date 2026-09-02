@@ -67,10 +67,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- An error boundary catching in a pass that is also re-rendering a sibling component no longer logs a
-  `NullReferenceException` from the reconciler. The sibling's inline re-render runs inside the host's
-  pass, and the catch disposes fibers — which clears the `Reconciler` that re-render is still holding,
-  so the three steps after it dereferenced a field the disposal had already nulled. The same field is
+- An error boundary whose child throws during a subsumed re-render no longer logs a
+  `NullReferenceException` from the reconciler. The boundary's inline re-render runs inside its host's
+  pass, and the catch disposes that child — which clears the `Reconciler` the re-render is still
+  holding, so the three steps after it dereferenced a field the disposal had already nulled. The same field is
   read for the same reason a few lines further on, where it was checked. The render now returns at that
   point instead: a disposed fiber has no pass left to be subsumed into, so its layout effect and its
   paint-tick effect are not queued and its lanes are not re-enrolled.
@@ -85,10 +85,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ones, which is an instance losing the Provider it is written inside. A `V.Motion`'s active label
   reaches a descendant through the same walk, so a descendant of the second of two sibling Motions read
   the first one's label. A candidate is now matched against the node the instance last rendered from as
-  well as against its key, and two occurrences of `V.Component` are two nodes. Unchanged, and reading
-  as they did before: one `V.Component` node instance written into both containers is one node; and a
-  consumer inside a `V.Portal` or a `V.VirtualList` item, which is matched by key alone because the
-  walk there searches the children captured when that consumer mounted.
+  well as against its key, and two occurrences of `V.Component` are two nodes — but only where the node
+  it holds came from the tree being walked, which a render the reconciler discarded and a time-sliced
+  pass that parked before reaching that component both leave untrue. Shapes that excludes read as they
+  did before, among them: one `V.Component` node instance written into both containers is one node; a
+  consumer inside a `V.Portal` or a `V.VirtualList` item, whose walk searches the children captured when
+  that consumer mounted; and a row a `StartTransition` list left past its park point, which is matched
+  by key alone until the resume commits it.
 
 - An `IRouteScopeFactory.CreateScope` that throws no longer takes the reconcile with it. The scope's
   *disposal* was already contained; its creation was not, at any of the three sites that ask for one —

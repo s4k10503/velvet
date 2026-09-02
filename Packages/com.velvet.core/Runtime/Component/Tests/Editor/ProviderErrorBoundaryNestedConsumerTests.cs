@@ -191,7 +191,9 @@ namespace Velvet.Tests
         // The consumer and the boundary are siblings under one host, so the host's render reaches the
         // consumer BEFORE the boundary catches. The host's output for that render is discarded, and what
         // the consumer's own re-render afterwards has to rebuild its context from is the tree the host
-        // committed before the throw.
+        // committed before the throw. This arrangement also drives the boundary through the subsumed
+        // render whose disposal clears the reconciler, so an unhandled NullReferenceException from that
+        // path fails this case as well.
         [Component]
         private static VNode SiblingBoundaryHostRender()
         {

@@ -27,12 +27,15 @@ namespace Velvet.Tests
     /// fresh instance behind there and runs the departing instance's cleanup.</item>
     /// <item>A container returned to the primitive-element pool and rented again carries no registry entry
     /// into its next use.</item>
-    /// <item>Where two instances also share a position key, an instance's own isolated re-render reads
-    /// the Providers of the container it is written into rather than of whichever the committed tree
-    /// reaches first — both where the two containers' Providers carry one context, and where they
-    /// carry different ones, which is an instance keeping the Provider it is inside rather than
-    /// acquiring a stranger's. A <c>V.Motion</c>'s active label travels the same path and reads the
-    /// same way. All three are pinned here.</item>
+    /// <item>Where two instances also share a position key, and the declaring body writes each into its
+    /// container as its own occurrence, an instance's own isolated re-render reads the Providers of the
+    /// container it is written into rather than of whichever the committed tree reaches first — both
+    /// where the two containers' Providers carry one context, and where they carry different ones, which
+    /// is an instance keeping the Provider it is inside rather than acquiring a stranger's. A
+    /// <c>V.Motion</c>'s active label travels the same path and reads the same way. All three are pinned
+    /// here. Shapes the qualifier excludes read as they did before it, among them: one node instance
+    /// written into both containers, a consumer inside a <c>V.Portal</c> or a <c>V.VirtualList</c> item,
+    /// a wrapper-mounted Outlet child, and a row a time-sliced pass parked before reaching.</item>
     /// </list>
     /// <see cref="PortalChildFiberContinuityTests"/> owns the portal-scope member of the same key, and
     /// holds the shape where a shared container leaves that member the only thing separating two
