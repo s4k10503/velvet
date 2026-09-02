@@ -4158,21 +4158,27 @@ class SharedMaterialTests(unittest.TestCase):
     def test_Given_ARemarkRewrittenAboveAHelper_When_ThePlanIsTaken_Then_TheFilesCasesAreNotInIt(self):
         # Arrange -- the whole reading, since a plan that holds every case of a fixture for a
         # remark is what put twenty-seven cases on trial on the branch that measured this. The exit
-        # status rides along: an absence over a plan that crashed is an absence over nothing.
+        # status and the other file's case ride along: an absence over a plan that crashed, or that
+        # moved its listing elsewhere, is an absence over nothing.
         # Act
         status, printed = self.planned()
 
         # Assert
-        self.assertEqual((status, "N.ProbeTests.Given_A_When_B_Then_C" in printed), (0, False))
+        self.assertEqual((status, "N.OtherTests.Given_A_When_B_Then_C" in printed,
+                          "N.ProbeTests.Given_A_When_B_Then_C" in printed), (0, True, False))
 
     def test_Given_ARemarkRewrittenAboveAHelper_When_ThePlanIsTaken_Then_TheFilesCasesStayControls(self):
         # Arrange -- the other reading of the same lines: a remark that put no case on trial must not
         # take the file's controls away either, or the report says the cases are the branch's text.
+        # The control's presence rides along with the report's absence, since the report is only
+        # printed where the controls went, and a gate that dropped them without saying so would pass
+        # the absence alone.
         # Act
         status, printed = self.planned()
 
         # Assert
-        self.assertEqual((status, "no control:" in printed), (0, False))
+        self.assertEqual((status, "(1 control case(s) alongside)" in printed, "no control:" in printed),
+                         (0, True, False))
 
 
 if __name__ == "__main__":
