@@ -3410,6 +3410,8 @@ class LocalLoopTests(unittest.TestCase):
         # Assert
         self.assertIn("withdrawn: " + self.FIXTURE + " -- the compiler blamed it (CS1929)", printed)
 
+    # GREEN_ON_BASE(characterization): the base fails such a run through the platform's own
+    # canaries, and this change must not take that reading away.
     def test_Given_APlatformWhoseEditorNeverWrote_When_AnotherPlatformDid_Then_TheRunStillFails(self):
         # Arrange -- EditMode answers and PlayMode's editor writes nothing, so the one flag saying
         # some platform wrote is set and what fails PlayMode is its own canaries. A verdict handed
