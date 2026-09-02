@@ -53,7 +53,7 @@ one row marked supported, and runs in the same licence-free job as the note buil
 Check the note before opening the pull request:
 
 ```bash
-python3 scripts/release/test_release_notes.py && python3 scripts/release/release_notes.py --version X.Y.Z --repo s4k10503/velvet
+python3 scripts/test_quality/run_suite.py scripts/release/test_release_notes.py && python3 scripts/release/release_notes.py --version X.Y.Z --repo s4k10503/velvet
 ```
 
 ## 2. Land it on main

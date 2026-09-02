@@ -89,6 +89,47 @@ class WhoseDeferral(unittest.TestCase):
         self.assertEqual(disowned("377", NOW + 60),
                          [("waiting on review", "other-0002")])
 
+    def test_Given_AnotherSessionWroteLater_When_TheKeyIsRead_Then_ThisSessionsLineStillSuppresses(self):
+        # Arrange -- both sessions hold the same pull request, and the other one wrote second. One
+        # file, one key, and appending is the only thing a writer does.
+        self.file.write_text(f"377 waiting on review {NOW} {MINE}\n"
+                             f"377 waiting on something else {NOW} other-0002\n",
+                             encoding="utf-8")
+
+        # Act / Assert
+        self.assertEqual(deferrals.deferred("377", NOW + 60), ("waiting on review", 1))
+
+    # GREEN_ON_BASE(characterization): the base reports this and the first draft of the narrowing beside
+    # it stopped — a line nothing attributes was dropped by `own` along with the foreign ones, so the
+    # session that wrote it was told nothing. Measured by routing `unusable` through `own(key)` without
+    # `unsigned`, which fails this case.
+    def test_Given_AnUnsignedMalformedLine_When_TheKeyIsRead_Then_TheWriterIsStillToldWhy(self):
+        # Arrange — what a failed substitution leaves: `echo "377 held by owner $(date+%s)"` with the
+        # space missing writes no stamp and no id. Nothing attributes it, so it suppresses nothing —
+        # and it is the line most likely to be this session's own mistake.
+        self.wrote("377 held by owner")
+
+        # Act / Assert
+        self.assertIn("'owner'", deferrals.unusable("377", NOW + 60) or "")
+
+    def test_Given_ASignedMalformedLine_When_TheKeyIsRead_Then_ItNamesTheStampRatherThanTheSession(self):
+        # Arrange — the session id is the one field that is right here, and naming it sent the writer
+        # to remove the field the deferral needs.
+        self.wrote("377 held by owner {}".format(MINE))
+
+        # Act / Assert
+        self.assertIn("'owner'", deferrals.unusable("377", NOW + 60) or "")
+
+    def test_Given_AnotherSessionWroteAMalformedLineLater_When_TheKeyIsRead_Then_ItIsNotReportedAsThisOnes(self):
+        # Arrange -- what `unusable` says goes to the session that wrote a deferral and saw nothing
+        # happen, so a stamp somebody else fumbled is not an answer to that.
+        self.file.write_text(f"377 waiting on review {NOW} {MINE}\n"
+                             "377 waiting on review tomorrow other-0002\n",
+                             encoding="utf-8")
+
+        # Act / Assert
+        self.assertIsNone(deferrals.unusable("377", NOW + 60))
+
     def test_Given_ALineSigningNothing_When_TheKeyIsRead_Then_ItSuppressesNothing(self):
         # Arrange -- every line written before this was recorded. Grandfathering them would keep the
         # hole open for exactly as long as the file lives.

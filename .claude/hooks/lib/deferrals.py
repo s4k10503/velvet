@@ -56,6 +56,31 @@ def written_by(fields):
         else None
 
 
+def own(lines, key, unsigned=False):
+    """The lines for `key` this session wrote, in file order, or all of them where nothing attributes.
+
+    Read before the last one is taken rather than after. Taking the file's last line for the key and
+    then asking whose it was let any other session's later line stand in for this one's: `deferred`
+    saw a line it had to disown and answered None, and `unusable` reported somebody else's malformed
+    entry as the reason this session's deferral did nothing.
+
+    `unsigned` keeps the lines nothing attributes, and only a report wants them. Suppressing on one
+    is the hole the field was added to close, but a line missing the field is one this session may
+    have written and got wrong -- a substitution that failed leaves exactly that -- so a reader that
+    drops it tells nobody why their deferral did nothing.
+    """
+    mine = writer()
+    found = []
+    for line in lines:
+        if not line.startswith(f"{key} "):
+            continue
+        session = written_by(line.split())
+        if mine is not None and session != mine and not (unsigned and session is None):
+            continue
+        found.append(line)
+    return found
+
+
 def deferred(key, now=None):
     """Return (reason, minutes) when a live deferral covers the key, else None.
 
@@ -70,8 +95,7 @@ def deferred(key, now=None):
     except OSError:
         return None
 
-    prefix = f"{key} "
-    matching = [line for line in lines if line.startswith(prefix)]
+    matching = own(lines, key)
     if not matching:
         return None
 
@@ -87,24 +111,16 @@ def deferred(key, now=None):
     if age < 0 or age >= TTL:
         return None
 
-    # Whose it is decides whether it suppresses. A process with no view of what the key is about can
-    # append a line as readily as the one holding it -- measured, a subagent blocked by a guard
-    # naming six pull requests it neither owned nor could merge deferred all six, which was the only
-    # route forward it had and silenced the guard that holds the merge queue. A line another session
-    # wrote is reported by `disowned` instead, and one written before this was recorded goes the same
-    # way rather than being grandfathered: the whole point is that nothing says who stood behind it.
-    mine = writer()
-    if mine is not None and session != mine:
-        return None
-
     return " ".join(fields[1:-2] if session else fields[1:-1]), int(age // 60)
 
 
 def disowned(key, now=None):
     """(reason, whose) for every live deferral on the key that this session did not write.
 
-    Read by the guards so a suppression that did not happen is in front of the reader rather than
-    behind them, which is the same principle `deferred` states about a stale reason.
+    Read by all four guards that suppress on a deferral, so a suppression that did not happen is in
+    front of the reader rather than behind them — the same principle `deferred` states about a stale
+    reason. Written for a while before any of them called it, which is a helper claiming a behaviour
+    the tree did not have, in a module that said so twice.
     """
     mine = writer()
     if mine is None:
@@ -157,7 +173,7 @@ def unusable(key, now=None):
     except OSError:
         return None
 
-    matching = [line for line in lines if line.startswith(f"{key} ")]
+    matching = own(lines, key, unsigned=True)
     if not matching:
         return None
 
@@ -165,9 +181,13 @@ def unusable(key, now=None):
     # The same reading `deferred` takes, because the two run over one line: updated there and not
     # here, a signed line was honoured and reported unusable in the same breath.
     session = written_by(fields)
-    stamp = epoch(fields[-2] if session else fields[-1])
+    stamped = fields[-2] if session else fields[-1]
+    stamp = epoch(stamped)
     if stamp is None:
-        return f"its last field is {fields[-1]!r}, not the epoch second it was written"
+        # The field this read as the stamp, not the line's last one: on a signed line the last field
+        # is the session id and is the one thing that is right, so naming it sent the writer to
+        # remove it.
+        return f"the field it reads as the stamp is {stamped!r}, not the epoch second it was written"
     if (time.time() if now is None else now) - stamp < 0:
         return ("it is stamped in the future — the stamp is when the deferral was WRITTEN "
                 "(`$(date +%s)`), not when it should expire")

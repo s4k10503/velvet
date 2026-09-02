@@ -27,7 +27,7 @@ from pathlib import Path
 HOOK_DIRECTORY = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(HOOK_DIRECTORY / "lib"))
 sys.path.insert(0, str(HOOK_DIRECTORY.parent.parent / "scripts" / "pr"))
-from deferrals import DEFERRALS, deferred, unusable
+from deferrals import DEFERRALS, deferred, disowned, unusable
 from watcher_state import READY_STATE, STALE_AFTER, alive, unreadable_beat
 
 # Held on the editing tools, which carry a file path rather than a shell command, so there is no operand
@@ -65,6 +65,9 @@ def sitting(now):
         if broken is not None:
             print(f"A deferral was written for PR #{number}, and {broken} — so it is being ignored.",
                   file=sys.stderr)
+        for reason, whose in disowned(number, now):
+            print(f"Session {whose} deferred PR #{number} as \"{reason}\", which does not suppress "
+                  "here.", file=sys.stderr)
         if now - since < GRACE or deferred(number, now):
             continue
         found.append((number, int(now - since)))
@@ -95,6 +98,9 @@ def main():
         if broken is not None:
             sys.stderr.write(f"A deferral was written for {WATCHER_KEY}, and {broken} — so it is "
                              "being ignored.\n")
+        for reason, whose in disowned(WATCHER_KEY, now):
+            sys.stderr.write(f"Session {whose} deferred {WATCHER_KEY} as \"{reason}\", which does "
+                             "not suppress here.\n")
         # Two states reach here and they want opposite actions: start a watcher, or end one. Saying
         # "nothing is watching" of the second is this guard's blindness written as a fact about the
         # watcher, and the command it would name refuses while that watcher runs.
@@ -112,7 +118,7 @@ def main():
                 "  python3 scripts/pr/settle.py watch\n\n"
                 "If the pause is deliberate, arm the deferral for what the WORK is waiting on; the "
                 "reason expires, so it gets re-read rather than forgotten:\n\n"
-                f'  echo "{WATCHER_KEY} <what the work is waiting on> {int(now)}" >> {DEFERRALS}\n')
+                f'  echo "{WATCHER_KEY} <what the work is waiting on> {int(now)} $CLAUDE_CODE_SESSION_ID" >> {DEFERRALS}\n')
             return 2
         sys.stderr.write(
             "Refusing to write: nothing is watching the open pull requests, so whether one is sitting "
@@ -124,7 +130,7 @@ def main():
             "lock is named there with the command to end it. If the pause is deliberate, arm the "
             "deferral for what the WORK is waiting on rather than for the watcher being off; the "
             "reason expires, so it gets re-read rather than forgotten:\n\n"
-            f'  echo "{WATCHER_KEY} <what the work is waiting on> {int(now)}" >> {DEFERRALS}\n')
+            f'  echo "{WATCHER_KEY} <what the work is waiting on> {int(now)} $CLAUDE_CODE_SESSION_ID" >> {DEFERRALS}\n')
         return 2
 
     found = sitting(now)
@@ -141,12 +147,12 @@ def main():
         "  python3 scripts/pr/settle.py merge <pr>\n\n"
         "That reports what still blocks it, if anything does. If one is held on purpose, say what "
         f"clears it — the reason expires, so it gets re-read rather than forgotten:\n\n"
-        f'  echo "<pr> <what clears it> {int(now)}" >> {DEFERRALS}\n\n'
+        f'  echo "<pr> <what clears it> {int(now)} $CLAUDE_CODE_SESSION_ID" >> {DEFERRALS}\n\n'
         "A deferral claims somebody read the hold and judged it deliberate, so a cause invented for a "
         "pull request you have never opened is the one shape of it that is false. Not owning it is "
         "itself a reason, and it is one you can state truthfully — with the telling done rather than "
         "intended, since that is the only part that moves the pull request:\n\n"
-        f'  echo "<pr> held by <owner>, who has been asked to settle it {int(now)}" >> {DEFERRALS}\n')
+        f'  echo "<pr> held by <owner>, who has been asked to settle it {int(now)} $CLAUDE_CODE_SESSION_ID" >> {DEFERRALS}\n')
     return 2
 
 
