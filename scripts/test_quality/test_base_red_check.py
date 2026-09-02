@@ -3300,6 +3300,57 @@ class LocalLoopTests(unittest.TestCase):
             sys.argv, base_red_check.run_unity, base_red_check.wait_for_quiet = argv, run_unity, wait
         return held.getvalue(), rounds
 
+    PLAY_FIXTURE = "Packages/p/Runtime/A/Tests/PlayMode/PlayProbeTests.cs"
+    PLAY_CANARY = "Packages/p/Runtime/A/Tests/PlayMode/PlayCanaryTests.cs"
+
+    def rounds_over_both_platforms(self):
+        """(platform, the fixtures asked) per round, over a branch that changed a fixture on each
+        platform, where the EditMode round's log blames the PlayMode file and the rounds after it
+        write results."""
+        base = {self.ENUM: "enum Status { Idle }\n",
+                self.CANARY: self.fixture("CanaryTests", "Assert.Pass()"),
+                self.FIXTURE: self.fixture("ProbeTests", "Assert.Pass()"),
+                self.PLAY_CANARY: self.fixture("PlayCanaryTests", "Assert.Pass()"),
+                self.PLAY_FIXTURE: self.fixture("PlayProbeTests", "Assert.Pass()")}
+        branch = dict(base, **{self.FIXTURE: self.fixture("ProbeTests", "Assert.That(1, Is.EqualTo(1))"),
+                               self.PLAY_FIXTURE: self.fixture("PlayProbeTests", "Assert.That(2, Is.EqualTo(2))")})
+        root, since = two_commit_repo(self, base, branch)
+        rounds = []
+
+        def fake_run_unity(unity, tree, platform, fixtures, results, log, timeout):
+            rounds.append((platform, sorted(fixtures)))
+            if len(rounds) == 1:
+                Path(log).write_text("Scripts have compiler errors\n"
+                                     + self.PLAY_FIXTURE + "(1,1): error CS0012: x\n")
+            else:
+                Path(log).write_text("")
+                Path(results).write_text('<test-run>' + "".join(
+                    '<test-case fullname="{}.Given_A_When_B_Then_C" result="Passed" />'.format(name)
+                    for name in fixtures) + '</test-run>')
+            return 1.0, 0
+
+        argv, run_unity, wait = sys.argv, base_red_check.run_unity, base_red_check.wait_for_quiet
+        sys.argv = ["base_red_check.py", "--project", str(root), "--base", since, "--lane", "csharp",
+                    "--platform", "EditMode", "--platform", "PlayMode", "--output", str(root / "out"),
+                    "--max-rounds", "4"]
+        base_red_check.run_unity, base_red_check.wait_for_quiet = fake_run_unity, lambda seconds: True
+        try:
+            with contextlib.redirect_stdout(io.StringIO()):
+                base_red_check.main()
+        finally:
+            sys.argv, base_red_check.run_unity, base_red_check.wait_for_quiet = argv, run_unity, wait
+        return rounds
+
+    def test_Given_AnEditModeRoundPutAPlayModeFileBack_When_ThePlayModeRoundsRun_Then_TheyDoNotAskItsFixture(self):
+        # Arrange -- one tree for both platforms, so a file the EditMode round put back to the base's
+        # text is the base's text when PlayMode asks; asking its fixture would read the base's own
+        # result as the branch's case.
+        # Act
+        asked = [fixtures for platform, fixtures in self.rounds_over_both_platforms() if platform == "PlayMode"]
+
+        # Assert
+        self.assertEqual([f for fixtures in asked for f in fixtures if "PlayProbe" in f], [])
+
     def test_Given_TheLogBlamesTheBasesOwnFile_When_TheLoopRuns_Then_ItStopsAfterOneRoundAndSaysSo(self):
         # Arrange -- a round spent withdrawing a silent file cannot reach a base that does not build
         # its own sources, and the budget is not what binds there.
@@ -3309,6 +3360,33 @@ class LocalLoopTests(unittest.TestCase):
 
         # Assert
         self.assertEqual((len(rounds), "the base's own" in printed), (1, True))
+
+    def test_Given_TheLoopStoppedOnTheBasesOwnFileAtTheBudget_When_ItReports_Then_TheBudgetIsNotTheRemedy(self):
+        # Arrange -- a budget of one, spent on the round that found the base's own file: raising the
+        # budget is not what a run stopped for a cause wants told.
+        base = {self.ENUM: "enum Status { Idle }\n",
+                self.CANARY: self.fixture("CanaryTests", "Assert.Pass()"),
+                self.FIXTURE: self.fixture("ProbeTests", "Assert.Pass()")}
+        branch = dict(base, **{self.FIXTURE: self.fixture("ProbeTests", "Assert.That(1, Is.EqualTo(1))")})
+        root, since = two_commit_repo(self, base, branch)
+
+        def fake_run_unity(unity, tree, platform, fixtures, results, log, timeout):
+            Path(log).write_text("Scripts have compiler errors\n" + self.ENUM + "(1,1): error CS0103: x\n")
+            return 1.0, 0
+
+        held = io.StringIO()
+        argv, run_unity, wait = sys.argv, base_red_check.run_unity, base_red_check.wait_for_quiet
+        sys.argv = ["base_red_check.py", "--project", str(root), "--base", since, "--lane", "csharp",
+                    "--platform", "EditMode", "--output", str(root / "out"), "--max-rounds", "1"]
+        base_red_check.run_unity, base_red_check.wait_for_quiet = fake_run_unity, lambda seconds: True
+        try:
+            with contextlib.redirect_stdout(held):
+                base_red_check.main()
+        finally:
+            sys.argv, base_red_check.run_unity, base_red_check.wait_for_quiet = argv, run_unity, wait
+
+        # Act / Assert
+        self.assertEqual(("the base's own" in held.getvalue(), "--max-rounds" in held.getvalue()), (True, False))
 
     def test_Given_TheLogBlamesTheSameFileAtTheBasesText_When_TheLoopRuns_Then_TheFileComesOut(self):
         # Arrange -- round one puts ProbeTests back to the base's text; round two blames it again,
@@ -3324,8 +3402,7 @@ class LocalLoopTests(unittest.TestCase):
     # the log does not explain reaches on the base as it does here.
     def test_Given_ALogNamingNothing_When_TheLoopRuns_Then_ItWithdrawsOneSilentFileAndAsksAgain(self):
         # Arrange -- a round the log does not explain: the silent file goes back to the base's text
-        # on its own, one per round, and the round after it finds nothing left to ask. Without the
-        # fallback the loop ends on the first round.
+        # on its own, one per round, and the round after it finds nothing left to ask.
         # Act
         _, rounds = self.loop(lambda tree, attempt: "Aborting batchmode due to failure:\n")
 

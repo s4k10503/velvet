@@ -960,9 +960,10 @@ def withdrawals_for(log_text, carry, already):
     Every carried file the log blames, at once: the compiler named each of them for its own text, so
     none is merely standing next to the offender the way a silent file is. One it blames that is
     already the base's text failed against something else the branch carried, and its cases already
-    read as unbuildable, so taking it out of the tree costs nothing further -- where putting back
-    what it failed against would cost every file that builds against the branch's text of that its
-    reading, for the sake of a file no round asks about.
+    read as unbuildable. Taking it out reaches the files that use what it declares; putting back
+    what it failed against reaches every file still building against the branch's text of that, for
+    the sake of a file no round asks about. Measured on the branch replacing UniTask, the first reach
+    was nothing and the second was five cases.
     """
     blamed = [name for name in compile_error_files(log_text) if name in carry]
     return ([name for name in blamed if name not in already],
@@ -2292,6 +2293,10 @@ def main():
                       "out, and the\nbase still did not build.".format(
                           plan["rounds"], len(plan.get("blamed", {})), len(plan.get("removed", {}))),
                       flush=True)
+            if plan.get("removed"):
+                print("A file of the base's failing after those were taken out may be missing what they\n"
+                      "declared:\n{}".format("\n".join("  " + name for name in sorted(plan["removed"]))),
+                      flush=True)
         return 1 if report(from_plan(plan["cases"]), from_plan(plan["control"]), reported,
                            plan["canaries"], wrote, plan.get("withdrawn"),
                            plan.get("since"), plan.get("blamed")) else 0
@@ -2382,6 +2387,7 @@ def main():
     rounds_spent = 0
     put_back = set()
     removed = set()
+    stopped_for_cause = False
     try:
         print("  building the base tree at {}".format(base_tree), flush=True)
         build_base_tree(project, since, base_tree, carry, drop, args.warm_library)
@@ -2414,7 +2420,13 @@ def main():
             for attempt in range(1, args.max_rounds + 1):
                 rounds_spent = max(rounds_spent, attempt)
                 put_back |= withdrawn
-                live = [case for case in wanted if case.path not in withdrawn]
+                # Across platforms, not per platform: the tree is one, the editor compiles every
+                # assembly whatever platform is asked, and a file an earlier platform's round put
+                # back or took out is the base's text for this one too -- asking its fixture would
+                # read the base's own result as the branch's case.
+                live = [case for case in wanted
+                        if case.path not in withdrawn and case.path not in put_back
+                        and case.path not in removed]
                 fixtures = sorted({case.fixture for case in live} | set(canaries[platform]))
                 if not fixtures:
                     break
@@ -2447,6 +2459,7 @@ def main():
                 outside = [name for name in blamed if name not in carry]
                 if outside:
                     print(bases_own_reason(outside, blamed, removed), flush=True)
+                    stopped_for_cause = True
                     break
                 restore, take_out = withdrawals_for(log_text, carry, withdrawn)
                 # A round the log does not explain says only that something the tree holds did not
@@ -2473,7 +2486,7 @@ def main():
 
     if not ever_wrote:
         print("no round wrote a result, so nothing any of them was asked was measured", flush=True)
-        if rounds_spent >= args.max_rounds:
+        if rounds_spent >= args.max_rounds and not stopped_for_cause:
             print(exhausted_reason(rounds_spent, put_back, len(carry)), flush=True)
     if met_a_neighbour:
         print("\nA second editor was up during at least one of these runs, so a failure here has a\n"
