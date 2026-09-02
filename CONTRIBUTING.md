@@ -749,20 +749,20 @@ behaviour a working application would notice changing.
    has it, heading and date included — the base rather than the tag's copy, because `main`'s older
    sections were reworded and reordered after their releases and carry a Highlights block their
    tags' copies do not, so the copy says which lines may go back and the base says what is there —
-   one the file has not got, a maintenance line's carried forward, arrives as that copy and nothing
-   else, that copy being the only text of it here and an addition to a note already published
-   belonging in the release that follows it, and one gone from the file that the base or the last
-   release on this line carried is refused too. A
-   dated section whose version no tag names is unpublished and not held. Where the remote tags no
-   release the result descends from — a repository before its first release — the breaking section
-   is read one step deep and the check's pass says so; a remote that cannot be listed is refused as
-   unread instead, and so is a history cut short under the result, where a tag the result is not
-   found to descend from may sit below the cut — a cut elsewhere, a maintenance line fetched
-   shallow, is not. A tag whose commit the checkout has not got is passed over, as a maintenance
-   line's is, until the result carries a dated section for its version; reading that release's note
-   is then what fails, and that is refused as unread too. A major also answers for the breaking
-   work still in flight: an entry written for it sits on its own branch until that branch merges,
-   so the CHANGELOG holds only the part that has landed. Name every open pull request adding to
+   one the file has not got, a maintenance line's carried forward, arrives as that copy and
+   nothing else, that copy being the only text of it here and an addition to a note already
+   published belonging in the release that follows it, and one gone from the file that the base or
+   the last release on this line carried is refused too. A dated section whose version no tag
+   names is unpublished and not held. Where the remote tags no release the result descends from —
+   a repository before its first release — the breaking section is read one step deep and the
+   check's pass says so; a remote that cannot be listed is refused as unread instead, and so is a
+   history cut short under the result, where a tag the result is not found to descend from may sit
+   below the cut — a cut elsewhere, a maintenance line fetched shallow, is not. A tag whose commit
+   the checkout has not got is passed over, as a maintenance line's is, until the result carries a
+   dated section for its version; reading that release's note is then what fails, and that is
+   refused as unread too. A major also answers for the breaking work still in flight: an entry
+   written for it sits on its own branch until that branch merges, so the CHANGELOG holds only the
+   part that has landed. Name every open pull request adding to
    `## [Unreleased — breaking]` and say which the version carries —
    `breaking_in_flight_check.py` refuses one that names none of them, and "not this one" is a
    decision it accepts. Give the version a row in `SECURITY.md`'s

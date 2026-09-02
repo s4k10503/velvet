@@ -300,33 +300,49 @@ def puts(copy, line, side):
     return line not in copy or any(copy[where] == line for where in side)
 
 
+def touching(lines, index, copy, where):
+    """Whether the nearest line here that `copy` carries, on one side of `index` or the other, is
+    the one the copy puts immediately there.
+
+    Lines the copy has not got are stepped over rather than read, so whatever a section gained
+    after its release neither satisfies this nor stands in the way of a put-back.
+    """
+    above = next((one for one in lines[index - 1::-1] if one in copy), None) if index else None
+    below = next((one for one in lines[index + 1:] if one in copy), None)
+    return ((where > 0 and above == copy[where - 1])
+            or (where + 1 < len(copy) and below == copy[where + 1]))
+
+
 def in_its_place(lines, index, copy):
-    """Whether the line at `index` may go back there: the copy has to agree about the lines around
-    it -- the two it puts either side of it, and everything between those two and it.
+    """Whether the line at `index` may go back there: three readings of the copy's order, each
+    admitting what the others refuse.
 
     Either side of the one line rather than over the section, since asking the section to carry the
     copy in order would refuse every change to a section reordered against its copy.
 
-    Where one of those two is not here the reading runs to that end of the section rather than
-    passing, and the lines between are read rather than only the two. Measured against the two
-    alone: a line missing beside another was unbounded on that side and could go back under any
-    later heading, and where a copy carries one line twice against a base that reordered what sits
-    between them, the two bounds together admitted that whole stretch.
+    The lines the copy puts either side of it bound where it may go, walking outward past any this
+    section has not got: a bound that is absent bounds nothing, and a line missing beside another
+    was then free of that side and could go back under another heading. Between the bound above and
+    the put-back, every line has to be one the copy puts above it as well, which is what catches a
+    copy line belonging below the put-back sitting over it. And `touching` asks what it comes to
+    rest against, which neither of those can ask of the copy's last line: the whole copy is above
+    that, so nothing bounds it below and nothing over it contradicts, and it could be appended under
+    a heading the copy never files it under.
     """
     for where, published in enumerate(copy):
         if published != lines[index]:
             continue
-        above = copy[where - 1] if where else None
-        below = copy[where + 1] if where + 1 < len(copy) else None
-        if not ((above is None or above not in lines or above in lines[:index])
-                and (below is None or below not in lines or below in lines[index + 1:])):
+        above = next((one for one in copy[where - 1::-1] if one in lines), None) if where else None
+        below = next((one for one in copy[where + 1:] if one in lines), None)
+        if above is not None:
+            if above not in lines[:index]:
+                continue
+            start = max(at for at in range(index) if lines[at] == above)
+            if not all(puts(copy, lines[at], range(where)) for at in range(start + 1, index)):
+                continue
+        if below is not None and below not in lines[index + 1:]:
             continue
-        start = max((at for at in range(index) if lines[at] == above), default=-1)
-        stop = min((at for at in range(index + 1, len(lines)) if lines[at] == below),
-                   default=len(lines))
-        if (all(puts(copy, lines[at], range(where)) for at in range(start + 1, index))
-                and all(puts(copy, lines[at], range(where + 1, len(copy)))
-                        for at in range(index + 1, stop))):
+        if touching(lines, index, copy, where):
             return True
     return False
 

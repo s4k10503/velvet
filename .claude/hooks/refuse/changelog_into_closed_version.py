@@ -32,11 +32,11 @@ The reading is a released section's PUBLISHED LINES, before against the proposed
   as that copy entire, that copy being the only text of it here and an addition to a note already
   published belonging in the release that follows it. Removal, reword, reorder and a changed date
   alike, since the note is the tag's and the file cannot tell a correction from a deletion. For a
-  section the file already carries it is not equality with the tag's copy, because main's sections
-  already differ from their copies, each of those carrying a Highlights block the copy has not got.
-  The remote's tags rather than the checkout's, for the
-  reason `published_check.remote_tag_shas` gives. Where the remote tags no such version, or the
-  remote or git does not answer, the reading is the one above: growth is refused and removal is not,
+  section the file already carries it is not equality with the tag's copy, because main's older
+  sections already differ from theirs, each of those carrying a Highlights block the copy has not
+  got. The remote's tags rather than the checkout's, for the reason
+  `published_check.remote_tag_shas` gives. Where the remote tags no such version, or the remote or
+  git does not answer, the reading is the one above: growth is refused and removal is not,
   so deleting an entry from such a section still runs. Deleting the whole SECTION does not either
   way, because the heading goes with it — see below.
 - What the edit is measured against is the FILE, where the merge-time reading has the base commit,

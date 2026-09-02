@@ -170,6 +170,18 @@ SUBSECTIONED = RELEASED.replace(
 SHORT_OF_TWO = SUBSECTIONED.replace(
     "- A second thing that shipped.\n- A third thing that shipped.\n", "")
 
+# A published section of two blocks, against a file that carries them in the other order and is
+# short of the entry the note ends with.
+LAST_LINE = RELEASED.replace(
+    "### Fixed\n\n- A thing that shipped.\n",
+    "### Changed\n\n- A change that shipped.\n- Another change that shipped.\n"
+    "\n### Fixed\n\n- A thing that shipped.\n- Another thing that shipped.\n")
+
+BLOCKS_SWAPPED = RELEASED.replace(
+    "### Fixed\n\n- A thing that shipped.\n",
+    "### Fixed\n\n- A thing that shipped.\n"
+    "\n### Changed\n\n- A change that shipped.\n- Another change that shipped.\n")
+
 
 def judged(root, changelog, old, new):
     """The guard's verdict on an Edit of `changelog` replacing `old` with `new`, as (exit code,
@@ -237,6 +249,30 @@ class InItsPlace(unittest.TestCase):
         # Assert -- the other entry still being absent rides along: with both put back the placement
         # is bounded by copy-neighbours that are here, which says nothing about the bound this pins.
         self.assertEqual((still_short, code, said), (True, 0, ""))
+
+
+class TheCopysLastLine(unittest.TestCase):
+    """The entry a release's note ends with, against a file that carries the blocks in the other
+    order.
+
+    The whole copy is above that entry, so nothing bounds it below and nothing over it disagrees:
+    what it comes to rest against is the reading left.
+    """
+
+    def setUp(self):
+        self.root, self.changelog = published(self, LAST_LINE, "closed-version-last-")
+        self.changelog.write_text(BLOCKS_SWAPPED)
+
+    def test_Given_TheCopysLastLine_When_ItIsAppendedUnderAnotherHeading_Then_ItIsRefused(self):
+        # Arrange -- the file is short of that entry, and the put-back lands after the last change
+        # rather than after the fix the copy puts above it, publishing a fix as a change.
+
+        # Act
+        code, said = judged(self.root, self.changelog, "- Another change that shipped.\n",
+                            "- Another change that shipped.\n- Another thing that shipped.\n")
+
+        # Assert
+        self.assertEqual((code, "v2.0.0-main" in said), (2, True))
 
 
 class AgainstTheTag(unittest.TestCase):
