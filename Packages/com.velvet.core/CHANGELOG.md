@@ -67,6 +67,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- An error boundary catching in a pass that is also re-rendering a sibling component no longer logs a
+  `NullReferenceException` from the reconciler. The sibling's inline re-render runs inside the host's
+  pass, and the catch disposes fibers — which clears the `Reconciler` that re-render is still holding,
+  so the three steps after it dereferenced a field the disposal had already nulled. The same field is
+  read for the same reason a few lines further on, where it was checked. The render now returns at that
+  point instead: a disposed fiber has no pass left to be subsumed into, so its layout effect and its
+  paint-tick effect are not queued and its lanes are not re-enrolled.
+
 - A component's own re-render now reads the Providers of the container it is written into, where the
   declaring body writes the component into each container as its own occurrence. Two sibling containers
   each holding the same component at the same position already mounted two instances, but the walk that

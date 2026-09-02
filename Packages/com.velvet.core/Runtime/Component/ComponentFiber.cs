@@ -680,13 +680,31 @@ namespace Velvet
         /// <summary>
         /// The <see cref="ComponentNode"/> occurrence this fiber currently answers for: written on every
         /// <c>ComponentRegistry.GetOrCreate</c> that reaches the fiber, beside <see cref="Body"/>, so it
-        /// names an occurrence of the most recent render to reach it. That is what makes it comparable
-        /// against an ancestor's <see cref="PreviousTree"/>, which the same render fixed, and NOT against an
-        /// array captured at an earlier render and not rewritten since. <see cref="FiberContextSpine"/>
-        /// compares it on the first of those to tell apart two positions whose registry keys differ only in
-        /// the container; its <c>SpineWalk</c> owns which descent is which.
+        /// names an occurrence of the most recent render to reach it — which is not always the render that
+        /// fixed the ancestor's <see cref="PreviousTree"/>, because a render whose output is discarded has
+        /// already written its nodes onto the children it reached. <see cref="TreeEpoch"/> is what pairs the
+        /// two, and <see cref="FiberContextSpine"/> compares nodes only where they pair and only while
+        /// descending a committed tree; its <c>SpineWalk</c> owns the second of those conditions.
         /// </summary>
         internal ComponentNode? SourceNode { get; set; }
+
+        /// <summary>
+        /// Moves whenever a render of this fiber is discarded after its children were reconciled — an
+        /// error boundary catching in the pass, or a throw out of the reconcile — leaving
+        /// <see cref="PreviousTree"/> at the previous render's tree while those children carry the
+        /// discarded one's nodes. A child records the value it saw in <see cref="SourceNodeEpoch"/>, so
+        /// the two agree only where the child's <see cref="SourceNode"/> came from the render that fixed
+        /// this <see cref="PreviousTree"/>. <see cref="FiberContextSpine"/> compares nodes only then, and a
+        /// child the discarded render never reached keeps an older value and is compared no further.
+        /// </summary>
+        internal int TreeEpoch { get; set; }
+
+        /// <summary>
+        /// The parent's <see cref="TreeEpoch"/> when <see cref="SourceNode"/> was last written. Paired with
+        /// it and read only by <see cref="FiberContextSpine"/>; <see cref="TreeEpoch"/> owns what the
+        /// pairing means.
+        /// </summary>
+        internal int SourceNodeEpoch { get; set; }
 
         /// <summary>
         /// Set where <c>FiberErrorBoundary.TryShowFallback</c> writes the fallback over

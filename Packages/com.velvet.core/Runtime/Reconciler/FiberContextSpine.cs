@@ -21,9 +21,10 @@ namespace Velvet
     // ComponentNode's position key is its slot in the child array it sits in under that array's
     // WalkPosition, Fragment/Provider extend the current position, an element node opens a fresh walk
     // for its children, and a Memo resolves to its committed inner.
-    // The match against the registry's key is what lets the reconstruction recognize the spine
-    // child without re-rendering. Both walkers derive every key
-    // through FiberKeying so the two stay in lockstep by construction.
+    // The registry's key narrows the reconstruction to the positions this fiber could occupy; it does
+    // not on its own name which one, since it answers at every container holding that position.
+    // MatchesInlineSpineChild owns what separates them. Both walkers derive every key through
+    // FiberKeying so the two stay in lockstep by construction.
     internal readonly struct FiberContextSpine
     {
         private readonly ComponentContextStack _stack;
@@ -357,7 +358,12 @@ namespace Velvet
             int nodeIndex,
             in SpineWalk walk)
         {
-            if (walk.WalksCommittedTree && !ReferenceEquals(component, walk.SpineChild.SourceNode)) return false;
+            if (walk.WalksCommittedTree
+                && walk.SpineChild.SourceNodeEpoch == walk.Ancestor.TreeEpoch
+                && !ReferenceEquals(component, walk.SpineChild.SourceNode))
+            {
+                return false;
+            }
             var registry = walk.Registry;
             var identity = component.ResolvedIdentity;
             var slotKey = component.Key ?? FiberKeying.ResolveInlinePositionKey(

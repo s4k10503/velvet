@@ -24,6 +24,8 @@ namespace Velvet.Tests
     /// <item>A fallback factory receives the original exception thrown by the child, and when it also takes an
     /// <see cref="ErrorInfo"/> it sees a component stack that lists the throwing fiber first and walks up
     /// through ancestors to the catching boundary.</item>
+    /// <item>A boundary catching in a pass that is re-rendering a sibling component in the same host does not
+    /// leave that sibling's re-render dereferencing the reconciler its own disposal cleared.</item>
     /// </list>
     /// </summary>
     /// <remarks>
@@ -225,6 +227,67 @@ namespace Velvet.Tests
             s_errorInfoLastException = null;
             s_errorInfoLastInfo = null;
         }
+
+        #region Sibling re-render across a caught pass
+
+        private static bool s_siblingCascadeThrows;
+        private static StateUpdater<int> s_setCascadeTick;
+
+        [Component]
+        private static VNode CascadeSiblingRender()
+        {
+            var (n, _) = Hooks.UseState(0);
+            return V.Label(name: "cascade-sibling", text: n.ToString());
+        }
+
+        [Component]
+        private static VNode CascadeThrowerRender()
+        {
+            if (s_siblingCascadeThrows) throw new InvalidOperationException("cascade");
+            return V.Label(name: "cascade-ok", text: "ok");
+        }
+
+        [Component(IsErrorBoundary = true)]
+        private static VNode CascadeBoundaryRender()
+        {
+            Hooks.UseFallback(ex => V.Label(name: "cascade-fallback", text: "fallback"));
+            return V.Component(CascadeThrowerRender, key: "cascade-thrower");
+        }
+
+        // The sibling is re-rendered inline by the host's pass — a plain component re-renders whenever its
+        // parent does — and the boundary catches later in that same pass. The catch disposes fibers, which
+        // clears the reconciler the sibling's in-flight inline render is still holding.
+        [Component]
+        private static VNode CascadeHostRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setCascadeTick = setTick;
+            return V.Div(name: "cascade-shell", children: new VNode?[]
+            {
+                V.Label(name: "cascade-tick", text: tick.ToString()),
+                V.Component(CascadeSiblingRender, key: "cascade-sibling"),
+                V.Component(CascadeBoundaryRender, key: "cascade-boundary"),
+            });
+        }
+
+        [Test]
+        public void Given_ASiblingReRenderingInThePassABoundaryCatchesIn_When_TheHostReRenders_Then_TheFallbackRendersWithoutADereferenceOfTheClearedReconciler()
+        {
+            // Arrange
+            s_siblingCascadeThrows = false;
+            using var mounted = V.Mount(_root, V.Component(CascadeHostRender, key: "cascade-host"));
+
+            // Act
+            s_siblingCascadeThrows = true;
+            s_setCascadeTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert — the fallback element is what says the pass completed; an unhandled NullReferenceException
+            // log fails the case on its own, which is the reading this exists for.
+            Assert.That(_root.Q<Label>("cascade-fallback"), Is.Not.Null);
+        }
+
+        #endregion
 
         [Component(IsErrorBoundary = true)]
         private static VNode ErrorInfoCaptureEbRender()
