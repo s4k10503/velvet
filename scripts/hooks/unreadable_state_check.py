@@ -140,7 +140,13 @@ def _has_reason(source, lineno):
 
 
 def declaration(path):
-    """(policy, probe, tool) for one guard, with every way its declaration falls short."""
+    """(policy, probe, tools) for one guard, with every way its declaration falls short.
+
+    Every tool it declares, not the first of them. A guard reaches its readings by a different route
+    per tool — an editing tool hands it a path and Bash hands it a command — so posing one leaves the
+    others' route unmeasured, and the tool that goes unposed is whichever sorts later. One probe
+    carries the spellings its guard's routes read, the way the wiring fixture's payloads do.
+    """
     source = Path(path).read_text(encoding="utf-8")
     module = ast.parse(source)
     policy, policy_line = _assigned(module, POLICY)
@@ -158,8 +164,7 @@ def declaration(path):
         missing.append(
             f"{POLICY} is \"{ALLOW}\" with no comment above it saying what holds instead")
 
-    tool = sorted(tools)[0] if isinstance(tools, set) and tools else None
-    return policy, probe, tool, missing
+    return policy, probe, sorted(tools) if isinstance(tools, set) else [], missing
 
 
 def _stubs(mode, directory, log, table=None):
@@ -243,27 +248,29 @@ def faults(refuse_directory, cwd, floor=GUARD_FLOOR):
 
 
 def _guard_faults(hook, subjects, cwd, home):
-    policy, probe, tool, missing = declaration(hook)
+    policy, probe, tools, missing = declaration(hook)
     if missing:
         return [f"{hook.name}: {reason}" for reason in missing]
 
     found, evidence = [], []
-    for mode in MODES:
+    for tool, mode in ((tool, mode) for tool in tools for mode in MODES):
         verdict, consulted = answer(hook, tool, probe, mode, cwd, home)
         if not consulted:
             # This mode broke a program the guard never reached, so its verdict says nothing about
             # what the guard does with an unreadable state. Scoring it would hold the guard to its
             # ordinary answer under a name about failure.
             continue
-        evidence.append(mode)
+        evidence.append((tool, mode))
         if policy == NONE:
-            found.append(f"{hook.name}: declares \"{NONE}\" and consulted a broken program in {mode}")
+            found.append(f"{hook.name}: declares \"{NONE}\" and consulted a broken program in "
+                         f"{mode} as {tool}")
         elif verdict != policy:
-            found.append(f"{hook.name}: declares \"{policy}\", answers \"{verdict}\" in {mode}")
+            found.append(f"{hook.name}: declares \"{policy}\", answers \"{verdict}\" in {mode} "
+                         f"as {tool}")
         elif policy == ALLOW and not _backed(hook, tool, probe, mode, cwd, home, subjects):
             found.append(
-                f"{hook.name}: declares \"{ALLOW}\" in {mode} and no other guard refuses its probe, "
-                "so the tool call is guarded by nothing at all")
+                f"{hook.name}: declares \"{ALLOW}\" in {mode} as {tool} and no other guard refuses "
+                "its probe, so the tool call is guarded by nothing at all")
 
     if policy != NONE and not evidence:
         found.append(

@@ -617,6 +617,12 @@ namespace Velvet.Tests
              + "\"content\":" + Quoted(DeclaringFixture + FragmentaryDeclaration) + ","
              + "\"old_string\":" + Quoted(SettledDeclaration) + ","
              + "\"new_string\":" + Quoted(FragmentaryDeclaration) + "}"),
+            // %PROJECT% rather than %SCRATCH%, this being the payload whose subject is a file the
+            // repository tracks: the scratch directory is created without a git repository in it,
+            // so a guard reading git for that would answer about a path in no tree at all.
+            ("a shell command rewriting a tracked file",
+             "\"cwd\":\"%PROJECT%\",\"tool_input\":{\"command\":"
+             + "\"sed -i '' -e s/a/b/ Packages/com.velvet.core/CHANGELOG.md\"}"),
         };
 
         // A declaration reading as a claim on its own line, and one the reader would take

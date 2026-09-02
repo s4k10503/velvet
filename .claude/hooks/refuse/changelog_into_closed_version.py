@@ -37,6 +37,16 @@ The reading is a released section's PUBLISHED LINES, before against the proposed
   `extract_version_section` stops at the first heading matching the version and ends at the next
   `## [`, so a second heading placed above the real one is the whole published note for that
   version, and it need carry no bullets at all to be one.
+
+A Bash command that writes the file is refused whatever it would have written, and that is the one
+verdict here reached without a comparison. The reading above is before-against-proposed, and no
+shell command reaching this presents proposed text: a `sed -i` states a substitution rather than a
+result, and a `cp` source and a heredoc body are text this does not read — reading either would be a
+second grammar beside the one below, and neither has been posed the cases the one below has. So a
+reword of a released section and an entry added under `## [Unreleased]` arrive alike, and letting
+both through is what left this guard registered on two tools while the work went round it. The
+refusal names the editing tools instead, which present the text and get the reading.
+`lib/tracked_writes.py` owns which shapes are read and how narrow that is.
 """
 
 import json
@@ -48,6 +58,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 import repository
+import tracked_writes
 
 # The section this guard compares is the one `release_notes.py` publishes, so it is delimited and
 # unwrapped by that module rather than parsed a second time here. A heading only one of two grammars
@@ -57,7 +68,7 @@ import repository
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts" / "release"))
 import release_notes
 
-HOOK_TOOLS = {"Edit", "Write"}
+HOOK_TOOLS = {"Bash", "Edit", "Write"}
 
 CHANGELOG = "CHANGELOG.md"
 DATED = re.compile(r"^\s*-\s*\d{4}-\d{2}-\d{2}")
@@ -137,18 +148,46 @@ def in_scope(path, cwd):
     return common_git_dir(here) == mine
 
 
-# The verdict reads a tool input, never a shell word, so no operand of this guard can arrive
-# unexpanded.
-UNEXPANDED_POLICY = "n/a"
+# A shell operand this cannot place is not a file it can name, so it drops out of the reading and the
+# command runs. That is the under-approximation `tracked_writes.LIMITS` states.
+UNEXPANDED_POLICY = "allow"
+UNEXPANDED_PROBE = "sed -i '' -e s/a/b/ \"$CHANGELOG\""
 
-# The probe's anchor is a released heading, which is the one line this guard's whole premise says
-# nobody edits.
+# Which file a command writes is git's answer, and one it cannot give leaves this unable to tell a
+# CHANGELOG write from any other, so it counts as one.
+#
+# One payload, posed once per tool this is routed. The Edit half's anchor is a released heading,
+# which is the one line this guard's whole premise says nobody edits.
 UNREADABLE_POLICY = "refuse"
 UNREADABLE_PROBE = {
+    "command": "sed -i '' -e s/a/b/ Packages/com.velvet.core/CHANGELOG.md",
     "file_path": "Packages/com.velvet.core/CHANGELOG.md",
     "old_string": "## [2.0.0] - 2026-08-02\n",
     "new_string": "## [2.0.0] - 2026-08-02\n\n- an entry nobody released\n",
 }
+
+
+def shell_write(command, cwd):
+    """The verdict on a Bash command, which is a refusal wherever it writes a CHANGELOG at all."""
+    written = [path for path in tracked_writes.tracked_writes(command, cwd)
+               if Path(path).name == CHANGELOG and in_scope(path, cwd)]
+    if not written:
+        return 0
+    print("\n".join([
+        f"Refusing this command: it writes {', '.join(sorted(written))}, and what it would write is "
+        "not something this reads.",
+        "",
+        "A released section of that file is a published release note. This check compares the "
+        "section before against the section proposed, and a shell command presents no proposed text "
+        "to it — a substitution is not a result, and a copied source and a heredoc body are text "
+        "this does not read. So an entry filed into a released section and one filed under "
+        "`## [Unreleased]` arrive alike.",
+        "",
+        "Make the change with Edit or Write, which present the text and get that comparison.",
+        "",
+        tracked_writes.LIMITS,
+    ]), file=sys.stderr)
+    return 2
 
 
 def main():
@@ -160,6 +199,8 @@ def main():
         return 0
     tool = event["tool_name"]
     payload = event.get("tool_input", {})
+    if tool == "Bash":
+        return shell_write(payload.get("command", ""), event.get("cwd"))
     path = payload.get("file_path", "")
     if Path(path).name != CHANGELOG:
         return 0
