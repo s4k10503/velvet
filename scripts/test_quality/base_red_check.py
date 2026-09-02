@@ -1906,28 +1906,25 @@ def carried_files(project, since):
     return {name for name in changed if is_test_side(name) and (project / name).exists()}
 
 
-def unbuilt_reason(project, since, log_text):
+def unbuilt_reason(project, since, log_text, withdrawn=()):
     """What to say about a base run that wrote no results file.
 
-    A licence failure, an editor crash and a timeout all leave no results file, and so does a tree the
-    carried files took down. Nothing in the results directory separates them -- which is why the
-    message here used to name the cases and not the cause. The log does: those three blame no source
-    file at all, and a tree the branch's own test surface broke blames the files it carried.
+    Nothing in the results directory separates the ways a run comes to write none -- which is why
+    the message here used to name the cases and not the cause. The editor log does, by being there
+    at all and by what it blames.
 
-    Neither is a reading, so both still fail. What changes is that the second says which files to look
-    at, and that they are this branch's rather than the base's.
+    None of them is a reading, so all of them still fail. What changes is what is said.
     """
-    blamed = compile_error_files(log_text)
     if not log_text:
-        return ("The run left no editor log beside its results, so nothing here can say why it wrote\n"
-                "nothing.")
+        return ("The run left no editor log beside its results, so the editor was never started:\n"
+                "activation or the runner stopped before it, and the job log has what they said.")
+    blamed = compile_error_files(log_text)
     if not blamed:
         if BUILD_STOPPED in log_text:
-            return ("The base tree did not build, and no file under Assets or Packages is blamed for it,\n"
-                    "so the failure sits where a branch carries nothing -- a package under Library, an\n"
-                    "assembly definition, the post-processor. The editor log has it.")
-        return ("Nothing in the log names a source file, so the base tree did not fail to build -- it\n"
-                "failed to run. A licence failure and an editor crash land here.")
+            return ("The base tree did not build, and the compiler blamed no line of a source under\n"
+                    "Assets or Packages for it. The editor log has what it did say.")
+        return ("The editor started, and nothing in its log names a source file or says the scripts\n"
+                "did not build. The log has what stopped it.")
     named = "\n".join("  " + name for name in blamed)
     try:
         carried = carried_files(project, since) if since else set()
@@ -1941,6 +1938,12 @@ def unbuilt_reason(project, since, log_text):
                 "ones this\nbranch carried onto it:\n{}\nA base that cannot build its own sources is "
                 "not a reading about this change.".format(
                     len(outside), len(blamed), "\n".join("  " + name for name in outside)))
+    standing = [name for name in blamed if name in withdrawn]
+    if standing:
+        return ("The base tree did not build, and every file the compiler blamed is one this branch\n"
+                "carried onto it. {} of them already stood at the base's text, withdrawn before the "
+                "round,\nso what failed there is something else the branch carried beside them:\n{}"
+                .format(len(standing), named))
     return ("The base tree did not build, and every file the compiler blamed is one this branch\n"
             "carried onto it:\n{}\nSo the base was never asked. Make them build against the base -- "
             "reaching new API by\nreflection is what the others do -- or withdraw them, or say why "
@@ -2275,7 +2278,7 @@ def main():
         if not wrote:
             print("the base run wrote no result, so nothing it was asked was measured", flush=True)
             print(unbuilt_reason(Path(args.project).resolve(), plan.get("since"),
-                                 log_text_beside(args.results)), flush=True)
+                                 log_text_beside(args.results), plan.get("withdrawn") or ()), flush=True)
         return 1 if report(from_plan(plan["cases"]), from_plan(plan["control"]), reported,
                            plan["canaries"], wrote, plan.get("withdrawn"),
                            plan.get("since")) else 0

@@ -4125,9 +4125,10 @@ class RepositoryTests(unittest.TestCase):
 class UnbuiltBaseTreeTests(unittest.TestCase):
     """What the verdict lane says about a base run that wrote no results file.
 
-    A licence failure, an editor crash, a timeout and a tree the carried files took down all land
-    there, and the results directory separates none of them — which is why the message named the cases
-    and not the cause. The editor log does: the first three blame no source file.
+    The results directory separates none of the ways a run comes to write none — which is why the
+    message named the cases and not the cause. The editor log does: an activation failure leaves
+    none, a crash leaves one blaming nothing, a tree the carried files took down leaves one blaming
+    them.
     """
 
     PRODUCTION = "Packages/p/Runtime/A/Old.cs"
@@ -4155,8 +4156,8 @@ class UnbuiltBaseTreeTests(unittest.TestCase):
                         ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", message]):
             subprocess.run(["git", "-C", str(self.project), *command], capture_output=True)
 
-    def said(self, log, since=None):
-        return base_red_check.unbuilt_reason(self.project, since or self.since, log)
+    def said(self, log, since=None, withdrawn=()):
+        return base_red_check.unbuilt_reason(self.project, since or self.since, log, withdrawn)
 
     def test_Given_EveryBlamedFileIsOneTheBranchCarried_When_TheLogIsRead_Then_ItSaysTheBaseWasNeverAsked(self):
         # Arrange -- the phrase the other reading shares is not enough: a carried set read as empty
@@ -4203,24 +4204,34 @@ class UnbuiltBaseTreeTests(unittest.TestCase):
         self.assertIn("cannot be read here",
                       self.said(self.CARRIED + "(1,1): error CS0012: x\n", since="0" * 40))
 
-    def test_Given_ABuildStoppedBlamingNothingUnderThePackages_When_TheLogIsRead_Then_ItSaysWhereToLook(self):
+    def test_Given_ABuildStoppedBlamingNoSourceLine_When_TheLogIsRead_Then_ItSaysTheLogHasTheRest(self):
         # Act / Assert
-        self.assertIn("where a branch carries nothing", self.said(base_red_check.BUILD_STOPPED + "\n"))
+        self.assertIn("blamed no line", self.said(base_red_check.BUILD_STOPPED + ".\n"))
 
-    def test_Given_TheLineTheEditorWritesWhenScriptsDoNotBuild_When_Read_Then_TheConstantIsIt(self):
-        # Arrange -- the editor's own line, read from its logs on this machine and on the runner. A
-        # constant a typo away from it reads every stopped build as a run that never started.
+    def test_Given_TheEditorsOwnLines_When_TheConstantIsRead_Then_ItSeparatesAStoppedBuildFromACompiledOne(self):
+        # Arrange -- two lines the editor writes, read from its logs on this machine and on the
+        # runner: the one a stopped build ends on, and the one every compiled run carries. A constant
+        # a typo away from the first reads every stopped build as a crash; one shortened to a word
+        # both share reads every crash as a stopped build.
+        stopped, compiled = "Scripts have compiler errors.\n", "DisplayProgressbar: Compiling Scripts\n"
+
         # Act / Assert
-        self.assertIn(base_red_check.BUILD_STOPPED,
-                      "AssetDatabase: script compilation time: 4.383004s\nScripts have compiler errors.\n")
+        self.assertEqual((base_red_check.BUILD_STOPPED in stopped, base_red_check.BUILD_STOPPED in compiled),
+                         (True, False))
 
-    def test_Given_ALogNamingNoSource_When_ItIsRead_Then_ItSaysTheRunFailedRatherThanTheBuild(self):
-        # Act / Assert -- what a licence failure and a crash leave.
-        self.assertIn("failed to run", self.said("Failed to activate license\n"))
+    def test_Given_ALogNamingNoSourceAndNoStoppedBuild_When_ItIsRead_Then_ItSaysTheEditorStopped(self):
+        # Act / Assert -- a run that got as far as compiling and no further.
+        self.assertIn("what stopped it", self.said("DisplayProgressbar: Compiling Scripts\n"))
 
-    def test_Given_NoEditorLogAtAll_When_TheReasonIsBuilt_Then_ItSaysNothingCanBeRead(self):
-        # Act / Assert -- an empty text is not a log that names nothing.
-        self.assertIn("no editor log", self.said(""))
+    def test_Given_NoEditorLogAtAll_When_TheReasonIsBuilt_Then_ItSaysTheEditorWasNeverStarted(self):
+        # Act / Assert -- an absent log is the shape an activation failure leaves, not a log naming nothing.
+        self.assertIn("never started", self.said(""))
+
+    def test_Given_ABlamedFileAlreadyWithdrawn_When_TheLogIsRead_Then_ItSaysWhatFailedIsBesideIt(self):
+        # Act / Assert -- the base's own text of a withdrawn file stands in the tree, so a blame there
+        # is not that file's to fix.
+        self.assertIn("already stood at the base's text",
+                      self.said(self.CARRIED + "(1,1): error CS0012: x\n", withdrawn={self.CARRIED}))
 
 
 if __name__ == "__main__":
