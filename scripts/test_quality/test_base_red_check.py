@@ -3577,7 +3577,8 @@ class LocalLoopTests(unittest.TestCase):
     # A round the log does not explain reaches it on the base as it does here.
     def test_Given_ALogNamingNothing_When_TheLoopRuns_Then_ItWithdrawsOneSilentFileAndAsksAgain(self):
         # Arrange -- a round the log does not explain: the silent file goes back to the base's text
-        # on its own, one per round, and the round after it finds nothing left to ask.
+        # on its own, one per round, and the round after it asks the canary alone and finds
+        # nothing more to withdraw.
         # Act
         _, rounds = self.loop(lambda tree, attempt: "Aborting batchmode due to failure:\n")
 

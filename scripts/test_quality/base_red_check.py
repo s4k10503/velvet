@@ -2139,8 +2139,8 @@ def local_remedy(since, cases):
                 "".join(" --platform " + platform for platform in platforms), since or "origin/main"))
 
 
-# What a round does, said once: `exhausted_reason` prints it and `--max-rounds` explains itself by
-# it, and the two drifted apart in one edit when each carried its own copy.
+# What a round does, said once: the exhausted reason carries it and `--max-rounds` explains
+# itself by it, and the two drifted apart in one edit when each carried its own copy.
 ROUND_TAKES = ("A round withdraws every file the editor blamed, or one it named nothing about, or "
                "takes out the ones it blamed again")
 
