@@ -797,10 +797,8 @@ class ExhaustedLoopTests(unittest.TestCase):
                          (True, True, True))
 
     def test_Given_MoreCarriedFilesThanTheMultiplierReaches_When_TheReasonIsBuilt_Then_TheFloorClearsTheCarriedCount(self):
-        # Arrange -- a run whose rounds the log explains nothing about withdraws one silent file each,
-        # so it spends a round per file holding a live case and then needs one more to ask the tree
-        # it has emptied. Advice equal to the carried count sends the reader back for the same
-        # message; the count is the bound on those files, so one past it is the advice that reaches.
+        # Arrange -- advice equal to the carried count sends the reader back for the same message,
+        # for the reason `exhausted_reason`'s own comment gives; one past it is what reaches.
         # Act
         said = base_red_check.exhausted_reason(1, {"a.cs"}, 5)
 
@@ -808,10 +806,10 @@ class ExhaustedLoopTests(unittest.TestCase):
         self.assertIn("--max-rounds 6", said)
 
     # GREEN_ON_BASE(characterization): the multiplier is the base's own, four times what was spent.
-    # This branch halved it once with nothing going red, so the case is what holds it there.
+    # Nothing held it there, which is what this case is for.
     def test_Given_ARunThatSpentMoreThanTheCarriedCount_When_TheReasonIsBuilt_Then_TheMultiplierCarriesTheAdvice(self):
         # Arrange -- past the floor the advice is the multiplier's, and how deep a round's put-backs
-        # go is what it guesses at; the branch halved it once with nothing going red.
+        # go is what it guesses at.
         # Act
         said = base_red_check.exhausted_reason(4, {"a.cs"}, 3)
 
@@ -3496,6 +3494,35 @@ class LocalLoopTests(unittest.TestCase):
         # Assert
         self.assertIn("withdrawn 1 of the 1 carried file(s), 1 of them taken out", printed)
 
+    def test_Given_ALoopThatEmptiedTheTreeOnItsLastAllowedRound_When_ItReports_Then_TheBudgetIsNotTheRemedy(self):
+        # Arrange -- a round count cannot tell a loop that ran out from one that finished on the
+        # round its budget happens to equal, and raising the budget changes nothing for the second.
+        # The budget is two: the first round withdraws the one carried file, and the second finds
+        # nothing left to ask and stops of its own accord on the last round it was allowed.
+        base = {self.ENUM: "enum Status { Idle }\n",
+                self.CANARY: self.fixture("CanaryTests", "Assert.Pass()"),
+                self.FIXTURE: self.fixture("ProbeTests", "Assert.Pass()")}
+        branch = dict(base, **{self.FIXTURE: self.fixture("ProbeTests", "Assert.That(1, Is.EqualTo(1))")})
+        root, since = two_commit_repo(self, base, branch)
+
+        def fake_run_unity(unity, tree, platform, fixtures, results, log, timeout):
+            Path(log).write_text("Scripts have compiler errors\n")
+            return 1.0, 0
+
+        held = io.StringIO()
+        argv, run_unity, wait = sys.argv, base_red_check.run_unity, base_red_check.wait_for_quiet
+        sys.argv = ["base_red_check.py", "--project", str(root), "--base", since, "--lane", "csharp",
+                    "--platform", "EditMode", "--output", str(root / "out"), "--max-rounds", "2"]
+        base_red_check.run_unity, base_red_check.wait_for_quiet = fake_run_unity, lambda seconds: True
+        try:
+            with contextlib.redirect_stdout(held):
+                base_red_check.main()
+        finally:
+            sys.argv, base_red_check.run_unity, base_red_check.wait_for_quiet = argv, run_unity, wait
+
+        # Act / Assert
+        self.assertNotIn("--max-rounds", held.getvalue())
+
     def test_Given_TheLoopStoppedOnTheBasesOwnFileAtTheBudget_When_ItReports_Then_TheBudgetIsNotTheRemedy(self):
         # Arrange -- a budget of one, spent on the round that found the base's own file: raising the
         # budget is not what a run stopped for a cause wants told.
@@ -4503,9 +4530,9 @@ class UnbuiltBaseTreeTests(unittest.TestCase):
         self.assertEqual((printed.returncode, "GoneTests.cs" in printed.stdout), (1, True))
 
     def test_Given_AFileTheStaticReadingWithdrewAndARoundTookOut_When_TheVerdictLaneRuns_Then_ItIsCounted(self):
-        # Arrange -- `replan` reaches a removal from the static withdrawal as well as from its own,
-        # so a file can be in `removed` and in no other record; a count off the per-round withdrawals
-        # alone says the rounds took out more files than they touched.
+        # Arrange -- a file can be in `removed` and in no other record, for the reason `replan`'s
+        # `already` gives; a count off the per-round withdrawals alone then says the rounds took out
+        # more files than they touched.
         holder = tempfile.mkdtemp(prefix="base-red-static-out-")
         self.addCleanup(shutil.rmtree, holder, ignore_errors=True)
         case = base_red_check.Case("N.NewTests.Given_A_When_B_Then_C", self.CARRIED, 1, 2)
@@ -4524,7 +4551,7 @@ class UnbuiltBaseTreeTests(unittest.TestCase):
              "--results", str(Path(holder, "results"))], capture_output=True, text=True)
 
         # Assert
-        self.assertIn("withdrew 1 carried file(s), 1 of them taken out", printed.stdout)
+        self.assertIn("touched 1 carried file(s), 1 of them taken out", printed.stdout)
 
     def test_Given_AFileAnEarlierRoundPutBack_When_TheLastRoundBlamesIt_Then_ItIsNotTheReadersToWithdraw(self):
         # Arrange -- the last round has no replan after it, so its log reaches the verdict directly;
@@ -4570,7 +4597,7 @@ class UnbuiltBaseTreeTests(unittest.TestCase):
              "--results", str(Path(holder, "results"))], capture_output=True, text=True)
 
         # Assert
-        self.assertIn("withdrew 1 carried file(s), 1 of them taken out", printed.stdout)
+        self.assertIn("touched 1 carried file(s), 1 of them taken out", printed.stdout)
 
     def test_Given_AWithdrawnFileInTheReading_When_TheVerdictLaneRuns_Then_ItReadsTheWithdrawal(self):
         # Arrange -- the plan's field has to reach the reason through the lane, or the message

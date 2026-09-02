@@ -284,8 +284,8 @@ jobs:
   #
   # Four rounds at most, where the local harness takes up to `--max-rounds` of them. A base that
   # cannot build one carried file writes no results for anything, so the `read` step withdraws what
-  # it can prove branch-only before the first round. What that reading cannot prove, a round's own editor log
-  # names, and each round after the first is the action below: it puts every carried file the
+  # it can prove branch-only before the first round. What that reading cannot prove, a round's own
+  # editor log names, and each round after the first is the action below: it puts every carried file the
   # compiler blamed back to the base's text, takes out the ones it blames again at that text, and
   # asks again. Each put-back can uncover the next round's failures — a file at the base's text fails
   # against what the branch still carries, a sibling that built against the branch's text of it

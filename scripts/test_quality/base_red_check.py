@@ -2164,8 +2164,9 @@ def exhausted_reason(spent, withdrawn, carried, removed=()):
     # costs nothing: the loop breaks as soon as nothing is left to ask. What the other regime needs
     # is how deep the put-backs go, and the multiplier only guesses at that.
     return ("\n{} round(s) compiled nothing, having withdrawn {} of the {} carried file(s){}.\n"
-            "A round withdraws every file the editor blamed, or one it named nothing about,\n"
-            "so the rounds a change needs is how deep the put-backs go:\n"
+            "A round withdraws every file the editor blamed, or one it named nothing\n"
+            "about, or takes out the ones it blamed again, so the rounds a change needs\n"
+            "is how deep the put-backs go:\n"
             "  --max-rounds {}\n"
             "{}".format(spent, len(every), carried,
                         "" if not removed else
@@ -2280,7 +2281,7 @@ def main():
     parser.add_argument("--max-rounds", type=int, default=8,
                         help="rounds to ask the base in before the C# lane gives up (default: 8). "
                              "A round withdraws every file the editor blamed, or one it named "
-                             "nothing about, or takes out the ones it blamed again, so this is "
+                             "nothing about, or takes out the ones it blamed again, so this is a "
                              "count of rounds rather than of files")
     parser.add_argument("--plan", action="store_true", help="print the cases and exit without running")
     parser.add_argument("--emit", help="build the base tree, write the reading here and stop, for a "
@@ -2288,8 +2289,9 @@ def main():
                                        "editor binary. Needs --base-tree")
     parser.add_argument("--verdict", help="decide from an --emit reading and a results file or "
                                           "directory, without building or running anything")
-    parser.add_argument("--replan", help="after a round that wrote nothing: withdraw every carried "
-                                          "file its editor log blames, record them in this --emit "
+    parser.add_argument("--replan", help="after a round that wrote nothing: put every carried file "
+                                          "its editor log blames back to the base's text, take out "
+                                          "the ones already there, record them in this --emit "
                                           "reading, move --results aside, and print the fixtures "
                                           "the next round should ask. Needs --results and --base-tree")
     parser.add_argument("--results", help="what --verdict and --replan read the run from")
@@ -2320,11 +2322,11 @@ def main():
                                  log_text_beside(args.results), stood,
                                  plan.get("removed", {})), flush=True)
             if plan.get("rounds", 1) > 1:
-                # The files the rounds touched, with the share taken out named apart. A file in both
-                # records is one file, and `replan` reaches a removal from the static withdrawal as
-                # well as from its own, so the union is what "of them" can be said of.
+                # The files the rounds touched, with the share taken out named apart: a file in both
+                # records is one file, and a removal can reach a file no round withdrew, which is
+                # what `replan`'s own `already` decides.
                 touched = set(plan.get("blamed", {})) | set(plan.get("removed", {}))
-                print("That was round {}; the rounds before it withdrew {} carried file(s), {} of them "
+                print("That was round {}; the rounds before it touched {} carried file(s), {} of them "
                       "taken out\nof the tree, and the base still did not build.".format(
                           plan["rounds"], len(touched), len(plan.get("removed", {}))),
                       flush=True)
@@ -2419,6 +2421,7 @@ def main():
     put_back = set()
     removed = set()
     stopped_for_cause = False
+    out_of_rounds = False
     try:
         print("  building the base tree at {}".format(base_tree), flush=True)
         build_base_tree(project, since, base_tree, carry, drop, args.warm_library)
@@ -2445,6 +2448,9 @@ def main():
         for platform in platforms:
             wanted = [case for case in cases + control
                       if kind_of(case.path) == "csharp" and platform_of(case.path) == platform]
+            # `for ... else` rather than a round count: a loop that emptied the tree on the round
+            # its budget happens to equal has spent every round and run out of nothing, and telling
+            # its reader to raise the budget points away from why no round wrote.
             for attempt in range(1, args.max_rounds + 1):
                 rounds_spent = max(rounds_spent, attempt)
                 # `put_back` is one set across platforms rather than one per platform: the tree is
@@ -2513,6 +2519,8 @@ def main():
                     removed.add(offender)
                     print("  removed: {} -- its base text did not build beside what the branch "
                           "carried".format(offender), flush=True)
+            else:
+                out_of_rounds = True
             if stopped_for_cause:
                 break
     finally:
@@ -2525,7 +2533,7 @@ def main():
 
     if not ever_wrote:
         print("no round wrote a result, so nothing any of them was asked was measured", flush=True)
-        if rounds_spent >= args.max_rounds and not stopped_for_cause:
+        if out_of_rounds and not stopped_for_cause:
             print(exhausted_reason(rounds_spent, put_back, len(carry), removed), flush=True)
     if met_a_neighbour:
         print("\nA second editor was up during at least one of these runs, so a failure here has a\n"
