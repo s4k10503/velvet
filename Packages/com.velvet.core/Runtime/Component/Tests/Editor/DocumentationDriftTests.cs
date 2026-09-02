@@ -71,12 +71,7 @@ namespace Velvet.Tests
             "AllocatingGCMemory",
             "UpdateForRepaint", "Alloc", "StandaloneOSX", "MacOS", "InitTestScene", "Unity_lic", "UE",
             "VELVET_STORY_CAPTURE_DIR",
-            "Unreleased", "Highlights", "Added", "Changed", "Breaking", "YYYY", "MM", "DD",
-            // A dated CHANGELOG section describes the tree that shipped, so a type v3.0.0 carried and
-            // this one removes is cited there correctly and resolves nowhere here. Rewriting a published
-            // note to name the replacement would describe a version that never existed. The entry below
-            // is the name itself, as content rather than as a reference to anything.
-            "UniTask"
+            "Unreleased", "Highlights", "Added", "Changed", "Breaking", "YYYY", "MM", "DD"
         };
 
         // Paths the tree is right not to hold: each is written at run time inside a git-ignored
@@ -683,9 +678,8 @@ namespace Velvet.Tests
         public void Given_ADatedChangelogSection_When_TheProseIsRead_Then_ItIsNotThere()
         {
             // Arrange — a released note names what it shipped, and a later release renaming the type does
-            // not make the older note wrong. Measured on the branch that replaced the awaitable this
-            // package used to depend on: the v3.0.0 note cites the old name twice, correctly, and the
-            // guard reported both.
+            // not make the older note wrong. Measured on the branch removing `UniTask`: the v3.0.0 note
+            // cites it twice, correctly, and the guard reported both.
             const string changelog = "# Changelog\n\n## [Unreleased]\n\n- `StillHere` is coming.\n\n"
                                      + "## [3.0.0] - 2026-08-27\n\n- `GoneNow` shipped here.\n";
 
@@ -747,9 +741,8 @@ namespace Velvet.Tests
         /// <remarks>
         /// A dated section describes a tree that shipped, and its names resolved then. Read as a claim
         /// about the tree that exists, every name a published release note cites is pinned in the source
-        /// forever, and removing one fails the guard — measured on the branch that replaced the
-        /// awaitable this package used to depend on, whose v3.0.0 note names the old type twice and
-        /// correctly.
+        /// forever, and removing one fails the guard — measured on the branch that removes `UniTask`,
+        /// whose v3.0.0 note names it twice and correctly.
         /// <para>
         /// Neither repair works: the released section cannot be edited, `changelog_into_closed_version.py`
         /// refuses that write and the note is published under its tag; and an allowlist entry is one name

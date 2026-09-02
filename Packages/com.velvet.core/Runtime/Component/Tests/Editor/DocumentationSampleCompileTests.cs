@@ -80,6 +80,8 @@ namespace Velvet.Tests
             }
         }
 
+        // GREEN_ON_BASE(refactor): the samples compile against what a consumer references, and none of
+        // them needed the dependency this change stops adding.
         [Test]
         public void Given_EveryMarkedDocumentationSample_When_CompiledAgainstTheShippedAssembly_Then_ItCompiles()
         {

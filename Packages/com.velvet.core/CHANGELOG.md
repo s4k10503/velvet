@@ -463,7 +463,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Which of the two an `await` is, C# decides at run time. An `await` of a task that had **already
   completed** does not suspend — the continuation runs inline — so the callback carries on inside the
   scope and the write after that `await` is a transition too, `isPending` staying lit until it commits on
-  the delayed tier. `await UniTask.CompletedTask` reaches it, as does any `async UniTask` the action
+  the delayed tier. `await VelvetTask.CompletedTask` reaches it, as does any `async VelvetTask` the action
   awaits that returns without suspending — a cache answering from memory being the shape to expect. One
   source line therefore takes either schedule depending on the data, and the counter-intuitive way round:
   the cache hit that answered instantly is the one whose write waits out the delayed tier, where the miss
