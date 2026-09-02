@@ -3497,8 +3497,9 @@ class LocalLoopTests(unittest.TestCase):
     def test_Given_ALoopThatEmptiedTheTreeOnItsLastAllowedRound_When_ItReports_Then_TheBudgetIsNotTheRemedy(self):
         # Arrange -- a round count cannot tell a loop that ran out from one that finished on the
         # round its budget happens to equal, and raising the budget changes nothing for the second.
-        # The budget is two: the first round withdraws the one carried file, and the second finds
-        # nothing left to ask and stops of its own accord on the last round it was allowed.
+        # The budget is two: the first round withdraws the one carried file, and the second asks
+        # the canary alone, finds nothing more to withdraw, and stops of its own accord on the last
+        # round it was allowed.
         base = {self.ENUM: "enum Status { Idle }\n",
                 self.CANARY: self.fixture("CanaryTests", "Assert.Pass()"),
                 self.FIXTURE: self.fixture("ProbeTests", "Assert.Pass()")}
@@ -3520,8 +3521,10 @@ class LocalLoopTests(unittest.TestCase):
         finally:
             sys.argv, base_red_check.run_unity, base_red_check.wait_for_quiet = argv, run_unity, wait
 
-        # Act / Assert
-        self.assertNotIn("--max-rounds", held.getvalue())
+        # Act / Assert -- the round it reached rides along, since an absence over a run that never
+        # started a round is an absence over nothing.
+        self.assertEqual(("EditMode attempt 2" in held.getvalue(),
+                          "--max-rounds" in held.getvalue()), (True, False))
 
     def test_Given_TheLoopStoppedOnTheBasesOwnFileAtTheBudget_When_ItReports_Then_TheBudgetIsNotTheRemedy(self):
         # Arrange -- a budget of one, spent on the round that found the base's own file: raising the

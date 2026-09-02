@@ -113,6 +113,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import textwrap
 import time
 import tokenize
 import xml.etree.ElementTree as ET
@@ -2138,6 +2139,12 @@ def local_remedy(since, cases):
                 "".join(" --platform " + platform for platform in platforms), since or "origin/main"))
 
 
+# What a round does, said once: `exhausted_reason` prints it and `--max-rounds` explains itself by
+# it, and the two drifted apart in one edit when each carried its own copy.
+ROUND_TAKES = ("A round withdraws every file the editor blamed, or one it named nothing about, or "
+               "takes out the ones it blamed again")
+
+
 def exhausted_reason(spent, withdrawn, carried, removed=()):
     """What a loop that ran out of rounds without ever compiling the base has to say for itself.
 
@@ -2146,8 +2153,8 @@ def exhausted_reason(spent, withdrawn, carried, removed=()):
     many rounds it spent, how much of the carried set it put back, and that the budget is a flag.
 
     Whether the budget is what ended the run is the caller's to know, and it does not print this
-    otherwise: a run that stopped short of its budget stopped for some other reason, and raising the
-    budget is not its remedy.
+    otherwise: a run that stopped for any other reason has some other remedy, and the loop's own
+    comment says why a count of rounds cannot answer that.
     """
     if not spent:
         return ""
@@ -2164,13 +2171,13 @@ def exhausted_reason(spent, withdrawn, carried, removed=()):
     # costs nothing: the loop breaks as soon as nothing is left to ask. What the other regime needs
     # is how deep the put-backs go, and the multiplier only guesses at that.
     return ("\n{} round(s) compiled nothing, having withdrawn {} of the {} carried file(s){}.\n"
-            "A round withdraws every file the editor blamed, or one it named nothing\n"
-            "about, or takes out the ones it blamed again, so the rounds a change needs\n"
-            "is how deep the put-backs go:\n"
+            "{}\n"
             "  --max-rounds {}\n"
             "{}".format(spent, len(every), carried,
                         "" if not removed else
                         ", {} of them taken out of the tree".format(len(removed)),
+                        textwrap.fill(ROUND_TAKES + ", so the rounds a change needs is how deep "
+                                      "the put-backs go:", width=84),
                         max(carried + 1, spent * 4),
                         "  withdrawn:\n" + named if every else ""))
 
@@ -2280,9 +2287,7 @@ def main():
                         help="seconds to wait for another Unity run to finish")
     parser.add_argument("--max-rounds", type=int, default=8,
                         help="rounds to ask the base in before the C# lane gives up (default: 8). "
-                             "A round withdraws every file the editor blamed, or one it named "
-                             "nothing about, or takes out the ones it blamed again, so this is a "
-                             "count of rounds rather than of files")
+                             + ROUND_TAKES + ", so this is a count of rounds rather than of files")
     parser.add_argument("--plan", action="store_true", help="print the cases and exit without running")
     parser.add_argument("--emit", help="build the base tree, write the reading here and stop, for a "
                                        "runner that reaches Unity through something other than the "
@@ -2448,9 +2453,10 @@ def main():
         for platform in platforms:
             wanted = [case for case in cases + control
                       if kind_of(case.path) == "csharp" and platform_of(case.path) == platform]
-            # `for ... else` rather than a round count: a loop that emptied the tree on the round
-            # its budget happens to equal has spent every round and run out of nothing, and telling
-            # its reader to raise the budget points away from why no round wrote.
+            # `for ... else` rather than a round count: a loop that found nothing left to withdraw
+            # on the round its budget happens to equal has spent every round and run out of
+            # nothing, and telling its reader to raise the budget points away from why no round
+            # wrote. A round count cannot tell that from a loop the budget stopped mid-withdrawal.
             for attempt in range(1, args.max_rounds + 1):
                 rounds_spent = max(rounds_spent, attempt)
                 # `put_back` is one set across platforms rather than one per platform: the tree is

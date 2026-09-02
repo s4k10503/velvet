@@ -405,17 +405,16 @@ costs; `--warm-library` copies an existing `Library` into it, sharing blocks whe
 `Test ▸ base-red-python` runs the Python lane on every pull request and needs no licence.
 `Test ▸ base-red` runs the C# lane where one is configured, in at most four rounds where the local
 run takes up to `--max-rounds` of them: a base that cannot build one carried file writes no results
-for anything, so
-the workflow withdraws what the static comparison above proves before its first round, and what each
-round's own editor log blames before the next — every carried file the compiler named, put back to
-the base's text at once, and the ones it names again at that text taken out of the tree, since
-their cases already read as unbuildable and putting back what it failed against would cost every
-file still building against the branch's text its reading. Both flows withdraw by that rule, and the local loop
-alone keeps a second for a round whose log names nothing: one silent file at a time, which it says
-as it goes rather than making it the case's verdict. A file the log
-blames that the branch did not carry is the base failing to build itself, and neither flow spends a
-further round on it. A last round that still writes nothing measured nothing, fails, and prints the
-local command. Run it locally on a branch whose tests are the point.
+for anything, so the workflow withdraws what the static comparison above proves before its first
+round, and what each round's own editor log blames before the next — every carried file the
+compiler named, put back to the base's text at once, and the ones it names again at that text taken
+out of the tree, since their cases already read as unbuildable and putting back what it failed
+against would cost every file still building against the branch's text its reading. Both flows
+withdraw by that rule, and the local loop alone keeps a second for a round whose log names nothing:
+one silent file at a time, which it says as it goes rather than making it the case's verdict. A
+file the log blames that the branch did not carry is the base failing to build itself, and neither
+flow spends a further round on it. A last round that still writes nothing measured nothing, fails,
+and prints the local command. Run it locally on a branch whose tests are the point.
 `scripts/test_quality/test_base_red_check.py` holds the reader against every test file in this
 repository and runs in `Test ▸ test-quality`.
 
