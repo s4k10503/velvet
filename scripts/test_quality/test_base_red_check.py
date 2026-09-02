@@ -1060,6 +1060,15 @@ class CompileErrorTests(unittest.TestCase):
         # Act / Assert
         self.assertEqual(base_red_check.compile_error_files(log), [])
 
+    def test_Given_AnAnalyzerErrorRatherThanACompilerOne_When_TheLogIsRead_Then_TheSourceIsBlamed(self):
+        # Arrange -- the analyzers under Generators~ report at error severity, and a build they stop
+        # writes no results file either.
+        log = "Packages/x/Runtime/A/Tests/Editor/BTests.cs(9,5): error VEL501: a hook outside a component\n"
+
+        # Act / Assert
+        self.assertEqual(base_red_check.compile_error_files(log),
+                         ["Packages/x/Runtime/A/Tests/Editor/BTests.cs"])
+
 
 class VerdictTests(unittest.TestCase):
     def probe(self, declaration=None):
@@ -4121,38 +4130,68 @@ class UnbuiltBaseTreeTests(unittest.TestCase):
     and not the cause. The editor log does: the first three blame no source file.
     """
 
+    PRODUCTION = "Packages/p/Runtime/A/Old.cs"
+    CARRIED = "Packages/p/Runtime/A/Tests/Editor/NewTests.cs"
+
     def setUp(self):
         self.project = Path(tempfile.mkdtemp(prefix="base-red-unbuilt-"))
         self.addCleanup(shutil.rmtree, self.project, ignore_errors=True)
-        for command in (["init", "-q", "-b", "main"],):
-            subprocess.run(["git", "-C", str(self.project), *command], capture_output=True)
-        (self.project / "Old.cs").write_text("class Old {}\n")
+        subprocess.run(["git", "-C", str(self.project), "init", "-q", "-b", "main"], capture_output=True)
+        self.write(self.PRODUCTION, "class Old {}\n")
         self.commit("base")
         self.since = subprocess.run(["git", "-C", str(self.project), "rev-parse", "HEAD"],
                                     capture_output=True, text=True).stdout.strip()
-        (self.project / "New.cs").write_text("class New {}\n")
+        self.write(self.PRODUCTION, "class Old { int x; }\n")
+        self.write(self.CARRIED, "class NewTests {}\n")
         self.commit("branch")
+
+    def write(self, relative, text):
+        path = self.project / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text)
 
     def commit(self, message):
         for command in (["add", "-A", "."],
                         ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", message]):
             subprocess.run(["git", "-C", str(self.project), *command], capture_output=True)
 
-    def said(self, log):
-        where = Path(tempfile.mkdtemp(prefix="base-red-unbuilt-log-"))
-        self.addCleanup(shutil.rmtree, where, ignore_errors=True)
-        (where / "editmode.log").write_text(log)
-        return base_red_check.unbuilt_reason(
-            self.project, self.since, base_red_check.blamed_by_the_compiler(where))
+    def said(self, log, since=None):
+        return base_red_check.unbuilt_reason(self.project, since or self.since, log)
 
     def test_Given_EveryBlamedFileIsOneTheBranchCarried_When_TheLogIsRead_Then_ItSaysTheBaseWasNeverAsked(self):
-        # Act / Assert -- the git reading runs here, which is the half a log naming nothing skips.
-        self.assertIn("carried onto it", self.said("New.cs(1,1): error CS0012: x\n"))
-
-    def test_Given_ABlamedFileTheBranchDidNotTouch_When_TheLogIsRead_Then_ItSaysTheBaseIsTheProblem(self):
-        # Arrange -- a base that cannot build its own sources says nothing about this change.
         # Act / Assert
-        self.assertIn("not this", self.said("Old.cs(1,1): error CS0103: x\n"))
+        self.assertIn("carried onto it", self.said(self.CARRIED + "(1,1): error CS0012: x\n"))
+
+    def test_Given_ABlamedProductionFileTheBranchChanged_When_TheLogIsRead_Then_ItSaysTheBaseIsTheProblem(self):
+        # Arrange -- the branch changed it, and the base tree still holds its own text of it: only
+        # the test side is carried, so a blame there is the base failing to build itself.
+        # Act / Assert
+        self.assertIn("not ones this\nbranch carried", self.said(self.PRODUCTION + "(1,1): error CS0103: x\n"))
+
+    def test_Given_NineBlamedFiles_When_TheLogIsRead_Then_EveryOneIsNamed(self):
+        # Arrange -- "every file the compiler blamed" over a list that stopped short would send the
+        # reader to withdraw the ones shown and leave the rest in the tree.
+        names = ["Packages/p/Runtime/A/Tests/Editor/T{}Tests.cs".format(n) for n in range(9)]
+        for name in names:
+            self.write(name, "class T {}\n")
+        self.commit("more")
+
+        # Act
+        said = self.said("".join(name + "(1,1): error CS0012: x\n" for name in names))
+
+        # Assert
+        self.assertEqual([name for name in names if name not in said], [])
+
+    def test_Given_ACheckoutThatCannotDiff_When_TheLogIsRead_Then_ItSaysSoRatherThanBlamingTheBase(self):
+        # Arrange -- a diff that fails leaves nothing carried, and a reading over that would call
+        # every blamed file the base's own.
+        # Act / Assert
+        self.assertIn("cannot be read here",
+                      self.said(self.CARRIED + "(1,1): error CS0012: x\n", since="0" * 40))
+
+    def test_Given_ABuildStoppedWithNoFileNamed_When_TheLogIsRead_Then_ItSaysTheFailureIsAnAssemblys(self):
+        # Act / Assert
+        self.assertIn("named no source file", self.said(base_red_check.BUILD_STOPPED + "\n"))
 
     def test_Given_ALogNamingNoSource_When_ItIsRead_Then_ItSaysTheRunFailedRatherThanTheBuild(self):
         # Arrange -- what a licence failure, a crash and a timeout leave.

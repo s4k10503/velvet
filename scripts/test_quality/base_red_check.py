@@ -918,8 +918,9 @@ def wait_for_quiet(seconds):
     return True
 
 
+# Not pinned to CS, for the reason `mutation_check.BUILD_ERROR` records.
 COMPILE_ERROR = re.compile(
-    r"^(?:.*?[\\/])?((?:Assets|Packages)[\\/][^(]+)\(\d+,\d+\): error (CS\d+)")
+    r"^(?:.*?[\\/])?((?:Assets|Packages)[\\/][^(]+)\(\d+,\d+\): error ([A-Z]+\d+)")
 
 # The compiler saying a name does not resolve. One of these on a carried file means withdrawing that
 # file lets the rest be measured, which is what the round loop is for.
@@ -1889,26 +1890,24 @@ def from_plan(entries):
     return cases
 
 
-# `<file>(line,col): error CSxxxx:` is how the compiler writes one into the editor log, and it is the
-# only line in that log that names a source file as the reason a run stopped.
-BLAMED = re.compile(r"^(\S+\.cs)\(\d+,\d+\): error ", re.M)
+def log_text_beside(results):
+    """Every editor log the runner left in the results directory, as one text."""
+    path = Path(results)
+    logs = sorted(path.glob("*.log")) if path.is_dir() else []
+    return "\n".join(log.read_text(encoding="utf-8", errors="replace") for log in logs)
 
 
-def blamed_by_the_compiler(where):
-    """The source files a Unity log beside `where` reports a compile error against."""
-    path = Path(where)
-    logs = sorted(path.glob("*.log")) if path.is_dir() else ([path] if path.suffix == ".log" else [])
-    found = set()
-    for log in logs:
-        try:
-            found |= set(BLAMED.findall(log.read_text(encoding="utf-8", errors="replace")))
-        except OSError:
-            continue
-    return found
+BUILD_STOPPED = "Scripts have compiler errors"
 
 
-def unbuilt_reason(project, since, blamed):
-    """What to say about a base run that wrote no results file, given what the compiler blamed.
+def carried_files(project, since):
+    """The files `build_base_tree` copies onto the base: the branch's test side, as it stands now."""
+    changed = changed_lines_by_file(project, since)
+    return {name for name in changed if is_test_side(name) and (project / name).exists()}
+
+
+def unbuilt_reason(project, since, log_text):
+    """What to say about a base run that wrote no results file.
 
     A licence failure, an editor crash and a timeout all leave no results file, and so does a tree the
     carried files took down. Nothing in the results directory separates them -- which is why the
@@ -1918,17 +1917,26 @@ def unbuilt_reason(project, since, blamed):
     Neither is a reading, so both still fail. What changes is that the second says which files to look
     at, and that they are this branch's rather than the base's.
     """
+    blamed = compile_error_files(log_text)
     if not blamed:
+        if BUILD_STOPPED in log_text:
+            return ("The base tree did not build, and the compiler named no source file for it, so the\n"
+                    "failure is an assembly's rather than a file's. The editor log has it.")
         return ("Nothing in the log names a source file, so the base tree did not fail to build -- it\n"
                 "failed to run. A licence, an editor crash and a timeout all land here.")
-    read = git(project, "diff", "--name-only", since, check=False) if since else None
-    changed = set(read.stdout.split()) if read is not None and read.returncode == 0 else set()
-    outside = sorted(name for name in blamed if name not in changed)
-    named = "\n".join("  " + name for name in sorted(blamed)[:8])
+    named = "\n".join("  " + name for name in blamed)
+    try:
+        carried = carried_files(project, since) if since else set()
+    except subprocess.CalledProcessError as failed:
+        return ("The base tree did not build. The compiler blamed:\n{}\nWhether they are this branch's "
+                "cannot be read here -- git cannot diff this checkout against\n{}: {}".format(
+                    named, since, failed.stderr.strip()))
+    outside = [name for name in blamed if name not in carried]
     if outside:
-        return ("The base tree did not build, and {} of the {} file(s) the compiler blamed are not this\n"
-                "branch's:\n{}\nA base that cannot build its own sources is not a reading about this "
-                "change.".format(len(outside), len(blamed), "\n".join("  " + name for name in outside[:8])))
+        return ("The base tree did not build, and {} of the {} file(s) the compiler blamed are not "
+                "ones this\nbranch carried onto it:\n{}\nA base that cannot build its own sources is "
+                "not a reading about this change.".format(
+                    len(outside), len(blamed), "\n".join("  " + name for name in outside)))
     return ("The base tree did not build, and every file the compiler blamed is one this branch\n"
             "carried onto it:\n{}\nSo the base was never asked. Make them build against the base -- "
             "reaching new API by\nreflection is what the others do -- or withdraw them, or say why "
@@ -2262,11 +2270,8 @@ def main():
         reported, wrote = results_from(args.results)
         if not wrote:
             print("the base run wrote no result, so nothing it was asked was measured", flush=True)
-            # The cause is in the editor log, which sits beside the results the action left. Without
-            # it this said which cases went unanswered and nothing about why, and the two states that
-            # land here want opposite actions.
             print(unbuilt_reason(Path(args.project).resolve(), plan.get("since"),
-                                 blamed_by_the_compiler(args.results)), flush=True)
+                                 log_text_beside(args.results)), flush=True)
         return 1 if report(from_plan(plan["cases"]), from_plan(plan["control"]), reported,
                            plan["canaries"], wrote, plan.get("withdrawn"),
                            plan.get("since")) else 0
