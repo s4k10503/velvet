@@ -14,17 +14,23 @@ So a change that closes a version is asked to name every open pull request addin
 and to say for each whether the version carries it. Naming is the whole of what is required: the
 answer "not this one" is a decision somebody made, and it is the not-deciding this exists to stop.
 
-Two readings reach further back than the change, to the newest `vX.Y.Z-main` tag the result descends
-from -- the tag `upm.yml` leaves on the commit each release was dispatched from. A break reached a
-minor across two changes: the first moved the entries out of the section and closed nothing, so it
-was asked nothing, and the next closed a minor over a section already empty. So a change closing a
-version is asked about every commit since that tag, and an entry the section held at any of them and
-no longer holds, that the result carries in no major closed since it, is refused. And a dated section
-is the note its release shipped: one that differs from the tag's copy, or is gone against it, is
-refused whatever the change closes, since the file cannot tell a correction from a deletion. Where the
-remote tags no release the result descends from -- a repository before its first release -- the
-breaking section is read one step deep from `--base`, no dated section is held, and the pass says so.
-A remote that cannot be listed, and a checkout whose history is cut short of a tagged commit, are
+Two readings reach further back than the change, to the `vX.Y.Z-main` tags -- the tag `upm.yml`
+leaves on the commit each release was dispatched from. A break reached a minor across two changes:
+the first moved the entries out of the section and closed nothing, so it was asked nothing, and the
+next closed a minor over a section already empty. So a change closing a version is asked about every
+commit of main from the newest such tag the result descends from to the change's base -- the base
+rather than the result, since the result's own history is the pull request's, where a line is written
+and corrected without reaching main -- and an entry the section held at any of them, that the result
+carries neither there nor in a major closed since the tag, is refused. A change closing nothing is
+asked nothing by this reading. And a dated section is the note its release shipped: one whose version
+the remote tags, whichever line published it, has to be the base's but for a line of that tag's copy
+put back -- the base rather than the copy, since main's older sections were reworded and reordered
+after their releases and carry a Highlights block their tags' copies do not -- one brought in whole
+has to carry the copy in order, and one gone that the base or the last release on this line carried
+is refused, whatever the change closes, since the file cannot tell a correction from a deletion.
+Where the remote tags no release the result descends from -- a repository before its first
+release -- the breaking section is read one step deep from `--base`, and the pass says so. A remote
+that cannot be listed, a tag whose commit is not here, and a history cut short under the result are
 refused as unread instead, since none is the reading that passes.
 
 Exit 2 when a pull request goes unnamed, 1 when the state could not be read, 0 otherwise. A read that
@@ -36,6 +42,7 @@ import json
 import re
 import subprocess
 import sys
+from collections import Counter
 from pathlib import Path
 
 import published_check
@@ -155,7 +162,29 @@ def version_key(tag):
 
 
 class UnreadableRelease(Exception):
-    """Whether the result descends from a `-main` tag could not be read: (the tag, why)."""
+    """A release the remote tags that could not be read here: (the tag, why)."""
+
+
+def cut_below(result, cwd=None):
+    """Whether this checkout's history is cut short somewhere under `result`: a shallow boundary the
+    result descends from.
+
+    Under one, a commit `git merge-base` finds no path to may sit below the cut, so "not an ancestor"
+    is unreadable there and an answer everywhere else -- a maintenance line fetched shallow cuts the
+    history, and not under the result.
+    """
+    where, _ = run(["git", "rev-parse", "--git-path", "shallow"], cwd=cwd)
+    if where is None:
+        return False
+    path = Path(where.strip())
+    if not path.is_absolute():
+        path = Path(cwd or ".") / path
+    try:
+        boundaries = path.read_text().split()
+    except OSError:
+        return False
+    return any(run(["git", "merge-base", "--is-ancestor", boundary, result], cwd=cwd)[0] is not None
+               for boundary in boundaries)
 
 
 def reachable_release(result, tags, cwd=None):
@@ -165,11 +194,13 @@ def reachable_release(result, tags, cwd=None):
     distance, so this is not `git describe`; and only a `-main` tag, since the `vX.Y.Z` ones sit on
     split commits with no ancestor relation to any tree here.
 
-    A commit the checkout has not got is one the result does not descend from, in a complete
-    history; in one cut short it may be the release the reading was looking for, so that raises
-    rather than reading as none, since none is what lets the fallback reading pass.
+    A tag the result is not found to descend from -- a maintenance line's, or one whose commit this
+    checkout has not got -- is passed over where the history under the result is whole, and raises
+    where it is cut short there, since the cut may be what hides the path; `cut_below` tells the two
+    apart. Raising rather than reading as none, since none is what lets the fallback reading pass.
     """
     reachable = []
+    cut = None
     for name, revision in tags.items():
         key = version_key(name)
         if key is None:
@@ -181,30 +212,34 @@ def reachable_release(result, tags, cwd=None):
             raise UnreadableRelease(name, str(failure))
         if done.returncode == 0:
             reachable.append((key, name, revision))
-        elif done.returncode != 1:
-            shallow, _ = run(["git", "rev-parse", "--is-shallow-repository"], cwd=cwd)
-            if (shallow or "").strip() != "false":
-                raise UnreadableRelease(
-                    name, "this checkout's history is cut short of the commit the remote tags "
-                    "({}); fetch it -- `git fetch --unshallow origin` -- and run this again".format(
-                        done.stderr.strip() or f"exit {done.returncode}"))
+            continue
+        if cut is None:
+            cut = cut_below(result, cwd)
+        if cut:
+            raise UnreadableRelease(
+                name, "this checkout's history is cut short under {}, so whether {} sits below the "
+                "cut is not readable ({}); fetch the rest -- `git fetch --unshallow origin` -- and "
+                "run this again".format(result, name, done.stderr.strip() or f"exit {done.returncode}"))
     return max(reachable)[1:] if reachable else None
 
 
-def held_in_breaking(release, result, cwd=None):
-    """Every entry the breaking section held at the release or at any commit since it that touched
-    the CHANGELOG, oldest sighting first, or None when that history could not be read.
+def held_in_breaking(release, base, cwd=None):
+    """Every entry the breaking section held at the release, at the base, or at any commit between
+    them that touched the CHANGELOG, oldest sighting first, or None when that history could not be
+    read.
 
-    At the release itself as well as after it: an entry the first commit after the release moved out
-    is in the release's copy and in no later one. Every parent of a merge is followed, so a sighting
-    on the side a resolution dropped is read; `test_breaking_in_flight_check.py` holds that merge.
+    The base rather than the result: the result's own history is the pull request's, where a line is
+    written and corrected without ever reaching main, and the memory here is main's. The release
+    itself is read as well as what follows it, since an entry the first commit after the release
+    moved out is in the release's copy and in no later one. Every parent of a merge on the range is
+    followed, so a sighting on the side a resolution dropped is read; the tests hold that merge.
     """
-    out, _ = run(["git", "log", "--full-history", "--format=%H", f"{release}..{result}",
+    out, _ = run(["git", "log", "--full-history", "--format=%H", f"{release}..{base}",
                   "--", CHANGELOG], cwd=cwd)
     if out is None:
         return None
     held = []
-    for revision in [release] + out.split()[::-1]:
+    for revision in [release] + out.split()[::-1] + [base]:
         for entry in section(at(revision, CHANGELOG, cwd), BREAKING):
             if entry.strip() not in held:
                 held.append(entry.strip())
@@ -212,7 +247,8 @@ def held_in_breaking(release, result, cwd=None):
 
 
 def published_sections(text):
-    """Each version heading in order: (version, whether dated, the lines published under it)."""
+    """Each version heading in order: (version, whether dated, the heading as published, the lines
+    published under it)."""
     lines = (text or "").splitlines()
     marks = [(index, match) for index, line in enumerate(lines)
              if (match := release_notes.VERSION_HEADING.match(line))]
@@ -220,6 +256,7 @@ def published_sections(text):
         end = marks[order + 1][0] if order + 1 < len(marks) else len(lines)
         yield (match.group("version"),
                bool(DATED.match(lines[index][match.end():])),
+               " ".join(lines[index].split()),
                published_lines(lines[index + 1:end]))
 
 
@@ -233,19 +270,81 @@ def published_lines(lines):
 
 
 def dated_sections(text):
-    """The published lines of each dated section, by version."""
-    return {version: lines for version, dated, lines in published_sections(text) if dated}
+    """Each dated section's published lines by version, the heading first, so its date is compared
+    with the rest."""
+    return {version: [heading] + lines
+            for version, dated, heading, lines in published_sections(text) if dated}
 
 
-def drift(result_text, published_text):
-    """The dated sections the result has lost against a release's copy, and the ones it has changed.
+def carries_in_order(lines, published):
+    """Whether `lines` carry every line of `published` in its order, whatever sits between them."""
+    reached = 0
+    for line in lines:
+        if reached < len(published) and line == published[reached]:
+            reached += 1
+    return reached == len(published)
 
-    Compared as ordered lines, so a reorder is a change too.
+
+def only_put_back(lines, before, copy):
+    """Whether `lines` are `before` with nothing lost or moved and nothing added but lines of `copy`:
+    the one edit a section already here takes, since a line of the tag's put back is the repair."""
+    return (carries_in_order(lines, before)
+            and not ((Counter(lines) - Counter(before)) - Counter(copy)))
+
+
+def published_copy(version, tags, read):
+    """(the `-main` tag naming this version's release, that tag's copy of the dated section), or None
+    where the remote tags no such version, which is one not yet published.
+
+    `read(revision)` is the CHANGELOG at a revision as (text, None), or (None, why) where the
+    checkout could not show it -- which raises, as does a copy carrying no dated section for the
+    version: the note exists and could not be compared, which is not the same as there being none.
     """
-    theirs = dated_sections(published_text)
+    tag = f"v{version}-main"
+    if tag not in tags:
+        return None
+    text, why = read(tags[tag])
+    if text is None:
+        raise UnreadableRelease(tag, why)
+    copy = dated_sections(text).get(version)
+    if copy is None:
+        raise UnreadableRelease(tag, f"its CHANGELOG carries no dated `## [{version}]`")
+    return tag, copy
+
+
+def drifted(result_text, base_text, tags, read):
+    """The result's dated sections that a release tags and that do not carry its note, as
+    (version, tag, how).
+
+    A section the base carries has to be the base's but for a line of its tag's copy put back,
+    heading and date included, so a line deleted, reworded or reordered is refused by the change
+    that does it. The base rather than the tag's copy: main's older sections were reworded and
+    reordered after their releases and carry a Highlights block their tags' copies do not, so the
+    copy says which lines may go back and the base says what is there. A section the base does not
+    carry -- a maintenance line's, brought in whole -- has to carry the copy in order.
+    """
+    ours, theirs = dated_sections(result_text), dated_sections(base_text)
+    found = []
+    for version, lines in ours.items():
+        published = published_copy(version, tags, read)
+        if published is None:
+            continue
+        tag, copy = published
+        if version in theirs:
+            if lines != theirs[version] and not only_put_back(lines, theirs[version], copy):
+                found.append((version, tag, f"changed against the base, and {tag} shipped it"))
+        elif not carries_in_order(lines, copy):
+            found.append((version, tag, f"brought in without every line of {tag}'s copy in order"))
+    return found
+
+
+def gone_sections(result_text, base_text, copy_text, tags):
+    """Dated sections the base or the last release on this line carried, that the remote tags, and
+    the result has not got, as (version, tag)."""
     ours = dated_sections(result_text)
-    return (sorted(version for version in theirs if version not in ours),
-            sorted(version for version in theirs if version in ours and ours[version] != theirs[version]))
+    carried = set(dated_sections(base_text)) | set(dated_sections(copy_text))
+    return sorted((version, f"v{version}-main") for version in carried
+                  if f"v{version}-main" in tags and version not in ours)
 
 
 def unnamed(pulls, body):
@@ -272,8 +371,10 @@ def main():
         tagged = published_check.remote_tag_shas(Path.cwd(), timeout=args.timeout)
     except (OSError, subprocess.SubprocessError) as failure:
         sys.stderr.write(
-            "Could not list origin's tags, so nothing here read back to a release: {}\n"
-            "A read that did not happen is not a read that found nothing.\n".format(failure))
+            "Could not list origin's tags, so nothing here read back to a release: {}\n{}"
+            "A read that did not happen is not a read that found nothing.\n".format(
+                failure, (getattr(failure, "stderr", "") or "").strip() + "\n"
+                if (getattr(failure, "stderr", "") or "").strip() else ""))
         return UNREADABLE
     tags = set(tagged)
     try:
@@ -286,11 +387,12 @@ def main():
         return UNREADABLE
     if release is None:
         print("no vX.Y.Z-main tag is reachable from {}, so the breaking section is read one step "
-              "deep, from {}, and no published section is held to a release".format(
-                  args.result, args.base))
+              "deep, from {}; a dated section whose version the remote tags is still held to that "
+              "tag".format(args.result, args.base))
     else:
-        print("reading back to {}, the newest release {} descends from".format(
-            release[0], args.result))
+        print("reading '{}' back to {}, the newest release {} descends from, and each dated "
+              "section to its own release's tag".format(BREAKING, release[0], args.result))
+    base_text, result_text = at(args.base, CHANGELOG), at(args.result, CHANGELOG)
     # Before the version reading, because it holds whatever this change closes and also when it
     # closes nothing: an entry moved out of the section and into no other is lost, and the reading
     # that watched the section only ever saw it emptied completely.
@@ -305,21 +407,35 @@ def main():
 
     # Whatever the change closes, since a change closing nothing can edit a published note, and the
     # write-time guard on the same reading fires only for the editor it hooks.
-    if release is not None:
-        gone, changed = drift(at(args.result, CHANGELOG), at(release[1], CHANGELOG))
-        if gone or changed:
-            sys.stderr.write(
-                "{} is the newest release {} descends from, and {} dated section(s) differ from what "
-                "it carries:\n{}\n\n"
-                "A dated section is the note its release shipped, and a file cannot tell a correction\n"
-                "from a deletion, so neither is made past the tag. Restore each as {} carries it:\n"
-                "  git show {}:{}\n"
-                "and put what this change has to say under '## [Unreleased]'.\n".format(
-                    release[0], args.result, len(gone) + len(changed),
-                    "\n".join(["  ## [{}]: gone".format(one) for one in gone]
-                              + ["  ## [{}]: changed".format(one) for one in changed]),
-                    release[0], release[0], CHANGELOG))
-            return UNNAMED
+    try:
+        changed = drifted(result_text, base_text, tagged,
+                          lambda revision: run(["git", "show", f"{revision}:{CHANGELOG}"]))
+    except UnreadableRelease as failure:
+        sys.stderr.write(
+            "The remote tags {} and its CHANGELOG could not be read here: {}\n"
+            "A dated section of {} is that release's to hold, and whether it still carries the note\n"
+            "went unread. A read that did not happen is not a read that found nothing.\n".format(
+                failure.args[0], failure.args[1], args.result))
+        return UNREADABLE
+    gone = gone_sections(result_text, base_text,
+                         at(release[1], CHANGELOG) if release else None, tagged)
+    if gone or changed:
+        sys.stderr.write(
+            "{} dated section(s) of {} do not carry the note their release shipped:\n{}\n\n"
+            "A file cannot tell a correction from a deletion, so neither is made past the tag: a\n"
+            "dated section is the base's but for a line of its tag's copy put back, and one brought\n"
+            "in whole carries that copy in order. Put each back, reading the copy from its tag:\n{}\n"
+            "and put what this change has to say under '## [Unreleased]'.\n".format(
+                len(gone) + len(changed), args.result,
+                "\n".join(["  ## [{}]: gone, and {} carries it".format(version, tag)
+                           for version, tag in gone]
+                          + ["  ## [{}]: {}".format(version, how)
+                             for version, _, how in changed]),
+                "\n".join(sorted({"  git show {}:{}".format(tag, CHANGELOG)
+                                  for _, tag in gone} |
+                                 {"  git show {}:{}".format(tag, CHANGELOG)
+                                  for _, tag, _ in changed}))))
+        return UNNAMED
 
     versions = closing(args.base, args.result, tags)
     if not versions:
@@ -331,8 +447,7 @@ def main():
     # and its note describes none of the breaks it ships. Left behind on purpose is a decision --
     # an entry can wait for the major after this one -- so it is asked for rather than refused.
     majors = [named for named in versions
-              if published_check.is_major_bump(
-                  released_in_order(at(args.result, CHANGELOG)), named)]
+              if published_check.is_major_bump(released_in_order(result_text), named)]
     behind = left_in_breaking(args.result) if majors else []
     if behind:
         body_text = ""
@@ -351,23 +466,22 @@ def main():
                     "\n".join("  " + one for one in behind)))
             return UNNAMED
 
-    # Every commit since the release rather than the one step from the base: the step that moved
-    # an entry out of the section closed nothing and was asked nothing, and the base of the step
-    # that closes is a section already empty, which is what a correct minor after a major looks
+    # Every commit of main since the release rather than the one step from the base: the step that
+    # moved an entry out of the section closed nothing and was asked nothing, and the base of the
+    # step that closes is a section already empty, which is what a correct minor after a major looks
     # like. A major answers here too, for an entry that left the section before the change closing
     # it and is in no major closed since the release.
     if release is not None:
-        held = held_in_breaking(release[1], args.result)
+        held = held_in_breaking(release[1], args.base)
         if held is None:
             sys.stderr.write(
                 "Could not read the CHANGELOG's history from {} to {}, so what '{}' has held since\n"
                 "that release went unread. A read that did not happen is not a read that found\n"
-                "nothing.\n".format(release[0], args.result, BREAKING))
+                "nothing.\n".format(release[0], args.base, BREAKING))
             return UNREADABLE
         still = {entry.strip() for entry in left_in_breaking(args.result)}
         # Every major closed since the release rather than the ones this change closes: a major
         # closed, merged and not yet published is the section its entries went to.
-        result_text = at(args.result, CHANGELOG)
         order = released_in_order(result_text)
         opened = [named for named in dated_sections(result_text)
                   if named not in dated_sections(at(release[1], CHANGELOG))

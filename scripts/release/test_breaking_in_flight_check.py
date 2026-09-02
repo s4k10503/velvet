@@ -339,6 +339,20 @@ MINOR_OVER_NOTHING = OPEN.replace(
 
 TWO_LINES = OPEN.replace("- A release.\n", "- A release.\n- Another.\n")
 
+TYPO = OPEN.replace(
+    "## [Unreleased — breaking]\n",
+    "## [Unreleased — breaking]\n\n### Changed\n\n- An API a caller has to edit arond.\n")
+
+GROWN = OPEN.replace("- A release.\n", "- A release.\n- A highlight written after the release.\n")
+
+ON_THE_LINE = OPEN.replace(
+    "## [2.1.0]", "## [2.1.4] - 2026-08-30\n\n### Fixed\n\n- A patch on the line.\n\n## [2.1.0]")
+
+
+def revision(root, name="HEAD"):
+    return subprocess.run(["git", "-C", str(root), "rev-parse", name],
+                          capture_output=True, text=True).stdout.strip()
+
 
 class ReleaseHistory(unittest.TestCase):
     def history(self, *texts, tags=()):
@@ -352,15 +366,35 @@ class ReleaseHistory(unittest.TestCase):
         (root / CHANGELOG).parent.mkdir(parents=True)
         commits = []
         for index, text in enumerate(texts):
-            (root / CHANGELOG).write_text(text)
-            git(root, "add", CHANGELOG)
-            git(root, "commit", "--quiet", "-m", f"step {index}")
-            commits.append(subprocess.run(["git", "-C", str(root), "rev-parse", "HEAD"],
-                                          capture_output=True, text=True).stdout.strip())
+            commits.append(self.commit(root, text, f"step {index}"))
             if index in dict(tags):
                 git(root, "tag", dict(tags)[index])
         git(root, "remote", "add", "origin", str(root))
         return root, commits
+
+    def commit(self, root, text, message="a step"):
+        """One more commit on the checked-out branch, carrying `text`. Returns it."""
+        (root / CHANGELOG).write_text(text)
+        git(root, "add", CHANGELOG)
+        git(root, "commit", "--quiet", "-m", message)
+        return revision(root)
+
+    def line(self, root, text, tag):
+        """A maintenance line: a branch `line` off the checked-out commit, carrying `text` under
+        `tag`, with main checked out again. Returns the tagged commit."""
+        git(root, "checkout", "--quiet", "-b", "line")
+        lined = self.commit(root, text, "on the line")
+        git(root, "tag", tag)
+        git(root, "checkout", "--quiet", "main")
+        return lined
+
+    def clone(self, root, *options):
+        """A clone of `root`, whose origin it is."""
+        clone = Path(tempfile.mkdtemp()) / "clone"
+        self.addCleanup(shutil.rmtree, clone.parent, ignore_errors=True)
+        subprocess.run(["git", "clone", "--quiet", *options, str(root), str(clone)],
+                       check=True, capture_output=True)
+        return clone
 
 
 class SinceTheLastRelease(ReleaseHistory):
@@ -433,20 +467,39 @@ class SinceTheLastRelease(ReleaseHistory):
         # Assert
         self.assertEqual((done.returncode, "v3.0.0-main" in done.stdout), (0, True))
 
-    def test_Given_AnEntryOnTheSideAMergeResolvedAway_When_TheMergeClosesAMinor_Then_ItIsRefused(self):
-        # Arrange -- the entry's one sighting is on the side branch, and the merge took main's copy
-        # of the file whole, so the merge's own tree holds it nowhere.
-        root, commits = self.history(OPEN, tags={0: RELEASE})
-        git(root, "checkout", "--quiet", "-b", "side")
-        (root / CHANGELOG).write_text(WITH_ENTRY)
-        git(root, "commit", "--quiet", "-am", "written on the side")
-        git(root, "checkout", "--quiet", "main")
-        (root / CHANGELOG).write_text(MINOR_OVER_NOTHING)
-        git(root, "commit", "--quiet", "-am", "a minor")
-        git(root, "merge", "--quiet", "--no-ff", "-s", "ours", "-m", "keeping main's copy", "side")
+    # GREEN_ON_BASE(characterization): the base reads one step and walks no history, so a typo the
+    # branch wrote and corrected is nothing to it. What this pins is that the memory added here is
+    # main's and not the pull request's: walk `tag..result` instead of `tag..base` and the typo is
+    # sighted, the major carries it nowhere, and the correct change is refused.
+    def test_Given_ALineWrittenAndCorrectedOnTheBranch_When_ItsMajorCloses_Then_ItPasses(self):
+        # Arrange -- the typo is in the pull request's own history and in no commit of main, and the
+        # major closes carrying the corrected line.
+        root, commits = self.history(OPEN, TYPO, WITH_ENTRY, MAJOR_CARRYING, tags={0: RELEASE})
+        on_the_branch = "arond" in subprocess.run(
+            ["git", "-C", str(root), "show", f"{commits[1]}:{CHANGELOG}"],
+            capture_output=True, text=True).stdout
 
         # Act
-        done = run(root, commits[0], "[]", body="A minor.")
+        done = run(root, commits[0], "[]", body="A major.")
+
+        # Assert -- the typo rides along: without it in the branch's history there is nothing for a
+        # walk of the result's own commits to sight, and the case would pass for no reason.
+        self.assertEqual((on_the_branch, done.returncode, done.stderr), (True, 0, ""))
+
+    def test_Given_AnEntryASideOfAMergeOnMainResolvedAway_When_AMinorClosesAfterIt_Then_ItIsRefused(self):
+        # Arrange -- the entry's one sighting is on the side a merge on main took nothing from, so
+        # no tree of main ever held it, and the merge is the base the closing change is read from.
+        root, commits = self.history(OPEN, tags={0: RELEASE})
+        git(root, "checkout", "--quiet", "-b", "side")
+        self.commit(root, WITH_ENTRY, "written on the side")
+        git(root, "checkout", "--quiet", "main")
+        self.commit(root, OPEN.replace("## [Unreleased]\n", "## [Unreleased]\n\n### Fixed\n\n- A fix.\n"))
+        git(root, "merge", "--quiet", "--no-ff", "-s", "ours", "-m", "keeping main's copy", "side")
+        merged = revision(root)
+        self.commit(root, MINOR_OVER_NOTHING, "a minor")
+
+        # Act
+        done = run(root, merged, "[]", body="A minor.")
 
         # Assert
         self.assertEqual((done.returncode, "carries in no major" in done.stderr), (UNNAMED, True))
@@ -463,12 +516,46 @@ class SinceTheLastRelease(ReleaseHistory):
 
 
 class ATagWhoseCommitIsNotHere(ReleaseHistory):
-    """A `-main` tag the remote names at a commit this checkout has not got, and a remote that names
-    nothing because it could not be listed.
+    """A `-main` tag the result is not found to descend from, and a remote that names nothing
+    because it could not be listed.
 
-    In a complete history that commit is one the result does not descend from; in one cut short it
-    may be the release the reading was looking for, and none is the answer that passes.
+    Where the history under the result is whole, such a tag is a maintenance line's; where it is cut
+    short there, the cut may be what hides the path, and none is the answer that passes.
     """
+
+    def test_Given_AShallowCheckoutCutUnderTheResult_When_TheTagsCommitIsHereAboveNoPath_Then_ItIsNotAPass(self):
+        # Arrange -- the tag's commit is fetched on its own, so it is here, while the two commits
+        # between it and HEAD are not: `git merge-base` finds no path and says no.
+        root, commits = self.history(WITH_ENTRY, RECLASSIFIED, MINOR_CARRYING, tags={0: RELEASE})
+        clone = self.clone("file://" + str(root), "--depth", "2", "--no-tags")
+        git(clone, "fetch", "--quiet", "--depth", "1", "origin", "tag", RELEASE)
+        here = subprocess.run(["git", "-C", str(clone), "cat-file", "-e", commits[0]],
+                              capture_output=True).returncode == 0
+        no_path = subprocess.run(["git", "-C", str(clone), "merge-base", "--is-ancestor",
+                                  commits[0], "HEAD"], capture_output=True).returncode
+
+        # Act
+        done = run(clone, commits[1], "[]", body="A minor.")
+
+        # Assert -- what the clone holds rides along, since a clone with the path would reach a pass
+        # by reading the release, and one without the commit is the other case below.
+        self.assertEqual((here, no_path, done.returncode, RELEASE in done.stderr),
+                         (True, 1, UNREADABLE, True))
+
+    def test_Given_AMaintenanceLineFetchedShallow_When_Decided_Then_ItsTagIsPassedOver(self):
+        # Arrange -- the cut is under the line's tip and not under HEAD, whose history is whole, so
+        # the line's tag is one HEAD does not descend from and the reading goes on.
+        root, commits = self.history(OPEN, tags={0: RELEASE})
+        self.line(root, ON_THE_LINE, "v2.1.4-main")
+        clone = self.clone(root, "--no-local", "--no-tags", "--single-branch", "--branch", "main")
+        git(clone, "fetch", "--quiet", "--depth", "1", "origin", "line")
+        cut = (clone / ".git" / "shallow").exists()
+
+        # Act
+        done = run(clone, commits[0], "[]")
+
+        # Assert
+        self.assertEqual((cut, done.returncode, RELEASE in done.stdout), (True, 0, True))
 
     def test_Given_NoRemoteToList_When_Decided_Then_ItIsNotAPass(self):
         # Arrange -- the failure this exists to refuse looks identical to a remote tagging nothing.
@@ -504,17 +591,8 @@ class ATagWhoseCommitIsNotHere(ReleaseHistory):
         # Arrange -- a clone of main alone: the line's release is tagged at a commit the clone has
         # not got, and its history is whole, so that commit is one HEAD does not descend from.
         root, commits = self.history(OPEN, tags={0: RELEASE})
-        git(root, "checkout", "--quiet", "-b", "line")
-        (root / CHANGELOG).write_text(OPEN.replace("- A release.\n", "- A release.\n- A patch.\n"))
-        git(root, "commit", "--quiet", "-am", "a patch on the line")
-        git(root, "tag", "v2.1.4-main")
-        lined = subprocess.run(["git", "-C", str(root), "rev-parse", "HEAD"],
-                               capture_output=True, text=True).stdout.strip()
-        git(root, "checkout", "--quiet", "main")
-        clone = Path(tempfile.mkdtemp()) / "clone"
-        self.addCleanup(shutil.rmtree, clone.parent, ignore_errors=True)
-        subprocess.run(["git", "clone", "--quiet", "--no-local", "--no-tags", "--single-branch",
-                        "--branch", "main", str(root), str(clone)], check=True, capture_output=True)
+        lined = self.line(root, ON_THE_LINE, "v2.1.4-main")
+        clone = self.clone(root, "--no-local", "--no-tags", "--single-branch", "--branch", "main")
         absent = subprocess.run(["git", "-C", str(clone), "cat-file", "-e", lined],
                                 capture_output=True).returncode != 0
 
@@ -523,6 +601,23 @@ class ATagWhoseCommitIsNotHere(ReleaseHistory):
 
         # Assert
         self.assertEqual((absent, done.returncode, RELEASE in done.stdout), (True, 0, True))
+
+    def test_Given_ACarriedSectionWhoseTagsCommitIsNotHere_When_Decided_Then_ItIsNotAPass(self):
+        # Arrange -- the same clone, with main carrying the line's section: the note exists on the
+        # remote and cannot be compared here, which is not the same as there being none.
+        root, commits = self.history(OPEN, tags={0: RELEASE})
+        lined = self.line(root, ON_THE_LINE, "v2.1.4-main")
+        self.commit(root, ON_THE_LINE, "carried forward")
+        clone = self.clone(root, "--no-local", "--no-tags", "--single-branch", "--branch", "main")
+        absent = subprocess.run(["git", "-C", str(clone), "cat-file", "-e", lined],
+                                capture_output=True).returncode != 0
+
+        # Act
+        done = run(clone, "HEAD", "[]")
+
+        # Assert
+        self.assertEqual((absent, done.returncode, "v2.1.4-main" in done.stderr),
+                         (True, UNREADABLE, True))
 
 
 class PublishedSections(ReleaseHistory):
@@ -571,6 +666,104 @@ class PublishedSections(ReleaseHistory):
 
         # Assert
         self.assertEqual((done.returncode, "## [2.1.0]: gone" in done.stderr), (UNNAMED, True))
+
+    def test_Given_ADatedHeadingsDateChanged_When_Decided_Then_ItIsRefused(self):
+        # Arrange -- the heading is a line of the note too.
+        root, commits = self.history(
+            OPEN, OPEN.replace("## [2.1.0] - 2026-08-09", "## [2.1.0] - 2026-08-10"),
+            tags={0: RELEASE})
+
+        # Act
+        done = run(root, commits[0], "[]")
+
+        # Assert
+        self.assertEqual((done.returncode, "## [2.1.0]: changed against the base" in done.stderr),
+                         (UNNAMED, True))
+
+    def test_Given_ASectionGrownPastItsTag_When_ItIsTheBases_Then_ItPasses(self):
+        # Arrange -- main's older sections carry a Highlights block their tags' copies do not, and
+        # were reworded and reordered after their releases, so the tag's copy is not what a section
+        # is held to: the base is.
+        root, commits = self.history(OPEN, GROWN, tags={0: RELEASE})
+        grown = "written after the release" in subprocess.run(
+            ["git", "-C", str(root), "show", f"HEAD:{CHANGELOG}"],
+            capture_output=True, text=True).stdout
+
+        # Act
+        done = run(root, "HEAD", "[]")
+
+        # Assert -- the growth rides along, since a section equal to its tag's copy passes any
+        # reading and would say nothing about this one.
+        self.assertEqual((grown, done.returncode,
+                          "each dated section to its own release's tag" in done.stdout),
+                         (True, 0, True))
+
+    def test_Given_AHeldSectionGrownByTheChange_When_Decided_Then_ItIsRefusedAgainstTheBase(self):
+        # Arrange -- the write-time guard's growth reading, at merge time: a line the tag never
+        # carried arrives in a section the base carried without it.
+        root, commits = self.history(OPEN, GROWN, tags={0: RELEASE})
+
+        # Act
+        done = run(root, commits[0], "[]")
+
+        # Assert
+        self.assertEqual((done.returncode, "## [2.1.0]: changed against the base" in done.stderr),
+                         (UNNAMED, True))
+
+    def test_Given_ALineWrittenAfterTheRelease_When_TheChangeDeletesIt_Then_ItIsRefusedAgainstTheBase(self):
+        # Arrange -- the result is the tag's copy to the letter, and a line the base carried is gone.
+        root, commits = self.history(OPEN, GROWN, OPEN, tags={0: RELEASE})
+
+        # Act
+        done = run(root, commits[1], "[]")
+
+        # Assert
+        self.assertEqual((done.returncode, "## [2.1.0]: changed against the base" in done.stderr),
+                         (UNNAMED, True))
+
+    def test_Given_ASectionPublishedOnTheMaintenanceLine_When_ItLosesALine_Then_ItIsRefusedNamingThatTag(self):
+        # Arrange -- main carries the line's section as the line published it, and the newest tag
+        # main descends from is older than that release.
+        root, commits = self.history(OPEN, tags={0: RELEASE})
+        self.line(root, ON_THE_LINE, "v2.1.4-main")
+        base = self.commit(root, ON_THE_LINE, "carried forward")
+        self.commit(root, ON_THE_LINE.replace("- A patch on the line.\n", ""), "lose a line")
+
+        # Act
+        done = run(root, base, "[]")
+
+        # Assert
+        self.assertEqual((done.returncode, "## [2.1.4]: changed against the base, and v2.1.4-main" in done.stderr),
+                         (UNNAMED, True))
+
+    def test_Given_AMaintenanceSectionBroughtInShort_When_Decided_Then_ItIsRefusedNamingItsTag(self):
+        # Arrange -- the base does not carry the section, so the tag's copy is the one memory of it,
+        # and the carry-forward drops a line of that copy.
+        root, commits = self.history(OPEN, tags={0: RELEASE})
+        self.line(root, ON_THE_LINE, "v2.1.4-main")
+        self.commit(root, ON_THE_LINE.replace("- A patch on the line.\n", ""), "carried short")
+
+        # Act
+        done = run(root, commits[0], "[]")
+
+        # Assert
+        self.assertEqual((done.returncode, "## [2.1.4]: brought in without every line of v2.1.4-main"
+                          in done.stderr), (UNNAMED, True))
+
+    def test_Given_ACarriedMaintenanceSectionDeleted_When_Decided_Then_ItIsRefusedAsGone(self):
+        # Arrange -- the base carried it and no release on this line did, so the base is what holds
+        # it.
+        root, commits = self.history(OPEN, tags={0: RELEASE})
+        self.line(root, ON_THE_LINE, "v2.1.4-main")
+        base = self.commit(root, ON_THE_LINE, "carried forward")
+        self.commit(root, OPEN, "drop the section")
+
+        # Act
+        done = run(root, base, "[]")
+
+        # Assert
+        self.assertEqual((done.returncode, "## [2.1.4]: gone, and v2.1.4-main carries it" in done.stderr),
+                         (UNNAMED, True))
 
     def test_Given_ADatedSectionUntouched_When_Decided_Then_ItPassesHavingReadTheTag(self):
         # Arrange -- the ordinary change, and the one a reading that never reached the tag would

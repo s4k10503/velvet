@@ -190,7 +190,7 @@ class AgainstTheTag(unittest.TestCase):
         self.changelog = self.root / CHANGELOG_REL
         self.changelog.parent.mkdir(parents=True)
         self.changelog.write_text(TAGGED)
-        for args in (["init", "--quiet"],
+        for args in (["init", "--quiet", "--initial-branch=main"],
                      ["config", "user.email", "t@example.com"], ["config", "user.name", "t"],
                      ["add", CHANGELOG_REL], ["commit", "--quiet", "-m", "release"],
                      ["tag", "v2.0.0-main"], ["remote", "add", "origin", str(self.root)]):
@@ -281,6 +281,87 @@ class AgainstTheTag(unittest.TestCase):
 
         # Assert
         self.assertEqual((code, said), (0, ""))
+
+    def test_Given_AReleasedHeadingsDateChanged_When_Judged_Then_ItIsRefusedNamingTheTag(self):
+        # Arrange -- the heading is a line of the note too.
+        old, new = "## [2.0.0] - 2026-08-02", "## [2.0.0] - 2026-08-03"
+
+        # Act
+        code, said = judged(self.root, self.changelog, old, new)
+
+        # Assert
+        self.assertEqual((code, "v2.0.0-main" in said), (2, True))
+
+    def test_Given_ASectionPublishedOnAnotherLine_When_ItLosesALine_Then_ItIsRefusedNamingItsOwnTag(self):
+        # Arrange -- the line's release is tagged where HEAD does not descend from, and main carries
+        # its section as the line published it.
+        carried = TAGGED.replace(
+            "## [2.0.0]", "## [2.0.1] - 2026-08-08\n\n### Fixed\n\n- A patch on the line.\n\n## [2.0.0]")
+        git(self.root, "checkout", "--quiet", "-b", "line")
+        self.changelog.write_text(carried)
+        git(self.root, "commit", "--quiet", "-am", "on the line")
+        git(self.root, "tag", "v2.0.1-main")
+        git(self.root, "checkout", "--quiet", "main")
+        self.changelog.write_text(carried)
+        git(self.root, "commit", "--quiet", "-am", "carried forward")
+
+        # Act
+        code, said = judged(self.root, self.changelog, "- A patch on the line.\n", "")
+
+        # Assert
+        self.assertEqual((code, "v2.0.1-main" in said), (2, True))
+
+    def published_elsewhere(self):
+        """A `## [2.0.1]` section the line published under `v2.0.1-main`, which main does not carry.
+        Returns the section's text."""
+        section = "## [2.0.1] - 2026-08-08\n\n### Fixed\n\n- A patch on the line.\n\n"
+        git(self.root, "checkout", "--quiet", "-b", "line")
+        self.changelog.write_text(TAGGED.replace("## [2.0.0]", section + "## [2.0.0]"))
+        git(self.root, "commit", "--quiet", "-am", "on the line")
+        git(self.root, "tag", "v2.0.1-main")
+        git(self.root, "checkout", "--quiet", "main")
+        return section
+
+    # GREEN_ON_BASE(characterization): a section newly dated on one side is compared on neither by
+    # the base, so the carry-forward runs there whatever it carries. What this pins is that the
+    # same carry-forward still runs once a section brought in whole is held to its tag's copy.
+    def test_Given_AMaintenanceSectionCarriedInWhole_When_Judged_Then_ItIsLetThrough(self):
+        # Arrange
+        section = self.published_elsewhere()
+        published = "v2.0.1-main" in git(self.root, "ls-remote", "--tags", "origin")
+
+        # Act
+        code, said = judged(self.root, self.changelog, "## [2.0.0]", section + "## [2.0.0]")
+
+        # Assert -- the tag rides along: a section no release tags is let through by not being held
+        # at all, which is not what this pins.
+        self.assertEqual((published, code, said), (True, 0, ""))
+
+    def test_Given_AMaintenanceSectionCarriedInShort_When_Judged_Then_ItIsRefusedNamingItsTag(self):
+        # Arrange -- the base does not carry the section, so the tag's copy is the one memory of
+        # it, and the carry-forward drops a line of that copy.
+        section = self.published_elsewhere()
+
+        # Act
+        code, said = judged(self.root, self.changelog, "## [2.0.0]",
+                            section.replace("- A patch on the line.\n", "") + "## [2.0.0]")
+
+        # Assert
+        self.assertEqual((code, "v2.0.1-main" in said), (2, True))
+
+    def test_Given_ASectionGrownPastItsTag_When_TheAddedLineIsDeleted_Then_ItIsRefused(self):
+        # Arrange -- a line the tag's copy never carried, which is what main's older sections hold;
+        # deleting it leaves the section the tag's copy to the letter, and the file cannot tell that
+        # from a deletion of the note.
+        self.changelog.write_text(TAGGED.replace(
+            "- Another thing that shipped.\n",
+            "- Another thing that shipped.\n- A highlight written after the release.\n"))
+
+        # Act
+        code, said = judged(self.root, self.changelog, "- A highlight written after the release.\n", "")
+
+        # Assert
+        self.assertEqual((code, "v2.0.0-main" in said), (2, True))
 
 
 if __name__ == "__main__":
