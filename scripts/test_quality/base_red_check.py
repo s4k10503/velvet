@@ -1916,15 +1916,15 @@ def unbuilt_reason(project, since, log_text, withdrawn=()):
     None of them is a reading, so all of them still fail. What changes is what is said.
     """
     if not log_text:
-        return ("The run left no editor log beside its results, so the editor was never started:\n"
-                "activation or the runner stopped before it, and the job log has what they said.")
+        return ("The run left no editor log beside its results: the test run's editor was never started,\n"
+                "and the job log has what stopped the run before it.")
     blamed = compile_error_files(log_text)
     if not blamed:
         if BUILD_STOPPED in log_text:
             return ("The base tree did not build, and the compiler blamed no line of a source under\n"
                     "Assets or Packages for it. The editor log has what it did say.")
-        return ("The editor started, and nothing in its log names a source file or says the scripts\n"
-                "did not build. The log has what stopped it.")
+        return ("Nothing in the editor log names a source file or says the scripts did not build.\n"
+                "The log ends where the editor stopped.")
     named = "\n".join("  " + name for name in blamed)
     try:
         carried = carried_files(project, since) if since else set()
@@ -1940,10 +1940,13 @@ def unbuilt_reason(project, since, log_text, withdrawn=()):
                     len(outside), len(blamed), "\n".join("  " + name for name in outside)))
     standing = [name for name in blamed if name in withdrawn]
     if standing:
-        return ("The base tree did not build, and every file the compiler blamed is one this branch\n"
-                "carried onto it. {} of them already stood at the base's text, withdrawn before the "
-                "round,\nso what failed there is something else the branch carried beside them:\n{}"
-                .format(len(standing), named))
+        rest = [name for name in blamed if name not in withdrawn]
+        return ("The base tree did not build. {} of the {} blamed file(s) already stood at the base's "
+                "text,\nwithdrawn before the round, so what failed there is beside them -- something "
+                "else this\nbranch carried or dropped:\n{}{}".format(
+                    len(standing), len(blamed), "\n".join("  " + name for name in standing),
+                    "" if not rest else "\nThe rest are this branch's; make them build against the "
+                    "base or withdraw them:\n" + "\n".join("  " + name for name in rest)))
     return ("The base tree did not build, and every file the compiler blamed is one this branch\n"
             "carried onto it:\n{}\nSo the base was never asked. Make them build against the base -- "
             "reaching new API by\nreflection is what the others do -- or withdraw them, or say why "
@@ -2058,9 +2061,8 @@ def local_remedy(since, cases):
     """
     platforms = sorted({platform_of(case.path) for case in cases
                         if kind_of(case.path) == "csharp"})
-    return ("\nThe editor wrote nothing, which a single round cannot tell from an editor that never\n"
-            "started. Take the reading where the loop runs -- it withdraws by the editor's own error\n"
-            "list and asks again until something answers:\n"
+    return ("\nWhere the loop runs it withdraws by the editor's own error list and asks again until\n"
+            "something answers. Take the reading there:\n"
             "  python3 scripts/test_quality/base_red_check.py --lane csharp{} --base {} \\\n"
             "    --warm-library Library".format(
                 "".join(" --platform " + platform for platform in platforms), since or "origin/main"))
