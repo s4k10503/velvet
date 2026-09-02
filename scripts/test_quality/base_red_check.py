@@ -1909,9 +1909,9 @@ def carried_files(project, since):
 def unbuilt_reason(project, since, log_text, withdrawn=()):
     """What to say about a base run that wrote no results file.
 
-    Nothing in the results directory separates the ways a run comes to write none -- which is why
-    the message here used to name the cases and not the cause. The editor log does, by being there
-    at all and by what it blames.
+    Nothing in the results file's absence separates the ways a run comes to write none -- which is
+    why the message here used to name the cases and not the cause. The editor log does, by being
+    there at all and by what it blames.
 
     None of them is a reading, so all of them still fail. What changes is what is said.
     """
@@ -1923,8 +1923,8 @@ def unbuilt_reason(project, since, log_text, withdrawn=()):
         if BUILD_STOPPED in log_text:
             return ("The base tree did not build, and the compiler blamed no line of a source under\n"
                     "Assets or Packages for it. The editor log has what it did say.")
-        return ("Nothing in the editor log names a source file or says the scripts did not build.\n"
-                "The log ends where the editor stopped.")
+        return ("The editor log blames no error on a source file and does not say the scripts did not\n"
+                "build. It ends where the editor stopped.")
     named = "\n".join("  " + name for name in blamed)
     try:
         carried = carried_files(project, since) if since else set()
@@ -2061,8 +2061,8 @@ def local_remedy(since, cases):
     """
     platforms = sorted({platform_of(case.path) for case in cases
                         if kind_of(case.path) == "csharp"})
-    return ("\nWhere the loop runs it withdraws by the editor's own error list and asks again until\n"
-            "something answers. Take the reading there:\n"
+    return ("\nWhere the loop runs it withdraws by the editor's own error list and asks again, round\n"
+            "by round. Take the reading there:\n"
             "  python3 scripts/test_quality/base_red_check.py --lane csharp{} --base {} \\\n"
             "    --warm-library Library".format(
                 "".join(" --platform " + platform for platform in platforms), since or "origin/main"))

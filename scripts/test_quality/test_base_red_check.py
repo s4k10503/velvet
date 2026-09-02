@@ -4125,8 +4125,8 @@ class RepositoryTests(unittest.TestCase):
 class UnbuiltBaseTreeTests(unittest.TestCase):
     """What the verdict lane says about a base run that wrote no results file.
 
-    The results directory separates none of the ways a run comes to write none — which is why the
-    message named the cases and not the cause. The editor log does: an activation failure leaves
+    The results file's absence separates none of the ways a run comes to write none — which is why
+    the message named the cases and not the cause. The editor log does: an activation failure leaves
     none, a crash leaves one blaming nothing, a tree the carried files took down leaves one blaming
     them.
     """
@@ -4218,7 +4218,7 @@ class UnbuiltBaseTreeTests(unittest.TestCase):
         self.assertEqual((base_red_check.BUILD_STOPPED in stopped, base_red_check.BUILD_STOPPED in compiled),
                          (True, False))
 
-    def test_Given_ALogNamingNoSourceAndNoStoppedBuild_When_ItIsRead_Then_ItSaysTheEditorStopped(self):
+    def test_Given_ALogBlamingNoErrorAndNoStoppedBuild_When_ItIsRead_Then_ItSaysTheEditorStopped(self):
         # Act / Assert -- a run that got as far as compiling and no further.
         self.assertIn("ends where the editor stopped", self.said("DisplayProgressbar: Compiling Scripts\n"))
 
@@ -4231,6 +4231,21 @@ class UnbuiltBaseTreeTests(unittest.TestCase):
         # is not that file's to fix.
         self.assertIn("already stood at the base's text",
                       self.said(self.CARRIED + "(1,1): error CS0012: x\n", withdrawn={self.CARRIED}))
+
+    def test_Given_AWithdrawnFileBlamedBesideACarriedOne_When_TheLogIsRead_Then_TheRestAreNamedAsTheBranchs(self):
+        # Arrange -- the standing file and the rest are two lists with two remedies, and one list
+        # would send the reader to withdraw what already stands at the base's text.
+        other = "Packages/p/Runtime/A/Tests/Editor/OtherTests.cs"
+        self.write(other, "class OtherTests {}\n")
+        self.commit("other")
+
+        # Act
+        said = self.said(self.CARRIED + "(1,1): error CS0012: x\n" + other + "(1,1): error CS0012: x\n",
+                         withdrawn={self.CARRIED})
+
+        # Assert
+        self.assertIn("The rest are this branch's; make them build against the base or withdraw them:\n  "
+                      + other, said)
 
     def test_Given_AWithdrawnFileInTheReading_When_TheVerdictLaneRuns_Then_ItReadsTheWithdrawal(self):
         # Arrange -- the plan's field has to reach the reason through the lane, or the message
