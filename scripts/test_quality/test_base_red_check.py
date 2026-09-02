@@ -4269,7 +4269,10 @@ class UnbuiltBaseTreeTests(unittest.TestCase):
             subprocess.run(["git", "-C", str(self.project), *command], capture_output=True)
 
     def said(self, log, since=None, withdrawn=(), removed=()):
-        return base_red_check.unbuilt_reason(self.project, since or self.since, log, withdrawn, removed)
+        # By keyword, so a tree without the parameter fails on its name, which the base-red lane reads
+        # as a surface only the branch provides.
+        return base_red_check.unbuilt_reason(self.project, since or self.since, log,
+                                             withdrawn=withdrawn, removed=removed)
 
     def test_Given_EveryBlamedFileIsOneTheBranchCarried_When_TheLogIsRead_Then_ItSaysTheBaseWasNeverAsked(self):
         # Arrange -- the phrase the other reading shares is not enough: a carried set read as empty
