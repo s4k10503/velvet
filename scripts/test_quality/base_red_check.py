@@ -680,6 +680,9 @@ def shared_material_differs(relative, before, after):
     A line reading is not enough on its own: git describes a reorder as one block deleted and
     re-added, so the lines between two swapped cases read as changed while every one of them is the
     base's own text. Compared as a multiset, a reorder is no difference and an added row is.
+
+    Read with the comments blanked, as `authored` reads a case: a remark rewritten above a helper is
+    not what any case's run decides on, and counting it put every case in the file on trial for it.
     """
     if before is None:
         return True
@@ -691,7 +694,7 @@ def shared_material_differs(relative, before, after):
         inside = set()
         for case in found:
             inside |= set(range(case.first_line, case.last_line + 1))
-        return sorted(line.strip() for number, line in enumerate(text.splitlines(), 1)
+        return sorted(line.strip() for number, line in enumerate(outside_comments(relative, text), 1)
                       if number not in inside and line.strip())
 
     return shared(before) != shared(after)
@@ -2215,8 +2218,8 @@ def collect(project, base, lane):
         for case in cases:
             if case.declaration is not None and lines is not None:
                 case.declaration.written_here = case.declaration.written_in(lines)
-        wanted = {case.name for case in authored(relative, touched(cases, lines),
-                                                 held_at(project, since, relative), text)[0]}
+        before = held_at(project, since, relative)
+        wanted = {case.name for case in authored(relative, touched(cases, lines), before, text)[0]}
         # A change wholly outside every case body, in a file that has cases: a static readonly table
         # the cases drive, a SetUp, a helper. `authored` keeps such a case out, correctly -- the
         # branch did not write it -- and with nothing else selected the lane exits 0 having measured
@@ -2228,11 +2231,15 @@ def collect(project, base, lane):
         # and puts every case a fixture has on trial for a line added to SetUp; `outside` reports
         # that instead. What is left here is the state where reporting it is all that happens.
         if (cases and lines is not None and not wanted and outside(cases, lines)
-                and shared_material_differs(relative, held_at(project, since, relative), text)):
+                and shared_material_differs(relative, before, text)):
             wanted = {case.name for case in cases}
         changed.extend(as_the_runner_names_them(
             [case for case in cases if case.name in wanted], heirs))
+        # Read as the promotion above reads it: a changed line outside every case that is only a
+        # comment leaves the cases beside it the base's text, controls included.
         loose = outside(cases, lines)
+        if loose and not shared_material_differs(relative, before, text):
+            loose = set()
         if not loose and not shared_helper:
             control.extend(as_the_runner_names_them(
                 [case for case in cases if case.name not in wanted], heirs))
