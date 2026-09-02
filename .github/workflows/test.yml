@@ -247,7 +247,7 @@ jobs:
         run: |
           gh pr view "$NUMBER" --json body -q .body > /tmp/pr-body.md
           python3 scripts/release/breaking_in_flight_check.py \
-            --base "$BASE" --result HEAD --body-file /tmp/pr-body.md
+            --base "$BASE" --result HEAD --body-file /tmp/pr-body.md --timeout 30
 
   # ---------------------------------------------------------------------------
   # A test written to pin a change has to be red without it, and nothing here asked. The Python half

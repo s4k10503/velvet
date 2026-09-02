@@ -14,6 +14,19 @@ So a change that closes a version is asked to name every open pull request addin
 and to say for each whether the version carries it. Naming is the whole of what is required: the
 answer "not this one" is a decision somebody made, and it is the not-deciding this exists to stop.
 
+Two readings reach further back than the change, to the newest `vX.Y.Z-main` tag the result descends
+from -- the tag `upm.yml` leaves on the commit each release was dispatched from. A break reached a
+minor across two changes: the first moved the entries out of the section and closed nothing, so it
+was asked nothing, and the next closed a minor over a section already empty. So a change closing a
+version is asked about every commit since that tag, and an entry the section held at any of them and
+no longer holds, that the result carries in no major closed since it, is refused. And a dated section
+is the note its release shipped: one that differs from the tag's copy, or is gone against it, is
+refused whatever the change closes, since the file cannot tell a correction from a deletion. Where the
+remote tags no release the result descends from -- a repository before its first release -- the
+breaking section is read one step deep from `--base`, no dated section is held, and the pass says so.
+A remote that cannot be listed, and a checkout whose history is cut short of a tagged commit, are
+refused as unread instead, since none is the reading that passes.
+
 Exit 2 when a pull request goes unnamed, 1 when the state could not be read, 0 otherwise. A read that
 did not happen is not a read that found nothing, and it must not pass.
 """
@@ -26,18 +39,21 @@ import sys
 from pathlib import Path
 
 import published_check
+import release_notes
 
 CHANGELOG = "Packages/com.velvet.core/CHANGELOG.md"
 BREAKING = "Unreleased — breaking"
 VERSION_HEADING = re.compile(r"^## \[(\d+\.\d+\.\d+)\]", re.M)
+MAIN_TAG = re.compile(r"^v(\d+)\.(\d+)\.(\d+)-main$")
+DATED = re.compile(r"^\s*-\s*\d{4}-\d{2}-\d{2}")
 
 UNNAMED = 2
 UNREADABLE = 1
 
 
-def run(args, timeout=20):
+def run(args, timeout=20, cwd=None):
     try:
-        done = subprocess.run(args, capture_output=True, text=True, timeout=timeout)
+        done = subprocess.run(args, capture_output=True, text=True, timeout=timeout, cwd=cwd)
     except (OSError, subprocess.SubprocessError) as failure:
         return None, str(failure)
     if done.returncode != 0:
@@ -64,8 +80,8 @@ def section(text, heading):
     return [line for line in body.splitlines() if line.startswith("- ")]
 
 
-def at(rev, path):
-    out, _ = run(["git", "show", f"{rev}:{path}"])
+def at(rev, path, cwd=None):
+    out, _ = run(["git", "show", f"{rev}:{path}"], cwd=cwd)
     return out
 
 
@@ -132,6 +148,106 @@ def left_in_breaking(result):
     return section(at(result, CHANGELOG), BREAKING)
 
 
+def version_key(tag):
+    """The version a `vX.Y.Z-main` tag names, as a sortable tuple, or None for any other name."""
+    found = MAIN_TAG.match(tag)
+    return tuple(int(part) for part in found.groups()) if found else None
+
+
+class UnreadableRelease(Exception):
+    """Whether the result descends from a `-main` tag could not be read: (the tag, why)."""
+
+
+def reachable_release(result, tags, cwd=None):
+    """The newest published release the result descends from, as (tag, revision), or None.
+
+    `tags` maps each name to a revision `git show` accepts. Newest by version rather than nearest by
+    distance, so this is not `git describe`; and only a `-main` tag, since the `vX.Y.Z` ones sit on
+    split commits with no ancestor relation to any tree here.
+
+    A commit the checkout has not got is one the result does not descend from, in a complete
+    history; in one cut short it may be the release the reading was looking for, so that raises
+    rather than reading as none, since none is what lets the fallback reading pass.
+    """
+    reachable = []
+    for name, revision in tags.items():
+        key = version_key(name)
+        if key is None:
+            continue
+        try:
+            done = subprocess.run(["git", "merge-base", "--is-ancestor", revision, result],
+                                  capture_output=True, text=True, timeout=20, cwd=cwd)
+        except (OSError, subprocess.SubprocessError) as failure:
+            raise UnreadableRelease(name, str(failure))
+        if done.returncode == 0:
+            reachable.append((key, name, revision))
+        elif done.returncode != 1:
+            shallow, _ = run(["git", "rev-parse", "--is-shallow-repository"], cwd=cwd)
+            if (shallow or "").strip() != "false":
+                raise UnreadableRelease(
+                    name, "this checkout's history is cut short of the commit the remote tags "
+                    "({}); fetch it -- `git fetch --unshallow origin` -- and run this again".format(
+                        done.stderr.strip() or f"exit {done.returncode}"))
+    return max(reachable)[1:] if reachable else None
+
+
+def held_in_breaking(release, result, cwd=None):
+    """Every entry the breaking section held at the release or at any commit since it that touched
+    the CHANGELOG, oldest sighting first, or None when that history could not be read.
+
+    At the release itself as well as after it: an entry the first commit after the release moved out
+    is in the release's copy and in no later one. Every parent of a merge is followed, so a sighting
+    on the side a resolution dropped is read; `test_breaking_in_flight_check.py` holds that merge.
+    """
+    out, _ = run(["git", "log", "--full-history", "--format=%H", f"{release}..{result}",
+                  "--", CHANGELOG], cwd=cwd)
+    if out is None:
+        return None
+    held = []
+    for revision in [release] + out.split()[::-1]:
+        for entry in section(at(revision, CHANGELOG, cwd), BREAKING):
+            if entry.strip() not in held:
+                held.append(entry.strip())
+    return held
+
+
+def published_sections(text):
+    """Each version heading in order: (version, whether dated, the lines published under it)."""
+    lines = (text or "").splitlines()
+    marks = [(index, match) for index, line in enumerate(lines)
+             if (match := release_notes.VERSION_HEADING.match(line))]
+    for order, (index, match) in enumerate(marks):
+        end = marks[order + 1][0] if order + 1 < len(marks) else len(lines)
+        yield (match.group("version"),
+               bool(DATED.match(lines[index][match.end():])),
+               published_lines(lines[index + 1:end]))
+
+
+def published_lines(lines):
+    """Every non-blank line of one section body, in the shape the note carries it.
+
+    Indentation survives the collapse because it is what nests a line under another.
+    """
+    return [line[:len(line) - len(line.lstrip())] + " ".join(line.split())
+            for line in release_notes.unwrap_soft_breaks(lines) if line.strip()]
+
+
+def dated_sections(text):
+    """The published lines of each dated section, by version."""
+    return {version: lines for version, dated, lines in published_sections(text) if dated}
+
+
+def drift(result_text, published_text):
+    """The dated sections the result has lost against a release's copy, and the ones it has changed.
+
+    Compared as ordered lines, so a reorder is a change too.
+    """
+    theirs = dated_sections(published_text)
+    ours = dated_sections(result_text)
+    return (sorted(version for version in theirs if version not in ours),
+            sorted(version for version in theirs if version in ours and ours[version] != theirs[version]))
+
+
 def unnamed(pulls, body):
     """Pull requests the body does not name, by number."""
     said = set(re.findall(r"#(\d+)", body or ""))
@@ -145,15 +261,36 @@ def main():
     parser.add_argument("--result", default="HEAD", help="revision this change produces")
     parser.add_argument("--body-file", help="file holding the pull request body")
     parser.add_argument("--repo", help="owner/name, when gh cannot infer it")
+    parser.add_argument("--timeout", type=int, default=5,
+                        help="seconds to allow the tag listing (default: published_check's)")
     args = parser.parse_args()
 
     # Asked of the remote rather than of a local tag list, for the reason published_check gives. A
-    # checkout with no remote to ask reads as no tags, which is the stricter direction: every
-    # version then counts as closing, which is what this did before it could ask at all.
+    # listing that fails is refused rather than read as no tags, since none is what lets the two
+    # readings that reach back to a release pass.
     try:
-        tags = published_check.remote_tags(Path.cwd())
-    except Exception:
-        tags = set()
+        tagged = published_check.remote_tag_shas(Path.cwd(), timeout=args.timeout)
+    except (OSError, subprocess.SubprocessError) as failure:
+        sys.stderr.write(
+            "Could not list origin's tags, so nothing here read back to a release: {}\n"
+            "A read that did not happen is not a read that found nothing.\n".format(failure))
+        return UNREADABLE
+    tags = set(tagged)
+    try:
+        release = reachable_release(args.result, tagged)
+    except UnreadableRelease as failure:
+        sys.stderr.write(
+            "Whether {} descends from {} went unread, so nothing here read back to a release: {}\n"
+            "A read that did not happen is not a read that found nothing.\n".format(
+                args.result, failure.args[0], failure.args[1]))
+        return UNREADABLE
+    if release is None:
+        print("no vX.Y.Z-main tag is reachable from {}, so the breaking section is read one step "
+              "deep, from {}, and no published section is held to a release".format(
+                  args.result, args.base))
+    else:
+        print("reading back to {}, the newest release {} descends from".format(
+            release[0], args.result))
     # Before the version reading, because it holds whatever this change closes and also when it
     # closes nothing: an entry moved out of the section and into no other is lost, and the reading
     # that watched the section only ever saw it emptied completely.
@@ -165,6 +302,24 @@ def main():
             "Nothing here removes a break from the record, so this is a move that lost its\n"
             "destination.\n".format(len(lost), BREAKING, "\n".join("  " + one for one in lost)))
         return UNNAMED
+
+    # Whatever the change closes, since a change closing nothing can edit a published note, and the
+    # write-time guard on the same reading fires only for the editor it hooks.
+    if release is not None:
+        gone, changed = drift(at(args.result, CHANGELOG), at(release[1], CHANGELOG))
+        if gone or changed:
+            sys.stderr.write(
+                "{} is the newest release {} descends from, and {} dated section(s) differ from what "
+                "it carries:\n{}\n\n"
+                "A dated section is the note its release shipped, and a file cannot tell a correction\n"
+                "from a deletion, so neither is made past the tag. Restore each as {} carries it:\n"
+                "  git show {}:{}\n"
+                "and put what this change has to say under '## [Unreleased]'.\n".format(
+                    release[0], args.result, len(gone) + len(changed),
+                    "\n".join(["  ## [{}]: gone".format(one) for one in gone]
+                              + ["  ## [{}]: changed".format(one) for one in changed]),
+                    release[0], release[0], CHANGELOG))
+            return UNNAMED
 
     versions = closing(args.base, args.result, tags)
     if not versions:
@@ -194,6 +349,42 @@ def main():
                 "these this version carries and which it does not, naming the section.\n".format(
                     ", ".join(majors), len(behind), BREAKING,
                     "\n".join("  " + one for one in behind)))
+            return UNNAMED
+
+    # Every commit since the release rather than the one step from the base: the step that moved
+    # an entry out of the section closed nothing and was asked nothing, and the base of the step
+    # that closes is a section already empty, which is what a correct minor after a major looks
+    # like. A major answers here too, for an entry that left the section before the change closing
+    # it and is in no major closed since the release.
+    if release is not None:
+        held = held_in_breaking(release[1], args.result)
+        if held is None:
+            sys.stderr.write(
+                "Could not read the CHANGELOG's history from {} to {}, so what '{}' has held since\n"
+                "that release went unread. A read that did not happen is not a read that found\n"
+                "nothing.\n".format(release[0], args.result, BREAKING))
+            return UNREADABLE
+        still = {entry.strip() for entry in left_in_breaking(args.result)}
+        # Every major closed since the release rather than the ones this change closes: a major
+        # closed, merged and not yet published is the section its entries went to.
+        result_text = at(args.result, CHANGELOG)
+        order = released_in_order(result_text)
+        opened = [named for named in dated_sections(result_text)
+                  if named not in dated_sections(at(release[1], CHANGELOG))
+                  and named in order and published_check.is_major_bump(order, named)]
+        carried = {entry.strip() for named in opened for entry in section(result_text, named)}
+        astray = [entry for entry in held if entry not in still and entry not in carried]
+        if astray:
+            sys.stderr.write(
+                "{} closes here, and since {} '{}' has held {} entr(y|ies) that this result carries "
+                "in no major:\n{}\n\n"
+                "A break leaves that section for a major and for nothing else, however many changes\n"
+                "the leaving takes: one moved out by an earlier change ships here with nothing calling\n"
+                "it a break, and one dropped ships undescribed. Compared as text, so one reworded on\n"
+                "the way reads as dropped. Put each back under '## [{}]' as it was written, or close a\n"
+                "major that carries it.\n".format(
+                    ", ".join(versions), release[0], BREAKING, len(astray),
+                    "\n".join("  " + one for one in astray), BREAKING))
             return UNNAMED
 
     pulls, failure = open_pull_requests(args.repo)

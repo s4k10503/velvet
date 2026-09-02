@@ -26,9 +26,14 @@ The reading is a released section's PUBLISHED LINES, before against the proposed
   like, and allowed the substitution; comparing the text itself refuses the reword with it, which
   is the accepted cost — the refusal says what a genuine reword should do instead. A reflowed line
   matches itself, because the join that unwraps it is the publisher's own.
-- Removal is not refused, so deleting an entry from a released section and moving one out of it
-  both still run. Deleting the whole SECTION does not, because the heading goes with it — see
-  below.
+- Against the newest `vX.Y.Z-main` tag on the remote that HEAD descends from, a released section
+  the edit changes is refused unless it comes out as that tag's copy — removal, reword and reorder
+  alike, since the note is the tag's and the file cannot tell a correction from a deletion. The
+  remote's tags rather than the checkout's, for the reason `published_check.remote_tag_shas` gives.
+  Where no tag reaches — the remote holds none, the remote or git does not answer, or the checkout
+  has not got the commit — or the tag does not carry the section, the reading is the one above:
+  growth is refused and removal is not, so deleting an entry from such a section still runs.
+  Deleting the whole SECTION does not either way, because the heading goes with it — see below.
 - Only versions dated on BOTH sides are compared. Closing `## [Unreleased]` into `## [X.Y.Z] - DATE`
   newly dates a whole section, which under a first-seen-is-growth reading refused every release —
   including through the advice this hook prints, which left no in-band way to clear it. A heading
@@ -41,7 +46,7 @@ The reading is a released section's PUBLISHED LINES, before against the proposed
 
 import json
 import os
-import re
+import subprocess
 import sys
 from collections import Counter
 from pathlib import Path
@@ -50,47 +55,24 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 import repository
 
 # The section this guard compares is the one `release_notes.py` publishes, so it is delimited and
-# unwrapped by that module rather than parsed a second time here. A heading only one of two grammars
+# unwrapped by that module -- through the reading `breaking_in_flight_check.py` shares with the
+# merge-time check -- rather than parsed a second time here. A heading only one of two grammars
 # recognises moves text across a version boundary for that one and not the other, and a disagreement
 # in either direction can leave a released section's text uncompared and still published. Soundness
 # would need the two to agree exactly, and nothing would hold them to it.
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts" / "release"))
-import release_notes
+import breaking_in_flight_check as drain
+import published_check
 
 HOOK_TOOLS = {"Edit", "Write"}
 
 CHANGELOG = "CHANGELOG.md"
-DATED = re.compile(r"^\s*-\s*\d{4}-\d{2}-\d{2}")
-
-
-def sections(text):
-    """Each version heading in order, with whether it is dated and the lines published under it."""
-    lines = text.splitlines()
-    marks = []
-    for index, line in enumerate(lines):
-        match = release_notes.VERSION_HEADING.match(line)
-        if match:
-            marks.append((index, match))
-    for order, (index, match) in enumerate(marks):
-        end = marks[order + 1][0] if order + 1 < len(marks) else len(lines)
-        yield (match.group("version"),
-               bool(DATED.match(lines[index][match.end():])),
-               published_lines(lines[index + 1:end]))
-
-
-def published_lines(lines):
-    """Every non-blank line of one section body, in the shape the note carries it.
-
-    Indentation survives the collapse because it is what nests a line under another.
-    """
-    return [line[:len(line) - len(line.lstrip())] + " ".join(line.split())
-            for line in release_notes.unwrap_soft_breaks(lines) if line.strip()]
 
 
 def released(text):
     """Published lines of each released version, counted by their collapsed text."""
     counted = {}
-    for version, dated, listed in sections(text):
+    for version, dated, listed in drain.published_sections(text):
         if dated:
             counted.setdefault(version, Counter()).update(listed)
     return counted
@@ -98,8 +80,25 @@ def released(text):
 
 def repeated(text):
     """Versions carrying more than one heading."""
-    written = Counter(version for version, _, _ in sections(text))
+    written = Counter(version for version, _, _ in drain.published_sections(text))
     return {version for version, count in written.items() if count > 1}
+
+
+def published_copy(path):
+    """The dated sections of this file at the newest release HEAD descends from, with the tag's name
+    and the path `git show` reads it by, or ({}, None, None) where no tag reaches or git does not
+    answer: the guard then reads as it did before the repository had a release."""
+    where = Path(path).parent
+    prefix, _ = drain.run(["git", "rev-parse", "--show-prefix"], cwd=where)
+    try:
+        release = drain.reachable_release(
+            "HEAD", published_check.remote_tag_shas(where), cwd=where)
+    except (OSError, subprocess.SubprocessError, drain.UnreadableRelease):
+        release = None
+    if release is None or prefix is None:
+        return {}, None, None
+    tracked = prefix.strip() + Path(path).name
+    return drain.dated_sections(drain.at(release[1], tracked, cwd=where)), release[0], tracked
 
 
 def common_git_dir(start):
@@ -192,7 +191,6 @@ def main():
         return 2
 
     before, after = released(text), released(proposed)
-    versions = sorted(v for v, listed in after.items() if v in before and listed - before[v])
     # A released heading that stops being one carries whatever is under it out of the comparison,
     # so renaming the version, stripping the date and deleting the section outright are one edit
     # reached three ways.
@@ -209,6 +207,26 @@ def main():
               "in the file tells that date from a published one. Revert it with git, which this "
               "check never reads.", file=sys.stderr)
         return 2
+
+    was, becomes = drain.dated_sections(text), drain.dated_sections(proposed)
+    moved = [v for v in becomes if becomes[v] != was.get(v)]
+    copy, tag, tracked = published_copy(path) if moved else ({}, None, None)
+    # An edit that brings a section back to the tag's copy is the repair, whatever lines it adds.
+    restored = {v for v in moved if v in copy and becomes[v] == copy[v]}
+    held = [v for v in moved if v in copy and v not in restored]
+    if held:
+        print(f"Refusing this {CHANGELOG} edit: it changes `## [{held[0]}]`, and {tag} — the newest "
+              "release on the remote that HEAD descends from — carries that section as it "
+              "stands.\n\n"
+              "A dated section is the note its release shipped. Nothing in the file separates a "
+              "correction from a deletion, so neither is made past the tag; an edit that leaves the "
+              "section as the tag carries it is the one this lets through:\n\n"
+              f"  git show {tag}:{tracked}\n\n"
+              "Put what this change has to say under `## [Unreleased]`, or "
+              "`## [Unreleased — breaking]` where it has to wait for a major.", file=sys.stderr)
+        return 2
+    versions = sorted(v for v, listed in after.items()
+                      if v in before and listed - before[v] and v not in restored)
     if not versions:
         return 0
 

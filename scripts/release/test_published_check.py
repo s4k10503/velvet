@@ -502,5 +502,38 @@ class GitReadingTests(unittest.TestCase):
         self.assertIsNone(unpublished_reason(repository, "origin/nothing-like-this"))
 
 
+class TagCommitTests(unittest.TestCase):
+    """The commit a remote tag names, which is what the readings reaching back to a release run
+    `git log` and `git show` against."""
+
+    def repository(self):
+        held = tempfile.TemporaryDirectory()
+        self.addCleanup(held.cleanup)
+        path = Path(held.name)
+        git(path, "init", "--quiet", "--initial-branch", "main")
+        git(path, "config", "user.email", "test@example.invalid")
+        git(path, "config", "user.name", "Test")
+        (path / "note").write_text("state")
+        git(path, "add", "-A")
+        git(path, "commit", "--quiet", "-m", "state")
+        git(path, "remote", "add", "origin", str(path))
+        head = subprocess.run(["git", "-C", str(path), "rev-parse", "HEAD"],
+                              capture_output=True, text=True).stdout.strip()
+        return path, head
+
+    def test_Given_AnAnnotatedTag_When_TheRemoteIsListed_Then_TheCommitIsWhatItNames(self):
+        # Arrange -- an annotated tag is an object of its own; the listing has to hand back the
+        # commit under it, since a lightweight tag is what the dispatch makes and a reader given the
+        # tag object where it expects a commit gets a different answer per tag kind.
+        path, head = self.repository()
+        git(path, "tag", "-a", "v9.9.9-main", "-m", "annotated")
+
+        # Act
+        named = published_check.remote_tag_shas(path)["v9.9.9-main"]
+
+        # Assert
+        self.assertEqual(named, head)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

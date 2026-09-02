@@ -720,21 +720,38 @@ behaviour a working application would notice changing.
    waited. A line that never took those changes has an empty section, which is what keeps the
    reading silent on the maintenance line. Rename
    `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD` **last**, once nothing further is going into it:
-   `changelog_into_closed_version.py` refuses a write into a dated section, and the rename is what
-   dates it. The breaking heading itself is never dated and never deleted, and a `**Breaking:**`
-   bullet in `### Highlights` belongs to a major and to no other release; `test_release_notes.py`
-   refuses each of those. Where the entries went is read from the change rather than the file, by
+   `changelog_into_closed_version.py` refuses a write that adds to a dated section, or that changes
+   one the newest published release carries — the `vX.Y.Z-main` tag on the remote that HEAD
+   descends from, which the UPM dispatch leaves on the commit each release was dispatched from —
+   unless the section comes out as that tag's copy; and the rename is what dates it. The breaking
+   heading itself is never dated and never deleted, and a `**Breaking:**` bullet in
+   `### Highlights` belongs to a major and to no other release; `test_release_notes.py` refuses
+   each of those. Where the entries went is read from the change rather than the file, by
    `published_check.py` on the pull request that closes the version: a major has to close with the
    section empty and every entry of it word for word in the version being closed, and a minor or a
-   patch may neither take anything out of it nor leave anything in. So a wording change belongs in a
-   change that closes no version — which is also how an entry is reclassified out of the section,
-   deciding it was never breaking, and none of this is asked of one. A major also answers for the
-   breaking work still in flight: an entry written for it sits on its own branch until that branch
-   merges, so the CHANGELOG holds only the part that has landed. Name every open pull request adding
-   to `## [Unreleased — breaking]` and say which the version carries —
-   `breaking_in_flight_check.py` refuses one that names none of them, and "not this one" is a
-   decision it accepts. Give the version a row in `SECURITY.md`'s supported-versions table, and
-   decide there what happens to the series it succeeds: `supported_versions_check.py` refuses a
+   patch may neither take anything out of it nor leave anything in. So a wording change belongs in
+   a change that closes no version, and leaves a breaking entry's first line as it was —
+   `breaking_in_flight_check.py` reads an entry by that line, so one reworded reads as one lost,
+   whatever the change closes. A change closing no version is also how an entry is reclassified out
+   of the section, deciding it was never breaking, and none of this is asked of one. What is asked
+   of the change closing a version, by `breaking_in_flight_check.py`, is every commit since that
+   same tag: an entry the section held at the tag or at any commit after it, that the result
+   carries neither there nor in a major closed since the tag, is refused — so a break moved out by
+   one change and closed into a minor by the next is refused at the second, and an entry
+   reclassified out of the section still ships only in a major. The same tag holds every dated
+   section it carries: one that differs from the tag's copy, or is gone against it, is refused
+   whatever the change closes, since the note is the tag's and the file cannot tell a correction
+   from a deletion. A dated section the tag does not carry — closed since it, or published on the
+   maintenance line and carried forward — is not held. Where the remote tags no release the result
+   descends from — a repository before its first release — the breaking section is read one step
+   deep, no dated section is held, and the check's pass says so; a remote that cannot be listed, or
+   a checkout whose history is cut short of a tagged commit, is refused as unread instead. A major
+   also answers for the breaking work still in flight: an entry written for it sits on its own
+   branch until that branch merges, so the CHANGELOG holds only the part that has landed. Name
+   every open pull request adding to `## [Unreleased — breaking]` and say which the version
+   carries — `breaking_in_flight_check.py` refuses one that names none of them, and "not this one"
+   is a decision it accepts. Give the version a row in `SECURITY.md`'s supported-versions table,
+   and decide there what happens to the series it succeeds: `supported_versions_check.py` refuses a
    release the table does not cover with one row marked supported.
 2. Merge to `main` (the `upm` branch is updated automatically).
 3. Run the **UPM** workflow via *Actions ▸ UPM ▸ Run workflow*, entering the same version.
