@@ -393,6 +393,94 @@ MERGED_FIXED = OPEN.replace(
 FIXED_SPLITTING_CHANGED = MERGED_FIXED.replace(
     "### Changed\n\n- Changed one.\n", "### Changed\n\n### Fixed\n\n- Changed one.\n")
 
+FIXED_BEFORE_ITS_ENTRY = MERGED_FIXED.replace(
+    "- Fixed two.\n", "\n### Fixed\n\n- Fixed two.\n")
+
+# The copy's last entry, against a base that gained a line after the release at the end of the block
+# it belongs to. Nothing of the copy is below it, and the line written later is between it and the
+# entry the copy puts above it.
+LAST_PAST_LATER_COPY = OPEN.replace(
+    "### Highlights\n\n- A release.\n",
+    "### Changed\n\n- Changed one.\n\n### Fixed\n\n- Fixed one.\n- Fixed two.\n")
+
+LAST_PAST_LATER_BASE = OPEN.replace(
+    "### Highlights\n\n- A release.\n",
+    "### Highlights\n\n- A release.\n\n### Changed\n\n- Changed one.\n"
+    "\n### Fixed\n\n- Fixed one.\n- Written after the release.\n")
+
+LAST_PAST_LATER_BACK = LAST_PAST_LATER_BASE.replace(
+    "- Written after the release.\n", "- Written after the release.\n- Fixed two.\n")
+
+# A base that moved the heading the entry belongs under above the block before it and emptied it, so
+# the entry goes back with that heading above where it lands and the next one below.
+MISFILED_COPY = OPEN.replace(
+    "### Highlights\n\n- A release.\n",
+    "### Added\n\n- Added one.\n\n### Fixed\n\n- Fixed one.\n\n### Changed\n\n- Changed one.\n")
+
+MISFILED_BASE = OPEN.replace(
+    "### Highlights\n\n- A release.\n",
+    "### Highlights\n\n- A release.\n\n### Fixed\n\n### Added\n\n- Added one.\n"
+    "\n### Changed\n\n- Changed one.\n")
+
+MISFILED_UNDER_ADDED = MISFILED_BASE.replace("- Added one.\n", "- Added one.\n- Fixed one.\n")
+
+# A heading the base is short of, going back above the highlight the section gained after its
+# release rather than above the entry the copy files under it.
+REFILED_COPY = OPEN.replace(
+    "### Highlights\n\n- A release.\n",
+    "### Added\n\n- Added one.\n\n### Fixed\n\n- Fixed one.\n")
+
+REFILED_BASE = OPEN.replace(
+    "### Highlights\n\n- A release.\n",
+    "### Highlights\n\n- A release.\n- Added one.\n\n### Fixed\n\n- Fixed one.\n")
+
+REFILED_ABOVE_THE_HIGHLIGHT = REFILED_BASE.replace(
+    "- A release.\n", "### Added\n\n- A release.\n")
+
+# One block of five entries, so a put-back among them lands under the heading the copy files it
+# under wherever in the block it goes and the order alone decides. Three bases reorder the entries
+# the copy puts either side of the one going back.
+WITHIN_COPY = OPEN.replace(
+    "### Highlights\n\n- A release.\n",
+    "### Highlights\n\n- A release.\n\n### Fixed\n\n- Fixed one.\n- Fixed two.\n- Fixed three.\n"
+    "- Fixed four.\n- Fixed five.\n")
+
+BOUND_ABOVE_BELOW = OPEN.replace(
+    "### Highlights\n\n- A release.\n",
+    "### Highlights\n\n- A release.\n\n### Fixed\n\n- Fixed three.\n- Fixed four.\n"
+    "- Fixed one.\n")
+
+BOUND_ABOVE_BELOW_BACK = BOUND_ABOVE_BELOW.replace(
+    "- Fixed three.\n", "- Fixed two.\n- Fixed three.\n")
+
+OVER_THE_PUT_BACK = OPEN.replace(
+    "### Highlights\n\n- A release.\n",
+    "### Highlights\n\n- A release.\n\n### Fixed\n\n- Fixed one.\n- Fixed four.\n"
+    "- Fixed three.\n- Fixed five.\n")
+
+OVER_THE_PUT_BACK_BACK = OVER_THE_PUT_BACK.replace(
+    "- Fixed three.\n", "- Fixed two.\n- Fixed three.\n")
+
+BOUND_BELOW_ABOVE = OPEN.replace(
+    "### Highlights\n\n- A release.\n",
+    "### Highlights\n\n- A release.\n\n### Fixed\n\n- Fixed three.\n- Fixed one.\n")
+
+BOUND_BELOW_ABOVE_BACK = BOUND_BELOW_ABOVE.replace(
+    "- Fixed one.\n", "- Fixed one.\n- Fixed two.\n")
+
+# A copy heading two blocks of the same name, against a base that merged them and gained a line
+# after the release at the end of the merged one.
+SAME_NAME_COPY = OPEN.replace(
+    "### Highlights\n\n- A release.\n",
+    "### Fixed\n\n- Fixed one.\n\n### Fixed\n\n- Fixed two.\n\n### Changed\n\n- Changed one.\n")
+
+SAME_NAME_BASE = OPEN.replace(
+    "### Highlights\n\n- A release.\n",
+    "### Highlights\n\n- A release.\n\n### Fixed\n\n- Fixed one.\n- Fixed two.\n"
+    "- Written after the release.\n\n### Changed\n\n- Changed one.\n")
+
+SAME_NAME_BACK = SAME_NAME_BASE.replace("- Fixed two.\n", "\n### Fixed\n\n- Fixed two.\n")
+
 # A base whose blocks are in the other order, so the line the copy puts below the missing one is
 # above the line it puts above it.
 BLOCKS_REORDERED = SUBSECTIONS.replace(
@@ -432,8 +520,8 @@ NEITHER_BASE = OPEN.replace(
 
 NEITHER_BETWEEN = NEITHER_BASE.replace("- Fixed one.\n", "- Fixed one.\n- Changed one.\n")
 
-# A base short of both entries of the copy's first block, so the bound above the one put back is
-# absent and the walk has to go further.
+# A base short of both entries of the copy's `### Fixed`, so the bound above the one put back is
+# walked past the other to that heading.
 WALK_COPY = OPEN.replace(
     "### Highlights\n\n- A release.\n",
     "### Highlights\n\n- A release.\n\n### Fixed\n\n- Fixed one.\n- Fixed two.\n"
@@ -443,7 +531,7 @@ WALK_BASE = OPEN.replace(
     "### Highlights\n\n- A release.\n",
     "### Highlights\n\n- A release.\n\n### Changed\n\n- Changed one.\n\n### Fixed\n")
 
-WALK_ABOVE_THE_HEADINGS = WALK_BASE.replace("- A release.\n", "- A release.\n- Fixed two.\n")
+WALK_ABOVE_THE_BOUND = WALK_BASE.replace("- A release.\n", "- A release.\n- Fixed two.\n")
 
 # A base that moved the `### Fixed` block up under `### Added`, so a line the copy puts below the
 # put-back sits above it.
@@ -995,6 +1083,134 @@ class PublishedSections(ReleaseHistory):
         self.assertEqual((done.returncode, "## [2.1.0]: changed against the base" in done.stderr),
                          (UNNAMED, True))
 
+    def test_Given_ABaseThatMergedTheTwoBlocksTheHeadingFiles_When_ItGoesBackAboveTheLast_Then_ItPasses(self):
+        # Arrange -- `## [1.4.0]`'s repair: the base merged the two blocks the copy's repeated
+        # heading files, and the heading goes back above the entry the copy ends the section with.
+        # The entry above where it lands is not the one the copy puts there, so what it comes to
+        # rest against below is the only side that can say it may.
+        root, commits = self.history(TWO_FIXED_BLOCKS, MERGED_FIXED, FIXED_BEFORE_ITS_ENTRY,
+                                     tags={0: RELEASE})
+        was_merged = subprocess.run(
+            ["git", "-C", str(root), "show", f"{commits[1]}:{CHANGELOG}"],
+            capture_output=True, text=True).stdout.count("### Fixed") == 1
+
+        # Act
+        done = run(root, commits[1], "[]")
+
+        # Assert -- the base carrying the heading once rides along, and the reading having run with
+        # it: were it carried twice the section would be short of nothing, and a run that read no
+        # tag at all passes every dated-section shape with it.
+        self.assertEqual((was_merged, done.returncode,
+                          "each dated section to its own release's tag" in done.stdout),
+                         (True, 0, True))
+
+    def test_Given_TheCopysLastEntry_When_ItGoesBackPastALineWrittenAfterTheRelease_Then_ItPasses(self):
+        # Arrange -- the whole copy is above the entry going back, so nothing of it is below where
+        # the entry lands, and the line the section gained after its release is the only thing
+        # between the entry and the one the copy puts above it.
+        root, commits = self.history(LAST_PAST_LATER_COPY, LAST_PAST_LATER_BASE,
+                                     LAST_PAST_LATER_BACK, tags={0: RELEASE})
+        carries_more = "- Written after the release." not in subprocess.run(
+            ["git", "-C", str(root), "show", f"{revision(root, RELEASE)}:{CHANGELOG}"],
+            capture_output=True, text=True).stdout
+
+        # Act
+        done = run(root, commits[1], "[]")
+
+        # Assert -- the tag's copy being short of that line rides along, and the reading having run
+        # with it: were the copy to carry it, it would be read as any other line of the note.
+        self.assertEqual((carries_more, done.returncode,
+                          "each dated section to its own release's tag" in done.stdout),
+                         (True, 0, True))
+
+    def test_Given_ABaseThatEmptiedTheHeadingAndMovedItUp_When_TheEntryGoesBackUnderTheNext_Then_ItIsRefused(self):
+        # Arrange -- the base carries the heading the entry belongs under, emptied, above the block
+        # before it. Every bound holds and the entry comes to rest against the heading the copy puts
+        # below it, so the note publishing it as an addition is the whole of what refuses it.
+        root, commits = self.history(MISFILED_COPY, MISFILED_BASE, MISFILED_UNDER_ADDED,
+                                     tags={0: RELEASE})
+
+        # Act
+        done = run(root, commits[1], "[]")
+
+        # Assert
+        self.assertEqual((done.returncode, "## [2.1.0]: changed against the base" in done.stderr),
+                         (UNNAMED, True))
+
+    def test_Given_AHeadingTheBaseIsShortOf_When_ItGoesBackAboveALineWrittenAfterTheRelease_Then_ItIsRefused(self):
+        # Arrange -- the heading lands between the highlight block and its own bullet, so the note
+        # would publish the release's headline as one of the entries the heading files.
+        root, commits = self.history(REFILED_COPY, REFILED_BASE, REFILED_ABOVE_THE_HIGHLIGHT,
+                                     tags={0: RELEASE})
+
+        # Act
+        done = run(root, commits[1], "[]")
+
+        # Assert
+        self.assertEqual((done.returncode, "## [2.1.0]: changed against the base" in done.stderr),
+                         (UNNAMED, True))
+
+    def test_Given_TheBoundAboveThePutBack_When_TheBlockCarriesItBelowInstead_Then_ItIsRefused(self):
+        # Arrange -- inside one block, so the entry lands under the heading the copy files it under
+        # and the note files every line where it did. The entry the copy puts above it is below
+        # where it lands, and it comes to rest against the one the copy puts below it.
+        root, commits = self.history(WITHIN_COPY, BOUND_ABOVE_BELOW, BOUND_ABOVE_BELOW_BACK,
+                                     tags={0: RELEASE})
+
+        # Act
+        done = run(root, commits[1], "[]")
+
+        # Assert
+        self.assertEqual((done.returncode, "## [2.1.0]: changed against the base" in done.stderr),
+                         (UNNAMED, True))
+
+    def test_Given_ALineTheCopyPutsBelowThePutBack_When_ItSitsBetweenItAndItsBound_Then_ItIsRefused(self):
+        # Arrange -- inside one block, and both bounds hold: the entry the copy puts above the one
+        # going back is above it and the one it puts below is below. What sits between the bound
+        # above and the put-back is an entry the copy puts below it.
+        root, commits = self.history(WITHIN_COPY, OVER_THE_PUT_BACK, OVER_THE_PUT_BACK_BACK,
+                                     tags={0: RELEASE})
+
+        # Act
+        done = run(root, commits[1], "[]")
+
+        # Assert
+        self.assertEqual((done.returncode, "## [2.1.0]: changed against the base" in done.stderr),
+                         (UNNAMED, True))
+
+    def test_Given_TheBoundBelowThePutBack_When_TheBlockCarriesItAboveInstead_Then_ItIsRefused(self):
+        # Arrange -- the same reorder as the section-wide case above, inside one block, so the note
+        # files every line where it did and the entry comes to rest against the one the copy puts
+        # above it.
+        root, commits = self.history(WITHIN_COPY, BOUND_BELOW_ABOVE, BOUND_BELOW_ABOVE_BACK,
+                                     tags={0: RELEASE})
+
+        # Act
+        done = run(root, commits[1], "[]")
+
+        # Assert
+        self.assertEqual((done.returncode, "## [2.1.0]: changed against the base" in done.stderr),
+                         (UNNAMED, True))
+
+    def test_Given_AHeadingTheBaseCarriesUnderOneOfTheSameName_When_ItComesToFileALineWrittenLater_Then_ItPasses(self):
+        # Arrange -- the base merged the copy's two `### Fixed` and gained a line after the release
+        # at the end of the merged block, so the heading going back comes to file that line as well
+        # as its own entry. Both blocks read the same, so the note files every line where it did.
+        root, commits = self.history(SAME_NAME_COPY, SAME_NAME_BASE, SAME_NAME_BACK,
+                                     tags={0: RELEASE})
+        carries_more = "- Written after the release." not in subprocess.run(
+            ["git", "-C", str(root), "show", f"{revision(root, RELEASE)}:{CHANGELOG}"],
+            capture_output=True, text=True).stdout
+
+        # Act
+        done = run(root, commits[1], "[]")
+
+        # Assert -- the tag's copy being short of that line rides along, and the reading having run
+        # with it: were the copy to carry it, it would be read as any other line of the note.
+        self.assertEqual((carries_more, done.returncode,
+                          "each dated section to its own release's tag" in done.stdout),
+                         (True, 0, True))
+
     def test_Given_ABaseCarryingTheBlocksInTheOtherOrder_When_ALineGoesBackAboveThemBoth_Then_ItIsRefused(self):
         # Arrange -- the copy puts `### Fixed` below the missing line and `- Changed one.` above it,
         # and this base has them the other way round, so the line goes back above the one the copy
@@ -1036,11 +1252,11 @@ class PublishedSections(ReleaseHistory):
         self.assertEqual((done.returncode, "## [2.1.0]: changed against the base" in done.stderr),
                          (UNNAMED, True))
 
-    def test_Given_ABoundTheSectionHasNotGot_When_ThePutBackIsAboveEveryHeading_Then_ItIsRefused(self):
-        # Arrange -- both entries of the copy's first block are missing, so the bound above the one
-        # put back is absent; walked outward it is the release's own highlight, and the entry lands
-        # above that block's heading, under no heading of its own.
-        root, commits = self.history(WALK_COPY, WALK_BASE, WALK_ABOVE_THE_HEADINGS,
+    def test_Given_ABoundAboveThePutBack_When_TheSectionCarriesItBelowInstead_Then_ItIsRefused(self):
+        # Arrange -- the base is short of both entries of the copy's `### Fixed`, so the bound above
+        # the one put back is walked past the other to that heading itself, which the base carries
+        # below where the entry lands rather than above it.
+        root, commits = self.history(WALK_COPY, WALK_BASE, WALK_ABOVE_THE_BOUND,
                                      tags={0: RELEASE})
 
         # Act

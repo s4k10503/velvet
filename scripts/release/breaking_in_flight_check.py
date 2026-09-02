@@ -48,6 +48,7 @@ import re
 import subprocess
 import sys
 from collections import Counter
+from itertools import takewhile
 from pathlib import Path
 
 import published_check
@@ -313,9 +314,46 @@ def touching(lines, index, copy, where):
             or (where + 1 < len(copy) and below == copy[where + 1]))
 
 
+def under(lines, index):
+    """The heading `lines[index]` is published under, or None where no heading of the section is
+    above it."""
+    return next((one for one in lines[index - 1::-1]
+                 if release_notes.SUBSECTION_HEADING.match(one)), None) if index else None
+
+
+def block(lines, index):
+    """The lines `lines[index]` heads, up to the next heading of the section."""
+    return takewhile(lambda one: not release_notes.SUBSECTION_HEADING.match(one),
+                     lines[index + 1:])
+
+
+def files_as_published(lines, index, copy, where):
+    """Whether the note goes on filing each line under the heading that published it: the put-back
+    under the heading the copy files it under, and, where the put-back is itself a heading, nothing
+    but what the copy publishes under that name.
+
+    The order readings admit both `## [1.4.0]`'s repair -- a heading put back above the entry the
+    copy ends its block with, against a base that merged the two blocks -- and an entry put back
+    under the heading above the one the copy files it under, against a base that moved that heading
+    up. Which heading the note then publishes each line under is what separates them, and none of
+    the three reads it.
+
+    A heading put back under one of the same name leaves what it comes to file reading as it did, so
+    a line the section gained after its release does not stand in the way of it, as it does not of
+    `touching`. And a heading coming to file fewer lines than the copy files under it passes, since
+    a section short of a whole block takes the heading back before its entries.
+    """
+    if not release_notes.SUBSECTION_HEADING.match(lines[index]):
+        return under(lines, index) == under(copy, where)
+    if under(lines, index) == lines[index]:
+        return True
+    filed = {one for at, one in enumerate(copy) if under(copy, at) == copy[where]}
+    return all(one in filed for one in block(lines, index))
+
+
 def in_its_place(lines, index, copy):
-    """Whether the line at `index` may go back there: three readings of the copy's order, each
-    admitting what the others refuse.
+    """Whether the line at `index` may go back there: four readings of the copy, each refusing what
+    the others admit.
 
     Either side of the one line rather than over the section, since asking the section to carry the
     copy in order would refuse every change to a section reordered against its copy.
@@ -324,10 +362,11 @@ def in_its_place(lines, index, copy):
     section has not got: a bound that is absent bounds nothing, and a line missing beside another
     was then free of that side and could go back under another heading. Between the bound above and
     the put-back, every line has to be one the copy puts above it as well, which is what catches a
-    copy line belonging below the put-back sitting over it. And `touching` asks what it comes to
-    rest against, which neither of those can ask of the copy's last line: the whole copy is above
-    that, so nothing bounds it below and nothing over it contradicts, and it could be appended under
-    a heading the copy never files it under.
+    copy line belonging below the put-back sitting over it. `touching` asks what it comes to rest
+    against, which neither of those can ask of the copy's last line: the whole copy is above that,
+    so nothing bounds it below and nothing over it contradicts, and it could be appended under a
+    heading the copy never files it under. And `files_as_published` asks what the note then files
+    where, which all three read past.
     """
     for where, published in enumerate(copy):
         if published != lines[index]:
@@ -342,7 +381,7 @@ def in_its_place(lines, index, copy):
                 continue
         if below is not None and below not in lines[index + 1:]:
             continue
-        if touching(lines, index, copy, where):
+        if touching(lines, index, copy, where) and files_as_published(lines, index, copy, where):
             return True
     return False
 
