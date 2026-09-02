@@ -2156,15 +2156,19 @@ def exhausted_reason(spent, withdrawn, carried, removed=()):
     more = len(standing) - 6
     if more > 0:
         named += "\n    and {} more".format(more)
-    return ("\n{} round(s) compiled nothing, having put {} of the {} carried file(s) back to what\n"
-            "the base holds{}. A round withdraws every file the editor blamed, and the\n"
-            "next sees what those put-backs uncovered, so the rounds a change needs is how deep\n"
-            "that goes:\n"
+    # The floor is what the one-a-round regime needs. A round the log explains withdraws every file
+    # it blamed, so the rounds a change needs is how deep the put-backs go and doubling reaches it;
+    # a round the log explains nothing about withdraws one silent file, so a run of those needs a
+    # round per carried file however many it has spent.
+    return ("\n{} round(s) compiled nothing, having withdrawn {} of the {} carried file(s){}.\n"
+            "A round withdraws every file the editor blamed, or one it named nothing about, so\n"
+            "the rounds a change needs is how deep that goes:\n"
             "  --max-rounds {}\n"
             "{}".format(spent, len(standing), carried,
                         "" if not removed else
-                        " and taken {} more out again".format(len(removed)),
-                        spent * 2, "  still standing at the base's text:\n" + named if standing else ""))
+                        " and taken {} more out of the tree".format(len(removed)),
+                        max(carried, spent * 2),
+                        "  withdrawn:\n" + named if standing else ""))
 
 
 def held_at(project, commit, relative):
@@ -2272,8 +2276,8 @@ def main():
                         help="seconds to wait for another Unity run to finish")
     parser.add_argument("--max-rounds", type=int, default=8,
                         help="rounds to ask the base in before the C# lane gives up (default: 8). "
-                             "A round withdraws every file the editor blamed, so this is not a "
-                             "count of files")
+                             "A round withdraws every file the editor blamed, or one it named "
+                             "nothing about, so this is a count of rounds rather than of files")
     parser.add_argument("--plan", action="store_true", help="print the cases and exit without running")
     parser.add_argument("--emit", help="build the base tree, write the reading here and stop, for a "
                                        "runner that reaches Unity through something other than the "
@@ -2309,9 +2313,13 @@ def main():
                                  log_text_beside(args.results), plan.get("withdrawn") or (),
                                  plan.get("removed", {})), flush=True)
             if plan.get("rounds", 1) > 1:
-                print("That was round {}; the rounds before it put back {} carried file(s) and took {} "
-                      "out, and the\nbase still did not build.".format(
-                          plan["rounds"], len(plan.get("blamed", {})), len(plan.get("removed", {}))),
+                # Minus the removals, for the reason `exhausted_reason` counts them apart: a file
+                # `replan` put back and a later round took out is in both records and is one file.
+                print("That was round {}; the rounds before it withdrew {} carried file(s) and took {} "
+                      "of them\nout of the tree, and the base still did not build.".format(
+                          plan["rounds"],
+                          len(set(plan.get("blamed", {})) - set(plan.get("removed", {}))),
+                          len(plan.get("removed", {}))),
                       flush=True)
         return 1 if report(from_plan(plan["cases"]), from_plan(plan["control"]), reported,
                            plan["canaries"], wrote, plan.get("withdrawn"),
