@@ -4237,9 +4237,10 @@ class RepositoryTests(unittest.TestCase):
 class UnbuiltBaseTreeTests(unittest.TestCase):
     """What the verdict lane says about a base run that wrote no results file.
 
-    A licence failure, an editor crash, a timeout and a tree the carried files took down all land
-    there, and the results directory separates none of them — which is why the message named the cases
-    and not the cause. The editor log does: the first three blame no source file.
+    The results file's absence separates none of the ways a run comes to write none — which is why
+    the message named the cases and not the cause. The editor log does: an activation failure leaves
+    none, a crash leaves one blaming nothing, a tree the carried files took down leaves one blaming
+    them.
     """
 
     PRODUCTION = "Packages/p/Runtime/A/Old.cs"
@@ -4267,18 +4268,45 @@ class UnbuiltBaseTreeTests(unittest.TestCase):
                         ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", message]):
             subprocess.run(["git", "-C", str(self.project), *command], capture_output=True)
 
-    def said(self, log, since=None):
-        return base_red_check.unbuilt_reason(self.project, since or self.since, log)
+    def said(self, log, since=None, withdrawn=(), removed=()):
+        return base_red_check.unbuilt_reason(self.project, since or self.since, log, withdrawn, removed)
 
     def test_Given_EveryBlamedFileIsOneTheBranchCarried_When_TheLogIsRead_Then_ItSaysTheBaseWasNeverAsked(self):
+        # Arrange -- the phrase the other reading shares is not enough: a carried set read as empty
+        # sends every blamed file down the other branch, which also says "carried onto it".
         # Act / Assert
-        self.assertIn("carried onto it", self.said(self.CARRIED + "(1,1): error CS0012: x\n"))
+        self.assertIn("So the base was never asked", self.said(self.CARRIED + "(1,1): error CS0012: x\n"))
+
+    def test_Given_FilesTakenOutBeforeABaseFileFailed_When_TheLogIsRead_Then_TheReadingNamesThem(self):
+        # Arrange -- a base file failing after removals may be missing what they declared, and the
+        # reading that blames the base is where that has to be said.
+        # Act / Assert
+        self.assertIn("may be missing what they declared:\n  gone.cs",
+                      self.said(self.PRODUCTION + "(1,1): error CS0103: x\n", removed={"gone.cs"}))
+
+    def test_Given_FilesTakenOutBeforeACarriedFileFailed_When_TheLogIsRead_Then_TheReadingDoesNotSayIt(self):
+        # Arrange -- the note is about a file of the base's; beside a reading that blames the
+        # branch's own files it would contradict the reading it follows.
+        # Act / Assert
+        self.assertNotIn("may be missing", self.said(self.CARRIED + "(1,1): error CS0012: x\n", removed={"gone.cs"}))
 
     def test_Given_ABlamedProductionFileTheBranchChanged_When_TheLogIsRead_Then_ItSaysTheBaseIsTheProblem(self):
-        # Arrange -- the branch changed it, and the base tree still holds its own text of it: only
-        # the test side is carried, so a blame there is the base failing to build itself.
-        # Act / Assert
+        # Act / Assert -- the branch changed it, and the base tree still holds its own text of it:
+        # only the test side is carried, so a blame there is the base failing to build itself.
         self.assertIn("not ones this\nbranch carried", self.said(self.PRODUCTION + "(1,1): error CS0103: x\n"))
+
+    def test_Given_NineBlamedProductionFiles_When_TheLogIsRead_Then_EveryOneIsNamed(self):
+        # Arrange -- the other list, which the same reader would otherwise stop short on.
+        names = ["Packages/p/Runtime/A/P{}.cs".format(n) for n in range(9)]
+        for name in names:
+            self.write(name, "class P {}\n")
+        self.commit("more")
+
+        # Act
+        said = self.said("".join(name + "(1,1): error CS0103: x\n" for name in names))
+
+        # Assert
+        self.assertEqual([name for name in names if name not in said], [])
 
     def test_Given_NineBlamedFiles_When_TheLogIsRead_Then_EveryOneIsNamed(self):
         # Arrange -- "every file the compiler blamed" over a list that stopped short would send the
@@ -4295,20 +4323,76 @@ class UnbuiltBaseTreeTests(unittest.TestCase):
         self.assertEqual([name for name in names if name not in said], [])
 
     def test_Given_ACheckoutThatCannotDiff_When_TheLogIsRead_Then_ItSaysSoRatherThanBlamingTheBase(self):
-        # Arrange -- a diff that fails leaves nothing carried, and a reading over that would call
-        # every blamed file the base's own.
-        # Act / Assert
+        # Act / Assert -- a diff that fails leaves nothing carried, and a reading over that would
+        # call every blamed file the base's own.
         self.assertIn("cannot be read here",
                       self.said(self.CARRIED + "(1,1): error CS0012: x\n", since="0" * 40))
 
-    def test_Given_ABuildStoppedWithNoFileNamed_When_TheLogIsRead_Then_ItSaysTheFailureIsAnAssemblys(self):
+    def test_Given_ABuildStoppedBlamingNoSourceLine_When_TheLogIsRead_Then_ItSaysTheLogHasTheRest(self):
         # Act / Assert
-        self.assertIn("named no source file", self.said(base_red_check.BUILD_STOPPED + "\n"))
+        self.assertIn("blamed no line", self.said(base_red_check.BUILD_STOPPED + ".\n"))
 
-    def test_Given_ALogNamingNoSource_When_ItIsRead_Then_ItSaysTheRunFailedRatherThanTheBuild(self):
-        # Arrange -- what a licence failure, a crash and a timeout leave.
+    def test_Given_TheEditorsOwnLines_When_TheConstantIsRead_Then_ItSeparatesAStoppedBuildFromACompiledOne(self):
+        # Arrange -- two lines the editor writes, read from its logs on this machine and on the
+        # runner: the one a stopped build writes, and the one every compiled run carries. A constant
+        # a typo away from the first reads every stopped build as a crash; one shortened to a word
+        # both share reads every crash as a stopped build.
+        stopped, compiled = "Scripts have compiler errors.\n", "DisplayProgressbar: Compiling Scripts\n"
+
         # Act / Assert
-        self.assertIn("failed to run", self.said("Failed to activate license\n"))
+        self.assertEqual((base_red_check.BUILD_STOPPED in stopped, base_red_check.BUILD_STOPPED in compiled),
+                         (True, False))
+
+    def test_Given_ALogBlamingNoErrorAndNoStoppedBuild_When_ItIsRead_Then_ItSaysTheEditorStopped(self):
+        # Act / Assert -- a run that got as far as compiling and no further.
+        self.assertIn("ends where the editor stopped", self.said("DisplayProgressbar: Compiling Scripts\n"))
+
+    def test_Given_NoEditorLogAtAll_When_TheReasonIsBuilt_Then_ItSaysTheEditorWasNeverStarted(self):
+        # Act / Assert -- an absent log is the shape an activation failure leaves, not a log naming nothing.
+        self.assertIn("never started", self.said(""))
+
+    def test_Given_ABlamedFileAlreadyWithdrawn_When_TheLogIsRead_Then_ItSaysWhatFailedIsBesideIt(self):
+        # Act / Assert -- the base's own text of a withdrawn file stands in the tree, so a blame there
+        # is not that file's to fix.
+        self.assertIn("already stood at the base's text",
+                      self.said(self.CARRIED + "(1,1): error CS0012: x\n", withdrawn={self.CARRIED}))
+
+    def test_Given_AWithdrawnFileBlamedBesideACarriedOne_When_TheLogIsRead_Then_TheRestAreNamedAsTheBranchs(self):
+        # Arrange -- the standing file and the rest are two lists with two remedies, and one list
+        # would send the reader to withdraw what already stands at the base's text.
+        other = "Packages/p/Runtime/A/Tests/Editor/OtherTests.cs"
+        self.write(other, "class OtherTests {}\n")
+        self.commit("other")
+
+        # Act
+        said = self.said(self.CARRIED + "(1,1): error CS0012: x\n" + other + "(1,1): error CS0012: x\n",
+                         withdrawn={self.CARRIED})
+
+        # Assert
+        self.assertIn("The rest are this branch's; make them build against the base or withdraw them:\n  "
+                      + other, said)
+
+    def test_Given_AWithdrawnFileInTheReading_When_TheVerdictLaneRuns_Then_ItReadsTheWithdrawal(self):
+        # Arrange -- the plan's field has to reach the reason through the lane, or the message
+        # sends the reader to withdraw a file the reading already withdrew.
+        holder = tempfile.mkdtemp(prefix="base-red-standing-")
+        self.addCleanup(shutil.rmtree, holder, ignore_errors=True)
+        case = base_red_check.Case("N.NewTests.Given_A_When_B_Then_C", self.CARRIED, 1, 2)
+        Path(holder, "plan.json").write_text(json.dumps(base_red_check.as_plan(
+            self.since, [case], [], {}, {"EditMode": ["N.CanaryTests"]},
+            withdrawn={self.CARRIED: "Proceeding"})))
+        Path(holder, "results").mkdir()
+        Path(holder, "results", "editmode.log").write_text(self.CARRIED + "(1,1): error CS0012: x\n")
+
+        # Act
+        printed = subprocess.run(
+            [sys.executable, str(REPO_ROOT / "scripts/test_quality/base_red_check.py"),
+             "--project", str(self.project), "--verdict", str(Path(holder, "plan.json")),
+             "--results", str(Path(holder, "results"))], capture_output=True, text=True)
+
+        # Assert
+        self.assertEqual((printed.returncode, "already stood at the base's text" in printed.stdout),
+                         (1, True))
 
 
 class ReplanTests(unittest.TestCase):

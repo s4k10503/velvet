@@ -933,7 +933,7 @@ COMPILE_ERROR = re.compile(
     r"^(?:.*?[\\/])?((?:Assets|Packages)[\\/][^(]+)\(\d+,\d+\): error ([A-Z]+\d+)")
 
 def compile_errors_in(log_text):
-    """(repository-relative source, CS code) for each compile error a Unity log blames on a file."""
+    """(repository-relative source, error code) for each error a Unity log blames on a source file."""
     found = []
     for line in log_text.splitlines():
         match = COMPILE_ERROR.match(line.strip())
@@ -1909,24 +1909,25 @@ def carried_files(project, since):
     return {name for name in changed if is_test_side(name) and (project / name).exists()}
 
 
-def unbuilt_reason(project, since, log_text, removed=()):
+def unbuilt_reason(project, since, log_text, withdrawn=(), removed=()):
     """What to say about a base run that wrote no results file.
 
-    A licence failure, an editor crash and a timeout all leave no results file, and so does a tree the
-    carried files took down. Nothing in the results directory separates them -- which is why the
-    message here used to name the cases and not the cause. The log does: those three blame no source
-    file at all, and a tree the branch's own test surface broke blames the files it carried.
+    Nothing in the results file's absence separates the ways a run comes to write none -- which is
+    why the message here used to name the cases and not the cause. The editor log does, by being
+    there at all and by what it blames.
 
-    Neither is a reading, so both still fail. What changes is that the second says which files to look
-    at, and that they are this branch's rather than the base's.
+    None of them is a reading, so all of them still fail. What changes is what is said.
     """
+    if not log_text:
+        return ("The run left no editor log beside its results: the test run's editor was never started,\n"
+                "and the job log has what stopped the run before it.")
     blamed = compile_error_files(log_text)
     if not blamed:
         if BUILD_STOPPED in log_text:
-            return ("The base tree did not build, and the compiler named no source file for it, so the\n"
-                    "failure is an assembly's rather than a file's. The editor log has it.")
-        return ("Nothing in the log names a source file, so the base tree did not fail to build -- it\n"
-                "failed to run. A licence, an editor crash and a timeout all land here.")
+            return ("The base tree did not build, and the compiler blamed no line of a source under\n"
+                    "Assets or Packages for it. The editor log has what it did say.")
+        return ("The editor log blames no error on a source file and does not say the scripts did not\n"
+                "build. It ends where the editor stopped.")
     named = "\n".join("  " + name for name in blamed)
     try:
         carried = carried_files(project, since) if since else set()
@@ -1943,6 +1944,15 @@ def unbuilt_reason(project, since, log_text, removed=()):
                     "" if not removed else
                     "\nA file of the base's failing after these were taken out may be missing what "
                     "they declared:\n" + "\n".join("  " + name for name in sorted(removed))))
+    standing = [name for name in blamed if name in withdrawn]
+    if standing:
+        rest = [name for name in blamed if name not in withdrawn]
+        return ("The base tree did not build. {} of the {} blamed file(s) already stood at the base's "
+                "text,\nwithdrawn before the round, so what failed there is beside them -- something "
+                "else this\nbranch carried or dropped:\n{}{}".format(
+                    len(standing), len(blamed), "\n".join("  " + name for name in standing),
+                    "" if not rest else "\nThe rest are this branch's; make them build against the "
+                    "base or withdraw them:\n" + "\n".join("  " + name for name in rest)))
     return ("The base tree did not build, and every file the compiler blamed is one this branch\n"
             "carried onto it:\n{}\nSo the base was never asked. Make them build against the base -- "
             "reaching new API by\nreflection is what the others do -- or withdraw them, or say why "
@@ -2121,9 +2131,8 @@ def local_remedy(since, cases):
     """
     platforms = sorted({platform_of(case.path) for case in cases
                         if kind_of(case.path) == "csharp"})
-    return ("\nThe editor wrote nothing, which a single round cannot tell from an editor that never\n"
-            "started. Take the reading where the loop runs -- it withdraws by the editor's own error\n"
-            "list and asks again until something answers:\n"
+    return ("\nWhere the loop runs it withdraws by the editor's own error list and asks again, round\n"
+            "by round. Take the reading there:\n"
             "  python3 scripts/test_quality/base_red_check.py --lane csharp{} --base {} \\\n"
             "    --warm-library Library".format(
                 "".join(" --platform " + platform for platform in platforms), since or "origin/main"))
@@ -2290,7 +2299,8 @@ def main():
         if not wrote:
             print("the base run wrote no result, so nothing it was asked was measured", flush=True)
             print(unbuilt_reason(Path(args.project).resolve(), plan.get("since"),
-                                 log_text_beside(args.results), plan.get("removed", {})), flush=True)
+                                 log_text_beside(args.results), plan.get("withdrawn") or (),
+                                 plan.get("removed", {})), flush=True)
             if plan.get("rounds", 1) > 1:
                 print("That was round {}; the rounds before it put back {} carried file(s) and took {} "
                       "out, and the\nbase still did not build.".format(
