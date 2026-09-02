@@ -2155,8 +2155,8 @@ def collect(project, base, lane):
         for case in cases:
             if case.declaration is not None and lines is not None:
                 case.declaration.written_here = case.declaration.written_in(lines)
-        wanted = {case.name for case in authored(relative, touched(cases, lines),
-                                                 held_at(project, since, relative), text)[0]}
+        before = held_at(project, since, relative)
+        wanted = {case.name for case in authored(relative, touched(cases, lines), before, text)[0]}
         # A change wholly outside every case body, in a file that has cases: a static readonly table
         # the cases drive, a SetUp, a helper. `authored` keeps such a case out, correctly -- the
         # branch did not write it -- and with nothing else selected the lane exits 0 having measured
@@ -2168,11 +2168,15 @@ def collect(project, base, lane):
         # and puts every case a fixture has on trial for a line added to SetUp; `outside` reports
         # that instead. What is left here is the state where reporting it is all that happens.
         if (cases and lines is not None and not wanted and outside(cases, lines)
-                and shared_material_differs(relative, held_at(project, since, relative), text)):
+                and shared_material_differs(relative, before, text)):
             wanted = {case.name for case in cases}
         changed.extend(as_the_runner_names_them(
             [case for case in cases if case.name in wanted], heirs))
+        # Read as the promotion above reads it: a changed line outside every case that is only a
+        # comment leaves the cases beside it the base's text, controls included.
         loose = outside(cases, lines)
+        if loose and not shared_material_differs(relative, before, text):
+            loose = set()
         if not loose and not shared_helper:
             control.extend(as_the_runner_names_them(
                 [case for case in cases if case.name not in wanted], heirs))
