@@ -477,6 +477,11 @@ namespace Velvet
 
                 if (fiber.Reconciler?.HasPendingWork == true)
                 {
+                    // This resume runs outside the bracket FiberWorkLoop.ContinueReconcile puts around its
+                    // own, so it stamps the children it reaches against whatever array the caller left
+                    // current rather than against this fiber's. The ReconcileIntoSlotRange below supersedes
+                    // those stamps for every child its own diff reaches, and the two must stay in this
+                    // order — ComponentFiber.SourceTree owns what a stamp left from the wrong pass costs.
                     FiberCommitWork.DrainPendingWork(fiber);
                 }
 

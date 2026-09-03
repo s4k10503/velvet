@@ -898,8 +898,9 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(characterization): the base reads the first row's value here too. The node comparison
         // is off in this window because the row's recorded array is the one the host has moved off, so what is
-        // left is the key, which answers at every container holding this position — the hole issue #630 names,
-        // reached through a park rather than through two sibling containers.
+        // left is the key, which answers at every container holding this position, so a row reads whichever
+        // container the committed tree reaches first — reached through a park rather than through two
+        // sibling containers.
         [Test]
         public void Given_AParkedKeyedListWhoseRowsCarryProviders_When_ARowPastTheParkPointReRendersAlone_Then_ItReadsTheFirstRowsProvider()
         {
