@@ -838,6 +838,10 @@ namespace Velvet
             if (fiber.PreviousTree == null || fiber.PreviousTree.Length == 0) return;
 
             _ctx.FiberStack.Push(fiber);
+            // Moved with the FiberStack push, for the same reason: what this descent stamps onto its children
+            // belongs to THIS fiber's output, not the outer caller's.
+            var enclosingFiberTree = _ctx.CurrentFiberTree;
+            _ctx.CurrentFiberTree = fiber.PreviousTree;
             try
             {
                 var componentPosition = FiberKeying.ComponentChild(position, component.Key, nodeIndex);
@@ -845,6 +849,7 @@ namespace Velvet
             }
             finally
             {
+                _ctx.CurrentFiberTree = enclosingFiberTree;
                 _ctx.FiberStack.Pop();
             }
         }

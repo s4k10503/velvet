@@ -1008,6 +1008,13 @@ namespace Velvet
         // styling toggling the class via className props.
         public HashSet<VisualElement> OutletContainers { get; } = new();
 
+        // The node array being expanded for the fiber on top of FiberStack, which is the array whose nodes a
+        // GetOrCreate reached from here is stamping onto its children. Set where a fiber's own output enters
+        // the reconcile and where a nested fiber's committed output is descended, and restored after both, so
+        // an expansion nested inside either reads the array of the fiber it belongs to rather than the outer
+        // one. ComponentFiber.SourceTree owns what reads it.
+        internal VNode?[]? CurrentFiberTree { get; set; }
+
         // Effective key override published by the expansion pass for VNodes whose identity is gated
         // by an enclosing keyed FragmentNode. The keyed reconciler reads this map (via
         // ChildReconciler.EffectiveKey) instead of VNode.Key when looking up

@@ -678,6 +678,27 @@ namespace Velvet
         internal VNode?[]? PreviousTree { get; set; }
 
         /// <summary>
+        /// The <see cref="ComponentNode"/> occurrence this fiber currently answers for: written on every
+        /// <c>ComponentRegistry.GetOrCreate</c> that reaches the fiber, beside <see cref="Body"/>, so it
+        /// names an occurrence of the most recent render to reach it — which is not always the render that
+        /// fixed the ancestor's <see cref="PreviousTree"/>, because a render whose output is discarded has
+        /// already written its nodes onto the children it reached. <see cref="SourceTree"/> is what pairs the
+        /// two, and <see cref="FiberContextSpine"/> compares nodes only where they pair and only while
+        /// descending a committed tree; its <c>SpineWalk</c> owns the second of those conditions.
+        /// </summary>
+        internal ComponentNode? SourceNode { get; set; }
+
+        /// <summary>
+        /// The node array <see cref="SourceNode"/> was read from — the output of the render that was expanding
+        /// when this fiber was last reached. It is <see cref="PreviousTree"/> of the fiber above only where
+        /// that render's output was committed AND reached this fiber, which is what
+        /// <see cref="FiberContextSpine"/> tests before comparing nodes: a render whose output was discarded
+        /// leaves the tree above at the array it kept while this names the discarded one, and a time-sliced
+        /// pass that parked before reaching this fiber leaves this naming the array the one above moved off.
+        /// </summary>
+        internal VNode?[]? SourceTree { get; set; }
+
+        /// <summary>
         /// Set where <c>FiberErrorBoundary.TryShowFallback</c> writes the fallback over
         /// <see cref="PreviousTree"/>, cleared at the top of every <c>FiberRenderer.RenderAndReconcile</c>
         /// for this fiber. What it answers that the reconciler's own abort flag cannot is which fiber the

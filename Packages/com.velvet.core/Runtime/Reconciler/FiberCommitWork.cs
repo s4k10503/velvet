@@ -133,6 +133,12 @@ namespace Velvet
             ComponentFiber fiber, VNode?[] oldTree, VNode?[] newTree, double frameBudgetMs, bool deferReconcile)
         {
             var slotStart = fiber.IsInlineMounted ? fiber.MountSlotStart : 0;
+            // The array this reconcile is expanding, for the children it stamps on the way through.
+            var treeContext = fiber.Reconciler?.Context;
+            var enclosingFiberTree = treeContext?.CurrentFiberTree;
+            if (treeContext != null) treeContext.CurrentFiberTree = newTree;
+            try
+            {
             if (!deferReconcile)
             {
                 // For inline-mounted fibers, the slot footprint is the *expanded* DOM count —
@@ -157,6 +163,11 @@ namespace Velvet
                 {
                     fiber.Reconciler!.Reconcile(fiber.MountPoint, oldTree, newTree, frameBudgetMs, slotStart);
                 }
+            }
+            }
+            finally
+            {
+                if (treeContext != null) treeContext.CurrentFiberTree = enclosingFiberTree;
             }
         }
 
