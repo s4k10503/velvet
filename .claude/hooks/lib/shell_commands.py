@@ -81,14 +81,6 @@ def mask_shell_literals(command):
         elif ch == "\\" and i + 1 < n:
             out[i] = out[i + 1] = " "
             i += 2
-        elif ch == "#" and (i == 0 or command[i - 1] in " \t\n"):
-            # A `#` opening a word comments out the rest of the line. Left unread, an apostrophe in
-            # one opens a quote span that swallows the newline and everything after it, so a
-            # `git add -A` on the next line reaches no guard; and the comment's own text reaches
-            # every reader as shell, which is how an arrow in one was taken for a redirect.
-            while i < n and command[i] != "\n":
-                out[i] = " "
-                i += 1
         elif command.startswith("<<<", i):
             # A here-string is not a heredoc, and `<<` matches its first two characters. Read as one
             # it took `<word` for the delimiter, blanked the rest of the line hunting a body line

@@ -45,6 +45,7 @@ UNREAD_GAPS = [
     "`tee`, and `git mv`",
     "`xargs` and `sudo`",
     "inside a script or a program",
+    "an apostrophe, an unmatched quote or a line continuation",
 ]
 RELEASED = """# Changelog
 
@@ -158,6 +159,23 @@ class ReadingTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(found, [])
+
+    def test_Given_AWriteBelowACommentCarryingAnApostrophe_When_TheCommandIsRead_Then_ItIsNotNamed(self):
+        # Arrange / Act — a declared gap, and one the base has too: the mask does not read a
+        # comment, so the apostrophe opens a quote span that swallows the newline and the write
+        # below it. Blanking comments in the mask closes this and costs five guards' verdicts,
+        # because the mask is where the segment boundaries are found and the slice is the original.
+        found = self.named("echo hi   # don't\nprintf x > notes.md\n")
+
+        # Assert
+        self.assertEqual(found, [])
+
+    def test_Given_AWriteBelowACommentCarryingNoQuote_When_TheCommandIsRead_Then_ItIsNamed(self):
+        # Arrange / Act — the control that says the quote rather than the comment is what hides it.
+        found = self.named("echo hi   # plain\nprintf x > notes.md\n")
+
+        # Assert
+        self.assertEqual(found, [self.under("notes.md")])
 
     def test_Given_ATrackedNameInACommentAfterAMove_When_TheCommandIsRead_Then_ItIsNotNamed(self):
         # Arrange / Act — the destination is the last operand, and a comment's words are operands

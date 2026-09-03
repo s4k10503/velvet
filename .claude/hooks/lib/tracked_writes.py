@@ -25,6 +25,16 @@ occurs. Against that, the change corrects `git commit`'s operand list in every r
 moves, and the two verdicts that move both move from refusal to allowing, one of them a commit
 refused over an unexpanded operand belonging to a command three further along the line.
 
+The last of those is not this reading's own doing and is not fixable here. `mask_shell_literals`
+does not read a comment, so an apostrophe in one opens a quote span that swallows the newline and
+every line after it -- measured, a following `printf x > notes.md` is then named by nothing, and so
+is a following `git add -A` for the guards that read git. Blanking comments there does fix it and
+costs more than it buys: the mask is where `command_segments` finds its boundaries and it slices the
+ORIGINAL text, so a comment that swallows a `;` puts its own words into the preceding command's
+operand list. Measured over this project's transcripts, that moved five guards' verdicts -- two open
+where they refused, three refuse where they allowed -- against a class `main` gets wrong in exactly
+the same way. `;#` and `|#` reach it too, and a comment carrying no quote does not.
+
 `tee` is the obvious fourth shape and is not read: two independent readings of those transcripts put
 it at no tracked file at all. Nor is `git mv`, which wants a criterion of its own rather than another
 spelling of the one below: its destination is ordinarily a path git does not yet track, and where
@@ -56,6 +66,7 @@ UNREAD = (
     "`tee`, and `git mv`",
     "a writing command reached through another, as `xargs` and `sudo` reach one",
     "a write made from inside a script or a program",
+    "a command below a comment carrying an apostrophe, an unmatched quote or a line continuation",
 )
 
 # What a refusal built on this must admit to. Three shapes and a literal operand is the whole of it.
@@ -113,6 +124,15 @@ def _redirect_targets(segment):
     found = []
     index = 0
     while index < len(masked):
+        # A `#` opening a word comments out the rest of the line, and an arrow in one -- `notes.md
+        # -> CONTRIBUTING.md` -- is otherwise read as a redirect onto the name after it, which is
+        # the refusal this reading calls unanswerable. The rule is here rather than in
+        # `mask_shell_literals` because blanking a comment there removes the separators that ended
+        # the span, and `command_segments` slices the original: the comment's own words then land in
+        # the preceding command's operand list, which moved five guards' verdicts. `UNREAD` states
+        # what that leaves.
+        if masked[index] == "#" and (index == 0 or masked[index - 1] in " \t"):
+            break
         if masked[index] != ">" or (index and masked[index - 1] in "<>"):
             index += 1
             continue
@@ -128,19 +148,30 @@ def _redirect_targets(segment):
     return found
 
 
-def _before_any_comment(operands):
-    """The operands up to the first that opens a comment.
+def _opens_a_comment(segment):
+    """Whether this segment carries a `#` that starts a comment rather than sitting in a word.
+
+    Asked of the mask, which is the one place that already knows a quote from a bare character: an
+    unquoted `#` survives it, a quoted one is blanked. Asking the token list instead cannot tell
+    `cp a.md b.md '#c'`, which writes `#c`, from a trailing comment -- and dropping the last operand
+    there makes a SOURCE the destination, which is a refusal over a file nothing writes.
+    """
+    masked = mask_shell_literals(segment)
+    return any(character == "#" and (index == 0 or masked[index - 1] in " \t")
+               for index, character in enumerate(masked))
+
+
+def _before_any_comment(operands, segment):
+    """The operands up to the first that opens a comment, where this segment carries one.
 
     `tokens_of` reads the original text and is handed `comments=False`, so a trailing comment's
     words arrive as operands and the last of them reads as a destination -- which named a file the
     command does not touch. Python's own comment mode is not the fix: measured, `shlex` with
     `comments=True` cuts mid-word, turning `note#1.md` into `note` and `a#b` into `a`, where the
     shell keeps both whole.
-
-    A token beginning with `#` is word-initial by construction, since `tokens_of` splits on
-    whitespace, so this agrees with the shell except for an operand quoted into beginning with one.
-    There it stops early and names less, which is the direction this reading is allowed to err in.
     """
+    if not _opens_a_comment(segment):
+        return operands
     for index, token in enumerate(operands):
         if token.startswith("#"):
             return operands[:index]
@@ -162,14 +193,14 @@ def _in_place(operands):
     return False
 
 
-def _sed_targets(operands):
+def _sed_targets(operands, segment):
     """Every operand of an in-place `sed` that is not one of its options.
 
     The script is among them, because the flag reading above declines to say where it ends. Which of
     these is a path is left to the tracked-file test, which answers it exactly and answers no for a
     substitution expression.
     """
-    operands = _before_any_comment(operands)
+    operands = _before_any_comment(operands, segment)
     if not _in_place(operands):
         return []
     found, skip = [], False
@@ -185,7 +216,7 @@ def _sed_targets(operands):
     return found
 
 
-def _copy_targets(operands):
+def _copy_targets(operands, segment):
     """Where a `cp` or an `mv` writes: its last operand, and each source placed under it.
 
     Both, because whether the last operand is the file written or the directory written into is
@@ -193,7 +224,7 @@ def _copy_targets(operands):
     git tracks nothing at. `-t` moves the destination off the end, and that spelling is not read:
     a destination taken off the wrong end names a source, and a source is not written.
     """
-    operands = _before_any_comment(operands)
+    operands = _before_any_comment(operands, segment)
     if any(token == "-t" or token.startswith("--target-directory") for token in operands):
         return []
     named = [token for token in operands if not token.startswith("-")]
@@ -252,10 +283,10 @@ def literal_write_targets(command, cwd):
     for segment in segments:
         candidates += _redirect_targets(segment)
         for operands in program_invocations(segment, "sed", ()):
-            candidates += _sed_targets(operands)
+            candidates += _sed_targets(operands, segment)
         for program in ("cp", "mv"):
             for operands in program_invocations(segment, program, ()):
-                candidates += _copy_targets(operands)
+                candidates += _copy_targets(operands, segment)
 
     found = []
     for candidate in candidates:

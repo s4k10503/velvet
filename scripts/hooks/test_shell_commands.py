@@ -98,20 +98,6 @@ class HeredocOpenerTailTests(unittest.TestCase):
         # Assert
         self.assertEqual(found, [])
 
-    def test_Given_AnApostropheInATrailingComment_When_TheInvocationsAreRead_Then_TheNextLineIsStillSeen(self):
-        # Arrange — no heredoc, because the comment rule is the masker's rather than the heredoc
-        # branch's and this is the shape it closes. Unread, the apostrophe opens a quote span that
-        # swallows the newline and every line after it, and the staging command below reaches no
-        # guard at all. Measured, a comment without an apostrophe costs nothing, which is what says
-        # the quote is the operative term here rather than the comment.
-        command = "echo hi   # don't\ngit add -A\n"
-
-        # Act
-        found = shell_commands.git_invocations(command, ("add",))
-
-        # Assert
-        self.assertEqual([(call[1], call[2]) for call in found], [("add", ["-A"])])
-
     def test_Given_AStagingCommandAfterASeparatorOnTheOpenersLine_When_TheInvocationsAreRead_Then_ItIsSeen(self):
         # Arrange — the direction this change exists for. Blanking the opener's tail hid a real
         # `git add -A` there from every guard, and a reading that only stops refusing things is not
