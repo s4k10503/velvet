@@ -120,10 +120,16 @@ namespace Velvet
             }
             fiber.OpenSubsumedRenderWindow();
             RenderAndReconcile(fiber, deferReconcile: true);
+            // The render above can dispose this fiber, which nulls Reconciler — RenderAndReconcile's own
+            // post-render arm reads the field for that same reason and names the cascade that does it.
+            // There is then no pass left to subsume into: the two effect queues below would stage a layout
+            // effect and a paint-tick effect against a disposed fiber.
+            var subsumedReconciler = fiber.Reconciler;
+            if (subsumedReconciler == null) return;
             // Update commit: drain side runs prior cleanup + new setup (deps-comparing) without
             // the Editor-only mount double-invoke. ScheduleRunEffects forwards the same flag so the
             // passive (UseEffect) cleanup+setup pair fires at the next paint-tick.
-            fiber.Reconciler!.Context.DeferredInlineLayoutEffectFibers.Push((fiber, IsMount: false));
+            subsumedReconciler.Context.DeferredInlineLayoutEffectFibers.Push((fiber, IsMount: false));
             FiberEffects.ScheduleRunEffects(fiber, mountDoubleInvoke: false);
             SettleSubsumedFiber(fiber);
         }
@@ -352,6 +358,8 @@ namespace Velvet
             fiber.DetachedMountContext = null;
 
             fiber.PreviousTree = null;
+            fiber.SourceNode = null;
+            fiber.SourceTree = null;
             fiber.Reconciler?.Context.ParkedBaselineFibers.Remove(fiber);
             // Detach the parked baseline BEFORE the sweep — the mark treats owner.PendingOldTree as
             // live, and a still-attached reference would spare this very sweep's target.
@@ -469,6 +477,11 @@ namespace Velvet
 
                 if (fiber.Reconciler?.HasPendingWork == true)
                 {
+                    // This resume runs outside the bracket FiberWorkLoop.ContinueReconcile puts around its
+                    // own, so it stamps the children it reaches against whatever array the caller left
+                    // current rather than against this fiber's. The ReconcileIntoSlotRange below supersedes
+                    // those stamps for every child its own diff reaches, and the two must stay in this
+                    // order — ComponentFiber.SourceTree owns what a stamp left from the wrong pass costs.
                     FiberCommitWork.DrainPendingWork(fiber);
                 }
 

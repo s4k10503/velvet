@@ -422,6 +422,13 @@ namespace Velvet
                 // the same way the pass that parked it did — see PendingReconcileDrainsTransitionWork.
                 var wasRenderingTransitionLane = IsRenderingTransitionLane;
                 IsRenderingTransitionLane = fiber.PendingReconcileDrainsTransitionWork;
+                // A resume continues the pass whose output is already this fiber's PreviousTree, so the
+                // children it reaches are stamped against that array exactly as the slice that parked
+                // stamped the ones it reached. Without it they are stamped against nothing, and
+                // ComponentFiber.SourceTree owns what that costs them.
+                var resumeContext = fiber.Reconciler.Context;
+                var enclosingFiberTree = resumeContext.CurrentFiberTree;
+                resumeContext.CurrentFiberTree = fiber.PreviousTree;
                 try
                 {
                     if (fiber.IsInlineMounted)
@@ -444,6 +451,7 @@ namespace Velvet
                 }
                 finally
                 {
+                    resumeContext.CurrentFiberTree = enclosingFiberTree;
                     IsRenderingTransitionLane = wasRenderingTransitionLane;
                 }
 
