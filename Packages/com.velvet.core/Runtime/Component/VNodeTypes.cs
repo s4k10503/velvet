@@ -86,7 +86,11 @@ namespace Velvet
     /// </summary>
     public sealed class MotionNode : BaseElementNode
     {
-        /// <summary>Transition configuration.</summary>
+        /// <summary>
+        /// Transition configuration. A variant naming its own <see cref="MotionVariant.Transition"/> replaces
+        /// it for swaps into that pose; a <see cref="LayoutId"/> tween reads this one either way, a rect delta
+        /// being no swap into a pose.
+        /// </summary>
         public StyleTransitionConfig? Transition { get; init; }
 
         /// <summary>
@@ -101,12 +105,13 @@ namespace Velvet
         public Action? OnEnterComplete { get; init; }
 
         /// <summary>
-        /// Named animation states: each label maps to a utility-class string.
+        /// Named animation states: each label maps to a <see cref="MotionVariant"/> — a utility-class string
+        /// and, optionally, the transition a swap into that pose plays on in place of <see cref="Transition"/>.
         /// Carried RAW (never baked into <see cref="BaseElementNode.ClassNames"/>): the effective label is
         /// resolved at reconcile time — this node's <see cref="Animate"/>, else the nearest ANCESTOR Motion's
         /// active label (parent→child propagation) — and applied against these variants.
         /// </summary>
-        public IReadOnlyDictionary<string, string>? Variants { get; init; }
+        public IReadOnlyDictionary<string, MotionVariant>? Variants { get; init; }
 
         /// <summary>The active variant label for this node (a key of <see cref="Variants"/>); null inherits the
         /// nearest ancestor Motion's active label.</summary>
@@ -115,8 +120,9 @@ namespace Velvet
         /// <summary>
         /// Mount-time starting variant label. When this Motion sets <see cref="Initial"/> + <see cref="Animate"/> +
         /// <see cref="Variants"/>, the enter starts the element at <c>variants[Initial]</c> and transitions to
-        /// <c>variants[Animate]</c> (which it then rests at, persistently) using the <see cref="Transition"/>
-        /// timing. Works the same whether this Motion is the direct child of an AnimatePresence or mounts
+        /// <c>variants[Animate]</c> (which it then rests at, persistently) on <c>variants[Animate]</c>'s own
+        /// <see cref="MotionVariant.Transition"/>, else <see cref="Transition"/>. Works the same whether this
+        /// Motion is the direct child of an AnimatePresence or mounts
         /// standalone — <c>initial</c>/<c>animate</c> apply to any Motion node; AnimatePresence
         /// is only required for <see cref="Exit"/>. Null = no variant initial state.
         /// </summary>
@@ -125,7 +131,8 @@ namespace Velvet
         /// <summary>
         /// Exit variant label. When this Motion is the direct child of an AnimatePresence and
         /// sets <see cref="Exit"/> + <see cref="Animate"/> + <see cref="Variants"/>, removal animates from the resting
-        /// <c>variants[Animate]</c> to <c>variants[Exit]</c> (using the <see cref="Transition"/> timing) before the
+        /// <c>variants[Animate]</c> to <c>variants[Exit]</c> — on <c>variants[Exit]</c>'s own
+        /// <see cref="MotionVariant.Transition"/>, else <see cref="Transition"/> — before the
         /// element unmounts. Unlike <see cref="Initial"/>, this genuinely needs AnimatePresence — something must
         /// defer the unmount for the removal to animate against — so it is inert (and logs a warning) outside one.
         /// Null = use the transition's own ExitFrom/ExitTo classes.

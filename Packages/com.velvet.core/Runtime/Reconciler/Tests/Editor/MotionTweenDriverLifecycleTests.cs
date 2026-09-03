@@ -26,13 +26,13 @@ namespace Velvet.Tests
     [TestFixture]
     internal sealed class MotionTweenDriverLifecycleTests
     {
-        private static readonly Dictionary<string, string> s_fade = new()
+        private static readonly Dictionary<string, MotionVariant> s_fade = new()
         {
             ["hidden"] = "opacity-0",
             ["visible"] = "opacity-100",
         };
 
-        private static readonly Dictionary<string, string> s_slide = new()
+        private static readonly Dictionary<string, MotionVariant> s_slide = new()
         {
             ["hidden"] = "opacity-0",
             ["visible"] = "opacity-100 translate-x-4",
@@ -40,7 +40,7 @@ namespace Velvet.Tests
 
         // Semantic theme tokens resolve through --color-* with no C# mirror, so neither driver can read a
         // numeric endpoint out of these class names: an exit between these labels resolves to an empty plan.
-        private static readonly Dictionary<string, string> s_themeTokens = new()
+        private static readonly Dictionary<string, MotionVariant> s_themeTokens = new()
         {
             ["visible"] = "bg-surface",
             ["hidden"] = "bg-primary",
@@ -66,7 +66,7 @@ namespace Velvet.Tests
 
         private static SetStore s_store;
         private static ToggleStore s_outerStore;
-        private static Dictionary<string, string> s_hostVariants;
+        private static Dictionary<string, MotionVariant> s_hostVariants;
         private static StyleTransitionConfig s_hostTransition;
         private static Action s_onExitComplete;
 

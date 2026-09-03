@@ -37,7 +37,7 @@ namespace Velvet.Tests
         private static SetStore s_store;
         private static AnimatePresenceMode s_mode;
         private static bool s_classicTransition;
-        private static readonly Dictionary<string, string> s_fade = new()
+        private static readonly Dictionary<string, MotionVariant> s_fade = new()
         {
             ["visible"] = "opacity-100",
             ["hidden"] = "opacity-0",
@@ -338,7 +338,7 @@ namespace Velvet.Tests
     [TestFixture]
     internal sealed class AnimatePresencePopLayoutFlowTests
     {
-        private static readonly Dictionary<string, string> s_fade = new()
+        private static readonly Dictionary<string, MotionVariant> s_fade = new()
         {
             ["hidden"] = "opacity-0",
             ["visible"] = "opacity-100",
@@ -488,7 +488,7 @@ namespace Velvet.Tests
     {
         private const string StyleSheetPath = "Packages/com.velvet.core/Runtime/Styles/StyleUtilities.uss";
 
-        private static readonly Dictionary<string, string> s_fade = new()
+        private static readonly Dictionary<string, MotionVariant> s_fade = new()
         {
             ["hidden"] = "opacity-0",
             ["visible"] = "opacity-100",

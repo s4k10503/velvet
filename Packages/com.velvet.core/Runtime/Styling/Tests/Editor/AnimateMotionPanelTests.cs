@@ -55,7 +55,7 @@ namespace Velvet.Tests
         // transition-property either side of the swap.
         private (string beforeSwap, string afterSwap) SwapVariantUnderAPulse(string className)
         {
-            var variants = new Dictionary<string, string> { ["hidden"] = "opacity-0", ["visible"] = "opacity-100" };
+            var variants = new Dictionary<string, MotionVariant> { ["hidden"] = "opacity-0", ["visible"] = "opacity-100" };
             VNode Card(string label) => V.Motion(className: className, name: "card", variants: variants,
                 animate: label, transition: new StyleTransitionConfig { DurationSec = 0.35f });
             _mounted = V.Mount(_window.rootVisualElement, Card("hidden"));

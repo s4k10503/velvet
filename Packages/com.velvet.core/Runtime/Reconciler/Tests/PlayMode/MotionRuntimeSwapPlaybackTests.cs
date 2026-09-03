@@ -18,7 +18,7 @@ namespace Velvet.Tests
     /// </summary>
     internal sealed class MotionRuntimeSwapPlaybackTests
     {
-        private static readonly Dictionary<string, string> s_fade = new()
+        private static readonly Dictionary<string, MotionVariant> s_fade = new()
         {
             ["hidden"] = "opacity-0",
             ["visible"] = "opacity-100",
@@ -125,7 +125,7 @@ namespace Velvet.Tests
     /// </summary>
     internal sealed class MotionEnterPlaybackTests
     {
-        private static readonly Dictionary<string, string> s_fade = new()
+        private static readonly Dictionary<string, MotionVariant> s_fade = new()
         {
             ["hidden"] = "opacity-0",
             ["visible"] = "opacity-100",

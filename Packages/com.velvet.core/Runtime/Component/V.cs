@@ -2129,7 +2129,8 @@ namespace Velvet
         /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces.</param>
         /// <param name="key">Key used to disambiguate siblings at the same position.</param>
         /// <param name="name">Element name assigned to <see cref="VisualElement.name"/> for query/debug.</param>
-        /// <param name="transition">Transition preset; defaults to <c>StyleTransition.Fade</c> when null.</param>
+        /// <param name="transition">Transition preset; defaults to <c>StyleTransition.Fade</c> when null. A
+        /// <paramref name="variants"/> entry naming its own replaces it for swaps into that pose.</param>
         /// <param name="duration">Override the transition duration (seconds).</param>
         /// <param name="easing">Override the transition easing mode.</param>
         /// <param name="delay">Override the transition delay (seconds). Ignored when <c>DurationSec</c> is 0.</param>
@@ -2144,8 +2145,10 @@ namespace Velvet
         /// <param name="elementType">The VisualElement type the animated cell IS,
         /// e.g. <c>typeof(Button)</c> so a clickable cell is one element instead of a Motion wrapping a
         /// Button. Defaults to <see cref="VisualElement"/>. Supply interactions via <paramref name="events"/>.</param>
-        /// <param name="variants">Named animation states: each label maps to a
-        /// utility class string for that state. The label selected by <paramref name="animate"/> has its classes
+        /// <param name="variants">Named animation states: each label maps to a <see cref="MotionVariant"/> —
+        /// a utility class string for that state, plus an optional transition for swaps INTO it (a bare
+        /// <c>string</c> converts implicitly, taking <paramref name="transition"/>). The label selected by
+        /// <paramref name="animate"/> has its classes
         /// merged on top of <paramref name="className"/>. Because switching <paramref name="animate"/> changes the
         /// element's class list, a USS <c>transition-*</c> utility in the classes tweens between states.
         /// Parent→child propagation: a descendant Motion that supplies
@@ -2156,12 +2159,13 @@ namespace Velvet
         /// nearest ancestor Motion's active label is inherited; when set, it overrides any inherited label.</param>
         /// <param name="initial">Mount-time starting variant label. When this Motion also sets
         /// <paramref name="animate"/> + <paramref name="variants"/>, the enter starts at <c>variants[initial]</c>
-        /// and transitions to <c>variants[animate]</c> (its persistent resting state) using this Motion's
-        /// transition timing — whether this Motion is the DIRECT child of an AnimatePresence or mounts
-        /// standalone.</param>
+        /// and transitions to <c>variants[animate]</c> (its persistent resting state) on that variant's own
+        /// transition, else <paramref name="transition"/> — whether this Motion is the DIRECT child of an
+        /// AnimatePresence or mounts standalone.</param>
         /// <param name="exit">Exit variant label. When this Motion is the DIRECT child of an
         /// AnimatePresence and also sets <paramref name="animate"/> + <paramref name="variants"/>, removal animates
-        /// from <c>variants[animate]</c> to <c>variants[exit]</c> (using this Motion's transition timing) before the
+        /// from <c>variants[animate]</c> to <c>variants[exit]</c> — on <c>variants[exit]</c>'s own transition, else
+        /// <paramref name="transition"/> — before the
         /// element unmounts. Unlike <paramref name="initial"/>, this needs AnimatePresence to defer the unmount —
         /// set outside one, it is inert and logs a warning.</param>
         /// <returns>The created <see cref="MotionNode"/>.</returns>
@@ -2182,7 +2186,7 @@ namespace Velvet
             string? whileTapClass = null,
             string? whileFocusClass = null,
             Type? elementType = null,
-            IReadOnlyDictionary<string, string>? variants = null,
+            IReadOnlyDictionary<string, MotionVariant>? variants = null,
             string? animate = null,
             string? initial = null,
             string? exit = null,

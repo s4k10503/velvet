@@ -554,6 +554,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   where a bare struct holds a record class: one of equal content bails where it used to re-render, the
   member walk having read that record by its instance.
 
+- A `V.Motion(variants:)` entry carries a transition of its own. The map is
+  `IReadOnlyDictionary<string, MotionVariant>` now — a `MotionVariant` being the utility-class string a
+  label already named plus an optional `StyleTransitionConfig` for swaps INTO that pose — and the
+  Motion's own `transition:` is the default such a pose overrides, still the `Fade` preset where the
+  call site leaves it out. **Every caller that builds a variants map has to retype it**, from
+  `Dictionary<string, string>` to `Dictionary<string, MotionVariant>`, and so does every field,
+  parameter or props type one is handed around as; the entries themselves need no edit, because a
+  `string` converts to a `MotionVariant` implicitly, and every `initial:` / `animate:` / `exit:` label
+  reads as it did. Code reading `MotionNode.Variants` back gets `MotionVariant` values, whose
+  `ClassName` is the string the map used to hold.
+  What this buys is timing a single per-node config could not express: 0.5s in against 0.05s out on one
+  Motion, and an `exit` whose duration is its own rather than the enter's. Whether a removal is held as
+  an exiting ghost is decided by the same resolved config, so `transition: StyleTransitionConfig.None`
+  beside a timed exit pose animates that pose instead of dropping the child instantly — a shape 2.1.4
+  had no way to ask for. The child-orchestration knobs are read off that config too, so a coordinator's
+  pose can carry `StaggerChildrenSec` and a `When = BeforeChildren` wait is measured from that pose's
+  own span. The motion guide states which pose each play reads.
+
 ### Removed
 
 - `FiberUpdatePriority.Deferred`. Source naming it stops compiling; `FiberUpdatePriority.Transition`

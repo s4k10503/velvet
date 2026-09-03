@@ -1141,7 +1141,7 @@ namespace Velvet
                 if (newKeySet.Contains(key)) continue;
                 if (state.ExitComplete.Contains(key)) continue;
                 var ghostMotion = FiberNodeFactory.FindFirstMotionDescendant(node);
-                if (ghostMotion?.Transition?.HasExitAnimation == true) return true;
+                if (ResolveExitTransition(ghostMotion)?.HasExitAnimation == true) return true;
             }
             return false;
         }
@@ -1183,7 +1183,10 @@ namespace Velvet
             foreach (var (key, node) in prevCommitted)
             {
                 if (newKeySet.Contains(key) || state.ExitComplete.Contains(key)) continue;
-                if (FiberNodeFactory.FindFirstMotionDescendant(node)?.Transition?.HasExitAnimation == true) exitCount++;
+                if (ResolveExitTransition(FiberNodeFactory.FindFirstMotionDescendant(node))?.HasExitAnimation == true)
+                {
+                    exitCount++;
+                }
             }
             return exitCount;
         }
@@ -1364,7 +1367,7 @@ namespace Velvet
             }
 
             var ghostMotionNode = FiberNodeFactory.FindFirstMotionDescendant(node);
-            var ghostTransition = ghostMotionNode?.Transition;
+            var ghostTransition = ResolveExitTransition(ghostMotionNode);
             if (ghostTransition?.HasExitAnimation != true)
             {
                 // No exit animation → immediate removal (skip emitting; the diff reaps the leaves).
@@ -1740,12 +1743,14 @@ namespace Velvet
         {
             var isVariantMotion = motionElement != null && motion.Variants != null && motion.Animate != null;
             if (isVariantMotion && !wasExiting
-                && TryResolveVariantInitial(motion, out var fromClasses, out var toClasses))
+                && TryResolveVariantInitial(motion, out var fromClasses, out var toClasses,
+                    out var enterTransition)
+                && enterTransition != null)
             {
                 // `initial`: enter from variants[initial] to variants[animate] (kept as the persistent
                 // resting state).
                 _ctx.StyleAnimationScheduler.PlayVariantEnter(motionElement, fromClasses, toClasses,
-                    motion.Transition, ContainedEnterComplete(motion, boundaryFiber), staggerDelaySec);
+                    enterTransition, ContainedEnterComplete(motion, boundaryFiber), staggerDelaySec);
             }
             else if (isVariantMotion)
             {
@@ -1982,42 +1987,83 @@ namespace Velvet
         // Initial + Animate + Variants and the initial label maps to a non-empty class string. Internal (not
         // private): FiberNodeFactory calls this too, to play the same variant enter on a standalone Motion
         // (outside any AnimatePresence) at element-creation time.
-        internal static bool TryResolveVariantInitial(MotionNode? motion, out string[]? fromClasses, out string[]? toClasses)
+        // transition is what the enter plays on: the TARGET variant's own (variants[Animate]) when it declares
+        // one, else the Motion's — the enter's destination pose is what an enter's timing belongs to, the same
+        // way the exit resolution below reads variants[Exit] rather than the resting pose it leaves. Null only
+        // where neither carries one, which leaves the caller nothing to play.
+        internal static bool TryResolveVariantInitial(MotionNode? motion, out string[]? fromClasses,
+            out string[]? toClasses, out StyleTransitionConfig? transition)
         {
             fromClasses = null;
             toClasses = null;
+            transition = null;
             if (motion?.Initial == null || motion.Animate == null || motion.Variants == null
-                || !motion.Variants.TryGetValue(motion.Initial, out var fromClass) || string.IsNullOrEmpty(fromClass))
+                || !motion.Variants.TryGetValue(motion.Initial, out var from) || string.IsNullOrEmpty(from.ClassName))
+            {
+                // MUTANT_SURVIVES(equivalent): returning true here hands back a null transition.
+                // That is what the resolved-but-untimed path below returns too, so a caller has to
+                // gate the play on the transition being non-null regardless, and both callers do.
+                return false;
+            }
+
+            motion.Variants.TryGetValue(motion.Animate, out var to);
+            fromClasses = V.ParseClassNames(from.ClassName);
+            toClasses = V.ParseClassNames(to.ClassName ?? string.Empty);
+            transition = to.Transition ?? motion.Transition;
+            return true;
+        }
+
+        // The config an exit's timing comes from: variants[Exit]'s own when the exit variant resolves and
+        // declares one, else this Motion's. The three gates that decide how a removal is treated —
+        // ShouldBlockPresenceEnters, CountAnimatedExits and the ghost gate in ExpandPresenceGhostEntry — read
+        // this so they agree with the config StartPresenceExit then plays. Disagreeing costs each of them
+        // something different, measured on a Motion whose own transition is None beside a timed exit pose:
+        // the ghost gate reaps the child before that pose's timing can play at all, the count collapses a
+        // reversed stagger to forward order, and Wait mode admits a new child while an exit is still running.
+        internal static StyleTransitionConfig? ResolveExitTransition(MotionNode? motion)
+            => TryResolveExitVariant(motion, out _, out _, out var transition) ? transition : motion?.Transition;
+
+        // The exit-variant preconditions, in one place so the gates above and TryResolveVariantExit below
+        // cannot drift apart on which configurations count as a variant exit.
+        private static bool TryResolveExitVariant(MotionNode? motion, out string restingClass,
+            out string exitClass, out StyleTransitionConfig? transition)
+        {
+            restingClass = string.Empty;
+            exitClass = string.Empty;
+            transition = null;
+            if (motion?.Exit == null || motion.Animate == null || motion.Variants == null
+                || !motion.Variants.TryGetValue(motion.Exit, out var exit) || string.IsNullOrEmpty(exit.ClassName))
             {
                 return false;
             }
 
-            motion.Variants.TryGetValue(motion.Animate, out var toClass);
-            fromClasses = V.ParseClassNames(fromClass);
-            toClasses = V.ParseClassNames(toClass ?? string.Empty);
+            motion.Variants.TryGetValue(motion.Animate, out var resting);
+            restingClass = resting.ClassName ?? string.Empty;
+            exitClass = exit.ClassName!;
+            transition = exit.Transition ?? motion.Transition;
             return true;
         }
 
         // Builds the exit transition for an `exit` variant: the element animates from its resting
-        // variants[Animate] (ExitFromClass) to variants[Exit] (ExitToClass), keeping this Motion's
-        // transition timing, before unmount. Returns null (caller falls back to the classic transition)
-        // unless the Motion sets its own Exit + Animate + Variants with a non-empty exit class. The caller
+        // variants[Animate] (ExitFromClass) to variants[Exit] (ExitToClass), on the timing
+        // ResolveExitTransition resolves, before unmount. Returns null (caller falls back to the classic
+        // transition) unless the Motion sets its own Exit + Animate + Variants with a non-empty exit class and
+        // a transition resolves for it. The caller
         // supplies the element the swap targets — the Motion's own, so a wrapped Motion's exit variant
         // animates the same element its resting variant classes live on.
         internal static StyleTransitionConfig? TryResolveVariantExit(MotionNode? motion)
         {
-            if (motion?.Exit == null || motion.Animate == null || motion.Variants == null
-                || !motion.Variants.TryGetValue(motion.Exit, out var exitClass) || string.IsNullOrEmpty(exitClass))
+            if (!TryResolveExitVariant(motion, out var restingClass, out var exitClass, out var transition)
+                || transition == null)
             {
                 return null;
             }
 
-            motion.Variants.TryGetValue(motion.Animate, out var restingClass);
             // WithExitClasses copies every timing/spring/per-property-override knob (including Type/Stiffness/
             // Damping/Mass, so a spring-configured Motion's variant EXIT is also spring-driven and hands off to
             // a reversal spring on an exit-cancel instead of silently falling back to a tween) and replaces
             // only the exit class pair — a single source for that knob list instead of hand-copying it here.
-            return motion.Transition!.WithExitClasses(restingClass ?? string.Empty, exitClass);
+            return transition.WithExitClasses(restingClass, exitClass);
         }
 
         #endregion
