@@ -98,6 +98,29 @@ class HeredocOpenerTailTests(unittest.TestCase):
         # Assert
         self.assertEqual(found, [])
 
+    def test_Given_AnApostropheInATrailingComment_When_TheInvocationsAreRead_Then_TheNextLineIsStillSeen(self):
+        # Arrange — the comment is not read, so the apostrophe opens a quote span that swallows the
+        # newline and every line after it, and the staging command below reaches no guard at all.
+        command = "cat <<'EOF' > /tmp/out.txt   # don't\nbody\nEOF\ngit add -A\n"
+
+        # Act
+        found = shell_commands.git_invocations(command, ("add",))
+
+        # Assert
+        self.assertEqual([(call[1], call[2]) for call in found], [("add", ["-A"])])
+
+    def test_Given_AStagingCommandAfterASeparatorOnTheOpenersLine_When_TheInvocationsAreRead_Then_ItIsSeen(self):
+        # Arrange — the direction this change exists for. Blanking the opener's tail hid a real
+        # `git add -A` there from every guard, and a reading that only stops refusing things is not
+        # what was asked for.
+        command = "cat <<'EOF' && git add -A\nbody\nEOF\n"
+
+        # Act
+        found = shell_commands.git_invocations(command, ("add",))
+
+        # Assert
+        self.assertEqual([(call[1], call[2]) for call in found], [("add", ["-A"])])
+
     def test_Given_ARedirectAfterTheDelimiter_When_TheLineIsMasked_Then_TheRedirectSurvives(self):
         # Arrange / Act — a segment carries the ORIGINAL text of its span, so reading one says
         # nothing about what the mask kept: the tail is there either way. What moved is the mask,

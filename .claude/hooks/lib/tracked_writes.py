@@ -23,7 +23,7 @@ and none is in the guarded set of `add`, `checkout`, `commit`, `stage`, `stash` 
 `git add` or a `git stash` written there does become visible and is refused, correctly, but none
 occurs. Against that, the change corrects `git commit`'s operand list in every reading of it that
 moves, and the two verdicts that move both move from refusal to allowing, one of them a commit
-refused over an unexpanded operand belonging to the command after it.
+refused over an unexpanded operand belonging to a command three further along the line.
 
 `tee` is the obvious fourth shape and is not read: two independent readings of those transcripts put
 it at no tracked file at all. Nor is `git mv`, which wants a criterion of its own rather than another
@@ -113,12 +113,6 @@ def _redirect_targets(segment):
     found = []
     index = 0
     while index < len(masked):
-        # A `#` opening a word comments out the rest of the line, and an arrow in one -- `notes.md
-        # -> CONTRIBUTING.md` -- is otherwise read as a redirect onto the name after it. That is the
-        # refusal this reading calls unanswerable: the command writes nothing for its author to
-        # point at. A quoted `#` is blanked in the mask and does not reach here.
-        if masked[index] == "#" and (index == 0 or masked[index - 1] in " \t"):
-            break
         if masked[index] != ">" or (index and masked[index - 1] in "<>"):
             index += 1
             continue
@@ -132,6 +126,25 @@ def _redirect_targets(segment):
             found.append(operand[0])
         index = end
     return found
+
+
+def _before_any_comment(operands):
+    """The operands up to the first that opens a comment.
+
+    `tokens_of` reads the original text and is handed `comments=False`, so a trailing comment's
+    words arrive as operands and the last of them reads as a destination -- which named a file the
+    command does not touch. Python's own comment mode is not the fix: measured, `shlex` with
+    `comments=True` cuts mid-word, turning `note#1.md` into `note` and `a#b` into `a`, where the
+    shell keeps both whole.
+
+    A token beginning with `#` is word-initial by construction, since `tokens_of` splits on
+    whitespace, so this agrees with the shell except for an operand quoted into beginning with one.
+    There it stops early and names less, which is the direction this reading is allowed to err in.
+    """
+    for index, token in enumerate(operands):
+        if token.startswith("#"):
+            return operands[:index]
+    return operands
 
 
 def _in_place(operands):
@@ -156,6 +169,7 @@ def _sed_targets(operands):
     these is a path is left to the tracked-file test, which answers it exactly and answers no for a
     substitution expression.
     """
+    operands = _before_any_comment(operands)
     if not _in_place(operands):
         return []
     found, skip = [], False
@@ -179,6 +193,7 @@ def _copy_targets(operands):
     git tracks nothing at. `-t` moves the destination off the end, and that spelling is not read:
     a destination taken off the wrong end names a source, and a source is not written.
     """
+    operands = _before_any_comment(operands)
     if any(token == "-t" or token.startswith("--target-directory") for token in operands):
         return []
     named = [token for token in operands if not token.startswith("-")]

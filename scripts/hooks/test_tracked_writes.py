@@ -159,6 +159,22 @@ class ReadingTests(unittest.TestCase):
         # Assert
         self.assertEqual(found, [])
 
+    def test_Given_ATrackedNameInACommentAfterAMove_When_TheCommandIsRead_Then_ItIsNotNamed(self):
+        # Arrange / Act — the destination is the last operand, and a comment's words are operands
+        # too unless something stops them, so the name in the comment read as where the move lands.
+        found = self.named("mv /tmp/a.md /tmp/b.md  # was notes.md")
+
+        # Assert — the move's own destination is named; the comment's name is not.
+        self.assertNotIn(self.under("notes.md"), found)
+
+    def test_Given_ATrackedNameInACommentAfterASed_When_TheCommandIsRead_Then_ItIsNotNamed(self):
+        # Arrange / Act — the same words reach the in-place reading, which offers every operand that
+        # is not an option and lets the tracked-file test decide.
+        found = self.named("sed -i '' -e s/a/b/ /tmp/x.md  # then hand-apply to notes.md")
+
+        # Assert
+        self.assertNotIn(self.under("notes.md"), found)
+
     def test_Given_AnArrowInsideAShellComment_When_TheCommandIsRead_Then_NoFileIsNamed(self):
         # Arrange / Act — `->` in a comment is not a redirect, and the name after it is not written.
         # A refusal here names a file the command never touches, which its author cannot answer.

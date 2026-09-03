@@ -598,7 +598,8 @@ measured on those transcripts rather than judged: over them the change makes `lo
 `status`, `merge` and `diff` newly visible and none is in the set the guards read, while it corrects
 `git commit`'s operand list in all 55 readings of it that move — the masker before it appended the
 following command's tokens there, and the two verdicts that change both go from refusing to
-allowing, one of them a commit refused over an unexpanded operand belonging to the next command. A
+allowing, one of them a commit refused over an unexpanded operand belonging to a command three
+further along the line. A
 `git add` or a `git stash` written after an opener does become visible, and is refused correctly;
 what the corpus shows is that none occurs, not that none could.
 
