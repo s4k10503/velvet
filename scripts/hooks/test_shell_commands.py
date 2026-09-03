@@ -99,9 +99,12 @@ class HeredocOpenerTailTests(unittest.TestCase):
         self.assertEqual(found, [])
 
     def test_Given_AnApostropheInATrailingComment_When_TheInvocationsAreRead_Then_TheNextLineIsStillSeen(self):
-        # Arrange — the comment is not read, so the apostrophe opens a quote span that swallows the
-        # newline and every line after it, and the staging command below reaches no guard at all.
-        command = "cat <<'EOF' > /tmp/out.txt   # don't\nbody\nEOF\ngit add -A\n"
+        # Arrange — no heredoc, because the comment rule is the masker's rather than the heredoc
+        # branch's and this is the shape it closes. Unread, the apostrophe opens a quote span that
+        # swallows the newline and every line after it, and the staging command below reaches no
+        # guard at all. Measured, a comment without an apostrophe costs nothing, which is what says
+        # the quote is the operative term here rather than the comment.
+        command = "echo hi   # don't\ngit add -A\n"
 
         # Act
         found = shell_commands.git_invocations(command, ("add",))
