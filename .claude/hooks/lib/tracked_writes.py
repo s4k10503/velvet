@@ -31,9 +31,10 @@ every line after it -- measured, a following `printf x > notes.md` is then named
 is a following `git add -A` for the guards that read git. Blanking comments there does fix it and
 costs more than it buys: the mask is where `command_segments` finds its boundaries and it slices the
 ORIGINAL text, so a comment that swallows a `;` puts its own words into the preceding command's
-operand list. Measured over this project's transcripts, that moved five guards' verdicts -- two open
-where they refused, three refuse where they allowed -- against a class `main` gets wrong in exactly
-the same way. `;#` and `|#` reach it too, and a comment carrying no quote does not.
+operand list. Constructed commands move guards' verdicts both ways from there -- a flag inside a
+comment satisfying one, a name inside a comment refused by another -- against a class `main` gets
+wrong in exactly the same way. `;#` and `|#` reach it too, and a comment carrying none of the shapes
+`UNREAD` names does not.
 
 `tee` is the obvious fourth shape and is not read: two independent readings of those transcripts put
 it at no tracked file at all. Nor is `git mv`, which wants a criterion of its own rather than another
@@ -67,7 +68,8 @@ UNREAD = (
     "`tee`, and `git mv`",
     "a writing command reached through another, as `xargs` and `sudo` reach one",
     "a write made from inside a script or a program",
-    "a command below a comment carrying an apostrophe, an unmatched quote or a line continuation",
+    "a command below a comment carrying an apostrophe, an unmatched quote, a line continuation "
+    "or a heredoc opener",
 )
 
 # What a refusal built on this must admit to. Three shapes and a literal operand is the whole of it.
@@ -130,8 +132,8 @@ def _redirect_targets(segment):
         # the refusal this reading calls unanswerable. The rule is here rather than in
         # `mask_shell_literals` because blanking a comment there removes the separators that ended
         # the span, and `command_segments` slices the original: the comment's own words then land in
-        # the preceding command's operand list, which moved five guards' verdicts. `UNREAD` states
-        # what that leaves.
+        # the preceding command's operand list, which moves guards' verdicts both ways on commands
+        # a person writes. `UNREAD` states what that leaves.
         if masked[index] == "#" and (index == 0 or masked[index - 1] in " \t"):
             break
         if masked[index] != ">" or (index and masked[index - 1] in "<>"):

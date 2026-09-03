@@ -45,7 +45,7 @@ UNREAD_GAPS = [
     "`tee`, and `git mv`",
     "`xargs` and `sudo`",
     "inside a script or a program",
-    "an apostrophe, an unmatched quote or a line continuation",
+    "an apostrophe, an unmatched quote, a line continuation or a heredoc opener",
 ]
 RELEASED = """# Changelog
 
