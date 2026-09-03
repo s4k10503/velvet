@@ -193,6 +193,23 @@ class ReadingTests(unittest.TestCase):
         # Assert
         self.assertNotIn(self.under("notes.md"), found)
 
+    def test_Given_ARedirectionWordInAComment_When_TheCommandIsRead_Then_TheWriteIsStillNamed(self):
+        # Arrange / Act — the operands arrive with redirection tokens already removed, so counting the
+        # comment's words in a reading that keeps them charges a real operand for each `>` inside it.
+        # Two here, which took the file the sed writes.
+        found = self.named("sed -i '' 's/a/b/' notes.md   # bump to > 2.1.5")
+
+        # Assert
+        self.assertIn(self.under("notes.md"), found)
+
+    def test_Given_ARedirectionWordInACommentAfterACopy_When_TheCommandIsRead_Then_NoSourceIsNamed(self):
+        # Arrange / Act — the same miscount slides the destination back onto a source, which is a
+        # refusal over a file the command reads and does not write.
+        found = self.named("cp notes.md other.md third.md /tmp/out/   # keep > 2 copies")
+
+        # Assert
+        self.assertNotIn(self.under("other.md"), found)
+
     def test_Given_AHashInitialDestinationAndAComment_When_TheCommandIsRead_Then_TheDestinationIsNamed(self):
         # Arrange / Act — `#c` is a file the copy writes, and the comment after it is not. Cutting
         # the operands at the first `#`-initial token takes the destination with the comment, so the

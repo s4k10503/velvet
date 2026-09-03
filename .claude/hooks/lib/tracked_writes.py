@@ -51,7 +51,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import pr_body  # noqa: E402
 import repository  # noqa: E402
 from shell_commands import (SEPARATORS, UNRESOLVED_CD, command_segments, leading_cd,  # noqa: E402
-                            mask_shell_literals, program_invocations, tokens_of, unexpanded)
+                            mask_shell_literals, program_invocations, tokens_of, unexpanded,
+                            without_redirections)
 
 # Each gap the reading leaves. `LIMITS` is built from this so the sentence cannot name fewer of them
 # than the tuple carries; what stops the TUPLE naming fewer than the reading has is the suite, which
@@ -180,10 +181,16 @@ def _before_any_comment(operands, segment):
         return operands
     # Counted from the text rather than matched on a leading `#`, because an operand may begin with
     # one: `cp a.md '#c' # note` writes `#c`, and cutting at the first `#`-initial token drops the
-    # write along with the comment. Safe because the only caller reaches here through
-    # `program_invocations`, which skips a segment `tokens_of` could not read -- so the whole
-    # tokenises, and a prefix ending before a bare `#` cannot be the half of a quote that did not.
-    dropped = len(tokens_of(segment)) - len(tokens_of(segment[:at]))
+    # write along with the comment.
+    #
+    # Counted over the SAME reading the operands came from. `program_invocations` hands on
+    # `without_redirections(tokens_of(segment))`, so counting the unfiltered list charges a real
+    # operand for every comment word that reads as a redirection -- `# keep > 2 copies` took two.
+    # Safe because the only caller reaches here through `program_invocations`, which skips a segment
+    # `tokens_of` could not read: the whole tokenises, and a prefix ending before a bare `#` cannot
+    # be the half of a quote that did not.
+    dropped = (len(without_redirections(tokens_of(segment)))
+               - len(without_redirections(tokens_of(segment[:at]))))
     return operands[:max(0, len(operands) - dropped)] if dropped > 0 else operands
 
 
