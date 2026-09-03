@@ -75,6 +75,8 @@ V.Div(name: "row", className: "flex flex-row gap-x-2", children: new VNode[]
   for out of the class strings; *Driven channels* below is the single list of what that covers and
   what it deliberately leaves out. A `skew-*` exit never animates under any driver, because skew
   is a silhouette paint rather than a transform.
+- A `mode:` naming no `AnimatePresenceMode` member is refused at construction: `V.AnimatePresence`
+  throws `ArgumentOutOfRangeException`, naming the parameter.
 
 ### `PopLayout` mode
 

@@ -19,7 +19,8 @@ rest:
 - `playOn: PlayTrigger.Mount` (default) starts the clone on mount; `PlayTrigger.Manual`
   instantiates it stopped for imperative control — call `Play()` / `Stop()` on the mounted
   `ParticlesElement` (reach it via `refCallback` or a query). Flipping `playOn` on a later
-  render applies to the live host.
+  render applies to the live host. A `playOn:` naming no `PlayTrigger` member is refused at
+  construction: the factory throws `ArgumentOutOfRangeException`, naming the parameter.
 - Swapping the `effect:` prop destroys the old host and clones the new effect; `null`
   destroys the host and leaves an inert box. Unmounting (conditional removal, type swaps,
   tree disposal included) destroys the host.

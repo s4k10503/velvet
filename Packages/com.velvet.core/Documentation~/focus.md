@@ -83,6 +83,9 @@ cross-panel focus handoff from inside another panel's event dispatch does not st
 empirically — the still-focused source panel wins the reconciliation), so the source element is
 blurred synchronously and the target focused on its own panel's next tick.
 
+A `focusOrder:` naming no `PanelFocusOrder` member is refused at construction: `V.Portal` and
+`V.WorldSpace` each throw `ArgumentOutOfRangeException` from the call itself, naming the parameter.
+
 ## Scope cuts
 
 - No imperative focus-manager handle.

@@ -745,7 +745,8 @@ namespace Velvet
         /// <param name="data">data-* attribute map matched by <c>data-[...]</c> variants.</param>
         /// <param name="aria">aria-* attribute map matched by <c>aria-[...]</c> variants.</param>
         /// <returns>The created <see cref="ElementNode"/> representing this particles element.</returns>
-        /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="pixelsPerUnit"/> is not positive.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="pixelsPerUnit"/> is not positive,
+        /// or when <paramref name="playOn"/> names no member of <see cref="PlayTrigger"/>.</exception>
         public static ElementNode Particles(
             ParticleSystem? effect,
             string? className = null,
@@ -761,6 +762,11 @@ namespace Velvet
             IReadOnlyDictionary<string, string>? data = null,
             IReadOnlyDictionary<string, string>? aria = null)
         {
+            if (playOn is not (PlayTrigger.Mount or PlayTrigger.Manual))
+            {
+                throw new ArgumentOutOfRangeException(nameof(playOn), playOn,
+                    "V.Particles takes a member of PlayTrigger as its playOn.");
+            }
             // Validated BEFORE renting pooled props so a throwing call leaks nothing (the settings
             // constructor fail-fasts on an invalid mapping for every construction path, this factory
             // included). Always carried (even with a null effect): the patcher needs the settings on
@@ -1605,15 +1611,21 @@ namespace Velvet
         /// <param name="layer">The framework-managed layer panel to attach the children to.</param>
         /// <param name="children">Descendant VNodes mounted into the layer panel.</param>
         /// <param name="key">Key used to disambiguate siblings at the same position.</param>
-        /// <exception cref="ArgumentOutOfRangeException"><paramref name="layer"/> names no member of <see cref="UILayer"/>.</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="layer"/> names no member of <see cref="UILayer"/>,
+        /// or <paramref name="focusOrder"/> names no member of <see cref="PanelFocusOrder"/>.</exception>
         /// <returns>The created <see cref="PortalNode"/>.</returns>
         public static PortalNode Portal(UILayer layer, VNode?[]? children = null, string? key = null,
             PanelFocusOrder focusOrder = PanelFocusOrder.Isolated)
         {
-            if (!Enum.IsDefined(typeof(UILayer), layer))
+            if (layer is not (UILayer.Background or UILayer.Overlay or UILayer.Topmost))
             {
                 throw new ArgumentOutOfRangeException(nameof(layer), layer,
                     "V.Portal takes a member of UILayer as its layer.");
+            }
+            if (focusOrder is not (PanelFocusOrder.Isolated or PanelFocusOrder.Chained))
+            {
+                throw new ArgumentOutOfRangeException(nameof(focusOrder), focusOrder,
+                    "V.Portal takes a member of PanelFocusOrder as its focusOrder.");
             }
             return new PortalNode
             {
@@ -1644,6 +1656,8 @@ namespace Velvet
         /// <param name="panelSize">Virtual panel resolution in pixels (fixed world-space size mode).</param>
         /// <param name="children">Descendant VNodes rendered inside the world-space panel.</param>
         /// <param name="key">Key used to disambiguate siblings at the same position.</param>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="focusOrder"/> names no member of
+        /// <see cref="PanelFocusOrder"/>.</exception>
         /// <returns>The created <see cref="WorldSpaceNode"/>.</returns>
         public static WorldSpaceNode WorldSpace(
             Vector3 position,
@@ -1653,6 +1667,11 @@ namespace Velvet
             string? key = null,
             PanelFocusOrder focusOrder = PanelFocusOrder.Isolated)
         {
+            if (focusOrder is not (PanelFocusOrder.Isolated or PanelFocusOrder.Chained))
+            {
+                throw new ArgumentOutOfRangeException(nameof(focusOrder), focusOrder,
+                    "V.WorldSpace takes a member of PanelFocusOrder as its focusOrder.");
+            }
             return new WorldSpaceNode
             {
                 Key = key,
@@ -1871,6 +1890,8 @@ namespace Velvet
         /// <param name="activation">Per-draggable activation constraint; wins over the scope's.</param>
         /// <param name="whileDraggingClass">Classes applied while this element's drag is active — the
         /// zero-re-render isDragging channel.</param>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="movement"/> names no member of
+        /// <see cref="DragMovement"/>.</exception>
         /// <returns>The created <see cref="ElementNode"/>.</returns>
         public static ElementNode Draggable(
             string id,
@@ -1892,6 +1913,12 @@ namespace Velvet
             IReadOnlyDictionary<string, string>? data = null,
             IReadOnlyDictionary<string, string>? aria = null)
         {
+            // Above the rent below, so a refusal here strands no bag this factory rented.
+            if (movement is not (DragMovement.Translate or DragMovement.None))
+            {
+                throw new ArgumentOutOfRangeException(nameof(movement), movement,
+                    "V.Draggable takes a member of DragMovement as its movement.");
+            }
             var mergedProps = WithAttributes(props, data, aria) ?? VNodePool.RentProps();
             mergedProps.Draggable = new DraggableSettings(
                 id, dragData, disabled, movement, activation, whileDraggingClass);
@@ -2052,6 +2079,8 @@ namespace Velvet
         /// pulls an exiting child out of layout flow so still-present siblings reflow immediately.</param>
         /// <param name="onExitComplete">Invoked once when every in-flight exit animation has finished;
         /// not fired for cancelled exits or animation-less removals.</param>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="mode"/> names no member of
+        /// <see cref="AnimatePresenceMode"/>.</exception>
         /// <returns>The created <see cref="AnimatePresenceNode"/>.</returns>
         /// <remarks>
         /// AnimatePresence emits no element of its own — its keyed children expand directly into the parent.
@@ -2067,6 +2096,11 @@ namespace Velvet
             AnimatePresenceMode mode = AnimatePresenceMode.Sync,
             Action? onExitComplete = null)
         {
+            if (mode is not (AnimatePresenceMode.Sync or AnimatePresenceMode.Wait or AnimatePresenceMode.PopLayout))
+            {
+                throw new ArgumentOutOfRangeException(nameof(mode), mode,
+                    "V.AnimatePresence takes a member of AnimatePresenceMode as its mode.");
+            }
             return new AnimatePresenceNode
             {
                 Key = key,
@@ -2303,6 +2337,8 @@ namespace Velvet
         /// <param name="redirectTo">Path to redirect to. Mutually exclusive with <paramref name="element"/> and <paramref name="guard"/>.</param>
         /// <param name="guard">Pass-through guard returning a redirect path or null. Cannot be combined with <paramref name="redirectTo"/>.</param>
         /// <param name="caseSensitive">When true, literal path segments match case-sensitively. Defaults to false (case-insensitive).</param>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="loaderMode"/> names no member of
+        /// <see cref="LoaderMode"/>.</exception>
         /// <returns>The created <see cref="RouteDefinition"/>.</returns>
         public static RouteDefinition Route(
             string? path,
@@ -2337,6 +2373,12 @@ namespace Velvet
             {
                 throw new ArgumentException(
                     "redirectTo and guard cannot be specified together. Use redirectTo for redirect-only routes and guard for pass-through routes.");
+            }
+
+            if (loaderMode is not (LoaderMode.Await or LoaderMode.Suspend))
+            {
+                throw new ArgumentOutOfRangeException(nameof(loaderMode), loaderMode,
+                    "V.Route takes a member of LoaderMode as its loaderMode.");
             }
 
             return new RouteDefinition

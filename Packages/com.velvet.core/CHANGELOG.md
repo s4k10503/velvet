@@ -497,6 +497,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   catch it, and the message names the unmatched number rather than the argument it came from. A silent
   `Overlay` was how such a cast survived to put a portal on a layer nobody asked for.
 
+- Six more `V.*` factory arguments are refused when they name no member of their enum, as
+  `V.Portal(layer:)`'s already is: `focusOrder:` on `V.Portal` and on `V.WorldSpace`, `playOn:` on
+  `V.Particles`, `movement:` on `V.Draggable`, `mode:` on `V.AnimatePresence` and `loaderMode:` on
+  `V.Route`. Each throws `ArgumentOutOfRangeException` from the call itself, naming the parameter and
+  carrying the value; every named member is accepted as it was, and only a value naming none of them
+  reaches this. Such a value used to behave as `Isolated` for `focusOrder:`, `Manual` for `playOn:`,
+  `None` for `movement:`, `Sync` for `mode:` and `Suspend` for `loaderMode:`, without a word — which is
+  how a cast could put a route's loader on the background path nobody asked for. A caller wanting one
+  of those behaviours names its member.
+
 - A `[Component(Memoize = true)]` component's props bail decides a props value whole, the way React's
   shallow-equal comparison decides each key of a props object with `Object.is`. The member walk runs on
   the props bag and on nothing it finds: a props value that is not a bag — a value type, a string, a
