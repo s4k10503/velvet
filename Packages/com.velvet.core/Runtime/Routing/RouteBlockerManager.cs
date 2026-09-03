@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
-using Cysharp.Threading.Tasks;
 
 namespace Velvet
 {
@@ -33,7 +32,7 @@ namespace Velvet
         /// Disposing stops future predicate checks. An already Blocked state remains answerable until its
         /// attempt settles.
         /// </summary>
-        public IDisposable Register(Func<NavigationAttempt, CancellationToken, UniTask<bool>> shouldBlock, RouteBlockerState state)
+        public IDisposable Register(Func<NavigationAttempt, CancellationToken, VelvetTask<bool>> shouldBlock, RouteBlockerState state)
         {
             var entry = new BlockerEntry { AsyncCheck = shouldBlock, State = state };
             _blockers.Add(entry);
@@ -44,7 +43,7 @@ namespace Velvet
 
         #region Check
 
-        internal async UniTask<bool> CheckAsync(NavigationAttempt attempt, Action resume,
+        internal async VelvetTask<bool> CheckAsync(NavigationAttempt attempt, Action resume,
             CancellationToken cancellationToken = default)
         {
             var anyBlocked = false;
@@ -199,7 +198,7 @@ namespace Velvet
         private sealed class BlockerEntry
         {
             public Func<NavigationAttempt, bool>? SyncCheck;
-            public Func<NavigationAttempt, CancellationToken, UniTask<bool>>? AsyncCheck;
+            public Func<NavigationAttempt, CancellationToken, VelvetTask<bool>>? AsyncCheck;
             public RouteBlockerState State = null!;
             public bool IsRegistered = true;
         }

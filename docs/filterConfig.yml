@@ -3,8 +3,6 @@ apiRules:
   - exclude:
       uidRegex: ^System\.
   - exclude:
-      uidRegex: ^Cysharp\.
-  - exclude:
       uidRegex: ^Unity\.
   - exclude:
       uidRegex: ^UnityEngine\.

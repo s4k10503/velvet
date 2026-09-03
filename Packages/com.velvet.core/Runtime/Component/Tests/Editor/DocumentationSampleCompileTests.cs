@@ -80,6 +80,8 @@ namespace Velvet.Tests
             }
         }
 
+        // GREEN_ON_BASE(refactor): the samples compile against what a consumer references, and none of
+        // them needed the dependency this change stops adding.
         [Test]
         public void Given_EveryMarkedDocumentationSample_When_CompiledAgainstTheShippedAssembly_Then_ItCompiles()
         {
@@ -107,22 +109,13 @@ namespace Velvet.Tests
 
         private static IReadOnlyList<string> References()
         {
-            var found = new List<string>
+            return new List<string>
             {
                 Locate("netstandard.dll", "ref"),
                 Locate("UnityEngine.CoreModule.dll", "UnityEngine"),
                 Locate("UnityEngine.UIElementsModule.dll", "UnityEngine"),
                 Path.GetFullPath("Library/ScriptAssemblies/Velvet.dll"),
             };
-            // UniTask is a declared dependency of the package, so a sample awaiting one is not reaching
-            // outside what a consumer has.
-            var uniTask = Directory.EnumerateFiles(Path.GetFullPath("Library/ScriptAssemblies"), "UniTask.dll")
-                .FirstOrDefault();
-            if (uniTask != null)
-            {
-                found.Add(uniTask);
-            }
-            return found;
         }
 
         /// <summary>Compiler output for one source, or empty when it compiled.</summary>

@@ -2,7 +2,6 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
-using Cysharp.Threading.Tasks;
 
 namespace Velvet
 {
@@ -146,12 +145,12 @@ namespace Velvet
         /// and the history has no entry to step onto,
         /// or <see cref="NavigationResult.Error"/> on Loader failure or redirect overflow.
         /// </returns>
-        public UniTask<NavigationResult> NavigateAsync(
+        public VelvetTask<NavigationResult> NavigateAsync(
             string path,
             NavigationMode mode = NavigationMode.Push,
             CancellationToken cancellationToken = default) =>
             StepHasNoEntryToLandOn(mode)
-                ? UniTask.FromResult(NavigationResult.Cancelled)
+                ? VelvetTask.FromResult(NavigationResult.Cancelled)
                 : NavigateInternalAsync(ResolvePath(path), mode, cancellationToken, redirectCount: 0,
                     initiator: null);
 
@@ -162,13 +161,13 @@ namespace Velvet
         /// caller's Outlet depth here so a relative target anchors at the caller's route level;
         /// <c>-1</c> falls back to the leaf route.
         /// </summary>
-        public UniTask<NavigationResult> NavigateAsync(
+        public VelvetTask<NavigationResult> NavigateAsync(
             string path,
             NavigationMode mode,
             int baseRouteIndex,
             CancellationToken cancellationToken = default) =>
             StepHasNoEntryToLandOn(mode)
-                ? UniTask.FromResult(NavigationResult.Cancelled)
+                ? VelvetTask.FromResult(NavigationResult.Cancelled)
                 : NavigateInternalAsync(ResolvePath(path, baseRouteIndex), mode, cancellationToken,
                     redirectCount: 0, initiator: null);
 
@@ -295,7 +294,7 @@ namespace Velvet
             return FoldSegments(baseSegments, path.Split('/', StringSplitOptions.RemoveEmptyEntries), 0);
         }
 
-        private async UniTask<NavigationResult> NavigateInternalAsync(
+        private async VelvetTask<NavigationResult> NavigateInternalAsync(
             string? path,
             NavigationMode mode,
             CancellationToken cancellationToken,
@@ -343,7 +342,7 @@ namespace Velvet
             }
         }
 
-        private async UniTask<NavigationResult> NavigateCore(
+        private async VelvetTask<NavigationResult> NavigateCore(
             string? path,
             NavigationMode mode,
             CancellationToken cancellationToken,
@@ -506,7 +505,7 @@ namespace Velvet
         #region Guard check (after Match, before Loader)
 
         // Redirects re-enter the pipeline, so a target that passes its Guards still reaches Blockers.
-        private async UniTask<NavigationResult?> RunGuardChecks(
+        private async VelvetTask<NavigationResult?> RunGuardChecks(
             IReadOnlyList<RouteMatch> matches,
             NavigationMode mode,
             PendingNavigation pending,
@@ -559,7 +558,7 @@ namespace Velvet
 
         // Returns null when the attempt is neither cancelled nor blocked, so the caller falls through
         // to the Loader phase.
-        private async UniTask<NavigationResult?> RunBlockerCheck(
+        private async VelvetTask<NavigationResult?> RunBlockerCheck(
             string path,
             NavigationMode mode,
             PendingNavigation pending,
@@ -595,7 +594,7 @@ namespace Velvet
 
         private void Resume(PendingNavigation pending) => ResumeAsync(pending).Forget();
 
-        private async UniTask ResumeAsync(PendingNavigation pending)
+        private async VelvetTask ResumeAsync(PendingNavigation pending)
         {
             try
             {
@@ -616,7 +615,7 @@ namespace Velvet
         // Returns a null outcome on a normal completion (cached or fresh), leaving _loaderData/_loaderErrors
         // set for CommitHistoryEntry along with the round that produced them; returns Cancelled only when a
         // fresh (non-cached) loader run observes cancellation.
-        private async UniTask<(NavigationResult? outcome, RouteLoaderRunner.LoaderRound round)> RunLoaderPhase(
+        private async VelvetTask<(NavigationResult? outcome, RouteLoaderRunner.LoaderRound round)> RunLoaderPhase(
             IReadOnlyList<RouteMatch> matches,
             NavigationMode mode,
             PendingNavigation pending,
@@ -857,11 +856,11 @@ namespace Velvet
         /// </summary>
         /// <param name="cancellationToken">Token forwarded to Blockers and Loaders.</param>
         /// <returns>The <see cref="NavigationResult"/> from the underlying <see cref="NavigateAsync"/>, or <see cref="NavigationResult.Cancelled"/> when the history has no previous entry.</returns>
-        public UniTask<NavigationResult> GoBack(CancellationToken cancellationToken = default)
+        public VelvetTask<NavigationResult> GoBack(CancellationToken cancellationToken = default)
         {
             if (!CanGoBack)
             {
-                return UniTask.FromResult(NavigationResult.Cancelled);
+                return VelvetTask.FromResult(NavigationResult.Cancelled);
             }
 
             return NavigateAsync(_history[_historyIndex - 1].Path, NavigationMode.Back, cancellationToken);
@@ -872,11 +871,11 @@ namespace Velvet
         /// </summary>
         /// <param name="cancellationToken">Token forwarded to Blockers and Loaders.</param>
         /// <returns>The <see cref="NavigationResult"/> from the underlying <see cref="NavigateAsync"/>, or <see cref="NavigationResult.Cancelled"/> when the history has no next entry.</returns>
-        public UniTask<NavigationResult> GoForward(CancellationToken cancellationToken = default)
+        public VelvetTask<NavigationResult> GoForward(CancellationToken cancellationToken = default)
         {
             if (!CanGoForward)
             {
-                return UniTask.FromResult(NavigationResult.Cancelled);
+                return VelvetTask.FromResult(NavigationResult.Cancelled);
             }
 
             return NavigateAsync(_history[_historyIndex + 1].Path, NavigationMode.Forward, cancellationToken);

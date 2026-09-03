@@ -1,6 +1,6 @@
 using System;
 using System.Runtime.CompilerServices;
-using Cysharp.Threading.Tasks;
+using System.Threading;
 
 namespace Velvet.TestUtilities
 {
@@ -24,30 +24,41 @@ namespace Velvet.TestUtilities
     {
         private const int DefaultSeconds = 20;
 
-        public static async UniTask Bounded(this UniTask task, [CallerMemberName] string caller = "",
-                                            [CallerLineNumber] int line = 0, int seconds = DefaultSeconds)
+        // Built on AttachExternalCancellation rather than a WhenAny against a delay, because
+        // VelvetTask has neither WhenAny nor Delay -- #758 is where that surface is decided, and a
+        // test helper is not where it should first appear.
+        public static async VelvetTask Bounded(this VelvetTask task, [CallerMemberName] string caller = "",
+                                               [CallerLineNumber] int line = 0, int seconds = DefaultSeconds)
         {
-            var finished = await UniTask.WhenAny(task, UniTask.Delay(TimeSpan.FromSeconds(seconds)));
-            if (finished != 0)
+            using var expiry = new CancellationTokenSource(TimeSpan.FromSeconds(seconds));
+            try
             {
-                throw new TimeoutException(
-                    $"{caller} (line {line}) waited {seconds}s for a completion the code under test never "
-                    + "reached. An await that cannot end is a case that cannot fail.");
+                await task.AttachExternalCancellation(expiry.Token);
+            }
+            catch (OperationCanceledException) when (expiry.IsCancellationRequested)
+            {
+                throw new TimeoutException(Wedged(caller, line, seconds));
             }
         }
 
-        public static async UniTask<T> Bounded<T>(this UniTask<T> task, [CallerMemberName] string caller = "",
-                                                  [CallerLineNumber] int line = 0, int seconds = DefaultSeconds)
+        public static async VelvetTask<T> Bounded<T>(this VelvetTask<T> task,
+                                                     [CallerMemberName] string caller = "",
+                                                     [CallerLineNumber] int line = 0,
+                                                     int seconds = DefaultSeconds)
         {
-            var (index, result, _) = await UniTask.WhenAny(task, UniTask.Delay(TimeSpan.FromSeconds(seconds))
-                .ContinueWith(() => default(T)!));
-            if (index != 0)
+            using var expiry = new CancellationTokenSource(TimeSpan.FromSeconds(seconds));
+            try
             {
-                throw new TimeoutException(
-                    $"{caller} (line {line}) waited {seconds}s for a completion the code under test never "
-                    + "reached. An await that cannot end is a case that cannot fail.");
+                return await task.AttachExternalCancellation(expiry.Token);
             }
-            return result;
+            catch (OperationCanceledException) when (expiry.IsCancellationRequested)
+            {
+                throw new TimeoutException(Wedged(caller, line, seconds));
+            }
         }
+
+        private static string Wedged(string caller, int line, int seconds) =>
+            $"{caller} (line {line}) waited {seconds}s for a completion the code under test never "
+            + "reached. An await that cannot end is a case that cannot fail.";
     }
 }

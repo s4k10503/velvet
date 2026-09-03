@@ -651,8 +651,8 @@ namespace Velvet
         // asyncUpdates: Async action whose run up to its first suspension is at Transition priority. Must not
         // be null.
         // A task that completes when asyncUpdates has fully run.
-        public static async Cysharp.Threading.Tasks.UniTask StartTransition(
-            ComponentFiber fiber, HookTransitionSlot slot, Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates)
+        public static async VelvetTask StartTransition(
+            ComponentFiber fiber, HookTransitionSlot slot, Func<VelvetTask> asyncUpdates)
         {
             if (asyncUpdates == null) throw new ArgumentNullException(nameof(asyncUpdates));
 
@@ -683,7 +683,7 @@ namespace Velvet
                 // A task still pending where the scope has already closed is a callback that suspended, since
                 // the scope closes exactly where it hands the task back. Pinned by the completion case for an
                 // action that never suspended, which fails if that stops answering.
-                suspended = action.Status == Cysharp.Threading.Tasks.UniTaskStatus.Pending;
+                suspended = action.Status == VelvetTaskStatus.Pending;
                 await action;
             }
             finally

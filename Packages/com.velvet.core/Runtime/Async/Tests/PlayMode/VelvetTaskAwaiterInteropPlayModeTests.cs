@@ -77,6 +77,10 @@ namespace Velvet.Tests
                 Is.EqualTo((true, true)));
         }
 
+        // What the engine does, not a shape to write. A continuation resumed off the main thread must
+        // not call back into Velvet -- the pools it rents from and the frame driver's queues are
+        // plain collections nothing synchronizes, and Yield() is not a way back. async.md says so
+        // beside the sentence this pins.
         [UnityTest]
         public IEnumerator Given_AsyncVelvetTaskAwaitingABclTaskWithTheSynchronizationContextSuppressed_When_ThatTaskCompletesOffTheMainThread_Then_TheContinuationDoesNotReturnToTheMainThread()
         {

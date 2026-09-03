@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using Cysharp.Threading.Tasks;
 using NUnit.Framework;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
@@ -331,13 +330,15 @@ namespace Velvet.Tests
 
         #region Async batching
 
+        // GREEN_ON_BASE(refactor): two post-await setters already shared one drain callback.
+        // Swapping the completion source they resume from must not split them into two.
         [Test]
         public void Given_TwoSettersAfterTheSameAwait_When_ContinuationRuns_Then_SchedulesSingleDrainCallback()
         {
             // Arrange
             using var mounted = MountThree();
             var scheduler = mounted.GetSchedulerForTest();
-            var gate = new UniTaskCompletionSource();
+            var gate = new VelvetTaskCompletionSource();
             RunAfterAwait(gate, () => { s_setA.Invoke("a-async"); s_setB.Invoke("b-async"); });
             var callbacksBefore = scheduler.ScheduledCallbackCount;
             Assume.That(scheduler.ImmediatePendingCount, Is.EqualTo(0), "Precondition: nothing queued while awaiting");
@@ -350,12 +351,14 @@ namespace Velvet.Tests
                 "Two setStates after the same await coalesce into a single frame-boundary drain callback");
         }
 
+        // GREEN_ON_BASE(refactor): a post-await setter lands on the immediate tier already.
+        // Which tier is the continuation's to decide, and this change replaces what resumes it.
         [Test]
         public void Given_TwoSettersAfterTheSameAwait_When_ContinuationRuns_Then_BothQueueOnTheImmediateTier()
         {
             // Arrange
             using var mounted = MountThree();
-            var gate = new UniTaskCompletionSource();
+            var gate = new VelvetTaskCompletionSource();
             RunAfterAwait(gate, () => { s_setA.Invoke("a-async"); s_setB.Invoke("b-async"); });
 
             // Act
@@ -366,13 +369,15 @@ namespace Velvet.Tests
                 "Post-await setStates enqueue on the immediate tier, not the delayed tier");
         }
 
+        // GREEN_ON_BASE(refactor): completing the gate renders nothing on its own already.
+        // A completion source that rendered where it resumed would be seen here and nowhere else.
         [Test]
         public void Given_TwoSettersAfterTheSameAwait_When_NotYetDrained_Then_NoIntermediateRender()
         {
             // Arrange
             using var mounted = MountThree();
             Assume.That((s_renderCountA, s_renderCountB), Is.EqualTo((1, 1)), "Precondition: each rendered once on mount");
-            var gate = new UniTaskCompletionSource();
+            var gate = new VelvetTaskCompletionSource();
             RunAfterAwait(gate, () => { s_setA.Invoke("a-async"); s_setB.Invoke("b-async"); });
 
             // Act
@@ -382,12 +387,14 @@ namespace Velvet.Tests
             Assert.AreEqual((1, 1), (s_renderCountA, s_renderCountB), "No render runs before the frame-boundary drain");
         }
 
+        // GREEN_ON_BASE(refactor): each fiber already renders once for a batch of two setters.
+        // A continuation the new source resumed twice would render each of them twice.
         [Test]
         public void Given_TwoSettersAfterTheSameAwait_When_BatchDrained_Then_EachRendersExactlyOnce()
         {
             // Arrange
             using var mounted = MountThree();
-            var gate = new UniTaskCompletionSource();
+            var gate = new VelvetTaskCompletionSource();
             RunAfterAwait(gate, () => { s_setA.Invoke("a-async"); s_setB.Invoke("b-async"); });
             gate.TrySetResult();
 
@@ -399,12 +406,14 @@ namespace Velvet.Tests
                 "Each fiber renders exactly once for setStates batched after an await");
         }
 
+        // GREEN_ON_BASE(refactor): each fiber already commits the value its own setter wrote.
+        // What the new completion source resumes is what makes those writes happen at all.
         [Test]
         public void Given_TwoSettersAfterTheSameAwait_When_BatchDrained_Then_EachCommitsItsLatestValue()
         {
             // Arrange
             using var mounted = MountThree();
-            var gate = new UniTaskCompletionSource();
+            var gate = new VelvetTaskCompletionSource();
             RunAfterAwait(gate, () => { s_setA.Invoke("a-async"); s_setB.Invoke("b-async"); });
             gate.TrySetResult();
 
@@ -435,13 +444,13 @@ namespace Velvet.Tests
 
         // Runs `body` as a fire-and-forget async handler whose continuation resumes when `gate` completes,
         // standing in for a setState performed after an await in a plain (non-transition) async handler.
-        private static void RunAfterAwait(UniTaskCompletionSource gate, Action body)
+        private static void RunAfterAwait(VelvetTaskCompletionSource gate, Action body)
         {
             RunAsync(gate, body).Forget();
         }
 
-        private static async UniTask RunAsync(
-            UniTaskCompletionSource gate, Action body)
+        private static async VelvetTask RunAsync(
+            VelvetTaskCompletionSource gate, Action body)
         {
             await gate.Task.Bounded();
             body();

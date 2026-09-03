@@ -3,8 +3,7 @@
     "rootNamespace": "Velvet.TestUtilities",
     "references": [
         "Velvet",
-        "UnityEngine.TestRunner",
-        "UniTask"
+        "UnityEngine.TestRunner"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
