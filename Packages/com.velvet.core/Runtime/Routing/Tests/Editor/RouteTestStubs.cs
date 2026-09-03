@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
-using Cysharp.Threading.Tasks;
 using Velvet.TestUtilities;
 
 namespace Velvet.Tests
@@ -35,7 +34,7 @@ namespace Velvet.Tests
             ComponentNode element = null,
             string redirectTo = null,
             Func<RouteLoaderContext, string> guard = null,
-            Func<RouteLoaderContext, CancellationToken, UniTask<object>> loader = null,
+            Func<RouteLoaderContext, CancellationToken, VelvetTask<object>> loader = null,
             LoaderMode loaderMode = LoaderMode.Await,
             RouteDefinition[] children = null,
             ComponentNode errorElement = null,
@@ -59,7 +58,7 @@ namespace Velvet.Tests
         /// </summary>
         public static List<RouteMatch> MakeMatch(
             string path,
-            Func<RouteLoaderContext, CancellationToken, UniTask<object>> loader = null,
+            Func<RouteLoaderContext, CancellationToken, VelvetTask<object>> loader = null,
             LoaderMode loaderMode = LoaderMode.Await)
             => new List<RouteMatch>
             {
@@ -104,7 +103,7 @@ namespace Velvet.Tests
         }
 
         /// <summary>
-        /// Creates an async Blocker whose FIRST invocation parks on <c>UniTask.Never(ct)</c> — raising
+        /// Creates an async Blocker whose FIRST invocation parks on <c>VelvetTask.Never(ct)</c> — raising
         /// OperationCanceledException once the navigation's token is cancelled — and whose later
         /// invocations pass through without blocking. Await the returned <c>Entered</c> to be sure the
         /// navigation has reached the blocker await before cancelling it.
@@ -117,19 +116,19 @@ namespace Velvet.Tests
         /// campaign's default cap gives one mutant, which reports the consultation gate as not measured
         /// rather than as killed. <see cref="UnityRunnerDefaultTimeoutTests"/> pins that bound.
         /// </remarks>
-        public static (Func<NavigationAttempt, CancellationToken, UniTask<bool>> Check, UniTaskCompletionSource Entered) MakeOneShotBlocker()
+        public static (Func<NavigationAttempt, CancellationToken, VelvetTask<bool>> Check, VelvetTaskCompletionSource Entered) MakeOneShotBlocker()
         {
-            var entered = new UniTaskCompletionSource();
+            var entered = new VelvetTaskCompletionSource();
             int invocationCount = 0;
-            UniTask<bool> Check(NavigationAttempt _, CancellationToken ct)
+            VelvetTask<bool> Check(NavigationAttempt _, CancellationToken ct)
             {
                 var n = Interlocked.Increment(ref invocationCount);
                 if (n == 1)
                 {
                     entered.TrySetResult();
-                    return UniTask.Never<bool>(ct);
+                    return VelvetTask.Never<bool>(ct);
                 }
-                return UniTask.FromResult(false);
+                return VelvetTask.FromResult(false);
             }
             return (Check, entered);
         }
@@ -147,13 +146,13 @@ namespace Velvet.Tests
         /// <remarks>
         /// Its <c>Entered</c> is bounded on the same terms as <see cref="MakeOneShotBlocker"/>'s.
         /// </remarks>
-        public static (Func<NavigationAttempt, CancellationToken, UniTask<bool>> Check,
-            UniTaskCompletionSource Entered, Action ResumeCancelled, Action ResumeUnblocked) MakeDeferredBlocker()
+        public static (Func<NavigationAttempt, CancellationToken, VelvetTask<bool>> Check,
+            VelvetTaskCompletionSource Entered, Action ResumeCancelled, Action ResumeUnblocked) MakeDeferredBlocker()
         {
-            var entered = new UniTaskCompletionSource();
-            var parked = new UniTaskCompletionSource<bool>();
+            var entered = new VelvetTaskCompletionSource();
+            var parked = new VelvetTaskCompletionSource<bool>();
             int invocationCount = 0;
-            UniTask<bool> Check(NavigationAttempt _, CancellationToken ct)
+            VelvetTask<bool> Check(NavigationAttempt _, CancellationToken ct)
             {
                 var n = Interlocked.Increment(ref invocationCount);
                 if (n == 1)
@@ -161,7 +160,7 @@ namespace Velvet.Tests
                     entered.TrySetResult();
                     return parked.Task;
                 }
-                return UniTask.FromResult(false);
+                return VelvetTask.FromResult(false);
             }
             return (Check, entered, () => parked.TrySetCanceled(), () => parked.TrySetResult(false));
         }

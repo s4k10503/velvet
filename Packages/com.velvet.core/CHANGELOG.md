@@ -67,6 +67,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- An error boundary whose child throws during a subsumed re-render no longer logs a
+  `NullReferenceException` from the reconciler. The boundary's inline re-render runs inside its host's
+  pass, and the catch disposes that child — which clears the `Reconciler` the re-render is still
+  holding, so the three steps after it dereferenced a field the disposal had already nulled. The same field is
+  read for the same reason a few lines further on, where it was checked. The render now returns at that
+  point instead: a disposed fiber has no pass left to be subsumed into, so its layout effect and its
+  paint-tick effect are not queued.
+
+- A component's own re-render now reads the Providers of the container it is written into, where the
+  declaring body writes the component into each container as its own occurrence. Two sibling containers
+  each holding the same component at the same position already mounted two instances, but the walk that
+  rebuilds a consumer's enclosing Providers for a re-render the consumer scheduled itself looked every
+  candidate up under that consumer's own container — so each container holding the position answered,
+  and the walk took the first. The instance in the second container read the first container's value
+  where the two Providers carried one context, and the context default where they carried different
+  ones, which is an instance losing the Provider it is written inside. A `V.Motion`'s active label
+  reaches a descendant through the same walk, so a descendant of the second of two sibling Motions read
+  the first one's label. A candidate is now matched against the node the instance last rendered from as
+  well as against its key, and two occurrences of `V.Component` are two nodes — but only where the node
+  it holds came from the tree being walked, which a render the reconciler discarded and a time-sliced
+  pass that parked before reaching that component both leave untrue. Shapes that excludes read as they
+  did before, among them: one `V.Component` node instance written into both containers is one node; a
+  consumer inside a `V.Portal` or a `V.VirtualList` item, whose walk searches the children captured when
+  that consumer mounted; and a row a `StartTransition` list left past its park point, which is matched
+  by key alone until the resume commits it.
+
 - An `IRouteScopeFactory.CreateScope` that throws no longer takes the reconcile with it. The scope's
   *disposal* was already contained; its creation was not, at any of the three sites that ask for one —
   so an application whose factory failed on a route change lost the render as well as the scope. The
@@ -467,7 +493,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Which of the two an `await` is, C# decides at run time. An `await` of a task that had **already
   completed** does not suspend — the continuation runs inline — so the callback carries on inside the
   scope and the write after that `await` is a transition too, `isPending` staying lit until it commits on
-  the delayed tier. `await UniTask.CompletedTask` reaches it, as does any `async UniTask` the action
+  the delayed tier. `await VelvetTask.CompletedTask` reaches it, as does any `async VelvetTask` the action
   awaits that returns without suspending — a cache answering from memory being the shape to expect. One
   source line therefore takes either schedule depending on the data, and the counter-intuitive way round:
   the cache hit that answered instantly is the one whose write waits out the delayed tier, where the miss
@@ -496,6 +522,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the exception is reported to the console rather than raised out of the render — `UseFallback` does not
   catch it, and the message names the unmatched number rather than the argument it came from. A silent
   `Overlay` was how such a cast survived to put a portal on a layer nobody asked for.
+
+- Six more `V.*` factory arguments are refused when they name no member of their enum, as
+  `V.Portal(layer:)`'s already is: `focusOrder:` on `V.Portal` and on `V.WorldSpace`, `playOn:` on
+  `V.Particles`, `movement:` on `V.Draggable`, `mode:` on `V.AnimatePresence` and `loaderMode:` on
+  `V.Route`. Each throws `ArgumentOutOfRangeException` from the call itself, naming the parameter and
+  carrying the value; every named member is accepted as it was, and only a value naming none of them
+  reaches this. Such a value used to behave as `Isolated` for `focusOrder:`, `Manual` for `playOn:`,
+  `None` for `movement:`, `Sync` for `mode:` and `Suspend` for `loaderMode:`, without a word — which is
+  how a cast could put a route's loader on the background path nobody asked for. A caller wanting one
+  of those behaviours names its member.
 
 - A `[Component(Memoize = true)]` component's props bail decides a props value whole, the way React's
   shallow-equal comparison decides each key of a props object with `Object.is`. The member walk runs on
@@ -538,6 +574,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   path the parent would have taken — the child's own segment never compared against anything, because
   a splat stops the walk where it matches. A splat is a leaf, as it is in React Router, and declaring
   children under one is now refused where the mid-path spelling already was.
+
+- Every public signature that named a UniTask type now names `VelvetTask` / `VelvetTask<T>`, and they do
+  not all name it in the same position. Returning one: `Router.NavigateAsync`, `Router.GoBack`,
+  `Router.GoForward`, `MutationResult.MutateAsync` and the no-argument `MutationResultExtensions`
+  shorthand beside it. Returning a delegate that returns one: `Hooks.UseNavigate`. Taking a delegate that
+  returns one: the asynchronous `Hooks.UseBlocker` overloads, both `Hooks.Use` overloads,
+  `V.Route(loader:)`, `RouteBlockerManager.Register`, each `MutationOptions` constructor, and
+  `TransitionStarter.Invoke` — the async form of the starter `Hooks.UseTransition` hands back, which takes
+  a `Func<VelvetTask>` and returns `void`, so it changes type without returning a task at all. Holding one:
+  `RouteDefinition.Loader` and each `MutationOptions.MutationFn`. Velvet ships the awaitable
+  itself under `Velvet`, so UniTask is no longer a package dependency and installing Velvet is a single
+  package add. A caller's own loaders, blockers, mutation functions and transition actions change type with
+  them: a declaration becomes `async VelvetTask<T>`, a value already to hand comes from
+  `VelvetTask.FromResult`, and a source the caller completes by hand is a `VelvetTaskCompletionSource<T>`.
+  Inside an `async VelvetTask` body a `UnityEngine.Awaitable` and a `System.Threading.Tasks.Task` are
+  awaited as they stand, with no conversion. Reading a suspended task's result a second
+  time throws `InvalidOperationException`, where UniTask returned reset state; a task completed inline —
+  `VelvetTask.FromResult`, and an `async` method that returned without suspending — may be read more than
+  once, as UniTask allowed. A suspended task also carries one awaiter, so any delegate Velvet invokes more
+  than once — a route loader, a blocker predicate, a mutation function, a `Hooks.Use` factory — hands back
+  a fresh one each time rather than a task it returned before, which throws on the second invocation instead
+  of resolving again. The Back/Forward re-run of a suspend-mode loader is where a shared task meets that.
+  The async guide states the type's surface and how its continuations are driven.
 
 - Registering a portal target id again with a different element now moves the portals already mounted
   into the old one, instead of leaving them writing into an element the UI has replaced. A

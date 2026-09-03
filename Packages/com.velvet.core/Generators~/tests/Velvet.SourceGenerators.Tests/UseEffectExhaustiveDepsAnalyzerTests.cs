@@ -613,7 +613,7 @@ namespace MyApp.Pages
             var isDirty = true;
             global::Velvet.Hooks.UseBlocker((attempt, ct) => Build(isDirty), new object[] { });
         }
-        private static global::Cysharp.Threading.Tasks.UniTask<bool> Build(bool flag) => default;
+        private static global::Velvet.VelvetTask<bool> Build(bool flag) => default;
     }
 }";
 
@@ -934,7 +934,7 @@ namespace MyApp.Pages
         public static void Render()
         {
             var mutation = global::Velvet.Hooks.UseMutation(new global::Velvet.MutationOptions(
-                _ => default(global::Cysharp.Threading.Tasks.UniTask)));
+                _ => default(global::Velvet.VelvetTask)));
             global::Velvet.Hooks.UseEffect(() => () => System.Console.WriteLine(mutation), new object[] { });
         }
     }

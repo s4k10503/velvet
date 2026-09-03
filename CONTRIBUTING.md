@@ -316,7 +316,9 @@ Either reading is only believed on a tree the run proved can build and answer at
 prove it. Cases of the base's own that the branch did not carry run alongside — C# fixtures for a
 platform, Python cases for that lane — and at least one has to pass. A lane with no eligible canary fails closed, as does a run
 that wrote no results file at all, rather than reading either as a base that built none of the branch's
-tests.
+tests. A withdrawal decides a case before this reading is reached, so a platform where withdrawals
+covered every case would leave it unread; there it is read anyway, and a platform nothing vouched
+for fails rather than passing on excuses.
 
 Which cases are the branch's own is decided by comparing each case's code — its own text with the
 comments blanked out — against the base's, since a diff over a large rewrite describes untouched text

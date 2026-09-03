@@ -25,7 +25,7 @@ namespace Velvet.Tests
     /// it on an unconditional hit), a body that reaches the suspend-unsafe <c>Use</c> hook or
     /// <c>UseMutation</c> — directly or transitively through a custom hook — a hook inside a loop (head-tested
     /// or do-while), a hook section overlapping a try/catch region, and an open virtual / interface dispatch
-    /// outside the BCL / Unity / UniTask carve-out (the runtime override could compose a hook the static
+    /// outside the BCL / Unity carve-out (the runtime override could compose a hook the static
     /// target does not show, regardless of whether the declaring assembly itself references Velvet — an
     /// override can live in a third assembly that does). A delegate invocation (virtual Invoke on a sealed
     /// type) is not an open dispatch and does not bail.</item>
@@ -150,7 +150,7 @@ namespace Velvet.Tests
         public static VNode UseMutationComponent()
         {
             var mutation = Hooks.UseMutation(new MutationOptions<int, int>(
-                MutationFn: (v, _) => Cysharp.Threading.Tasks.UniTask.FromResult(v * 2)));
+                MutationFn: (v, _) => VelvetTask.FromResult(v * 2)));
             return V.Label(text: mutation.Status.ToString());
         }
 
@@ -215,8 +215,8 @@ namespace Velvet.Tests
         }
 
         // Custom hook that transitively reaches the suspend-unsafe Use hook. A component calling it must bail.
-        private static System.Func<Cysharp.Threading.Tasks.UniTask<string>> s_factory =
-            () => Cysharp.Threading.Tasks.UniTask.FromResult("x");
+        private static System.Func<VelvetTask<string>> s_factory =
+            () => VelvetTask.FromResult("x");
 
         private static string UseSuspendingResource() => Hooks.Use(s_factory);
 
@@ -230,7 +230,7 @@ namespace Velvet.Tests
         // Custom hook that transitively reaches UseMutation. A component calling it must bail.
         private static MutationResult<int, int> UseDoubler()
             => Hooks.UseMutation(new MutationOptions<int, int>(
-                MutationFn: (v, _) => Cysharp.Threading.Tasks.UniTask.FromResult(v * 2)));
+                MutationFn: (v, _) => VelvetTask.FromResult(v * 2)));
 
         [Component]
         public static VNode TransitiveUseMutationComponent()

@@ -241,8 +241,8 @@ namespace Velvet.Tests
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(TransitionRender, key: "transition"));
-            var outerGate = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
-            var joinedGate = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
+            var outerGate = new VelvetTaskCompletionSource();
+            var joinedGate = new VelvetTaskCompletionSource();
             var joinedStarted = false;
             s_transitionStarter.Invoke(async () =>
             {
@@ -306,11 +306,11 @@ namespace Velvet.Tests
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(TransitionRender, key: "transition"));
-            var gate = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
-            Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () =>
+            var gate = new VelvetTaskCompletionSource();
+            Func<VelvetTask> asyncUpdates = async () =>
             {
                 s_transitionSetValue.Invoke(1);
-                await gate.Task.Bounded();
+                await gate.Task;
                 s_transitionSetValue.Invoke(2);
             };
 
@@ -330,10 +330,10 @@ namespace Velvet.Tests
             // Arrange — the action awaits BEFORE its first setState, so the fiber has no pending lane at
             // all while the transition is in flight.
             using var mounted = V.Mount(_root, V.Component(TransitionRender, key: "transition"));
-            var gate = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
-            Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () =>
+            var gate = new VelvetTaskCompletionSource();
+            Func<VelvetTask> asyncUpdates = async () =>
             {
-                await gate.Task.Bounded();
+                await gate.Task;
                 s_transitionSetValue.Invoke(1);
             };
             s_transitionStarter.Invoke(asyncUpdates);
@@ -357,8 +357,8 @@ namespace Velvet.Tests
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(TransitionRender, key: "transition"));
-            var gate = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
-            Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () =>
+            var gate = new VelvetTaskCompletionSource();
+            Func<VelvetTask> asyncUpdates = async () =>
             {
                 await gate.Task.Bounded();
                 s_transitionSetValue.Invoke(1);
@@ -396,9 +396,9 @@ namespace Velvet.Tests
         {
             // Arrange — the action's only write comes after an await of a task that has already completed
             using var mounted = V.Mount(_root, V.Component(TransitionRender, key: "transition"));
-            Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () =>
+            Func<VelvetTask> asyncUpdates = async () =>
             {
-                await Cysharp.Threading.Tasks.UniTask.CompletedTask;
+                await VelvetTask.CompletedTask;
                 s_transitionSetValue.Invoke(1);
             };
 
@@ -423,9 +423,9 @@ namespace Velvet.Tests
         {
             // Arrange — same shape as above: the write lands under the open scope and enrols this component
             using var mounted = V.Mount(_root, V.Component(TransitionRender, key: "transition"));
-            Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () =>
+            Func<VelvetTask> asyncUpdates = async () =>
             {
-                await Cysharp.Threading.Tasks.UniTask.CompletedTask;
+                await VelvetTask.CompletedTask;
                 s_transitionSetValue.Invoke(1);
             };
 
@@ -451,9 +451,9 @@ namespace Velvet.Tests
             // synchronous call below, exactly as the sync overload's does
             using var mounted = V.Mount(_root, V.Component(TransitionRender, key: "transition"));
             var ranPastTheAwait = false;
-            Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () =>
+            Func<VelvetTask> asyncUpdates = async () =>
             {
-                await Cysharp.Threading.Tasks.UniTask.CompletedTask;
+                await VelvetTask.CompletedTask;
                 ranPastTheAwait = true;
             };
 
@@ -478,11 +478,11 @@ namespace Velvet.Tests
             // Arrange — the callback is a plain lambda rather than an async method, so it throws instead of
             // returning a task, which is the one way the release runs with no task to read
             using var mounted = V.Mount(_root, V.Component(TransitionRender, key: "transition"));
-            Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates =
+            Func<VelvetTask> asyncUpdates =
                 () => throw new InvalidOperationException("transition callback");
             var threw = false;
 
-            // Act — the task is observed rather than dropped, so nothing is left for UniTask to report as an
+            // Act — the task is observed rather than dropped, so nothing is left for VelvetTask to report as an
             // unhandled exception
             var action = FiberWorkLoop.StartTransition(
                 s_transitionFiber, s_transitionFiber.TransitionSlots[0], asyncUpdates);
@@ -513,7 +513,7 @@ namespace Velvet.Tests
             // Arrange — the callback throws instead of handing a task back, so its scope closes on the unwind
             // out of the starter or not at all
             using var mounted = V.Mount(_root, V.Component(TransitionRender, key: "transition"));
-            Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates =
+            Func<VelvetTask> asyncUpdates =
                 () => throw new InvalidOperationException("transition callback");
             var action = FiberWorkLoop.StartTransition(
                 s_transitionFiber, s_transitionFiber.TransitionSlots[0], asyncUpdates);
@@ -545,8 +545,8 @@ namespace Velvet.Tests
             // Arrange — the continuation makes two writes, one bare and one wrapped in a further call on the
             // same starter, so the two lanes separate the update the caller re-marked from the one it did not
             using var mounted = V.Mount(_root, V.Component(TransitionRender, key: "transition"));
-            var gate = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
-            Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () =>
+            var gate = new VelvetTaskCompletionSource();
+            Func<VelvetTask> asyncUpdates = async () =>
             {
                 await gate.Task.Bounded();
                 s_transitionSetValue.Invoke(1);
@@ -576,8 +576,8 @@ namespace Velvet.Tests
         {
             // Arrange — the action parks on its await having scheduled nothing, so the fiber carries no lane
             using var mounted = V.Mount(_root, V.Component(TransitionRender, key: "transition"));
-            var gate = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
-            Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () => await gate.Task.Bounded();
+            var gate = new VelvetTaskCompletionSource();
+            Func<VelvetTask> asyncUpdates = async () => await gate.Task;
             s_transitionStarter.Invoke(asyncUpdates);
             var awaitingBeforeTheAct = s_transitionFiber.IsTransitionPending;
 
@@ -604,8 +604,8 @@ namespace Velvet.Tests
             // ordinary shape for any load outlasting that tier's delay. That commit renders the component with
             // the flag still lit, so the completion is the only thing left that can take it down.
             using var mounted = V.Mount(_root, V.Component(TransitionRender, key: "transition"));
-            var gate = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
-            Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () =>
+            var gate = new VelvetTaskCompletionSource();
+            Func<VelvetTask> asyncUpdates = async () =>
             {
                 s_transitionSetValue.Invoke(1);
                 await gate.Task.Bounded();
@@ -633,8 +633,8 @@ namespace Velvet.Tests
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(TransitionRender, key: "transition"));
-            var gate = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
-            Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () =>
+            var gate = new VelvetTaskCompletionSource();
+            Func<VelvetTask> asyncUpdates = async () =>
             {
                 s_transitionSetValue.Invoke(1);
                 await gate.Task.Bounded();
@@ -718,10 +718,10 @@ namespace Velvet.Tests
         {
             // Arrange — slot A's async action parks on its await, so A's transition is still in flight
             using var mounted = V.Mount(_root, V.Component(TwoTransitionRender, key: "two"));
-            var gate = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
-            Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () =>
+            var gate = new VelvetTaskCompletionSource();
+            Func<VelvetTask> asyncUpdates = async () =>
             {
-                await gate.Task.Bounded();
+                await gate.Task;
                 s_twoSetValue.Invoke(1);
             };
             s_twoStarterA.Invoke(asyncUpdates);
@@ -764,8 +764,8 @@ namespace Velvet.Tests
             // Arrange — slot A's action parks on its gate having written nothing; slot B then runs a
             // synchronous transition that does write, so the fiber carries B's transition lane while A awaits
             using var mounted = V.Mount(_root, V.Component(TwoTransitionRender, key: "two"));
-            var gateA = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
-            Func<Cysharp.Threading.Tasks.UniTask> actionA = async () => await gateA.Task.Bounded();
+            var gateA = new VelvetTaskCompletionSource();
+            Func<VelvetTask> actionA = async () => await gateA.Task.Bounded();
             s_twoStarterA.Invoke(actionA);
             s_twoStartB.Invoke(() => s_twoSetValueB.Invoke(1));
             var inFlightBeforeTheAct = s_twoFiber.TransitionSlots[0].IsAsyncInFlight;
@@ -791,14 +791,14 @@ namespace Velvet.Tests
         {
             // Arrange — both slots park on their own gate, and only slot A's action ever writes
             using var mounted = V.Mount(_root, V.Component(TwoTransitionRender, key: "two"));
-            var gateA = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
-            var gateB = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
-            Func<Cysharp.Threading.Tasks.UniTask> actionA = async () =>
+            var gateA = new VelvetTaskCompletionSource();
+            var gateB = new VelvetTaskCompletionSource();
+            Func<VelvetTask> actionA = async () =>
             {
                 await gateA.Task.Bounded();
                 s_twoSetValue.Invoke(1);
             };
-            Func<Cysharp.Threading.Tasks.UniTask> actionB = async () => await gateB.Task.Bounded();
+            Func<VelvetTask> actionB = async () => await gateB.Task.Bounded();
             s_twoStarterA.Invoke(actionA);
             s_twoStarterB.Invoke(actionB);
             var bothInFlightBeforeTheAct = s_twoFiber.TransitionSlots[0].IsAsyncInFlight
@@ -831,8 +831,8 @@ namespace Velvet.Tests
             // but the clear; slot B's callback is what releases that gate, so A's continuation and the
             // completion behind it both run with B's transition scope open around them
             using var mounted = V.Mount(_root, V.Component(TwoTransitionRender, key: "two"));
-            var gate = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
-            Func<Cysharp.Threading.Tasks.UniTask> actionA = async () => await gate.Task.Bounded();
+            var gate = new VelvetTaskCompletionSource();
+            Func<VelvetTask> actionA = async () => await gate.Task.Bounded();
             s_twoStarterA.Invoke(actionA);
             var pendingBeforeTheAct = s_twoFiber.TransitionSlots[0].IsPending;
 
@@ -940,8 +940,8 @@ namespace Velvet.Tests
             // Arrange — the child's action writes the parent's state before its await, so the delayed tier
             // commits that write while the action is still in flight and the child stays lit through it
             using var mounted = V.Mount(_root, V.Component(PropSetterParentRender, key: "prop-setter-parent"));
-            var gate = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
-            Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () =>
+            var gate = new VelvetTaskCompletionSource();
+            Func<VelvetTask> asyncUpdates = async () =>
             {
                 s_propSetterChildSetCount.Invoke(1);
                 await gate.Task.Bounded();
@@ -971,8 +971,8 @@ namespace Velvet.Tests
             // Arrange — as above: the only render this completion is owed is the one that observes the
             // cleared flag, and no drain is left to subsume it into
             using var mounted = V.Mount(_root, V.Component(PropSetterParentRender, key: "prop-setter-parent"));
-            var gate = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
-            Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () =>
+            var gate = new VelvetTaskCompletionSource();
+            Func<VelvetTask> asyncUpdates = async () =>
             {
                 s_propSetterChildSetCount.Invoke(1);
                 await gate.Task.Bounded();
@@ -1005,8 +1005,8 @@ namespace Velvet.Tests
             // Arrange — the continuation writes after the await, so a render of the parent is already owed
             // when the completion asks for the child's
             using var mounted = V.Mount(_root, V.Component(PropSetterParentRender, key: "prop-setter-parent"));
-            var gate = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
-            Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () =>
+            var gate = new VelvetTaskCompletionSource();
+            Func<VelvetTask> asyncUpdates = async () =>
             {
                 s_propSetterChildSetCount.Invoke(1);
                 await gate.Task.Bounded();
@@ -1392,8 +1392,8 @@ namespace Velvet.Tests
         {
             // Arrange — the async action parks on its await without having scheduled anything
             using var mounted = V.Mount(_root, V.Component(ClickableTransitionRender, key: "clickable"));
-            var gate = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
-            Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () => await gate.Task.Bounded();
+            var gate = new VelvetTaskCompletionSource();
+            Func<VelvetTask> asyncUpdates = async () => await gate.Task;
             s_clickableStarter.Invoke(asyncUpdates);
             Assume.That(s_clickableFiber.IsTransitionPending, Is.True, "Precondition: the async transition is awaiting");
 
@@ -1415,8 +1415,8 @@ namespace Velvet.Tests
         {
             // Arrange — the slot's async action parks on its await, so a further call on it joins that owner
             using var mounted = V.Mount(_root, V.Component(ClickableTransitionRender, key: "clickable"));
-            var gate = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
-            Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () => await gate.Task.Bounded();
+            var gate = new VelvetTaskCompletionSource();
+            Func<VelvetTask> asyncUpdates = async () => await gate.Task;
             s_clickableStarter.Invoke(asyncUpdates);
             Assume.That(s_clickableFiber.IsTransitionPending, Is.True, "Precondition: the async transition is awaiting");
 
@@ -1440,11 +1440,11 @@ namespace Velvet.Tests
         {
             // Arrange — the action's only update comes after its await
             using var mounted = V.Mount(_root, V.Component(ClickableTransitionRender, key: "clickable"));
-            var gate = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
+            var gate = new VelvetTaskCompletionSource();
             s_clickableGate = gate;
-            Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () =>
+            Func<VelvetTask> asyncUpdates = async () =>
             {
-                await gate.Task.Bounded();
+                await gate.Task;
                 s_clickableSetValue.Invoke(v => v + 1);
             };
             s_clickableStarter.Invoke(asyncUpdates);
@@ -1471,11 +1471,11 @@ namespace Velvet.Tests
             // Arrange — same shape as the case above: the continuation's write and the completion's cleared
             // flag are two requests on one fiber inside one handler
             using var mounted = V.Mount(_root, V.Component(ClickableTransitionRender, key: "clickable"));
-            var gate = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
+            var gate = new VelvetTaskCompletionSource();
             s_clickableGate = gate;
-            Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () =>
+            Func<VelvetTask> asyncUpdates = async () =>
             {
-                await gate.Task.Bounded();
+                await gate.Task;
                 s_clickableSetValue.Invoke(v => v + 1);
             };
             s_clickableStarter.Invoke(asyncUpdates);
@@ -1501,9 +1501,9 @@ namespace Velvet.Tests
             // Arrange — the action's whole effect is its await, so nothing but the completion can render the
             // component inside the click
             using var mounted = V.Mount(_root, V.Component(ClickableTransitionRender, key: "clickable"));
-            var gate = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
+            var gate = new VelvetTaskCompletionSource();
             s_clickableGate = gate;
-            Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () => await gate.Task.Bounded();
+            Func<VelvetTask> asyncUpdates = async () => await gate.Task;
             s_clickableStarter.Invoke(asyncUpdates);
             var rendersBeforeTheClick = s_clickableRenderCount;
 
@@ -1561,11 +1561,13 @@ namespace Velvet.Tests
         public void Given_AFiberUnmountedWhileItsAsyncTransitionAwaits_When_ItIsMountedAgain_Then_TheSlotStartsUnownedAndTheNextTransitionReportsPending()
         {
             // Arrange — the Unmount then Mount pair reuses one fiber and its hook slots, so a slot can enter
-            // the new mount still owned by an action parked on an await the unmount could not settle
+            // the new mount still owned by an action parked on an await the unmount could not settle.
+            // Unbounded on purpose: the parked await is the arrangement, and a bound on it would end
+            // the thing the case is about.
             var fiber = FiberRenderer.CreateRoot(TransitionRender);
             FiberRenderer.Mount(fiber, _root);
-            var gate = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
-            Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () => await gate.Task.Bounded();
+            var gate = new VelvetTaskCompletionSource();
+            Func<VelvetTask> asyncUpdates = async () => await gate.Task;
             s_transitionStarter.Invoke(asyncUpdates);
             Assume.That(fiber.IsTransitionPending, Is.True, "Precondition: the async transition is awaiting");
             var slotBeforeUnmount = fiber.TransitionSlots[0];
@@ -1626,14 +1628,14 @@ namespace Velvet.Tests
             FiberRenderer.Mount(declaring, _root);
             using var live = V.Mount(_liveRoot, V.Component(OutlivedTargetRender, key: "outlived-target"));
             var starter = s_outlivedStarter;
-            var gate = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
+            var gate = new VelvetTaskCompletionSource();
             FiberRenderer.Dispose(declaring);
 
             // Act
             starter.Invoke(async () =>
             {
                 s_outlivedSetValue.Invoke(1);
-                await gate.Task.Bounded();
+                await gate.Task;
             });
 
             // Assert — same four terms as the synchronous case, for the same three reasons
@@ -1674,7 +1676,7 @@ namespace Velvet.Tests
         private static TransitionStarter s_clickableStarter;
         private static ComponentFiber s_clickableFiber;
         private static StateUpdater<int> s_clickableSetValue;
-        private static Cysharp.Threading.Tasks.UniTaskCompletionSource s_clickableGate;
+        private static VelvetTaskCompletionSource s_clickableGate;
         private static int s_clickableRenderCount;
 
         [Component]

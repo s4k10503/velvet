@@ -33,7 +33,7 @@
   <!-- Unity engine + package references (resolved from the local editor + a prior Unity compile). -->
   <ItemGroup>
     <Reference Include="$(UnityManaged)/UnityEngine/*.dll" Private="false" />
-    <Reference Include="$(ScriptAssemblies)/UniTask.dll" Private="false" />
+    <Reference Include="$(ScriptAssemblies)/Velvet.dll" Private="false" />
     <Reference Include="$(ScriptAssemblies)/Unity.Addressables.dll" Private="false" />
     <Reference Include="$(ScriptAssemblies)/Unity.ResourceManager.dll" Private="false" />
   </ItemGroup>

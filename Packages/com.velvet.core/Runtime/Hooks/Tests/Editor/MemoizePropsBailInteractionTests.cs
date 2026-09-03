@@ -1,6 +1,5 @@
 using System;
 using System.Threading;
-using Cysharp.Threading.Tasks;
 using NUnit.Framework;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
@@ -35,8 +34,8 @@ namespace Velvet.Tests
         private VisualElement _root = null!;
         private static IntStore s_store = null!;
         private static int s_renderCount;
-        private static Func<CancellationToken, UniTask<string>> s_factory;
-        private static UniTaskCompletionSource<string> s_source;
+        private static Func<CancellationToken, VelvetTask<string>> s_factory;
+        private static VelvetTaskCompletionSource<string> s_source;
 
         [SetUp]
         public void SetUp()
@@ -45,7 +44,7 @@ namespace Velvet.Tests
             s_store = new IntStore(0);
             s_renderCount = 0;
             ComboState.Reset();
-            s_source = new UniTaskCompletionSource<string>();
+            s_source = new VelvetTaskCompletionSource<string>();
             s_factory = _ => s_source.Task;
         }
 
