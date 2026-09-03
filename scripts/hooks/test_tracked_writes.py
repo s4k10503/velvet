@@ -193,6 +193,15 @@ class ReadingTests(unittest.TestCase):
         # Assert
         self.assertNotIn(self.under("notes.md"), found)
 
+    def test_Given_AHashInitialDestinationAndAComment_When_TheCommandIsRead_Then_TheDestinationIsNamed(self):
+        # Arrange / Act — `#c` is a file the copy writes, and the comment after it is not. Cutting
+        # the operands at the first `#`-initial token takes the destination with the comment, so the
+        # write disappears and nothing is refused over a change that alters a tracked file.
+        found = self.named("cp /tmp/a.md '#c'  # note")
+
+        # Assert
+        self.assertIn(self.under("#c"), found)
+
     def test_Given_AnArrowInsideAShellComment_When_TheCommandIsRead_Then_NoFileIsNamed(self):
         # Arrange / Act — `->` in a comment is not a redirect, and the name after it is not written.
         # A refusal here names a file the command never touches, which its author cannot answer.

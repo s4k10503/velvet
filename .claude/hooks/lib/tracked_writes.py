@@ -148,21 +148,26 @@ def _redirect_targets(segment):
     return found
 
 
-def _opens_a_comment(segment):
-    """Whether this segment carries a `#` that starts a comment rather than sitting in a word.
+def _comment_opens_at(segment):
+    """Where this segment's comment starts, or None if no `#` in it starts one.
 
     Asked of the mask, which is the one place that already knows a quote from a bare character: an
     unquoted `#` survives it, a quoted one is blanked. Asking the token list instead cannot tell
     `cp a.md b.md '#c'`, which writes `#c`, from a trailing comment -- and dropping the last operand
     there makes a SOURCE the destination, which is a refusal over a file nothing writes.
+
+    The position rather than a yes: the caller needs it to count, and a predicate that knows where
+    the comment is and answers only whether there is one forces a cut on the wrong term.
     """
     masked = mask_shell_literals(segment)
-    return any(character == "#" and (index == 0 or masked[index - 1] in " \t")
-               for index, character in enumerate(masked))
+    for index, character in enumerate(masked):
+        if character == "#" and (index == 0 or masked[index - 1] in " \t"):
+            return index
+    return None
 
 
 def _before_any_comment(operands, segment):
-    """The operands up to the first that opens a comment, where this segment carries one.
+    """The operands this segment carries ahead of its comment, where it has one.
 
     `tokens_of` reads the original text and is handed `comments=False`, so a trailing comment's
     words arrive as operands and the last of them reads as a destination -- which named a file the
@@ -170,12 +175,16 @@ def _before_any_comment(operands, segment):
     `comments=True` cuts mid-word, turning `note#1.md` into `note` and `a#b` into `a`, where the
     shell keeps both whole.
     """
-    if not _opens_a_comment(segment):
+    at = _comment_opens_at(segment)
+    if at is None:
         return operands
-    for index, token in enumerate(operands):
-        if token.startswith("#"):
-            return operands[:index]
-    return operands
+    # Counted from the text rather than matched on a leading `#`, because an operand may begin with
+    # one: `cp a.md '#c' # note` writes `#c`, and cutting at the first `#`-initial token drops the
+    # write along with the comment. Safe because the only caller reaches here through
+    # `program_invocations`, which skips a segment `tokens_of` could not read -- so the whole
+    # tokenises, and a prefix ending before a bare `#` cannot be the half of a quote that did not.
+    dropped = len(tokens_of(segment)) - len(tokens_of(segment[:at]))
+    return operands[:max(0, len(operands) - dropped)] if dropped > 0 else operands
 
 
 def _in_place(operands):
