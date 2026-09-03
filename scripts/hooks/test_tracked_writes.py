@@ -163,7 +163,7 @@ class ReadingTests(unittest.TestCase):
     def test_Given_AWriteBelowACommentCarryingAnApostrophe_When_TheCommandIsRead_Then_ItIsNotNamed(self):
         # Arrange / Act — a declared gap, and one the base has too: the mask does not read a
         # comment, so the apostrophe opens a quote span that swallows the newline and the write
-        # below it. Blanking comments in the mask closes this and costs five guards' verdicts,
+        # below it. Blanking comments in the mask closes this and moves guards' verdicts both ways,
         # because the mask is where the segment boundaries are found and the slice is the original.
         found = self.named("echo hi   # don't\nprintf x > notes.md\n")
 

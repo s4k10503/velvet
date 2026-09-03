@@ -186,9 +186,10 @@ def _before_any_comment(operands, segment):
     # write along with the comment.
     #
     # Counted over the SAME reading the operands came from. `program_invocations` hands on
-    # `without_redirections(tokens_of(segment))`, so counting the unfiltered list charges a real
-    # operand for every comment word that reads as a redirection -- `# keep > 2 copies` took two.
-    # Safe because the only caller reaches here through `program_invocations`, which skips a segment
+    # `without_redirections(tokens_of(segment))`, so counting the unfiltered list charges real
+    # operands for a comment word that reads as a redirection -- two per word, since the filter takes
+    # the token after it as well, and `# keep > 2 copies` took two on one `>`.
+    # Safe because both callers reach here through `program_invocations`, which skips a segment
     # `tokens_of` could not read: the whole tokenises, and a prefix ending before a bare `#` cannot
     # be the half of a quote that did not.
     dropped = (len(without_redirections(tokens_of(segment)))
