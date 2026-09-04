@@ -1680,7 +1680,7 @@ namespace Velvet
             VisualElement? motionElement,
             bool wasExiting)
         {
-            if (motion?.Transition != null)
+            if (ResolveEnterTransition(motion) != null)
             {
                 var presence = pass.Presence;
                 // The Initial flag only suppresses the enter animation on the AnimatePresence's
@@ -2000,9 +2000,6 @@ namespace Velvet
             if (motion?.Initial == null || motion.Animate == null || motion.Variants == null
                 || !motion.Variants.TryGetValue(motion.Initial, out var from) || string.IsNullOrEmpty(from.ClassName))
             {
-                // MUTANT_SURVIVES(equivalent): returning true here hands back a null transition.
-                // That is what the resolved-but-untimed path below returns too, so a caller has to
-                // gate the play on the transition being non-null regardless, and both callers do.
                 return false;
             }
 
@@ -2020,6 +2017,13 @@ namespace Velvet
         // something different, measured on a Motion whose own transition is None beside a timed exit pose:
         // the ghost gate reaps the child before that pose's timing can play at all, the count collapses a
         // reversed stagger to forward order, and Wait mode admits a new child while an exit is still running.
+        // The config a presence enter's timing comes from: variants[Animate]'s own where an initial enter
+        // resolves and declares one, else this Motion's — the enter-side counterpart of the exit resolution
+        // below. PlayPresenceEnter's gate reads this rather than the Motion's own transition because that
+        // gate skips the whole enter, OnEnterComplete included, and the only timing can now sit on the pose.
+        internal static StyleTransitionConfig? ResolveEnterTransition(MotionNode? motion)
+            => TryResolveVariantInitial(motion, out _, out _, out var transition) ? transition : motion?.Transition;
+
         internal static StyleTransitionConfig? ResolveExitTransition(MotionNode? motion)
             => TryResolveExitVariant(motion, out _, out _, out var transition) ? transition : motion?.Transition;
 

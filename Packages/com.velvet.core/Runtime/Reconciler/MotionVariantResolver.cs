@@ -21,8 +21,9 @@ namespace Velvet
         // poseTransition is what a swap INTO the resolved pose plays on: that pose's own
         // MotionVariant.Transition when it declares one, else the node's own — resolved here, off THIS
         // lookup, rather than by a caller re-deriving the effective label, which could pair a pose with
-        // another label's timing. The variant-less returns below hand back the node's own, which is what a
-        // variant→no-variant swap plays on.
+        // another label's timing. The label-not-found return below hands back the node's own, which is what
+        // a variant→no-variant swap plays on; the class-string returns after it keep what the pose declared,
+        // one that applies nothing still being the pose swapped into.
         public static string[] ResolveApplied(MotionNode node, string ambientLabel, out string[] variantClasses,
             out StyleTransitionConfig? poseTransition)
         {
@@ -36,11 +37,22 @@ namespace Velvet
                 return baseClasses;
             }
 
-            if (!node.Variants.TryGetValue(label, out var variant)
-                // MUTANT_SURVIVES(equivalent): an empty class string takes the same two writes either way.
-                // ParseClassNames yields the empty array for it, so the length check below returns
-                // baseClasses with empty variantClasses and leaves poseTransition alone, exactly as here.
-                || string.IsNullOrEmpty(variant.ClassName))
+            if (!node.Variants.TryGetValue(label, out var variant))
+            {
+                variantClasses = Array.Empty<string>();
+                return baseClasses;
+            }
+
+            // Resolved before the class gates below, because what a pose APPLIES cannot decide whose timing
+            // a swap into it reads. Measured on a pose that carries a transition and applies no class: from
+            // under those gates it left the swap on the node's config while TryResolveVariantInitial gave
+            // the mount enter the pose's, so one declaration animated at two speeds.
+            if (variant.Transition != null)
+            {
+                poseTransition = variant.Transition;
+            }
+
+            if (string.IsNullOrEmpty(variant.ClassName))
             {
                 variantClasses = Array.Empty<string>();
                 return baseClasses;
@@ -54,10 +66,6 @@ namespace Velvet
             }
 
             variantClasses = parsed;
-            if (variant.Transition != null)
-            {
-                poseTransition = variant.Transition;
-            }
             if (baseClasses.Length == 0)
             {
                 return parsed;

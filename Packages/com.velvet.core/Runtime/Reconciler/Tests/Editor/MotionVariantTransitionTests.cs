@@ -62,6 +62,24 @@ namespace Velvet.Tests
             ["visible"] = "opacity-100",
         };
 
+        // The destination pose applies no class of its own and still carries a timing — the "null or empty
+        // applies nothing" spelling the XML documents. The source pose is classed, so a swap into this one
+        // still changes which classes are applied and the play fires.
+        // The child stagger lives on the coordinator's destination pose; its node transition declares
+        // none, so a frame built from the node's config would start both children on the same slot.
+        private static readonly Dictionary<string, MotionVariant> s_staggerOnThePose = new()
+        {
+            ["hidden"] = "opacity-0",
+            ["visible"] = new MotionVariant("opacity-100",
+                new StyleTransitionConfig { DurationSec = 0.02f, StaggerChildrenSec = 0.4f }),
+        };
+
+        private static readonly Dictionary<string, MotionVariant> s_classlessTimedPose = new()
+        {
+            ["hidden"] = "opacity-0",
+            ["shown"] = new MotionVariant(null, new StyleTransitionConfig { DurationSec = 0.5f }),
+        };
+
         private readonly record struct LabelState(string Label);
 
         private sealed class LabelStore : Store<LabelState>
@@ -165,6 +183,17 @@ namespace Velvet.Tests
         }
 
         [Component]
+        private static VNode ClasslessPoseBox()
+        {
+            var label = Hooks.UseStore(s_labelStore, s => s.Label);
+            return V.Div(name: "wrap", children: new VNode[]
+            {
+                V.Motion(key: "m", name: "m", variants: s_classlessTimedPose, animate: label,
+                    transition: s_nodeDefault),
+            });
+        }
+
+        [Component]
         private static VNode ExitTimedPresence()
         {
             var keys = Hooks.UseStore(s_keyStore, s => s.Keys);
@@ -180,6 +209,21 @@ namespace Velvet.Tests
                 V.AnimatePresence(key: "presence", initial: false, staggerSec: s_staggerSec,
                     staggerDirection: s_staggerDirection, mode: s_mode, children: children.ToArray()),
             });
+        }
+
+        [Component]
+        private static VNode StaggerCoordinator()
+        {
+            var label = Hooks.UseStore(s_labelStore, s => s.Label);
+            return V.Motion(key: "p", name: "p", variants: s_staggerOnThePose, animate: label,
+                transition: new StyleTransitionConfig { DurationSec = 0.02f },
+                children: new VNode[]
+                {
+                    V.Motion(key: "c0", name: "c0", variants: s_plainFade,
+                        transition: new StyleTransitionConfig { DurationSec = 0.05f }),
+                    V.Motion(key: "c1", name: "c1", variants: s_plainFade,
+                        transition: new StyleTransitionConfig { DurationSec = 0.05f }),
+                });
         }
 
         [Component]
@@ -308,6 +352,43 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_APoseApplyingNoClassButCarryingATransition_When_TheAnimateLabelFlipsToIt_Then_TheSwapRidesThatPosesDuration()
+        {
+            // Arrange — mounted resting at variants[hidden]; variants[shown] applies no class and declares
+            // 0.5s against the node's 0.2s, so the reading names which config the swap consulted.
+            using var labels = new LabelStore();
+            s_labelStore = labels;
+            using var mounted = V.Mount(Root, V.Component(ClasslessPoseBox, key: "root"));
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+            Tick();
+
+            // Act
+            labels.Set("shown");
+            scheduler.DrainImmediateForTest();
+
+            // Assert — the destination pose's 500ms. A pose is found either way, so what it applies cannot
+            // decide whose timing plays.
+            Assert.That(InlineDurationMs(Root.Q<VisualElement>("m")), Is.EqualTo(500f).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_APoseApplyingNoClassButCarryingATransition_When_TheMotionMounts_Then_TheEnterRidesThatPosesDuration()
+        {
+            // Arrange — the same pose reached by the mount enter rather than a label change.
+            using var reconciler = new Reconciler();
+
+            // Act
+            reconciler.Reconcile(Root, System.Array.Empty<VNode>(), new VNode[]
+            {
+                V.Motion(key: "m", name: "m", variants: s_classlessTimedPose, initial: "hidden",
+                    animate: "shown", transition: s_nodeDefault),
+            });
+
+            // Assert — the destination pose's 500ms, the same answer the swap above has to give.
+            Assert.That(InlineDurationMs(Root.Q<VisualElement>("m")), Is.EqualTo(500f).Within(1e-3f));
+        }
+
+        [Test]
         public void Given_AMotionTransitionOfNone_When_ItsExitPoseDeclaresADuration_Then_TheRemovalIsHeldAsAnExitingGhost()
         {
             // Arrange — the node opts out of animation (StyleTransitionConfig.None); only variants[hidden],
@@ -395,6 +476,58 @@ namespace Velvet.Tests
             Assert.That(
                 (PoseOf(Root.Q<VisualElement>("p")), PoseOf(Root.Q<VisualElement>("c"))),
                 Is.EqualTo(("visible", "hidden")));
+        }
+
+        [Test]
+        public void Given_StaggerChildrenOnACoordinatorsPose_When_ItsLabelFlips_Then_ItsChildrenTakeSeparateSlots()
+        {
+            // Arrange — the stagger is declared only by the destination pose. The case above pins the
+            // BeforeChildren term of the same frame, which the node's own config also carries; this one
+            // pins the stagger term, which it does not, so a frame read off the node cannot separate them.
+            using var labels = new LabelStore();
+            s_labelStore = labels;
+            using var mounted = V.Mount(Root, V.Component(StaggerCoordinator, key: "root"));
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+            Tick();
+
+            // Act — flip, then sample past the first child's slot and inside the second's 0.4s one.
+            labels.Set("visible");
+            scheduler.DrainImmediateForTest();
+            Advance(0.2f);
+
+            // Assert — separate slots. Both children swapping together is the frame having been built
+            // without the pose's stagger.
+            Assert.That(
+                (PoseOf(Root.Q<VisualElement>("c0")), PoseOf(Root.Q<VisualElement>("c1"))),
+                Is.EqualTo(("visible", "hidden")));
+        }
+
+        [Test]
+        public void Given_APresenceChildTimedOnlyByItsPose_When_ItMounts_Then_TheEnterRidesThatPosesDuration()
+        {
+            // Arrange — the node carries no transition at all, which `V.Motion` cannot build (it falls back
+            // to the Fade preset), so the node is constructed directly. The only timing is the target pose's.
+            using var reconciler = new Reconciler();
+
+            // Act
+            reconciler.Reconcile(Root, System.Array.Empty<VNode>(), new VNode[]
+            {
+                V.AnimatePresence(key: "presence", children: new VNode[]
+                {
+                    new MotionNode
+                    {
+                        Key = "item",
+                        Name = "item",
+                        Variants = s_asymmetric,
+                        Initial = "hidden",
+                        Animate = "visible",
+                    },
+                }),
+            });
+
+            // Assert — the pose's 500ms. A gate asking only whether the NODE is timed skips this enter
+            // entirely, which drops OnEnterComplete with it.
+            Assert.That(InlineDurationMs(Root.Q<VisualElement>("item")), Is.EqualTo(500f).Within(1e-3f));
         }
     }
 }

@@ -17,8 +17,10 @@ namespace Velvet
 
         /// <summary>
         /// The transition a swap INTO this variant plays on: a mount enter whose
-        /// <see cref="MotionNode.Animate"/> names it, a runtime label change to it, and an exit whose
-        /// <see cref="MotionNode.Exit"/> names it. Null falls back to the enclosing <c>V.Motion</c>'s own
+        /// <see cref="MotionNode.Animate"/> names it, and a runtime label change to it — whatever the pose
+        /// applies, including nothing. An exit whose <see cref="MotionNode.Exit"/> names it reads this only
+        /// where the pose applies a class; one applying nothing is no variant exit, and the classic exit
+        /// plays on the Motion's own transition. Null falls back to the enclosing <c>V.Motion</c>'s own
         /// <c>transition:</c> — itself <see cref="StyleTransition"/>'s <c>Fade</c> preset when the call site
         /// left that out. Same delegate-outward shape as <see cref="AnimationSequenceStep.Transition"/>,
         /// without its carry-forward from the previous step: a variant map has no order to carry along.

@@ -413,7 +413,9 @@ integrate physically instead.
 its own `transition` supplies it; a pose that names none takes the Motion's `transition:`, which is
 itself the `Fade` preset when the call site left it out. That is the direction each of the three
 plays reads: a mount enter takes `variants[animate]`, a runtime label change takes the new label's
-pose, and an `AnimatePresence` exit takes `variants[exit]`. Framer expresses the same thing as a
+pose — whatever that pose applies, including nothing — and an `AnimatePresence` exit takes
+`variants[exit]` where that pose applies a class of its own; one applying nothing is not a variant exit,
+and the classic exit plays on the Motion's `transition:` instead. Framer expresses the same thing as a
 `transition` key inside a variant object and inside `exit`.
 
 So slow in against fast out is one declaration:
