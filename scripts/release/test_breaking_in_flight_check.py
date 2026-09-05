@@ -534,8 +534,8 @@ EMPTY_BASE = OPEN.replace(
 
 EMPTY_ABOVE_THE_NEXT = EMPTY_BASE.replace("### Changed\n", "### Fixed\n\n### Changed\n")
 
-# A base short of a heading, whose entry drifted up into the highlights, so the heading goes back
-# filing an entry of its own with the one above it left over nothing.
+# A base short of `### Fixed`, with the entry `### Added` files drifted up into the highlights, so
+# `### Fixed` goes back filing an entry of its own and leaves `### Added` over nothing.
 ABOVE_COPY = OPEN.replace(
     "### Highlights\n\n- A release.\n",
     "### Highlights\n\n- A release.\n\n### Added\n\n- Added one.\n\n### Fixed\n\n- Fixed one.\n")
@@ -546,9 +546,9 @@ ABOVE_BASE = OPEN.replace(
 
 ABOVE_BACK = ABOVE_BASE.replace("### Added\n", "### Added\n\n### Fixed\n")
 
-# A copy heading two blocks of the same name, against a base that lost the first heading into the
-# block above it and carries the blocks in the other order, so the one going back can land against
-# the heading that survived or above the entry it heads.
+# A copy heading two blocks of the same name, against a base short of the first heading whose entry
+# now ends the block the copy puts below it, so the one going back can land against the heading that
+# survived or above the entry it heads.
 TWIN_COPY = OPEN.replace(
     "### Highlights\n\n- A release.\n",
     "### Highlights\n\n- A release.\n\n### Fixed\n\n- Fixed one.\n"
