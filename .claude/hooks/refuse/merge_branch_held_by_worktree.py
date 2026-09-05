@@ -77,7 +77,13 @@ def branch_of(cwd, operands):
     return (ref or "").strip() or UNREADABLE
 
 
-def blocked(command, cwd):
+def merges(command):
+    """The operands of each `gh pr merge` in the command that would merge something."""
+    return [operands for operands in program_invocations(command, "gh", ("pr", "merge"))
+            if not merges_nothing(operands)]
+
+
+def blocked(asked, cwd):
     """(branch, why this merge cannot clear it) for each merge whose branch is not clear.
 
     The unexpanded operand is answered before the worktree list is consulted. Returning early on an
@@ -87,9 +93,7 @@ def blocked(command, cwd):
     """
     held, read = None, False
     found = []
-    for operands in program_invocations(command, "gh", ("pr", "merge")):
-        if merges_nothing(operands):
-            continue
+    for operands in asked:
         named = [token for token in operands if not token.startswith("-")]
         if any(unexpanded(token) for token in named):
             found.append(("the branch named by an unexpanded operand",
@@ -119,12 +123,15 @@ def main():
         return 0
 
     command = event.get("tool_input", {}).get("command", "")
+    asked = merges(command)
+    if not asked:
+        return 0
     cwd = command_directory(command, event.get("cwd") or ".")
     if cwd is UNRESOLVED_CD:
         sys.stderr.write("Refusing `gh pr merge`: which checkout holds the worktree list could "
                          f"not be read.\n\n{UNPLACEABLE_MOVE}\n\n{NAME_THE_TREE}\n")
         return 2
-    found = blocked(command, cwd)
+    found = blocked(asked, cwd)
     if not found:
         return 0
 

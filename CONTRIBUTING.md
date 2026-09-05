@@ -657,23 +657,31 @@ directory answers about a checkout the command has left, and prints a positive v
 it never opened. Two false refusals of that shape were reported before this, one guard both times,
 and what nobody asked afterwards is which of the others read a directory at all. Ten did.
 `command_directory` in `.claude/hooks/lib/shell_commands.py` owns the reading: it places the event's
-directory through the command's own moves, or declines, and a guard handed the decline refuses rather
-than answering about the directory it started in. Reading a leading `cd` was already shared before
+directory through the command's own moves, or declines, and what a guard handed the decline may not
+do is answer about the directory it started in. Reading a leading `cd` was already shared before
 that; placing its answer was written three times at three call sites and the three disagreed, one of
 them against the hook process's own directory rather than the event's.
 
-`scripts/hooks/test_cwd_resolution_check.py` poses every guard in the directory both forms — a move
-it could place, and one nothing can — and reads two things off each run: the verdict, from the exit
-code and from a `deny` decision on stdout, and which tree the guard's own `git` and `gh` calls
-addressed, from shims that record where they were run. The tree reading is what separates a guard
-whose subject is not the tree from one that read the wrong tree and had nothing to say about it
-either way, and where neither reading speaks the check reports undecided rather than agreement — a
-guard that lands there wants a case in its own suite, as `library_seed_without_room.py` has, since
-it asks the filesystem rather than git and the shims see nothing of that. What the check does not
-decide is what a guard should do once it has declined to place a move: refusing and standing down are
-both defensible and the guards differ, `tracked_writes.py` naming its own gap. Five stand-in guards
-ride alongside, one per outcome, so a sweep whose shims have stopped recording fails rather than
-coming back clean.
+The decline is only reached where the guard already has something to judge. These run on `Bash`, so
+they see every command in the session, and one that reads the directory before establishing its
+subject refuses `cd - && ls` — naming a command the user never typed, with the move as the whole of
+its reason. Measured: four guards each refused seven such commands before the order was settled.
+
+`scripts/hooks/test_cwd_resolution_check.py` poses every guard in the directory three forms — a move
+it could place, one nothing can, and that same unplaceable move carrying a command the guard has no
+subject in — and reads two things off each run: the verdict, from the exit code and from a `deny`
+decision on stdout, and which tree the guard's own `git` and `gh` calls addressed, from shims that
+record where they were run. The tree reading is what separates a guard whose subject is not the tree
+from one that read the wrong tree and had nothing to say about it either way, and where neither
+reading speaks the check reports undecided rather than agreement — a guard that lands there wants a
+case in its own suite, as `library_seed_without_room.py` has, since it asks the filesystem rather
+than git and the shims see nothing of that. What the check does not decide is which way a guard
+should go once it has declined to place a move: refusing and standing down are both defensible and
+the guards differ, `tracked_writes.py` naming its own gap and `edit_while_a_ready_pr_sits.py`
+standing down. Six stand-in guards ride alongside, between them producing every outcome the sweep
+reports — a case compares the two sets rather than a sentence claiming it — so a sweep whose shims
+have stopped recording fails rather than coming back clean. Two trees that stop being two are the
+degeneracy the decided count cannot see, and the sweep compares them to each other for it.
 
 The `Stop` guards declare the same policy and are held to one thing more, because blocking was never
 what they got wrong. They blocked, and described the pull requests rather than the reading — so the

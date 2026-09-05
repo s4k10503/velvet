@@ -141,13 +141,6 @@ def refuse(what, path, root):
 
 def judge(command, cwd):
     """0, or 2 with the reason written to stderr."""
-    here = command_directory(command, cwd)
-    if here is UNRESOLVED_CD:
-        # The tree the command runs in cannot be read, so neither can the question.
-        sys.stderr.write("Refusing this command: which worktree the message belongs to could not "
-                         f"be read.\n\n{UNPLACEABLE_MOVE}\n\n{NAME_THE_TREE}\n")
-        return 2
-
     asked = [("git commit", operands, MESSAGE_FLAGS, None)
              for _, _, operands in git_invocations(command, ("commit",))]
     for words in GH_WORDS:
@@ -169,6 +162,13 @@ def judge(command, cwd):
                 "belongs to cannot be read here.\n\n"
                 "Spell the path out, inside the worktree the change is in.\n")
             return 2
+
+    here = command_directory(command, cwd)
+    if here is UNRESOLVED_CD:
+        # The tree the command runs in cannot be read, so neither can the question.
+        sys.stderr.write("Refusing this command: which worktree the message belongs to could not "
+                         f"be read.\n\n{UNPLACEABLE_MOVE}\n\n{NAME_THE_TREE}\n")
+        return 2
 
     root = worktree_of(here)
     if root is None:

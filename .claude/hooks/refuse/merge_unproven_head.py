@@ -64,10 +64,15 @@ def head_sha(cwd, number):
     return payload["headRefOid"] if payload else None
 
 
-def unproven(command, cwd):
+def merges(command):
+    """The operands of each `gh pr merge` in the command."""
+    return program_invocations(command, "gh", ("pr", "merge"))
+
+
+def unproven(asked, cwd):
     """(pull request, reason) for each merge whose head is not covered by its own passing checks."""
     found = []
-    for operands in program_invocations(command, "gh", ("pr", "merge")):
+    for operands in asked:
         named = [token for token in operands if not token.startswith("-")]
         if any(unexpanded(token) for token in named):
             found.append(("the pull request named",
@@ -106,12 +111,15 @@ def main():
         return 0
 
     command = event.get("tool_input", {}).get("command", "")
+    asked = merges(command)
+    if not asked:
+        return 0
     cwd = command_directory(command, event.get("cwd") or ".")
     if cwd is UNRESOLVED_CD:
         sys.stderr.write("Refusing `gh pr merge`: which checkout gh would resolve the pull request "
                          f"from could not be read.\n\n{UNPLACEABLE_MOVE}\n\n{NAME_THE_TREE}\n")
         return 2
-    found = unproven(command, cwd)
+    found = unproven(asked, cwd)
     if not found:
         return 0
 
