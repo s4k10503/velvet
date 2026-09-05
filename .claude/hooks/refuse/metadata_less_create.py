@@ -22,7 +22,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-from shell_commands import program_invocations
+from shell_commands import (UNPLACEABLE_MOVE, UNRESOLVED_CD, command_directory,
+                            program_invocations)
 import repository
 
 
@@ -82,8 +83,23 @@ UNREADABLE_PROBE = {"command": "gh issue create --title probe"}
 
 
 def labels(cwd):
+    """The repository's label names, or None where gh did not answer.
+
+    Told apart from the empty list, which is a repository that has no labels yet. Answering that of a
+    reading that failed offers `gh label create` to someone whose labels are all already there.
+    """
     listing = repository.gh(["label", "list", "--json", "name", "--jq", ".[].name"], cwd=cwd)
-    return [name for name in (listing or "").splitlines() if name.strip()]
+    return None if listing is None else [name for name in listing.splitlines() if name.strip()]
+
+
+def label_line(where):
+    """The refusal's line about which labels exist, or about why it does not say."""
+    if where is UNRESOLVED_CD:
+        return "  not read — " + UNPLACEABLE_MOVE
+    found = labels(where)
+    if found is None:
+        return "  not read — gh did not answer."
+    return "  " + (", ".join(found) or "(none yet — `gh label create` makes one)")
 
 
 def main():
@@ -112,7 +128,9 @@ def main():
     if not missing:
         return 0
 
-    cwd = event.get("cwd") or "."
+    # The refusal stands on the command's own text, so an unplaced move costs the listing below and
+    # not the verdict.
+    where = command_directory(command, event.get("cwd") or ".")
     reason = [
         f"Refusing `gh {kind} create`: it sets no {' and no '.join(missing)}.",
         "",
@@ -120,7 +138,7 @@ def main():
         "the only way to know what one is, is to open it.",
         "",
         "Labels on this repository:",
-        "  " + (", ".join(labels(cwd)) or "(none yet — `gh label create` makes one)"),
+        label_line(where),
     ]
     if "--assignee" in missing:
         reason += ["", "`--assignee @me` is the usual answer."]

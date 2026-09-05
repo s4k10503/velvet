@@ -28,7 +28,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-from shell_commands import program_invocations, unexpanded
+from shell_commands import (NAME_THE_TREE, UNPLACEABLE_MOVE, UNRESOLVED_CD, command_directory,
+                            program_invocations, unexpanded)
 import repository
 
 
@@ -104,8 +105,13 @@ def main():
     if event.get("tool_name") not in HOOK_TOOLS:
         return 0
 
-    cwd = event.get("cwd") or "."
-    found = unproven(event.get("tool_input", {}).get("command", ""), cwd)
+    command = event.get("tool_input", {}).get("command", "")
+    cwd = command_directory(command, event.get("cwd") or ".")
+    if cwd is UNRESOLVED_CD:
+        sys.stderr.write("Refusing `gh pr merge`: which checkout gh would resolve the pull request "
+                         f"from could not be read.\n\n{UNPLACEABLE_MOVE}\n\n{NAME_THE_TREE}\n")
+        return 2
+    found = unproven(command, cwd)
     if not found:
         return 0
 
