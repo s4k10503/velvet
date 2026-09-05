@@ -165,9 +165,9 @@ jobs:
   # whose body is missing rather than stopping anything. This runs the same builder here, so
   # that failure lands on the pull request that introduced it. No Unity license needed.
   #
-  # supported_versions_check.py and pin_example_check.py ride here for the same reason, and neither
-  # is gated on a release: the row that goes missing and the pin that goes stale are both written in
-  # an ordinary documentation change.
+  # supported_versions_check.py, pin_example_check.py and unity_floor_check.py ride here for the same
+  # reason, and none is gated on a release: the row that goes missing, the pin that goes stale and the
+  # README release a manifest bump left behind are all written in an ordinary documentation change.
   # ---------------------------------------------------------------------------
   release-notes:
     name: Release notes
@@ -184,6 +184,10 @@ jobs:
       - run: python3 scripts/test_quality/run_suite.py scripts/release/test_pin_example_check.py
 
       - run: python3 scripts/release/pin_example_check.py
+
+      - run: python3 scripts/test_quality/run_suite.py scripts/release/test_unity_floor_check.py
+
+      - run: python3 scripts/release/unity_floor_check.py
 
   # ---------------------------------------------------------------------------
   # CONTRIBUTING.md's release section owns why this exists; scripts/release/published_check.py owns

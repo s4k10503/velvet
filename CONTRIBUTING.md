@@ -71,6 +71,11 @@ commands or broke a sibling guard, so the guard stops where it can answer.
    from `Packages/com.velvet.core/`; edit it in place.
 3. Run the Unity test suites from **Window ▸ General ▸ Test Runner** (EditMode and PlayMode).
 
+The lowest release a consumer may install is a separate fact from the editor above, declared by
+`package.json`'s `unity` and `unityRelease` and copied into the READMEs, so raising one does not raise
+the other: `scripts/release/unity_floor_check.py` refuses a README naming a release the manifest does
+not declare, and runs in `Test ▸ release-notes`.
+
 ### Looking at what Velvet renders
 
 Every `[VelvetPreview]` story can be rendered to a PNG, so a change to layout, styling or paint can
