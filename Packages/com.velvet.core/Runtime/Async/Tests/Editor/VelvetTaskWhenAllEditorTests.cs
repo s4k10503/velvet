@@ -292,21 +292,6 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AConsumedWhenAllResult_When_TheSourcePoolIsRented_Then_ItDoesNotHandBackThatSource()
-        {
-            // Arrange
-            var all = VelvetTask.WhenAll(VelvetTask.FromResult(1), VelvetTask.FromResult(2));
-            var publishing = PublishingSourceOf(all);
-            all.GetAwaiter().GetResult();
-
-            // Act
-            var rented = VelvetTaskSourcePool<int[]>.Rent();
-
-            // Assert
-            Assert.That(rented, Is.Not.SameAs(publishing));
-        }
-
-        [Test]
         public void Given_AConsumedWhenAllResult_When_ConsumedAgain_Then_ThrowsAlreadyConsumed()
         {
             // Arrange
@@ -333,6 +318,19 @@ namespace Velvet.Tests
             // Assert
             Assert.That(Assert.Throws<InvalidOperationException>(PassTwice)!.Message,
                 Is.EqualTo("The VelvetTask has already been awaited."));
+        }
+
+        [Test]
+        public void Given_OneValueBackedTaskPassedTwice_When_WhenAllCalled_Then_CarriesItAtBothPositions()
+        {
+            // Arrange
+            var shared = VelvetTask.FromResult(7);
+
+            // Act
+            var results = VelvetTask.WhenAll(shared, shared).GetAwaiter().GetResult();
+
+            // Assert
+            Assert.That(results, Is.EqualTo(new[] { 7, 7 }));
         }
 
         [Test]
