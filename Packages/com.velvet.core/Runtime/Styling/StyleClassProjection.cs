@@ -269,8 +269,10 @@ namespace Velvet
                 }
             }
 
-            // A restored class is APPENDED to the live class list, not returned to where it was.
-            // Which readers resolve an answer from that order is what LiveClassListOrderTests holds.
+            // A restored class is APPENDED to the live class list, not returned to where it was. Whether
+            // that can move an answer is two questions LiveClassListOrderTests holds together: which
+            // readers resolve from the order at all, and whether any class they read carries a rule this
+            // path could suppress.
             //
             // Skipped outright unless something is suppressed or has just become so — the state most
             // elements carrying a model are never in, and the one that turns a class-list toggle into work

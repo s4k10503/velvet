@@ -177,9 +177,12 @@ value instantly, matching CSS's zero-duration behavior.
 
 ### Contract
 
-- **Register before mount.** Resolution happens when a class is applied; a class resolved
-  before its name was registered stays inert until the element's class list changes again.
-  Registration is not reactive.
+- **Register before mount.** Resolution happens when a class is applied, and registration is not
+  reactive: `Register` re-resolves no element. A class applied before its name was registered is left
+  on the class list rather than resolved to an inline value, and paints nothing — until some later
+  pass re-applies the element's inline values from the classes it still carries, at which point it
+  resolves with no render behind it. A spring or bezier motion settling or being cancelled on the
+  element is one such pass.
 - The built-in family names (`blur`, `brightness`, `contrast`, `grayscale`, `hue-rotate`,
   `invert`, `saturate`, `sepia`) are **reserved** and cannot be registered.
 - A name must be free of whitespace, `:`, `[` and `]` (they would break the token grammar).

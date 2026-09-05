@@ -1,8 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using Mono.Cecil;
 using NUnit.Framework;
+using UnityEngine;
 using UnityEngine.UIElements;
 
 namespace Velvet.Tests
@@ -14,24 +16,39 @@ namespace Velvet.Tests
     /// query on both sides of a comparison.
     /// </summary>
     /// <remarks>
-    /// The roster case is what makes a reader written later arrive with a verdict of its own rather than
-    /// unnoticed. The cases whose verdict is that the order decides are the ones an editor bump has to
-    /// settle: they name what today's answer rests on, so that question is a run rather than a re-audit.
+    /// The roster case reads the enumerations off the runtime assembly and the verdicts off this fixture's
+    /// own cases, so a reader written later arrives with a verdict of its own rather than unnoticed. The
+    /// cases whose verdict is that the order decides are the ones an editor bump has to settle: they name
+    /// what today's answer rests on, so that question is a run rather than a re-audit.
     /// </remarks>
     [TestFixture]
     internal sealed class LiveClassListOrderTests
     {
-        // Every method in the runtime assembly that enumerates a live class list. Held here rather than
-        // derived, because the point is that a method joining the list has to stop and be given a verdict.
-        private static readonly string[] LiveClassListReaders =
+        // The runtime assembly's own spelling of each reader — declaring type, method name and parameter
+        // type names — which is what the roster case matches its IL scan against. Parameter types are part
+        // of the spelling, so an overload that differs in them arrives as an entry of its own rather than
+        // folding into the one already listed.
+        private const string LiveClassesReader = "Velvet.FiberNodePatcher.LiveClasses(VisualElement)";
+        private const string TransitionSlotsReader =
+            "Velvet.MotionNativeTransitionGuard.DeclaredSlots(VisualElement, Boolean)";
+        private const string MotionReapplyReader =
+            "Velvet.StyleAnimationScheduler.ReapplyMotionOwnedInlineValues(VisualElement)";
+        private const string BaseLayerSeedReader = "Velvet.StyleClassProjection/Model.SeedBaseLayer(VisualElement)";
+        private const string ClipShapeReader =
+            "Velvet.StyleClipPathClass.TryExtractLive(VisualElement, ClipPathSpec&)";
+        private const string BalanceWidthReader =
+            "Velvet.StyleTextBalanceClass.DeclaresWidthClass(VisualElement)";
+
+        // Marks the case that measures one reader's verdict. The roster case builds its expected side from
+        // these, read only off the methods carrying [Test], rather than from a list of its own — so a
+        // reader cannot be signed off by editing a list.
+        [AttributeUsage(AttributeTargets.Method)]
+        private sealed class ReaderVerdictAttribute : Attribute
         {
-            "Velvet.FiberNodePatcher.LiveClasses",
-            "Velvet.MotionNativeTransitionGuard.DeclaredSlots",
-            "Velvet.StyleAnimationScheduler.ReapplyMotionOwnedInlineValues",
-            "Velvet.StyleClassProjection/Model.SeedBaseLayer",
-            "Velvet.StyleClipPathClass.TryExtractLive",
-            "Velvet.StyleTextBalanceClass.DeclaresWidthClass",
-        };
+            public ReaderVerdictAttribute(string reader) => Reader = reader;
+
+            public string Reader { get; }
+        }
 
         private static readonly MethodInfo RouteOneClass = typeof(FiberNodePatcher)
             .GetMethod("AddClass", BindingFlags.NonPublic | BindingFlags.Static)!;
@@ -39,10 +56,29 @@ namespace Velvet.Tests
         private static readonly MethodInfo MaterializeLiveClasses = typeof(FiberNodePatcher)
             .GetMethod("LiveClasses", BindingFlags.NonPublic | BindingFlags.Static)!;
 
-        // The reconciler's own routing decides whether a token reaches the class list at all or resolves to
-        // inline style instead, so an element arranged by calling AddToClassList directly can carry a token
-        // the routing would have kept off it. This is the create path; the patch path carries its own copy
-        // of the same routing, which the last case below holds beside this one.
+        private static readonly MethodInfo SettleMotionOwnedInlineValues = typeof(StyleAnimationScheduler)
+            .GetMethod("ReapplyMotionOwnedInlineValues", BindingFlags.NonPublic | BindingFlags.Static)!;
+
+        private readonly Dictionary<FilterFunctionDefinition, string> _customFilterNames = new();
+
+        [TearDown]
+        public void TearDown()
+        {
+            foreach (var pair in _customFilterNames)
+            {
+                VelvetFilters.Unregister(pair.Value);
+                if (pair.Key != null)
+                {
+                    UnityEngine.Object.DestroyImmediate(pair.Key);
+                }
+            }
+            _customFilterNames.Clear();
+        }
+
+        // The reconciler's own routing decides whether a token reaches the class list at all, so an element
+        // arranged by calling AddToClassList directly can carry a token the routing would have kept off it.
+        // This is the create path; the patch path carries its own copy of the same routing, which the
+        // routing case below holds beside this one.
         private static VisualElement Carrying(params string[] classNames)
         {
             var element = new VisualElement();
@@ -66,11 +102,53 @@ namespace Velvet.Tests
         private static string SortedClassList(VisualElement element)
             => string.Join(" ", element.GetClasses().OrderBy(cls => cls, StringComparer.Ordinal));
 
-        // GREEN_ON_BASE(construction): the roster names methods the base's own assembly holds.
-        // The two sides therefore agree on a base run, which cannot separate them. Add an
-        // `element.GetClasses()` call to a production method and this case reddens.
+        private static void Settle(VisualElement element)
+            => SettleMotionOwnedInlineValues.Invoke(null, new object[] { element });
+
+        // Registers a one-float-parameter custom filter under name for this test only, and remembers the
+        // name so the composed order can be read back by name instead of by definition reference.
+        private void RegisterCustomFilter(string name)
+        {
+            var definition = ScriptableObject.CreateInstance<FilterFunctionDefinition>();
+            definition.parameters = new[]
+            {
+                new FilterParameterDeclaration
+                {
+                    name = "amount",
+                    interpolationDefaultValue = new FilterParameter(0f),
+                },
+            };
+            _customFilterNames[definition] = name;
+            VelvetFilters.Register(name, definition);
+        }
+
+        // The names of the custom filters composed into the element's inline filter list, in compose order.
+        // A function this fixture registered no name for is rendered by its type, so a list holding
+        // something else reads as that rather than as an absence.
+        private string ComposedCustomFilters(VisualElement element)
+        {
+            var functions = element.style.filter.value;
+            if (functions == null)
+            {
+                return string.Empty;
+            }
+            var names = new List<string>();
+            for (var i = 0; i < functions.Count; i++)
+            {
+                var definition = functions[i].customDefinition;
+                names.Add(definition != null && _customFilterNames.TryGetValue(definition, out var name)
+                    ? name
+                    : functions[i].type.ToString());
+            }
+            return string.Join(" ", names);
+        }
+
+        // GREEN_ON_BASE(construction): both sides here are the repository's own content — the runtime
+        // assembly's IL and the verdicts this fixture's own cases declare. The two therefore agree on a
+        // base run, which cannot separate them. Add an `element.GetClasses()` call to a production method
+        // and this case reddens.
         [Test]
-        public void Given_TheRuntimeAssembly_When_ItsBodiesAreReadForLiveClassListEnumerations_Then_EveryMethodHoldingOneIsOnTheRoster()
+        public void Given_TheRuntimeAssembly_When_ItsBodiesAreReadForLiveClassListEnumerations_Then_EveryMethodHoldingOneHasACaseDeclaringItsVerdict()
         {
             // Arrange — read from IL rather than from the sources: a sibling in the reconciler spells the
             // enumeration in a comment saying it is NOT what that path reads, and a text scan counts it.
@@ -84,21 +162,23 @@ namespace Velvet.Tests
                     instruction.Operand is MethodReference reference
                     && reference.Name == nameof(VisualElement.GetClasses)
                     && reference.DeclaringType.FullName == typeof(VisualElement).FullName))
-                .Select(method => $"{method.DeclaringType.FullName}.{method.Name}")
+                .Select(Spelled)
                 .Distinct()
                 .OrderBy(name => name, StringComparer.Ordinal)
                 .ToList();
 
             // Assert
-            Assert.That(string.Join("\n", measured), Is.EqualTo(string.Join("\n", LiveClassListReaders)),
-                "a method reads the live class list with no verdict here on whether its answer depends on "
-                + "the order the classes arrived in; give it a case in this fixture and list it above");
+            Assert.That(string.Join("\n", measured), Is.EqualTo(string.Join("\n", VerdictsDeclaredHere())),
+                "the two sides name different readers: a method reads the live class list with no case here "
+                + "on whether its answer depends on the order the classes arrived in, or a case declares a "
+                + "verdict for a method that no longer reads it and the declaration has to go");
         }
 
         // GREEN_ON_BASE(characterization): the base already resolves the last clip token on the list.
         // What shows the case can fail is a `break` after the first match in TryExtractLive: measured,
         // each arrangement then resolves the shape it was handed first and the pair inverts.
         [Test]
+        [ReaderVerdict(ClipShapeReader)]
         public void Given_TwoClipShapesOnOneElement_When_TheOrderTheyWereAddedInIsReversed_Then_TheShapeThatResolvesIsTheOneAddedLast()
         {
             // Arrange — a variant clip payload lands on the live list beside the base clip, so two clip
@@ -121,6 +201,7 @@ namespace Velvet.Tests
         // What shows the case can fail is a `break` after the first match in StyleGapClass.TryExtract:
         // measured, each arrangement then takes the gap it was handed first and the pair inverts.
         [Test]
+        [ReaderVerdict(LiveClassesReader)]
         public void Given_TwoGapTokensOnOneElement_When_TheOrderTheyWereAddedInIsReversed_Then_TheGapTheReSyncResolvesIsTheOneAddedLast()
         {
             // Arrange — LiveClasses is the class source a re-sync uses when the element has no recorded
@@ -138,10 +219,77 @@ namespace Velvet.Tests
                 + "hands over last");
         }
 
+        // GREEN_ON_BASE(characterization): the base already resolves the last grid-cols token on the list.
+        // What shows the case can fail is a `break` after the first match in StyleGridClass.TryExtract:
+        // measured, each arrangement then takes the column count it was handed first and the pair inverts.
+        [Test]
+        [ReaderVerdict(LiveClassesReader)]
+        public void Given_TwoColumnCountsOnOneElement_When_TheOrderTheyWereAddedInIsReversed_Then_TheColumnCountTheReSyncResolvesIsTheOneAddedLast()
+        {
+            // Arrange — the same re-sync hands its class source to the grid manipulator as well, and the
+            // column count that manipulator is configured with is the last grid-cols token that parses.
+            var added = Carrying("grid-cols-2", "grid-cols-4");
+            var reversed = Carrying("grid-cols-4", "grid-cols-2");
+
+            // Act
+            StyleGridClass.TryExtract(LiveClasses(added), out var fromAdded);
+            StyleGridClass.TryExtract(LiveClasses(reversed), out var fromReversed);
+
+            // Assert
+            Assert.That((fromAdded, fromReversed), Is.EqualTo((4, 2)),
+                "the column count this path configures the grid with is whichever grid-cols token the "
+                + "class list hands over last");
+        }
+
+        // GREEN_ON_BASE(characterization): the base already resolves the last gap token per axis.
+        // What shows the case can fail is a `break` after the first match in StyleGridClass.ExtractGaps:
+        // measured, each arrangement then takes the gap it was handed first and the pair inverts.
+        [Test]
+        [ReaderVerdict(LiveClassesReader)]
+        public void Given_TwoColumnGapsOnOneElement_When_TheOrderTheyWereAddedInIsReversed_Then_TheGapTheGridResolvesIsTheOneAddedLast()
+        {
+            // Arrange — a grid routes its own gap rather than leaving it to the gap manipulator, so this is
+            // a second last-wins reading of the same class source, accumulating per axis.
+            var added = Carrying("gap-x-4", "gap-x-8");
+            var reversed = Carrying("gap-x-8", "gap-x-4");
+
+            // Act
+            StyleGridClass.ExtractGaps(LiveClasses(added), out var fromAdded, out _);
+            StyleGridClass.ExtractGaps(LiveClasses(reversed), out var fromReversed, out _);
+
+            // Assert — 16px and 32px are the shared spacing scale's own values for the two tokens.
+            Assert.That((fromAdded, fromReversed), Is.EqualTo((32f, 16f)),
+                "the column gap this path configures the grid with is whichever gap-x token the class list "
+                + "hands over last");
+        }
+
+        // GREEN_ON_BASE(characterization): the base already resolves the last divide axis token on the list.
+        // What shows the case can fail is a `break` after the first match in StyleDivideClass.TryExtract:
+        // measured, each arrangement then takes the width it was handed first and the pair inverts.
+        [Test]
+        [ReaderVerdict(LiveClassesReader)]
+        public void Given_TwoDividerWidthsOnOneElement_When_TheOrderTheyWereAddedInIsReversed_Then_TheWidthTheReSyncResolvesIsTheOneAddedLast()
+        {
+            // Arrange — the divide manipulator is the third reader the same class source feeds, and it
+            // accumulates a single axis + width from whichever axis token parses last.
+            var added = Carrying("divide-x-2", "divide-x-8");
+            var reversed = Carrying("divide-x-8", "divide-x-2");
+
+            // Act
+            StyleDivideClass.TryExtract(LiveClasses(added), out var fromAdded);
+            StyleDivideClass.TryExtract(LiveClasses(reversed), out var fromReversed);
+
+            // Assert
+            Assert.That((fromAdded.Width, fromReversed.Width), Is.EqualTo((8f, 2f)),
+                "the divider width this path configures the manipulator with is whichever divide axis "
+                + "token the class list hands over last");
+        }
+
         // GREEN_ON_BASE(characterization): the base already answers this from the set, not the order.
         // What shows the case can fail is trading the `return true` in DeclaresWidthClass for an
         // assignment that keeps scanning: measured, the arrangement ending on w-auto then answers false.
         [Test]
+        [ReaderVerdict(BalanceWidthReader)]
         public void Given_AWidthTokenBesideTheAutoToken_When_TheOrderTheyWereAddedInIsReversed_Then_TheBalanceVerdictIsTheSameBothWays()
         {
             // Arrange — w-auto declares nothing to stand down for, so a reading that took the last matching
@@ -162,6 +310,7 @@ namespace Velvet.Tests
         // What shows the case can fail is widening `position > winningPosition` to take every match:
         // measured, the two arrangements then declare different slots.
         [Test]
+        [ReaderVerdict(TransitionSlotsReader)]
         public void Given_TwoTransitionUtilitiesOnOneElement_When_TheOrderTheyWereAddedInIsReversed_Then_TheDeclaredSlotsAreTheSameBothWays()
         {
             // Arrange — the two sit at different positions in the bundled cascade, so the winner by cascade
@@ -186,6 +335,7 @@ namespace Velvet.Tests
         // What shows the case can fail is `JudgeBand` claiming each entry's properties as it goes:
         // measured, the second padding token is then judged dead against the first and leaves the list.
         [Test]
+        [ReaderVerdict(BaseLayerSeedReader)]
         public void Given_TwoBaseClassesWritingOnePropertyUnderAPayload_When_TheOrderTheyWereAddedInIsReversed_Then_TheSurvivingClassesAreTheSameBothWays()
         {
             // Arrange — the payload above them is what builds the model, and the model seeds its base layer
@@ -214,7 +364,8 @@ namespace Velvet.Tests
         public void Given_TheTokenFamiliesTheMotionReapplyLooksFor_When_EitherRoutingRunsThem_Then_OnlyTheOneNoResolverClaimsReachesTheLiveClassList()
         {
             // Arrange — the four bracket and static-scale families the settle path re-applies inline values
-            // for, beside one plain utility. Routing decides which of them a class list can hold at all.
+            // for, beside one plain utility. Routing decides which of them a class list can hold at all,
+            // which is what bounds the settle path's own verdict to the family the case below holds.
             var tokens = new[] { "w-[240px]", "translate-x-4", "opacity-[.5]", "bg-[#ff0000]", "p-4" };
             var created = Carrying(tokens);
             var patched = Patched(tokens);
@@ -229,5 +380,73 @@ namespace Velvet.Tests
                 "a token a resolver owns must not reach the USS class list; one that does gets its inline "
                 + "value re-applied from the live list, in whatever order that list holds it");
         }
+
+        // GREEN_ON_BASE(characterization): the base already composes the pair in live-class-list order.
+        // What shows the case can fail is iterating `classes` backwards in ReapplyArbitraryValues:
+        // measured, each arrangement then composes the two the other way round and the pair inverts.
+        [Test]
+        [ReaderVerdict(MotionReapplyReader)]
+        public void Given_TwoCustomFilterTokensRoutedBeforeTheirNamesWereRegistered_When_TheMotionSettleReappliesThem_Then_TheyComposeInTheOrderTheClassListHoldsThem()
+        {
+            // Arrange — whether a resolver owns a token is decided when the token is routed, and a
+            // filter-[name:args] whose name is not registered yet is owned by nobody, so it lands on the
+            // live class list. Registering the names afterwards makes the settle path's re-apply the FIRST
+            // application of each, and a custom filter's first application is what fixes its compose slot.
+            var added = Carrying("filter-[halo:1]", "filter-[speckle:2]");
+            var reversed = Carrying("filter-[speckle:2]", "filter-[halo:1]");
+            RegisterCustomFilter("halo");
+            RegisterCustomFilter("speckle");
+
+            // Act
+            Settle(added);
+            Settle(reversed);
+
+            // Assert — the class list of one arrangement rides along, sorted so it pins no order of its
+            // own: had the names been registered before the routing, both tokens would have resolved to
+            // inline style at that point and the compose order would be the routing's rather than this
+            // reading's.
+            Assert.That((SortedClassList(added), ComposedCustomFilters(added), ComposedCustomFilters(reversed)),
+                Is.EqualTo(("filter-[halo:1] filter-[speckle:2]", "halo speckle", "speckle halo")),
+                "the settle path re-applies each token the live class list still names, and for a custom "
+                + "filter applied there for the first time that list's order is the compose order");
+        }
+
+        // GREEN_ON_BASE(characterization): the base's bundled sheets already declare none of these five.
+        // What shows the case can fail is adding `gap-4` to the projection's own reading of the table:
+        // measured, the token then joins the canary on the answering side.
+        [Test]
+        public void Given_TheClassesTheOrderDecidesFor_When_LookedUpBesideAUtilityWithARule_Then_OnlyThatUtilityDeclaresAProperty()
+        {
+            // Arrange — a class the projection suppresses is restored by APPENDING it to the live class
+            // list, which moves it past every class declared after it. Only a class that declares a
+            // property can be suppressed, so this is what keeps that append clear of the readings above.
+            var tokens = new[]
+            {
+                "clip-path-[circle(40%)]", "gap-4", "gap-x-4", "grid-cols-2", "divide-x-2", "p-4",
+            };
+
+            // Act
+            var declaring = tokens.Where(cls =>
+                StyleUtilityProperties.TryGet(cls, out var rule) && !rule.Properties.IsEmpty);
+
+            // Assert — p-4 is the canary: a lookup that answered nothing would leave this empty and agree
+            // with a table that had lost every entry.
+            Assert.That(string.Join(" ", declaring), Is.EqualTo("p-4"),
+                "a class one of the readings above resolves from carries no rule of its own, so the "
+                + "projection can never suppress it and the restore that re-appends one cannot reach it");
+        }
+
+        private static string Spelled(MethodDefinition method)
+            => $"{method.DeclaringType.FullName}.{method.Name}"
+                + $"({string.Join(", ", method.Parameters.Select(parameter => parameter.ParameterType.Name))})";
+
+        private static IEnumerable<string> VerdictsDeclaredHere()
+            => typeof(LiveClassListOrderTests)
+                .GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+                .Where(method => method.IsDefined(typeof(TestAttribute), inherit: false))
+                .SelectMany(method => method.GetCustomAttributes<ReaderVerdictAttribute>(inherit: false))
+                .Select(attribute => attribute.Reader)
+                .Distinct()
+                .OrderBy(name => name, StringComparer.Ordinal);
     }
 }
