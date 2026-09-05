@@ -67,6 +67,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A `V.Outlet` now takes a slot in the container that declares it, instead of covering that container.
+  Velvet tracks the matched route's fiber on an anchor element, and that anchor was pinned to its
+  container's four edges: the route body was drawn over the siblings declared ahead of it and ignored
+  the container's padding, so a layout route rendering a header above its `Outlet` drew the route body
+  over that header rather than under it. The anchor now takes its place among the siblings and grows
+  into whatever main-axis space the container has left over, so a route body asking for its container's
+  full height still fills it. The same anchor stands in for a `V.VirtualList` item whose renderer
+  returns a `V.Component`, where it had been collapsing the visible items onto one position; they now
+  stack.
+
 - An error boundary whose child throws during a subsumed re-render no longer logs a
   `NullReferenceException` from the reconciler. The boundary's inline re-render runs inside its host's
   pass, and the catch disposes that child — which clears the `Reconciler` the re-render is still

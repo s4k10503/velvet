@@ -23,10 +23,7 @@ namespace Velvet
 
         // USS class added to the wrapper VisualElement emitted for a
         // ContextProviderNode. Mirrors OutletContainerClass's role
-        // for OutletNode: the wrapper is layout-passthrough so context propagation does not
-        // distort layout, and the class lets tests and consumers identify Provider boundaries
-        // in the DOM. A Provider emitting its own wrapper element is a deliberate choice here;
-        // the layout-passthrough class keeps it transparent to layout.
+        // for OutletNode: the class lets tests and consumers identify Provider boundaries in the DOM.
         internal const string ContextProviderClassName = "velvet-context-provider";
 
         public FiberNodeFactory(ReconcilerContext ctx, FiberNodePatcher patcher)
@@ -553,9 +550,8 @@ namespace Velvet
             // GeneralPathReconciler.NeedsExpansion found none, and the general one expands each one it
             // reaches, a Memo's resolved inner and an AnimatePresence keyed entry included.
             // A Component does not emit a DOM element; its rendered tree attaches
-            // directly to the parent. Velvet needs an anchor element for fiber tracking,
-            // so the wrapper is made layout-transparent so its single child can size
-            // against the real parent.
+            // directly to the parent. Velvet needs an anchor element for fiber tracking, and
+            // CreateLayoutPassthroughContainer owns how that anchor takes part in layout.
             var wrapper = CreateLayoutPassthroughContainer();
             _patcher.HandleComponentMount(wrapper, componentNode);
             return wrapper;
@@ -564,9 +560,8 @@ namespace Velvet
         private VisualElement CreateForContextProviderNode(ContextProviderNode providerNode)
         {
             // A context Provider emits no DOM element of its own; descendants attach directly to
-            // the parent fiber's host. Velvet maps each VNode to exactly one VisualElement so a
-            // layout-passthrough wrapper anchors the Provider subtree without imposing layout — a
-            // deliberate choice, as documented on ContextProviderNode.
+            // the parent fiber's host. This path is asked for an element regardless, so an anchor
+            // stands in for the Provider.
             // Reached the one way CreateForComponentNode above is, and ruled out on the reconcile
             // paths for the same reason.
             var container = CreateLayoutPassthroughContainer();
@@ -589,9 +584,8 @@ namespace Velvet
 
         private VisualElement CreateForOutletNode(OutletNode outletNode)
         {
-            // The container is layout-transparent so the matched route's element resolves
-            // its size against the Outlet's parent box, and doubles as the fiber anchor
-            // for the matched route's Component (one wrapper, not two).
+            // One wrapper, not two: the container doubles as the fiber anchor for the matched route's
+            // Component. CreateLayoutPassthroughContainer owns how it takes part in layout.
             var container = CreateLayoutPassthroughContainer();
             container.AddToClassList(OutletContainerClass);
             // Identity-side registration for FiberContextSpine: separate from the USS class
@@ -771,23 +765,20 @@ namespace Velvet
         }
 
         // Anchor VisualElement emitted for Provider / Component / Outlet to track fiber lifecycle.
-        // Layout-transparent via absolute insets so the wrapper fills its parent's full box at any
-        // depth — bare wrappers collapse to 0 height when their only child is absolute, because
-        // Yoga measures parents from in-flow children alone, and deep Provider / Outlet chains
-        // then cascade-collapse every descendant to 0x0. PickingMode.Ignore ensures clicks fall
-        // through to user-emitted elements (otherwise overlay passthrough wrappers would steal
-        // clicks from routed pages beneath them).
+        // It takes a slot in its container's flow, so the padding, the gap and the sibling order that
+        // container declares reach the subtree under it, and it grows into whatever main-axis space the
+        // container has left over, which is what a child sized as a percentage of that container
+        // resolves against. Absolute insets were the earlier choice and are rejected: an anchor pinned
+        // to its container's edges is drawn over the siblings declared before it.
+        // LayoutAnchorFlowTests pins the slot and the fill.
+        // The anchor is not the author's element, so PickingMode.Ignore keeps it out of hit-testing.
         internal static VisualElement CreateLayoutPassthroughContainer()
             => new VisualElement
             {
                 pickingMode = PickingMode.Ignore,
                 style =
                 {
-                    position = Position.Absolute,
-                    left = 0,
-                    right = 0,
-                    top = 0,
-                    bottom = 0,
+                    flexGrow = 1,
                     overflow = Overflow.Visible
                 }
             };
