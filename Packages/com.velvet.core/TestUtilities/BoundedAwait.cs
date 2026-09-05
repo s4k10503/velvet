@@ -24,9 +24,8 @@ namespace Velvet.TestUtilities
     {
         private const int DefaultSeconds = 20;
 
-        // Built on AttachExternalCancellation rather than a WhenAny against a delay, because
-        // VelvetTask has neither WhenAny nor Delay -- #758 is where that surface is decided, and a
-        // test helper is not where it should first appear.
+        // Built on AttachExternalCancellation rather than on a combinator against a delay: a test
+        // helper is not where a combinator earns its place on the production type.
         public static async VelvetTask Bounded(this VelvetTask task, [CallerMemberName] string caller = "",
                                                [CallerLineNumber] int line = 0, int seconds = DefaultSeconds)
         {
