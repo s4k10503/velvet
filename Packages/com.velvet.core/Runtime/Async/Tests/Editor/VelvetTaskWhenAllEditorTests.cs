@@ -69,6 +69,22 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_TwoPendingResultTasks_When_BothComplete_Then_WhenAllSucceeds()
+        {
+            // Arrange
+            var first = new VelvetTaskCompletionSource<int>();
+            var second = new VelvetTaskCompletionSource<int>();
+            var all = VelvetTask.WhenAll(first.Task, second.Task);
+
+            // Act
+            first.SetResult(10);
+            second.SetResult(20);
+
+            // Assert
+            Assert.That(all.Status, Is.EqualTo(VelvetTaskStatus.Succeeded));
+        }
+
+        [Test]
         public void Given_TwoPendingResultTasks_When_TheyCompleteOutOfOrder_Then_ResultsFollowArgumentOrder()
         {
             // Arrange
@@ -290,9 +306,7 @@ namespace Velvet.Tests
             var late = new VelvetTaskCompletionSource();
 
             // A status read never registers a continuation on the combination, so a case built on the
-            // combination's own status stays green with that registration dead. The await is plain
-            // rather than Bounded, whose registration goes through AttachExternalCancellation and
-            // would vanish if that call took its completed-task path.
+            // combination's own status stays green with that registration dead.
             var awaited = Await(VelvetTask.WhenAll(early.Task, late.Task));
             early.SetResult();
 
