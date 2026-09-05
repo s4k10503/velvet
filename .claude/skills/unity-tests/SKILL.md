@@ -54,8 +54,6 @@ Each of the three charges it differently. A campaign is built on every failure i
 
 The 1800 s abort is the other cost, and it takes more than a single neighbour: the wait expires only after 1800 s in which no sample found the count at zero, against the 122.7 s the loaded arm above took. Several agents each taking a run, back to back, is what closes that gap. What it costs then is the campaign rather than its measurements: a receipt is written after the mutant loop and nowhere inside it, so the run earns none, while each verdict is written inside that loop and a later run over the same `--output` adopts it. Re-running is how a stopped campaign finishes. **Do not start a suite run while one of the three is in flight**, and read that off the second recipe above rather than off the editor count.
 
-A campaign outlives the call that started it only if nothing tracks it. Launched from a tracked background task it is killed when that task ends, mid-mutant, and what the next run then adopts is whatever was written before the kill — so start one with `nohup` and `disown` from a foreground call.
-
 Sample **for the run's whole life and subtract the run itself**, not once at launch: the loaded arm above moved between two and three neighbours while it ran, so one reading names the arm wrong. `neuter_check.run_suite` already carries that loop.
 
 Both arms are EditMode, so what a neighbour costs a **PlayMode** run is unmeasured. **A single failing case you suspect of timing gets re-run alone before you report it** — a question about one case rather than a reason to hold the run. A **player** run is separate again and does need the machine to itself, for the reason its own section gives.
