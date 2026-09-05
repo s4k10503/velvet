@@ -85,6 +85,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A navigation to a path that matches no route no longer cancels the navigation already in flight, nor
+  takes `Router.Status` away from it. It used to cancel and to write its status before matching, so a
+  stale deep link or a renamed `redirectTo` target made a navigation the user had actually asked for
+  return `NavigationResult.Cancelled` with no error anywhere, and left `Router.Status` reading `NotFound`
+  while `Router.PendingLocation` still named the destination that attempt was loading — the state
+  `Hooks.UseNavigation` renders a pending branch from. An attempt now cancels its predecessor and writes
+  `Router.Status` only once it has matched, so `RouterStatus.Matching` spans the guards and blockers of a
+  matched navigation rather than the match itself, and an attempt that matches nothing reports through
+  its `NavigationResult` alone whenever another is in flight.
+
 - An error boundary whose child throws during a subsumed re-render no longer logs a
   `NullReferenceException` from the reconciler. The boundary's inline re-render runs inside its host's
   pass, and the catch disposes that child — which clears the `Reconciler` the re-render is still
@@ -923,16 +933,6 @@ known limitation it means to fix.
   already have committed, and then skip the handler that would have recorded it.
 
 ### Fixed
-
-- A navigation to a path that matches no route no longer cancels the navigation already in flight, nor
-  takes `Router.Status` away from it. It used to cancel and to write its status before matching, so a
-  stale deep link or a renamed `redirectTo` target made a navigation the user had actually asked for
-  return `NavigationResult.Cancelled` with no error anywhere, and left `Router.Status` reading `NotFound`
-  while `Router.PendingLocation` still named the destination that attempt was loading — the state
-  `Hooks.UseNavigation` renders a pending branch from. An attempt now cancels its predecessor and writes
-  `Router.Status` only once it has matched, so `RouterStatus.Matching` spans the guards and blockers of a
-  matched navigation rather than the match itself, and an attempt that matches nothing reports through
-  its `NavigationResult` alone whenever another is in flight.
 
 - A child that moves from one `gap-*`, `divide-*` or `grid-cols-*` container to another keeps the
   spacing, divider or column sizing the container it joined wrote. Each of the three tracked the children
