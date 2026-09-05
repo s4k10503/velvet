@@ -138,7 +138,7 @@ namespace Velvet
 
         // The outgoing round is retired here unless it is the live one: the live round belongs to the
         // location on screen, and Promote — called by the commit that leaves that location — is what ends it.
-        // Anything else current belongs to an attempt that never reached its commit.
+        // Anything else current has not reached a commit.
         private LoaderRound BeginRound(CancellationTokenSource cts)
         {
             var outgoing = _currentRound;

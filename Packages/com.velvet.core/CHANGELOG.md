@@ -50,6 +50,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- A navigation allocates fewer loader rounds. The runner opened one at the start of every run that the
+  run's own round replaced within the same call, and one more at disposal; it now opens one per run
+  and none at disposal.
+
 - The switches that classify a `StyleVariantKind` are exhaustive by compilation rather than by review:
   `Runtime/csc.rsp` compiles CS8509 as an error, so a member added without an arm fails the build rather
   than warning into a log that nothing gates on. That response file ships with the package, so a project
@@ -929,6 +933,7 @@ known limitation it means to fix.
   `Router.Status` only once it has matched, so `RouterStatus.Matching` spans the guards and blockers of a
   matched navigation rather than the match itself, and an attempt that matches nothing reports through
   its `NavigationResult` alone whenever another is in flight.
+
 - A child that moves from one `gap-*`, `divide-*` or `grid-cols-*` container to another keeps the
   spacing, divider or column sizing the container it joined wrote. Each of the three tracked the children
   it had written to by raw reference and reset the value on one no longer in the container, and the

@@ -430,8 +430,8 @@ namespace Velvet.Tests
         [Test]
         public void Given_TheDocfxTableOfContents_When_ComparedAgainstTheGuideDirectory_Then_LinksAndFilesMatchExactly()
         {
-            // docs/build.py stages every guide into the site whether or not this file lists it, so one left
-            // out still builds and only its navigation entry is missing. Three were, when this was written.
+            // A guide missing from this file is silent: the staging the pattern above names puts it in the
+            // site anyway, so the build succeeds and only its navigation entry is gone.
             // Arrange
             var tocPath = Path.GetFullPath(Path.Combine("docs", "toc.yml"));
             var linkedFiles = new HashSet<string>(

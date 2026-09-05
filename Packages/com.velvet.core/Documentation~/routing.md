@@ -43,7 +43,8 @@ publishes the location, the loader data and the loader errors that `Hooks.UseLoc
 `Hooks.UseRouteError` read. It renders the matched route through a `V.Outlet` of its own, so it takes
 no children — what appears beneath it is the route table's own elements.
 
-Those six hooks are the whole of what the provider scopes. The hooks that **act** on a router rather
+Those six hooks read what it publishes, and so does every `V.Outlet`: the location picks the route to
+render and the errors pick the boundary that replaces it. The hooks that **act** on a router rather
 than read from it — `Hooks.UseNavigate` (and so every `V.Link` and `V.NavLink`), `Hooks.UseNavigation`,
 `Hooks.UseBlocker`, and the setter `Hooks.UseSearchParams` hands back — go to `Router.Current` instead
 of to the provider's router. With one router live those are the same object. With two, a subtree under
@@ -94,8 +95,9 @@ errors from the history cache instead of re-running the loaders.
 
 `Hooks.UseNavigation()` is `useNavigation()`, returning `NavigationState`:
 
-- `State` is `NavigationLifecycle.Loading` from the moment a navigation starts until it commits or
-  gives up, and `NavigationLifecycle.Idle` otherwise.
+- `State` is `NavigationLifecycle.Loading` from the moment a navigation has matched a route until it
+  commits or gives up, and `NavigationLifecycle.Idle` otherwise. A path that matches none never
+  reports `Loading`.
 - `Location` is the location being navigated **to** while `State` is `Loading` — resolved, so it
   carries the destination's `Params` and `Matches`, not just its path.
 
@@ -114,11 +116,11 @@ version.
 **No route actions.** Velvet has no form-submission model: a route declares no action, nothing reads
 an action's result, and `NavigationLifecycle` therefore has no `submitting` beside its two values.
 
-**`UseBlocker` takes an async predicate and has no proceeding state.** Like `useBlocker` it takes the
-predicate and hands back a state object with `Proceed()` / `Reset()`, but the predicate may be
-asynchronous — the router awaits it — and `RouteBlockerStatus` is `Idle` or `Blocked` with no third
-value for a block being proceeded through. The attempt is exposed as `RouteBlockerState.Attempt`
-(`CurrentPath`, `NextPath`, `NavigationMode`) rather than as a location.
+**`UseBlocker` takes an async predicate.** Like `useBlocker` it takes the predicate and hands back a
+state object with `Proceed()` / `Reset()`, but the predicate may be asynchronous — the router awaits
+it — and the attempt is exposed as `RouteBlockerState.Attempt` (`CurrentPath`, `NextPath`,
+`NavigationMode`) rather than as a location. [routing-blockers.md](routing-blockers.md) owns the
+blocker states and what each of those two methods does.
 
 **Guards, evaluated before blockers.** A route's `guard` and `redirectTo` are declarative properties
 of the route with no React Router counterpart, where the same job there is a `redirect` thrown from a

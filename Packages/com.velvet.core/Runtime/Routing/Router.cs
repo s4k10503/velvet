@@ -517,7 +517,7 @@ namespace Velvet
         // Status for an attempt that ended above the claim. Having none, it may only report into a router
         // where nobody holds one: an attempt parked in a guard, a blocker or a loader is what Status
         // describes, and it is the only one able to put Status back. A published destination is what says
-        // such an attempt exists — it is set as the claim is taken and cleared by whatever ends it.
+        // such an attempt exists — published in the same step as the claim, and cleared by whatever ends it.
         private void ReportUnclaimedOutcome(RouterStatus status)
         {
             if (PendingLocation != null)

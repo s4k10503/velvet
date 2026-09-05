@@ -9,6 +9,8 @@
       href: guides/setup.md
     - name: React → Velvet migration
       href: guides/react-migration.md
+    - name: VelvetTask
+      href: guides/async.md
     - name: Memoization
       href: guides/memoization.md
     - name: Routing
