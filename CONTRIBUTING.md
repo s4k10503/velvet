@@ -326,7 +326,7 @@ as re-added, and a comment edited inside a case body is a changed line there. So
 only comments poses nothing, and the cases kept out are named on a line of their own — `out of scope:
 12 case(s) of <file> hold a line this branch changed and no code it changed` — because an empty plan
 is equally what a branch that changed no test file at all leaves. Nothing the plan poses is named
-there: that line is what says a case owes no `GREEN_ON_BASE` declaration, and the run gives every
+there: that line is what says a case owes no GREEN_ON_BASE declaration, and the run gives every
 case the plan poses a verdict. Alongside that, the cases the branch left alone in a file it changed
 nothing shared in are the base's own text, so one of those going red means the tree is answering
 about itself and that fixture's verdicts are withdrawn. Change a `[SetUp]`, a field, a private
