@@ -5,7 +5,7 @@
   "description": "React-style declarative UI framework for Unity UI Toolkit. Provides virtual DOM, reconciliation engine, hooks, and component model.",
   "license": "MIT",
   "unity": "6000.3",
-  "unityRelease": "11f1",
+  "unityRelease": "23f1",
   "keywords": [
     "velvet",
     "declarative",

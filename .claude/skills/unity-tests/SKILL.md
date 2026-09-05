@@ -8,7 +8,7 @@ description: Run Velvet's EditMode or PlayMode suites headlessly and read the re
 The editor must be closed — it holds the project lock.
 
 ```bash
-UNITY=/Applications/Unity/Hub/Editor/6000.3.11f1/Unity.app/Contents/MacOS/Unity
+UNITY=/Applications/Unity/Hub/Editor/6000.3.23f1/Unity.app/Contents/MacOS/Unity
 mkdir -p Logs
 "$UNITY" -runTests -batchmode -projectPath "$PWD" -testPlatform EditMode \
   -testResults "$PWD/Logs/results.xml" -logFile "$PWD/Logs/run.log"

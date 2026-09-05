@@ -90,7 +90,7 @@ jobs:
           UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
         with:
-          unityVersion: 6000.3.11f1
+          unityVersion: 6000.3.23f1
           testMode: EditMode
           projectPath: .
           githubToken: ${{ secrets.GITHUB_TOKEN }}
@@ -108,7 +108,7 @@ jobs:
     runs-on: ubuntu-latest
     # The Unity editor image ships the engine managed DLLs DocFX resolves types against.
     container:
-      image: unityci/editor:ubuntu-6000.3.11f1-base-3
+      image: unityci/editor:ubuntu-6000.3.23f1-base-3
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 

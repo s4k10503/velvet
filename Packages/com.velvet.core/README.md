@@ -8,7 +8,7 @@ Velvet ports a React-style, utility-first styling development experience onto Un
 
 ## Installation
 
-Velvet requires Unity 6000.3 (Unity 6.3 LTS) or newer (validated on Unity 6000.3.11f1).
+Velvet requires Unity 6000.3.23f1 (Unity 6.3 LTS) or newer.
 
 Add Velvet to `Packages/manifest.json`:
 

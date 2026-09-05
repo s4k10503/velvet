@@ -8,15 +8,15 @@ This is the **development project** for **Velvet**, a React-style declarative UI
 
 Guiding principle (from the README): **reproduce React's semantics as faithfully as possible**, deviating only where a C#/Unity constraint makes the deviation a clear improvement. When unsure whether a behavior is "correct," the answer is "what React does."
 
-- **Unity 6000.3.11f1** (Unity 6.3 LTS) is the validated/floor version (`ProjectSettings/ProjectVersion.txt`). Bundled USS uses 6.3-only properties.
+- **Unity 6000.3.23f1** (Unity 6.3 LTS) is the validated/floor version (`ProjectSettings/ProjectVersion.txt`). Bundled USS uses 6.3-only properties.
 - C# root namespace is `Velvet` for the runtime. Namespaces are declared per-file and do NOT track folders — moving a file does not change its namespace.
 
 ## Running tests (headless / CLI)
 
-Unity test runs require the editor to be **closed** (it holds the project lock). On macOS the editor binary is `/Applications/Unity/Hub/Editor/6000.3.11f1/Unity.app/Contents/MacOS/Unity`.
+Unity test runs require the editor to be **closed** (it holds the project lock). On macOS the editor binary is `/Applications/Unity/Hub/Editor/6000.3.23f1/Unity.app/Contents/MacOS/Unity`.
 
 ```bash
-UNITY=/Applications/Unity/Hub/Editor/6000.3.11f1/Unity.app/Contents/MacOS/Unity
+UNITY=/Applications/Unity/Hub/Editor/6000.3.23f1/Unity.app/Contents/MacOS/Unity
 mkdir -p Logs   # gitignored, and one per worktree: /tmp/results.xml is one file for all of them
 "$UNITY" -runTests -batchmode -projectPath "$PWD" -testPlatform EditMode \
   -testResults "$PWD/Logs/results.xml" -logFile "$PWD/Logs/run.log"

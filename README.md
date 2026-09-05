@@ -50,8 +50,10 @@ desync bugs, Velvet is for you:
 
 ## Requirements
 
-- **Unity 6000.3 (Unity 6.3 LTS) or newer.** Developed and validated on **Unity 6000.3.11f1**.
-  Velvet's bundled USS uses properties added in Unity 6.3 (e.g. `aspect-ratio`), so 6.3 is the floor.
+- **Unity 6000.3.23f1 (Unity 6.3 LTS) or newer**, which is what `package.json` declares as
+  `unity` / `unityRelease` and what Velvet is developed and validated on.
+  Velvet's bundled USS uses properties added in Unity 6.3 (e.g. `aspect-ratio`), so 6.3 is the floor
+  whichever release within the line a project is on.
 - `com.unity.addressables` and `com.unity.nuget.mono-cecil` — resolved automatically by the Unity
   Package Manager from the package's declared dependencies.
 
@@ -277,7 +279,7 @@ package so it can be developed and tested in isolation.
 │       ├── Generators~/            # Roslyn source-generator source (built to Runtime/Plugins)
 │       ├── Samples~/               # importable samples (mirrors of the copies under Assets/)
 │       └── Documentation~/         # framework documentation
-└── ProjectSettings/                # Unity project settings (Unity 6000.3.11f1)
+└── ProjectSettings/                # Unity project settings (Unity 6000.3.23f1)
 ```
 
 The package is distributed from a dedicated **`upm` branch** where its contents are placed at the
@@ -292,7 +294,7 @@ backed by internal reconciler types) and is not part of the consumer API surface
 its own app through the public API (`V.Mount`, hooks) and standard Unity Test Framework helpers; the
 framework's internal test harness is not a shipped deliverable.
 
-To develop: install Unity 6000.3.11f1, open this repository as a Unity project, and edit the
+To develop: install Unity 6000.3.23f1, open this repository as a Unity project, and edit the
 embedded package in place under `Packages/com.velvet.core/`. Run the test suites from
 **Window ▸ General ▸ Test Runner**.
 

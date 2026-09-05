@@ -66,7 +66,7 @@ commands or broke a sibling guard, so the guard stops where it can answer.
 
 ## Local development
 
-1. Install **Unity 6000.3.11f1** (see `ProjectSettings/ProjectVersion.txt`).
+1. Install **Unity 6000.3.23f1** (see `ProjectSettings/ProjectVersion.txt`).
 2. Open this repository as a Unity project. Velvet is loaded as an embedded package
    from `Packages/com.velvet.core/`; edit it in place.
 3. Run the Unity test suites from **Window ▸ General ▸ Test Runner** (EditMode and PlayMode).
@@ -77,7 +77,7 @@ Every `[VelvetPreview]` story can be rendered to a PNG, so a change to layout, s
 be inspected rather than only measured:
 
 ```bash
-/Applications/Unity/Hub/Editor/6000.3.11f1/Unity.app/Contents/MacOS/Unity -runTests -batchmode -projectPath "$PWD" -testPlatform PlayMode -testFilter "Velvet.Tests.StoryCaptureTests" -testResults /tmp/capture.xml -logFile /tmp/capture.log
+/Applications/Unity/Hub/Editor/6000.3.23f1/Unity.app/Contents/MacOS/Unity -runTests -batchmode -projectPath "$PWD" -testPlatform PlayMode -testFilter "Velvet.Tests.StoryCaptureTests" -testResults /tmp/capture.xml -logFile /tmp/capture.log
 ```
 
 The images land in `Logs/story-captures/` (git-ignored), grouped into a directory per story group, or
