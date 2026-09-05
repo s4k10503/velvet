@@ -55,10 +55,12 @@ combination then throws is the first fault in argument order, or, where no membe
 cancellation in argument order: a fault outranks a cancellation whichever arrived first. That one
 exception is all the combination carries, so await the members separately where each failure matters.
 
-The combination consumes each member, which is the one consume a `VelvetTask` backed by a completion
-source or by an `async` method allows. So a member must not also be awaited elsewhere, and one such
-task must not be passed twice into a call — the second read throws. Consume what the combination
-returns once as well.
+The combination consumes each member, and one consume is all a `VelvetTask` carrying a source allows.
+So a member must not also be awaited elsewhere, and must not be passed twice into a single call: that
+throws out of the call rather than out of the await. A task that carries a value instead —
+`VelvetTask.FromResult`, `VelvetTask.CompletedTask`, and an `async` method that returned without
+suspending — has no version to consume, so the same one may sit at two argument positions. Consume
+what the combination returns once as well.
 
 The main-thread constraint above covers the combination too: it completes on whichever thread
 completed its last member, so a member that resumed off the main thread publishes from there.

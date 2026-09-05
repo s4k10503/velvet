@@ -14,9 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   completed tasks held inline so a synchronously-completed path allocates nothing. Frame-bound
   continuations are driven from the PlayerLoop at runtime and from `EditorApplication.update` in the
   editor, so an `async VelvetTask` method resumes in EditMode. A `UnityEngine.Awaitable` and a BCL
-  `Task` are awaited inside one as they stand, with no adapter. Nothing in Velvet returns or takes it
-  yet; it arrives first so that the change moving the framework onto it is one a reader can weigh
-  against a tree that already has the type.
+  `Task` are awaited inside one as they stand, with no adapter.
 
 - `VelvetTask.WhenAll` awaits several tasks as one. Over `VelvetTask` members it completes carrying
   nothing; over `VelvetTask<T>` members it completes with a `T[]` holding each result at its own
