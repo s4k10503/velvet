@@ -26,6 +26,8 @@ namespace Velvet.Tests
     /// <item>The route on screen through that window is still the live one: a Suspend loader of its own
     /// keeps its token and reaches the live loader data, and only the commit that leaves the route ends
     /// it.</item>
+    /// <item>What that Suspend loader settles is its own round, so the history entry it writes back to
+    /// stays servable even while the round holding the commit is unsettled.</item>
     /// <item>A navigation that matches no route neither cancels the attempt holding the window open nor
     /// takes over the status describing it.</item>
     /// </list>
@@ -317,6 +319,50 @@ namespace Velvet.Tests
             Assert.That(
                 $"path={router.CurrentLocation?.Path} cancelled={captured.IsCancellationRequested}",
                 Is.EqualTo("path=/profile cancelled=True"));
+        });
+
+        [UnityTest]
+        public IEnumerator Given_ASuspendLoaderSettlingUnderAnUnsettledNewerRound_When_SteppingBackOntoItsEntry_Then_TheCacheServesIt()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // The write-back a resolution triggers records whether the entry on screen finished its loaders,
+            // and the round that answers that is the one the entry belongs to rather than whichever is newest:
+            // the newer round here is itself unsettled, so reading it would mark a finished entry unfinished
+            // and every Back onto it would load again. The runs are read on both sides of the Back because an
+            // after-only reading of one run cannot tell a Back that ran none from a Back that ran the only one.
+            // Arrange
+            var feedLoaded = new VelvetTaskCompletionSource<object>();
+            var profileStreaming = new VelvetTaskCompletionSource<object>();
+            var detailAwaited = new VelvetTaskCompletionSource<object>();
+            var feedRuns = 0;
+            var router = new Router(new[]
+            {
+                Route("/", children: new[]
+                {
+                    Route("feed", loaderMode: LoaderMode.Suspend, loader: (ctx, ct) =>
+                    {
+                        feedRuns++;
+                        return feedLoaded.Task;
+                    }),
+                    Route("profile", loaderMode: LoaderMode.Suspend,
+                        loader: (ctx, ct) => profileStreaming.Task,
+                        children: new[] { Route("detail", loader: (ctx, ct) => detailAwaited.Task) }),
+                }),
+            });
+            router.NavigateSync("/feed");
+            var navigation = router.NavigateAsync("/profile/detail");
+            feedLoaded.TrySetResult("feed-data");
+            await VelvetTask.Yield();
+            var runsBeforeBack = feedRuns;
+            detailAwaited.TrySetResult("detail-data");
+            await navigation;
+
+            // Act
+            router.GoBackSync();
+
+            // Assert
+            Assert.That($"beforeBack={runsBeforeBack} afterBack={feedRuns}", Is.EqualTo("beforeBack=1 afterBack=1"),
+                "An entry whose own loaders settled is one the Back cache serves, so its loader does not run again");
         });
 
         [UnityTest]

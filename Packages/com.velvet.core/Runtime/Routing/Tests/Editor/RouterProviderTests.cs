@@ -20,6 +20,7 @@ namespace Velvet.Tests
     /// <c>UseLoaderData</c> and <c>UseRouteError</c> answer beneath it.</item>
     /// <item>It stays subscribed: a Suspend loader that resolves after the commit reaches
     /// <c>UseLoaderData</c> without a further navigation.</item>
+    /// <item>A null router is refused at the factory rather than at the first render.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -65,6 +66,13 @@ namespace Velvet.Tests
         }
 
         private static ComponentNode CaptureElement() => V.Component(Capture.Render, key: "cap");
+
+        [Test]
+        public void Given_ANullRouter_When_RouterProvider_Then_ThrowsArgumentNullException()
+        {
+            // Act + Assert
+            Assert.Throws<ArgumentNullException>(() => V.RouterProvider(null!));
+        }
 
         [Test]
         public void Given_ARouterThatHasAlreadyNavigated_When_TheProviderMounts_Then_TheMatchedRouteRenders()
