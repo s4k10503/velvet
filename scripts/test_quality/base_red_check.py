@@ -2231,8 +2231,8 @@ def corpus_of(project):
 def changed_test_files(project, by_file, lane):
     """(path, the lines the branch wrote there, its text) for each test file of the lane it changed.
 
-    Shared with `kept_out` so the report and the plan do not come to answer over different files: a
-    case named as kept out while the plan posed it would be advice to sharpen a case about to run.
+    Shared with `kept_out` so the report and the plan do not come to answer over different files,
+    and `in_scope` is what holds the two to the same cases within one.
     """
     for relative, lines in sorted(by_file.items()):
         if kind_of(relative) is None or (lane != "both" and kind_of(relative) != lane):
@@ -2240,6 +2240,30 @@ def changed_test_files(project, by_file, lane):
         source = project / relative
         if source.exists():
             yield relative, lines, source.read_text()
+
+
+def in_scope(relative, cases, lines, before, text):
+    """(the names of the cases the branch poses in one file, the ones its plan keeps out).
+
+    Both from one reading, because they are answers to the same question: a case named as kept out
+    while the plan poses it is one the run judges under advice to leave it alone.
+    """
+    written, standing = authored(relative, touched(cases, lines), before, text)
+    wanted = {case.name for case in written}
+    # A change wholly outside every case body, in a file that has cases: a static readonly table
+    # the cases drive, a SetUp, a helper. `authored` keeps such a case out, correctly -- the
+    # branch did not write it -- and with nothing else selected the lane exits 0 having measured
+    # a genuinely base-red change as nothing at all. Measured on a branch adding rows to a table
+    # in CommitGuardParsingTests, and 88 of this repository's 276 C# fixtures declare such data
+    # outside every case body.
+    #
+    # Only where nothing was selected. Widening it to every file with a shared line was tried
+    # and puts every case a fixture has on trial for a line added to SetUp; `outside` reports
+    # that instead. What is left here is the state where reporting it is all that happens.
+    if (cases and lines is not None and not wanted and outside(cases, lines)
+            and shared_material_differs(relative, before, text)):
+        wanted = {case.name for case in cases}
+    return wanted, [case for case in standing if case.name not in wanted]
 
 
 def kept_out(project, since, lane):
@@ -2252,7 +2276,7 @@ def kept_out(project, since, lane):
     found = {}
     for relative, lines, text in changed_test_files(project,
                                                     changed_lines_by_file(project, since), lane):
-        aside = authored(relative, touched(cases_in(relative, text), lines),
+        aside = in_scope(relative, cases_in(relative, text), lines,
                          held_at(project, since, relative), text)[1]
         if aside:
             found[relative] = len(aside)
@@ -2277,23 +2301,10 @@ def collect(project, base, lane):
             if case.declaration is not None and lines is not None:
                 case.declaration.written_here = case.declaration.written_in(lines)
         before = held_at(project, since, relative)
-        wanted = {case.name for case in authored(relative, touched(cases, lines), before, text)[0]}
-        # A change wholly outside every case body, in a file that has cases: a static readonly table
-        # the cases drive, a SetUp, a helper. `authored` keeps such a case out, correctly -- the
-        # branch did not write it -- and with nothing else selected the lane exits 0 having measured
-        # a genuinely base-red change as nothing at all. Measured on a branch adding rows to a table
-        # in CommitGuardParsingTests, and 88 of this repository's 276 C# fixtures declare such data
-        # outside every case body.
-        #
-        # Only where nothing was selected. Widening it to every file with a shared line was tried
-        # and puts every case a fixture has on trial for a line added to SetUp; `outside` reports
-        # that instead. What is left here is the state where reporting it is all that happens.
-        if (cases and lines is not None and not wanted and outside(cases, lines)
-                and shared_material_differs(relative, before, text)):
-            wanted = {case.name for case in cases}
+        wanted = in_scope(relative, cases, lines, before, text)[0]
         changed.extend(as_the_runner_names_them(
             [case for case in cases if case.name in wanted], heirs))
-        # Read as the promotion above reads it: a changed line outside every case that is only a
+        # Read as `in_scope`'s promotion reads it: a changed line outside every case that is only a
         # comment leaves the cases beside it the base's text, controls included.
         loose = outside(cases, lines)
         if loose and not shared_material_differs(relative, before, text):
