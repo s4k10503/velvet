@@ -2159,15 +2159,17 @@ namespace Velvet
         /// nearest ancestor Motion's active label is inherited; when set, it overrides any inherited label.</param>
         /// <param name="initial">Mount-time starting variant label. When this Motion also sets
         /// <paramref name="animate"/> + <paramref name="variants"/>, the enter starts at <c>variants[initial]</c>
-        /// and transitions to <c>variants[animate]</c> (its persistent resting state) on that variant's own
-        /// transition, else <paramref name="transition"/> — whether this Motion is the DIRECT child of an
-        /// AnimatePresence or mounts standalone.</param>
+        /// and transitions to <c>variants[animate]</c> (its persistent resting state) — whether this Motion is
+        /// the DIRECT child of an AnimatePresence or mounts standalone. <see cref="MotionVariant.Transition"/>
+        /// resolves the timing, and <see cref="MotionVariant.ClassName"/> the class <c>variants[initial]</c>
+        /// must apply for the enter to play at all.</param>
         /// <param name="exit">Exit variant label. When this Motion is the DIRECT child of an
         /// AnimatePresence and also sets <paramref name="animate"/> + <paramref name="variants"/>, removal animates
-        /// from <c>variants[animate]</c> to <c>variants[exit]</c> — on <c>variants[exit]</c>'s own transition, else
-        /// <paramref name="transition"/> — before the
-        /// element unmounts. Unlike <paramref name="initial"/>, this needs AnimatePresence to defer the unmount —
-        /// set outside one, it is inert and logs a warning.</param>
+        /// from <c>variants[animate]</c> to <c>variants[exit]</c> before the element unmounts.
+        /// <see cref="MotionVariant.Transition"/> resolves the timing, and
+        /// <see cref="MotionVariant.ClassName"/> the class <c>variants[exit]</c> must apply for the variant
+        /// exit to run at all. Unlike <paramref name="initial"/>, this needs AnimatePresence to defer the
+        /// unmount — set outside one, it is inert and logs a warning.</param>
         /// <returns>The created <see cref="MotionNode"/>.</returns>
         public static MotionNode Motion(
             string? className = null,

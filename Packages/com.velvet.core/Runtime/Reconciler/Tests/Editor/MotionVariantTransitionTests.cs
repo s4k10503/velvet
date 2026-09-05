@@ -13,19 +13,21 @@ namespace Velvet.Tests
     /// <see cref="StyleTransitionConfig"/> drives the swap INTO that pose at each of the four call sites
     /// that play one — a standalone mount enter, a presence mount enter, a runtime <c>animate</c> label
     /// change, and an AnimatePresence exit — with the Motion's own <c>transition:</c> as the default a pose
-    /// replaces. The first three read the pose whatever it applies; the exit reads it only where the pose
-    /// applies a class, so a classless exit pose leaves the classic exit on the Motion's own config, and a
-    /// case each way pins the split. The presence enter and the exit share one declaration, 0.5s in against
-    /// 0.05s out over a Motion whose own transition declares 0.2s, which is the asymmetry a single per-node
-    /// config cannot express.
+    /// replaces. Every one of the four reads the destination pose rather than the one left behind. What a
+    /// variant swap needs a class on is the pose the element does not rest at — <c>initial</c>'s at an
+    /// enter, <c>exit</c>'s at a removal — and only at the removal are those the same pose, so a classless
+    /// exit pose is the one that loses its declared timing to the classic exit while a classless initial
+    /// pose loses the enter itself; a case pins each. The presence enter and the exit share one
+    /// declaration, 0.5s in against 0.05s out over a Motion whose own transition declares 0.2s, which is
+    /// the asymmetry a single per-node config cannot express.
     /// Three gates decide how a removal is treated, and each reads the same chain, so a Motion whose own
     /// transition is <c>StyleTransitionConfig.None</c> still exits on the timing its exit pose declares:
     /// the ghost gate, the reversed-stagger count and <c>mode: Wait</c> are pinned one case each. The
     /// orchestration frame a label change establishes for inheriting descendants is measured off the same
     /// resolved span.
-    /// Durations are read back as the inline transition-duration the scheduler wrote — a declared value in
-    /// milliseconds, never a measured one — and no case reads <c>resolvedStyle</c>, so the bundled
-    /// stylesheet is deliberately not attached.
+    /// Durations are read back as the inline transition-duration the scheduler wrote, or its absence — a
+    /// declared value in milliseconds, never a measured one — and no case reads <c>resolvedStyle</c>, so
+    /// the bundled stylesheet is deliberately not attached.
     /// </summary>
     [TestFixture]
     internal sealed class MotionVariantTransitionTests
@@ -89,6 +91,15 @@ namespace Velvet.Tests
         {
             ["visible"] = "opacity-100",
             ["gone"] = new MotionVariant(null, new StyleTransitionConfig { DurationSec = 0.5f }),
+        };
+
+        // The classless pose reached as the enter's SOURCE, where the same rule costs the whole play
+        // rather than one config: the destination is classed and timed, so a reading that finds any
+        // duration at all names an enter the source's empty class was supposed to have declined.
+        private static readonly Dictionary<string, MotionVariant> s_classlessInitial = new()
+        {
+            ["start"] = new MotionVariant(null),
+            ["end"] = new MotionVariant("opacity-100", new StyleTransitionConfig { DurationSec = 0.5f }),
         };
 
         private readonly record struct LabelState(string Label);
@@ -213,6 +224,23 @@ namespace Velvet.Tests
             {
                 children.Add(V.Motion(name: "item-" + key, key: key.ToString(),
                     variants: s_classlessTimedExit, animate: "visible", exit: "gone",
+                    transition: s_nodeDefault));
+            }
+            return V.Div(name: "host", children: new VNode[]
+            {
+                V.AnimatePresence(key: "presence", children: children.ToArray()),
+            });
+        }
+
+        [Component]
+        private static VNode ClasslessInitialPresence()
+        {
+            var keys = Hooks.UseStore(s_keyStore, s => s.Keys);
+            var children = new List<VNode>();
+            foreach (var key in keys)
+            {
+                children.Add(V.Motion(name: "item-" + key, key: key.ToString(),
+                    variants: s_classlessInitial, initial: "start", animate: "end",
                     transition: s_nodeDefault));
             }
             return V.Div(name: "host", children: new VNode[]
@@ -435,6 +463,22 @@ namespace Velvet.Tests
 
             // Assert — the destination pose's 500ms, the same answer the swap above has to give.
             Assert.That(InlineDurationMs(Root.Q<VisualElement>("m")), Is.EqualTo(500f).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_AnInitialPoseApplyingNoClass_When_ThePresenceChildMounts_Then_NoEnterPlaysAtAll()
+        {
+            // Arrange — variants[start] applies no class, against a classed variants[end] declaring 0.5s.
+            // Mounted under an AnimatePresence rather than standalone, where the same refusal is diagnosed
+            // by a warning: this path plays nothing and logs nothing.
+            using var keys = new KeySetStore("a");
+            s_keyStore = keys;
+
+            // Act — a resolvable enter would write its inline timing inside this reconcile.
+            using var mounted = V.Mount(Root, V.Component(ClasslessInitialPresence, key: "root"));
+
+            // Assert — nothing holds the duration slot: the element rests at variants[end] from the start.
+            Assert.That(InlineDurationMs(Root.Q<VisualElement>("item-a")), Is.NaN);
         }
 
         [Test]

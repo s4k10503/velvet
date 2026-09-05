@@ -49,6 +49,9 @@ on any `motion.*` element). The element mounts showing `variants[initial]`, then
 
 - An *inherited* label does not drive a standalone enter: the Motion needs its own `animate`
   (a warning explains this at mount time otherwise).
+- A classless `initial` pose is not resolvable: nothing plays and the element rests at
+  `variants[animate]` from the start. *Transition semantics* below carries that rule for both
+  non-resting poses.
 - Inside `AnimatePresence`, first-mount enters are controlled by the presence instead:
   `V.AnimatePresence(initial: false, …)` suppresses them on the initial mount, like Framer's
   `<AnimatePresence initial={false}>`.
@@ -77,6 +80,8 @@ V.Div(name: "row", className: "flex flex-row gap-x-2", children: new VNode[]
   for out of the class strings; *Driven channels* below is the single list of what that covers and
   what it deliberately leaves out. A `skew-*` exit never animates under any driver, because skew
   is a silhouette paint rather than a transform.
+- A classless `exit` pose is no variant exit at all — the same non-resting-pose rule the enter
+  follows; see *Transition semantics* below.
 - A `mode:` naming no `AnimatePresenceMode` member is refused at construction: `V.AnimatePresence`
   throws `ArgumentOutOfRangeException`, naming the parameter.
 
@@ -413,10 +418,17 @@ integrate physically instead.
 its own `transition` supplies it; a pose that names none takes the Motion's `transition:`, which is
 itself the `Fade` preset when the call site left it out. That is the direction each of the three
 plays reads: a mount enter takes `variants[animate]`, a runtime label change takes the new label's
-pose — whatever that pose applies, including nothing — and an `AnimatePresence` exit takes
-`variants[exit]` where that pose applies a class of its own; one applying nothing is not a variant exit,
-and the classic exit plays on the Motion's `transition:` instead. Framer expresses the same thing as a
-`transition` key inside a variant object and inside `exit`.
+pose, and an `AnimatePresence` exit takes `variants[exit]` — the pose swapped INTO, not the one left
+behind. Framer expresses the same thing as a `transition` key inside a variant object and inside
+`exit`.
+
+Whether there is a variant swap to time at all is a separate rule, and it reads the pose the element
+does **not** rest at: `variants[initial]` at a mount enter, `variants[exit]` at a removal, each
+against the resting `variants[animate]`. A pose applying no class there declines that swap — the
+enter is skipped and the element rests at `variants[animate]` from the start, and the removal is no
+variant exit, leaving the classic exit. Only at a removal is that non-resting pose also the
+destination, which is why a classless `exit` pose is the one that loses the timing it declared, while
+a classless `animate` pose keeps supplying an enter's.
 
 So slow in against fast out is one declaration:
 

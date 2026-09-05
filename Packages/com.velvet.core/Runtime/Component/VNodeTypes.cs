@@ -120,8 +120,9 @@ namespace Velvet
         /// <summary>
         /// Mount-time starting variant label. When this Motion sets <see cref="Initial"/> + <see cref="Animate"/> +
         /// <see cref="Variants"/>, the enter starts the element at <c>variants[Initial]</c> and transitions to
-        /// <c>variants[Animate]</c> (which it then rests at, persistently) on <c>variants[Animate]</c>'s own
-        /// <see cref="MotionVariant.Transition"/>, else <see cref="Transition"/>. Works the same whether this
+        /// <c>variants[Animate]</c> (which it then rests at, persistently), on the timing
+        /// <see cref="MotionVariant.Transition"/> resolves and only where <c>variants[Initial]</c> applies a
+        /// class (see <see cref="MotionVariant.ClassName"/>). Works the same whether this
         /// Motion is the direct child of an AnimatePresence or mounts
         /// standalone — <c>initial</c>/<c>animate</c> apply to any Motion node; AnimatePresence
         /// is only required for <see cref="Exit"/>. Null = no variant initial state.
@@ -131,9 +132,10 @@ namespace Velvet
         /// <summary>
         /// Exit variant label. When this Motion is the direct child of an AnimatePresence and
         /// sets <see cref="Exit"/> + <see cref="Animate"/> + <see cref="Variants"/>, removal animates from the resting
-        /// <c>variants[Animate]</c> to <c>variants[Exit]</c> — on <c>variants[Exit]</c>'s own
-        /// <see cref="MotionVariant.Transition"/>, else <see cref="Transition"/> — before the
-        /// element unmounts. Unlike <see cref="Initial"/>, this genuinely needs AnimatePresence — something must
+        /// <c>variants[Animate]</c> to <c>variants[Exit]</c> before the element unmounts, on the timing
+        /// <see cref="MotionVariant.Transition"/> resolves and only where <c>variants[Exit]</c> applies a
+        /// class (see <see cref="MotionVariant.ClassName"/>).
+        /// Unlike <see cref="Initial"/>, this genuinely needs AnimatePresence — something must
         /// defer the unmount for the removal to animate against — so it is inert (and logs a warning) outside one.
         /// Null = use the transition's own ExitFrom/ExitTo classes.
         /// </summary>
