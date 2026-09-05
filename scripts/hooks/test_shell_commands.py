@@ -132,6 +132,74 @@ class HeredocOpenerTailTests(unittest.TestCase):
         self.assertEqual([line.strip() for line in masked.splitlines() if line.strip()][1:], [])
 
 
+class CommandDirectoryTests(unittest.TestCase):
+    """Where a command's work runs, once its own directory changes are applied to the event's.
+
+    Reading the move was shared before this; placing it was written three times at three call sites,
+    and the three disagreed. One joined a relative target to the hook PROCESS's own directory, so
+    `cd sub && git commit --amend` refused the amend over a path nothing holds wherever that
+    directory was not the one the event named.
+    """
+
+    def where(self, command):
+        return shell_commands.command_directory(command, "/handed")
+
+    def test_Given_ARelativeMove_When_TheDirectoryIsPlaced_Then_ItIsPlacedAgainstTheEventsOwn(self):
+        # Arrange / Act
+        found = self.where("cd sub && git commit --amend")
+
+        # Assert
+        self.assertEqual(found, "/handed/sub")
+
+    def test_Given_APushd_When_TheDirectoryIsPlaced_Then_ItMovesTheWorkAsACdWould(self):
+        # Arrange / Act — read as a program rather than as a move, the work reads as running where
+        # the tool call started, which is a tree it has left.
+        found = self.where("pushd /moved && git commit --amend")
+
+        # Assert
+        self.assertEqual(found, "/moved")
+
+    def test_Given_APopd_When_TheDirectoryIsPlaced_Then_NothingIsPlaced(self):
+        # Arrange / Act — where it lands is on a stack only the running shell holds.
+        found = self.where("popd && git commit --amend")
+
+        # Assert
+        self.assertIs(found, shell_commands.UNRESOLVED_CD)
+
+    def test_Given_AMoveBackToThePreviousDirectory_When_ItIsPlaced_Then_NothingIsPlaced(self):
+        # Arrange / Act — `-` is not an option and dropping it as one reads this as no move at all,
+        # which sends the caller to the directory the command has left.
+        found = self.where("cd - && git commit --amend")
+
+        # Assert
+        self.assertIs(found, shell_commands.UNRESOLVED_CD)
+
+    def test_Given_TwoCommandsRunningInTwoDirectories_When_ThePlacementIsAsked_Then_NothingIsPlaced(self):
+        # Arrange / Act — one answer is wrong about one of them, and the contract is to decline
+        # rather than choose which one to be wrong about.
+        found = self.where("cd /a && git commit --amend && cd /b && git commit --amend")
+
+        # Assert
+        self.assertIs(found, shell_commands.UNRESOLVED_CD)
+
+    def test_Given_AnAssignmentAheadOfTheMove_When_TheDirectoryIsPlaced_Then_TheMoveIsStillRead(self):
+        # Arrange — the shape a session types whenever it names a worktree once and moves into it.
+        # An assignment is a segment of its own, and stopping at one reads this as no move.
+        # Act
+        found = self.where("SP=/moved\ncd /moved && git commit --amend")
+
+        # Assert
+        self.assertEqual(found, "/moved")
+
+    def test_Given_AMoveNothingRunsAfter_When_TheDirectoryIsPlaced_Then_TheWorkKeepsItsOwn(self):
+        # Arrange / Act — a chain closing on `cd -` changes no reading, so declining it would
+        # refuse a command whose every program ran in one directory.
+        found = self.where("cd /moved && git commit --amend && cd -")
+
+        # Assert
+        self.assertEqual(found, "/moved")
+
+
 class LoopHeadReaderTests(unittest.TestCase):
     """A guard whose subject is the keyword itself cannot read it through this table.
 

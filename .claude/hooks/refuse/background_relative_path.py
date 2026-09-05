@@ -10,10 +10,11 @@ sweep reported "179 holes across 14 fixtures" for a map that had 18, because the
 added were in a file the primary checkout does not have. Nothing distinguishes that from a real
 answer except knowing which tree it came from, and the number it prints is exactly the shape of one.
 
-What is refused is a background command that reaches a repo path relatively AND does not open with a
-`cd`. An absolute path is allowed, as is a leading `cd` — the two spellings that say where the
-command runs. The foreground is left alone: its directory is whatever the previous call left, which
-is knowable, and blocking it would refuse the ordinary shape of every other command in a session.
+What is refused is a background command that reaches a repo path relatively AND does not move into a
+directory before it runs anything. An absolute path is allowed, as is such a move — the two
+spellings that say where the command runs. The foreground is left alone: its directory is whatever
+the previous call left, which is knowable, and blocking it would refuse the ordinary shape of every
+other command in a session.
 """
 
 import fnmatch
@@ -23,7 +24,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-from shell_commands import unexpanded  # noqa: E402  (path set above)
+from shell_commands import (command_segments, leading_program,  # noqa: E402  (path set above)
+                            moves_directory, tokens_of, unexpanded)
 
 
 HOOK_TOOLS = {"Bash"}
@@ -74,9 +76,24 @@ def relative_repo_tokens(command, roots):
     return sorted(set(found))
 
 
-def opens_with_cd(command):
-    """Whether the command's first segment is a cd, which is what makes a relative path answerable."""
-    return re.match(r"\s*cd\s+\S", command) is not None
+def says_where_it_runs(command):
+    """Whether the command moves into a directory before running anything, which is what makes a
+    relative path answerable.
+
+    Read through the shared move table rather than by matching `cd` at the head of the text:
+    measured, `pushd <tree> &&`, `builtin cd <tree> &&` and an assignment ahead of the `cd` were
+    each refused here, and each of the three says where the command runs.
+
+    Unlike `command_directory`, an unexpanded target is a yes: the shell resolves it when the command
+    runs, so the command does say where that is even though nothing here can say it back.
+    """
+    for segment in command_segments(command):
+        tokens = tokens_of(segment)
+        if leading_program(tokens) >= len(tokens):
+            # An assignment and nothing else, which is still before anything that runs.
+            continue
+        return moves_directory(segment)
+    return False
 
 
 def main():
@@ -92,7 +109,7 @@ def main():
         return 0
 
     command = tool_input.get("command", "")
-    if opens_with_cd(command):
+    if says_where_it_runs(command):
         return 0
 
     found = relative_repo_tokens(command, repo_roots(event.get("cwd") or "."))

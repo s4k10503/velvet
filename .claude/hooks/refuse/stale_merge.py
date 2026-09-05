@@ -19,6 +19,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 from merge_target import UNRESOLVED, merge_targets, refs_of
+from shell_commands import NAME_THE_TREE, UNPLACEABLE_MOVE, UNRESOLVED_CD, command_directory
 from velvet_hooks import BRANCH_BASES
 
 
@@ -146,7 +147,12 @@ def main():
             "happening. Name the pull request, or see every merge precondition at once:\n"
             "  python3 scripts/pr/settle.py merge <pr> --dry-run\n")
         return 2
-    cwd = payload.get("cwd") or "."
+    cwd = command_directory(command, payload.get("cwd") or ".")
+    if cwd is UNRESOLVED_CD:
+        sys.stderr.write("Refusing `gh pr merge`: which checkout the base and head would be read "
+                         f"from could not be read itself.\n\n{UNPLACEABLE_MOVE}\n\n"
+                         f"{NAME_THE_TREE}\n")
+        return 2
     for pr in targets:
         refusal = refuse_one(cwd, pr)
         if refusal is not None:

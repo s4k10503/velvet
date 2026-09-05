@@ -41,14 +41,23 @@ class SeedRoomTests(unittest.TestCase):
         self.source = self.holder / "Library"
         self.source.mkdir()
         (self.source / "big.bin").write_bytes(b"x" * COPIED)
+        self.asked = []
 
     def judge(self, free, command=None):
-        """The guard's verdict with `free` bytes on the volume, as (exit code, stderr)."""
+        """The guard's verdict with `free` bytes on the volume, as (exit code, stderr).
+
+        Each directory the volume was read at lands in `self.asked`, since which one that is is a
+        separate question from the verdict and one no free-space figure can answer.
+        """
         payload = {"tool_name": "Bash", "cwd": str(self.holder),
                    "tool_input": {"command": command or f"rsync -a {self.source}/ Library/"}}
         err = io.StringIO()
-        with mock.patch.object(guard.shutil, "disk_usage",
-                               lambda path: USAGE(total=1, used=1, free=free)), \
+
+        def usage(path):
+            self.asked.append(str(path))
+            return USAGE(total=1, used=1, free=free)
+
+        with mock.patch.object(guard.shutil, "disk_usage", usage), \
                 mock.patch.object(sys, "stdin", io.StringIO(json.dumps(payload))), \
                 contextlib.redirect_stderr(err):
             return guard.main(), err.getvalue()
@@ -77,6 +86,19 @@ class SeedRoomTests(unittest.TestCase):
         # Act / Assert
         self.assertEqual(
             self.judge(1, command=f"rsync -a {self.source}/ /tmp/velvet-not-a-library/"), (0, ""))
+
+    def test_Given_ASeedAfterAMove_When_TheRoomIsRead_Then_ItIsReadWhereTheCopyLands(self):
+        # Arrange — `Library/` is relative, so the volume that has to hold it is the one the command
+        # moved into. Read at the directory the tool call started in, the figures in a refusal are
+        # about a filesystem the copy never touches.
+        moved = self.holder / "moved"
+        moved.mkdir()
+
+        # Act
+        self.judge(COPIED * 100, command=f"cd {moved} && rsync -a {self.source}/ Library/")
+
+        # Assert
+        self.assertEqual(self.asked, [str(moved)])
 
     def test_Given_AnUnexpandedSource_When_Posed_Then_ItIsRefusedRatherThanPassed(self):
         # Arrange — a literal names no directory this can size, and every reading of one fails, which

@@ -249,43 +249,102 @@ def git_invocation(tokens, git_directory=False):
     return context, tokens[index], tokens[index + 1:]
 
 
-# What a leading `cd` names, when the segment before the work is one. `PreToolUse` fires before the
-# command runs, so a hook reading the event's own directory reads where the tool call *started* —
-# the session's checkout — for `cd <worktree> && git ...`. `background_relative_path.py` refuses that
-# shape outright for a background command; a foreground one is answerable, and this is the answer.
+# Where a move left the shell when nothing here can place it. It rides through the walk below rather
+# than ending it, because a move nothing runs after changes no reading: `cd -` closing a chain leaves
+# the work where the chain already put it.
 UNRESOLVED_CD = object()
 
+# The words that change the directory a later segment runs in.
+MOVERS = {"cd", "pushd", "popd"}
 
-def leading_cd(command):
-    """The directory the command changes into before running anything else, or None.
 
-    UNRESOLVED_CD, not None, for a target the shell has not expanded: a hook that reads `$SP` as a
-    literal directory answers about a path nothing holds, and answering about the wrong tree is what
-    the callers of this exist to stop. None is "it did not move", which sends the caller to the
-    event's own directory -- so anything this cannot read has to come back as the first, or a guard
-    reads a tree the command was never in and says nothing.
+def moves_directory(segment):
+    """Whether this segment changes the directory a later segment runs in.
+
+    The command word is read the way `leading_program` reads one, past `then`/`do`, `builtin` and an
+    environment assignment: reading tokens[0] instead missed `if true; then cd /tmp; fi`, which is
+    this module's own documented reason for having `leading_program` at all.
+    """
+    tokens = tokens_of(segment)
+    index = leading_program(tokens)
+    if index >= len(tokens):
+        return False
+    return os.path.basename(tokens[index]) in MOVERS
+
+
+def _moved(where, tokens, index):
+    """Where a move lands, given where the shell already is, or UNRESOLVED_CD.
+
+    `popd`, `cd -` and a bare `cd` each name a directory nothing here computes: the stack the shell
+    keeps, the one it was in before, and `$HOME`. They arrive as UNRESOLVED_CD rather than as "it did
+    not move", which is the reading that would answer about the directory the move has left.
+    """
+    if os.path.basename(tokens[index]) == "popd":
+        return UNRESOLVED_CD
+    target = next((token for token in tokens[index + 1:] if not token.startswith("-")), None)
+    if target is None or unexpanded(target) or target.startswith("~"):
+        return UNRESOLVED_CD
+    if os.path.isabs(target):
+        return os.path.normpath(target)
+    if where is UNRESOLVED_CD:
+        return UNRESOLVED_CD
+    return os.path.normpath(os.path.join(where, target))
+
+
+def command_directory(command, cwd):
+    """The directory this command's work runs in, or UNRESOLVED_CD where that is not one directory.
+
+    `PreToolUse` fires before the command runs, so `cwd` is where the tool call *started*: the
+    session's checkout, for `cd <worktree> && git ...`, which is not the tree the command acts on. A
+    guard that reads `cwd` alone answers about that other tree, and it answers positively — which is
+    the failure this exists to remove.
+
+    Placing the move is what is done here rather than at the call sites. Reading it was already
+    shared; placing it was written three times and no two the same: one joined a relative target
+    to the hook PROCESS's own directory, so `cd sub && git commit --amend` refused the amend over
+    a path nothing holds wherever that directory was not the one the event named.
 
     Every segment up to the first that runs a program is read, not the first segment alone. A
     variable assignment is a segment of its own, and stopping at one left `SP=/tmp; cd "$SP/x"`
-    answering None -- the shape a session types whenever it names a worktree once and moves into it.
+    reading as no move at all -- the shape a session types whenever it names a worktree once and
+    moves into it.
+
+    UNRESOLVED_CD where two programs in the command run in different directories: one answer is
+    wrong about one of them, and a caller's contract here is to refuse rather than choose. A group --
+    `( cd /w && x ) && y` -- is not read as ending at its close, so the move inside one reaches `y`
+    here and does not reach it in the shell.
     """
+    where, answer = cwd, None
     for segment in command_segments(command):
         tokens = tokens_of(segment)
         index = leading_program(tokens)
         if index >= len(tokens):
-            # An assignment and nothing else. It runs where the last `cd` left the shell, and the
-            # next segment is still before anything this cares about.
+            # An assignment and nothing else. It runs where the last move left the shell, and the
+            # next segment is still before anything a caller cares about.
             continue
-        if tokens[index] != "cd":
-            return None
-        rest = [token for token in tokens[index + 1:] if not token.startswith("-")]
-        if not rest:
-            return None
-        target = rest[0]
-        if "$" in target or "`" in target or "~" in target:
+        if os.path.basename(tokens[index]) in MOVERS:
+            where = _moved(where, tokens, index)
+            continue
+        if where is UNRESOLVED_CD:
             return UNRESOLVED_CD
-        return target
-    return None
+        if answer is None:
+            answer = where
+        elif where != answer:
+            return UNRESOLVED_CD
+    return cwd if answer is None else answer
+
+
+# What a guard says when `command_directory` declined to place the move, and what it asks for
+# instead. Owned here so that a family of guards refusing one shape cannot become a family of
+# explanations of it.
+UNPLACEABLE_MOVE = (
+    "The command changes directory in a way nothing here places: a target the shell has yet to "
+    "expand or one opening on `~`; `popd`, `cd -` or a bare `cd`, each naming a directory only the "
+    "running shell knows; or two commands running in different directories. So which tree it acts "
+    "on was not read, and answering from the directory the tool call started in would be a verdict "
+    "about a tree the command has already left.")
+NAME_THE_TREE = ("Spell the move out as a single `cd` to a literal path, or run the command from "
+                 "the tree itself.")
 
 
 def git_invocations(command, subcommands, git_directory=False):

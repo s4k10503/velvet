@@ -32,7 +32,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 
-from shell_commands import command_segments, tokens_of, unexpanded  # noqa: E402
+from shell_commands import (NAME_THE_TREE, UNPLACEABLE_MOVE, UNRESOLVED_CD,  # noqa: E402
+                            command_directory, command_segments, tokens_of, unexpanded)
 
 HOOK_TOOLS = {"Bash"}
 
@@ -99,7 +100,15 @@ def main():
         command = event.get("tool_input", {}).get("command") or ""
         if not isinstance(command, str):
             return 0
-        cwd = event.get("cwd") or "."
+        # Where the copy lands, which is what decides the filesystem it has to fit on: a relative
+        # destination is placed by the command's own move, not by where the tool call started.
+        cwd = command_directory(command, event.get("cwd") or ".")
+        if cwd is UNRESOLVED_CD:
+            if not any(seeds(tokens_of(segment)) for segment in command_segments(command)):
+                return 0
+            sys.stderr.write("Refusing this Library seed: which filesystem it would land on could "
+                             f"not be read.\n\n{UNPLACEABLE_MOVE}\n\n{NAME_THE_TREE}\n")
+            return 2
 
         for segment in command_segments(command):
             found = seeds(tokens_of(segment))

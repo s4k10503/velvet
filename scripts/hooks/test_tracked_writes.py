@@ -152,10 +152,23 @@ class ReadingTests(unittest.TestCase):
         # Assert
         self.assertEqual(found, [])
 
-    def test_Given_AWriteAfterAPushd_When_TheCommandIsRead_Then_NoFileIsNamed(self):
+    def test_Given_AWriteAfterAPushd_When_TheCommandIsRead_Then_ItIsNamedWhereThePushdLeftIt(self):
         # Arrange / Act — `pushd` moves the shell as surely as `cd`, so the operand below belongs
-        # to the directory it moved into rather than to the one the tool call started in.
-        found = self.named("pushd /tmp && printf 'x\\n' > notes.md")
+        # to the directory it moved into rather than to the one the tool call started in. Read as
+        # no move at all, a write onto a tracked file under the directory pushed into is named by
+        # nothing and reaches neither guard.
+        found = self.named(f"pushd {self.root} && printf 'x\\n' > notes.md")
+
+        # Assert
+        self.assertEqual(found, [self.under("notes.md")])
+
+    # GREEN_ON_BASE(refactor): the giving-up that moving this reading into one resolver must keep.
+    # The base reaches it by counting how many segments move; the resolver reaches it by comparing
+    # where each program runs, and a rewrite that dropped the second would name both operands here.
+    def test_Given_TwoMovesRunningTwoWritesInTwoDirectories_When_TheCommandIsRead_Then_NeitherIsNamed(self):
+        # Arrange / Act — the gap `UNREAD` names. One base cannot place both operands, so the
+        # reading gives up rather than rooting the second at the directory the first ran in.
+        found = self.named(f"cd {self.root} && printf x > a.md && cd /tmp && printf x > b.md")
 
         # Assert
         self.assertEqual(found, [])

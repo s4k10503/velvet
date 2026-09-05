@@ -47,6 +47,19 @@ class PathSpellingTests(unittest.TestCase):
         # Act / Assert
         self.assertEqual(self.judge("python3 /elsewhere/scripts/pr/settle.py watch"), 0)
 
+    def test_Given_APushdAheadOfTheRelativePath_When_Backgrounded_Then_ItIsLetThrough(self):
+        # Arrange — `pushd` says where the command runs as surely as `cd`. Matched as `cd` at the
+        # head of the text, it says nothing, and the command is refused for naming a path it has
+        # already placed.
+        # Act / Assert
+        self.assertEqual(self.judge("pushd /elsewhere && python3 scripts/pr/settle.py watch"), 0)
+
+    def test_Given_AnAssignmentAheadOfTheMove_When_Backgrounded_Then_ItIsLetThrough(self):
+        # Arrange — the shape a session types whenever it names a worktree once and moves into it.
+        # Act / Assert
+        self.assertEqual(
+            self.judge("SP=/elsewhere; cd $SP && python3 scripts/pr/settle.py watch"), 0)
+
     # GREEN_ON_BASE(characterization): the base answers this too, and it is the half the
     # widened reading could take with it — only running it says whether it did.
     def test_Given_ACommandNamingNoRepoDirectory_When_Backgrounded_Then_ItIsLetThrough(self):

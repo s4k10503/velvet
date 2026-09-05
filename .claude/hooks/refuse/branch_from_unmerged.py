@@ -20,7 +20,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 from deferrals import deferred, disowned, unusable
-from shell_commands import command_segments, git_invocation, tokens_of, without_redirections
+from shell_commands import (NAME_THE_TREE, UNPLACEABLE_MOVE, UNRESOLVED_CD, command_directory,
+                            command_segments, git_invocation, tokens_of, without_redirections)
 from velvet_hooks import BRANCH_BASES
 
 
@@ -229,11 +230,16 @@ def main():
     if event.get("tool_name") not in HOOK_TOOLS:
         return 0
 
-    made = creations(event.get("tool_input", {}).get("command", ""))
+    command = event.get("tool_input", {}).get("command", "")
+    made = creations(command)
     if not made:
         return 0
 
-    cwd = event.get("cwd") or "."
+    cwd = command_directory(command, event.get("cwd") or ".")
+    if cwd is UNRESOLVED_CD:
+        sys.stderr.write("Refusing this branch creation: which tree it would branch in could not "
+                         f"be read.\n\n{UNPLACEABLE_MOVE}\n\n{NAME_THE_TREE}\n")
+        return 2
     refusals = []
     # Every creation in the command is evaluated. Consulting only the first let an undeferred
     # creation chained after a deferred one through on the deferral meant for the other name.

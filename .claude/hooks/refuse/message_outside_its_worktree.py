@@ -33,7 +33,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 
 from pr_body import valued as gh_valued  # noqa: E402
 from shell_commands import (  # noqa: E402
-    UNRESOLVED_CD, git_invocations, leading_cd, program_invocations, unexpanded)
+    NAME_THE_TREE, UNPLACEABLE_MOVE, UNRESOLVED_CD, command_directory, git_invocations,
+    program_invocations, unexpanded)
 
 HOOK_TOOLS = {"Bash"}
 
@@ -140,15 +141,12 @@ def refuse(what, path, root):
 
 def judge(command, cwd):
     """0, or 2 with the reason written to stderr."""
-    moved = leading_cd(command)
-    if moved is UNRESOLVED_CD:
+    here = command_directory(command, cwd)
+    if here is UNRESOLVED_CD:
         # The tree the command runs in cannot be read, so neither can the question.
-        sys.stderr.write(
-            "Refusing this command: it changes into a directory the shell has not expanded, so "
-            "which\nworktree the message belongs to cannot be read here.\n\n"
-            "Spell the directory out.\n")
+        sys.stderr.write("Refusing this command: which worktree the message belongs to could not "
+                         f"be read.\n\n{UNPLACEABLE_MOVE}\n\n{NAME_THE_TREE}\n")
         return 2
-    here = os.path.join(cwd, moved) if moved else cwd
 
     asked = [("git commit", operands, MESSAGE_FLAGS, None)
              for _, _, operands in git_invocations(command, ("commit",))]
