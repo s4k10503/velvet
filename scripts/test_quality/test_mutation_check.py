@@ -1406,7 +1406,7 @@ class RepositoryReachTests(unittest.TestCase):
         guards = {mutant.before for mutant in mutants_of(source, "guard removed")}
 
         # Assert
-        self.assertEqual(guards, {"if (ownCts != _cts) return;"})
+        self.assertEqual(guards, {"if (!ReferenceEquals(round, _liveRound)) return;"})
 
 
 class GenerationHealthTests(unittest.TestCase):
