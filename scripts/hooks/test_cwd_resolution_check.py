@@ -7,13 +7,14 @@ say whether the sweep can see anything at all.
 
 The controls are the point. A sweep that returns a clean list because its shims stopped recording,
 because its two trees stopped being two, or because the guards under it are raising rather than
-answering, is indistinguishable from a sweep over guards that are all correct — which is the property
-this whole family exists to remove, one level up. So a guard that reads the directory it was handed,
-one that resolves the move, one that resolves it and then falls back, one that refuses by printing
-rather than by exiting, one that stands down having not placed it, one that reads no tree at all, and
-one that raises before reading anything are posed alongside, and each is required to come back as the
-outcomes its shape earns. Between them they produce every outcome the sweep reports, which is a
-count rather than a claim: `OUTCOMES` holds the set and one case below compares it.
+answering, is indistinguishable from a sweep over guards that are all correct — which is the
+property this whole family exists to remove, one level up. So a guard that reads the directory it
+was handed, one that resolves the move, one that resolves it and then falls back, one that refuses
+by printing rather than by exiting, one that stands down having not placed it, one that answers from
+the tree without asking git about it, one that reads no tree at all, and one that raises before
+reading anything are posed alongside, and each is required to come back as the outcomes its shape
+earns. Between them they produce every outcome the sweep reports, which is a count rather than a
+claim: `OUTCOMES` holds the set and one case below compares it.
 
 Run: python3 scripts/hooks/test_cwd_resolution_check.py
 """
@@ -119,6 +120,26 @@ SILENT = PREAMBLE + """
 sys.exit(0)
 """
 
+# Answers from the tree without asking git about it, the way `library_seed_without_room.py` measures
+# a filesystem: the shims see nothing of a file being read, so the two runs that carry no move are
+# the whole of what scores this one. Cutting that fallback out of `placed_outcome` reddened no case
+# in this suite before this stand-in existed.
+READING_A_FILE = PREAMBLE + """
+import os
+
+from shell_commands import UNRESOLVED_CD, command_directory
+
+subject = "git" in command
+where = command_directory(command, handed)
+if where is UNRESOLVED_CD:
+    sys.exit(2 if subject else 0)
+try:
+    seed = open(os.path.join(str(where), "seed.txt"), encoding="utf-8").read().strip()
+except OSError:
+    seed = ""
+sys.exit(2 if seed == "VELVET_MOVED" else 0)
+"""
+
 # Raises where a guard whose import broke raises, and exits 1 the way CPython does for it. Every
 # column reads it exactly as `silent.py` reads: it addresses no tree and refuses nothing. What
 # separates the two is the exit code, and scoring that is what the sweep gained.
@@ -133,6 +154,7 @@ CONTROLS = {
     "denying_on_stdout.py": DENYING_ON_STDOUT,
     "standing_down.py": STANDING_DOWN,
     "silent.py": SILENT,
+    "reading_a_file.py": READING_A_FILE,
     "crashing.py": CRASHING,
 }
 
@@ -144,7 +166,9 @@ class ControlTests(unittest.TestCase):
     def setUpClass(cls):
         cls.root = Path(tempfile.mkdtemp(prefix="velvet-cwd-controls-"))
         for name, source in CONTROLS.items():
-            (cls.root / name).write_text(source.replace("VELVET_LIB", str(LIB)), encoding="utf-8")
+            (cls.root / name).write_text(
+                source.replace("VELVET_LIB", str(LIB))
+                      .replace("VELVET_MOVED", cwd_resolution_check.MOVED_TREE), encoding="utf-8")
         found, cls.faults = cwd_resolution_check.readings(cls.root, floor=0)
         cls.outcomes = {name: (placed, unplaced, silenced, unconcerned)
                         for name, placed, unplaced, silenced, unconcerned, _ in found}
@@ -207,6 +231,15 @@ class ControlTests(unittest.TestCase):
         self.assertEqual(self.outcomes["silent.py"],
                          (cwd_resolution_check.UNDECIDED, cwd_resolution_check.UNDECIDED, cwd_resolution_check.UNDECIDED,
                           cwd_resolution_check.SILENT_ELSEWHERE))
+
+    def test_Given_AGuardAnsweringFromTheTreeWithoutAskingGit_When_ItIsScored_Then_TheBareRunsDecideIt(self):
+        # Arrange / Act — the row a correct guard produces, reached without a tree reading: the
+        # shims see nothing this one does, so the two runs that carry no move are the whole of what
+        # separates a verdict that followed the move from one that did not.
+        # Assert
+        self.assertEqual(self.outcomes["reading_a_file.py"],
+                         (cwd_resolution_check.FOLLOWS, cwd_resolution_check.REFUSES,
+                          cwd_resolution_check.REFUSES, cwd_resolution_check.SILENT_ELSEWHERE))
 
     def test_Given_TheStandIns_When_TheirOutcomesAreCollected_Then_EveryOneTheSweepReportsIsAmongThem(self):
         # Arrange / Act — an outcome no stand-in produces is a column of the table nothing here

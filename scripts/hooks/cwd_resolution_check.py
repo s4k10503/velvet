@@ -6,8 +6,9 @@ runs somewhere else, so a guard reading that directory answers about a checkout 
 — and answers positively, printing a verdict about a tree it never opened. Two false refusals of that
 shape were reported before it, one guard both times, and the fix put the reading in
 `lib/shell_commands.py` where the guards that came after picked it up. What nobody asked afterwards
-is which of the others read a directory at all: ten did, and the one that prompted this printed a
-positive verdict rather than a refusal, which announces itself to nobody.
+is which of the others read a directory at all, which this answers with a row per guard rather than
+with a count kept anywhere; and the one that prompted this printed a positive verdict rather than a
+refusal, which announces itself to nobody.
 
 The contract is the one the two `cd`-reading guards implement: resolve the tree the command will act
 on, or refuse because you cannot — never silently answer about a different one. Both halves are posed
@@ -49,11 +50,18 @@ come back as its own shape.
 
 ## What is posed, and what each form can show
 
-Four forms per guard: a move it can place, that same move carrying the redirection that silences it,
-a move nothing can place, and that unplaceable move carrying a command the guard has no opinion
-about. The redirection is posed separately because a reading that mistakes its `&` for the operator
-that backgrounds a list answers about the handed tree for the placeable form's own shape, and the
-placeable form carries no redirection to show it.
+Six runs per guard. Four carry a move: one it can place, that same move carrying the redirection that
+silences it, a move nothing can place, and that unplaceable move carrying a command the guard has no
+opinion about. The redirection is posed separately because a reading that mistakes its `&` for the
+operator that backgrounds a list answers about the handed tree for the placeable form's own shape,
+and the placeable form carries no redirection to show it.
+
+The other two carry no move: they are the bare command in each of the two trees, and `placed_outcome`
+falls back to them where a run addressed no tree at all. A guard whose two bare verdicts agree cannot
+be told apart that way and is reported undecided; one whose verdicts differ is scored by which of
+them the placeable form matched — the only reading left for a guard that answers from the tree
+without asking git about it, which is `library_seed_without_room.py`'s shape. `ControlTests` poses a
+stand-in of that shape, because cutting the fallback out reddened no case in the suite without one.
 
 What is not decided here is what a guard SHOULD do once it has declined to place a move. Refusing and
 standing down are both defensible and the guards differ, `tracked_writes.py` naming its own gap; what
@@ -105,7 +113,7 @@ STANDS_DOWN = "stands down, having not placed it"
 SILENT_ELSEWHERE = "silent where it has no subject"
 REFUSES_ELSEWHERE = "refuses where it has no subject"
 
-# Every value the three columns take. The stand-ins are held to producing all of them, so a column
+# Every value the outcome columns take. The stand-ins are held to producing all of them, so a column
 # that stops being reachable is a column no control is left measuring.
 OUTCOMES = (FOLLOWS, HANDED, UNDECIDED, REFUSES, STANDS_DOWN, SILENT_ELSEWHERE, REFUSES_ELSEWHERE)
 

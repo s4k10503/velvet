@@ -364,16 +364,24 @@ def moves_to_a_named_directory(segment):
     return move_target(tokens, index) is not None
 
 
-# The whole of what is placed, and everything else declined:
+# What is placed:
 #
-#     [assignment ...] cd <literal>  ( && | ; | newline )  ...repeated...  work that moves nothing
+#     [assignment ...] cd <literal>  ( && | ; | newline )  ...repeated...  <the work>
 #
-# A walk over the command's operators was tried twice instead, and a construct nobody had written it
-# for was answered rather than declined: the `&` of a `2>&1` read as the operator that backgrounds a
-# list and undid the move before it, and a `case` arm's unmatched `)` drove a nesting count below
-# zero and raised, which turns off the guard that asked. An acceptor has the opposite default: a
-# construct it does not match is declined, and what a caller handed a decline may not do is answer
-# about the directory it started in.
+# The prefix is matched and a step outside it ends the match. A walk over the command's operators
+# was tried twice instead, and a construct nobody had written it for was answered rather than
+# declined: the `&` of a `2>&1` read as the operator that backgrounds a list and undid the move
+# before it, and a `case` arm's unmatched `)` drove a nesting count below zero and raised, which
+# turns off the guard that asked. Matching one shape has the opposite default, and what a caller
+# handed a decline may not do is answer about the directory it started in.
+#
+# Past the prefix the default reverses, and that is this reading's residual rather than a second
+# acceptor: the scan below declines on a mover word it can see and keeps the placed directory
+# otherwise. A move whose word the mask blanked, or whose spelling is not that word -- a quoted or
+# backslashed `cd`, one named by a variable, a `.` sourcing a script -- is therefore placed, and the
+# guard answers about a tree the command has left. Neither end of that closes for free:
+# `OPAQUE_RUNNERS` carries what one more word costs, and scanning the text rather than the mask is
+# what `AMoveWordInsideAQuotedOperand` in `scripts/hooks/test_shell_commands.py` fails on.
 
 # A run of characters between the separators, read off the mask so a quoted word is not one.
 BARE_WORD = re.compile(r"[^\s;&|<>()]+")
@@ -393,8 +401,8 @@ OUTSIDE_A_PREFIX_STEP = re.compile(r"[()|&<>{}]")
 # Words whose operand is run as a command rather than passed to one, and this reading follows
 # neither: `source`'s is in a file it never opens, and `eval`'s is text the shell lexes again after
 # expanding it. `.`, `source`'s other spelling, is left out: as a bare word it is far more often
-# the pathspec `git add .` writes than a command, and declining every command carrying one costs more
-# than the move it catches.
+# the pathspec `git add .` writes than a command, and declining a command for carrying one costs
+# more than the move it catches.
 OPAQUE_RUNNERS = {"eval", "source"}
 
 
@@ -474,7 +482,7 @@ def command_directory(command, cwd):
 UNPLACEABLE_MOVE = (
     "The command changes directory in a way nothing here places. What is placed is a `cd` to a "
     "literal path: one or several, each joined to what follows by `&&`, `;` or a newline, and all "
-    "of them ahead of the work. Everything else is declined, among it: a target the shell has yet "
+    "of them ahead of the work. Among what is declined instead: a target the shell has yet "
     "to expand or match, or one opening on `~`; a `cd` behind any word but an assignment; `popd`, "
     "`pushd`, `cd -` and a bare `cd`; a move inside a pipeline, a group or a `||`; a move carrying "
     "a redirection; an `eval` or a `source`, whose own text is not read here; and a move that runs "

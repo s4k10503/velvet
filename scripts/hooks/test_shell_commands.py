@@ -154,6 +154,14 @@ class CommandDirectoryTests(unittest.TestCase):
         # Assert
         self.assertEqual(found, "/handed/sub")
 
+    def test_Given_ASecondMoveWalkingUp_When_TheDirectoryIsPlaced_Then_TheParentIsPlaced(self):
+        # Arrange / Act — normalised lexically rather than resolved: `realpath` would follow a
+        # symlinked step somewhere the command's own text does not name.
+        found = self.where("cd /a/b && cd .. && git commit --amend")
+
+        # Assert
+        self.assertEqual(found, "/a")
+
     def test_Given_APushd_When_TheDirectoryIsPlaced_Then_NothingIsPlaced(self):
         # Arrange / Act — `pushd` moves as `cd` does, and `popd`, its partner, carries no
         # destination in the command's own text. The scan takes all three, so declining this one
@@ -191,6 +199,14 @@ class CommandDirectoryTests(unittest.TestCase):
         # An assignment is a segment of its own, and stopping at one reads this as no move.
         # Act
         found = self.where("SP=/moved\ncd /moved && git commit --amend")
+
+        # Assert
+        self.assertEqual(found, "/moved")
+
+    def test_Given_TheMoveJoinedToTheWorkByASemicolon_When_TheDirectoryIsPlaced_Then_ItIsRead(self):
+        # Arrange / Act — the third of `PREFIX_SEPARATORS`: a move joined by `&&` or by a
+        # newline is placed whether or not `;` is in that tuple.
+        found = self.where("cd /moved; git commit --amend")
 
         # Assert
         self.assertEqual(found, "/moved")
@@ -302,10 +318,11 @@ class CommandDirectoryTests(unittest.TestCase):
 
 
 class DeclinedShapeTests(unittest.TestCase):
-    """Shapes that leave the grammar rather than being placed.
+    """Constructs that leave the prefix and are declined for it.
 
-    What is not matched is declined, for the reason the module's acceptor block states, and the
-    cases below are the constructs that reach that decline.
+    Leaving the prefix is not by itself a decline -- the module's block above `BARE_WORD` says
+    where the reading keeps what it placed instead. So these are constructs measured to reach the
+    decline, not instances of a rule about everything unmatched.
     """
 
     def where(self, command):
@@ -385,6 +402,15 @@ class DeclinedShapeTests(unittest.TestCase):
         # is not the path the `cd` receives, so placing it as written names a path the command
         # never uses.
         found = self.where("cd \"$WORKTREE\" && git commit --amend")
+
+        # Assert
+        self.assertIs(found, shell_commands.UNRESOLVED_CD)
+
+    def test_Given_ATargetOpeningOnATilde_When_ThePlacementIsAsked_Then_NothingIsPlaced(self):
+        # Arrange / Act — carrying no `$`, this is not what `ATargetTheShellHasYetToExpand`
+        # declines: the reading joins the target as written, and joined rather than expanded a `~`
+        # names a directory nothing holds. `UNPLACEABLE_MOVE` promises the decline in as many words.
+        found = self.where("cd ~/moved && git commit --amend")
 
         # Assert
         self.assertIs(found, shell_commands.UNRESOLVED_CD)
