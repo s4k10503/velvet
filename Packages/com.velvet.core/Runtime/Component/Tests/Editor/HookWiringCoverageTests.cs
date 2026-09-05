@@ -49,7 +49,7 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(construction): this change adds a settings entry and the file it names in one commit.
         // The base holds neither, so what it reads is its own registrations against its own scripts. Misspell
-        // the new entry's path as `filter_naming_no_fixtures.py` and this reddens; no base run misspells it.
+        // the new entry's path as `filter_selecting_no_tests.py` and this reddens; no base run misspells it.
         [Test]
         public void Given_TheHookWiring_When_EachReferencedPathIsResolved_Then_EveryOneNamesAFileThatExists()
         {
@@ -563,7 +563,7 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(construction): this sweep's subject is whatever the refuse directory holds.
         // The base's directory holds no guard of this change's, so the base measured nothing about the new one.
-        // Break an import in `filter_naming_no_fixture.py` and this reddens; no base run breaks one.
+        // Break an import in `filter_selecting_no_test.py` and this reddens; no base run breaks one.
         [Test]
         public void Given_EveryRefusingGuard_When_APayloadIsPosed_Then_ItRunsToAVerdict()
         {
@@ -650,10 +650,10 @@ namespace Velvet.Tests
             ("a shell command rewriting a tracked file",
              "\"cwd\":\"%PROJECT%\",\"tool_input\":{\"command\":"
              + "\"sed -i '' -e s/a/b/ Packages/com.velvet.core/CHANGELOG.md\"}"),
-            // %PROJECT% again, and for the same reason: the guard answering this reads which fixture
-            // classes the test sources declare, and the scratch directory holds none, where it stands
-            // down rather than refusing every filter posed outside a Unity project.
-            ("a test run filtered to a class nothing declares",
+            // %PROJECT% again, and for the same reason: the guard answering this reads the names the
+            // test sources give the runner, and the scratch directory holds none, where it stands down
+            // rather than refusing every filter posed outside a Unity project.
+            ("a test run filtered to a value that selects nothing",
              "\"cwd\":\"%PROJECT%\",\"tool_input\":{\"command\":"
              + "\"Unity -runTests -batchmode -testFilter Velvet.Tests.NoFixtureIsCalledThis\"}"),
         };

@@ -141,7 +141,7 @@
           },
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse/filter_naming_no_fixture.py\"",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse/filter_selecting_no_test.py\"",
             "timeout": 20000
           }
         ]

@@ -51,9 +51,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import pr_body  # noqa: E402
 import repository  # noqa: E402
-from shell_commands import (SEPARATORS, UNRESOLVED_CD, command_segments, leading_cd,  # noqa: E402
+from shell_commands import (UNRESOLVED_CD, comment_opens_at, leading_cd,  # noqa: E402
                             mask_shell_literals, program_invocations, tokens_of, unexpanded,
-                            without_redirections)
+                            visible_segments, without_redirections)
 
 # Each gap the reading leaves. `LIMITS` is built from this so the sentence cannot name fewer of them
 # than the tuple carries; what stops the TUPLE naming fewer than the reading has is the suite, which
@@ -85,26 +85,6 @@ LIMITS = (
 # any other operand, and an empty extension is dropped for being empty while a substitution
 # expression is dropped for not being a path git names.
 SED_VALUE_FLAGS = {"-e", "-f", "--expression", "--file"}
-
-
-def _visible_segments(command):
-    """The command's segments, minus the spans the mask replaced.
-
-    Split as `shell_commands.command_segments` splits it; what is added is dropping a blanked span,
-    which under that split is a segment of its own. A pull-request body written through a heredoc
-    puts its markdown in one, and a blockquote there reads as a redirect onto the file its line
-    names.
-    """
-    masked = mask_shell_literals(command)
-    bounds, start = [], 0
-    for index, character in enumerate(masked):
-        if character in SEPARATORS:
-            bounds.append((start, index))
-            start = index + 1
-    bounds.append((start, len(command)))
-    return [normalised
-            for first, last in bounds if masked[first:last].strip()
-            for normalised in command_segments(command[first:last])]
 
 
 def _redirect_targets(segment):
@@ -151,24 +131,6 @@ def _redirect_targets(segment):
     return found
 
 
-def _comment_opens_at(segment):
-    """Where this segment's comment starts, or None if no `#` in it starts one.
-
-    Asked of the mask, which is the one place that already knows a quote from a bare character: an
-    unquoted `#` survives it, a quoted one is blanked. Asking the token list instead cannot tell
-    `cp a.md b.md '#c'`, which writes `#c`, from a trailing comment -- and dropping the last operand
-    there makes a SOURCE the destination, which is a refusal over a file nothing writes.
-
-    The position rather than a yes: the caller needs it to count, and a predicate that knows where
-    the comment is and answers only whether there is one forces a cut on the wrong term.
-    """
-    masked = mask_shell_literals(segment)
-    for index, character in enumerate(masked):
-        if character == "#" and (index == 0 or masked[index - 1] in " \t"):
-            return index
-    return None
-
-
 def _before_any_comment(operands, segment):
     """The operands this segment carries ahead of its comment, where it has one.
 
@@ -178,7 +140,7 @@ def _before_any_comment(operands, segment):
     `comments=True` cuts mid-word, turning `note#1.md` into `note` and `a#b` into `a`, where the
     shell keeps both whole.
     """
-    at = _comment_opens_at(segment)
+    at = comment_opens_at(segment)
     if at is None:
         return operands
     # Counted from the text rather than matched on a leading `#`, because an operand may begin with
@@ -296,7 +258,7 @@ def _placed(target, base):
 
 def literal_write_targets(command, cwd):
     """Absolute paths this command names, literally, as somewhere it writes."""
-    segments = _visible_segments(command)
+    segments = visible_segments(command)
     base = _base_directory(command, segments, cwd)
     candidates = []
     for segment in segments:
