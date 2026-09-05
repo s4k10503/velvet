@@ -50,10 +50,9 @@ desync bugs, Velvet is for you:
 
 ## Requirements
 
-- **Unity 6000.3.23f1 (Unity 6.3 LTS) or newer**, which is what `package.json` declares as
-  `unity` / `unityRelease` and what Velvet is developed and validated on.
-  Velvet's bundled USS uses properties added in Unity 6.3 (e.g. `aspect-ratio`), so 6.3 is the floor
-  whichever release within the line a project is on.
+- **Unity 6000.3.23f1 (Unity 6.3 LTS) or newer** — the release `package.json` names as the lowest one
+  Velvet is compatible with (`unity` `6000.3` plus `unityRelease` `23f1`), and the one Velvet is
+  developed and validated on.
 - `com.unity.addressables` and `com.unity.nuget.mono-cecil` — resolved automatically by the Unity
   Package Manager from the package's declared dependencies.
 

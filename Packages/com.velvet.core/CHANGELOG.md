@@ -468,14 +468,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   before taking this version. Among the UI Toolkit fixes Unity shipped between the two, these land on
   shapes Velvet itself ships: a `border-color` transition not running when the starting colour is
   transparent, which is what `transition-colors` over `border-transparent` asks for (6000.3.13f1); a
-  programmatic scroll on a `ScrollView` being overridden by manual scroll input on every frame after it
-  is requested, when any element in the panel updates its style every frame, which is what a per-frame
-  driver does while a play runs (6000.3.18f1); opacity not propagating in filtered elements, under the
+  programmatic scroll on a `ScrollView` overriding manual scroll input on every frame after it is
+  requested, when any element in the panel updates its style every frame, which is what an `animate-*`
+  motion does while it runs (6000.3.18f1); opacity not propagating in filtered elements, under the
   `blur-*`, `grayscale-*` and sibling utilities that compose one inline `filter` list, and
-  `background-image` / `-unity-font` rendering solid white after the referenced asset's Addressables
-  content was unloaded and reloaded, which is what `bg-[addr:…]` and `font-[addr:…]` set them from
-  (both 6000.3.21f1); and an `ArgumentException` during world-space UI rendering, which is where
-  `V.WorldSpace` mounts (6000.3.23f1).
+  `background-image` rendering solid white after the referenced asset's Addressables content was
+  unloaded and reloaded, which is what `bg-[addr:…]` sets (both 6000.3.21f1); and an
+  `ArgumentException` during world-space UI rendering, which is where `V.WorldSpace` mounts
+  (6000.3.23f1).
 
 - The container a `V.Component` is written into is part of which instance it is, as the position of a
   component is in React. Two sibling containers each holding the same component now hold two instances
