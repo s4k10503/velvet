@@ -109,6 +109,32 @@ ALLOWS = f"""    {READ_GH}
     return 0
 """
 
+# Two tools, and the guard reaches its verdict a different way under each. The one that sorts first
+# holds; the other lets the tool through on the same failed reading. A check posing one tool per
+# guard sees whichever it picked, and the half it did not pose is the half nothing reads.
+ROUTED_TWO_TOOLS = '''#!/usr/bin/env python3
+"""A synthetic guard routed two tools."""
+import json
+import subprocess
+import sys
+
+HOOK_TOOLS = {"Bash", "Edit"}
+
+UNREADABLE_POLICY = "refuse"
+UNREADABLE_PROBE = {"command": "probe", "file_path": "probe.md"}
+
+
+def main():
+    event = json.load(sys.stdin)
+    if event.get('tool_name') not in HOOK_TOOLS:
+        return 0
+    ''' + READ_GH + '''
+    return 0 if event['tool_name'] == 'Edit' else 2
+
+
+sys.exit(main())
+'''
+
 
 def directory(**guards):
     root = Path(tempfile.mkdtemp(prefix="velvet-unreadable-tests-"))
@@ -173,6 +199,17 @@ class VerdictTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(len(found), 1, faults(root))
+
+    def test_Given_AGuardFailingOpenUnderTheSecondToolItDeclares_When_TheCheckRuns_Then_ItIsReported(self):
+        # Arrange — the failure is under the tool that sorts later, which is the one a check posing
+        # a single tool per guard never poses.
+        root = directory(routed=ROUTED_TWO_TOOLS)
+
+        # Act
+        found = [line for line in faults(root) if 'answers "allow"' in line]
+
+        # Assert — every mode that reaches the read reports it, so the count rides along.
+        self.assertEqual(len(found), 2, faults(root))
 
     def test_Given_AGuardWhoseRefusalIsWhatGitsNegativeAnswerMeans_When_TheCheckRuns_Then_NothingIsReported(self):
         # Arrange

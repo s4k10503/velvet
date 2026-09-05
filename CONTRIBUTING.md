@@ -580,6 +580,37 @@ names themselves: a matcher naming no set a check can read is refused — `"*"`,
 `PreToolUse` entry carrying no `"matcher"` key at all, which is the shape the `SessionStart`, `Stop`
 and `SubagentStop` entries take. A guard covering several tools spells them out in the matcher.
 
+Two of them cover `Bash` as well as the editing tools, because a session making its changes with
+`sed`, a heredoc or a short script is outside an editing-tool matcher by construction and meets no
+refusal at all. Read back over this project's own session transcripts, those writes include edits to
+`.claude/settings.json` and to the guards' own sources — the registration that decides what any of
+them is routed. `.claude/hooks/lib/tracked_writes.py` is the reading the two share: the literal
+operand of a redirect, of an in-place `sed`, and the destination of a `cp` or an `mv`, each put to
+`git ls-files`. That is narrower than deciding what an arbitrary command writes, which is the
+problem the body guard above was reduced for twice — and narrow from the same transcripts rather
+than from a guess about what a session does. `tee` reached a tracked file in none of them, and
+`git mv` wants a criterion of its own rather than another spelling of that one. What the reading
+gives up it does not leave a reader to infer: `tracked_writes.UNREAD` is the list, the refusal is
+built from it, `scripts/hooks/test_tracked_writes.py` holds the refusal to every entry and counts
+them, and every entry has a case posing the shape it names.
+
+Reading a redirect on a heredoc opener's line, and anything after a `<<<` here-string, meant
+changing `mask_shell_literals`, which every caller of `command_segments` shares. What decided it was
+measured on those transcripts rather than judged: over them the change makes `log`, `push`,
+`status`, `merge` and `diff` newly visible and none is in the set the guards read, while it corrects
+`git commit`'s operand list in all 55 readings of it that move — the masker before it appended the
+following command's tokens there, and the two verdicts that change both go from refusing to
+allowing, one of them a commit refused over an unexpanded operand belonging to a command three
+further along the line. A
+`git add` or a `git stash` written after an opener does become visible, and is refused correctly;
+what the corpus shows is that none occurs, not that none could.
+
+`edit_while_a_ready_pr_sits.py` reaches the verdict it reaches for an edit, for the shell writes it
+can place on a tracked file — an Edit of an untracked file is held and a redirect onto one is not.
+`changelog_into_closed_version.py` cannot: its reading compares the section before against the
+section proposed, and a shell command carries no proposed text, so it refuses a write onto a
+CHANGELOG whatever that write would have said and names the tools that present the text.
+
 Every failure mode here is silence, so the wiring is asserted rather than trusted.
 `HookWiringCoverageTests` pairs each script against the settings and agent frontmatter that run it,
 in both directions, fails on a script name a hook builds a path from that no file answers to, fails
@@ -799,7 +830,8 @@ policy on is what would close it server-side, at the cost that buys.
 
 **A green pull request left sitting starts refusing every edit.**
 `.claude/hooks/refuse/edit_while_a_ready_pr_sits.py` refuses every editing tool once one has been ready
-for fifteen minutes, and the instruction it prints is `settle.py merge`. Ready is that command's own
+for fifteen minutes, and a Bash command whose literal operand names a tracked file with it, and the
+instruction it prints is `settle.py merge`. Ready is that command's own
 decision rather than a second reading beside it, so a pull request this window declines is not
 recorded ready while the window can be read. It is read by
 `published_check.unpublished_reason`, which answers None on any git failure, so an `ls-remote` that
@@ -882,7 +914,8 @@ adds and removes and the line has nothing to remove, the merge keeps the additio
 **Take the CHANGELOG hunk out of the pick and write the entry on the line by hand.** Picked as it
 stands it applies clean and lands in the *released* section, and reopening `## [Unreleased]` does not
 attract it. `changelog_into_closed_version.py`, which step 1 above relies on, is registered against
-`Edit|Write`, so a cherry-pick does not reach it — and the line does not carry that hook at all.
+`Bash|Edit|Write` and reads a shell command only for a literal operand naming the file, so a
+cherry-pick does not reach it — and the line does not carry that hook at all.
 
 **The record is the `-x` trailer.** Squash as everywhere else, and put the `(cherry picked from commit
 …)` lines **in the pull request body**. Do not reach for

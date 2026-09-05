@@ -68,6 +68,70 @@ class LeadingWordTests(unittest.TestCase):
         self.assertEqual(self.subcommands("echo 'if git commit --amend'"), [])
 
 
+class HeredocOpenerTailTests(unittest.TestCase):
+    """What follows a heredoc's delimiter on the opener's own line.
+
+    Blanking that region hid where the opening command's operands end, so a following command's
+    tokens landed in `git commit`'s. Skipping it instead left it unlexed, which is worse in the
+    other direction: a separator inside a quoted word became a segment boundary, and the inside of
+    an argument reached a guard as a command to judge.
+    """
+
+    def test_Given_ASeparatorInsideAQuotedWordOnTheOpenersLine_When_TheSegmentsAreRead_Then_ItIsNotABoundary(self):
+        # Arrange — a regular alternation, whose bar is a shell word rather than a pipe.
+        command = "cat <<'EOF' | grep -E \"^a|git add .|^b\"\nbody\nEOF\n"
+
+        # Act
+        found = shell_commands.command_segments(command)
+
+        # Assert — the argument stays whole, so nothing inside it is offered as a command.
+        self.assertIn('grep -E "^a|git add .|^b"', found)
+
+    # GREEN_ON_BASE(characterization): the base answers this too, for the reason this change removes -- it
+    # blanks the opener's tail wholesale, so the quoted word never exists as shell there. What moved
+    # is the route to the answer, not the answer, and a base run cannot tell those apart.
+    def test_Given_AGitCallInsideAQuotedWordOnTheOpenersLine_When_TheInvocationsAreRead_Then_NothingIsSeen(self):
+        # Arrange / Act — the same text asked the way a guard asks it.
+        found = shell_commands.git_invocations(
+            "cat <<'EOF' | grep -E \"^a|git add .|^b\"\nbody\nEOF\n", ("add",))
+
+        # Assert
+        self.assertEqual(found, [])
+
+    def test_Given_AStagingCommandAfterASeparatorOnTheOpenersLine_When_TheInvocationsAreRead_Then_ItIsSeen(self):
+        # Arrange — the direction this change exists for. Blanking the opener's tail hid a real
+        # `git add -A` there from every guard, and a reading that only stops refusing things is not
+        # what was asked for.
+        command = "cat <<'EOF' && git add -A\nbody\nEOF\n"
+
+        # Act
+        found = shell_commands.git_invocations(command, ("add",))
+
+        # Assert
+        self.assertEqual([(call[1], call[2]) for call in found], [("add", ["-A"])])
+
+    def test_Given_ARedirectAfterTheDelimiter_When_TheLineIsMasked_Then_TheRedirectSurvives(self):
+        # Arrange / Act — a segment carries the ORIGINAL text of its span, so reading one says
+        # nothing about what the mask kept: the tail is there either way. What moved is the mask,
+        # which is where `tracked_writes` locates a redirect operator.
+        masked = shell_commands.mask_shell_literals("cat <<'EOF' > notes.md\nbody\nEOF\n")
+
+        # Assert
+        self.assertIn("> notes.md", masked)
+
+    def test_Given_TwoHeredocsOpenedOnOneLine_When_TheLineIsMasked_Then_BothBodiesAreConsumed(self):
+        # Arrange — the shell takes the bodies in the order the delimiters were written. A reading
+        # that reaches only the first delimiter leaves the second body standing as shell, which is
+        # what the base does: its second `<<` sits inside the region it blanks.
+        command = "cat <<A <<B > notes.md\na1\nA\nb1\nB\n"
+
+        # Act
+        masked = shell_commands.mask_shell_literals(command)
+
+        # Assert — past the opener's own line the mask keeps nothing.
+        self.assertEqual([line.strip() for line in masked.splitlines() if line.strip()][1:], [])
+
+
 class LoopHeadReaderTests(unittest.TestCase):
     """A guard whose subject is the keyword itself cannot read it through this table.
 
