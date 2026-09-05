@@ -93,7 +93,7 @@ namespace Velvet.Tests
         private static VisualElement s_overlay;
         private static VisualElement s_otherOverlay;
 
-        private static readonly Dictionary<string, string> s_fade = new()
+        private static readonly Dictionary<string, MotionVariant> s_fade = new()
         {
             ["visible"] = "opacity-100",
             ["hidden"] = "opacity-0",

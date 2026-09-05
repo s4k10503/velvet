@@ -18,9 +18,17 @@ namespace Velvet
         // value rather than something re-derived from the merged array's tail by POSITION, as the from/to
         // input to a runtime variant swap (see FiberNodePatcher.PatchMotion) — deriving it positionally would
         // silently assume the base portion never changes length between renders.
-        public static string[] ResolveApplied(MotionNode node, string ambientLabel, out string[] variantClasses)
+        // poseTransition is what a swap INTO the resolved pose plays on: that pose's own
+        // MotionVariant.Transition when it declares one, else the node's own — resolved here, off THIS
+        // lookup, rather than by a caller re-deriving the effective label, which could pair a pose with
+        // another label's timing. The label-not-found return below hands back the node's own, which is what
+        // a variant→no-variant swap plays on; the class-string returns after it keep what the pose declared,
+        // one that applies nothing still being the pose swapped into.
+        public static string[] ResolveApplied(MotionNode node, string ambientLabel, out string[] variantClasses,
+            out StyleTransitionConfig? poseTransition)
         {
             var baseClasses = node.ClassNames ?? Array.Empty<string>();
+            poseTransition = node.Transition;
 
             var label = node.Animate ?? ambientLabel;
             if (label == null || node.Variants == null)
@@ -29,14 +37,28 @@ namespace Velvet
                 return baseClasses;
             }
 
-            if (!node.Variants.TryGetValue(label, out var variantClassString)
-                || string.IsNullOrEmpty(variantClassString))
+            if (!node.Variants.TryGetValue(label, out var variant))
             {
                 variantClasses = Array.Empty<string>();
                 return baseClasses;
             }
 
-            var parsed = V.ParseClassNames(variantClassString);
+            // Resolved before the class gates below, because what a pose APPLIES cannot decide whose timing
+            // a swap into it reads. Measured on a pose that carries a transition and applies no class: from
+            // under those gates it left the swap on the node's config while TryResolveVariantInitial gave
+            // the mount enter the pose's, so one declaration animated at two speeds.
+            if (variant.Transition != null)
+            {
+                poseTransition = variant.Transition;
+            }
+
+            if (string.IsNullOrEmpty(variant.ClassName))
+            {
+                variantClasses = Array.Empty<string>();
+                return baseClasses;
+            }
+
+            var parsed = V.ParseClassNames(variant.ClassName);
             if (parsed.Length == 0)
             {
                 variantClasses = Array.Empty<string>();

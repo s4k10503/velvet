@@ -337,7 +337,7 @@ namespace Velvet.Tests
         // An exiting AnimatePresence ghost: the removal render retires the tree that last emitted
         // the child, but presence bookkeeping keeps re-emitting the SAME node as the old-side
         // baseline until the exit animation completes — so the sweep must spare the ghost subtree.
-        private static readonly System.Collections.Generic.Dictionary<string, string> s_fade = new()
+        private static readonly System.Collections.Generic.Dictionary<string, MotionVariant> s_fade = new()
         {
             ["visible"] = "opacity-100",
             ["hidden"] = "opacity-0",

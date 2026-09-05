@@ -42,7 +42,7 @@ namespace Velvet.Tests
 
         private static SetStore s_store;
         private static readonly ComponentContext<string> ThemeContext = ComponentContext<string>.Create("light");
-        private static readonly Dictionary<string, string> s_fade = new()
+        private static readonly Dictionary<string, MotionVariant> s_fade = new()
         {
             ["hidden"] = "opacity-0",
             ["visible"] = "opacity-100",
@@ -50,14 +50,14 @@ namespace Velvet.Tests
         // Color classes on purpose: MotionSpringClassParser recognizes no spring-animatable channel in
         // them, so a spring exit over this pair completes SYNCHRONOUSLY (the swap lands, no tick) —
         // the only EditMode-reachable way to park a presence key in its completed-exit window.
-        private static readonly Dictionary<string, string> s_recolor = new()
+        private static readonly Dictionary<string, MotionVariant> s_recolor = new()
         {
             ["hidden"] = "bg-red-500",
             ["visible"] = "bg-blue-500",
         };
         // A third label distinct from the exit's: with initial == exit the initial→animate replay would
         // wash the exit residue out coincidentally, hiding a missing restoration.
-        private static readonly Dictionary<string, string> s_recolorWithStart = new()
+        private static readonly Dictionary<string, MotionVariant> s_recolorWithStart = new()
         {
             ["hidden"] = "bg-red-500",
             ["start"] = "bg-green-500",

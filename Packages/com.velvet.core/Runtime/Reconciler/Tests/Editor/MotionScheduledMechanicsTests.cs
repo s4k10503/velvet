@@ -34,7 +34,7 @@ namespace Velvet.Tests
     {
         private const float DurationSec = 0.1f;
 
-        private static readonly Dictionary<string, string> s_fade = new()
+        private static readonly Dictionary<string, MotionVariant> s_fade = new()
         {
             ["hidden"] = "opacity-0",
             ["visible"] = "opacity-100",
@@ -254,7 +254,7 @@ namespace Velvet.Tests
             // orchestration frame for "gc" (its own Transition declares DelayChildrenSec). "gc"'s total delay
             // must be measured from render-commit time, not from when "mid"'s own already-delayed swap starts,
             // or the grandchild would start animating before its own parent's swap even begins.
-            var midVariants = new Dictionary<string, string> { ["hidden"] = "translate-x-0", ["visible"] = "translate-x-4" };
+            var midVariants = new Dictionary<string, MotionVariant> { ["hidden"] = "translate-x-0", ["visible"] = "translate-x-4" };
             VNode[] NestedTree(string label) => new VNode[]
             {
                 V.Motion(key: "gp", name: "gp", animate: label,
@@ -286,6 +286,90 @@ namespace Velvet.Tests
             // (250ms), folded together rather than measuring mid's fresh frame from zero; the grandchild
             // does not swap until both have elapsed.
             Assert.That((beforeSlot, afterSlot), Is.EqualTo((false, true)));
+        }
+
+        [Test]
+        public void Given_AnInheritingLayerWithNoOrchestrationOfItsOwn_When_TheAncestorLabelFlips_Then_TheGrandchildKeepsTheAncestorsSequence()
+        {
+            // Arrange — the case above gives "mid" its own DelayChildrenSec, so mid establishes a frame
+            // whatever the gate decides. Here mid declares no orchestration knob at all: it has to pass gp's
+            // frame through, leaving mid and gc as slots 0 and 1 of ONE sequence rather than restarting it.
+            VNode[] NestedTree(string label) => new VNode[]
+            {
+                V.Motion(key: "gp", name: "gp", animate: label,
+                    transition: new StyleTransitionConfig { DurationSec = 0.1f, StaggerChildrenSec = 0.4f },
+                    children: new VNode[]
+                    {
+                        V.Motion(key: "mid", name: "mid", variants: s_fade,
+                            transition: new StyleTransitionConfig { DurationSec = 0.05f },
+                            children: new VNode[]
+                            {
+                                V.Motion(key: "gc", name: "gc", variants: s_fade,
+                                    transition: new StyleTransitionConfig { DurationSec = 0.05f }),
+                            }),
+                    }),
+            };
+            _reconciler.Reconcile(Root, Array.Empty<VNode>(), NestedTree("hidden"));
+
+            // Act — flip the ancestor, then sample past mid's slot 0 and inside gc's 0.4s slot.
+            _reconciler.Reconcile(Root, NestedTree("hidden"), NestedTree("visible"));
+            for (var i = 0; i < 12; i++) Tick();
+
+            // Assert — mid took slot 0 and gc is still parked on slot 1. A layer that established a frame of
+            // its own would hand gc index 0 of an empty sequence and both would swap at once; the mid term is
+            // what separates that from nothing having been orchestrated at all.
+            Assert.That(
+                (Root.Q<VisualElement>("mid").ClassListContains("opacity-100"),
+                 Root.Q<VisualElement>("gc").ClassListContains("opacity-100")),
+                Is.EqualTo((true, false)));
+        }
+
+        [Test]
+        public void Given_ASwapDeclaringAfterChildren_When_ItPropagatesALabelToItsChildren_Then_TheUnorchestratedWaitIsDiagnosed()
+        {
+            // Arrange — AfterChildren is accepted by the config but not yet orchestrated for label
+            // propagation, so the swap that would have to wait says so instead of quietly animating early.
+            // StaggerChildrenSec is set too, which opens the orchestration gate on its own: that leaves this
+            // case measuring which When value is diagnosed rather than whether the gate above it opened.
+            var diagnosed = 0;
+            void OnLog(string condition, string stackTrace, UnityEngine.LogType type)
+            {
+                if (type == UnityEngine.LogType.Warning && condition.Contains("When = AfterChildren"))
+                {
+                    diagnosed++;
+                }
+            }
+
+            VNode[] Tree(string label) => new VNode[]
+            {
+                V.Motion(key: "p", animate: label,
+                    transition: new StyleTransitionConfig
+                    {
+                        DurationSec = DurationSec,
+                        StaggerChildrenSec = 0.4f,
+                        When = TransitionWhen.AfterChildren,
+                    },
+                    children: new VNode[]
+                    {
+                        V.Motion(key: "c", variants: s_fade,
+                            transition: new StyleTransitionConfig { DurationSec = DurationSec }),
+                    }),
+            };
+            _reconciler.Reconcile(Root, Array.Empty<VNode>(), Tree("hidden"));
+
+            // Act
+            UnityEngine.Application.logMessageReceived += OnLog;
+            try
+            {
+                _reconciler.Reconcile(Root, Tree("hidden"), Tree("visible"));
+            }
+            finally
+            {
+                UnityEngine.Application.logMessageReceived -= OnLog;
+            }
+
+            // Assert — said once, for the one parent whose propagated label changed.
+            Assert.That(diagnosed, Is.EqualTo(1));
         }
 
         [Test]

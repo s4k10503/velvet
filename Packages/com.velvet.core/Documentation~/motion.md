@@ -4,8 +4,8 @@
 declarative animation API on Unity UI Toolkit. This guide covers the variant-driven feature set:
 labels and inheritance, mount enters, exits and `PopLayout`, orchestration
 (`staggerChildren` / `delayChildren` / `when`), per-property transition overrides, spring physics,
-and exact cubic-bezier easing — plus the transition semantics that tie them together: **one
-config, every update** (and the instant opt-out; see the last section).
+and exact cubic-bezier easing — plus the transition semantics that tie them together: **the node's
+own config as the default a pose overrides** (and the instant opt-out; see the last section).
 
 The `StyleTransition` presets (`Fade`, `SlideUp`, `ScaleIn`, `FadeSlideUp`, …) and
 `whileHoverClass` / `whileTapClass` gestures are covered in the README; everything below uses
@@ -15,11 +15,13 @@ runs: they carry ordinary USS utilities only, not the few Velvet realises itself
 
 ## Variants & labels
 
-A variant map names poses as utility-class strings; `initial` / `animate` / `exit` select them by
-label, exactly like Framer's `variants` / `initial` / `animate` / `exit`:
+A variant map names poses; `initial` / `animate` / `exit` select them by label, exactly like Framer's
+`variants` / `initial` / `animate` / `exit`. Each entry is a `MotionVariant` — a utility-class string
+plus an optional transition of its own — and a bare `string` converts implicitly, so a pose that
+takes the Motion's `transition:` is written as the class string alone:
 
 ```csharp
-static readonly Dictionary<string, string> s_fade = new()
+static readonly Dictionary<string, MotionVariant> s_fade = new()
 {
     ["hidden"]  = "opacity-0 translate-y-8",
     ["visible"] = "opacity-100",
@@ -47,6 +49,9 @@ on any `motion.*` element). The element mounts showing `variants[initial]`, then
 
 - An *inherited* label does not drive a standalone enter: the Motion needs its own `animate`
   (a warning explains this at mount time otherwise).
+- A classless `initial` pose is not resolvable: nothing plays and the element rests at
+  `variants[animate]` from the start. *Transition semantics* below carries that rule for both
+  non-resting poses.
 - Inside `AnimatePresence`, first-mount enters are controlled by the presence instead:
   `V.AnimatePresence(initial: false, …)` suppresses them on the initial mount, like Framer's
   `<AnimatePresence initial={false}>`.
@@ -75,6 +80,8 @@ V.Div(name: "row", className: "flex flex-row gap-x-2", children: new VNode[]
   for out of the class strings; *Driven channels* below is the single list of what that covers and
   what it deliberately leaves out. A `skew-*` exit never animates under any driver, because skew
   is a silhouette paint rather than a transform.
+- A classless `exit` pose is no variant exit at all — the same non-resting-pose rule the enter
+  follows; see *Transition semantics* below.
 - A `mode:` naming no `AnimatePresenceMode` member is refused at construction: `V.AnimatePresence`
   throws `ArgumentOutOfRangeException`, naming the parameter.
 
@@ -94,7 +101,8 @@ keeps its original paint order: a survivor that reflows into the ghost's rect dr
 
 A parent Motion whose transition declares orchestration knobs staggers its **inheriting**
 children (children with no `animate` of their own) whenever its propagated label changes — no
-`AnimatePresence` boundary required:
+`AnimatePresence` boundary required. "Its transition" is the one resolved for the pose it is
+swapping into (see *Transition semantics* below):
 
 ```csharp
 V.Motion(key: "list", animate: label, className: "flex flex-col gap-2",
@@ -127,7 +135,7 @@ V.Motion(key: "list", animate: label, className: "flex flex-col gap-2",
   the presence.
 
 Orchestration delays each child's **swap itself**: once a child's slot elapses, the swap fires
-and tweens (or springs) on that child's own `StyleTransitionConfig`.
+and tweens (or springs) on the config resolved for the child's own destination pose.
 
 ## Per-property transition overrides
 
@@ -300,8 +308,10 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
   registration.
 - Independent of `Variants`/`Animate`: the tween runs from the ACTUAL rect delta captured off
   `element.layout`, not a class-defined from/to pair, so it fires whether or not the same patch
-  also changed variants. Falls back to `StyleTransitionConfig`'s own spring defaults (Stiffness
-  100 / Damping 10 / Mass 1) when the Motion declares no `Transition`.
+  also changed variants. Its spring knobs come off the Motion's own `transition:` rather than an
+  active pose's — a rect delta is not a swap into a pose — and fall back to
+  `StyleTransitionConfig`'s own spring defaults (Stiffness 100 / Damping 10 / Mass 1) when the
+  Motion declares no `Transition`.
 - **Uniform scale only.** A non-uniform rect change (width and height scale by different factors)
   averages the two axis scale factors rather than distorting the element on two independent axes
   — UI Toolkit's `scale` style is a single uniform factor, not independent X/Y.
@@ -396,27 +406,61 @@ outside the declarative Motion/variant tree, and overlapping/parallel tracks (Fr
 relative-offset DSL) -- steps are a strict FIFO queue; two independently-timed tracks need two separate
 `UseAnimationSequence` coordinators.
 
-## Transition semantics: one config, every update
+## Transition semantics: a node default a pose overrides
 
-Every variant update rides the Motion's own `StyleTransitionConfig` — mount enters
-(`initial` → `animate`), presence enters and exits, and runtime `animate` label changes, whether
-the label is the Motion's own or inherited from an ancestor (orchestrated stagger children
-included). Tweens write the config's timing as an inline transition for the swap and release it
-on completion; spring configs integrate physically instead. This matches Framer, where
-`transition` applies to every animate update:
+Every variant update on a `V.Motion` rides a `StyleTransitionConfig` — mount enters (`initial` → `animate`),
+presence enters and exits, and runtime `animate` label changes, whether the label is the Motion's
+own or inherited from an ancestor (orchestrated stagger children included). Tweens write the
+config's timing as an inline transition for the swap and release it on completion; spring configs
+integrate physically instead.
+
+**Which config a swap takes is decided by the pose it is animating INTO.** A `MotionVariant` naming
+its own `transition` supplies it; a pose that names none takes the Motion's `transition:`, which is
+itself the `Fade` preset when the call site left it out. That is the direction each of the three
+plays reads: a mount enter takes `variants[animate]`, a runtime label change takes the new label's
+pose, and an `AnimatePresence` exit takes `variants[exit]` — the pose swapped INTO, not the one left
+behind. Framer expresses the same thing as a `transition` key inside a variant object and inside
+`exit`.
+
+Whether there is a variant swap to time at all is a separate rule, and it reads the pose the element
+does **not** rest at: `variants[initial]` at a mount enter, `variants[exit]` at a removal, each
+against the resting `variants[animate]`. A pose applying no class there declines that swap — the
+enter is skipped and the element rests at `variants[animate]` from the start, and the removal is no
+variant exit, leaving the classic exit. Only at a removal is that non-resting pose also the
+destination, which is why a classless `exit` pose is the one that loses the timing it declared, while
+a classless `animate` pose keeps supplying an enter's.
+
+So slow in against fast out is one declaration:
 
 ```csharp
-// Tweens on its own config — no transition-* utilities anywhere.
-V.Motion(key: "card", className: "w-24 h-24 bg-sky-500",
-    variants: s_fade, animate: isOpen ? "visible" : "hidden",
-    transition: new StyleTransitionConfig { DurationSec = 0.3f });
+static readonly Dictionary<string, MotionVariant> s_menu = new()
+{
+    ["closed"] = new MotionVariant("opacity-0 scale-95",
+        new StyleTransitionConfig { DurationSec = 0.05f }),   // …and out in 0.05s
+    ["open"]   = new MotionVariant("opacity-100 scale-100",
+        new StyleTransitionConfig { DurationSec = 0.5f }),    // in over 0.5s…
+};
+
+V.AnimatePresence(children: new VNode[]
+{
+    V.Motion(key: "menu", className: "w-40 bg-slate-800",
+        variants: s_menu, initial: "closed", animate: "open", exit: "closed"),
+});
 ```
 
-Two consequences worth knowing:
+Three consequences worth knowing:
 
 - **Every Motion animates by default.** `V.Motion` without an explicit `transition` falls back
   to the `Fade` preset's timing, so even a bare Motion tweens its label swaps. Pass
-  `transition: StyleTransitionConfig.None` for an instant, non-animated swap.
+  `transition: StyleTransitionConfig.None` for an instant, non-animated swap — and because the
+  node's config is only a default, `transition: StyleTransitionConfig.None` beside a timed exit pose
+  means exactly that pose animates and the rest are instant. Whether a removal is held as an
+  exiting ghost at all is decided by the same resolved config, so such an exit is not dropped for
+  the node's `None`.
+- **A pose's transition carries the child-orchestration knobs too.** `StaggerChildrenSec`,
+  `DelayChildrenSec` and `When` are read off whichever config drives the swap, so a coordinator's
+  pose can orchestrate its inheriting descendants — and a `When = BeforeChildren` wait is measured
+  from that pose's own `DelaySec + DurationSec` span.
 - **`transition-*` utilities are optional for variant swaps.** They still govern property
   changes outside the variant system (a `hover:` state flipping, an arbitrary class toggle); a
   variant swap's inline transition simply takes precedence while it plays and is released

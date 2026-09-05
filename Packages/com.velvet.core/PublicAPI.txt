@@ -67,6 +67,7 @@
 [Velvet] ctor Velvet.MemoNode.ctor(): System.Void
 [Velvet] ctor Velvet.MemoizeMethodAttribute.ctor(): System.Void
 [Velvet] ctor Velvet.MotionNode.ctor(): System.Void
+[Velvet] ctor Velvet.MotionVariant.ctor(System.String?, Velvet.StyleTransitionConfig?): System.Void
 [Velvet] ctor Velvet.MutableRef`1[T].ctor(T): System.Void
 [Velvet] ctor Velvet.MutationOptions.ctor(System.Func`2[System.Threading.CancellationToken, Velvet.VelvetTask], System.Action?, System.Action`1[System.Exception]?): System.Void
 [Velvet] ctor Velvet.MutationOptions`1[TVariables].ctor(System.Func`3[TVariables, System.Threading.CancellationToken, Velvet.VelvetTask], System.Action`1[TVariables]?, System.Action`2[System.Exception, TVariables]?): System.Void
@@ -481,7 +482,7 @@
 [Velvet] method Velvet.V.Memoized`6(System.Func`1[Velvet.VNode], T1?, T2?, T3?, T4?, T5?, T6?): Velvet.MemoNode
 [Velvet] method Velvet.V.Memoized`7(System.Func`1[Velvet.VNode], T1?, T2?, T3?, T4?, T5?, T6?, T7?): Velvet.MemoNode
 [Velvet] method Velvet.V.Memoized`8(System.Func`1[Velvet.VNode], T1?, T2?, T3?, T4?, T5?, T6?, T7?, T8?): Velvet.MemoNode
-[Velvet] method Velvet.V.Motion(System.String?, System.String?, System.String?, Velvet.StyleTransitionConfig?, System.Nullable`1[System.Single], System.Nullable`1[UnityEngine.UIElements.EasingMode], System.Nullable`1[System.Single], System.Action?, Velvet.VNode?[]?, Velvet.FiberElementProps?, Velvet.FiberEventBinding[]?, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.String?, System.String?, System.String?, System.Type?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.String?, System.String?, System.String?, System.String?): Velvet.MotionNode
+[Velvet] method Velvet.V.Motion(System.String?, System.String?, System.String?, Velvet.StyleTransitionConfig?, System.Nullable`1[System.Single], System.Nullable`1[UnityEngine.UIElements.EasingMode], System.Nullable`1[System.Single], System.Action?, Velvet.VNode?[]?, Velvet.FiberElementProps?, Velvet.FiberEventBinding[]?, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.String?, System.String?, System.String?, System.Type?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, Velvet.MotionVariant]?, System.String?, System.String?, System.String?, System.String?): Velvet.MotionNode
 [Velvet] method Velvet.V.Mount(UnityEngine.UIElements.VisualElement, Velvet.VNode): Velvet.MountedTree
 [Velvet] method Velvet.V.NavLink(System.String, System.String, System.String?, System.String?, System.String?, Velvet.VNode?[]?, System.Boolean, System.Boolean, System.Boolean, System.String?): Velvet.ComponentNode
 [Velvet] method Velvet.V.Navigate(System.String, System.Boolean, System.String?): Velvet.ComponentNode
@@ -785,7 +786,9 @@
 [Velvet] property Velvet.MotionNode.LayoutId: System.String?
 [Velvet] property Velvet.MotionNode.OnEnterComplete: System.Action?
 [Velvet] property Velvet.MotionNode.Transition: Velvet.StyleTransitionConfig?
-[Velvet] property Velvet.MotionNode.Variants: System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?
+[Velvet] property Velvet.MotionNode.Variants: System.Collections.Generic.IReadOnlyDictionary`2[System.String, Velvet.MotionVariant]?
+[Velvet] property Velvet.MotionVariant.ClassName: System.String?
+[Velvet] property Velvet.MotionVariant.Transition: Velvet.StyleTransitionConfig?
 [Velvet] property Velvet.MutableRef`1[T].Current: T
 [Velvet] property Velvet.MutationOptions.MutationFn: System.Func`2[System.Threading.CancellationToken, Velvet.VelvetTask]
 [Velvet] property Velvet.MutationOptions.OnError: System.Action`1[System.Exception]?
@@ -1026,6 +1029,7 @@
 [Velvet] type Velvet.MemoNode
 [Velvet] type Velvet.MemoizeMethodAttribute
 [Velvet] type Velvet.MotionNode
+[Velvet] type Velvet.MotionVariant
 [Velvet] type Velvet.MountedTree
 [Velvet] type Velvet.MutableRef`1[T]
 [Velvet] type Velvet.MutationOptions
