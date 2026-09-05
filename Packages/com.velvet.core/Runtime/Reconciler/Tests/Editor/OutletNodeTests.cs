@@ -27,7 +27,8 @@ namespace Velvet.Tests
     /// <item>Every Outlet mount registers its layout anchor in two per-context identity sets — the Outlet
     /// one the context spine reads to identify Outlet hosts, and the wider anchor one the reconciler reads
     /// to size an anchor against its container; unmounting the Outlet releases both, so dead containers do
-    /// not accumulate across route changes over a long session.</item>
+    /// not accumulate across route changes over a long session, and disposing the reconciler under a live
+    /// tree releases them too.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -362,6 +363,24 @@ namespace Velvet.Tests
             Assert.That(
                 (registeredWhileMounted, context.LayoutAnchors.Contains(anchor)),
                 Is.EqualTo((true, false)));
+        }
+
+        [Test]
+        public void Given_AnOutletStillMounted_When_ItsReconcilerIsDisposed_Then_ItsAnchorRegistrationIsReleased()
+        {
+            // Arrange — mounted and left there. The per-element release above runs on an unmount, and this
+            // is the path with no unmount on it: the reconciler goes down under a live tree.
+            var reconciler = new Reconciler();
+            var root = new VisualElement();
+            reconciler.Reconcile(root, Array.Empty<VNode>(), new VNode[] { V.Outlet() });
+            var context = reconciler.Context;
+            var registeredWhileMounted = context.LayoutAnchors.Count;
+
+            // Act
+            reconciler.Dispose();
+
+            // Assert — a disposed reconciler holds on to none of the elements it made.
+            Assert.That((registeredWhileMounted, context.LayoutAnchors.Count), Is.EqualTo((1, 0)));
         }
 
         #endregion

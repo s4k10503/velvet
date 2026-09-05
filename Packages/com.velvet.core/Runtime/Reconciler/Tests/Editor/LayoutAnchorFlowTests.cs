@@ -215,9 +215,9 @@ namespace Velvet.Tests
                 Is.EqualTo(300f).Within(0.01f));
         }
 
-        // GREEN_ON_BASE(characterization): a route resolving after the mount fills its container the same way
-        // one matched at the mount does. The mount path and the patch path each hand the anchor its share of
-        // the container, and only the patch one runs here.
+        // GREEN_ON_BASE(characterization): a route resolved after the mount fills its container too.
+        // The mount path and the patch path each hand the anchor its share of the container, and only the
+        // patch one runs here.
         [Test]
         public void Given_AnOutletThatMatchedNothingAtMount_When_ALocationThatMatchesArrives_Then_TheRouteBodyFillsTheContainer()
         {
@@ -238,8 +238,8 @@ namespace Velvet.Tests
                 Is.EqualTo(300f).Within(0.01f));
         }
 
-        // GREEN_ON_BASE(characterization): a route body that renders itself away leaves the container to its
-        // siblings. The anchor holding it was out of the flow before this change, so the space was theirs
+        // GREEN_ON_BASE(characterization): a route body that renders itself away releases the container.
+        // The anchor holding it was out of the flow before this change, so the space stayed the siblings'
         // whatever the body did; in the flow it has to hand the space back when the body goes.
         [Test]
         public void Given_AMatchedRouteBodyThatRendersItselfAway_When_ItDoes_Then_ItsGrowingSiblingTakesTheWholeContainer()
@@ -252,15 +252,20 @@ namespace Velvet.Tests
             _mounted = V.Mount(_window.rootVisualElement,
                 WrapInRouter(location, V.Component(GrowingSiblingThenOutletLayoutRender, key: "layout")));
             ForcePanelUpdate(_window.rootVisualElement.panel);
+            var whileTheBodyWasThere = _window.rootVisualElement.Q<VisualElement>("main").layout.height;
 
             // Act
             store.Set(false);
             _mounted.GetSchedulerForTest().DrainImmediateForTest();
             ForcePanelUpdate(_window.rootVisualElement.panel);
 
-            // Assert
+            // Assert — the sibling shared the container while the body was there, and has all of it now.
+            // The share is folded in as a gate rather than a second member of a tuple: a tuple comparison
+            // drops the tolerance the height needs.
             Assert.That(
-                _window.rootVisualElement.Q<VisualElement>("main").layout.height,
+                whileTheBodyWasThere < 300f
+                    ? _window.rootVisualElement.Q<VisualElement>("main").layout.height
+                    : float.NaN,
                 Is.EqualTo(300f).Within(0.01f));
         }
 
