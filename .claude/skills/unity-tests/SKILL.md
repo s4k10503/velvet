@@ -16,7 +16,7 @@ python3 scripts/test_quality/assert_results_from_this_tree.py Logs/results.xml -
 python3 scripts/test_quality/assert_no_inconclusive.py Logs/results.xml
 ```
 
-`-testPlatform PlayMode` for the other suite. `-testFilter "Velvet.Tests.SomeFixture"` narrows it; semicolons separate several, and each is a regular expression over a test's full name rather than a name to look up — never a file's name — for the reason `CLAUDE.md` gives beside this same flag. `.claude/hooks/refuse/filter_selecting_no_test.py` is what catches such a value before the run rather than after the count, for the values and the commands its own header says it reads.
+`-testPlatform PlayMode` for the other suite. `-testFilter "Velvet.Tests.SomeFixture"` narrows it; semicolons separate several, and each is a regular expression over a test's full name rather than a name to look up — never a file's name — for the reason `CLAUDE.md` gives beside this same flag. `.claude/hooks/refuse/filter_selecting_no_test.py` is what catches such a value before the run, for the values and the commands its own header says it reads. Afterwards little does. `assert_results_from_this_tree.py` refuses a run no assembly of this worktree reported into, which is what a filter selecting nothing at all leaves behind — but measured on this repository, one selecting value beside one that selects nothing puts an assembly in the results, and both asserters then pass over the smaller set with nothing naming the value that ran nothing.
 
 **Write into the worktree's own Logs directory, never /tmp/results.xml.** That path is one file for every worktree and every session on the machine, and the compile-error paragraph below is what it costs.
 

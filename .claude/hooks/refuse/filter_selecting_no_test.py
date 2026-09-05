@@ -4,10 +4,9 @@
 A filter written from the names of the files a change touched runs a set nobody chose, and neither way
 it goes wrong is loud. A value that selects nothing leaves the run green over whatever is left of the
 filter; a value that selects one of a file's several fixtures leaves it green over the smaller set,
-with a count that reads like a count over the whole file. Both shapes are in this project's own
-history: replayed over the 1910 filtered Bash commands its transcripts hold, 27 values in 48 of them
-select nothing in the tree the command names -- `Velvet.Tests.CommitPhaseEdgeCaseTests` among them,
-whose file declares nine classes and none of that name.
+with a count that reads like a count over the whole file. Both shapes are in this repository's own
+sources: `Runtime/Styling/Tests/Editor/VariantGatedTypographyPassTests.cs` declares three fixtures and
+none of its own name.
 
 What a value IS decides which question this may ask, and `CLAUDE.md` states that beside the flag.
 "Does any file declare this class" is not the question: `StarterSample` is declared by nothing and
@@ -16,13 +15,9 @@ against the names the tree's own test sources give the runner.
 
 Which tree is the command's to settle, and where its text does not settle it this says nothing rather
 than reading the directory the tool call started in. A session drives sibling worktrees, so the two
-are different trees, and a fixture the other holds reads as a name nothing declares -- measured over
-those same transcripts, refusing a run of a fixture that was there. What that costs was measured the
-same way: of the refusals the stand-down drops, the ones whose tree is still on disk divide into that
-fixture, which the tree the run opens does hold, and values it does not -- and there the fallback was
-right by landing on the tree the run opens, which no part of the command said it would.
+are different trees, and a fixture the other holds reads as a name nothing declares.
 
-Four values it declines to answer for, each because answering would mean guessing:
+Five values it declines to answer for, each because answering would mean guessing:
 
 - one starting with `!`, which excludes rather than selects. An exclusion matching nothing leaves the
   run LARGER than asked, which the count shows, and the failure here is a run smaller than asked.
@@ -31,22 +26,35 @@ Four values it declines to answer for, each because answering would mean guessin
   and whitespace is a literal the runner keeps; a value carrying more is a pattern whose author is
   writing one. It is also where the reading below is weakest, a case name assembled from arguments
   being spelled with brackets and quotes.
-- one whose leading segments name a fixture exactly and whose last segment names no case of it.
+- one whose leading segments run out exactly where some fixture's name does, its last segment naming
+  no case of that fixture that is here to be read. The fixture may be spelled short of its namespace
+  or short of its own first characters, an unanchored value being free to start partway into a name.
 - one carrying no separator at all and compared unanchored, which is that same gap with nothing in
   front of it to pin a fixture: a case name is then what the value may be matching, and case names
   are what this reads fewest of.
+- one whose opening segment occurs in no source under either root, which is a value about an
+  assembly this cannot see -- a test a package brings with it, or any filter posed where there are no
+  test sources at all.
 
-And a command it declines for, whatever its values: one whose own text writes a file this would have
-read for the names it carries. The hook is posed before the command, so a fixture written in a heredoc
-is not on disk yet -- and a refused hook discards the whole command, so the refusal takes the source
-with the run it was for.
+And two shapes of command it declines for, whatever their values, both about the tree the run will
+find rather than about the filter. One is a segment ahead of the run led by a program this cannot
+place the writes of, `unread_writes` holding which names it can; the set is what is read, so a
+program nobody has thought of stands the command down rather than being refused against a tree it may
+have changed. The other is a write this DOES place, onto a file the reading below would have taken
+names from: the hook is posed before the command, so a fixture written in a heredoc is not on disk
+yet, and a refused hook discards the whole command, so the refusal takes the source with the run it
+was for.
 
-The last two declines are where the reading's under-approximation costs something. Of the 4339 case
-names one EditMode run of this repository reports, 99 are missing from it: a name composed through a
+The last three declines are where the reading's under-approximation costs something. Of the 4328 case
+names one EditMode run of this repository reports, 125 are missing from it: a name composed through a
 variable or an interpolation, a case an abstract owner writes and each concrete heir reports as its
-own, a name assembled from a case's arguments. Three of that run's 355 fixtures are missing too --
-one a test a package brings with it, declared outside `Packages` and `Assets`, and two types that nest
-a fixture and carry no case of their own.
+own, a name assembled from a case's arguments. Five of the 352 fixtures reporting a case are missing
+too -- one a test a package brings with it, declared outside `Packages` and `Assets`, and four nested
+fixtures, which the run names below the type nesting them and this names beside it. Buying those back
+is what the declines are for, and the price is measured rather than argued: over that run's 354 fixture
+names and all three spellings of each of its 4328 case names, one value is refused -- the package's
+fixture spelled without its namespace, a case of it behind, its opening segment landing inside an
+unrelated type's name here so that the decline above does not fire.
 
 Exit 2 refuses; exit 1 lets the tool through, so nothing here may raise.
 """
@@ -60,7 +68,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 
-from shell_commands import comment_opens_at, tokens_of, unexpanded, visible_segments  # noqa: E402
+from shell_commands import (comment_opens_at, leading_program, tokens_of,  # noqa: E402
+                            unexpanded, visible_segments)
 
 HOOK_TOOLS = {"Bash"}
 
@@ -80,12 +89,35 @@ UNREADABLE_PROBE = {"command": 'Unity -runTests -batchmode -projectPath "$PWD" '
 FILTER_FLAG = "-testFilter"
 
 # The token that says the segment runs the test runner. Without it the operand after a `-testFilter`
-# written as an argument to something else is read as a filter -- `grep -n -testFilter CLAUDE.md`
-# offers `CLAUDE.md`. Measured over this project's transcripts, requiring it costs 1 of the 1712
-# segments that carry the flag as a token at all, and that one is a grep for the flag's own name.
+# written as an argument to something else is read as a filter, and a `-projectPath` there settles a
+# tree the run never opens. Measured over this project's transcripts, the only segment carrying the
+# flag that requiring it costs is a grep for the flag's own name.
 RUNNER_FLAG = "-runTests"
 
 PROJECT_FLAG = "-projectPath"
+
+# Programs a segment ahead of the run may be led by without this losing sight of what the command
+# writes. Three groups, and nothing else: the ones `tracked_writes.py` places the writes of, as
+# narrowly as the list it publishes of what it does not read; the ones carrying no way to name a file
+# they write, so a redirect that module does place is the whole of it; and the ones whose writing
+# creates no name for the reading below -- a directory, an empty file, a mode, a removal that leaves
+# the tree smaller. `awk`, `find` and `xargs` are out for running a write from inside an operand, and
+# `sed`, `sort` and `uniq` for `w`, `-o` and a second operand, each a way of naming a file to write
+# that no published list carries. The set is what is read; every other name stands the command down,
+# so one nobody has thought of costs a check rather than a wrong refusal.
+#
+# A loop's or a conditional's own words are here too, and the words that leave one, the body between
+# them being a segment of its own that this asks the same question of;
+# `shell_commands.LEADING_WORDS` carries the ones that open a segment rather than stand as one.
+ACCOUNTED = {"cp", "mv",
+             "cat", "echo", "printf", "grep", "head", "tail", "wc", "ls", "diff", "tr", "cut",
+             "ps", "which", "pwd", "date", "basename", "dirname", "true", "false", "test", "[",
+             "cd", "pushd", "popd", "mkdir", "rmdir", "rm", "touch", "chmod", "sleep",
+             "for", "done", "fi", "case", "esac", "select", "exit", "break", "continue"}
+
+# A substitution runs a program of its own inside a segment the word in front of it would otherwise
+# settle, so a segment carrying one is not placed by that word.
+SUBSTITUTION = re.compile(r"\$\(|`")
 
 # What the shell expands `-projectPath "$PWD"` to is where the command runs, which is read here rather
 # than given up on: it is the spelling `CLAUDE.md` documents beside the flag, and standing down on it
@@ -139,38 +171,77 @@ def _writes():
     return tracked_writes
 
 
+def _cut_segments(command):
+    """Each segment the mask left standing, cut where its comment opens.
+
+    Visible, because `command_segments` hands back a heredoc body as a segment of its own text, and
+    a body carrying this repository's own documented recipe was read as a run of it. Cut, because
+    what follows an unquoted `#` never reaches a program.
+    """
+    found = []
+    for segment in visible_segments(command):
+        at = comment_opens_at(segment)
+        found.append(segment if at is None else segment[:at])
+    return found
+
+
+def _operands_of(command, flag):
+    """Each operand `flag` takes, over the segments that invoke the test runner.
+
+    Both flags below are read the same way, so that neither can settle a question about a segment
+    the other does not read: an operand written in a note beside the command, or handed to a program
+    that is not the runner, decides nothing here.
+    """
+    found = []
+    for segment in _cut_segments(command):
+        tokens = tokens_of(segment)
+        if RUNNER_FLAG not in tokens:
+            continue
+        for index, token in enumerate(tokens):
+            if token == flag and index + 1 < len(tokens):
+                found.append(tokens[index + 1])
+    return found
+
+
 def filters_in(command):
     """Every value a `-testFilter` in this command asks for, split at the semicolons that separate them.
-
-    Read over the segments the mask left standing, and each cut at its comment: `command_segments`
-    hands back a heredoc body as a segment of its own text, and a body carrying this repository's own
-    documented recipe was read as a run of it.
 
     Split the way the runner splits it: empty parts dropped, and nothing trimmed. Trimming here reads
     `"A; B"` as two names and lets it through, where the runner keeps the space and the half behind it
     matches nothing -- a run green over one value of two, which is the failure this exists to catch.
     """
-    names = []
-    for segment in visible_segments(command):
-        at = comment_opens_at(segment)
-        tokens = tokens_of(segment if at is None else segment[:at])
-        if RUNNER_FLAG not in tokens:
+    return [part
+            for operand in _operands_of(command, FILTER_FLAG)
+            for part in operand.split(";") if part]
+
+
+def unread_writes(command):
+    """Whether a segment ahead of the run could write a file this cannot place.
+
+    Which names the tree carries when the run opens it is what every verdict below rests on, and a
+    write this cannot see leaves that unknown. So the question is asked of the whole segment rather
+    than of a write shape, `ACCOUNTED` holding the words a segment may open with: every other name --
+    `python3`, `tee`, `git`, one nobody has thought of -- falls on the side that says nothing. A
+    refused hook discards the whole command, so a source written there is destroyed by the very
+    refusal its absence produced.
+
+    Ahead of the run, because the shell runs the segments in order and one behind the last of them
+    cannot change the tree that run opened. A run of the runner ahead of another is not asked about:
+    it is the invocation every verdict here is about, and a reading unable to place its writes could
+    place no run at all.
+    """
+    segments = _cut_segments(command)
+    words = [tokens_of(segment) for segment in segments]
+    last = max((index for index, one in enumerate(words) if RUNNER_FLAG in one), default=-1)
+    for segment, tokens in zip(segments[:last], words[:last]):
+        if RUNNER_FLAG in tokens:
             continue
-        for index, token in enumerate(tokens):
-            if token == FILTER_FLAG and index + 1 < len(tokens):
-                names += [part for part in tokens[index + 1].split(";") if part]
-    return names
-
-
-def _named_projects(command):
-    """What each `-projectPath` names, over the segments the mask left standing."""
-    found = []
-    for segment in visible_segments(command):
-        tokens = tokens_of(segment)
-        for index, token in enumerate(tokens):
-            if token == PROJECT_FLAG and index + 1 < len(tokens):
-                found.append(tokens[index + 1])
-    return found
+        if SUBSTITUTION.search(segment):
+            return True
+        index = leading_program(tokens)
+        if index < len(tokens) and os.path.basename(tokens[index]) not in ACCOUNTED:
+            return True
+    return False
 
 
 def project_of(command, cwd):
@@ -185,7 +256,7 @@ def project_of(command, cwd):
     Two operands naming different trees is one of the shapes that goes unsettled: which of them the
     filter beside them is posed against wants a reading per segment, which is that same question.
     """
-    named = set(_named_projects(command))
+    named = set(_operands_of(command, PROJECT_FLAG))
     if len(named) != 1:
         return None
     value = named.pop()
@@ -203,10 +274,10 @@ def project_of(command, cwd):
 def writes_a_source(command, cwd, project):
     """The files this command's own text writes that the tree below would read for the names it holds.
 
-    A command that writes a fixture and then runs it is posed here before the write, so the name it
-    asks for is one the tree cannot hold yet -- and a refused hook discards the whole command, taking
-    the source in the heredoc with the run. `tracked_writes.py` owns which shapes of write are read
-    and how narrow that is.
+    The half of `unread_writes`'s question that a segment this DOES place still leaves open: a `cat`
+    into a fixture is placed exactly and is still a name the tree cannot hold until the command runs.
+    Asked over the whole command rather than ahead of the run alone, because a refused hook discards
+    the command, so a source written behind the run is destroyed by the refusal too.
     """
     harness = _harness()
     found = []
@@ -243,7 +314,6 @@ class Tree:
         self.root = root
         self.texts = {}
         self.parsed = {}
-        self.declarations = {}
         # The suites above the fixtures, which a value may select whole subtrees by: one per namespace,
         # named for it, and one per assembly, named for the file Unity compiled it into.
         self.suites = set()
@@ -264,8 +334,6 @@ class Tree:
                     except OSError:
                         continue
                     self.texts[relative] = text
-                    for found in harness.CSHARP_TYPE.finditer(text):
-                        self.declarations.setdefault(found.group(1), set()).add(relative)
                     for found in harness.CSHARP_NAMESPACE.finditer(text):
                         declared = found.group(1)
                         self.suites |= {declared[:at] for at, character in enumerate(declared)
@@ -278,9 +346,6 @@ class Tree:
             return
         if named:
             self.suites.add(named + ".dll")
-
-    def __bool__(self):
-        return bool(self.texts)
 
     def classes_in(self, relative):
         """{fixture name, dotted as `base_red_check.py` writes it: the case names under it} for one file.
@@ -319,18 +384,6 @@ class Tree:
                    for segment in segments]
         return min(holding, key=len)
 
-    def declaring(self, segment):
-        """The files declaring a type whose whole name this segment matches.
-
-        For the question asked of a fixture name and nothing under it. The last dotted component of
-        such a name is the type, so a whole-name comparison against the fixture reduces to one against
-        a declaration. The scan above cannot narrow that at all: a head's leading segments are its
-        namespace's, and a file in a namespace spells it.
-        """
-        pattern = re.compile(segment)
-        return {relative for name, files in self.declarations.items()
-                if pattern.fullmatch(name) for relative in files}
-
 
 class Value:
     """One `-testFilter` value, and what it selects."""
@@ -344,10 +397,16 @@ class Value:
         self.anchored = written if anchored is None else anchored
         self.readable = bool(PLAIN.fullmatch(self.text)) and not self.excludes
         self.pattern = re.compile(self.text) if self.readable else None
+        self.ending = re.compile(self.text + r"\Z") if self.readable else None
         self.reach = None
 
     def hits(self, name):
         probe = self.pattern.fullmatch if self.anchored else self.pattern.search
+        return bool(probe(name))
+
+    def tails(self, name):
+        """Whether this runs out exactly where `name` does, starting wherever it may start in one."""
+        probe = self.pattern.fullmatch if self.anchored else self.ending.search
         return bool(probe(name))
 
     def selected(self, tree):
@@ -375,24 +434,45 @@ class Value:
         reach = self.selected(tree)
         return reach is None or bool(reach)
 
+    def may_be_outside_the_reading(self, tree):
+        """Whether this value's opening segment occurs in no source under either root.
+
+        Those two roots are the whole of what is read, and a test a package brings with it is
+        compiled out of `Library`, which is gigabytes and is not walked. A name the tree does carry
+        is written out in the file declaring it, and a value matching one carries its opening segment
+        inside that name -- so a segment occurring in no file at all is a value about a tree this
+        cannot see rather than a name that is not there. Containment rather than a comparison of
+        names, which is what leaves a segment sitting inside an unrelated name answered for. A
+        directory holding no test source is the same answer arrived at with nothing to occur in,
+        which is why no separate reading of the tree's emptiness sits above this one.
+        """
+        opening = self.text.split(".")[0]
+        return not any(opening in text for text in tree.texts.values())
+
     def may_be_a_case_name(self, tree):
         """Whether the case names this reads are too few to say this value names none of them.
 
         Not every case name is in the sources to be read: one composed from a literal handed to
         `SetName` through a variable, one an abstract owner writes and each heir elsewhere reports as
         its own. Whether that leaves this value unanswerable turns on what sits in front of its last
-        segment. A head naming one fixture exactly makes the segment behind it a case name of that
-        fixture. No head at all leaves an unanchored value matched against a whole name wherever it
-        occurs in one, a case name included -- while an anchored value has to equal a full name, and a
-        case's carries the fixture it runs under, which a value with no separator cannot.
+        segment. A full name joins a fixture to its case with a dot, so for the segment behind this
+        value's last separator to be a case name at all, the segments in front of it have to run out
+        exactly where some fixture's name does -- a comparison against the END of one rather than
+        against the whole of one, an unanchored value being free to start partway into it. `HeadRemove`
+        under `ReconcilerKeyedSuffixTrimTests` is the case this is for, and its fixture spelled
+        without the namespace is the head that reaches no further than the fixture's last character.
+
+        No head at all leaves an unanchored value matched against a whole name wherever it occurs in
+        one, a case name included -- while an anchored value has to equal a full name, and a case's
+        carries the fixture it runs under, which a value with no separator cannot.
         """
         if "." not in self.text:
             return not self.anchored
-        head = Value(self.text.rsplit(".", 1)[0], anchored=True)
+        head = Value(self.text.rsplit(".", 1)[0], anchored=self.anchored)
         if not head.readable:
             return False
-        return any(head.hits(owner)
-                   for relative in tree.declaring(head.text.rsplit(".", 1)[-1])
+        return any(head.tails(owner)
+                   for relative in tree.candidates(head.text)
                    for owner in tree.classes_in(relative))
 
 
@@ -402,7 +482,7 @@ def stem_declares(tree, value):
     for relative in tree.texts:
         if Path(relative).stem != stem:
             continue
-        classes = {owner for owner, cases in tree.classes_in(relative).items() if cases}
+        classes = set(tree.classes_in(relative))
         if classes:
             return relative, sorted(classes)
     return None
@@ -468,8 +548,8 @@ def _unselected(tree, values):
             reached.setdefault(relative, set()).update(owners)
     missed = []
     for relative in sorted(reached):
-        unselected = sorted(owner for owner, cases in tree.classes_in(relative).items()
-                            if cases and owner not in reached[relative])
+        unselected = sorted(owner for owner in tree.classes_in(relative)
+                            if owner not in reached[relative])
         if unselected:
             missed.append((relative, unselected))
     return missed
@@ -490,22 +570,19 @@ def main():
         if not asked:
             return 0
         project = project_of(command, event.get("cwd"))
-        if not project or not os.path.isdir(project):
+        if not project:
             return 0
-        if writes_a_source(command, event.get("cwd"), project):
+        if unread_writes(command) or writes_a_source(command, event.get("cwd"), project):
             return 0
 
         tree = Tree(_harness(), project)
-        if not tree:
-            return 0
-
         selecting, unselecting = [], []
         for value in asked:
             if not value.readable:
                 continue
             if value.selects(tree):
                 selecting.append(value)
-            elif not value.may_be_a_case_name(tree):
+            elif not value.may_be_a_case_name(tree) and not value.may_be_outside_the_reading(tree):
                 unselecting.append(value)
 
         if unselecting:

@@ -91,7 +91,8 @@ SOURCES = {
     "SoloTests.cs": fixture("SoloTests"),
     "PoolBaseTests.cs": fixture("PoolBaseTests", sealed=False),
     "WidgetTests.cs": fixture("WidgetPoolTests", base="PoolBaseTests"),
-    "InheritedOnlyTests.cs": fixture("InheritedOnlyPoolTests", base="PoolBaseTests", cases=False),
+    "InheritedOnlyTests.cs": fixture("InheritedOnlyPoolTests", base="PoolBaseTests", cases=False)
+    + fixture("InheritedOnlyNeighbourTests"),
     "NestedTests.cs": nesting("NestedOuterTests", "InnerTests") + fixture("NestedNeighbourTests"),
     "ComposedTests.cs": composed("ComposedTests", "Given_C_When_D_Then_E")
     + fixture("ComposedNeighbourTests"),
@@ -102,6 +103,15 @@ SAMPLE_SOURCES = {
     "SampleTests.cs": fixture("SampleTests") + fixture("SampleEdgeTests"),
 }
 
+# Two files a Unity project holds and does not compile a test out of. The tree that reads them
+# answers about names the runner never reports, which is a stand-down over a value that selects
+# nothing -- the one verdict a value naming a fixture that IS there cannot be told apart from.
+UNCOMPILED_SOURCES = {
+    "Packages/com.velvet.core/Generators~/Tests/Editor/PrunedTests.cs": fixture("PrunedTests"),
+    "Packages/com.velvet.core/Runtime/Probe/OutsideATestFolderTests.cs":
+        fixture("OutsideATestFolderTests"),
+}
+
 # A second project, holding fixtures the first does not. Which tree a command is judged against is
 # invisible while both hold the same names, so the pair is what a case about the wrong tree needs.
 # Two of them in the one file, so that reading this tree and reading neither are separable: a filter
@@ -109,6 +119,11 @@ SAMPLE_SOURCES = {
 SIBLING_SOURCES = {
     "SiblingOnlyTests.cs": fixture("SiblingOnlyTests") + fixture("SiblingOnlyEdgeTests"),
 }
+
+# A directory whose NAME is the text of an unexpanded operand, holding the sibling's sources. Without
+# it, a reading that took that text for a path would land on nothing and stand down for that instead,
+# which is the same verdict by a route the case is not about.
+UNEXPANDED_DIRECTORY = "$WORKTREE"
 
 
 class FilterSelectingNoTestTests(unittest.TestCase):
@@ -122,10 +137,15 @@ class FilterSelectingNoTestTests(unittest.TestCase):
                 (directory / name).write_text(HEADER + body + FOOTER, encoding="utf-8")
         (cls.project / TEST_DIRECTORY / (ASSEMBLY + ".asmdef")).write_text(
             json.dumps({"name": ASSEMBLY}), encoding="utf-8")
+        for where, body in UNCOMPILED_SOURCES.items():
+            path = cls.project / where
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(HEADER + body + FOOTER, encoding="utf-8")
         cls.sibling = Path(tempfile.mkdtemp(prefix="velvet-test-filter-sibling-"))
-        (cls.sibling / TEST_DIRECTORY).mkdir(parents=True)
-        for name, body in SIBLING_SOURCES.items():
-            (cls.sibling / TEST_DIRECTORY / name).write_text(HEADER + body + FOOTER, encoding="utf-8")
+        for root in (cls.sibling, cls.project / UNEXPANDED_DIRECTORY):
+            (root / TEST_DIRECTORY).mkdir(parents=True)
+            for name, body in SIBLING_SOURCES.items():
+                (root / TEST_DIRECTORY / name).write_text(HEADER + body + FOOTER, encoding="utf-8")
 
     @classmethod
     def tearDownClass(cls):
@@ -197,10 +217,12 @@ class FilterSelectingNoTestTests(unittest.TestCase):
     def test_Given_AFilterNamingAHeirThatDeclaresNoCaseOfItsOwn_When_ItIsPosed_Then_ItGoesThrough(self):
         # Arrange -- every case it runs is inherited, so a reading that took a fixture to be a class
         # some case is written in resolves this to nothing and refuses a run of the whole class.
+        # Read on stderr rather than through the notice, its file declaring a second fixture that a
+        # notice is entitled to name.
         answer = self.run_with("Velvet.Tests.InheritedOnlyPoolTests")
 
         # Act / Assert
-        self.assertEqual((answer[0], self.notice(answer)), (0, ""))
+        self.assertEqual((answer[0], answer[2]), (0, ""))
 
     def test_Given_AMultiFilterWhoseSecondValueSelectsNothing_When_ItIsPosed_Then_ItIsRefused(self):
         # Arrange -- the semicolon-separated form, where the value in front is what made the
@@ -226,10 +248,11 @@ class FilterSelectingNoTestTests(unittest.TestCase):
     # ------------------------------------------------------------------------------------------
 
     def test_Given_AFilterNamingNoClassButMatchingSeveral_When_ItIsPosed_Then_ItGoesThrough(self):
-        # Arrange -- nothing declares `Pair`, and it selects both classes of the file that starts with
-        # it. This is the shape a reading that asked which class a value names refuses, and the run it
-        # refuses is one that works.
-        answer = self.run_with("Pair")
+        # Arrange -- nothing declares `Velvet.Tests.Pair`, and it selects both classes of the file
+        # whose names start with it. This is the shape a reading that asked which class a value names
+        # refuses, and the run it refuses is one that works. Spelled with the namespace on it, because
+        # a value with no separator is declined on its shape before any of that is read.
+        answer = self.run_with("Velvet.Tests.Pair")
 
         # Act / Assert
         self.assertEqual((answer[0], self.notice(answer)), (0, ""))
@@ -260,13 +283,15 @@ class FilterSelectingNoTestTests(unittest.TestCase):
         # Act / Assert
         self.assertEqual((answer[0], self.notice(answer)), (0, ""))
 
-    def test_Given_AFilterNamingACaseRatherThanAClass_When_ItIsPosed_Then_ItIsNotTakenForAnUnknownName(self):
-        # Arrange -- `-testFilter` takes a case name as readily as a class one, and the case segment is
-        # not a class anywhere, so a reading that knew only classes would refuse this.
-        answer = self.run_with("Velvet.Tests.SoloTests.Given_A_When_B_Then_C")
+    def test_Given_AFilterNamingACaseTakenFromItsMethod_When_ItIsPosed_Then_ItsFilesSiblingIsNamed(self):
+        # Arrange -- `-testFilter` takes a case name as readily as a class one, and the case segment
+        # is not a class anywhere. Posed against a file declaring a second fixture, so that reading
+        # the name off the method is separable from declining to answer for it: the notice is written
+        # only where the value was found to select, and the decline writes nothing.
+        answer = self.run_with("Velvet.Tests.PairTests.Given_A_When_B_Then_C")
 
         # Act / Assert
-        self.assertEqual((answer[0], self.notice(answer)), (0, ""))
+        self.assertEqual((answer[0], "PairEdgeTests" in self.notice(answer)), (0, True))
 
     def test_Given_AFilterNamingACaseOfAKnownFixtureThatIsNotDeclared_When_ItIsPosed_Then_TheGuardStandsDown(self):
         # Arrange -- a case name a fixture composes is nowhere in the sources to be read, so a class
@@ -376,37 +401,116 @@ class FilterSelectingNoTestTests(unittest.TestCase):
     # What the guard declines to answer
     # ------------------------------------------------------------------------------------------
 
-    def test_Given_ACommandThatOnlyMentionsTheFlag_When_ItIsPosed_Then_ItIsNotReadAsARun(self):
-        # Arrange -- the operand after the flag is a file here, not a filter, and the token that says
-        # a test runner is being invoked is what separates them.
-        answer = self.judge("grep -n -testFilter CLAUDE.md")
+    def test_Given_AProjectPathInASegmentThatRunsNothing_When_ARunSitsBesideIt_Then_OnlyTheRunsTreeIsRead(self):
+        # Arrange -- the operand after the echoed flag names a tree, and the token that says a test
+        # runner is being invoked is what keeps it out of the answer. Read over every segment, the
+        # two names disagree and the whole command goes unjudged, so a note about another worktree
+        # silences the guard for the run beside it.
+        answer = self.judge("echo -projectPath {}; "
+                            'Unity -runTests -batchmode -projectPath "{}" '
+                            "-testFilter Velvet.Tests.PairTests".format(self.sibling, self.project))
+
+        # Act / Assert
+        self.assertEqual((answer[0], "PairEdgeTests" in self.notice(answer)), (0, True))
+
+    def test_Given_AnAbsoluteProjectPathBesideAMoveItCannotRead_When_ItIsPosed_Then_ThatTreeIsRead(self):
+        # Arrange -- an operand naming the tree outright needs no directory to be placed in, and
+        # giving it up because the move in front of it is unreadable stands down on a command that
+        # says exactly which tree it opens.
+        answer = self.judge('cd "$WORKTREE" && Unity -runTests -projectPath "{}" '
+                            "-testFilter Velvet.Tests.SoloTests".format(self.sibling))
+
+        # Act / Assert
+        self.assertEqual((answer[0], "SoloTests" in answer[2]), (2, True))
+
+    def test_Given_ASubstitutionAheadOfTheRun_When_ItIsPosed_Then_TheGuardStandsDown(self):
+        # Arrange -- what runs inside a substitution is not the word the segment opens with, so the
+        # program deciding whether the tree can change between here and the run is one no reading of
+        # the leading word reaches. The word in front of this one IS read, and reads as harmless.
+        answer = self.judge("mkdir -p $(dirname Logs/run.log) && "
+                            'Unity -runTests -projectPath "{}" '
+                            "-testFilter Velvet.Tests.NoSuchTests".format(self.project))
 
         # Act / Assert
         self.assertEqual((answer[0], self.notice(answer)), (0, ""))
 
+    def test_Given_TwoRunsOfOneTreeInOneCommand_When_TheSecondSelectsNothing_Then_ItIsRefused(self):
+        # Arrange -- the run in front is a program like any other to a reading that asks what each
+        # segment writes, and one that stopped there would stand down on every command holding two
+        # runs, which is what a session poses to compare a filter against a whole suite.
+        answer = self.judge('Unity -runTests -projectPath "{0}" -testFilter Velvet.Tests.SoloTests; '
+                            'Unity -runTests -projectPath "{0}" -testFilter Velvet.Tests.NoSuchTests'
+                            .format(self.project))
+
+        # Act / Assert
+        self.assertEqual((answer[0], "NoSuchTests" in answer[2]), (2, True))
+
+    def test_Given_AFilterNamingAFixtureUnderADirectoryUnityDoesNotCompile_When_ItIsPosed_Then_ItIsRefused(self):
+        # Arrange -- a `~` suffix is the layout Unity reads as a subtree it does not compile, so a
+        # fixture declared below one is a name the runner never reports and a filter asking for it
+        # runs nothing.
+        code, _, said = self.run_with("Velvet.Tests.PrunedTests")
+
+        # Act / Assert
+        self.assertEqual((code, "PrunedTests" in said), (2, True))
+
+    def test_Given_AFilterNamingAFixtureOutsideATestFolder_When_ItIsPosed_Then_ItIsRefused(self):
+        # Arrange -- which assembly a source is compiled into is decided by where it sits, and a
+        # file outside the test folders is in none of them, so nothing it declares is a name the
+        # runner carries.
+        code, _, said = self.run_with("Velvet.Tests.OutsideATestFolderTests")
+
+        # Act / Assert
+        self.assertEqual((code, "OutsideATestFolderTests" in said), (2, True))
+
+    def test_Given_AFilterNamingASuiteBesideOneClassOfAFile_When_ItIsPosed_Then_NothingIsLeftToSay(self):
+        # Arrange -- the value naming a suite puts every file into the run whole, so the one beside
+        # it leaves nothing out however few classes it names. Reporting over the rest of the filter
+        # instead names siblings the suite is already running.
+        answer = self.run_with("^Velvet.Tests$;Velvet.Tests.PairTests")
+
+        # Act / Assert
+        self.assertEqual((answer[0], self.notice(answer)), (0, ""))
+
+    def test_Given_AFilterLeavingOutAHeirWhoseCasesAreAllInherited_When_ItIsPosed_Then_ThatHeirIsNamed(self):
+        # Arrange -- a class deriving from an abstract fixture runs the cases written there, so it is
+        # a fixture the run leaves out like any other. Naming only the classes some case is written
+        # in drops it from the notice, and the file then reads as fully covered.
+        answer = self.run_with("Velvet.Tests.InheritedOnlyNeighbourTests")
+
+        # Act / Assert
+        self.assertEqual((answer[0], "InheritedOnlyPoolTests" in self.notice(answer)), (0, True))
+
     def test_Given_AFilterInsideAHeredocBody_When_TheFileIsWritten_Then_ItIsNotReadAsARun(self):
-        # Arrange -- the body of a written file is not a command, and this project's own documented
-        # recipe is one of the strings a session writes. A refused hook discards the whole command, so
-        # reading a body as a run loses the file with it.
+        # Arrange -- the body of a written file is not a command, and the flag is one of the strings a
+        # note about the recipe carries. The run behind the heredoc is the tree's, and the value in
+        # the body selects nothing there, so reading the body adds a refusal to a command that works.
         answer = self.judge("cat > notes.md <<'EOF'\nRun a subset with:\n"
                             '"$UNITY" -runTests -batchmode -testFilter "Velvet.Tests.NoSuchTests"\n'
-                            "EOF")
+                            "EOF\n"
+                            'Unity -runTests -batchmode -projectPath "{}" '
+                            "-testFilter Velvet.Tests.SoloTests".format(self.project))
 
         # Act / Assert
         self.assertEqual((answer[0], self.notice(answer)), (0, ""))
 
     def test_Given_AFilterInsideAShellComment_When_ItIsPosed_Then_ItIsNotReadAsARun(self):
         # Arrange -- the same shape one line further in: what follows an unquoted `#` never reaches a
-        # program, and the recipe is what a note beside a command quotes.
-        answer = self.judge("ls  # Unity -runTests -testFilter Velvet.Tests.NoSuchTests")
+        # program, and a note beside a command is where the alternative it was not run with is kept.
+        answer = self.judge('Unity -runTests -batchmode -projectPath "{}" '
+                            "-testFilter Velvet.Tests.SoloTests  "
+                            "# -testFilter Velvet.Tests.NoSuchTests".format(self.project))
 
         # Act / Assert
         self.assertEqual((answer[0], self.notice(answer)), (0, ""))
 
     def test_Given_AnUnexpandedFilter_When_ItIsPosed_Then_TheGuardStandsDown(self):
         # Arrange -- the shell rewrites this before the runner sees it, so the text here selects
-        # nothing whatever the tree holds, which for this guard would be a refusal.
-        answer = self.judge('Unity -runTests -testFilter "$FIXTURES"')
+        # nothing whatever the tree holds, which for this guard would be a refusal. Spelled as a name
+        # half of which is a variable, the whole-variable form being declined for having no separator
+        # in it before its alphabet is ever read.
+        answer = self.judge('Unity -runTests -projectPath "{}" '
+                            '-testFilter "Velvet.Tests.$FIXTURE"'.format(self.project))
 
         # Act / Assert
         self.assertEqual((answer[0], self.notice(answer)), (0, ""))
@@ -414,8 +518,11 @@ class FilterSelectingNoTestTests(unittest.TestCase):
     def test_Given_AnUnexpandedProjectPath_When_AFilterIsPosedWithIt_Then_TheGuardStandsDown(self):
         # Arrange -- the run reads a tree the command names by variable. Answering from the event's
         # own directory instead reads whichever checkout the session sits in, where a fixture of the
-        # other worktree is a name nothing declares.
-        answer = self.judge('Unity -runTests -projectPath "$W" -testFilter Velvet.Tests.NoSuchTests')
+        # other worktree is a name nothing declares. A directory named for the operand's own text
+        # sits under that directory, so that a reading taking the text for a path lands on a tree
+        # rather than on nothing and the stand-down stays this guard's decision.
+        answer = self.judge('Unity -runTests -projectPath "{}" -testFilter Velvet.Tests.PairTests'
+                            .format(UNEXPANDED_DIRECTORY))
 
         # Act / Assert
         self.assertEqual((answer[0], self.notice(answer)), (0, ""))
@@ -433,8 +540,10 @@ class FilterSelectingNoTestTests(unittest.TestCase):
 
     def test_Given_ACommandMovingIntoADirectoryItDoesNotSpell_When_ItIsPosed_Then_TheGuardStandsDown(self):
         # Arrange -- the run happens in a worktree the command names by variable, and the same wrong
-        # tree would be read as in the unexpanded-path case above.
-        answer = self.judge('cd "$WORKTREE" && Unity -runTests -testFilter Velvet.Tests.PairTests')
+        # tree would be read as in the unexpanded-path case above. The operand IS readable here; it
+        # is where the shell will be standing when it is read that is not.
+        answer = self.judge('cd "$WORKTREE" && Unity -runTests -projectPath "$PWD" '
+                            "-testFilter Velvet.Tests.PairTests")
 
         # Act / Assert
         self.assertEqual((answer[0], self.notice(answer)), (0, ""))
@@ -506,6 +615,34 @@ class FilterSelectingNoTestTests(unittest.TestCase):
         # Act / Assert
         self.assertEqual((answer[0], "FreshTests" in answer[2]), (2, True))
 
+    def test_Given_ACommandWritingThroughAProgramTheReadingCannotPlace_When_ItRunsAfter_Then_TheGuardStandsDown(self):
+        # Arrange -- the same destruction as the heredoc above, through a program whose writes no
+        # reading of a command's text can enumerate. What decides it is the program leading the
+        # segment rather than the write inside it, so a name nobody has listed lands on the side that
+        # says nothing.
+        answer = self.judge("cd {} && python3 - <<'PY'\n"
+                            "open('{}/FreshTests.cs', 'w').write({!r})\n"
+                            "PY\n"
+                            'Unity -runTests -projectPath "$PWD" -testFilter Velvet.Tests.FreshTests'
+                            .format(self.project, TEST_DIRECTORY,
+                                    HEADER + fixture("FreshTests") + FOOTER))
+
+        # Act / Assert
+        self.assertEqual((answer[0], self.notice(answer)), (0, ""))
+
+    def test_Given_ThatSameProgramBehindTheRun_When_TheSameFilterIsPosed_Then_ItIsRefused(self):
+        # Arrange -- the control, and the shape of this repository's own documented recipe, whose
+        # runner is followed by two scripts that read the results. The shell runs the segments in
+        # order, so nothing behind the run reaches the tree it opened; standing down on a program
+        # wherever it sits would pass the case above and leave the recipe unanswered.
+        answer = self.judge('Unity -runTests -projectPath "{}" '
+                            "-testFilter Velvet.Tests.NoSuchTests; python3 - <<'PY'\n"
+                            "print(open('Logs/results.xml').read())\n"
+                            "PY".format(self.project))
+
+        # Act / Assert
+        self.assertEqual((answer[0], "NoSuchTests" in answer[2]), (2, True))
+
     def test_Given_ABareCaseNameComposedThroughAVariable_When_ItIsPosed_Then_TheGuardStandsDown(self):
         # Arrange -- the name is a literal in its file and still not one this can attribute, the call
         # carrying an identifier rather than a quoted argument. With nothing in front of it to pin a
@@ -526,6 +663,52 @@ class FilterSelectingNoTestTests(unittest.TestCase):
         # Act / Assert
         self.assertEqual((code, "Given_V_When_W_Then_X" in said), (2, True))
 
+    def test_Given_AFixtureSpelledWithoutItsNamespaceAndACaseOfIt_When_ItIsPosed_Then_TheGuardStandsDown(self):
+        # Arrange -- the flag's documented second form, and the one a reader copies out of a test
+        # file. The case name is one this cannot see, so what has to carry the decline is the head:
+        # compared against the whole of a fixture's full name it equals none of them, and the value
+        # is destroyed over a case that is there.
+        answer = self.run_with("VariablyNamedTests.Given_V_When_W_Then_X")
+
+        # Act / Assert
+        self.assertEqual((answer[0], self.notice(answer)), (0, ""))
+
+    def test_Given_ThatSameSpellingComparedWhole_When_ItIsPosed_Then_ItIsRefused(self):
+        # Arrange -- the control: written anchored, the value has to EQUAL a full name, and a full
+        # name opens with its namespace. Comparing the head loosely whatever the value says would
+        # pass the case above and leave nothing measuring which of the two spellings was read.
+        code, _, said = self.run_with("^VariablyNamedTests.Given_V_When_W_Then_X$")
+
+        # Act / Assert
+        self.assertEqual((code, "VariablyNamedTests" in said), (2, True))
+
+    def test_Given_AFilterOpeningWithASegmentNoSourceSpells_When_ItIsPosed_Then_TheGuardStandsDown(self):
+        # Arrange -- a package brings its own tests, compiled out of a directory this does not walk,
+        # and a value naming one of them opens with a namespace no file here spells. Refusing it is
+        # refusing a run that works, against a tree the reading never had.
+        answer = self.run_with("SomeOtherPackage.Tests.StubTests")
+
+        # Act / Assert
+        self.assertEqual((answer[0], self.notice(answer)), (0, ""))
+
+    def test_Given_AFilterNamingAnAncestorOfTheNamespace_When_ItIsPosed_Then_ItGoesThrough(self):
+        # Arrange -- a namespace is a suite for each of its ancestors as well as for itself, so a
+        # value equal to the leading half of one selects every fixture below it. Spelled whole,
+        # because the unanchored form matches every fixture's name on its own.
+        answer = self.run_with("^Velvet$")
+
+        # Act / Assert
+        self.assertEqual((answer[0], self.notice(answer)), (0, ""))
+
+    def test_Given_AValueOpeningWithItsSeparator_When_ItIsPosed_Then_ItIsRefused(self):
+        # Arrange -- the segments in front of the last one are what a case name is looked for behind,
+        # and here there are none: an empty head compared against anything at all is a comparison
+        # with no value on one side of it.
+        code, _, said = self.run_with(".NoSuchTests")
+
+        # Act / Assert
+        self.assertEqual((code, "NoSuchTests" in said), (2, True))
+
     def test_Given_ASpaceAfterASemicolon_When_TheFilterIsPosed_Then_TheValueBehindItIsRefused(self):
         # Arrange -- the runner splits its operand at the semicolons and trims nothing, so the space
         # belongs to the value behind it. Trimming it here reads two names that both select and lets
@@ -545,19 +728,25 @@ class FilterSelectingNoTestTests(unittest.TestCase):
 
     def test_Given_ADirectoryHoldingNoTestSource_When_AFilterIsPosedThere_Then_TheGuardStandsDown(self):
         # Arrange -- nothing is declared anywhere here, so a guard that went on answering would refuse
-        # every filter posed outside a Unity project.
+        # every filter posed outside a Unity project. Named as the run's own tree, or the reading
+        # stops one question earlier, on a command that says which tree it opens rather than on one
+        # whose tree holds nothing.
         empty = Path(tempfile.mkdtemp(prefix="velvet-no-project-"))
         self.addCleanup(shutil.rmtree, empty, ignore_errors=True)
-        answer = self.judge("Unity -runTests -testFilter Velvet.Tests.PairTests", cwd=empty)
+        answer = self.judge('Unity -runTests -projectPath "{}" -testFilter Velvet.Tests.PairTests'
+                            .format(empty), cwd=empty)
 
         # Act / Assert
         self.assertEqual((answer[0], self.notice(answer)), (0, ""))
 
     def test_Given_AToolNothingRoutesHere_When_TheSameCommandIsPosed_Then_TheGuardSaysNothing(self):
         # Arrange -- a gate reading anything but the event's tool name answers under every name, and
-        # the payload is one this guard refuses when it is routed.
+        # the payload is one this guard refuses when it is routed: it names the tree, so nothing
+        # ahead of the gate can be what silences it.
         event = {"tool_name": "VelvetNoToolIsCalledThis", "cwd": str(self.project),
-                 "tool_input": {"command": "Unity -runTests -testFilter Velvet.Tests.NoSuchTests"}}
+                 "tool_input": {"command": 'Unity -runTests -projectPath "{}" '
+                                           "-testFilter Velvet.Tests.NoSuchTests"
+                                           .format(self.project)}}
         done = subprocess.run([sys.executable, "-B", str(GUARD)], input=json.dumps(event),
                               capture_output=True, text=True, timeout=300)
 
