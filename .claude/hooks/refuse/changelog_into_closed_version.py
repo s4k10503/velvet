@@ -27,18 +27,18 @@ The reading is a released section's PUBLISHED LINES, before against the proposed
   is the accepted cost — the refusal says what a genuine reword should do instead. A reflowed line
   matches itself, because the join that unwraps it is the publisher's own.
 - A released section whose version the remote tags — `vX.Y.Z-main`, whichever line published it
-  — is refused every change to it but two: putting back a line that copy has and the section is
-  short of, where the copy has it and with nothing else lost or moved, and bringing the section in
-  as that copy entire, that copy being the only text of it here and an addition to a note already
-  published belonging in the release that follows it. Removal, reword, reorder and a changed date
-  alike, since the note is the tag's and the file cannot tell a correction from a deletion. For a
-  section the file already carries it is not equality with the tag's copy, because main's older
-  sections already differ from theirs, each of those carrying a Highlights block the copy has not
-  got. The remote's tags rather than the checkout's, for the reason
+  — is held to that tag's copy: one the file already carries takes the put-back
+  `breaking_in_flight_check.only_put_back` admits and no other change, and one the edit brings in
+  arrives as that copy entire, that copy being the only text of it here and an addition to a note
+  already published belonging in the release that follows it. Removal, reword, reorder and a
+  changed date alike, since the note is the tag's and the file cannot tell a correction from a
+  deletion. For a section the file already carries it is not equality with the tag's copy, because
+  main's older sections already differ from theirs, each of those carrying a Highlights block the
+  copy has not got. The remote's tags rather than the checkout's, for the reason
   `published_check.remote_tag_shas` gives. Where the remote tags no such version, or the remote or
-  git does not answer, the reading is the one above: growth is refused and removal is not,
-  so deleting an entry from such a section still runs. Deleting the whole SECTION does not either
-  way, because the heading goes with it — see below.
+  git does not answer, the reading is the one above: growth is refused and removal is not, so
+  deleting an entry from such a section still runs. Deleting the whole SECTION does not either way,
+  because the heading goes with it — see below.
 - What the edit is measured against is the FILE, where the merge-time reading has the base commit,
   so undoing a put-back made in the editor is refused as the deletion it looks like here. Reverting
   it with git is the way back, as with the heading below; a base to compare against is what this
@@ -275,8 +275,6 @@ def main():
     was, becomes = drain.dated_sections(text), drain.dated_sections(proposed)
     moved = [v for v in becomes if becomes[v] != was.get(v)]
     copies, tracked = published_copies(path, moved)
-    # A section the edit brings in -- a maintenance line's, carried forward -- arrives as its tag's
-    # copy; one already here is held to what it was, but for a line of that copy put back in place.
     restored = {v for v, (tag, sha, copy) in copies.items()
                 if (drain.only_put_back(becomes[v], was[v], copy) if v in was
                     else becomes[v] == copy)}
@@ -287,10 +285,9 @@ def main():
               "remote is the release that shipped that section.\n\n"
               "A dated section is the note its release shipped. Nothing in the file separates a "
               "correction from a deletion, so neither is made past the tag; an edit that only puts "
-              "back a line that copy has and the section is short of, where the copy has it — a "
-              "heading in the same edit as an entry it heads, since one that would head nothing "
-              "is refused — or brings the section in as that copy entire, is what this lets "
-              "through — an addition to a note already published belongs in the release "
+              "back a line that copy has and the section is short of, where the copy has it — "
+              f"{drain.HEADING_ROUTES} — or brings the section in as that copy entire, is what "
+              "this lets through — an addition to a note already published belongs in the release "
               "that follows it:\n\n"
               f"  git show {sha}:{tracked}   # {tag} on the remote\n\n"
               "Put what this change has to say under `## [Unreleased]`, or "
