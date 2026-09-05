@@ -253,6 +253,10 @@ namespace Velvet
             }
             finally
             {
+                if (parent != null && _ctx.LayoutAnchors.Contains(parent))
+                {
+                    FiberNodeFactory.SyncLayoutAnchorGrowth(parent);
+                }
                 _ctx.EndPresenceReproductionScope(presenceScope, removals, _presenceOwedByThisPark);
                 _ctx.BufferPool.ReturnProviderTable(oldProviders);
                 _ctx.BufferPool.ReturnFiberList(oldFibers);

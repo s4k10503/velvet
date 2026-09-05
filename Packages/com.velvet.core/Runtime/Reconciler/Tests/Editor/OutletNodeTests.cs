@@ -24,9 +24,10 @@ namespace Velvet.Tests
     /// <item>An Outlet keeps resolving its matched route across a standalone setState re-render — both when the
     /// enclosing layout re-renders and when the route component itself re-renders — because the enclosing
     /// Provider spine is reconstructed from the committed tree for an isolated re-render.</item>
-    /// <item>Every Outlet mount registers its layout-passthrough container in a per-context identity set so the
-    /// context spine can identify Outlet hosts; unmounting the Outlet releases that registration too, so dead
-    /// containers do not accumulate across route changes over a long session.</item>
+    /// <item>Every Outlet mount registers its layout anchor in two per-context identity sets — the Outlet
+    /// one the context spine reads to identify Outlet hosts, and the wider anchor one the reconciler reads
+    /// to size an anchor against its container; unmounting the Outlet releases both, so dead containers do
+    /// not accumulate across route changes over a long session.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -338,6 +339,29 @@ namespace Velvet.Tests
 
             // Assert — the registration is gone, so dead containers cannot accumulate across route changes.
             Assert.AreEqual(0, context.OutletContainers.Count);
+        }
+
+        [Test]
+        public void Given_AMountedOutlet_When_ItUnmounts_Then_ItsLayoutAnchorRegistrationIsReleased()
+        {
+            // Arrange — the wider set the Outlet registration sits inside, read on the container itself so
+            // the reading does not turn on how many other anchors the tree holds.
+            using var store = new ToggleStore();
+            s_store = store;
+            using var mounted = V.Mount(_root, V.Component(App, key: "app"));
+            var context = mounted.Root.Reconciler.Context;
+            var scheduler = context.BatchScheduler;
+            var anchor = _root.Q<VisualElement>(className: FiberNodeFactory.OutletContainerClass);
+            var registeredWhileMounted = context.LayoutAnchors.Contains(anchor);
+
+            // Act — the Outlet unmounts.
+            store.Set(false);
+            scheduler.DrainImmediateForTest();
+
+            // Assert — registered while it was mounted, released once it was not.
+            Assert.That(
+                (registeredWhileMounted, context.LayoutAnchors.Contains(anchor)),
+                Is.EqualTo((true, false)));
         }
 
         #endregion

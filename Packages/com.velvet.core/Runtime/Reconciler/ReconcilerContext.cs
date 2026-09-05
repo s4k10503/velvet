@@ -1008,6 +1008,12 @@ namespace Velvet
         // styling toggling the class via className props.
         public HashSet<VisualElement> OutletContainers { get; } = new();
 
+        // Set of every layout anchor VE created by FiberNodeFactory, Outlet containers included.
+        // ChildReconciler reads it to decide whether the parent it just reconciled is one, and
+        // ComponentInlineMountTests to tell an inline-expanded output from a wrapper around one.
+        // Identity-side rather than a marker class, for the reason OutletContainers gives above.
+        public HashSet<VisualElement> LayoutAnchors { get; } = new();
+
         // The node array being expanded for the fiber on top of FiberStack, which is the array whose nodes a
         // GetOrCreate reached from here is stamping onto its children. Set where a fiber's own output enters
         // the reconcile and where a nested fiber's committed output is descended, and restored after both, so

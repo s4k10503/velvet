@@ -816,6 +816,7 @@ namespace Velvet
 
             _ctx.OutletScopes.Clear();
             _ctx.OutletContainers.Clear();
+            _ctx.LayoutAnchors.Clear();
             _ctx.PresenceStates.Clear();
         }
     }

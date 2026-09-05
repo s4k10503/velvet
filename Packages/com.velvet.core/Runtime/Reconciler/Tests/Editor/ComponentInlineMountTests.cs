@@ -10,11 +10,11 @@ namespace Velvet.Tests
     /// Motion / Provider / Portal).
     /// <list type="bullet">
     /// <item>The component contributes its rendered output as a direct sibling of the parent container — never
-    /// wrapped in the layout-passthrough container that the ComponentNode single-instance fallback uses.</item>
-    /// <item>N keyed components under one container produce N direct sibling elements in render order, so each
-    /// occupies its own flex slot instead of N wrappers stacking at the same absolute position.</item>
-    /// <item>An inline-expanded output carries no Provider wrapper class and keeps its own natural (non-absolute)
-    /// position, so flex layout places it relative to its siblings.</item>
+    /// wrapped in the layout anchor that the ComponentNode single-instance fallback uses.</item>
+    /// <item>N keyed components under one container produce N direct sibling elements in render order, so the
+    /// container's own gap, order and sizing reach each output rather than an anchor around it.</item>
+    /// <item>An inline-expanded output carries no Provider wrapper class, and the container's children are the
+    /// outputs themselves rather than anchors holding them.</item>
     /// <item>A Provider inline-expands within a container's children: its descendant components become direct
     /// siblings of that container, not nested inside a Provider wrapper element.</item>
     /// <item>Components under a Portal inline-expand into the portal target in order; multiple portals to a
@@ -77,7 +77,7 @@ namespace Velvet.Tests
             var host = Root.Q(name: "host");
             var names = new[] { host.ElementAt(0).name, host.ElementAt(1).name, host.ElementAt(2).name };
             Assert.That(names, Is.EqualTo(new[] { "btn-0", "btn-1", "btn-2" }),
-                "Each direct child is the Button emitted by the component, not a layout-passthrough wrapper");
+                "Each direct child is the Button emitted by the component, not a layout anchor around it");
         }
 
         [Test]
@@ -99,8 +99,10 @@ namespace Velvet.Tests
             Assert.That(anyWrapped, Is.False, "No Provider wrapper class appears on inline-expanded Component output");
         }
 
+        // Identity-side rather than a style the anchor happens to carry: an anchor's styling is what an
+        // anchor change moves, and a guard keyed on one of those properties stops counting when it does.
         [Test]
-        public void Given_NComponentsAsElementChildren_When_Mounted_Then_NoOutputIsAbsolutelyPositioned()
+        public void Given_NComponentsAsElementChildren_When_Mounted_Then_NoOutputSitsInsideALayoutAnchor()
         {
             // Arrange
             var children = ElementHostWithThreeButtons();
@@ -110,13 +112,13 @@ namespace Velvet.Tests
 
             // Assert
             var host = Root.Q(name: "host");
-            var absoluteCount = 0;
+            var anchorCount = 0;
             for (var i = 0; i < host.childCount; i++)
             {
-                if (host.ElementAt(i).style.position.value == Position.Absolute) absoluteCount++;
+                if (Reconciler.Context.LayoutAnchors.Contains(host.ElementAt(i))) anchorCount++;
             }
-            Assert.That(absoluteCount, Is.EqualTo(0),
-                "Each output keeps its natural position so flex layout places it relative to its siblings");
+            Assert.That(anchorCount, Is.EqualTo(0),
+                "Each output takes the host's own flex slot, so the host's gap and order reach the Button itself");
         }
 
         [Test]
@@ -279,8 +281,10 @@ namespace Velvet.Tests
                 "V.List of 7 V.Component entries produces 7 direct sibling VEs — not 7 stacked wrappers");
         }
 
+        // Identity-side for the reason the ElementHost half above gives. The count is what discriminates here:
+        // the sibling case asserts seven children, which seven anchors satisfy just as well.
         [Test]
-        public void Given_ListOfComponentsInHStack_When_Mounted_Then_NoneIsAbsolutelyPositioned()
+        public void Given_ListOfComponentsInHStack_When_Mounted_Then_NoneSitsInsideALayoutAnchor()
         {
             // Arrange
             var children = HStackOfSevenSwatches();
@@ -290,13 +294,13 @@ namespace Velvet.Tests
 
             // Assert
             var hstack = Root.Q(name: "hstack");
-            var absoluteCount = 0;
+            var anchorCount = 0;
             for (var i = 0; i < hstack.childCount; i++)
             {
-                if (hstack.ElementAt(i).style.position.value == Position.Absolute) absoluteCount++;
+                if (Reconciler.Context.LayoutAnchors.Contains(hstack.ElementAt(i))) anchorCount++;
             }
-            Assert.That(absoluteCount, Is.EqualTo(0),
-                "No inline-expanded Component emits a layout-passthrough wrapper that would collapse all swatches to one position");
+            Assert.That(anchorCount, Is.EqualTo(0),
+                "No inline-expanded Component emits a layout anchor of its own, so each swatch takes its own slot");
         }
 
         private VNode[] ElementHostWithThreeButtons()

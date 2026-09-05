@@ -119,7 +119,7 @@ namespace Velvet
         }
 
         // The node kinds whose VisualElement is a placeholder (Portal / WorldSpace: the children live in
-        // another panel) or a layout-passthrough anchor (Provider / Component / Outlet), rather than the
+        // another panel) or a layout anchor (Provider / Component / Outlet), rather than the
         // node's own rendered surface.
         private void PatchIndirectNode(VisualElement element, VNode? oldNode, VNode? newNode)
         {
@@ -508,8 +508,8 @@ namespace Velvet
             // BaseElementNode children are inline-expanded by both the initial CreateElement chain
             // (which routes through ReconcileChildren) and this patch path. Keeping both passes on
             // the same expansion strategy means ComponentNode siblings under an ElementNode appear
-            // as direct VE children — never wrapped in the layout-passthrough container that would
-            // collapse N keyed Components to the same absolute slot.
+            // as direct VE children, so the container's own gap, order and sizing reach each output
+            // rather than the layout anchor CreateLayoutAnchor would put around it.
             _host.ReconcileChildren(childContainer,
                 oldNode.Children ?? Array.Empty<VNode>(),
                 newNode.Children ?? Array.Empty<VNode>());
