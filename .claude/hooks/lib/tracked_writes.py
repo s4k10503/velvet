@@ -52,7 +52,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import repository  # noqa: E402
 from shell_commands import (SEPARATORS, UNRESOLVED_CD, command_directory,  # noqa: E402
                             command_segments, comment_opens_at, mask_shell_literals,
-                            program_invocations, tokens_of, unexpanded, without_redirections)
+                            opens_a_comment, program_invocations, tokens_of, unexpanded,
+                            without_redirections)
 
 # Each gap the reading leaves. `LIMITS` is built from this so the sentence cannot name fewer of them
 # than the tuple carries; what stops the TUPLE naming fewer than the reading has is the suite, which
@@ -60,7 +61,7 @@ from shell_commands import (SEPARATORS, UNRESOLVED_CD, command_directory,  # noq
 # however many it has come to hold. Every entry was measured against the reading rather than guessed.
 UNREAD = (
     "a target the shell has yet to expand",
-    "a directory the command moves into partway through",
+    "a relative target under a move nothing here places",
     "`>&`, which writes the file it names",
     "`>|`, whose bar the segment split takes for a separator",
     "a destination `cp -t` takes off the end of the operands",
@@ -133,7 +134,7 @@ def _redirect_targets(segment):
         # the span, and `command_segments` slices the original: the comment's own words then land in
         # the preceding command's operand list, which moves guards' verdicts both ways on commands
         # a person writes. `UNREAD` states what that leaves.
-        if masked[index] == "#" and (index == 0 or masked[index - 1] in " \t"):
+        if opens_a_comment(masked, index):
             break
         if masked[index] != ">" or (index and masked[index - 1] in "<>"):
             index += 1

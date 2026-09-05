@@ -24,7 +24,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-from shell_commands import (command_segments, leading_program,  # noqa: E402  (path set above)
+from shell_commands import (GLOB, command_segments, leading_program,  # noqa: E402  (path set above)
                             moves_to_a_named_directory, tokens_of, unexpanded)
 
 
@@ -51,14 +51,6 @@ def repo_roots(project):
             if entry.is_dir() and not entry.name.startswith(".")}
 
 
-# A glob is a selector the shell rewrites into a path, so a token carrying one names the same
-# directory a plain spelling would. Read here rather than in `unexpanded`, which several guards share
-# and one of them -- `shared_git_state` -- deliberately treats `git checkout '*.cs'` as an ordinary
-# restore. Measured before this: backgrounded, `python3 script?/pr/settle.py watch` was allowed while
-# `python3 scripts/pr/settle.py watch` was refused, so one character routed around the guard.
-GLOB = re.compile(r"[*?\[]")
-
-
 def relative_repo_tokens(command, roots):
     """Tokens naming a repo directory relatively, in a command that never says where it runs."""
     found = []
@@ -68,8 +60,11 @@ def relative_repo_tokens(command, roots):
         if "/" not in token:
             continue
         head = token.split("/", 1)[0]
-        # By glob where the head carries one, so `script?` reaches `scripts`. A head with no glob is
-        # compared as itself, which is what it was.
+        # By glob where the head carries one, so `script?` reaches `scripts`: the shell rewrites the
+        # selector into the same directory a plain spelling names. A head with no glob is compared as
+        # itself, which is what it was. Measured before this, backgrounded,
+        # `python3 script?/pr/settle.py watch` was allowed while `python3 scripts/pr/settle.py watch`
+        # was refused, so one character routed around the guard.
         if head in roots or (GLOB.search(head)
                              and any(fnmatch.fnmatch(root, head) for root in roots)):
             found.append(token)

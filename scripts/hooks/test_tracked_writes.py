@@ -38,7 +38,7 @@ CHANGELOG_REL = "Packages/com.velvet.core/CHANGELOG.md"
 # by however many entries it has, so it holds when a gap quietly drops out of both.
 UNREAD_GAPS = [
     "yet to expand",
-    "moves into partway through",
+    "under a move nothing here places",
     "`>&`",
     "`>|`",
     "`cp -t`",

@@ -15,14 +15,13 @@ case the rule exists for — was invisible to it.
 import glob
 import json
 import os
-import re
 import subprocess
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-from shell_commands import (NAME_THE_TREE, UNPLACEABLE_MOVE, UNRESOLVED_CD, command_directory,
-                            git_invocations, unexpanded)
+from shell_commands import (GLOB, NAME_THE_TREE, UNPLACEABLE_MOVE, UNRESOLVED_CD,
+                            command_directory, git_invocations, unexpanded)
 
 
 HOOK_TOOLS = {"Bash"}
@@ -56,11 +55,6 @@ UNEXPANDED_PROBE = 'git checkout $BRANCH'
 
 UNREADABLE_POLICY = "refuse"
 UNREADABLE_PROBE = {"command": "git checkout main"}
-
-# A glob is the other operand the shell rewrites, and it cannot take the same refusal: `git checkout
-# '*.cs'` is an ordinary restore, and refusing it is the over-refusal this guard was rewritten to
-# remove. It is expanded instead, so the question is asked about the operand git receives.
-GLOB = re.compile(r"[*?\[]")
 
 SWITCH_REFUSAL = (
     "Refused: `git switch` and `git stash` move state other worktrees share. Work in the worktree "
@@ -100,6 +94,10 @@ def names_a_commit(root, token):
 def sole_expansions(named, cwd):
     """The single name each glob operand expands to, skipping every glob that matches otherwise.
 
+    A glob does not take the refusal an unexpanded operand takes: `git checkout '*.cs'` is an
+    ordinary restore, and refusing it is the over-refusal this guard was rewritten to remove. It is
+    expanded instead, so the question is asked about the operand git receives.
+
     A wider expansion is skipped rather than resolved because it cannot reach the branch-switching
     form of this command, which `GuardCommandCoverageTests` poses to git rather than asserting here.
     Skipping it is also what keeps the cost flat: `git checkout *.cs` resolves nothing per matched
@@ -132,8 +130,7 @@ def restores_paths(directory, operands, cwd):
         return False
     if cwd is UNRESOLVED_CD:
         # The glob below is expanded against the shell's directory, so an unplaced one leaves the
-        # operands unresolved and nothing left to put to git. `--`, the one reading here that needs
-        # no directory at all, has already answered above.
+        # operands unresolved and nothing left to put to git.
         return False
     root = directory or cwd
     if directory and not os.path.isabs(directory):

@@ -169,7 +169,14 @@ def command_segments(command):
     return [segment for segment in (s.strip().strip("(){} ") for s in segments) if segment]
 
 
-def _opens_a_comment(masked, index):
+# Measured, `cd /moved && mark;# cd /other` and the same comment opened at the start of a line each
+# run `mark` once in `/moved`, under bash and zsh alike: a `#` beginning a word opens a comment, and
+# a separator ends the word before it as a space does. Left unblanked, the body reads as commands,
+# and a move written in one declines the whole reading.
+COMMENT_OPENERS = SEPARATORS | {" ", "\t"}
+
+
+def opens_a_comment(masked, index):
     """Whether the `#` at `index` starts a comment rather than sitting inside a word.
 
     Read off the mask, which keeps a quoted `#` apart from a bare one: a quoted one is blanked there
@@ -177,7 +184,7 @@ def _opens_a_comment(masked, index):
     `#c`, and `cp a.md b.md #c`, which has a comment, tokenise identically, and cutting the last
     operand from the first makes a SOURCE the destination.
     """
-    return masked[index] == "#" and (index == 0 or masked[index - 1] in " \t")
+    return masked[index] == "#" and (index == 0 or masked[index - 1] in COMMENT_OPENERS)
 
 
 def comment_opens_at(text):
@@ -188,7 +195,7 @@ def comment_opens_at(text):
     on the wrong term.
     """
     masked = mask_shell_literals(text)
-    return next((index for index in range(len(masked)) if _opens_a_comment(masked, index)), None)
+    return next((index for index in range(len(masked)) if opens_a_comment(masked, index)), None)
 
 
 def without_comments(command):
@@ -202,7 +209,7 @@ def without_comments(command):
     out = list(command)
     index = 0
     while index < len(masked):
-        if not _opens_a_comment(masked, index):
+        if not opens_a_comment(masked, index):
             index += 1
             continue
         while index < len(masked) and masked[index] != "\n":
@@ -297,6 +304,12 @@ UNRESOLVED_CD = object()
 # The words that change the directory a later segment runs in.
 MOVERS = {"cd", "pushd", "popd"}
 
+# Words that hand what follows to another program instead of to the shell's own mover. Measured,
+# `nohup cd <tree>` leaves the shell where it started under bash and zsh alike, `exec cd <tree>` runs
+# nothing after itself, and zsh's `command cd` runs an external program where bash runs the builtin.
+# `builtin` and `time`, which `LEADING_WORDS` also carries, are out: both moved under both shells.
+DELEGATED_WORDS = {"command", "exec", "nohup"}
+
 
 def moves_directory(segment):
     """Whether this segment changes the directory a later segment runs in.
@@ -334,12 +347,19 @@ def moves_to_a_named_directory(segment):
     """Whether a move in this segment spells its destination out.
 
     `moves_directory` answers whether the shell ends up somewhere else; this answers whether the
-    command's own text says where. The two part over the movers `move_target` declines, and a
-    caller reading a command to find out where it will run cannot take one of those for an answer.
+    command's own text says where. The two part over the movers `move_target` declines and over a
+    delegated word, and a caller reading a command to find out where it will run cannot take one of
+    those for an answer.
+
+    They part rather than agree because their callers read them with opposite polarity: a yes here
+    lets a command through, so a word the shell may not move on has to be a no; a yes there costs a
+    caller its relative operand, so the same word has to stay a yes.
     """
     tokens = tokens_of(segment)
     index = leading_program(tokens)
     if index >= len(tokens) or os.path.basename(tokens[index]) not in MOVERS:
+        return False
+    if any(token in DELEGATED_WORDS for token in tokens[:index]):
         return False
     return move_target(tokens, index) is not None
 
@@ -370,9 +390,11 @@ PREFIX_SEPARATORS = ("&&", ";", "\n")
 # behind us and a decline.
 OUTSIDE_A_PREFIX_STEP = re.compile(r"[()|&<>{}]")
 
-# Words that run text the mask has already blanked, so a move inside one is invisible here. `.`,
-# `source`'s other spelling, is left out: as a bare word it is far more often the pathspec `git add .`
-# writes than a command, and declining every command carrying one costs more than the move it catches.
+# Words whose operand is run as a command rather than passed to one, and this reading follows
+# neither: `source`'s is in a file it never opens, and `eval`'s is text the shell lexes again after
+# expanding it. `.`, `source`'s other spelling, is left out: as a bare word it is far more often
+# the pathspec `git add .` writes than a command, and declining every command carrying one costs more
+# than the move it catches.
 OPAQUE_RUNNERS = {"eval", "source"}
 
 
@@ -424,7 +446,9 @@ def command_directory(command, cwd):
         if OUTSIDE_A_PREFIX_STEP.search(masked[index:cut]):
             break
         tokens = tokens_of(text[index:cut])
-        program = leading_program(tokens)
+        # `past_assignments` rather than `leading_program`: reading past a keyword as well placed
+        # `nohup cd /wt && git commit --amend` in `/wt`, which is not where the amend runs.
+        program = past_assignments(tokens)
         if program < len(tokens):
             # `cd`, not every mover: `popd` carries no destination in the command's own text and
             # `pushd` is its partner. Declining `pushd` here loses a reading rather than missing a
@@ -432,7 +456,8 @@ def command_directory(command, cwd):
             if tokens[program] != "cd":
                 break
             target = tokens[program + 1:]
-            if len(target) != 1 or unexpanded(target[0]) or target[0].startswith(("~", "-")):
+            if (len(target) != 1 or unexpanded(target[0]) or GLOB.search(target[0])
+                    or target[0].startswith(("~", "-"))):
                 break
             where = os.path.normpath(target[0] if os.path.isabs(target[0])
                                      else os.path.join(where, target[0]))
@@ -450,12 +475,14 @@ UNPLACEABLE_MOVE = (
     "The command changes directory in a way nothing here places. What is placed is a `cd` to a "
     "literal path: one or several, each joined to what follows by `&&`, `;` or a newline, and all "
     "of them ahead of the work. Everything else is declined, among it: a target the shell has yet "
-    "to expand or one opening on `~`; `popd`, `pushd`, `cd -` and a bare `cd`; a move inside a "
-    "pipeline, a group or a `||`; a move carrying a redirection; and a move that runs after some "
-    "other program has. So which tree it acts on was not read, and answering from the directory the "
-    "tool call started in would be a verdict about a tree the command has already left.")
-NAME_THE_TREE = ("Spell the move out as a single `cd` to a literal path, or run the command from "
-                 "the tree itself.")
+    "to expand or match, or one opening on `~`; a `cd` behind any word but an assignment; `popd`, "
+    "`pushd`, `cd -` and a bare `cd`; a move inside a pipeline, a group or a `||`; a move carrying "
+    "a redirection; an `eval` or a `source`, whose own text is not read here; and a move that runs "
+    "after some other program has. So which tree it acts on was not read, and answering from the "
+    "directory the tool call started in would be a verdict about a tree the command has already "
+    "left.")
+NAME_THE_TREE = ("Spell the move out as a single `cd` to a literal path ahead of the work, or run "
+                 "the command from the tree itself.")
 
 
 def git_invocations(command, subcommands, git_directory=False):
@@ -470,6 +497,14 @@ def git_invocations(command, subcommands, git_directory=False):
         if invocation and invocation[1] in subcommands:
             found.append(invocation)
     return found
+
+
+def past_assignments(tokens):
+    """The index of the step's command word, past the environment assignments before it."""
+    index = 0
+    while index < len(tokens) and ENV_ASSIGNMENT.match(tokens[index]):
+        index += 1
+    return index
 
 
 def leading_program(tokens):
@@ -507,6 +542,11 @@ def program_invocations(command, program, words):
 # pass, so the check silently does not happen. Each guard states which way it errs there; this only
 # recognises the case.
 UNEXPANDED = re.compile(r"[$`]")
+
+# The other operand the shell rewrites, kept out of `unexpanded` because a caller may want what it
+# expands to rather than a refusal over it: `shared_git_state` expands `git checkout '*.cs'` and asks
+# git about the names it matched.
+GLOB = re.compile(r"[*?\[]")
 
 
 def unexpanded(token):

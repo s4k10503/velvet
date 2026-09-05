@@ -141,8 +141,7 @@ class CommandDirectoryTests(unittest.TestCase):
     directory was not the one the event named.
 
     The shape that is placed is the module's own; what the cases below add to it is which side of it
-    each construct falls on. `DeclinedShapeTests` holds the ones whose answer a shell can give and
-    this does not.
+    each construct falls on. `DeclinedShapeTests` holds the shapes that leave it.
     """
 
     def where(self, command):
@@ -238,23 +237,6 @@ class CommandDirectoryTests(unittest.TestCase):
         # Assert
         self.assertIs(found, shell_commands.UNRESOLVED_CD)
 
-    def test_Given_APushdOntoItsOwnStack_When_ThePlacementIsAsked_Then_NothingIsPlaced(self):
-        # Arrange / Act — `+1` selects an entry of the stack the running shell keeps and rotates to
-        # it. Read as a path, it joined to the handed directory and named one nothing holds.
-        found = self.where("pushd +1 && git commit --amend")
-
-        # Assert
-        self.assertIs(found, shell_commands.UNRESOLVED_CD)
-
-    def test_Given_APopdOfANamedStackEntry_When_ThePlacementIsAsked_Then_NothingIsPlaced(self):
-        # Arrange / Act — the same selector on the other mover, and the operand a bare `popd` does
-        # not have: without it, the reading that declines `popd` is the one that declines every
-        # move carrying no operand at all, and the mover itself is measured by nothing.
-        found = self.where("popd +1 && git commit --amend")
-
-        # Assert
-        self.assertIs(found, shell_commands.UNRESOLVED_CD)
-
     def test_Given_AMoveWrittenInsideAComment_When_TheDirectoryIsPlaced_Then_OnlyTheRealMoveCounts(self):
         # Arrange / Act — the split finds its boundaries in the mask and slices the original, so a
         # `&&` inside a comment separated segments that the shell never sees as commands.
@@ -291,14 +273,39 @@ class CommandDirectoryTests(unittest.TestCase):
         # Assert
         self.assertIs(found, shell_commands.UNRESOLVED_CD)
 
+    def test_Given_AMoveWordInsideAQuotedOperand_When_TheDirectoryIsPlaced_Then_TheMoveStillCounts(self):
+        # Arrange / Act — the scan for a mover reads the mask, where a quoted word is blanked. Read
+        # off the text instead, the word in this body is a move, and a `gh pr create` naming the
+        # tree it runs in is refused over a `cd` the shell never executes.
+        found = self.where("cd /moved && gh pr create --title t --body 'run cd first'")
+
+        # Assert
+        self.assertEqual(found, "/moved")
+
+    def test_Given_ACommentOpenedOnASeparator_When_TheDirectoryIsPlaced_Then_OnlyTheRealMoveCounts(self):
+        # Arrange / Act — a `#` after a `;` opens a comment as surely as one after a space, and the
+        # note here names a move. Left unblanked, that move is what the scan finds, and the amend
+        # is refused over a directory change written down rather than made.
+        found = self.where("cd /moved && git commit --amend;# then cd /other")
+
+        # Assert
+        self.assertEqual(found, "/moved")
+
+    def test_Given_ACommentOccupyingItsOwnLine_When_TheDirectoryIsPlaced_Then_OnlyTheRealMoveCounts(self):
+        # Arrange / Act — the spelling this project's own multi-line commands use, and one of them
+        # was declined for it. The `#` follows the newline rather than a space, and the note names
+        # a move.
+        found = self.where("cd /moved\n# then cd back\ngit commit --amend")
+
+        # Assert
+        self.assertEqual(found, "/moved")
+
 
 class DeclinedShapeTests(unittest.TestCase):
-    """Moves a shell places and this does not.
+    """Shapes that leave the grammar rather than being placed.
 
-    Every one of these has an answer, and giving it would mean reading a construct rather than
-    matching one. That trade is the module's: a reading that answered every construct answered
-    wrongly wherever it met one nobody had written it for, and a decline costs a refusal the
-    command's author can lift by spelling the move out.
+    What is not matched is declined, for the reason the module's acceptor block states, and the
+    cases below are the constructs that reach that decline.
     """
 
     def where(self, command):
@@ -387,6 +394,49 @@ class DeclinedShapeTests(unittest.TestCase):
         # it. Reaching that answer means matching a grammar of its own for what the failure branch
         # does, and declining is what this trades for not having one.
         found = self.where("cd /moved || exit 1; git commit --amend")
+
+        # Assert
+        self.assertIs(found, shell_commands.UNRESOLVED_CD)
+
+    def test_Given_AMoveBehindAWordNamingTheProgram_When_ThePlacementIsAsked_Then_NothingIsPlaced(self):
+        # Arrange / Act — measured under bash and zsh alike, the amend runs where the tool call
+        # started. Read past the word, this places `/moved` — a wrong answer where a decline was
+        # available, which is the trade this reading exists to make.
+        found = self.where("nohup cd /moved && git commit --amend")
+
+        # Assert
+        self.assertIs(found, shell_commands.UNRESOLVED_CD)
+
+    def test_Given_AMoveInsideAConditionalBranch_When_ThePlacementIsAsked_Then_NothingIsPlaced(self):
+        # Arrange / Act — the other half of reading past a keyword: which branch ran is not in the
+        # step, so a placement here answers for a command that may never have left the handed tree.
+        found = self.where("then cd /moved; git commit --amend")
+
+        # Assert
+        self.assertIs(found, shell_commands.UNRESOLVED_CD)
+
+    def test_Given_ATargetTheShellMatchesRatherThanReads_When_ThePlacementIsAsked_Then_NothingIsPlaced(self):
+        # Arrange / Act — the shell enters what the pattern matched, which is not the text written.
+        # Placed as written this names the pattern, and a guard resolving a file under it answers
+        # about a directory the command never entered.
+        found = self.where("cd /moved* && git commit --amend")
+
+        # Assert
+        self.assertIs(found, shell_commands.UNRESOLVED_CD)
+
+    def test_Given_AnEvalRunningAMove_When_ThePlacementIsAsked_Then_NothingIsPlaced(self):
+        # Arrange / Act — the mask blanks the quoted operand, so the scan sees an `eval` and no
+        # move at all. Reading the word itself is what declines this; without it the amend is
+        # placed in `/moved` and judged against the tree the command has left.
+        found = self.where('cd /moved && eval "cd /other" && git commit --amend')
+
+        # Assert
+        self.assertIs(found, shell_commands.UNRESOLVED_CD)
+
+    def test_Given_ASourcedScript_When_ThePlacementIsAsked_Then_NothingIsPlaced(self):
+        # Arrange / Act — the other word of that pair, and the one whose move is in a file this
+        # never opens rather than in text the mask reaches.
+        found = self.where("cd /moved && source setup.sh && git commit --amend")
 
         # Assert
         self.assertIs(found, shell_commands.UNRESOLVED_CD)

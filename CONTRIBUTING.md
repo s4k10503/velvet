@@ -672,22 +672,23 @@ its reason. Measured: four guards each refused seven such commands before the or
 `scripts/hooks/test_cwd_resolution_check.py` poses every guard in the directory four forms — a move
 it could place, that same move carrying the redirection that silences it, one nothing can place, and
 that unplaceable move carrying a command the guard has no subject in — and reads two things off each
-run: the verdict, from the exit code and from a `deny` decision on stdout, and which tree the guard's
-own `git` and `gh` calls addressed, from shims that record where they were run. The tree reading is what separates a guard whose subject is not the tree
-from one that read the wrong tree and had nothing to say about it either way, and where neither
-reading speaks the check reports undecided rather than agreement — a guard that lands there wants a
-case in its own suite, as `library_seed_without_room.py` has, since it asks the filesystem rather
-than git and the shims see nothing of that. What the check does not decide is which way a guard
-should go once it has declined to place a move: refusing and standing down are both defensible and
-the guards differ, `tracked_writes.py` naming its own gap and `edit_while_a_ready_pr_sits.py`
-standing down. Six stand-in guards ride alongside, between them producing every outcome the sweep
-reports — a case compares the two sets rather than a sentence claiming it — so a sweep whose shims
-have stopped recording fails rather than coming back clean. Two trees that stop being two are the
-degeneracy the decided count cannot see, and the sweep compares them to each other for it. A guard
-that raises is the third: it exits 1, which is neither the code that allows nor the code that
-refuses, and read as an allow it scores exactly as a guard whose subject is not the tree — measured,
-five of nineteen guards replaced by files that raise on import and the sweep came back clean. So an
-exit that is neither is reported as the fault it is.
+run: the verdict, from the exit code and from a `deny` decision on stdout, and which tree the
+guard's own `git` and `gh` calls addressed, from shims that record where they were run. The tree
+reading is what separates a guard whose subject is not the tree from one that read the wrong tree
+and had nothing to say about it either way, and where neither reading speaks the check reports
+undecided rather than agreement — a guard that lands there wants a case in its own suite, as
+`library_seed_without_room.py` has, since it asks the filesystem rather than git and the shims see
+nothing of that. What the check does not decide is which way a guard should go once it has declined
+to place a move: refusing and standing down are both defensible and the guards differ,
+`tracked_writes.py` naming its own gap and `edit_while_a_ready_pr_sits.py` standing down. That
+suite's stand-in guards ride alongside, between them producing every outcome the sweep reports — a
+case compares the two sets rather than a sentence claiming it — so a sweep whose shims have stopped
+recording fails rather than coming back clean. Two trees that stop being two are the degeneracy the
+decided count cannot see, and the sweep compares them to each other for it. A guard that raises is
+the third: it exits 1, which is neither the code that allows nor the code that refuses, and read as
+an allow it scores exactly as a guard whose subject is not the tree — measured, five of nineteen
+guards replaced by files that raise on import and the sweep came back clean. So an exit that is
+neither is reported as the fault it is.
 
 The `Stop` guards declare the same policy and are held to one thing more, because blocking was never
 what they got wrong. They blocked, and described the pull requests rather than the reading — so the

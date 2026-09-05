@@ -62,6 +62,29 @@ class PathSpellingTests(unittest.TestCase):
         # Assert
         self.assertEqual(refused, sorted(movers))
 
+    def test_Given_APopdOfANamedStackEntry_When_Backgrounded_Then_ItIsStillRefused(self):
+        # Arrange — `+1` is an operand, so a reading that asks only whether the move carries one has
+        # this saying where the command runs. Which directory the stack hands back is not in the
+        # text, and this is the reading that decides it — `command_directory` has declined the mover
+        # itself before its operand is reached.
+        # Act / Assert
+        self.assertEqual(self.judge("popd +1; python3 scripts/pr/settle.py watch"), 2)
+
+    def test_Given_APushdOntoItsOwnStack_When_Backgrounded_Then_ItIsStillRefused(self):
+        # Arrange — the same selector on the mover that does ordinarily name a destination, which is
+        # why the operand alone cannot answer: `pushd /elsewhere` says where it runs and `pushd +1`
+        # rotates a stack this cannot see.
+        # Act / Assert
+        self.assertEqual(self.judge("pushd +1; python3 scripts/pr/settle.py watch"), 2)
+
+    def test_Given_AMoveBehindAWordNamingTheProgram_When_Backgrounded_Then_ItIsStillRefused(self):
+        # Arrange — measured under bash and zsh alike, this runs the script where the tool call
+        # started rather than in `/elsewhere`. Read as a move it says where it runs, and the guard
+        # allows the very command it exists to refuse.
+        # Act / Assert
+        self.assertEqual(
+            self.judge("nohup cd /elsewhere && python3 scripts/pr/settle.py watch"), 2)
+
     def test_Given_APushdAheadOfTheRelativePath_When_Backgrounded_Then_ItIsLetThrough(self):
         # Arrange — `pushd` says where the command runs as surely as `cd`. Matched as `cd` at the
         # head of the text, it says nothing, and the command is refused for naming a path it has
