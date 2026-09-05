@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Collections.Generic;
 using System.Threading;
 using NUnit.Framework;
 using UnityEngine.TestTools;
@@ -262,6 +263,37 @@ namespace Velvet.Tests
                 + $"status={router.Status}",
                 Is.EqualTo("unmatched=NotFound parked=Success path=/about status=Ready"));
         });
+
+        [Test]
+        public void Given_ASubscriberNavigatingToAnUnmatchedPathOnTheMatchingEvent_When_TheAttemptGoesOn_Then_ItIsNotDispossessed()
+        {
+            // The status transition is raised from inside the attempt that made it, so a subscriber
+            // navigating from there reaches the router while that attempt holds the claim and has committed
+            // nothing. The whole sequence is read because the dispossession shows up as a transition between
+            // two of the attempt's own, and the unmatched result is folded in because a case that arranged
+            // no inner navigation would otherwise still see the sequence it expects.
+            // Arrange
+            var router = new Router(_routes);
+            router.NavigateSync("/home");
+            var seen = new List<RouterStatus>();
+            var innerResult = NavigationResult.Success;
+            var navigatedFromTheEvent = false;
+            router.OnStatusChanged += status =>
+            {
+                seen.Add(status);
+                if (status != RouterStatus.Matching || navigatedFromTheEvent) return;
+                navigatedFromTheEvent = true;
+                innerResult = router.NavigateSync("/no-such-route");
+            };
+
+            // Act
+            router.NavigateSync("/about");
+
+            // Assert
+            Assert.That(
+                $"inner={innerResult} statuses={string.Join(",", seen)}",
+                Is.EqualTo("inner=NotFound statuses=Matching,Loading,Ready"));
+        }
 
         // GREEN_ON_BASE(refactor): the wait this bounds is the same wait, and a run where the code
         // under test arrives cannot tell the two apart. What the bound changes is the run where it

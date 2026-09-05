@@ -398,11 +398,14 @@ namespace Velvet
                 pending = new PendingNavigation(++_navigationSequence, CommitIndexFor(mode), path, mode);
             }
 
-            Status = RouterStatus.Matching;
             // Built here rather than at the commit so the phases below have a destination to publish while
             // they run, and reused as the committed location so the two are one object.
             var location = BuildLocation(path, matches);
+            // Written before the Status write for the reason ReleaseClaim clears it before one: that write
+            // raises OnStatusChanged, and a navigation issued from inside it reaches ReportUnclaimedOutcome,
+            // which reads this field to decide whether an attempt holds the claim.
             PendingLocation = location;
+            Status = RouterStatus.Matching;
 
             RouteLoaderRunner.LoaderRound round;
             try

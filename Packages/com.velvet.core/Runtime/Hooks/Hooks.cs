@@ -684,11 +684,8 @@ namespace Velvet
                 ? NavigationLifecycle.Loading
                 : NavigationLifecycle.Idle;
 
-            // The fallback covers the moment between an attempt taking the claim and publishing its
-            // destination: the router writes Status first, and that write's event wakes a subscriber inside
-            // the window.
             var location = lifecycle == NavigationLifecycle.Loading
-                ? router.PendingLocation ?? router.CurrentLocation
+                ? router.PendingLocation
                 : router.CurrentLocation;
 
             return new NavigationState { State = lifecycle, Location = location };
