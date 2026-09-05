@@ -601,6 +601,37 @@ namespace Velvet.Tests
                 "A retired round's source is released, not left open behind the token its loaders hold");
         }
 
+        [Test]
+        public void Given_ACancellationCallbackThatStartsARound_When_ItRetiresTheRoundBeingInstalled_Then_ThatRoundsLoaderLaunchesUnderTheRetiredToken()
+        {
+            // The outgoing round is cancelled from inside the installation of the round replacing it, which
+            // runs whatever a Loader of that round registered on the token it was handed. A round that
+            // callback starts retires the round being installed, before its Loaders have launched.
+            // Arrange
+            var runner = new RouteLoaderRunner();
+            bool? secondRoundsLoaderSawCancellation = null;
+            runner.RunLoadersSync(
+                MakeMatch("registering", loader: (ctx, ct) =>
+                {
+                    ct.Register(() => runner.RunLoadersSync(MakeMatch("from-callback"), CancellationToken.None));
+                    return VelvetTask.FromResult<object>("registering-data");
+                }),
+                CancellationToken.None);
+
+            // Act
+            runner.RunLoadersSync(
+                MakeMatch("second", loader: (ctx, ct) =>
+                {
+                    secondRoundsLoaderSawCancellation = ct.IsCancellationRequested;
+                    return VelvetTask.FromResult<object>("second-data");
+                }),
+                CancellationToken.None);
+
+            // Assert
+            Assert.That(secondRoundsLoaderSawCancellation, Is.True,
+                "A round retired mid-installation still reaches its Loaders, under the token its own source issued");
+        }
+
         #endregion
 
         #region Error handling
@@ -664,8 +695,7 @@ namespace Velvet.Tests
         public void Given_ALoaderThatStartsAnotherRound_When_TheOuterRoundsNextLoaderLaunches_Then_ItGetsTheOuterRoundsToken()
         {
             // The nested round cancels the outer one on its way in, so the token the outer round's remaining
-            // loaders belong to is a cancelled one. Handing them the nested round's live token instead makes
-            // their completions read as current to every check keyed on the round's source.
+            // loaders belong to is a cancelled one.
             // Arrange
             var runner = new RouteLoaderRunner();
             bool? nextLoaderSawCancellation = null;

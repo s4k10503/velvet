@@ -60,10 +60,14 @@ namespace Velvet
             IReadOnlyList<RouteMatch> matches,
             CancellationToken externalToken)
         {
-            var round = BeginRound(CancellationTokenSource.CreateLinkedTokenSource(externalToken));
-            // Captured once for the round: a nested navigation retires this one, and its remaining Loaders
-            // must still launch under the token they belong to rather than the nested round's.
-            var roundToken = round.Cts!.Token;
+            var cts = CancellationTokenSource.CreateLinkedTokenSource(externalToken);
+            // Captured once for the round, and before the round is installed: retiring the outgoing round
+            // can run application code — a cancellation callback one of its Loaders registered — and a
+            // round that code starts retires the round BeginRound has just installed. A nested navigation
+            // retires this round too, and its remaining Loaders must still launch under the token they
+            // belong to rather than the nested round's.
+            var roundToken = cts.Token;
+            var round = BeginRound(cts);
 
             var awaitTasks = new List<(string? routeId, VelvetTask<object> task)>();
 
