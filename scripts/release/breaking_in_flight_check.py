@@ -403,12 +403,13 @@ def in_its_place(lines, index, copy):
 
 
 # Two copies of this reading came apart here, one refusal naming the routes a put-back heading has
-# and the other naming none, so the write-time hook prints this text rather than one of its own.
-# The refusal that was left without it tells a contributor to do what they have just done.
+# and the other naming none, so both printers -- the merge-time refusal below and the write-time
+# hook -- take this text rather than each carrying its own. The refusal that was left without it
+# tells a contributor to do what they have just done.
 HEADING_ROUTES = (
-    "a heading only above something it comes to head, an entry put back with it or lines the "
-    "section already carries, since the section may not come out of the change with a heading "
-    "newly standing over nothing, the put-back's own or one it empties")
+    "a heading only above something it comes to head, an entry put back in the same change or "
+    "lines the section already carries, since the section may not come out of the change with a "
+    "heading newly standing over nothing, the put-back's own or one it empties")
 
 
 def only_put_back(lines, before, copy):

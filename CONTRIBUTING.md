@@ -788,9 +788,9 @@ behaviour a working application would notice changing.
    the note is the tag's and the file cannot tell a correction from a deletion: it has to be the
    base's but for a line its own tag's copy has that the base is short of, put back where that copy
    has it, heading and date included, and leaving no `###` heading of the section over nothing
-   that the base did not already leave so — so a heading goes back only above something it comes
-   to head, an entry put back with it or lines the section already carries, and not where it
-   empties the heading above it — the base rather than the tag's copy, because `main`'s older
+   that the base did not already leave so — so a heading goes back only above something it comes to
+   head, an entry put back in the same change or lines the section already carries, and not where
+   it empties the heading above it — the base rather than the tag's copy, because `main`'s older
    sections were reworded and reordered after their releases and carry a Highlights block their
    tags' copies do not, so the copy says which lines may go back and the base says what is there —
    one the file has not got, a maintenance line's carried forward, arrives as that copy and

@@ -489,7 +489,8 @@ class AgainstTheTag(unittest.TestCase):
         # worth nothing if that way is refused too. The other route it names is held to that by
         # the case below.
         self.assertEqual((one_edit, code,
-                          "an entry put back with it or lines the section already carries" in said),
+                          "an entry put back in the same change or lines the section already "
+                          "carries" in said),
                          (0, 2, True))
 
     # GREEN_ON_BASE(characterization): the base accepts this route too. What this branch

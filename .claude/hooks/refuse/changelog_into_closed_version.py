@@ -275,8 +275,6 @@ def main():
     was, becomes = drain.dated_sections(text), drain.dated_sections(proposed)
     moved = [v for v in becomes if becomes[v] != was.get(v)]
     copies, tracked = published_copies(path, moved)
-    # A section the edit brings in has no text here to be held to, so what it may say is the tag's
-    # copy and nothing more.
     restored = {v for v, (tag, sha, copy) in copies.items()
                 if (drain.only_put_back(becomes[v], was[v], copy) if v in was
                     else becomes[v] == copy)}
