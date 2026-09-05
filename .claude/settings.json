@@ -138,6 +138,11 @@
             "type": "command",
             "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse/library_seed_without_room.py\"",
             "timeout": 20000
+          },
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse/filter_selecting_no_test.py\"",
+            "timeout": 20000
           }
         ]
       },

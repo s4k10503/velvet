@@ -169,6 +169,51 @@ def command_segments(command):
     return [segment for segment in (s.strip().strip("(){} ") for s in segments) if segment]
 
 
+def visible_segments(command):
+    """`command_segments`, minus the segments the mask blanked whole.
+
+    `command_segments` slices the ORIGINAL text at boundaries the mask found, which is what lets a
+    quoted operand survive into a segment. The cost is that a span the mask blanked -- a heredoc body,
+    a here-string -- comes back as a segment of its own carrying its own text, and its words then
+    shlex-split as if they were operands of a command. A pull-request body written through a heredoc
+    puts its markdown in one, and a blockquote there reads as a redirect onto the file its line names.
+    Measured over this project's transcripts, 44 of the Bash commands carrying a `-testFilter` carry it
+    only inside such a span, and the guard over that flag refused 9 of them before this reading was
+    shared -- three from sessions older than the guard, so the shape is not one session's.
+
+    A caller that judges operands wants this; one that needs the body's text, or the position of a
+    boundary in the original, wants `command_segments`.
+    """
+    masked = mask_shell_literals(command)
+    bounds, start = [], 0
+    for index, character in enumerate(masked):
+        if character in SEPARATORS:
+            bounds.append((start, index))
+            start = index + 1
+    bounds.append((start, len(command)))
+    return [normalised
+            for first, last in bounds if masked[first:last].strip()
+            for normalised in command_segments(command[first:last])]
+
+
+def comment_opens_at(segment):
+    """Where this segment's comment starts, or None if no `#` in it starts one.
+
+    Asked of the mask, which is the one place that already knows a quote from a bare character: an
+    unquoted `#` survives it, a quoted one is blanked. Asking the token list instead cannot tell
+    `cp a.md b.md '#c'`, which writes `#c`, from a trailing comment -- and dropping the last operand
+    there makes a SOURCE the destination, which is a refusal over a file nothing writes.
+
+    The position rather than a yes: a caller needs it to count, and a predicate that knows where the
+    comment is and answers only whether there is one forces a cut on the wrong term.
+    """
+    masked = mask_shell_literals(segment)
+    for index, character in enumerate(masked):
+        if character == "#" and (index == 0 or masked[index - 1] in " \t"):
+            return index
+    return None
+
+
 def tokens_of(segment):
     try:
         return shlex.split(segment, comments=False, posix=True)

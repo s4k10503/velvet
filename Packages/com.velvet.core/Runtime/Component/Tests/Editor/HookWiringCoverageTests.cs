@@ -47,8 +47,9 @@ namespace Velvet.Tests
         private static readonly Regex HookReferencePattern =
             new(@"\.claude/hooks/([A-Za-z0-9_./-]+)", RegexOptions.Compiled);
 
-        // GREEN_ON_BASE(construction): both sides are this repository's own files -- the paths `.claude/settings.json` names,
-        // against the scripts on disk. Rename one hook and this reddens; no base run can do that.
+        // GREEN_ON_BASE(construction): this change adds a settings entry and the file it names in one commit.
+        // The base holds neither, so what it reads is its own registrations against its own scripts. Misspell
+        // the new entry's path as `filter_selecting_no_tests.py` and this reddens; no base run misspells it.
         [Test]
         public void Given_TheHookWiring_When_EachReferencedPathIsResolved_Then_EveryOneNamesAFileThatExists()
         {
@@ -68,8 +69,9 @@ namespace Velvet.Tests
                 "a hook is wired by path, so one that names nothing never fires:\n" + string.Join("\n", missing));
         }
 
-        // GREEN_ON_BASE(construction): the hook directory against the two files that run it, both the base's own. Add an unwired
-        // `refuse/nothing_runs_this.py` and this reddens, which no run of the base can arrange.
+        // GREEN_ON_BASE(construction): this case fails for a guard added and never wired.
+        // The base's directory holds no script of this change's, so it sweeps its own and finds them wired. Add
+        // an unwired `refuse/nothing_runs_this.py` and this reddens, which no run of the base can arrange.
         [Test]
         public void Given_TheHookDirectory_When_EachScriptIsTracedBack_Then_EveryOneIsWiredOrSourced()
         {
@@ -138,8 +140,9 @@ namespace Velvet.Tests
         private const string NoScopeDeclared =
             "no hook declares HOOK_SCOPE, so neither scope check has a subject left";
 
-        // GREEN_ON_BASE(construction): the `HOOK_SCOPE` lines against the settings, both the base's own content. Unregister a
-        // guard that declares one and this reddens; a base run performs no such edit.
+        // GREEN_ON_BASE(construction): the guard this change adds declares no `HOOK_SCOPE`.
+        // So the subjects here are the base's own declarations against the base's own settings, a set this branch
+        // does not add to. Unregister a guard that declares one and this reddens; a base run performs no such edit.
         [Test]
         public void Given_TheHooksDeclaringSessionScope_When_TheSettingsAreRead_Then_EveryOneIsRegisteredThere()
         {
@@ -163,8 +166,9 @@ namespace Velvet.Tests
                 + $"reachable only from there leaves every session outside it unguarded:\n{string.Join("\n", unregistered)}");
         }
 
-        // GREEN_ON_BASE(construction): the same declarations against the agent front matter. Name such a guard in
-        // `.claude/agents/velvet-implementer.md` and this reddens, which no base run arranges.
+        // GREEN_ON_BASE(construction): the same absent declaration, read against the agent front matter instead.
+        // This change names its guard in no agent's front matter either, so both sides stay the base's. Name a
+        // session-scoped guard in `.claude/agents/velvet-implementer.md` and this reddens, which no base run arranges.
         [Test]
         public void Given_TheHooksDeclaringSessionScope_When_TheAgentFrontMatterIsRead_Then_NoneIsNarrowedThere()
         {
@@ -344,8 +348,9 @@ namespace Velvet.Tests
             "no PreToolUse registration was read out of " + SettingsFile
             + ", so neither tool-set check has a subject left";
 
-        // GREEN_ON_BASE(construction): each registered hook's source against the registration, both the base's own. Delete a
-        // `HOOK_TOOLS` line and this reddens; no run of the base can delete one.
+        // GREEN_ON_BASE(construction): this change registers a guard and declares that guard's `HOOK_TOOLS` at once.
+        // The base carries neither half, so it reads its own registrations against its own sources. Delete the new
+        // guard's `HOOK_TOOLS` line and this reddens; no run of the base can delete one.
         [Test]
         public void Given_ThePreToolUseRegistrations_When_EachHookIsRead_Then_EveryOneDeclaresItsToolSet()
         {
@@ -367,8 +372,9 @@ namespace Velvet.Tests
                 + $"compares:\n{string.Join("\n", silent)}");
         }
 
-        // GREEN_ON_BASE(construction): the settings matcher against each hook's `HOOK_TOOLS`, both the base's own text. Drop a
-        // tool from either side and this reddens, which no base run can perform.
+        // GREEN_ON_BASE(construction): the new entry's matcher and the set its script declares both say `Bash`.
+        // The pair arrived with this change and the base has neither half of it, so it compares its own pairs.
+        // Drop `Bash` from either side of the new pair and this reddens, which no base run can perform.
         [Test]
         public void Given_ThePreToolUseRegistrations_When_EachMatcherIsComparedWithTheHooksOwnSet_Then_TheyNameTheSameTools()
         {
@@ -397,8 +403,9 @@ namespace Velvet.Tests
         private static string Quoted(IEnumerable<string> matchers) =>
             string.Join(" and ", matchers.Select(matcher => "\"" + matcher + "\""));
 
-        // GREEN_ON_BASE(construction): each gate against the set it sits beside, both the base's own. Replace a gate's
-        // `HOOK_TOOLS` with a literal and this reddens; no base run rewrites a gate.
+        // GREEN_ON_BASE(construction): the gate this change adds reads `HOOK_TOOLS` rather than a literal.
+        // The base holds no gate of this change's, so it reads the ones it does hold against the sets beside them.
+        // Replace the new gate's `HOOK_TOOLS` with a literal and this reddens; no base run rewrites a gate.
         [Test]
         public void Given_TheHooksDeclaringAToolSet_When_TheirSourceIsRead_Then_EveryOneComparesToolNameAgainstIt()
         {
@@ -503,8 +510,9 @@ namespace Velvet.Tests
         // second one was meant.
         private static readonly string[] SearchedDirectories = { HookDirectory, "scripts" };
 
-        // GREEN_ON_BASE(construction): the names the scripts spell against the files beside them. Misspell `settle.py` in a
-        // refusal message and this reddens, which is an edit no base run makes.
+        // GREEN_ON_BASE(construction): the subjects here are the hook scripts the tree itself holds.
+        // The base holds none of this change's, so the one name the new guard spells is read on the branch alone.
+        // Misspell the `base_red_check.py` it builds a path to and this reddens, which is an edit no base run makes.
         [Test]
         public void Given_TheHookScripts_When_EachScriptNameTheyBuildAPathFromIsResolved_Then_EveryOneExists()
         {
@@ -553,8 +561,9 @@ namespace Velvet.Tests
             ("a merge", "{\"tool_name\":\"Bash\",\"cwd\":\"%PROJECT%\",\"tool_input\":{\"command\":\"gh pr merge 1 --squash --delete-branch\"}}", true),
         };
 
-        // GREEN_ON_BASE(construction): every guard in the directory against payloads this file holds, both the base's own.
-        // Break an import in `tracked_writes.py` and this reddens; no base run breaks one.
+        // GREEN_ON_BASE(construction): this sweep's subject is whatever the refuse directory holds.
+        // The base's directory holds no guard of this change's, so the base measured nothing about the new one.
+        // Break an import in `filter_selecting_no_test.py` and this reddens; no base run breaks one.
         [Test]
         public void Given_EveryRefusingGuard_When_APayloadIsPosed_Then_ItRunsToAVerdict()
         {
@@ -641,6 +650,16 @@ namespace Velvet.Tests
             ("a shell command rewriting a tracked file",
              "\"cwd\":\"%PROJECT%\",\"tool_input\":{\"command\":"
              + "\"sed -i '' -e s/a/b/ Packages/com.velvet.core/CHANGELOG.md\"}"),
+            // %PROJECT% again, and for the same reason: the guard answering this reads the names the
+            // test sources give the runner, and the scratch directory holds none, where it stands down
+            // rather than refusing every filter posed outside a Unity project. The command names the
+            // tree too, that guard reading which tree a run opens out of the command rather than out
+            // of the directory the tool call started in — and relatively, which needs no quoting
+            // inside the payload and no assumption about spaces in the checkout's path.
+            ("a test run filtered to a value that selects nothing",
+             "\"cwd\":\"%PROJECT%\",\"tool_input\":{\"command\":"
+             + "\"Unity -runTests -batchmode -projectPath . "
+             + "-testFilter Velvet.Tests.NoFixtureIsCalledThis\"}"),
         };
 
         // A declaration reading as a claim on its own line, and one the reader would take
@@ -663,8 +682,10 @@ namespace Velvet.Tests
         // reading something other than the event's tool name.
         private const string UnroutedTool = "VelvetNoToolIsCalledThis";
 
-        // GREEN_ON_BASE(construction): each gate against the tools its own file declares, both the base's own content. Invert a
-        // gate's `tool_name` comparison and this reddens, which no base run can arrange.
+        // GREEN_ON_BASE(construction): the row this change appends to `GatePayloads` sits last in the table.
+        // So on the base each guard settles on the row it settled on without this branch, and the guard the row was
+        // added for is absent there. Invert the new gate's `tool_name` comparison and this reddens, which no base
+        // run can arrange.
         [Test]
         public void Given_TheHooksDeclaringAToolSet_When_EachIsPosedUnderARoutedNameAndAnUnroutedOne_Then_OnlyTheRoutedOneAnswers()
         {
@@ -836,8 +857,9 @@ namespace Velvet.Tests
         private const string ReleasedHeadingBelowAnEmptyOne =
             ReleasedHeading + "\n\n### Fixed\n\n" + ReleasedHeading;
 
-        // GREEN_ON_BASE(characterization): the base already refuses an edit made in a worktree, and this change adds a shell route
-        // beside the editing one rather than altering what an Edit reaches.
+        // GREEN_ON_BASE(characterization): the base already refuses an edit made in a worktree.
+        // This change writes no line of `changelog_into_closed_version.py`, the guard the case poses, and the
+        // `GatePayloads` row it adds to this fixture is read by none of the closed-version cases.
         [Test]
         public void Given_ACheckoutAndAWorktreeOfIt_When_TheClosedVersionGuardIsPosedAnEditInTheWorktree_Then_ItRefuses()
         {
@@ -879,8 +901,8 @@ namespace Velvet.Tests
             }
         }
 
-        // GREEN_ON_BASE(characterization): the base already refuses a duplicated version heading, and nothing in this change reaches
-        // the reading that decides it.
+        // GREEN_ON_BASE(characterization): the base already refuses a duplicated version heading.
+        // This change writes no line of `changelog_into_closed_version.py`, the guard the case poses.
         [Test]
         public void Given_AnEditWritingASecondHeadingForAReleasedVersion_When_TheClosedVersionGuardReadsIt_Then_ItRefuses()
         {
@@ -905,8 +927,8 @@ namespace Velvet.Tests
             }
         }
 
-        // GREEN_ON_BASE(characterization): the base already refuses a substitution in a released section, and this change leaves that
-        // comparison untouched.
+        // GREEN_ON_BASE(characterization): the base already refuses a substitution in a released section.
+        // This change writes no line of `changelog_into_closed_version.py`, the guard the case poses.
         [Test]
         public void Given_AnEditSubstitutingTheOnlyEntryOfAReleasedSection_When_TheClosedVersionGuardReadsIt_Then_ItRefuses()
         {
@@ -932,8 +954,8 @@ namespace Velvet.Tests
             }
         }
 
-        // GREEN_ON_BASE(characterization): the base already refuses an indented entry there, and the published-lines reading is not
-        // what this change moves.
+        // GREEN_ON_BASE(characterization): the base already refuses an entry indented above a section's first bullet.
+        // This change writes no line of `changelog_into_closed_version.py`, the guard the case poses.
         [Test]
         public void Given_AnEntryNestedAboveAReleasedSectionsFirstColumnZeroBullet_When_TheClosedVersionGuardReadsIt_Then_ItRefuses()
         {
@@ -960,8 +982,8 @@ namespace Velvet.Tests
             }
         }
 
-        // GREEN_ON_BASE(characterization): the base already refuses an entry under a heading the notes do not read, and the heading
-        // grammar is untouched here.
+        // GREEN_ON_BASE(characterization): the base already refuses an entry under a heading the notes do not read.
+        // This change writes no line of `changelog_into_closed_version.py`, the guard the case poses.
         [Test]
         public void Given_AnEntryBelowAHeadingTheReleaseNotesDoNotRead_When_TheClosedVersionGuardReadsIt_Then_ItRefuses()
         {
@@ -988,8 +1010,8 @@ namespace Velvet.Tests
             }
         }
 
-        // GREEN_ON_BASE(characterization): the base already refuses where the project directory cannot be placed, and the scoping
-        // this change adds is on the shell route rather than that one.
+        // GREEN_ON_BASE(characterization): the base already refuses where the project directory cannot be placed.
+        // This change writes no line of `changelog_into_closed_version.py`, the guard the case poses.
         [Test]
         public void Given_AProjectDirectoryGitCannotPlace_When_TheClosedVersionGuardIsPosedAGrowthEdit_Then_ItRefuses()
         {
@@ -1019,8 +1041,8 @@ namespace Velvet.Tests
             }
         }
 
-        // GREEN_ON_BASE(characterization): the base already stands down for a changelog in no repository of ours, and that scoping
-        // is unchanged by this branch.
+        // GREEN_ON_BASE(characterization): the base already stands down for a changelog in no repository of ours.
+        // This change writes no line of `changelog_into_closed_version.py`, the guard the case poses.
         [Test]
         public void Given_AChangelogInNoRepository_When_TheClosedVersionGuardIsPosedAGrowthEditFromAPlacedProject_Then_ItStandsDown()
         {
@@ -1051,8 +1073,8 @@ namespace Velvet.Tests
             }
         }
 
-        // GREEN_ON_BASE(characterization): the base already names the deletion rather than a rename, and this change writes no part
-        // of that message.
+        // GREEN_ON_BASE(characterization): the base already names the deletion rather than a rename.
+        // This change writes no line of `changelog_into_closed_version.py`, the guard the case poses.
         [Test]
         public void Given_AnEditDeletingAReleasedSectionOutright_When_TheClosedVersionGuardRefusesIt_Then_ItDoesNotNameARename()
         {
