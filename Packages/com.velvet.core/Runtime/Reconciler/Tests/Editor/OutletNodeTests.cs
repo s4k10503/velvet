@@ -29,6 +29,10 @@ namespace Velvet.Tests
     /// to size an anchor against its container; unmounting the Outlet releases both, so dead containers do
     /// not accumulate across route changes over a long session, and disposing the reconciler under a live
     /// tree releases them too.</item>
+    /// <item>An anchor a diff emptied stops growing once that diff finishes, including when it parked
+    /// mid-removal and a resume finished it — on the indexed path and on the keyed one.</item>
+    /// <item>The queue that carries a new anchor to the boundary that can see its container is empty
+    /// again once that boundary has run.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -379,8 +383,90 @@ namespace Velvet.Tests
             // Act
             reconciler.Dispose();
 
-            // Assert — a disposed reconciler holds on to none of the elements it made.
+            // Assert — the anchor was registered while the tree was live, and disposing released it.
             Assert.That((registeredWhileMounted, context.LayoutAnchors.Count), Is.EqualTo((1, 0)));
+        }
+
+        // The queue is per-pass: a boundary that kept its entries would go on holding every anchor the
+        // reconciler ever made, the ones that have left the tree included. A count is what sees that.
+        [Test]
+        public void Given_AnOutletMounted_When_ItsPassEnds_Then_ThePendingAnchorPlacementQueueIsEmpty()
+        {
+            // Arrange
+            using var reconciler = new Reconciler();
+            var root = new VisualElement();
+            var context = reconciler.Context;
+
+            // Act
+            reconciler.Reconcile(root, Array.Empty<VNode>(), new VNode[] { V.Outlet() });
+
+            // Assert — the registration is folded in because a pass that queued nothing would leave the
+            // queue empty for the wrong reason.
+            Assert.That(
+                (context.LayoutAnchors.Count, context.PendingLayoutAnchorPlacements.Count),
+                Is.EqualTo((1, 0)));
+        }
+
+        [Test]
+        public void Given_AnAnchorEmptiedByAParkedIndexedDiff_When_TheResumeFinishes_Then_TheAnchorNoLongerGrows()
+        {
+            // Arrange — enough children that a removal under the budget below parks with some still there.
+            using var reconciler = new Reconciler();
+            var root = new VisualElement();
+            reconciler.Reconcile(root, Array.Empty<VNode>(), new VNode[] { V.Outlet() });
+            var anchor = root[0];
+            var children = new VNode[]
+            {
+                V.Label(text: "a"), V.Label(text: "b"), V.Label(text: "c"), V.Label(text: "d"),
+                V.Label(text: "e"), V.Label(text: "f"), V.Label(text: "g"), V.Label(text: "h"),
+            };
+            reconciler.Reconcile(anchor, Array.Empty<VNode>(), children);
+            var grewWhileHolding = anchor.style.flexGrow.value;
+
+            // Act — the budget TimeSlicedReconcilerTests drives these entry points with. That the pass
+            // parked is folded into the assertion rather than assumed of it.
+            reconciler.Reconcile(anchor, children, Array.Empty<VNode>(), frameBudgetMs: 0.001);
+            var parkedStillHolding = reconciler.HasPendingWork && anchor.childCount > 0;
+            while (reconciler.HasPendingWork) { reconciler.ContinueReconcile(); }
+
+            // Assert — the pass that filled it grew it, the park left children behind, and the resume that
+            // emptied it handed the space back. The park is folded in because a budget generous enough to
+            // finish in one pass would leave the entry's own reading to answer, and that one was never wrong.
+            Assert.That(
+                (grewWhileHolding, parkedStillHolding, anchor.style.flexGrow.value),
+                Is.EqualTo((1f, true, 0f)));
+        }
+
+        // The keyed half of the pair above: the two resumes are separate entry points that each reach a
+        // ReconcileXxxFrom directly, so a case on one leaves the other unmeasured. Carrying keys is what
+        // selects this one.
+        [Test]
+        public void Given_AnAnchorEmptiedByAParkedKeyedDiff_When_TheResumeFinishes_Then_TheAnchorNoLongerGrows()
+        {
+            // Arrange — the same shape as the case above, with a key on every entry.
+            using var reconciler = new Reconciler();
+            var root = new VisualElement();
+            reconciler.Reconcile(root, Array.Empty<VNode>(), new VNode[] { V.Outlet() });
+            var anchor = root[0];
+            var children = new VNode[]
+            {
+                V.Label(text: "a", key: "a"), V.Label(text: "b", key: "b"),
+                V.Label(text: "c", key: "c"), V.Label(text: "d", key: "d"),
+                V.Label(text: "e", key: "e"), V.Label(text: "f", key: "f"),
+                V.Label(text: "g", key: "g"), V.Label(text: "h", key: "h"),
+            };
+            reconciler.Reconcile(anchor, Array.Empty<VNode>(), children);
+            var grewWhileHolding = anchor.style.flexGrow.value;
+
+            // Act
+            reconciler.Reconcile(anchor, children, Array.Empty<VNode>(), frameBudgetMs: 0.001);
+            var parkedStillHolding = reconciler.HasPendingWork && anchor.childCount > 0;
+            while (reconciler.HasPendingWork) { reconciler.ContinueReconcile(); }
+
+            // Assert
+            Assert.That(
+                (grewWhileHolding, parkedStillHolding, anchor.style.flexGrow.value),
+                Is.EqualTo((1f, true, 0f)));
         }
 
         #endregion

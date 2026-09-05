@@ -253,14 +253,21 @@ namespace Velvet
             }
             finally
             {
-                if (parent != null && _ctx.LayoutAnchors.Contains(parent))
-                {
-                    FiberNodeFactory.SyncLayoutAnchorGrowth(parent);
-                }
+                SyncGrowthIfLayoutAnchor(parent);
                 _ctx.EndPresenceReproductionScope(presenceScope, removals, _presenceOwedByThisPark);
                 _ctx.BufferPool.ReturnProviderTable(oldProviders);
                 _ctx.BufferPool.ReturnFiberList(oldFibers);
                 _ctx.BufferPool.ReturnFiberSet(newFibers);
+            }
+        }
+
+        // Reconcile's own finally above reads what the anchor now holds; the two resumes reach
+        // ReconcileXxxFrom without passing that finally, so each reads it for itself.
+        private void SyncGrowthIfLayoutAnchor(VisualElement? parent)
+        {
+            if (parent != null && _ctx.LayoutAnchors.Contains(parent))
+            {
+                FiberNodeFactory.SyncLayoutAnchorGrowth(parent);
             }
         }
 
@@ -568,6 +575,7 @@ namespace Velvet
             }
             finally
             {
+                SyncGrowthIfLayoutAnchor(state.Parent);
                 _ctx.SettlePresenceReproductionsOwedByAPark(removals, _presenceOwedByThisPark);
             }
         }
@@ -589,6 +597,7 @@ namespace Velvet
             }
             finally
             {
+                SyncGrowthIfLayoutAnchor(state.Parent);
                 _ctx.SettlePresenceReproductionsOwedByAPark(removals, _presenceOwedByThisPark);
             }
         }

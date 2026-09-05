@@ -1,4 +1,5 @@
 using System;
+using UnityEngine.UIElements;
 
 namespace Velvet
 {
@@ -25,6 +26,19 @@ namespace Velvet
                 return false;
             }
             foreach (var cls in classNames)
+            {
+                if (IsGridToken(cls))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // The same question of a live element, for a reconciler-side caller holding no VNode of its own.
+        public static bool HasGridClass(VisualElement element)
+        {
+            foreach (var cls in element.GetClasses())
             {
                 if (IsGridToken(cls))
                 {

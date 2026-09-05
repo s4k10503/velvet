@@ -258,6 +258,9 @@ namespace Velvet
                 // drain just above. Draining here, at the top-level boundary, is the first point where every
                 // element created in this pass has its final parent.
                 RingOverlay.DrainPendingPlacements(_ctx);
+                // Same boundary, same reason: an anchor's container is not known until the pass has
+                // placed it.
+                FiberNodeFactory.DrainPendingAnchorPlacements(_ctx);
                 // Last, so a ref setup sees the element where the pass finally put it and every cleanup
                 // this pass owed has already run — the portal drain above included, which reconciles a
                 // Portal's children through ChildReconciler directly and so reaches no boundary of its

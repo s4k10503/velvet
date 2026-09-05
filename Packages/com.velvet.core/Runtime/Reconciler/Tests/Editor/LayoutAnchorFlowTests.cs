@@ -14,12 +14,17 @@ namespace Velvet.Tests
     /// <list type="bullet">
     /// <item>A route body rendered through an Outlet declared after a sibling starts below that sibling in a
     /// column container, and to the right of it in a row container, rather than over it.</item>
-    /// <item>A route body sized as a percentage of its container still resolves against the container's
-    /// box, on the main axis and on the cross axis of both container directions, and a container that
-    /// centres its items does not take the cross axis away.</item>
+    /// <item>A route body sized as a percentage resolves against the anchor's slot rather than against the
+    /// container: the whole container where the Outlet is its only child, on the main axis and on the cross
+    /// axis of both container directions, and on the main axis what the siblings ahead of it left. A
+    /// container that centres its items does not take the cross axis away.</item>
     /// <item>An Outlet that matched no route leaves the container's main-axis space to the siblings
     /// declared beside it, takes its share once a route resolves into it, and hands it back when the route
-    /// body renders itself away.</item>
+    /// body renders itself away — including when that body was z-managed, so what it left inside the anchor
+    /// is torn down only after the reconcile that removed it.</item>
+    /// <item>In a `grid` route container the route body renders at a cell's width rather than at what the
+    /// cells left of the row, both for a route that mounts with the container and for one that arrives
+    /// after it.</item>
     /// <item>Consecutive VirtualList items whose renderer returns a Component stack rather than sharing one
     /// position, and so do items whose renderer returns a Provider.</item>
     /// </list>
@@ -28,8 +33,8 @@ namespace Velvet.Tests
     /// The router is stood up the way <c>OutletNodeTests</c> does it — a location carrying one match, pushed
     /// through the Location and Depth Providers. What these cases add over that fixture is a real panel: each
     /// reads a resolved rect, which is why each one acts through
-    /// <see cref="PanelTestBase.ForcePanelUpdate"/>. Two cases change what is rendered after the mount, and
-    /// drive it through a store the component reads plus a drained immediate tier.
+    /// <see cref="PanelTestBase.ForcePanelUpdate"/>. The cases that change what is rendered after the
+    /// mount drive it through a store the component reads plus a drained immediate tier.
     /// </remarks>
     [TestFixture]
     internal sealed class LayoutAnchorFlowTests : PanelTestBase
@@ -79,6 +84,25 @@ namespace Velvet.Tests
                 });
 
         [Component]
+        private static VNode HeaderThenOutletSizedLayoutRender()
+            => V.Div(className: "flex flex-col w-[400px] h-[300px]", name: "layout",
+                children: new VNode[]
+                {
+                    V.Div(className: "h-[40px]", name: "header"),
+                    V.Outlet(),
+                });
+
+        [Component]
+        private static VNode GridRouteContainerRender()
+            => V.Div(className: "grid grid-cols-2 w-[400px] h-[300px]", name: "layout",
+                children: new VNode[]
+                {
+                    V.Div(className: "h-[40px]", name: "cell-0"),
+                    V.Div(className: "h-[40px]", name: "cell-1"),
+                    V.Outlet(),
+                });
+
+        [Component]
         private static VNode RouteBodyRender() => V.Div(className: "h-[20px]", name: "body");
 
         [Component]
@@ -96,6 +120,12 @@ namespace Velvet.Tests
         [Component]
         private static VNode VanishingRouteBodyRender()
             => Hooks.UseStore(s_store, s => s.On) ? V.Div(className: "h-[20px]", name: "body") : null!;
+
+        [Component]
+        private static VNode VanishingZLayeredRouteBodyRender()
+            => Hooks.UseStore(s_store, s => s.On)
+                ? V.Div(className: "absolute z-10 h-[20px] w-[20px]", name: "body")
+                : null!;
 
         private static readonly ComponentContext<string> ItemContext = ComponentContext<string>.Create("default");
 
@@ -216,8 +246,8 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): a route resolved after the mount fills its container too.
-        // The mount path and the patch path each hand the anchor its share of the container, and only the
-        // patch one runs here.
+        // The anchor takes its share at the end of any reconcile into it, and the reconcile that finds a
+        // route here is a patch; the case above measures the one that finds it at the mount.
         [Test]
         public void Given_AnOutletThatMatchedNothingAtMount_When_ALocationThatMatchesArrives_Then_TheRouteBodyFillsTheContainer()
         {
@@ -238,9 +268,6 @@ namespace Velvet.Tests
                 Is.EqualTo(300f).Within(0.01f));
         }
 
-        // GREEN_ON_BASE(characterization): a route body that renders itself away releases the container.
-        // The anchor holding it was out of the flow before this change, so the space stayed the siblings'
-        // whatever the body did; in the flow it has to hand the space back when the body goes.
         [Test]
         public void Given_AMatchedRouteBodyThatRendersItselfAway_When_ItDoes_Then_ItsGrowingSiblingTakesTheWholeContainer()
         {
@@ -267,6 +294,107 @@ namespace Velvet.Tests
                     ? _window.rootVisualElement.Q<VisualElement>("main").layout.height
                     : float.NaN,
                 Is.EqualTo(300f).Within(0.01f));
+        }
+
+        [Test]
+        public void Given_AZLayeredRouteBodyThatRendersItselfAway_When_ItDoes_Then_ItsGrowingSiblingTakesTheWholeContainer()
+        {
+            // Arrange — the body above with `absolute z-10` on it, which is the whole difference: a z-managed
+            // element is relocated into a layer container inside the anchor, and that container outlives the
+            // reconcile that removed the body, so an anchor read by its physical child count still looks full.
+            using var store = new SwitchStore();
+            s_store = store;
+            store.Set(true);
+            var location = LocationWithSingleMatch(V.Component(VanishingZLayeredRouteBodyRender, key: "body"));
+            _mounted = V.Mount(_window.rootVisualElement,
+                WrapInRouter(location, V.Component(GrowingSiblingThenOutletLayoutRender, key: "layout")));
+            ForcePanelUpdate(_window.rootVisualElement.panel);
+            // The relocation joins the gate the case above folds in, for the reason it gives there: without
+            // it this reads as that case with a longer class string, and the assertion holds either way.
+            var relocatedAndSharing =
+                !ReferenceEquals(
+                    _window.rootVisualElement.Q<VisualElement>("body").parent,
+                    _window.rootVisualElement.Q<VisualElement>(className: FiberNodeFactory.OutletContainerClass))
+                && _window.rootVisualElement.Q<VisualElement>("main").layout.height < 300f;
+
+            // Act
+            store.Set(false);
+            _mounted.GetSchedulerForTest().DrainImmediateForTest();
+            ForcePanelUpdate(_window.rootVisualElement.panel);
+
+            // Assert
+            Assert.That(
+                relocatedAndSharing
+                    ? _window.rootVisualElement.Q<VisualElement>("main").layout.height
+                    : float.NaN,
+                Is.EqualTo(300f).Within(0.01f));
+        }
+
+        [Test]
+        public void Given_ARouteContainerWithASiblingAheadOfTheOutlet_When_ItRendersAFullHeightRouteBody_Then_ItResolvesAgainstWhatIsLeft()
+        {
+            // Arrange
+            var location = LocationWithSingleMatch(V.Component(FullHeightRouteBodyRender, key: "body"));
+            _mounted = V.Mount(_window.rootVisualElement,
+                WrapInRouter(location, V.Component(HeaderThenOutletSizedLayoutRender, key: "layout")));
+
+            // Act
+            ForcePanelUpdate(_window.rootVisualElement.panel);
+
+            // Assert — the 300px container less the 40px header, both declared above. The percentage cases
+            // put the Outlet alone in its container, where what is left is the whole of it; this is the
+            // arrangement that tells the two readings apart.
+            Assert.That(
+                _window.rootVisualElement.Q<VisualElement>("body").layout.height,
+                Is.EqualTo(260f).Within(0.01f));
+        }
+
+        [Test]
+        public void Given_AGridRouteContainer_When_TheOutletRendersARouteBody_Then_TheBodyIsAsWideAsACell()
+        {
+            // Arrange
+            var location = LocationWithSingleMatch(V.Component(FullWidthRouteBodyRender, key: "body"));
+            _mounted = V.Mount(_window.rootVisualElement,
+                WrapInRouter(location, V.Component(GridRouteContainerRender, key: "layout")));
+
+            // Act
+            ForcePanelUpdate(_window.rootVisualElement.panel);
+
+            // Assert — a column width is not a number this fixture gets to pick, so it is read off a cell;
+            // that the cells are narrower than the row is folded in, since a container that laid out no
+            // columns at all would satisfy the comparison with every child at the container's own width.
+            Assert.That(
+                _window.rootVisualElement.Q<VisualElement>("cell-0").layout.width
+                    < _window.rootVisualElement.Q<VisualElement>("layout").layout.width
+                    ? _window.rootVisualElement.Q<VisualElement>("body").layout.width
+                    : float.NaN,
+                Is.EqualTo(_window.rootVisualElement.Q<VisualElement>("cell-0").layout.width).Within(0.01f));
+        }
+
+        // The patch half of the grid pair above. A route arriving after the mount finds the anchor already
+        // in its container, so the reading taken as that route renders can see the grid; the mount half
+        // cannot, and the pass-end re-read is what answers for it.
+        [Test]
+        public void Given_AGridRouteContainerThatMatchedNothingAtMount_When_ALocationThatMatchesArrives_Then_TheBodyIsAsWideAsACell()
+        {
+            // Arrange
+            using var store = new SwitchStore();
+            s_store = store;
+            _mounted = V.Mount(_window.rootVisualElement, V.Component(NavigatingGridRootRender, key: "root"));
+            ForcePanelUpdate(_window.rootVisualElement.panel);
+
+            // Act
+            store.Set(true);
+            _mounted.GetSchedulerForTest().DrainImmediateForTest();
+            ForcePanelUpdate(_window.rootVisualElement.panel);
+
+            // Assert — read off a cell, and folded, for the reasons the mount case gives.
+            Assert.That(
+                _window.rootVisualElement.Q<VisualElement>("cell-0").layout.width
+                    < _window.rootVisualElement.Q<VisualElement>("layout").layout.width
+                    ? _window.rootVisualElement.Q<VisualElement>("body").layout.width
+                    : float.NaN,
+                Is.EqualTo(_window.rootVisualElement.Q<VisualElement>("cell-0").layout.width).Within(0.01f));
         }
 
         [Test]
@@ -310,8 +438,8 @@ namespace Velvet.Tests
 
         private readonly record struct SwitchState(bool On);
 
-        // One switch for both cases that change what is rendered after the mount: the navigation case reads
-        // it to choose the location, the vanishing-body case to choose whether to render at all.
+        // One switch for every case that changes what is rendered after the mount: a navigation case reads
+        // it to choose the location, a vanishing-body case to choose whether to render at all.
         private sealed class SwitchStore : Store<SwitchState>
         {
             public SwitchStore() : base(new SwitchState(false)) { }
@@ -333,6 +461,18 @@ namespace Velvet.Tests
             return WrapInRouter(
                 matched ? MatchedFullHeightLocation : UnmatchedLocation,
                 V.Component(OutletOnlyLayoutRender, key: "layout"));
+        }
+
+        private static readonly RouterLocation MatchedFullWidthLocation =
+            LocationWithSingleMatch(V.Component(FullWidthRouteBodyRender, key: "body"));
+
+        [Component]
+        private static VNode NavigatingGridRootRender()
+        {
+            var matched = Hooks.UseStore(s_store, s => s.On);
+            return WrapInRouter(
+                matched ? MatchedFullWidthLocation : UnmatchedLocation,
+                V.Component(GridRouteContainerRender, key: "layout"));
         }
 
         private static RouterLocation LocationWithNoMatch()

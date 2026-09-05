@@ -1014,6 +1014,11 @@ namespace Velvet
         // Identity-side rather than a marker class, for the reason OutletContainers gives above.
         public HashSet<VisualElement> LayoutAnchors { get; } = new();
 
+        // The anchors this pass created, held until the pass ends because part of what settles an
+        // anchor's growth is the container it landed in and it has landed in none yet — the same
+        // create-then-insert order RingOverlay.DrainPendingPlacements is queued for.
+        public List<VisualElement> PendingLayoutAnchorPlacements { get; } = new();
+
         // The node array being expanded for the fiber on top of FiberStack, which is the array whose nodes a
         // GetOrCreate reached from here is stamping onto its children. Set where a fiber's own output enters
         // the reconcile and where a nested fiber's committed output is descended, and restored after both, so

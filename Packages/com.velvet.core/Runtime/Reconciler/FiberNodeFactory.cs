@@ -767,10 +767,10 @@ namespace Velvet
         // Anchor VisualElement emitted for Provider / Component / Outlet to track fiber lifecycle.
         // It takes a slot in its container's flow, so the padding, the gap and the sibling order that
         // container declares reach the subtree under it. Absolute insets were the earlier choice and are
-        // rejected: an anchor pinned to its container's edges is drawn over the siblings declared before
-        // it. What those insets also gave the anchor was a size for a percentage-sized child to resolve
-        // against, on both axes; Align.Stretch keeps that on the cross axis and SyncLayoutAnchorGrowth on
-        // the main one. LayoutAnchorFlowTests pins both, for a column container and for a row one.
+        // rejected: an anchor pinned to its container's edges is drawn over the siblings declared before it.
+        // Those insets also handed a percentage-sized child the container's whole box to resolve against.
+        // A slot hands it the slot; Align.Stretch and SyncLayoutAnchorGrowth are what make the two agree
+        // where they can, and LayoutAnchorFlowTests pins the arrangements where they do.
         // The anchor is not the author's element, which is why it declines picking.
         private VisualElement CreateLayoutAnchor()
         {
@@ -784,15 +784,38 @@ namespace Velvet
                 }
             };
             _ctx.LayoutAnchors.Add(anchor);
+            _ctx.PendingLayoutAnchorPlacements.Add(anchor);
             return anchor;
         }
 
-        // An anchor holding nothing takes no main-axis space: an Outlet that matched no route would
-        // otherwise claim a share of the container away from the siblings declared beside it.
-        // Read where a reconcile finishes against an anchor, so a route body that renders itself away is
-        // read the same as one that never matched.
+        // Re-reads the growth of the anchors this pass created, from where the pass left each one: the
+        // reading taken while an anchor was still being created saw no container, so a grid one could not
+        // decline the growth there. Drained at the top-level boundary for the reason RingOverlay's own
+        // pending placements are.
+        internal static void DrainPendingAnchorPlacements(ReconcilerContext ctx)
+        {
+            foreach (var anchor in ctx.PendingLayoutAnchorPlacements)
+            {
+                SyncLayoutAnchorGrowth(anchor);
+            }
+            ctx.PendingLayoutAnchorPlacements.Clear();
+        }
+
+        // An Outlet that matched no route would claim a share of the container away from the siblings
+        // declared beside it, so the anchor grows only while it holds a rendered child. The count is the
+        // logical one because a reading can land while a reconciler-invisible child is inside the anchor:
+        // a z-layer container outlives the reconcile that removed the body it held, and a physical count
+        // would see it sitting there.
+        // A grid container declines the growth: StyleGridManipulator gives the anchor a column, and a
+        // growing child does not keep the width it was given. LayoutAnchorFlowTests pins that width, for a
+        // route that mounts with the container and for one that arrives after it.
         internal static void SyncLayoutAnchorGrowth(VisualElement anchor)
-            => anchor.style.flexGrow = anchor.childCount > 0 ? 1 : 0;
+        {
+            var holdsARenderedChild = LogicalChildSlots.Count(anchor) > 0;
+            var parent = anchor.parent;
+            anchor.style.flexGrow =
+                holdsARenderedChild && (parent == null || !StyleGridClass.HasGridClass(parent)) ? 1 : 0;
+        }
 
         // Walks node and returns the first MotionNode descendant
         // reachable through transparent wrappers — ContextProviderNode, FragmentNode, and a z-managed

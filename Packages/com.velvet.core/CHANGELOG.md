@@ -589,20 +589,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Velvet tracks the matched route's fiber on an anchor element, and that anchor was pinned to its
   container's four edges: the route body was drawn over the siblings declared ahead of it and ignored
   the container's padding, so a layout route rendering a header above its `Outlet` drew the route body
-  over that header rather than under it. The anchor now takes its place among the siblings and grows
-  into the container's leftover main-axis space while it holds a route, so a route body sized as a
-  percentage of its container still fills it and an `Outlet` that matched no route leaves that space to
-  the siblings declared beside it. The same anchor stands in for a `V.VirtualList` item whose
-  renderer returns a `V.Component`, where it had been collapsing the visible items onto one position;
+  over that header rather than under it. The anchor now takes its place among the siblings and takes the
+  container's leftover main-axis space while it holds a route, so a percentage-sized route body has a box
+  to resolve against, and an `Outlet` that matched no route leaves that space to the siblings declared
+  beside it. In a `grid` route container it takes a column instead, at the width that container sized its
+  cells to. The same anchor stands in for a `V.VirtualList` item whose renderer returns a
+  `V.Component` or a `V.Provider`, where it had been collapsing the visible items onto one position;
   they now stack.
   What a working application sees change: the route container's padding, gap and sibling order reach
-  the route body, so a layout drawn around the covering anchor moves. A growing sibling shares the
+  the route body, so a layout drawn around the covering anchor moves. A route body sized as a percentage
+  resolves against the anchor's slot rather than against the container, and in a container that does not
+  wrap that slot is the main-axis space the other children left — `h-full` under a 40px header in a
+  300px column measures 260 where it measured 300 and drew over the header. A growing sibling shares the
   container's leftover main-axis space with a matched `Outlet` rather than taking all of it — a
-  `V.Div("flex-1")` beside an `Outlet` in a 300px column measures 140px where it measured 300px — and a
-  container whose height came only from the route body under it measured 0 and now measures that
-  body's height. A `grid` route container is the arrangement to check by hand: its column
-  sizing reaches the `Outlet` now, and a growing child of a `grid` is squeezed off the row instead of
-  wrapping onto the next, which is what a `grid` child carrying `grow` already did.
+  `V.Div("flex-1")` beside an `Outlet` rendering a 20px body in a 300px column measures 140px where it
+  measured 300px, and a route body written straight into that container with no `Outlet` between them
+  would leave it 280px. A container whose height came only from the route body under it measured 0 and
+  now measures that body's height.
+  Measured worse than before and not fixed here: in a container that wraps its children the anchor's
+  slot is the flex line it sits on rather than the container, so a percentage on the route body resolves
+  against that line — an `h-full` body in a `flex flex-row flex-wrap w-[400px] h-[300px]` beside two
+  `w-[300px] h-[40px]` siblings measures 40 where it measured 300, and dropping the anchor's `flex-grow`
+  or its `align-self: stretch` leaves it at 40. And an `absolute` route body leaves the anchor taking a
+  share of the container that an out-of-flow body needs none of, so a `V.Div("flex-1")` beside it
+  measures 150px where it measured 300px.
 
 - A route whose path ends in a splat no longer accepts children. `ParseRouteSegments` refused a splat
   that was not last within one route path, but a branch is every ancestor's segments joined, and
