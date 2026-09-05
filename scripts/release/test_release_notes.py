@@ -5,6 +5,7 @@ Run: python3 scripts/release/test_release_notes.py
 """
 
 import json
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -316,6 +317,32 @@ class UnwrapSoftBreaks(unittest.TestCase):
         self.assertEqual(unwrapped, ["- One", "", "  Not a continuation of anything."])
 
 
+class ReadUnityRequirement(unittest.TestCase):
+    def test_Given_a_manifest_naming_a_release_When_reading_the_requirement_Then_it_joins_both_fields(self):
+        # Arrange
+        declared = json.loads(Path(DEFAULT_PACKAGE_JSON).read_text(encoding="utf-8"))
+
+        # Act
+        requirement = read_unity_requirement(DEFAULT_PACKAGE_JSON)
+
+        # Assert
+        self.assertEqual(requirement, f"{declared['unity']}.{declared['unityRelease']}")
+
+    # GREEN_ON_BASE(characterization): the reading a manifest without `unityRelease` already gets
+    # here. Spell the join unconditionally -- `f"{unity}.{release}"` -- and this is what reddens.
+    def test_Given_a_manifest_naming_no_release_When_reading_the_requirement_Then_it_states_unity_alone(self):
+        # Arrange
+        with tempfile.TemporaryDirectory() as directory:
+            manifest = Path(directory, "package.json")
+            manifest.write_text(json.dumps({"unity": "6000.3"}), encoding="utf-8")
+
+            # Act
+            requirement = read_unity_requirement(manifest)
+
+        # Assert
+        self.assertEqual(requirement, "6000.3")
+
+
 class BuildNotes(unittest.TestCase):
     def test_Given_a_complete_section_When_building_Then_highlights_lead_the_note(self):
         # Arrange / Act
@@ -372,7 +399,9 @@ class BuildNotes(unittest.TestCase):
         # Assert
         self.assertIn("Requires Unity 6000.3 or newer", notes)
 
-    def test_Given_the_install_snippet_When_building_Then_the_requirement_names_only_unity(self):
+    # GREEN_ON_BASE(refactor): the sentence this rename preserves. What moved is the name's claim
+    # that the requirement names `unity` alone, which the manifest's release now joins.
+    def test_Given_the_install_snippet_When_building_Then_the_requirement_links_the_guide(self):
         # Arrange
         notes = notes_for(COMPLETE)
 
