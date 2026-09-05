@@ -282,16 +282,22 @@ def dated_sections(text):
             for version, dated, heading, lines in published_sections(text) if dated}
 
 
-def added_positions(lines, before):
-    """Which of `lines` are not `before`'s own, by index, or None where `before` is not carried in
-    order at all -- a line lost, reworded or moved."""
-    reached, added = 0, []
-    for index, line in enumerate(lines):
+def carried_from(lines, before):
+    """Which line of `before` each of `lines` is carried from, by index, None where it is one
+    `before` has not got -- or None in place of the whole reading where `before` is not carried in
+    order at all: a line lost, reworded or moved.
+
+    One walk, so the indices a put-back is charged to and the lines a heading is read back to come
+    from the same alignment.
+    """
+    reached, carried = 0, []
+    for line in lines:
         if reached < len(before) and line == before[reached]:
+            carried.append(reached)
             reached += 1
         else:
-            added.append(index)
-    return added if reached == len(before) else None
+            carried.append(None)
+    return carried if reached == len(before) else None
 
 
 def puts(copy, line, side):
@@ -327,11 +333,11 @@ def block(lines, index):
                      lines[index + 1:])
 
 
-def empty_headings(lines):
-    """The headings of `lines` that head nothing, counted by name."""
-    return Counter(one for index, one in enumerate(lines)
-                   if release_notes.SUBSECTION_HEADING.match(one)
-                   and next(block(lines, index), None) is None)
+def over_nothing(lines):
+    """Which of `lines` are headings of the section with nothing under them, by index."""
+    return {index for index, one in enumerate(lines)
+            if release_notes.SUBSECTION_HEADING.match(one)
+            and next(block(lines, index), None) is None}
 
 
 def files_as_published(lines, index, copy, where):
@@ -348,7 +354,7 @@ def files_as_published(lines, index, copy, where):
     A heading put back under one of the same name leaves what it comes to file reading as it did, so
     a line the section gained after its release does not stand in the way of it, as it does not of
     `touching`. Whether anything is left heading nothing is `only_put_back`'s reading of the whole
-    result rather than one taken here: asked at the index `added_positions` charges, it answered for
+    result rather than one taken here: asked at the index a put-back is charged to, it answered for
     that line and not for the heading above it, which the same placement can empty -- and on two
     headings of one name made adjacent, the charged index is the second, whose block is the base's.
     """
@@ -405,16 +411,20 @@ def only_put_back(lines, before, copy):
     copy too -- allowed on the copy alone, a second one arrives and the note ships the bullet twice.
 
     The emptiness question is asked of the result rather than at the index charged for a put-back,
-    which is not always the heading a placement leaves empty. Newly, against the base, rather than
+    which is not always the heading a placement leaves empty. Newly, against `before`, rather than
     of the result outright: a section already carrying an empty heading would otherwise take no
     put-back but one filling that heading, and not the deletion of it either, which is a line lost.
+    And heading by heading, through `carried_from`, rather than by name: counted by name, a
+    put-back that fills one heading and leaves another of the same name over nothing comes out even.
     """
-    added = added_positions(lines, before)
-    if added is None:
+    carried = carried_from(lines, before)
+    if carried is None:
         return False
+    added = [index for index, at in enumerate(carried) if at is None]
     if Counter(lines[index] for index in added) - (Counter(copy) - Counter(before)):
         return False
-    if empty_headings(lines) - empty_headings(before):
+    already = over_nothing(before)
+    if any(carried[index] not in already for index in over_nothing(lines)):
         return False
     return all(in_its_place(lines, index, copy) for index in added)
 

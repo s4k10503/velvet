@@ -577,6 +577,24 @@ OVER_NOTHING_BASE = OPEN.replace(
 OVER_NOTHING_BACK = OVER_NOTHING_BASE.replace(
     "- Changed one.\n", "- Changed one.\n- Changed two.\n")
 
+# A copy heading two blocks `### Added`, against a base short of the first block's entry and of the
+# second block entire, so the section goes into the edit with one `### Added` over nothing and can
+# come out of it with another: the entry fills the one the base left empty, and the heading lands
+# where the copy's own entry for it is still missing and the next block's heading follows.
+TRADED_COPY = OPEN.replace(
+    "### Highlights\n\n- A release.\n",
+    "### Highlights\n\n- A release.\n\n### Added\n\n- Added one.\n\n### Fixed\n\n- Fixed one.\n"
+    "\n### Added\n\n- Added two.\n\n### Changed\n\n- Changed one.\n")
+
+TRADED_BASE = OPEN.replace(
+    "### Highlights\n\n- A release.\n",
+    "### Highlights\n\n- A release.\n\n### Added\n\n### Fixed\n\n- Fixed one.\n"
+    "\n### Changed\n\n- Changed one.\n")
+
+TRADED_BACK = TRADED_BASE.replace(
+    "### Added\n\n### Fixed\n\n- Fixed one.\n",
+    "### Added\n\n- Added one.\n\n### Fixed\n\n- Fixed one.\n\n### Added\n")
+
 # A base whose blocks are in the other order, so the line the copy puts below the missing one is
 # above the line it puts above it.
 BLOCKS_REORDERED = SUBSECTIONS.replace(
@@ -1387,8 +1405,8 @@ class PublishedSections(ReleaseHistory):
 
     def test_Given_AHeadingPutBackAgainstItsTwin_When_TheFirstOfThePairFilesNothing_Then_ItIsRefused(self):
         # Arrange -- the heading lands against the one of its name that survived rather than above
-        # the entry it heads. Either side of that one is the same text, and `added_positions`
-        # charges the second of the pair, whose block is the base's own; the first ships empty.
+        # the entry it heads. Either side of that one is the same text, and `carried_from` reads the
+        # second of the pair as the added one, whose block is the base's own; the first ships empty.
         root, commits = self.history(TWIN_COPY, TWIN_BASE, TWIN_BESIDE, tags={0: RELEASE})
         above_its_entry = self.commit(root, TWIN_ABOVE_ITS_ENTRY, "above the entry it heads")
         landed = run(root, commits[1], "[]", result=above_its_entry)
@@ -1424,6 +1442,30 @@ class PublishedSections(ReleaseHistory):
         self.assertEqual((held_one, done.returncode,
                           "each dated section to its own release's tag" in done.stdout),
                          (True, 0, True))
+
+    # GREEN_ON_BASE(characterization): the base already refuses this placement. It reads the block
+    # under a put-back at the index that put-back is charged to, and this heading's block is empty
+    # there; what an earlier commit of this branch lost is that refusal where the same edit fills a
+    # heading of that name and leaves the count by name where it was.
+    def test_Given_ABaseHoldingAHeadingOverNothing_When_APutBackTradesItForATwin_Then_ItIsRefused(self):
+        # Arrange -- the entry going back fills the `### Added` the base left over nothing, and the
+        # second `### Added` goes back above the heading of the next block. Counted by name the
+        # section comes out of the edit with as many `### Added` over nothing as it went in with, so
+        # the two cancel and the reading has to be taken heading by heading to see either.
+        root, commits = self.history(TRADED_COPY, TRADED_BASE, TRADED_BACK, tags={0: RELEASE})
+        went_in_with_one = "### Added\n\n### Fixed\n" in subprocess.run(
+            ["git", "-C", str(root), "show", f"{commits[1]}:{CHANGELOG}"],
+            capture_output=True, text=True).stdout
+
+        # Act
+        done = run(root, commits[1], "[]")
+
+        # Assert -- the base's own heading over nothing rides along: were it filled, the one the
+        # put-back leaves empty would have nothing to cancel against and the count by name would
+        # catch it.
+        self.assertEqual((went_in_with_one, done.returncode,
+                          "## [2.1.0]: changed against the base" in done.stderr),
+                         (True, UNNAMED, True))
 
     def test_Given_ABaseCarryingTheBlocksInTheOtherOrder_When_ALineGoesBackAboveThemBoth_Then_ItIsRefused(self):
         # Arrange -- the copy puts `### Fixed` below the missing line and `- Changed one.` above it,
