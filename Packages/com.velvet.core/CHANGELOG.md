@@ -471,7 +471,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Minimum supported Unity raised to 6000.3.23f1**, from 6000.3.11f1 — `unity` stays `6000.3` and
   `unityRelease` moves to `23f1`, so a project on an earlier release of the 6.3 line updates its editor
-  before taking this version. Among the UI Toolkit fixes Unity shipped between the two, these land on
+  before taking this version. Several of the UI Toolkit fixes Unity shipped between the two land on
   shapes Velvet itself ships: a `border-color` transition not running when the starting colour is
   transparent, which the bundled `transition-*` utilities covering `border-color` ask for over
   `border-transparent` or an alpha-zeroed border colour (6000.3.13f1); a programmatic scroll on a
