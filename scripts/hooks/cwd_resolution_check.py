@@ -35,18 +35,25 @@ sees nothing of, since it asks the filesystem for free space rather than asking 
 reported as undecided rather than counted as agreement, and a guard that lands there wants a case in
 its own suite.
 
-Two instrument failures are guarded apart, because the count that catches one is blind to the other.
-Shims that stop recording leave every guard undecided — measured, none of nineteen — and
+Three instrument failures are guarded apart, because the count that catches one is blind to the
+others. Shims that stop recording leave every guard undecided — measured, none of nineteen — and
 `DECIDED_FLOOR` fails on that. Two trees that stop being two do the opposite: every guard that reads
 a tree reads as following the move, the decided count is what an intact instrument gives, and the
 fault list comes back empty — measured, thirteen decided, no faults, floor satisfied. So the trees
-are compared to each other here as well. `ControlTests` in the suite reaches both from a third
-direction, by requiring the blind stand-in to come back blind.
+are compared to each other here as well. And a guard that raises exits 1, which is neither the code
+that allows nor the code that refuses: read as an allow it addresses no tree, scores undecided, and
+trips no fault rule — measured, five of nineteen guards replaced by files that raise on import and
+the sweep came back with an empty list. So `run_guard` scores that code rather than mapping it.
+`ControlTests` in the suite reaches all three from a fourth direction, by requiring each stand-in to
+come back as its own shape.
 
 ## What is posed, and what each form can show
 
-Three forms per guard: a move it can place, a move nothing can place, and that same unplaceable move
-carrying a command the guard has no opinion about.
+Four forms per guard: a move it can place, that same move carrying the redirection that silences it,
+a move nothing can place, and that unplaceable move carrying a command the guard has no opinion
+about. The redirection is posed separately because a reading that mistakes its `&` for the operator
+that backgrounds a list answers about the handed tree for the placeable form's own shape, and the
+placeable form carries no redirection to show it.
 
 What is not decided here is what a guard SHOULD do once it has declined to place a move. Refusing and
 standing down are both defensible and the guards differ, `tracked_writes.py` naming its own gap; what
@@ -109,6 +116,12 @@ HANDED_TREE, MOVED_TREE = "handed", "moved"
 # only the running shell knows.
 UNPLACEABLE = 'cd "$VELVET_UNSET_WORKTREE"'
 
+# The same move with the redirection that silences it, which is how a session writes one whose output
+# it does not want. Posed because the placeable form alone cannot see a reading that takes the `&` of
+# a `2>&1` for the one that backgrounds a list: that reading answers about the handed tree, and this
+# column is where that shows.
+SILENCED = "cd {moved} >/dev/null 2>&1 &&"
+
 # A command no guard in the directory has a subject in. What it does not carry is the point: no git,
 # no gh, no path, nothing to judge — so a refusal of it can only have come from the move.
 UNCONCERNED = "ls"
@@ -158,7 +171,15 @@ def declaration(path):
 
 
 def guards(refuse_directory):
-    return sorted(Path(refuse_directory).glob("*.py"))
+    """Every guard in the directory, each named absolutely.
+
+    `run_guard` runs a hook with the temporary tree as its own directory, so a relative name reaches
+    nothing from there: CPython exits 2 for a file it cannot open, and 2 is the code a refusal
+    carries. Measured before this resolved, a relative argument reported every guard as refusing a
+    command it has no subject in -- the shape of the defect the sweep exists to find, from an
+    instrument that had read none of them.
+    """
+    return sorted(path.resolve() for path in Path(refuse_directory).glob("*.py"))
 
 
 def _tree(root, name):
@@ -217,7 +238,14 @@ def addressed(line, handed, moved):
 
 
 def run_guard(hook, tool_input, cwd, places):
-    """(verdict, the trees this run addressed) for one guard posed one payload from one directory."""
+    """(verdict, the trees this run addressed, why the run was no reading) for one guard.
+
+    A guard that raises exits 1, which is neither the code that allows nor the code that refuses: it
+    addressed no tree and denied nothing, so before this third value existed every column read it as
+    a guard whose subject is not the tree. Measured then, five of nineteen guards replaced by files
+    that raise on import left the sweep with an empty fault list. So the code is scored rather than
+    mapped, and one that is neither an allow nor a refusal comes back as the fault it is.
+    """
     shims, home, handed, moved = places
     handle, log = tempfile.mkstemp(prefix="velvet-cwd-resolution-")
     os.close(handle)
@@ -234,9 +262,9 @@ def run_guard(hook, tool_input, cwd, places):
     try:
         done = subprocess.run([sys.executable, "-B", str(hook)], input=json.dumps(event), text=True,
                               capture_output=True, timeout=120, env=environment, cwd=str(cwd))
-        code, out = done.returncode, done.stdout
+        code, out, error = done.returncode, done.stdout, done.stderr
     except subprocess.TimeoutExpired:
-        code, out = 1, ""
+        code, out, error = -1, "", "the run did not finish"
     finally:
         recorded = Path(log).read_text(encoding="utf-8")
         os.unlink(log)
@@ -245,12 +273,15 @@ def run_guard(hook, tool_input, cwd, places):
     denied = '"permissionDecision"' in out and '"deny"' in out
     trees = {name for line in recorded.splitlines() if line.strip()
              for name in [addressed(line, handed, moved)] if name}
-    return (REFUSE if code == 2 or denied else ALLOW), trees
+    if code not in (0, 2):
+        last = next((line for line in reversed(error.splitlines()) if line.strip()), "nothing")
+        return ALLOW, trees, f"exited {code} rather than allowing or refusing; said {last.strip()}"
+    return (REFUSE if code == 2 or denied else ALLOW), trees, None
 
 
 def placed_outcome(moved_run, cd_run, handed_run):
     """What a guard did with a `cd` into a literal directory it could have placed."""
-    cd_verdict, cd_trees = cd_run
+    cd_verdict, cd_trees = cd_run[0], cd_run[1]
     if HANDED_TREE in cd_trees:
         return HANDED
     if MOVED_TREE in cd_trees:
@@ -269,7 +300,7 @@ def unplaced_outcome(run, placed):
     both defensible once a guard knows it cannot place the move, and which one is right is the
     guard's own declaration rather than this check's.
     """
-    verdict, trees = run
+    verdict, trees = run[0], run[1]
     if HANDED_TREE in trees:
         return HANDED
     if placed == UNDECIDED:
@@ -287,8 +318,8 @@ def unconcerned_outcome(run):
 
 
 def readings(refuse_directory, floor=GUARD_FLOOR):
-    """[(guard, placed, unplaced, unconcerned, probe)] for every guard, and the faults in them."""
-    found, faults = [], []
+    """[(guard, placed, unplaced, silenced, unconcerned, probe)] per guard, and the faults in them."""
+    found, faults, broke = [], [], []
     subjects = guards(refuse_directory)
     if len(subjects) < floor:
         faults.append(f"{refuse_directory} holds {len(subjects)} guards, fewer than {floor}")
@@ -297,8 +328,9 @@ def readings(refuse_directory, floor=GUARD_FLOOR):
     try:
         handed, moved = _tree(root, HANDED_TREE), _tree(root, MOVED_TREE)
         if handed == moved:
-            # One directory answers both readings, so every guard follows a move it never made and
-            # every fault list is empty. The floor does not see it: they all score decided.
+            # One directory answers both readings, so a guard that reads a tree at all scores as
+            # following a move it never made and no tree-derived fault fires. The floor does not see
+            # it: the decided count is the one an intact run gives.
             faults.append(f"the two trees are one directory, {handed}")
         home = root / "home"
         home.mkdir()
@@ -307,38 +339,48 @@ def readings(refuse_directory, floor=GUARD_FLOOR):
             command, extra = declaration(hook)
             if command is None:
                 continue
-            placed = placed_outcome(
-                run_guard(hook, dict(extra, command=command), moved, places),
-                run_guard(hook, dict(extra, command=f"cd {moved} && {command}"), handed, places),
-                run_guard(hook, dict(extra, command=command), handed, places))
-            unplaced = unplaced_outcome(
-                run_guard(hook, dict(extra, command=f"{UNPLACEABLE} && {command}"), handed, places),
-                placed)
-            unconcerned = unconcerned_outcome(
-                run_guard(hook, dict(extra, command=f"{UNPLACEABLE} && {UNCONCERNED}"), handed,
-                          places))
-            found.append((hook.name, placed, unplaced, unconcerned, command))
+            posed = [
+                (command, moved),
+                (f"cd {moved} && {command}", handed),
+                (command, handed),
+                (f"{UNPLACEABLE} && {command}", handed),
+                (SILENCED.format(moved=moved) + f" {command}", handed),
+                (f"{UNPLACEABLE} && {UNCONCERNED}", handed),
+            ]
+            runs = [run_guard(hook, dict(extra, command=text), cwd, places) for text, cwd in posed]
+            # The first form that broke, rather than one line per form: six copies of one guard
+            # bury whatever else the list holds.
+            broke += [f"{hook.name}: on `{text}` it {run[2]}"
+                      for (text, _), run in zip(posed, runs) if run[2]][:1]
+            placed = placed_outcome(runs[0], runs[1], runs[2])
+            unplaced = unplaced_outcome(runs[3], placed)
+            silenced = unplaced_outcome(runs[4], placed)
+            unconcerned = unconcerned_outcome(runs[5])
+            found.append((hook.name, placed, unplaced, silenced, unconcerned, command))
     finally:
         shutil.rmtree(root, ignore_errors=True)
 
+    faults += broke
     faults += [f"{name}: `cd <worktree> && {command}` {placed}"
-               for name, placed, _, _, command in found if placed == HANDED]
+               for name, placed, _, _, _, command in found if placed == HANDED]
     faults += [f"{name}: `{UNPLACEABLE} && {command}` {unplaced}"
-               for name, _, unplaced, _, command in found if unplaced == HANDED]
+               for name, _, unplaced, _, _, command in found if unplaced == HANDED]
+    faults += [f"{name}: `cd <worktree> >/dev/null 2>&1 && {command}` {silenced}"
+               for name, _, _, silenced, _, command in found if silenced == HANDED]
     faults += [f"{name}: `{UNPLACEABLE} && {UNCONCERNED}` {unconcerned}"
-               for name, _, _, unconcerned, _ in found if unconcerned == REFUSES_ELSEWHERE]
+               for name, _, _, _, unconcerned, _ in found if unconcerned == REFUSES_ELSEWHERE]
     return found, faults
 
 
 def decided(found):
-    return [name for name, placed, _, _, _ in found if placed != UNDECIDED]
+    return [name for name, placed, _, _, _, _ in found if placed != UNDECIDED]
 
 
 def main(argv):
     directory = Path(argv[1]) if len(argv) > 1 else REPO_ROOT / REFUSE_DIRECTORY
     found, faults = readings(directory)
-    for name, placed, unplaced, unconcerned, command in found:
-        print(f"{name:<42} {placed:<38} {unplaced:<36} {unconcerned:<32} {command}")
+    for name, placed, unplaced, silenced, unconcerned, command in found:
+        print(f"{name:<42} {placed:<38} {unplaced:<36} {silenced:<36} {unconcerned:<32} {command}")
     if len(decided(found)) < DECIDED_FLOOR:
         faults.append(f"{len(decided(found))} guards were decided, fewer than {DECIDED_FLOOR} — the "
                       "two trees told nothing apart, so a clean list says nothing")

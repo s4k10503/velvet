@@ -2,15 +2,16 @@
 """Every refusing guard is held to which tree it answers about when the command changes directory.
 
 The sweep itself is `scripts/hooks/cwd_resolution_check.py`, which states what it reads and why one
-reading is not enough. What is here is the sweep run over the guards, and five stand-in guards that
+reading is not enough. What is here is the sweep run over the guards, and the stand-in guards that
 say whether the sweep can see anything at all.
 
-The controls are the point. A sweep that returns a clean list because its shims stopped recording, or
-because its two trees stopped being two, is indistinguishable from a sweep over guards that are all
-correct — which is the property this whole family exists to remove, one level up. So a guard that
-reads the directory it was handed, one that resolves the move, one that resolves it and then falls
-back, one that refuses by printing rather than by exiting, one that stands down having not placed
-it, and one that reads no tree at all are posed alongside, and each is required to come back as the
+The controls are the point. A sweep that returns a clean list because its shims stopped recording,
+because its two trees stopped being two, or because the guards under it are raising rather than
+answering, is indistinguishable from a sweep over guards that are all correct — which is the property
+this whole family exists to remove, one level up. So a guard that reads the directory it was handed,
+one that resolves the move, one that resolves it and then falls back, one that refuses by printing
+rather than by exiting, one that stands down having not placed it, one that reads no tree at all, and
+one that raises before reading anything are posed alongside, and each is required to come back as the
 outcomes its shape earns. Between them they produce every outcome the sweep reports, which is a
 count rather than a claim: `OUTCOMES` holds the set and one case below compares it.
 
@@ -18,6 +19,7 @@ Run: python3 scripts/hooks/test_cwd_resolution_check.py
 """
 
 import importlib.util
+import os
 import shutil
 import sys
 import tempfile
@@ -117,6 +119,13 @@ SILENT = PREAMBLE + """
 sys.exit(0)
 """
 
+# Raises where a guard whose import broke raises, and exits 1 the way CPython does for it. Every
+# column reads it exactly as `silent.py` reads: it addresses no tree and refuses nothing. What
+# separates the two is the exit code, and scoring that is what the sweep gained.
+CRASHING = PREAMBLE + """
+raise ModuleNotFoundError("no module named 'repository'")
+"""
+
 CONTROLS = {
     "blind.py": BLIND,
     "following.py": FOLLOWING,
@@ -124,11 +133,12 @@ CONTROLS = {
     "denying_on_stdout.py": DENYING_ON_STDOUT,
     "standing_down.py": STANDING_DOWN,
     "silent.py": SILENT,
+    "crashing.py": CRASHING,
 }
 
 
 class ControlTests(unittest.TestCase):
-    """What the sweep says about five guards whose answer is known before it runs."""
+    """What the sweep says about guards whose answer is known before it runs."""
 
     @classmethod
     def setUpClass(cls):
@@ -136,8 +146,8 @@ class ControlTests(unittest.TestCase):
         for name, source in CONTROLS.items():
             (cls.root / name).write_text(source.replace("VELVET_LIB", str(LIB)), encoding="utf-8")
         found, cls.faults = cwd_resolution_check.readings(cls.root, floor=0)
-        cls.outcomes = {name: (placed, unplaced, unconcerned)
-                        for name, placed, unplaced, unconcerned, _ in found}
+        cls.outcomes = {name: (placed, unplaced, silenced, unconcerned)
+                        for name, placed, unplaced, silenced, unconcerned, _ in found}
 
     @staticmethod
     def named(faults):
@@ -152,7 +162,7 @@ class ControlTests(unittest.TestCase):
         # scoring this one clean is scoring nothing, however clean the guards come back.
         # Assert
         self.assertEqual(self.outcomes["blind.py"],
-                         (cwd_resolution_check.HANDED, cwd_resolution_check.HANDED,
+                         (cwd_resolution_check.HANDED, cwd_resolution_check.HANDED, cwd_resolution_check.HANDED,
                           cwd_resolution_check.SILENT_ELSEWHERE))
 
     def test_Given_AGuardResolvingTheMove_When_TheMoveCouldBePlaced_Then_TheSweepSaysItFollows(self):
@@ -161,7 +171,7 @@ class ControlTests(unittest.TestCase):
         # in, which is the third column's own defect and what the real guards are held off.
         # Assert
         self.assertEqual(self.outcomes["following.py"],
-                         (cwd_resolution_check.FOLLOWS, cwd_resolution_check.REFUSES,
+                         (cwd_resolution_check.FOLLOWS, cwd_resolution_check.REFUSES, cwd_resolution_check.REFUSES,
                           cwd_resolution_check.REFUSES_ELSEWHERE))
 
     def test_Given_AGuardFallingBackToTheHandedDirectory_When_TheMoveCannotBePlaced_Then_TheSweepNamesIt(self):
@@ -169,7 +179,7 @@ class ControlTests(unittest.TestCase):
         # and answers about the tree the command left for the one it cannot.
         # Assert
         self.assertEqual(self.outcomes["falling_back.py"],
-                         (cwd_resolution_check.FOLLOWS, cwd_resolution_check.HANDED,
+                         (cwd_resolution_check.FOLLOWS, cwd_resolution_check.HANDED, cwd_resolution_check.HANDED,
                           cwd_resolution_check.SILENT_ELSEWHERE))
 
     def test_Given_AGuardRefusingOnStdout_When_TheMoveCannotBePlaced_Then_ItIsReadAsARefusal(self):
@@ -177,7 +187,7 @@ class ControlTests(unittest.TestCase):
         # guard that let the tool through, which is a false neutral of the same shape as the defect.
         # Assert
         self.assertEqual(self.outcomes["denying_on_stdout.py"],
-                         (cwd_resolution_check.FOLLOWS, cwd_resolution_check.REFUSES,
+                         (cwd_resolution_check.FOLLOWS, cwd_resolution_check.REFUSES, cwd_resolution_check.REFUSES,
                           cwd_resolution_check.REFUSES_ELSEWHERE))
 
     def test_Given_AGuardStandingDownOnAnUnplaceableMove_When_TheSweepScoresIt_Then_ItIsNotARefusal(self):
@@ -186,7 +196,7 @@ class ControlTests(unittest.TestCase):
         # separable here at all.
         # Assert
         self.assertEqual(self.outcomes["standing_down.py"],
-                         (cwd_resolution_check.FOLLOWS, cwd_resolution_check.STANDS_DOWN,
+                         (cwd_resolution_check.FOLLOWS, cwd_resolution_check.STANDS_DOWN, cwd_resolution_check.STANDS_DOWN,
                           cwd_resolution_check.SILENT_ELSEWHERE))
 
     def test_Given_AGuardReadingNoTreeAtAll_When_BothFormsArePosed_Then_TheSweepDecidesNothing(self):
@@ -195,7 +205,7 @@ class ControlTests(unittest.TestCase):
         # say are the same silence.
         # Assert
         self.assertEqual(self.outcomes["silent.py"],
-                         (cwd_resolution_check.UNDECIDED, cwd_resolution_check.UNDECIDED,
+                         (cwd_resolution_check.UNDECIDED, cwd_resolution_check.UNDECIDED, cwd_resolution_check.UNDECIDED,
                           cwd_resolution_check.SILENT_ELSEWHERE))
 
     def test_Given_TheStandIns_When_TheirOutcomesAreCollected_Then_EveryOneTheSweepReportsIsAmongThem(self):
@@ -211,7 +221,7 @@ class ControlTests(unittest.TestCase):
     # deleted as with it in place; these are what pose a defective guard to each rule.
     def test_Given_TheStandIns_When_APlaceableMoveIsPosed_Then_TheOneReadingTheHandedTreeIsFaulted(self):
         # Arrange / Act
-        found = self.named(fault for fault in self.faults if "`cd <worktree>" in fault)
+        found = self.named(fault for fault in self.faults if "`cd <worktree> &&" in fault)
 
         # Assert
         self.assertEqual(found, ["blind.py"])
@@ -232,6 +242,44 @@ class ControlTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(found, ["denying_on_stdout.py", "following.py"])
+
+    def test_Given_TheStandIns_When_TheMoveCarriesARedirection_Then_EachOneReadingTheHandedTreeIsFaulted(self):
+        # Arrange / Act — the same `cd` one redirection later, which the placeable form above cannot
+        # pose. A reading that takes the `&` of the `2>&1` for the one that backgrounds a list scores
+        # this column HANDED and the one above FOLLOWS, so the two are not the same measurement.
+        found = self.named(fault for fault in self.faults
+                           if fault.endswith(cwd_resolution_check.HANDED)
+                           and ">/dev/null 2>&1 &&" in fault)
+
+        # Assert
+        self.assertEqual(found, ["blind.py", "falling_back.py"])
+
+    def test_Given_AStandInThatRaises_When_TheSweepScoresIt_Then_ItIsFaultedRatherThanReadAsAnAllow(self):
+        # Arrange / Act — every column reads this one exactly as it reads `silent.py`: it addresses
+        # no tree and refuses nothing. What separates a guard that is off from one whose subject is
+        # not the tree is the exit code.
+        found = sorted({fault.split(":")[0] for fault in self.faults if " it exited " in fault})
+
+        # Assert
+        self.assertEqual(found, ["crashing.py"])
+
+
+class GuardNamingTests(unittest.TestCase):
+    """How the sweep names the hooks it is pointed at."""
+
+    def test_Given_ADirectoryNamedRelatively_When_ItsGuardsAreListed_Then_EachIsNamedAbsolutely(self):
+        # Arrange — a relative name, which is what a caller types from the repository root. The runs
+        # happen from a temporary tree, so a hook named this way is a file that cannot be opened,
+        # and the code CPython exits for that is the code a refusal carries.
+        root = Path(tempfile.mkdtemp(prefix="velvet-cwd-naming-"))
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        (root / "one.py").write_text("", encoding="utf-8")
+
+        # Act
+        found = cwd_resolution_check.guards(os.path.relpath(root))
+
+        # Assert
+        self.assertEqual([path.is_absolute() for path in found], [True])
 
 
 class TreeReadingTests(unittest.TestCase):
@@ -297,8 +345,9 @@ class RefuseDirectoryTests(unittest.TestCase):
 
     def test_Given_TheSweepOverTheGuards_When_ItsDecisionsAreCounted_Then_MoreThanItsFloorWereDecided(self):
         # Arrange / Act — what the assertion above cannot say on its own. Shims that stopped
-        # recording, or two trees that stopped differing, leave every guard undecided and every
-        # fault list empty.
+        # recording leave every guard undecided with an empty fault list, and this count is what
+        # sees it; two trees that stopped differing leave the count where an intact run puts it,
+        # which is why `readings` compares the trees to each other as well.
         found = len(cwd_resolution_check.decided(self.found))
 
         # Assert

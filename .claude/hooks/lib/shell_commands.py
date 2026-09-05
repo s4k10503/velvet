@@ -291,9 +291,7 @@ def git_invocation(tokens, git_directory=False):
     return context, tokens[index], tokens[index + 1:]
 
 
-# Where a move left the shell when nothing here can place it. It rides through the walk below rather
-# than ending it, because a move nothing runs after changes no reading: `cd -` closing a chain leaves
-# the work where the chain already put it.
+# Where a move left the shell when nothing here places it.
 UNRESOLVED_CD = object()
 
 # The words that change the directory a later segment runs in.
@@ -346,137 +344,116 @@ def moves_to_a_named_directory(segment):
     return move_target(tokens, index) is not None
 
 
-def _moved(where, tokens, index):
-    """Where a move lands, given where the shell already is, or UNRESOLVED_CD.
+# The whole of what is placed, and everything else declined:
+#
+#     [assignment ...] cd <literal>  ( && | ; | newline )  ...repeated...  work that moves nothing
+#
+# A walk over the command's operators was tried twice instead, and a construct nobody had written it
+# for was answered rather than declined: the `&` of a `2>&1` read as the operator that backgrounds a
+# list and undid the move before it, and a `case` arm's unmatched `)` drove a nesting count below
+# zero and raised, which turns off the guard that asked. An acceptor has the opposite default: a
+# construct it does not match is declined, and what a caller handed a decline may not do is answer
+# about the directory it started in.
 
-    A destination `move_target` declines arrives as UNRESOLVED_CD rather than as "it did not move",
-    which is the reading that would answer about the directory the move has left.
-    """
-    target = move_target(tokens, index)
-    if target is None or unexpanded(target) or target.startswith("~"):
-        return UNRESOLVED_CD
-    if os.path.isabs(target):
-        return os.path.normpath(target)
-    if where is UNRESOLVED_CD:
-        return UNRESOLVED_CD
-    return os.path.normpath(os.path.join(where, target))
+# A run of characters between the separators, read off the mask so a quoted word is not one.
+BARE_WORD = re.compile(r"[^\s;&|<>()]+")
+
+# The operators that carry a move to the next step. `;` and a newline are here although a `cd` that
+# fails leaves the work where it started -- restricting this to `&&`, which cannot, declined most of
+# the moves this project's own transcripts make.
+PREFIX_SEPARATORS = ("&&", ";", "\n")
+
+# What a step this places may not contain. Read off the step's TEXT rather than off its tokens,
+# because `shlex` gives none of these a meaning: `cd /wt&pwd` is one token to it and two commands to
+# the shell, which backgrounds the move and runs the rest where it started. Meeting one ends the
+# prefix rather than the reading -- the scan below is what then decides between a move already
+# behind us and a decline.
+OUTSIDE_A_PREFIX_STEP = re.compile(r"[()|&<>{}]")
+
+# Words that run text the mask has already blanked, so a move inside one is invisible here. `.`,
+# `source`'s other spelling, is left out: as a bare word it is far more often the pathspec `git add .`
+# writes than a command, and declining every command carrying one costs more than the move it catches.
+OPAQUE_RUNNERS = {"eval", "source"}
 
 
-Step = collections.namedtuple("Step", "text before after depth")
+def _holds_a_mover(masked):
+    """Whether anything in `masked` could still change the directory the work runs in."""
+    return any(os.path.basename(word.group()) in MOVERS or word.group() in OPAQUE_RUNNERS
+               for word in BARE_WORD.finditer(masked))
 
-# The two-character operators, read before the single characters `SEPARATORS` holds, so `&&` is not
-# taken for a `&` that backgrounds what precedes it nor `||` for a pipe.
-PAIRED_OPERATORS = ("&&", "||")
 
-
-def _steps(command):
-    """Each segment with the operators around it and the subshell nesting it runs at.
-
-    `command_segments` is the same split without that structure, which is all its callers need: they
-    ask which segments run a program, and neither the operator between two of them nor a subshell
-    changes what a segment runs. Placing a directory needs both, because the segment order alone
-    does not say where the shell ends up — a move inside `( … )` or a pipeline is gone with the
-    subshell that ran it, one in a list `&` backgrounds never reached the shell it was typed in, and
-    one either side of a `||` runs or does not run on an exit status nothing here has.
-    """
-    masked = mask_shell_literals(command)
-    steps = []
-    depth, start, before = 0, 0, None
-    index = 0
+def _next_separator(masked, index):
+    """(where the step ending at or after `index` stops, the operator that stopped it or None)."""
     while index < len(masked):
-        operator = next((word for word in PAIRED_OPERATORS if masked.startswith(word, index)), None)
-        if operator is None and masked[index] in SEPARATORS:
-            operator = masked[index]
-        if operator is None and masked[index] not in "()":
-            index += 1
-            continue
-        text = command[start:index].strip().strip("(){} ")
-        if operator is None:
-            steps.append(Step(text, before, None, depth))
-            depth += 1 if masked[index] == "(" else -1
-            before, start, index = None, index + 1, index + 1
-            continue
-        steps.append(Step(text, before, operator, depth))
-        before, start = operator, index + len(operator)
-        index += len(operator)
-    steps.append(Step(command[start:].strip().strip("(){} "), before, None, depth))
-    return [step for step in steps if step.text]
+        separator = next((word for word in PREFIX_SEPARATORS if masked.startswith(word, index)),
+                         None)
+        if separator is not None:
+            return index, separator
+        index += 1
+    return len(masked), None
 
 
 def command_directory(command, cwd):
-    """The directory this command's work runs in, or UNRESOLVED_CD where that is not one directory.
+    """The directory this command's work runs in, or UNRESOLVED_CD where the shape above is not met.
 
     `PreToolUse` fires before the command runs, so `cwd` is where the tool call *started*: the
     session's checkout, for `cd <worktree> && git ...`, which is not the tree the command acts on. A
-    guard that reads `cwd` alone answers about that other tree, and it answers positively — which is
+    guard that reads `cwd` alone answers about that other tree, and it answers positively -- which is
     the failure this exists to remove.
 
-    Asked after a guard has established it has something to judge, never before. These guards are
-    registered on `Bash`, so every command in the session reaches them, and one that declines here
-    without a subject refuses a command the user did not type — with the move as the whole of its
-    reason. `scripts/hooks/cwd_resolution_check.py` is what fails when a guard takes them in the
-    other order.
+    The decline is acted on only where the guard already has something to judge. These guards are
+    registered on `Bash`, so every command in the session reaches them, and one that refuses over a
+    decline before finding a subject refuses a command the user did not type -- with the move as the
+    whole of its reason. `scripts/hooks/cwd_resolution_check.py` is what fails when a
+    guard takes them in the other order.
 
     Placing the move is what is done here rather than at the call sites. Reading it was already
     shared; placing it was written three times and no two the same: one joined a relative target
     to the hook PROCESS's own directory, so `cd sub && git commit --amend` refused the amend over
     a path nothing holds wherever that directory was not the one the event named.
 
-    Every segment up to the first that runs a program is read, not the first segment alone. A
-    variable assignment is a segment of its own, and stopping at one left `SP=/tmp; cd "$SP/x"`
-    reading as no move at all -- the shape a session types whenever it names a worktree once and
-    moves into it.
-
-    UNRESOLVED_CD where two programs in the command run in different directories: one answer is
-    wrong about one of them, and a caller's contract here is to refuse rather than choose.
+    An assignment runs nothing, so a step that is only assignments does not end the prefix: ending
+    it there left `SP=/tmp; cd "$SP/x"` reading as no move at all -- the shape a session types
+    whenever it names a worktree once and moves into it.
     """
-    where, answer = cwd, None
-    # Where the shell stood when each open group was entered, and when the current list began. A
-    # group's moves are undone at its close and a backgrounded list's at its `&`, so both need the
-    # value from before rather than a flag saying one happened.
-    entered, began = [], cwd
-    for step in _steps(without_comments(command)):
-        while len(entered) > step.depth:
-            where = entered.pop()
-        while len(entered) < step.depth:
-            entered.append(where)
-        if step.before in (None, ";", "&", "\n"):
-            began = where
-        tokens = tokens_of(step.text)
-        index = leading_program(tokens)
-        if index >= len(tokens):
-            # An assignment and nothing else. It runs where the last move left the shell, and the
-            # next segment is still before anything a caller cares about.
-            continue
-        if os.path.basename(tokens[index]) in MOVERS:
-            if "||" in (step.before, step.after):
-                # Either it runs only because what precedes it failed, or what follows runs only
-                # because it did: which of the two directories the shell is left in is an exit
-                # status, and nothing here has run anything.
-                where = UNRESOLVED_CD
-            elif "|" not in (step.before, step.after):
-                where = _moved(where, tokens, index)
-        elif where is UNRESOLVED_CD:
-            return UNRESOLVED_CD
-        elif answer is None:
-            answer = where
-        elif where != answer:
-            return UNRESOLVED_CD
-        if step.after == "&":
-            where = began
-    return cwd if answer is None else answer
+    text = without_comments(command)
+    masked = mask_shell_literals(text)
+    where, index = cwd, 0
+    while True:
+        cut, separator = _next_separator(masked, index)
+        if OUTSIDE_A_PREFIX_STEP.search(masked[index:cut]):
+            break
+        tokens = tokens_of(text[index:cut])
+        program = leading_program(tokens)
+        if program < len(tokens):
+            # `cd`, not every mover: `popd` carries no destination in the command's own text and
+            # `pushd` is its partner. Declining `pushd` here loses a reading rather than missing a
+            # move, because the scan below takes all three.
+            if tokens[program] != "cd":
+                break
+            target = tokens[program + 1:]
+            if len(target) != 1 or unexpanded(target[0]) or target[0].startswith(("~", "-")):
+                break
+            where = os.path.normpath(target[0] if os.path.isabs(target[0])
+                                     else os.path.join(where, target[0]))
+        if separator is None:
+            index = cut
+            break
+        index = cut + len(separator)
+    return UNRESOLVED_CD if _holds_a_mover(masked[index:]) else where
 
 
 # What a guard says when `command_directory` declined to place the move, and what it asks for
 # instead. Owned here so that a family of guards refusing one shape cannot become a family of
 # explanations of it.
 UNPLACEABLE_MOVE = (
-    "The command changes directory in a way nothing here places: a target the shell has yet to "
-    "expand or one opening on `~`; `popd`, `pushd +N`, `cd -` or a bare `cd`, none of which carries "
-    "its destination in the command's own text; a move either side of a `||`, which leaves the "
-    "shell in one of two directories depending on an exit status; or two commands running in "
-    "different directories. So which tree it acts on was not read, and answering from the directory "
-    "the tool call started in would be a verdict about a tree the command has already left.")
+    "The command changes directory in a way nothing here places. What is placed is a `cd` to a "
+    "literal path: one or several, each joined to what follows by `&&`, `;` or a newline, and all "
+    "of them ahead of the work. Everything else is declined, among it: a target the shell has yet "
+    "to expand or one opening on `~`; `popd`, `pushd`, `cd -` and a bare `cd`; a move inside a "
+    "pipeline, a group or a `||`; a move carrying a redirection; and a move that runs after some "
+    "other program has. So which tree it acts on was not read, and answering from the directory the "
+    "tool call started in would be a verdict about a tree the command has already left.")
 NAME_THE_TREE = ("Spell the move out as a single `cd` to a literal path, or run the command from "
                  "the tree itself.")
 
