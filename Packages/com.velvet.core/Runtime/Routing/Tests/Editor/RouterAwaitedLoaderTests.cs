@@ -20,7 +20,8 @@ namespace Velvet.Tests
     /// destination's path parameters.</item>
     /// <item>The destination is published only while a navigation is in flight: the commit that lands it,
     /// the Blocker refusal that abandons it, a guard redirect that matches no route, a redirect chain that
-    /// exhausts the limit, and disposing the router each withdraw it.</item>
+    /// exhausts the limit, and disposing the router each withdraw it — the two redirect refusals only from
+    /// the initiator that still holds the claim.</item>
     /// <item>A loader that fails after suspending has its own exception recorded against the route, and the
     /// navigation still commits.</item>
     /// <item>The route on screen through that window is still the live one: a Suspend loader of its own
@@ -251,6 +252,42 @@ namespace Velvet.Tests
                 $"result={overflowed} afterOverflow={afterOverflow} "
                 + $"loading={router.PendingLocation?.Path ?? "none"}",
                 Is.EqualTo("result=Error afterOverflow=none loading=/users/7"));
+        });
+
+        [UnityTest]
+        public IEnumerator Given_AGuardThatNavigatesThenRedirectsToNoRoute_When_TheRedirectFailsToMatch_Then_TheNewerDestinationStands()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // The two cases above withdraw the destination of an initiator that still holds the claim.
+            // A guard delegate runs before its own attempt has awaited anything, so a navigation issued
+            // from one takes the claim while the attempt that called it is still inside the guard — and
+            // the destination the refused hop would withdraw is then the newer attempt's.
+            // Arrange
+            var loader = new VelvetTaskCompletionSource<object>();
+            Router router = null;
+            router = new Router(new[]
+            {
+                Route("/", children: new[]
+                {
+                    Route("home"),
+                    Route("guarded", guard: _ =>
+                    {
+                        router.NavigateAsync("/users/7").Forget();
+                        return "/no-such-route";
+                    }),
+                    Route("users/:id", loader: (ctx, ct) => loader.Task),
+                }),
+            });
+            await router.NavigateAsync("/home");
+
+            // Act
+            var guarded = await router.NavigateAsync("/guarded");
+
+            // Assert — the refused result rides along because a destination reading /users/7 is also what
+            // a guard that redirected nowhere at all would leave.
+            Assert.That(
+                $"guarded={guarded} loading={router.PendingLocation?.Path ?? "none"}",
+                Is.EqualTo("guarded=NotFound loading=/users/7"));
         });
 
         [UnityTest]

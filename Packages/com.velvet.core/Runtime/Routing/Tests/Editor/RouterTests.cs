@@ -120,6 +120,28 @@ namespace Velvet.Tests
             Assert.That(router.Status, Is.EqualTo(RouterStatus.NotFound));
         }
 
+        // GREEN_ON_BASE(characterization): the status a path that resolves to nothing leaves behind.
+        // The base writes it from this branch unconditionally, where the report is now conditional on
+        // nobody else holding a claim. Delete the `ReportUnclaimedOutcome(RouterStatus.NotFound)` call in
+        // `NavigateCore`'s null-path branch and this is what reddens.
+        [Test]
+        public void Given_APathThatResolvesToNothing_When_Navigating_Then_StatusBecomesNotFound()
+        {
+            // The case above is refused by the match; this one is refused before it, and the two branches
+            // report through separate calls, so a status read after either says nothing about the other.
+            // The commit first is what gives the status somewhere else to be left at.
+            // Arrange
+            var router = new Router(_routes);
+            router.NavigateSync("/home");
+
+            // Act
+            var result = router.NavigateSync(null);
+
+            // Assert
+            Assert.That(
+                $"result={result} status={router.Status}", Is.EqualTo("result=NotFound status=NotFound"));
+        }
+
         #endregion
 
         #region Await loader

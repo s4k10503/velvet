@@ -312,6 +312,32 @@ namespace Velvet.Tests
                 Is.EqualTo("live=True newer=True"));
         }
 
+        [Test]
+        public void Given_TheLiveRound_When_ItIsPromotedAgain_Then_ItsTokenSurvives()
+        {
+            // Promoting ends the round that held the live place, and the round handed in is the one that
+            // takes it — so a promotion whose argument is already live has to end nothing. Ending it would
+            // cancel the loaders of the location on screen from a call that changed which location that is.
+            // Arrange
+            CancellationToken captured = default;
+            var runner = new RouteLoaderRunner();
+            var live = runner.RunLoadersSync(
+                MakeMatch("live", loader: (ctx, ct) =>
+                {
+                    captured = ct;
+                    return VelvetTask.FromResult<object>("live-data");
+                }),
+                CancellationToken.None);
+            runner.Promote(live);
+
+            // Act
+            runner.Promote(live);
+
+            // Assert
+            Assert.That(captured.IsCancellationRequested, Is.False,
+                "The round holding the live place is not the round a promotion ends");
+        }
+
         [UnityTest]
         public IEnumerator Given_APromotedSuspendLoaderSucceedingOnCancellation_When_ItsRoundIsRetired_Then_NoCompletionIsFired()
             => VelvetTask.ToCoroutine(async () =>

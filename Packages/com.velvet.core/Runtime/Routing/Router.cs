@@ -858,6 +858,12 @@ namespace Velvet
             // Guard against a not-yet-committed router (no current location / no history entry / no round
             // whose loaders the entry could be holding open).
             var round = _loaderRunner.LiveRound;
+            // MUTANT_SURVIVES(unreachable): no caller gets here with a clause of this true.
+            // The two loader-runner handlers this constructor subscribes are its only callers, and the
+            // runner announces from the round `Promote` made live and no other. This router calls
+            // `Promote` at the commit and nowhere else, below both `CommitHistoryEntry` and the
+            // `CurrentLocation` write, so an announcement finds a live round, a committed location, and
+            // an index inside the history.
             if (round == null || _historyIndex < 0 || _historyIndex >= _history.Count || CurrentLocation == null)
             {
                 return;

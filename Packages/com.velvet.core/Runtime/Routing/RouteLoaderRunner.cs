@@ -177,6 +177,9 @@ namespace Velvet
             }
             round.Cts = null;
             cts.Cancel();
+            // MUTANT_SURVIVES(equivalent): nothing here reads the source once this line runs.
+            // `round.Cts` is the only field holding it and the line above cleared that, so what the
+            // Dispose releases is a handle nothing in this package reaches.
             cts.Dispose();
         }
 
