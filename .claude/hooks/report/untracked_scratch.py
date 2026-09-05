@@ -13,8 +13,21 @@ destroying another agent's in-flight work, and was told again on every stop beca
 do changed the condition. Three agents hit it in one session, and one was instructed to delete the
 three source files of an open PR. The wording below carries the same lesson: this is a report, and
 whoever owns a tree decides what is left in it.
+
+That reading leaves the same loop for files sitting in the agent's OWN tree that it did not write,
+so the listing is narrowed to what was written since this subagent started. The session's start is
+the wrong bound for that, and the difference is not academic: one session had been running for three
+days when its checkout's 42 untracked files were last written, so a session bound hands the same ten
+of them to each of that session's 159 subagents, where the subagent bound hands none to an agent
+that started after that write. What is read is the modification time, so a file copied in with its
+mtime preserved reads as one that predates the run.
+
+The gitignored-source listing is deliberately outside that narrowing. What makes it worth reporting
+is that the file STAYS excluded while local runs stay green, and an age bound would name it while it
+was new and never again.
 """
 
+import datetime
 import json
 import os
 import re
@@ -30,13 +43,42 @@ SOURCE_SUFFIXES = re.compile(r"\.(cs|uss|uxml|asmdef|csproj|sln|md)$")
 BUILD_DIRECTORIES = re.compile(r"^(Library|Temp|obj|Logs)/")
 
 
-def session_tree():
+def payload():
     try:
-        payload = json.loads(sys.stdin.read() or "{}")
-        declared = payload.get("cwd") or ""
+        return json.loads(sys.stdin.read() or "{}")
     except (ValueError, OSError):
-        declared = ""
-    return Path(declared or os.environ.get("CLAUDE_PROJECT_DIR", "."))
+        return {}
+
+
+def session_tree(record):
+    return Path(record.get("cwd") or os.environ.get("CLAUDE_PROJECT_DIR", "."))
+
+
+def agent_start(transcript):
+    """When this subagent's own transcript opened, or None where the reading did not answer.
+
+    None widens the report back to every path, which is the side this belongs on: a bound nobody
+    could read is not a bound saying nothing was left.
+    """
+    if not transcript:
+        return None
+    try:
+        with open(transcript, encoding="utf-8") as handle:
+            first = json.loads(handle.readline() or "{}")
+        stamp = first.get("timestamp") or ""
+        return datetime.datetime.fromisoformat(stamp.replace("Z", "+00:00")).timestamp()
+    except (AttributeError, OSError, ValueError):
+        return None
+
+
+def written_since(path, moment):
+    """Whether a path was last written no earlier than `moment`. One that cannot be read counts."""
+    if moment is None:
+        return True
+    try:
+        return path.lstat().st_mtime >= moment
+    except OSError:
+        return True
 
 
 def entries(status, marker):
@@ -51,15 +93,17 @@ def shown(listing, total):
 
 
 def main():
-    tree = session_tree()
+    record = payload()
+    tree = session_tree(record)
     if not tree.is_dir() or git(["rev-parse", "--git-dir"], cwd=tree) is None:
         return 0
+    started = agent_start(record.get("agent_transcript_path"))
 
     # Counted before the truncation, not after: the headline read "20 untracked" for a tree holding
     # thirty-seven, and a reader who clears the twenty believes they are done.
     untracked = [path for path in
                  entries(git(["status", "--porcelain", "--untracked-files=all"], tree), "??")
-                 if not path.startswith("Library/")]
+                 if not path.startswith("Library/") and written_since(tree / path, started)]
 
     # An ignored source file is the dangerous case; build output is ignored on purpose.
     ignored = [path for path in
