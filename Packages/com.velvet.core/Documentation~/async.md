@@ -51,15 +51,14 @@ an empty list it is complete already. The generic form's members share one resul
 fetching two different types awaits them one at a time.
 
 A member that fails does not end the wait — the others are still waited for. What awaiting the
-combination then throws is the first fault in argument order, or, where no member faulted, the first
-cancellation in argument order: a fault outranks a cancellation whichever arrived first. That one
-exception is all the combination carries, so await the members separately where each failure matters.
+combination then throws is the first fault in argument order — the member's own exception — or, where
+no member faulted, an `OperationCanceledException` carrying the token of the first cancelled member in
+argument order: a fault outranks a cancellation whichever arrived first. That one exception is all the
+combination carries, so await the members separately where each failure matters.
 
 The combination consumes each member, and one consume is all a `VelvetTask` carrying a source allows.
 So a member must not also be awaited elsewhere, and must not be passed twice into a single call: that
-throws out of the call rather than out of the await. It throws part-way, though — a source-backed
-member ahead of the duplicate has been taken by then, consumed or left carrying the combination's
-continuation, so catching it does not hand that one back. A task that carries a value instead —
+throws out of the call rather than out of the await. A task that carries a value instead —
 `VelvetTask.FromResult`, `VelvetTask.CompletedTask`, and an `async` method that returned without
 suspending — has no version to consume, so the same one may sit at two argument positions. Consume
 what the combination returns once as well.

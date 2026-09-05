@@ -20,9 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   nothing; over `VelvetTask<T>` members it completes with a `T[]` holding each result at its own
   argument position, whatever order the members arrived in; over an empty list it is complete already.
   A member that fails does not end the wait — the others are still waited for, and the combination
-  then throws the first fault in argument order, or the first cancellation in argument order where no
-  member faulted. A route loader fetching two resources no longer needs sequential awaits or a
-  hand-rolled counter over a completion source.
+  then throws the first fault in argument order, or, where no member faulted, an
+  `OperationCanceledException` carrying the token of the first cancelled member in argument order. A
+  route loader fetching two resources no longer needs a hand-rolled counter over a completion source.
 
 - `animate-spin` — a full turn a second, linear, forever, with `animate-spin-[<time>]` overriding the
   loop like the other looping utilities. It owns the rotate slot while it runs, on the terms
