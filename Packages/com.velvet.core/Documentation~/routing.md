@@ -109,9 +109,7 @@ component to hook from.
 **`navigation.location` when idle.** React Router's is `undefined`, so `Boolean(navigation.location)`
 is its canonical "is something pending" test. Velvet's `NavigationState.Location` is the committed
 location when idle — the same value `Hooks.UseLocation()` returns. Branch on
-`State == NavigationLifecycle.Loading` instead. The React spelling would move the value under every
-existing reader with nothing failing to compile, so it is a breaking change and waits for a major
-version.
+`State == NavigationLifecycle.Loading` instead.
 
 **No route actions.** Velvet has no form-submission model: a route declares no action, nothing reads
 an action's result, and `NavigationLifecycle` therefore has no `submitting` beside its two values.
@@ -124,8 +122,10 @@ blocker states and what each of those two methods does.
 
 **Guards, evaluated before blockers.** A route's `guard` and `redirectTo` are declarative properties
 of the route with no React Router counterpart, where the same job there is a `redirect` thrown from a
-loader or from middleware. They run before the blocker phase, so an auth redirect is not subject to an
-unsaved-changes prompt.
+loader or from middleware. A guard runs before the blocker phase of its own attempt and a redirect
+re-enters the pipeline, so the path a guard redirects away from never reaches a blocker and the target
+does: an unsaved-changes blocker is asked about `/login` rather than about the `/admin` that was
+navigated to, and a block there stops the redirect.
 
 **No URL.** There is no browser to own the address bar, so the router holds its own history stack,
 capped at 50 entries. `Router.NavigateAsync` states how long a redirect chain may be.
