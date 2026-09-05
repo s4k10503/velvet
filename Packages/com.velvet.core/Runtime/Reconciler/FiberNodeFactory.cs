@@ -245,7 +245,11 @@ namespace Velvet
             // Resolve the applied classes against the effective label (own Animate, else the nearest
             // ancestor Motion's label read from MotionContext) — the variant-inheritance model.
             var motionAmbient = _ctx.ComponentContextStack.Get(MotionContext.ActiveLabel);
-            var appliedClasses = MotionVariantResolver.ResolveApplied(motionNode, motionAmbient, out var variantClasses);
+            // The create path plays no swap between two poses (the element is built already carrying the
+            // resting variant), so the resolved variant's own transition is not read here — the mount enter
+            // further down resolves the one for its OWN target label instead.
+            var appliedClasses = MotionVariantResolver.ResolveApplied(motionNode, motionAmbient,
+                out var variantClasses, out _);
             var element = _ctx.FiberElementFactory.CreateMotion(motionNode, appliedClasses);
             // The presence expansion dispatches this anchor Motion's variant enter/exit against the
             // Motion's OWN element (the resting variant classes live here, not on a wrapper) — record
@@ -342,21 +346,24 @@ namespace Velvet
             // AnimatePresence would silently disable it.
             if (!ReferenceEquals(motionNode, _ctx.PresenceAnchorMotion) && motionNode.Initial != null)
             {
-                if (motionNode.Transition != null && GeneralPathReconciler.TryResolveVariantInitial(
-                        motionNode, out var standaloneFromClasses, out var standaloneToClasses))
+                if (GeneralPathReconciler.TryResolveVariantInitial(
+                        motionNode, out var standaloneFromClasses, out var standaloneToClasses,
+                        out var standaloneTransition)
+                    && standaloneTransition != null)
                 {
-                    var t = motionNode.Transition;
                     // Contained on the same terms the presence expansion's own enters are, and attributed
                     // to the component whose render reached this create — the owner SyncRefCallback reads
                     // for the same element, captured here because the callback can fire frames later.
                     _ctx.StyleAnimationScheduler.PlayVariantEnter(element, standaloneFromClasses, standaloneToClasses,
-                        t, GeneralPathReconciler.ContainedEnterComplete(motionNode, _ctx.FiberStack.Current));
+                        standaloneTransition,
+                        GeneralPathReconciler.ContainedEnterComplete(motionNode, _ctx.FiberStack.Current));
                 }
                 else
                 {
                     // Initial declared but unresolvable: no own Animate (an inherited-label
-                    // configuration is not yet driven by the standalone enter), or the label is missing
-                    // from Variants / maps to an empty class. Warn instead of silently mounting inert,
+                    // configuration is not yet driven by the standalone enter), the label is missing
+                    // from Variants / maps to an empty class, or neither the target variant nor this
+                    // Motion carries a transition to play on. Warn instead of silently mounting inert,
                     // matching the Exit gate's own inert-configuration diagnostic in
                     // WarnIgnoredMotionUtilities.
                     FiberLogger.LogWarning("Motion",

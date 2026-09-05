@@ -31,7 +31,7 @@ namespace Velvet.Tests
     [TestFixture]
     internal sealed class MotionRuntimeSwapTests
     {
-        private static readonly Dictionary<string, string> s_fade = new()
+        private static readonly Dictionary<string, MotionVariant> s_fade = new()
         {
             ["hidden"] = "opacity-0",
             ["visible"] = "opacity-100",

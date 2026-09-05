@@ -531,7 +531,14 @@ namespace Velvet
             // node's label for its own children).
             var motionAmbient = _ctx.ComponentContextStack.Get(MotionContext.ActiveLabel);
             var ambientOrchestration = _ctx.ComponentContextStack.Get(MotionContext.Orchestration);
-            var appliedNew = MotionVariantResolver.ResolveApplied(newNode, motionAmbient, out var newVariantClasses);
+            // swapTransition is what this node's own swap into the resolved pose plays on (see
+            // ResolveApplied). The swap below and the orchestration frame this node establishes for its
+            // children read the same value because they must be measured against the SAME span — When =
+            // BeforeChildren computes the children's wait from DelaySec + DurationSec, so a frame built off
+            // the node's config while the swap ran on the pose's would let children start before their
+            // parent finished.
+            var appliedNew = MotionVariantResolver.ResolveApplied(newNode, motionAmbient,
+                out var newVariantClasses, out var swapTransition);
             // Diff against the previously-APPLIED set (base + resolved variant), not the raw ClassNames — so a
             // changed effective label swaps the variant classes even when this node's base classes are equal.
             // When no entry exists (variant-less, never stored) the baseline is the node's base classes with no
@@ -594,7 +601,8 @@ namespace Velvet
 
             if (childLabel != null)
             {
-                var childOrchestration = ResolveChildOrchestration(newNode, childLabelChanged, ambientOrchestration, extraDelaySec);
+                var childOrchestration = ResolveChildOrchestration(newNode, swapTransition, childLabelChanged,
+                    ambientOrchestration, extraDelaySec);
                 // Skip the Orchestration round-trip when this node passes the ambient frame through UNCHANGED
                 // (including the common "no orchestration anywhere in this subtree" case, both null): a
                 // descendant's Get already sees exactly ambientOrchestration without anything new pushed, so
@@ -625,10 +633,10 @@ namespace Velvet
 
             // Runtime variant swap: PatchBaseElement above already synced the class list to the final resting
             // state (appliedNew) via a plain, instant diff. When the effective label actually changed WHICH
-            // variant classes are applied AND this Motion declares a Transition, replay that same swap as a
-            // VISUAL tween on the scheduler instead — a transition should apply to every animate update, not
-            // just the first. A null Transition keeps today's plain, instant diff (Velvet applies no implicit
-            // default transition).
+            // variant classes are applied AND a transition resolved for the destination pose, replay that same
+            // swap as a VISUAL tween on the scheduler instead — a transition should apply to every animate
+            // update, not just the first. No resolved transition keeps the plain, instant diff (Velvet applies
+            // no implicit default transition).
             // Gated off an element the scheduler already treats as EXITING (not off PresenceAnchorMotion
             // identity — that field is set for every current AnimatePresence child, including a plain
             // PERSISTING one this swap must still drive when its ambient label changes, e.g. a coordinator
@@ -641,11 +649,11 @@ namespace Velvet
             // (CancelExit's reversal, or no-op) — so the one real overlap is a GHOST re-patched on a LATER
             // render while still exiting (skipping the ghost dispatch's own CancelEnter, which only runs the
             // FIRST time state.Exiting.Add(key) succeeds): IsExiting catches exactly that window.
-            if (newNode.Transition != null && !_ctx.StyleAnimationScheduler.IsExiting(element)
+            if (swapTransition != null && !_ctx.StyleAnimationScheduler.IsExiting(element)
                 && !SequenceEqual(oldVariantClasses, newVariantClasses))
             {
                 _ctx.StyleAnimationScheduler.PlayVariantEnter(element, oldVariantClasses, newVariantClasses,
-                    newNode.Transition, onComplete: null, additionalDelaySec: extraDelaySec);
+                    swapTransition, onComplete: null, additionalDelaySec: extraDelaySec);
             }
 
             // MotionNode has no Styles diff, so the shared passes follow PatchCommon (which reconciles
@@ -673,8 +681,10 @@ namespace Velvet
             }
         }
 
-        // Resolves the MotionOrchestrationFrame this node exposes to its OWN inheriting children:
-        // - A FRESH frame when this node's propagated label just changed AND its own Transition declares
+        // Resolves the MotionOrchestrationFrame this node exposes to its OWN inheriting children.
+        // swapTransition is the config this node's own swap into the resolved pose plays on (see PatchMotion),
+        // so a pose that carries its own transition orchestrates from the span it actually takes:
+        // - A FRESH frame when this node's propagated label just changed AND swapTransition declares
         //   StaggerChildrenSec / DelayChildrenSec / a non-Together When — establishing a new stagger sequence
         //   (When == AfterChildren is not orchestrated; it warns once here and falls back to Together's
         //   no-extra-delay semantics for the parent's own swap — see TransitionWhen.AfterChildren). The frame's
@@ -692,25 +702,25 @@ namespace Velvet
         //   passed through UNCHANGED, so a non-orchestrating intermediate layer does not interrupt an outer
         //   ancestor's stagger sequence reaching its own grandchildren.
         private static MotionOrchestrationFrame? ResolveChildOrchestration(
-            MotionNode newNode, bool childLabelChanged, MotionOrchestrationFrame? ambientOrchestration, float extraDelaySec)
+            MotionNode newNode, StyleTransitionConfig? swapTransition, bool childLabelChanged,
+            MotionOrchestrationFrame? ambientOrchestration, float extraDelaySec)
         {
-            var transition = newNode.Transition;
-            var hasOwnOrchestration = transition != null
-                && (transition.StaggerChildrenSec > 0f || transition.DelayChildrenSec > 0f
-                    || transition.When != TransitionWhen.Together);
+            var hasOwnOrchestration = swapTransition != null
+                && (swapTransition.StaggerChildrenSec > 0f || swapTransition.DelayChildrenSec > 0f
+                    || swapTransition.When != TransitionWhen.Together);
             if (childLabelChanged && hasOwnOrchestration)
             {
-                if (transition.When == TransitionWhen.AfterChildren)
+                if (swapTransition.When == TransitionWhen.AfterChildren)
                 {
                     FiberLogger.LogWarning("Motion",
                         "transition.When = AfterChildren is not yet orchestrated for label propagation; "
                         + "children animate as if When = Together (no wait for the parent's own transition).");
                 }
-                var extraBeforeChildrenSec = transition.When == TransitionWhen.BeforeChildren
-                    ? transition.DelaySec + transition.DurationSec
+                var extraBeforeChildrenSec = swapTransition.When == TransitionWhen.BeforeChildren
+                    ? swapTransition.DelaySec + swapTransition.DurationSec
                     : 0f;
-                return new MotionOrchestrationFrame(transition.DelayChildrenSec, transition.StaggerChildrenSec,
-                    extraBeforeChildrenSec + extraDelaySec);
+                return new MotionOrchestrationFrame(swapTransition.DelayChildrenSec,
+                    swapTransition.StaggerChildrenSec, extraBeforeChildrenSec + extraDelaySec);
             }
             return newNode.Animate != null ? null : ambientOrchestration;
         }

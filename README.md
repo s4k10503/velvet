@@ -195,7 +195,7 @@ Mount / unmount and gesture animations, modeled on Framer Motion: **`V.Motion`**
 element (`StyleTransition` presets, Framer-style `variants`, `whileHoverClass` / `whileTapClass`
 gestures) and **`V.AnimatePresence`** for keyed enter/exit (DOM-less, with a `PopLayout` exit
 mode). See [motion.md](Packages/com.velvet.core/Documentation~/motion.md) for the full guide —
-variants, orchestration, springs, and the one-config-every-update transition semantics.
+variants, orchestration, springs, and the per-pose transition semantics.
 
 ### Compile-time memoization
 

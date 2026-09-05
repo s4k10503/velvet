@@ -23,7 +23,7 @@ namespace Velvet.Tests
 
         private double _now;
 
-        private static readonly Dictionary<string, string> s_variants =
+        private static readonly Dictionary<string, MotionVariant> s_variants =
             new() { ["hidden"] = "opacity-0", ["visible"] = "opacity-100" };
 
         protected override void LoadStyleSheets()
