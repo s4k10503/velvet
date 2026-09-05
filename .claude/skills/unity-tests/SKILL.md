@@ -16,7 +16,7 @@ python3 scripts/test_quality/assert_results_from_this_tree.py Logs/results.xml -
 python3 scripts/test_quality/assert_no_inconclusive.py Logs/results.xml
 ```
 
-`-testPlatform PlayMode` for the other suite. `-testFilter "Velvet.Tests.SomeFixture"` narrows it; semicolons separate several, and it matches fully-qualified class or method names.
+`-testPlatform PlayMode` for the other suite. `-testFilter "Velvet.Tests.SomeFixture"` narrows it; semicolons separate several, and it matches fully-qualified class or method names — never a file's name, for the reason `CLAUDE.md` gives beside this same flag. `.claude/hooks/refuse/filter_naming_no_fixture.py` is what refuses a name nothing declares before the run rather than after the count.
 
 **Write into the worktree's own Logs directory, never /tmp/results.xml.** That path is one file for every worktree and every session on the machine, and the compile-error paragraph below is what it costs.
 

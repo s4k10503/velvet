@@ -641,6 +641,12 @@ namespace Velvet.Tests
             ("a shell command rewriting a tracked file",
              "\"cwd\":\"%PROJECT%\",\"tool_input\":{\"command\":"
              + "\"sed -i '' -e s/a/b/ Packages/com.velvet.core/CHANGELOG.md\"}"),
+            // %PROJECT% again, and for the same reason: the guard answering this reads which fixture
+            // classes the test sources declare, and the scratch directory holds none, where it stands
+            // down rather than refusing every filter posed outside a Unity project.
+            ("a test run filtered to a class nothing declares",
+             "\"cwd\":\"%PROJECT%\",\"tool_input\":{\"command\":"
+             + "\"Unity -runTests -batchmode -testFilter Velvet.Tests.NoFixtureIsCalledThis\"}"),
         };
 
         // A declaration reading as a claim on its own line, and one the reader would take
