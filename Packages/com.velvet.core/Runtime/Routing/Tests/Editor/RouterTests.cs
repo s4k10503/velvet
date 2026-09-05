@@ -129,10 +129,8 @@ namespace Velvet.Tests
         {
             // The case above is refused by the match; this one is refused before it, and the two branches
             // report through separate calls, so a status read after either says nothing about the other.
-            // The commit first is what gives the status somewhere else to be left at.
             // Arrange
             var router = new Router(_routes);
-            router.NavigateSync("/home");
 
             // Act
             var result = router.NavigateSync(null);

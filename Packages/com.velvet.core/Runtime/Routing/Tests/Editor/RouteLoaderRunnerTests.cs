@@ -316,8 +316,7 @@ namespace Velvet.Tests
         public void Given_TheLiveRound_When_ItIsPromotedAgain_Then_ItsTokenSurvives()
         {
             // Promoting ends the round that held the live place, and the round handed in is the one that
-            // takes it — so a promotion whose argument is already live has to end nothing. Ending it would
-            // cancel the loaders of the location on screen from a call that changed which location that is.
+            // takes it — so a promotion whose argument is already live has to end nothing.
             // Arrange
             CancellationToken captured = default;
             var runner = new RouteLoaderRunner();
@@ -568,6 +567,38 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(capturedToken.IsCancellationRequested, Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): the base already releases a superseded round's source.
+        // This branch moved that source from one runner-wide field to a field per round, and the
+        // release has to survive the move.
+        [Test]
+        public void Given_ALoaderThatStartsAnotherRound_When_TheOuterRoundsNextLoaderGetsItsToken_Then_TheSourceBehindItIsReleased()
+        {
+            // Retiring a round releases its source as well as cancelling it, and the launch loop goes on
+            // handing that round's token to the loaders below the one that retired it. The release is what
+            // this case is about; the cancellation on the same token is pinned by a case of its own.
+            // Arrange
+            var runner = new RouteLoaderRunner();
+            CancellationToken nextLoadersToken = default;
+            var matches = new List<RouteMatch>();
+            matches.AddRange(MakeMatch("nesting", loader: (ctx, ct) =>
+            {
+                runner.RunLoadersSync(MakeMatch("nested"), CancellationToken.None);
+                return VelvetTask.FromResult<object>("nesting-data");
+            }));
+            matches.AddRange(MakeMatch("next", loader: (ctx, ct) =>
+            {
+                nextLoadersToken = ct;
+                return VelvetTask.FromResult<object>("next-data");
+            }));
+
+            // Act
+            runner.RunLoadersSync(matches, CancellationToken.None);
+
+            // Assert
+            Assert.That(() => nextLoadersToken.WaitHandle, Throws.TypeOf<ObjectDisposedException>(),
+                "A retired round's source is released, not left open behind the token its loaders hold");
         }
 
         #endregion

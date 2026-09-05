@@ -145,7 +145,7 @@ namespace Velvet
         /// <see cref="NavigationResult.Cancelled"/> when concurrent navigation or the cancellation token aborts it,
         /// or when <paramref name="mode"/> is <see cref="NavigationMode.Back"/> / <see cref="NavigationMode.Forward"/>
         /// and the history has no entry to step onto,
-        /// or <see cref="NavigationResult.Error"/> on Loader failure or redirect overflow.
+        /// or <see cref="NavigationResult.Error"/> on redirect overflow.
         /// </returns>
         public VelvetTask<NavigationResult> NavigateAsync(
             string path,
