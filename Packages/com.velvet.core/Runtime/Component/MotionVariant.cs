@@ -16,7 +16,7 @@ namespace Velvet
         /// <see cref="MotionNode.Exit"/>'s respectively, against the resting <see cref="MotionNode.Animate"/>
         /// — so an <see cref="MotionNode.Initial"/> or <see cref="MotionNode.Exit"/> pose leaving this empty
         /// is no variant swap at all: the mount enter is skipped and the element rests at
-        /// <see cref="MotionNode.Animate"/>'s pose from the start, and the removal plays the classic exit.
+        /// <see cref="MotionNode.Animate"/>'s pose from the start.
         /// </summary>
         public string? ClassName { get; }
 

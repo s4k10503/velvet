@@ -120,9 +120,10 @@ namespace Velvet
         /// <summary>
         /// Mount-time starting variant label. When this Motion sets <see cref="Initial"/> + <see cref="Animate"/> +
         /// <see cref="Variants"/>, the enter starts the element at <c>variants[Initial]</c> and transitions to
-        /// <c>variants[Animate]</c> (which it then rests at, persistently), on the timing
-        /// <see cref="MotionVariant.Transition"/> resolves and only where <c>variants[Initial]</c> applies a
-        /// class (see <see cref="MotionVariant.ClassName"/>). Works the same whether this
+        /// <c>variants[Animate]</c> (which it then rests at, persistently).
+        /// <see cref="MotionVariant.Transition"/> resolves the timing, and
+        /// <see cref="MotionVariant.ClassName"/> the class <c>variants[Initial]</c> must apply for the
+        /// enter to play at all. Works the same whether this
         /// Motion is the direct child of an AnimatePresence or mounts
         /// standalone — <c>initial</c>/<c>animate</c> apply to any Motion node; AnimatePresence
         /// is only required for <see cref="Exit"/>. Null = no variant initial state.
