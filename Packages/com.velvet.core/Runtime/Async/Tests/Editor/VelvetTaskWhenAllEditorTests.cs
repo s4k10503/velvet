@@ -345,6 +345,25 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ACompletedResultTaskPassedTwiceBehindAPendingOne_When_WhenAllCalled_Then_ThrowsAlreadyConsumedWithThePendingOneAwaited()
+        {
+            // Arrange
+            var ahead = new VelvetTaskCompletionSource<int>();
+            var duplicated = VelvetTask.FromException<int>(new InvalidOperationException("boom"));
+
+            // Act
+            var fromCall = Assert.Throws<InvalidOperationException>(
+                () => VelvetTask.WhenAll(ahead.Task, duplicated, duplicated))!.Message;
+            var fromAhead = Assert.Throws<InvalidOperationException>(
+                () => ahead.Task.GetAwaiter().OnCompleted(() => { }))!.Message;
+
+            // Assert
+            Assert.That((fromCall, fromAhead), Is.EqualTo((
+                "The VelvetTask has already been consumed.",
+                "The VelvetTask has already been awaited.")));
+        }
+
+        [Test]
         public void Given_TwoSuspendedAsyncMethods_When_TheyCompleteOutOfOrder_Then_ResultsFollowArgumentOrder()
         {
             // Arrange
