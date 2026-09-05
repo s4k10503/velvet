@@ -25,8 +25,10 @@ namespace Velvet.Tests
     /// </summary>
     /// <remarks>
     /// The hooks need the live router-root Provider chain (Location / LoaderData / Errors) above an Outlet, so
-    /// each test navigates a real <see cref="Router"/> and mounts that chain via <c>MountWithRouter</c>. The
-    /// captured values are exposed through the <c>Capture</c> static component, reset in <c>SetUp</c>.
+    /// each test navigates a real <see cref="Router"/> and mounts that chain via <c>MountWithRouter</c> —
+    /// except <c>UseOutletContext</c>, whose value comes from an Outlet rather than from the router, and
+    /// which therefore mounts via <c>MountWithOutletContext</c>. The captured values are exposed through the
+    /// <c>Capture</c> static component, reset in <c>SetUp</c>.
     /// </remarks>
     [TestFixture]
     internal sealed class RoutingHooksTests
@@ -77,27 +79,18 @@ namespace Velvet.Tests
         }
 
         /// <summary>
-        /// Mounts the router-root provider chain (Location / LoaderData / Errors) above an Outlet, exactly as
-        /// the application's router root does, driving rendering of the matched route at depth 1.
+        /// Mounts the router root an application mounts, which renders the matched route at depth 1.
         /// </summary>
-        private MountedTree MountWithRouter(Router router, object? outletContext = null)
-        {
-            var location = router.CurrentLocation;
-            var loaderData = router.CurrentLoaderData;
-            var errors = router.CurrentLoaderErrors;
+        private MountedTree MountWithRouter(Router router) => V.Mount(_root, V.RouterProvider(router));
 
-            return V.Mount(_root,
-                V.Provider(RouterContext.Location, location,
-                    children: new VNode[]
-                    {
-                        V.Provider(RouterContext.LoaderData, loaderData,
-                            children: new VNode[]
-                            {
-                                V.Provider(RouterContext.Errors, errors,
-                                    children: new VNode[] { V.Outlet(context: outletContext) }),
-                            }),
-                    }));
-        }
+        /// <summary>
+        /// Mounts an Outlet carrying a context value, which is the shape a layout route's own Outlet has;
+        /// the root Outlet <c>V.RouterProvider</c> renders takes none.
+        /// </summary>
+        private MountedTree MountWithOutletContext(Router router, object outletContext) =>
+            V.Mount(_root,
+                V.Provider(RouterContext.Location, router.CurrentLocation,
+                    children: new VNode[] { V.Outlet(context: outletContext) }));
 
         [Test]
         public void Given_NavigatedRoute_When_UseLocation_Then_ReturnsCurrentLocationPath()
@@ -200,7 +193,7 @@ namespace Velvet.Tests
             router.NavigateSync("/ctx");
 
             // Act
-            using var mounted = MountWithRouter(router, outletContext: "from-outlet");
+            using var mounted = MountWithOutletContext(router, "from-outlet");
 
             // Assert
             Assert.That(Capture.OutletContext, Is.EqualTo("from-outlet"));
@@ -611,6 +604,55 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ANavigationAwaitingItsLoader_When_UseNavigation_Then_StateIsLoading()
+        {
+            // Arrange
+            var loader = new VelvetTaskCompletionSource<object>();
+            var router = new Router(new[]
+            {
+                Route("home", element: V.Component(StubA)),
+                Route("data", element: V.Component(StubB), loader: (ctx, ct) => loader.Task),
+            });
+            router.NavigateSync("/home");
+            using var mounted = MountWith(router, V.Component(Capture.Render, key: "cap"));
+            mounted.FlushEffectsForTest();
+
+            // Act
+            router.NavigateAsync("/data").Forget();
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Capture.State.State, Is.EqualTo(NavigationLifecycle.Loading));
+        }
+
+        [Test]
+        public void Given_ANavigationAwaitingItsLoader_When_UseNavigation_Then_LocationIsTheDestinationItIsLoading()
+        {
+            // The lifecycle travels with the location rather than gating it from a precondition: read alone,
+            // the destination is what a settled navigation reports too, so the case would pass against a
+            // router that never opened the window.
+            // Arrange
+            var loader = new VelvetTaskCompletionSource<object>();
+            var router = new Router(new[]
+            {
+                Route("home", element: V.Component(StubA)),
+                Route("data", element: V.Component(StubB), loader: (ctx, ct) => loader.Task),
+            });
+            router.NavigateSync("/home");
+            using var mounted = MountWith(router, V.Component(Capture.Render, key: "cap"));
+            mounted.FlushEffectsForTest();
+
+            // Act
+            router.NavigateAsync("/data").Forget();
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(
+                $"state={Capture.State.State} path={Capture.State.Location!.Path}",
+                Is.EqualTo("state=Loading path=/data"));
+        }
+
+        [Test]
         public void Given_MountedNavigationHook_When_NavigationOccurs_Then_ComponentReRendersAndStaysIdleAtRest()
         {
             // Arrange
@@ -677,6 +719,8 @@ namespace Velvet.Tests
         [Test]
         public void Given_SettledNavigation_When_UseNavigation_Then_ReRendersExactlyOnce()
         {
+            // A navigation whose loaders never suspend raises its status and location events inside one
+            // synchronous stack, so the state updates they schedule are drained in a single batch.
             // Arrange
             var router = new Router(new[]
             {

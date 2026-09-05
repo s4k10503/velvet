@@ -24,6 +24,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `OperationCanceledException` carrying the token of the first cancelled member in argument order. A
   route loader fetching two resources no longer needs a hand-rolled counter over a completion source.
 
+- `V.RouterProvider(router)` is the router root, as `<RouterProvider router={router}/>` is: it
+  subscribes to the router and publishes the location, the loader data and the loader errors that
+  `Hooks.UseLocation`, `Hooks.UseLoaderData` and `Hooks.UseRouteError` read, then renders the matched
+  route through a `V.Outlet` of its own. It takes no children. Nothing in the package published those
+  three contexts before, so an application had to write the bridge itself — a `Hooks.UseState` over
+  `Router.CurrentLocation`, a `Hooks.UseEffect` subscribing to `Router.OnLocationChanged` and a
+  re-read to cover the navigation that lands before the subscription attaches, under three nested
+  `V.Provider`s — and the starter sample's copy of it wired only the location, which leaves
+  `Hooks.UseLoaderData` empty and every `errorElement` unreachable with nothing reported. The new
+  routing guide states what the provider publishes and where an outlet context comes from.
+
+- A routing guide: `Documentation~/routing.md`. Navigation blocking had one; the rest of routing
+  had none.
+
 - `animate-spin` — a full turn a second, linear, forever, with `animate-spin-[<time>]` overriding the
   loop like the other looping utilities. It owns the rotate slot while it runs, on the terms
   `animate-hue` owns the filter.
@@ -41,6 +55,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and `IsDelayed`.
 
 ### Changed
+
+- A navigation allocates fewer loader rounds. The runner opened one at the start of every run that the
+  run's own round replaced within the same call, and one more at disposal; it now opens one per run
+  and none at disposal.
 
 - The switches that classify a `StyleVariantKind` are exhaustive by compilation rather than by review:
   `Runtime/csc.rsp` compiles CS8509 as an error, so a member added without an arm fails the build rather
@@ -72,6 +90,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   2.0.1.
 
 ### Fixed
+
+- A navigation to a path that matches no route no longer cancels the navigation already in flight, nor
+  takes `Router.Status` away from it. It used to cancel and to write its status before matching, so a
+  stale deep link or a renamed `redirectTo` target made a navigation the user had actually asked for
+  return `NavigationResult.Cancelled` with no error anywhere, and left `Router.Status` reading `NotFound`
+  while `Router.PendingLocation` still named the destination that attempt was loading — the state
+  `Hooks.UseNavigation` renders a pending branch from. An attempt now cancels its predecessor and writes
+  `Router.Status` only once it has matched, so `RouterStatus.Matching` spans the guards and blockers of a
+  matched navigation rather than the match itself, and an attempt that matches nothing reports through
+  its `NavigationResult` alone whenever another is in flight.
 
 - An error boundary whose child throws during a subsumed re-render no longer logs a
   `NullReferenceException` from the reconciler. The boundary's inline re-render runs inside its host's
@@ -468,6 +496,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   portals guide states which containers a portal of either form may target.
 
 ### Changed
+
+- `LoaderMode.Await`, which is the default, awaits the loader. The route already on screen stays there,
+  `Hooks.UseNavigation().State` reports `NavigationLifecycle.Loading`, and the location commits with the
+  data — React Router's plain `loader` contract. It previously accepted only a loader that handed back
+  an already-completed task: anything else was rejected with a framework-authored
+  `InvalidOperationException` recorded as that route's loader error, so the naive port of a React loader
+  navigated and then rendered the route's `errorElement`, or a blank subtree where the matched chain had
+  none. A `LoaderMode.Suspend` loader of the route already on screen keeps running for the whole of that
+  window — it keeps its cancellation token, and its result still reaches `Hooks.UseLoaderData` on the
+  route the user is looking at — because the route is not left until the commit, and the commit is what
+  cancels it. Two consequences to read before upgrading. An `Await` loader that never completes is now a
+  navigation that never commits, where it used to fail fast. And a navigation whose loaders suspend
+  leaves `NavigateAsync` genuinely asynchronous, so a caller that took its result synchronously has to
+  await it. A navigation whose loaders all hand back already-completed tasks still completes
+  synchronously.
+
+- `Router.PendingLocation` — the location an in-flight navigation is heading for, resolved against the
+  route tree so it carries the destination's `Params` and `Matches`, and null whenever no navigation is
+  in flight. `Hooks.UseNavigation().Location` reports it while `State` is `NavigationLifecycle.Loading`,
+  which is React Router's `navigation.location` and what a pending-UI branch is keyed on. It used to
+  report the location already on screen in that window. The idle half of it still reports the committed
+  location where React Router reports `undefined`; the guide states why and what to branch on instead.
 
 - The container a `V.Component` is written into is part of which instance it is, as the position of a
   component is in React. Two sibling containers each holding the same component now hold two instances

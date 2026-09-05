@@ -6,9 +6,7 @@ namespace Velvet
 {
     internal sealed class RouteLoaderRunner : IDisposable
     {
-        private CancellationTokenSource? _cts;
-
-        // Late results stay on their superseded round; only the active runner round emits announcements.
+        // Late results stay on the round that produced them; only the live round emits announcements.
         public event Action<string?, object>? OnSuspendLoaderCompleted;
 
         // Failures follow the same ownership rule as OnSuspendLoaderCompleted.
@@ -31,28 +29,45 @@ namespace Velvet
 
             internal bool AllCompleted = true;
 
+            // The source every loader of this round was launched under. Cancelling it is what ends the round,
+            // and it is nulled there so retiring a round twice disposes its source once.
+            internal CancellationTokenSource? Cts;
+
+            internal LoaderRound(CancellationTokenSource cts) => Cts = cts;
+
             internal bool Settled => Pending == 0;
         }
 
-        private LoaderRound _currentRound = new();
+        private LoaderRound _currentRound;
 
-        internal LoaderRound CurrentRound => _currentRound;
+        // The round whose Suspend loaders may announce. Null until the caller promotes one.
+        private LoaderRound? _liveRound;
+
+        public RouteLoaderRunner() => _currentRound = new LoaderRound(new CancellationTokenSource());
+
+        // The events fire only after the live-round check, so a subscriber reading this from inside one of
+        // them is reading its own round.
+        internal LoaderRound? LiveRound => _liveRound;
 
         // Cancellation can overlap rounds, so this counts live tasks across all rounds.
         internal int ActiveSuspendTaskCount => _activeSuspendTaskCount;
 
-        // A Loader may make a nested round current before its outer RunLoadersSync returns.
-        public LoaderRound RunLoadersSync(
+        // A Loader may make a nested round current before its outer RunLoadersAsync returns.
+        // Every loader delegate is invoked before the first await below, so an Await-mode chain runs
+        // concurrently and a delegate that navigates still supersedes this round from inside the launch
+        // loop; awaiting inside that loop would change both.
+        public async VelvetTask<LoaderRound> RunLoadersAsync(
             IReadOnlyList<RouteMatch> matches,
             CancellationToken externalToken)
         {
-            CancelPending();
             var cts = CancellationTokenSource.CreateLinkedTokenSource(externalToken);
-            _cts = cts;
-            // Capture once to keep a nested navigation's token out of the outer round's later Loaders.
+            // Captured once for the round, and before the round is installed: retiring the outgoing round
+            // can run application code — a cancellation callback one of its Loaders registered — and a
+            // round that code starts retires the round BeginRound has just installed. A nested navigation
+            // retires this round too, and its remaining Loaders must still launch under the token they
+            // belong to rather than the nested round's.
             var roundToken = cts.Token;
-            var round = new LoaderRound();
-            _currentRound = round;
+            var round = BeginRound(cts);
 
             var awaitTasks = new List<(string? routeId, VelvetTask<object> task)>();
 
@@ -93,7 +108,7 @@ namespace Velvet
                 {
                     round.AllCompleted = false;
                     round.Pending++;
-                    RunSuspendLoader(key, task, cts, round).Forget();
+                    RunSuspendLoader(key, task, round).Forget();
                 }
             }
 
@@ -101,14 +116,7 @@ namespace Velvet
             {
                 try
                 {
-                    if (!task.Status.IsCompleted())
-                    {
-                        throw new InvalidOperationException(
-                            $"Await mode loader for route '{routeId}' returned an incomplete task. " +
-                            "Use LoaderMode.Suspend for async loaders.");
-                    }
-                    var result = task.GetAwaiter().GetResult();
-                    round.Results[routeId] = result;
+                    round.Results[routeId] = await task;
                 }
                 catch (OperationCanceledException)
                 {
@@ -124,8 +132,59 @@ namespace Velvet
             return round;
         }
 
-        private async VelvetTask RunSuspendLoader(string? routeId, VelvetTask<object> task, CancellationTokenSource ownCts,
-            LoaderRound round)
+        /// <summary>
+        /// A round that ran no loaders, already settled. A Back/Forward step served from the history cache
+        /// runs none and still needs a round to promote: promoting the round it is leaving instead would let
+        /// that round's late results announce themselves into the entry the step restored, which shares its
+        /// RouteId whenever both entries matched the same route.
+        /// </summary>
+        public LoaderRound EmptyRound() => BeginRound(new CancellationTokenSource());
+
+        // The outgoing round is retired here unless it is the live one: the live round belongs to the
+        // location on screen, and Promote — called by the commit that leaves that location — is what ends it.
+        // Anything else current has not reached a commit.
+        private LoaderRound BeginRound(CancellationTokenSource cts)
+        {
+            var outgoing = _currentRound;
+            var round = new LoaderRound(cts);
+            _currentRound = round;
+            if (!ReferenceEquals(outgoing, _liveRound))
+            {
+                Retire(outgoing);
+            }
+            return round;
+        }
+
+        /// <summary>
+        /// Makes <paramref name="round"/> the one whose Suspend loaders announce, and ends the round that
+        /// held that place.
+        /// </summary>
+        public void Promote(LoaderRound round)
+        {
+            var departing = _liveRound;
+            // Assigned before the Retire below, not after: a loader continuation that resumes synchronously
+            // inside Cancel() and completes successfully would otherwise still read the departing round as
+            // the live one and announce into the location that has just replaced it.
+            _liveRound = round;
+            if (departing != null && !ReferenceEquals(departing, round))
+            {
+                Retire(departing);
+            }
+        }
+
+        private static void Retire(LoaderRound round)
+        {
+            var cts = round.Cts;
+            if (cts == null)
+            {
+                return;
+            }
+            round.Cts = null;
+            cts.Cancel();
+            cts.Dispose();
+        }
+
+        private async VelvetTask RunSuspendLoader(string? routeId, VelvetTask<object> task, LoaderRound round)
         {
             try
             {
@@ -143,19 +202,22 @@ namespace Velvet
                 catch (Exception ex)
                 {
                     round.Pending--;
-                    // Supersession suppresses announcements, not the owning round's accounting.
+                    // A round that is not live suppresses announcements, not its own accounting.
                     round.Errors[routeId] = ex;
-                    if (ownCts != _cts) return;
+                    if (!ReferenceEquals(round, _liveRound)) return;
                     Announce(OnSuspendLoaderFailed, routeId, ex);
                     return;
                 }
 
-                // Above the supersession return: Settled is Pending == 0, and a round that never settles
+                // Above the live-round return: Settled is Pending == 0, and a round that never settles
                 // is one HistoryEntry.LoadersSettled keeps unservable, so Back onto that entry re-runs its
                 // loaders every time.
                 round.Pending--;
                 round.Results[routeId] = result;
-                if (ownCts != _cts) return;
+                // A round that is not live has no location of the caller's to be announced into: either it
+                // has not been promoted yet, in which case the caller reads its results at the promotion, or
+                // it has been replaced, in which case what it holds belongs to a location already left.
+                if (!ReferenceEquals(round, _liveRound)) return;
                 Announce(OnSuspendLoaderCompleted, routeId, result);
             }
             finally
@@ -177,20 +239,16 @@ namespace Velvet
             }
         }
 
-        public void CancelPending()
+        public void Dispose()
         {
-            // Keep the outgoing round intact for callers still holding it.
-            _currentRound = new LoaderRound();
-            if (_cts != null)
+            // Cleared before either Retire, on the ordering Promote states.
+            var live = _liveRound;
+            _liveRound = null;
+            Retire(_currentRound);
+            if (live != null)
             {
-                // Clear before cancellation because it may synchronously complete and announce a Loader.
-                var cancelling = _cts;
-                _cts = null;
-                cancelling.Cancel();
-                cancelling.Dispose();
+                Retire(live);
             }
         }
-
-        public void Dispose() => CancelPending();
     }
 }

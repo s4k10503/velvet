@@ -5,6 +5,7 @@ namespace Velvet
     public enum RouterStatus
     {
         Idle,
+        /// <summary>The path has matched, and the matched routes' guards and blockers are running.</summary>
         Matching,
         Loading,
         Ready,
@@ -34,7 +35,10 @@ namespace Velvet
     /// <summary>Execution mode for a route loader.</summary>
     public enum LoaderMode
     {
-        /// <summary>Wait for the loader to complete before navigation finishes. The loader must complete synchronously.</summary>
+        /// <summary>
+        /// Await the loader before the navigation commits, so the route already on screen stays there until
+        /// the data is in. A loader that never completes never lets the navigation commit.
+        /// </summary>
         Await,
         /// <summary>Let navigation proceed and run the loader in the background. <see cref="Router.OnLocationChanged"/> is re-emitted on completion.</summary>
         Suspend,
@@ -68,7 +72,13 @@ namespace Velvet
     public readonly struct NavigationState
     {
         public NavigationLifecycle State { get; init; }
-        /// <summary>The current router location (or null before the first navigation).</summary>
+        /// <summary>
+        /// While <see cref="State"/> is <see cref="NavigationLifecycle.Loading"/>, the location being
+        /// navigated to; while it is <see cref="NavigationLifecycle.Idle"/>, the committed location (null
+        /// before the first navigation). Branch on <see cref="State"/> rather than on this being null: the
+        /// routing guide states where the idle half sits relative to React Router's
+        /// <c>navigation.location</c>.
+        /// </summary>
         public RouterLocation? Location { get; init; }
     }
 }

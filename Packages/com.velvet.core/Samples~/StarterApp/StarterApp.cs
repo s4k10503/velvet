@@ -44,31 +44,6 @@ namespace Velvet.Samples.StarterApp
                     V.Route(path: "about", element: V.Component(AboutScreen)),
                 }));
 
-        /// <summary>
-        /// The tree's root. The router publishes a location change as an event while
-        /// <c>RouterContext.Location</c> wants a value, and this is the bridge between them: hold the
-        /// location in state, republish it on every change. The host mounts this before starting the first
-        /// navigation, so the subscription is what puts the opening route on screen as much as every later
-        /// one — remove it and nothing under the <c>Outlet</c> ever renders.
-        /// </summary>
-        [Component]
-        public static VNode Root(Router router)
-        {
-            var (location, setLocation) = Hooks.UseState(router.CurrentLocation);
-
-            Hooks.UseEffect(() =>
-            {
-                void Handle(RouterLocation next) => setLocation.Invoke(next);
-
-                router.OnLocationChanged += Handle;
-                // The first navigation may land between construction and this subscription.
-                setLocation.Invoke(router.CurrentLocation);
-                return () => router.OnLocationChanged -= Handle;
-            }, new object[] { router });
-
-            return V.Provider(RouterContext.Location, location, children: new VNode[] { V.Outlet() });
-        }
-
         [Component]
         public static VNode Chrome()
         {
