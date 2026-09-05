@@ -652,10 +652,14 @@ namespace Velvet.Tests
              + "\"sed -i '' -e s/a/b/ Packages/com.velvet.core/CHANGELOG.md\"}"),
             // %PROJECT% again, and for the same reason: the guard answering this reads the names the
             // test sources give the runner, and the scratch directory holds none, where it stands down
-            // rather than refusing every filter posed outside a Unity project.
+            // rather than refusing every filter posed outside a Unity project. The command names the
+            // tree too, that guard reading which tree a run opens out of the command rather than out
+            // of the directory the tool call started in — and relatively, which needs no quoting
+            // inside the payload and no assumption about spaces in the checkout's path.
             ("a test run filtered to a value that selects nothing",
              "\"cwd\":\"%PROJECT%\",\"tool_input\":{\"command\":"
-             + "\"Unity -runTests -batchmode -testFilter Velvet.Tests.NoFixtureIsCalledThis\"}"),
+             + "\"Unity -runTests -batchmode -projectPath . "
+             + "-testFilter Velvet.Tests.NoFixtureIsCalledThis\"}"),
         };
 
         // A declaration reading as a claim on its own line, and one the reader would take

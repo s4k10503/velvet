@@ -227,18 +227,22 @@ def _moves(segments):
     return sum(1 for segment in segments if pr_body.moves_directory(segment))
 
 
-def _base_directory(command, segments, cwd):
+def base_directory(command, cwd):
     """Where a relative operand is rooted, or None where nothing here can place one.
 
     `leading_cd` reads the move a command opens with, and a command that moves again after it has
-    started running has left that directory by the time a later segment writes. Rooting that
-    segment's operand at the event's own directory is how a write into a temporary tree reads as one
-    onto the repository, so a second move gives up on relative operands instead — measured over this
-    project's transcripts, `S=…; rm -rf $S; mkdir -p $S; cd $S; printf … > .gitignore` is the shape,
-    and it is the repository's own `.gitignore` that the reading without this names.
+    started running has left that directory by the time a later segment runs. Rooting that segment's
+    operand at the event's own directory is how a write into a temporary tree reads as one onto the
+    repository, so a second move gives up on relative operands instead — measured over this project's
+    transcripts, `S=…; rm -rf $S; mkdir -p $S; cd $S; printf … > .gitignore` is the shape, and it is
+    the repository's own `.gitignore` that the reading without this names.
+
+    Public because a second guard asks the same question of a `-projectPath "$PWD"`, where the same
+    move puts the run in another worktree; two readings of where a command runs would disagree about
+    which of the shapes above they place.
     """
     moved = leading_cd(command)
-    if moved is UNRESOLVED_CD or _moves(segments) > (0 if moved is None else 1):
+    if moved is UNRESOLVED_CD or _moves(visible_segments(command)) > (0 if moved is None else 1):
         return None
     if moved is None:
         return cwd
@@ -259,7 +263,7 @@ def _placed(target, base):
 def literal_write_targets(command, cwd):
     """Absolute paths this command names, literally, as somewhere it writes."""
     segments = visible_segments(command)
-    base = _base_directory(command, segments, cwd)
+    base = base_directory(command, cwd)
     candidates = []
     for segment in segments:
         candidates += _redirect_targets(segment)
