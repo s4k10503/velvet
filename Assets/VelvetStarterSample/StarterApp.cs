@@ -25,7 +25,7 @@ namespace Velvet.Samples.StarterApp
         private const string RowClass =
             "flex flex-row items-center gap-3 px-3 py-2 rounded-md bg-slate-800 hover:bg-slate-700 transition-colors";
 
-        private static readonly Dictionary<string, string> RowPoses = new()
+        private static readonly Dictionary<string, MotionVariant> RowPoses = new()
         {
             ["entering"] = "opacity-0 scale-95",
             ["shown"] = "opacity-100 scale-100",

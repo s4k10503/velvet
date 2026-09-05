@@ -17,7 +17,7 @@ namespace Velvet.Tests
     [TestFixture]
     internal sealed class MotionVariantPropagationTests
     {
-        private static readonly Dictionary<string, string> Fade = new()
+        private static readonly Dictionary<string, MotionVariant> Fade = new()
         {
             ["visible"] = "opacity-100",
             ["hidden"] = "opacity-0",
@@ -109,7 +109,7 @@ namespace Velvet.Tests
         // A plain (non-Motion) component sitting between an animated parent and a child Motion.
         // MotionContext is an ambient context, so it flows THROUGH intervening components — this is the consumer.
         [Component]
-        private static VNode PassThroughChild(Dictionary<string, string> childVariants)
+        private static VNode PassThroughChild(Dictionary<string, MotionVariant> childVariants)
             => V.Motion(key: "c", variants: childVariants);
 
         [Test]
@@ -166,6 +166,27 @@ namespace Velvet.Tests
 
             // Assert — it leaves the resting variants[animate] and animates to variants[exit].
             Assert.That((cfg.ExitFromClass, cfg.ExitToClass), Is.EqualTo(("opacity-100", "opacity-0")));
+        }
+
+        [Test]
+        public void Given_NeitherTheExitPoseNorTheNodeCarryingATransition_When_ResolvingExitTransition_Then_NothingResolves()
+        {
+            // Arrange — the exit resolves its classes and has nothing to play them on. The case above builds
+            // its node through `V.Motion`, which always resolves a transition and falls back to the Fade
+            // preset, so that route cannot reach this arrangement and the node is constructed directly.
+            var motion = new MotionNode
+            {
+                Variants = Fade,
+                Animate = "visible",
+                Exit = "hidden",
+            };
+
+            // Act
+            var cfg = GeneralPathReconciler.TryResolveVariantExit(motion);
+
+            // Assert — null is what sends the caller to the classic exit, rather than a config built over a
+            // timing that is not there.
+            Assert.That(cfg, Is.Null);
         }
 
         [Test]
@@ -414,7 +435,7 @@ namespace Velvet.Tests
         {
             // Arrange — a middle Motion with variants but no animate must pass the label through to the grandchild.
             using var scope = new ReconcilerScope();
-            var scale = new Dictionary<string, string> { ["visible"] = "scale-100", ["hidden"] = "scale-0" };
+            var scale = new Dictionary<string, MotionVariant> { ["visible"] = "scale-100", ["hidden"] = "scale-0" };
 
             // Act
             Mount(scope, new VNode[]
@@ -443,7 +464,7 @@ namespace Velvet.Tests
             {
                 V.Motion(key: "p", animate: "visible", children: new VNode[]
                 {
-                    V.Component<Dictionary<string, string>>(PassThroughChild, Fade, key: "mid"),
+                    V.Component<Dictionary<string, MotionVariant>>(PassThroughChild, Fade, key: "mid"),
                 }),
             });
 

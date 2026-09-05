@@ -322,7 +322,7 @@ namespace Velvet.Tests
 
         #region Helpers
 
-        private static readonly Dictionary<string, string> s_fade = new()
+        private static readonly Dictionary<string, MotionVariant> s_fade = new()
         {
             ["visible"] = "opacity-100",
             ["hidden"] = "opacity-0",

@@ -104,7 +104,7 @@ namespace Velvet.Tests
         public void Given_AnimateLabel_When_MotionBuilt_Then_TheVariantIsNotBakedIntoClassNamesButResolvedAtReconcile()
         {
             // Arrange — named animation states.
-            var variants = new Dictionary<string, string>
+            var variants = new Dictionary<string, MotionVariant>
             {
                 { "hidden", "opacity-0 translate-y-4" },
                 { "visible", "opacity-100 translate-y-0" },
@@ -123,7 +123,7 @@ namespace Velvet.Tests
         public void Given_NullAnimate_When_MotionBuilt_Then_OnlyTheBaseClassApplies()
         {
             // Arrange
-            var variants = new Dictionary<string, string> { { "visible", "opacity-100" } };
+            var variants = new Dictionary<string, MotionVariant> { { "visible", "opacity-100" } };
 
             // Act — no active label selected.
             var node = V.Motion("item", variants: variants);
@@ -136,7 +136,7 @@ namespace Velvet.Tests
         public void Given_AnimateLabelAbsentFromVariants_When_MotionBuilt_Then_OnlyTheBaseClassApplies()
         {
             // Arrange
-            var variants = new Dictionary<string, string> { { "visible", "opacity-100" } };
+            var variants = new Dictionary<string, MotionVariant> { { "visible", "opacity-100" } };
 
             // Act — the requested label is not a key of the variants map.
             var node = V.Motion("item", variants: variants, animate: "ghost");
@@ -460,7 +460,7 @@ namespace Velvet.Tests
             // Arrange — a Motion driven by a named variant, mounted in the hidden state. transition: None
             // opts out of the runtime-swap tween (see MotionRuntimeSwapTests) so the class list itself is
             // checked deterministically right after the patch, independent of animation timing.
-            var variants = new Dictionary<string, string>
+            var variants = new Dictionary<string, MotionVariant>
             {
                 { "hidden", "opacity-0" },
                 { "visible", "opacity-100" },

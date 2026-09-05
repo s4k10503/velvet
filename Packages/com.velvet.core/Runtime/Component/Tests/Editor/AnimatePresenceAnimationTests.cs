@@ -488,7 +488,7 @@ namespace Velvet.Tests
             Assert.That((escaped, string.Join(",", LabelTexts())), Is.EqualTo((false, "A")));
         }
 
-        private static readonly Dictionary<string, string> s_enterVariants = new()
+        private static readonly Dictionary<string, MotionVariant> s_enterVariants = new()
         {
             ["visible"] = "opacity-100",
             ["hidden"] = "opacity-0",
@@ -570,7 +570,7 @@ namespace Velvet.Tests
 
         #region Variant initial (initial → animate enter)
 
-        private static readonly System.Collections.Generic.Dictionary<string, string> Fade = new()
+        private static readonly System.Collections.Generic.Dictionary<string, MotionVariant> Fade = new()
         {
             ["visible"] = "opacity-100",
             ["hidden"] = "opacity-0",
