@@ -71,11 +71,6 @@ commands or broke a sibling guard, so the guard stops where it can answer.
    from `Packages/com.velvet.core/`; edit it in place.
 3. Run the Unity test suites from **Window ▸ General ▸ Test Runner** (EditMode and PlayMode).
 
-The lowest release a consumer may install is a separate fact from the editor above, declared by
-`package.json`'s `unity` and `unityRelease` and copied into the READMEs, so raising one does not raise
-the other: `scripts/release/unity_floor_check.py` refuses a README naming a release the manifest does
-not declare, and runs in `Test ▸ release-notes`.
-
 ### Looking at what Velvet renders
 
 Every `[VelvetPreview]` story can be rendered to a PNG, so a change to layout, styling or paint can
@@ -535,9 +530,11 @@ need the identifier to say what it says.
 
 ### Repository scripts
 
-`scripts/` holds the harnesses, grouped by what they are for — `test_quality/` (mutation, neuter,
-inconclusive-result, results-provenance and stranded-name guards), `release/` (the release-note
-builder), `unity/` (sample sync). Two rules keep the tree readable:
+`scripts/` holds the harnesses, grouped by what they are for — `test_quality/` (what a test run
+proves, and what the sources carry), `release/` (cutting a release and publishing it), `hooks/` (the
+suites for the guards under `.claude/hooks/`, and the checks holding those guards to their
+contracts), `generators/` (the committed generator DLLs), `pr/` (settling a pull request) and
+`unity/` (sample sync). Two rules keep the tree readable:
 
 - **Python, named in `snake_case`.** Every harness is importable, so a test can exercise it directly rather
   than only through a shell invocation — which is what `release/test_release_notes.py` does. Python needs no
