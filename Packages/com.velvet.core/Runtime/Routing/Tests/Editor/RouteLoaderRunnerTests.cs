@@ -604,9 +604,6 @@ namespace Velvet.Tests
         [Test]
         public void Given_ACancellationCallbackThatStartsARound_When_ItRetiresTheRoundBeingInstalled_Then_ThatRoundsLoaderLaunchesUnderTheRetiredToken()
         {
-            // The outgoing round is cancelled from inside the installation of the round replacing it, which
-            // runs whatever a Loader of that round registered on the token it was handed. A round that
-            // callback starts retires the round being installed, before its Loaders have launched.
             // Arrange
             var runner = new RouteLoaderRunner();
             bool? secondRoundsLoaderSawCancellation = null;
