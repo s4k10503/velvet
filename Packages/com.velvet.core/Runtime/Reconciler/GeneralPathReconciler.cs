@@ -2010,20 +2010,17 @@ namespace Velvet
             return true;
         }
 
-        // The config an exit's timing comes from: variants[Exit]'s own when the exit variant resolves and
-        // declares one, else this Motion's. The three gates that decide how a removal is treated —
-        // ShouldBlockPresenceEnters, CountAnimatedExits and the ghost gate in ExpandPresenceGhostEntry — read
-        // this so they agree with the config StartPresenceExit then plays. Disagreeing costs each of them
-        // something different, measured on a Motion whose own transition is None beside a timed exit pose:
-        // the ghost gate reaps the child before that pose's timing can play at all, the count collapses a
-        // reversed stagger to forward order, and Wait mode admits a new child while an exit is still running.
-        // The config a presence enter's timing comes from: variants[Animate]'s own where an initial enter
-        // resolves and declares one, else this Motion's — the enter-side counterpart of the exit resolution
-        // below. PlayPresenceEnter's gate reads this rather than the Motion's own transition because that
-        // gate skips the whole enter, OnEnterComplete included, and the only timing can now sit on the pose.
+        // PlayPresenceEnter's gate reads this rather than the Motion's own transition because that gate
+        // skips the whole enter, OnEnterComplete included, and a Motion's only timing can sit on the pose.
         internal static StyleTransitionConfig? ResolveEnterTransition(MotionNode? motion)
             => TryResolveVariantInitial(motion, out _, out _, out var transition) ? transition : motion?.Transition;
 
+        // The three gates that decide how a removal is treated — ShouldBlockPresenceEnters,
+        // CountAnimatedExits and the ghost gate in ExpandPresenceGhostEntry — read this so they agree with
+        // the config StartPresenceExit then plays. Disagreeing costs each of them something different,
+        // measured on a Motion whose own transition is None beside a timed exit pose: the ghost gate reaps
+        // the child before that pose's timing can play at all, the count collapses a reversed stagger to
+        // forward order, and Wait mode admits a new child while an exit is still running.
         internal static StyleTransitionConfig? ResolveExitTransition(MotionNode? motion)
             => TryResolveExitVariant(motion, out _, out _, out var transition) ? transition : motion?.Transition;
 

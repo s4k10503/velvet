@@ -13,9 +13,11 @@ namespace Velvet.Tests
     /// <see cref="StyleTransitionConfig"/> drives the swap INTO that pose at each of the four call sites
     /// that play one — a standalone mount enter, a presence mount enter, a runtime <c>animate</c> label
     /// change, and an AnimatePresence exit — with the Motion's own <c>transition:</c> as the default a pose
-    /// replaces. The presence enter and the exit share one declaration, 0.5s in against 0.05s out over a
-    /// Motion whose own transition declares 0.2s, which is the asymmetry a single per-node config cannot
-    /// express.
+    /// replaces. The first three read the pose whatever it applies; the exit reads it only where the pose
+    /// applies a class, so a classless exit pose leaves the classic exit on the Motion's own config, and a
+    /// case each way pins the split. The presence enter and the exit share one declaration, 0.5s in against
+    /// 0.05s out over a Motion whose own transition declares 0.2s, which is the asymmetry a single per-node
+    /// config cannot express.
     /// Three gates decide how a removal is treated, and each reads the same chain, so a Motion whose own
     /// transition is <c>StyleTransitionConfig.None</c> still exits on the timing its exit pose declares:
     /// the ghost gate, the reversed-stagger count and <c>mode: Wait</c> are pinned one case each. The
@@ -78,6 +80,15 @@ namespace Velvet.Tests
         {
             ["hidden"] = "opacity-0",
             ["shown"] = new MotionVariant(null, new StyleTransitionConfig { DurationSec = 0.5f }),
+        };
+
+        // The classless-but-timed shape of s_classlessTimedPose above, reached as an `exit` target instead
+        // of an `animate` one, where the rule inverts: applying no class makes it no variant exit at all,
+        // so this 0.5s is the number a reading must NOT find.
+        private static readonly Dictionary<string, MotionVariant> s_classlessTimedExit = new()
+        {
+            ["visible"] = "opacity-100",
+            ["gone"] = new MotionVariant(null, new StyleTransitionConfig { DurationSec = 0.5f }),
         };
 
         private readonly record struct LabelState(string Label);
@@ -190,6 +201,23 @@ namespace Velvet.Tests
             {
                 V.Motion(key: "m", name: "m", variants: s_classlessTimedPose, animate: label,
                     transition: s_nodeDefault),
+            });
+        }
+
+        [Component]
+        private static VNode ClasslessExitPresence()
+        {
+            var keys = Hooks.UseStore(s_keyStore, s => s.Keys);
+            var children = new List<VNode>();
+            foreach (var key in keys)
+            {
+                children.Add(V.Motion(name: "item-" + key, key: key.ToString(),
+                    variants: s_classlessTimedExit, animate: "visible", exit: "gone",
+                    transition: s_nodeDefault));
+            }
+            return V.Div(name: "host", children: new VNode[]
+            {
+                V.AnimatePresence(key: "presence", children: children.ToArray()),
             });
         }
 
@@ -331,6 +359,27 @@ namespace Velvet.Tests
 
             // Assert — the exit pose's own 50ms: neither the node's 200ms nor the resting pose's 500ms.
             Assert.That(InlineDurationMs(Root.Q<VisualElement>("item-a")), Is.EqualTo(50f).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_AnExitPoseApplyingNoClassButCarryingATransition_When_TheKeyIsRemoved_Then_TheExitRidesTheNodesDuration()
+        {
+            // Arrange — variants[gone] applies no class and declares 0.5s against the node's 0.2s. The
+            // Motion declares no `initial` label, so no enter play holds the duration slot and the reading
+            // below is the removal's own write.
+            using var keys = new KeySetStore("a");
+            s_keyStore = keys;
+            using var mounted = V.Mount(Root, V.Component(ClasslessExitPresence, key: "root"));
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+            Tick();
+
+            // Act — remove the key; the exit play writes its inline timing inside the reconcile.
+            keys.Set(string.Empty);
+            scheduler.DrainImmediateForTest();
+
+            // Assert — the node's 200ms, not the pose's 500ms: an exit pose applying no class is no variant
+            // exit.
+            Assert.That(InlineDurationMs(Root.Q<VisualElement>("item-a")), Is.EqualTo(200f).Within(1e-3f));
         }
 
         [Test]
