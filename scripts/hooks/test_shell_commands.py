@@ -199,6 +199,80 @@ class CommandDirectoryTests(unittest.TestCase):
         # Assert
         self.assertEqual(found, "/moved")
 
+    def test_Given_AMoveInsideASubshell_When_ThePlacementIsAsked_Then_NothingIsPlaced(self):
+        # Arrange / Act — the group's move is gone at its close, so the two programs run in two
+        # directories. Read as reaching past the close, this answered about the group's directory
+        # for a command the shell runs in the one it started in.
+        found = self.where("( cd /moved && git rev-parse HEAD ) && git commit --amend")
+
+        # Assert
+        self.assertIs(found, shell_commands.UNRESOLVED_CD)
+
+    def test_Given_AGroupMovingInsideAnOuterMove_When_ThePlacementIsAsked_Then_NothingIsPlaced(self):
+        # Arrange / Act — the outer move is what the trailing command runs in, and the inner one is
+        # what the group's own program runs in. Without the close, the inner one answered for both.
+        found = self.where("cd /moved; (cd /other; git status); git commit --amend")
+
+        # Assert
+        self.assertIs(found, shell_commands.UNRESOLVED_CD)
+
+    def test_Given_AMoveOnTheFailureSideOfAnOr_When_ThePlacementIsAsked_Then_NothingIsPlaced(self):
+        # Arrange / Act — `&&` and `||` bind equally and leftwards, so the amend runs in whichever
+        # of the two the shell reached. Taking the last move read answers about one of them.
+        found = self.where("cd /a || cd /b && git commit --amend")
+
+        # Assert
+        self.assertIs(found, shell_commands.UNRESOLVED_CD)
+
+    def test_Given_AMoveWhoseFailureIsCaughtByAnOr_When_ThePlacementIsAsked_Then_NothingIsPlaced(self):
+        # Arrange / Act — the other side of the same operator: this one runs, and the `cd /c` runs
+        # instead of it wherever it or the move before it failed.
+        found = self.where("cd /a && cd /b || cd /c; git commit --amend")
+
+        # Assert
+        self.assertIs(found, shell_commands.UNRESOLVED_CD)
+
+    def test_Given_AMoveTheShellBackgrounds_When_TheDirectoryIsPlaced_Then_TheWorkKeepsTheHandedOne(self):
+        # Arrange / Act — `&` closes a list that runs in a subshell, so the shell the amend runs in
+        # never moved. This is placeable rather than declinable: it is the handed directory.
+        found = self.where("cd /moved & git commit --amend")
+
+        # Assert
+        self.assertEqual(found, "/handed")
+
+    def test_Given_AMoveInsideAPipeline_When_TheDirectoryIsPlaced_Then_TheWorkKeepsTheHandedOne(self):
+        # Arrange / Act — each element of a pipeline runs in a subshell of its own, so a move in one
+        # reaches nothing after the pipeline.
+        found = self.where("cd /moved | true; git commit --amend")
+
+        # Assert
+        self.assertEqual(found, "/handed")
+
+    def test_Given_APushdOntoItsOwnStack_When_ThePlacementIsAsked_Then_NothingIsPlaced(self):
+        # Arrange / Act — `+1` selects an entry of the stack the running shell keeps and rotates to
+        # it. Read as a path, it joined to the handed directory and named one nothing holds.
+        found = self.where("pushd +1 && git commit --amend")
+
+        # Assert
+        self.assertIs(found, shell_commands.UNRESOLVED_CD)
+
+    def test_Given_APopdOfANamedStackEntry_When_ThePlacementIsAsked_Then_NothingIsPlaced(self):
+        # Arrange / Act — the same selector on the other mover, and the operand a bare `popd` does
+        # not have: without it, the reading that declines `popd` is the one that declines every
+        # move carrying no operand at all, and the mover itself is measured by nothing.
+        found = self.where("popd +1 && git commit --amend")
+
+        # Assert
+        self.assertIs(found, shell_commands.UNRESOLVED_CD)
+
+    def test_Given_AMoveWrittenInsideAComment_When_TheDirectoryIsPlaced_Then_OnlyTheRealMoveCounts(self):
+        # Arrange / Act — the split finds its boundaries in the mask and slices the original, so a
+        # `&&` inside a comment separated segments that the shell never sees as commands.
+        found = self.where("cd /moved # && cd /other\ngit commit --amend")
+
+        # Assert
+        self.assertEqual(found, "/moved")
+
 
 class LoopHeadReaderTests(unittest.TestCase):
     """A guard whose subject is the keyword itself cannot read it through this table.

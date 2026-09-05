@@ -25,7 +25,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 from shell_commands import (command_segments, leading_program,  # noqa: E402  (path set above)
-                            moves_directory, tokens_of, unexpanded)
+                            moves_to_a_named_directory, tokens_of, unexpanded)
 
 
 HOOK_TOOLS = {"Bash"}
@@ -77,22 +77,25 @@ def relative_repo_tokens(command, roots):
 
 
 def says_where_it_runs(command):
-    """Whether the command moves into a directory before running anything, which is what makes a
-    relative path answerable.
+    """Whether the command moves into a directory it names before running anything, which is what
+    makes a relative path answerable.
 
     Read through the shared move table rather than by matching `cd` at the head of the text:
     measured, `pushd <tree> &&`, `builtin cd <tree> &&` and an assignment ahead of the `cd` were
     each refused here, and each of the three says where the command runs.
 
     Unlike `command_directory`, an unexpanded target is a yes: the shell resolves it when the command
-    runs, so the command does say where that is even though nothing here can say it back.
+    runs, so the command does say where that is even though nothing here can say it back. A move
+    whose destination the text does not carry at all -- the ones `move_target` declines -- is a no,
+    which is the same reading the other way round: what the text does not carry cannot be what the
+    command says.
     """
     for segment in command_segments(command):
         tokens = tokens_of(segment)
         if leading_program(tokens) >= len(tokens):
             # An assignment and nothing else, which is still before anything that runs.
             continue
-        return moves_directory(segment)
+        return moves_to_a_named_directory(segment)
     return False
 
 

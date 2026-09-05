@@ -47,6 +47,21 @@ class PathSpellingTests(unittest.TestCase):
         # Act / Assert
         self.assertEqual(self.judge("python3 /elsewhere/scripts/pr/settle.py watch"), 0)
 
+    def test_Given_AMoveNamingNoDestination_When_Backgrounded_Then_EverySpellingIsStillRefused(self):
+        # Arrange — each of these moves, so a reading that asks only whether the command moves has
+        # it saying where it runs. None of them carries a destination the command's reader can
+        # place, which is what the allowance is for. Both separators, because the spelling this was
+        # matched by before read `cd` followed by any non-space as a move to somewhere.
+        movers = ("popd", "pushd", "cd", "cd -", "popd || true", "cd &&", "cd - &&")
+
+        # Act
+        refused = sorted(mover for mover in movers if self.judge(
+            f"{mover} python3 scripts/pr/settle.py watch" if mover.endswith("&&")
+            else f"{mover}; python3 scripts/pr/settle.py watch") == 2)
+
+        # Assert
+        self.assertEqual(refused, sorted(movers))
+
     def test_Given_APushdAheadOfTheRelativePath_When_Backgrounded_Then_ItIsLetThrough(self):
         # Arrange — `pushd` says where the command runs as surely as `cd`. Matched as `cd` at the
         # head of the text, it says nothing, and the command is refused for naming a path it has

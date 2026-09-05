@@ -269,10 +269,10 @@ ANSWER_ON_TOP = ("Where this is a review round being answered, the answer is a c
 NOTHING_READ = f"{repository.SELF_REPORT} the commit. What failed is the reading:"
 
 
-def findings(command, cwd):
+def findings(amending, cwd):
     """(headline, the trees read, the trees that did not, what to do about those), or None."""
     read, blind, actions = [], [], []
-    for context in amends(command):
+    for context in amending:
         refs = publishing_refs(context, cwd)
         if isinstance(refs, Unreadable):
             selectors = repository_selectors(context)
@@ -317,12 +317,15 @@ def main():
     if not isinstance(command, str) or not command:
         return 0
 
+    amending = amends(command)
+    if not amending:
+        return 0
     where = command_directory(command, event.get("cwd") or ".")
     if where is UNRESOLVED_CD:
         sys.stderr.write("Refusing `git commit --amend`: which tree this amends could not be "
                          f"read.\n\n{UNPLACEABLE_MOVE}\n\n{NAME_THE_TREE}\n")
         return 2
-    found = findings(command, where)
+    found = findings(amending, where)
     if found is None:
         return 0
 

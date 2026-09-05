@@ -33,14 +33,30 @@ cannot decide, and that covers two unlike cases: `merge_without_branch_deletion.
 command's own flags and no directory, while `library_seed_without_room.py` reads a directory this
 sees nothing of, since it asks the filesystem for free space rather than asking git. So it is
 reported as undecided rather than counted as agreement, and a guard that lands there wants a case in
-its own suite. `DECIDED_FLOOR` is what fails when the instrument stops deciding at all: a shim that
-logs nothing, or two trees that stop differing, scores every guard undecided and leaves the fault
-list empty.
+its own suite.
+
+Two instrument failures are guarded apart, because the count that catches one is blind to the other.
+Shims that stop recording leave every guard undecided — measured, none of nineteen — and
+`DECIDED_FLOOR` fails on that. Two trees that stop being two do the opposite: every guard that reads
+a tree reads as following the move, the decided count is what an intact instrument gives, and the
+fault list comes back empty — measured, thirteen decided, no faults, floor satisfied. So the trees
+are compared to each other here as well. `ControlTests` in the suite reaches both from a third
+direction, by requiring the blind stand-in to come back blind.
+
+## What is posed, and what each form can show
+
+Three forms per guard: a move it can place, a move nothing can place, and that same unplaceable move
+carrying a command the guard has no opinion about.
 
 What is not decided here is what a guard SHOULD do once it has declined to place a move. Refusing and
 standing down are both defensible and the guards differ, `tracked_writes.py` naming its own gap; what
 none of them may do is read the tree the command left. So the unplaceable form scores that alone, and
 reports the verdict beside it.
+
+The third form is the one refusal itself gets wrong. A guard registered on `Bash` runs on every
+command in the session, so one that reads the directory before establishing it has a subject refuses
+`cd - && ls` — naming a command the user did not type, with the move as the whole of its reason.
+Measured before this form existed: four guards refused each of seven such commands.
 
 Run: python3 scripts/hooks/test_cwd_resolution_check.py
 """
@@ -61,8 +77,9 @@ REFUSE_DIRECTORY = ".claude/hooks/refuse"
 # that answers about the wrong tree, and would otherwise pass this.
 GUARD_FLOOR = 16
 
-# How many guards the two trees have to tell apart before a clean fault list means anything. Every
-# guard undecided is what a dead shim and two identical trees both look like.
+# How many guards the two trees have to tell apart before a clean fault list means anything. A shim
+# that stopped recording leaves every guard undecided; the trees being one directory is the other
+# degeneracy, and the comparison in `readings` is what fails on that one.
 DECIDED_FLOOR = 8
 
 PROBE = "UNREADABLE_PROBE"
@@ -71,12 +88,19 @@ BASH = "Bash"
 
 REFUSE, ALLOW = "refuse", "allow"
 
-# What a guard did with a move it could have placed, and with one it could not.
+# What a guard did with a move it could have placed, with one it could not, and with one it could not
+# carrying a command it has no opinion about.
 FOLLOWS = "follows the cd"
 HANDED = "answers about the handed tree"
 UNDECIDED = "undecided: no tree reading seen"
 REFUSES = "refuses, having not placed it"
 STANDS_DOWN = "stands down, having not placed it"
+SILENT_ELSEWHERE = "silent where it has no subject"
+REFUSES_ELSEWHERE = "refuses where it has no subject"
+
+# Every value the three columns take. The stand-ins are held to producing all of them, so a column
+# that stops being reachable is a column no control is left measuring.
+OUTCOMES = (FOLLOWS, HANDED, UNDECIDED, REFUSES, STANDS_DOWN, SILENT_ELSEWHERE, REFUSES_ELSEWHERE)
 
 HANDED_TREE, MOVED_TREE = "handed", "moved"
 
@@ -84,6 +108,10 @@ HANDED_TREE, MOVED_TREE = "handed", "moved"
 # is a literal naming no directory. `cd -` and `popd` reach the same outcome by naming a directory
 # only the running shell knows.
 UNPLACEABLE = 'cd "$VELVET_UNSET_WORKTREE"'
+
+# A command no guard in the directory has a subject in. What it does not carry is the point: no git,
+# no gh, no path, nothing to judge — so a refusal of it can only have come from the move.
+UNCONCERNED = "ls"
 
 STUB_LOG = "VELVET_CWD_RESOLUTION_LOG"
 
@@ -249,8 +277,17 @@ def unplaced_outcome(run, placed):
     return REFUSES if verdict == REFUSE else STANDS_DOWN
 
 
+def unconcerned_outcome(run):
+    """What a guard did with that same unplaceable move carrying a command it has no subject in.
+
+    The verdict alone, and no tree reading: a guard is free to look wherever it likes at a command
+    it then says nothing about. Refusing is the fault, whichever tree it read to get there.
+    """
+    return REFUSES_ELSEWHERE if run[0] == REFUSE else SILENT_ELSEWHERE
+
+
 def readings(refuse_directory, floor=GUARD_FLOOR):
-    """[(guard, placed outcome, unplaced outcome, probe)] for every guard, and the faults in them."""
+    """[(guard, placed, unplaced, unconcerned, probe)] for every guard, and the faults in them."""
     found, faults = [], []
     subjects = guards(refuse_directory)
     if len(subjects) < floor:
@@ -259,6 +296,10 @@ def readings(refuse_directory, floor=GUARD_FLOOR):
     root = Path(tempfile.mkdtemp(prefix="velvet-cwd-resolution-"))
     try:
         handed, moved = _tree(root, HANDED_TREE), _tree(root, MOVED_TREE)
+        if handed == moved:
+            # One directory answers both readings, so every guard follows a move it never made and
+            # every fault list is empty. The floor does not see it: they all score decided.
+            faults.append(f"the two trees are one directory, {handed}")
         home = root / "home"
         home.mkdir()
         places = (_shims(root), home, handed, moved)
@@ -273,26 +314,31 @@ def readings(refuse_directory, floor=GUARD_FLOOR):
             unplaced = unplaced_outcome(
                 run_guard(hook, dict(extra, command=f"{UNPLACEABLE} && {command}"), handed, places),
                 placed)
-            found.append((hook.name, placed, unplaced, command))
+            unconcerned = unconcerned_outcome(
+                run_guard(hook, dict(extra, command=f"{UNPLACEABLE} && {UNCONCERNED}"), handed,
+                          places))
+            found.append((hook.name, placed, unplaced, unconcerned, command))
     finally:
         shutil.rmtree(root, ignore_errors=True)
 
     faults += [f"{name}: `cd <worktree> && {command}` {placed}"
-               for name, placed, _, command in found if placed == HANDED]
+               for name, placed, _, _, command in found if placed == HANDED]
     faults += [f"{name}: `{UNPLACEABLE} && {command}` {unplaced}"
-               for name, _, unplaced, command in found if unplaced == HANDED]
+               for name, _, unplaced, _, command in found if unplaced == HANDED]
+    faults += [f"{name}: `{UNPLACEABLE} && {UNCONCERNED}` {unconcerned}"
+               for name, _, _, unconcerned, _ in found if unconcerned == REFUSES_ELSEWHERE]
     return found, faults
 
 
 def decided(found):
-    return [name for name, placed, _, _ in found if placed != UNDECIDED]
+    return [name for name, placed, _, _, _ in found if placed != UNDECIDED]
 
 
 def main(argv):
     directory = Path(argv[1]) if len(argv) > 1 else REPO_ROOT / REFUSE_DIRECTORY
     found, faults = readings(directory)
-    for name, placed, unplaced, command in found:
-        print(f"{name:<42} {placed:<38} {unplaced:<36} {command}")
+    for name, placed, unplaced, unconcerned, command in found:
+        print(f"{name:<42} {placed:<38} {unplaced:<36} {unconcerned:<32} {command}")
     if len(decided(found)) < DECIDED_FLOOR:
         faults.append(f"{len(decided(found))} guards were decided, fewer than {DECIDED_FLOOR} — the "
                       "two trees told nothing apart, so a clean list says nothing")
