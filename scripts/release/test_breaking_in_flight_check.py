@@ -1403,6 +1403,25 @@ class PublishedSections(ReleaseHistory):
         self.assertEqual((done.returncode, "## [2.1.0]: changed against the base" in done.stderr),
                          (UNNAMED, True))
 
+    def test_Given_APutBackEmptyingTheHeadingAboveIt_When_ItIsRefused_Then_TheRemediesAreNamed(self):
+        # Arrange -- the line going back is the copy's and lands where the copy has it, so the rest
+        # of the refusal describes what this contributor has just done and the emptiness is the one
+        # clause of it that says why. The landing the message names for a heading is run first, so
+        # the advice is held to a way through this reading accepts.
+        carrying, merged = self.history(TWO_FIXED_BLOCKS, MERGED_FIXED, FIXED_BEFORE_ITS_ENTRY,
+                                        tags={0: RELEASE})
+        above_carried = run(carrying, merged[1], "[]")
+        root, commits = self.history(ABOVE_COPY, ABOVE_BASE, ABOVE_BACK, tags={0: RELEASE})
+
+        # Act
+        done = run(root, commits[1], "[]")
+
+        # Assert
+        self.assertEqual((above_carried.returncode, done.returncode,
+                          "an entry put back with it or lines the section already carries"
+                          in " ".join(done.stderr.split())),
+                         (0, UNNAMED, True))
+
     def test_Given_AHeadingPutBackAgainstItsTwin_When_TheFirstOfThePairFilesNothing_Then_ItIsRefused(self):
         # Arrange -- the heading lands against the one of its name that survived rather than above
         # the entry it heads. Either side of that one is the same text, and `carried_from` reads the

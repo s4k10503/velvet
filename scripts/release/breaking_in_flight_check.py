@@ -23,13 +23,13 @@ rather than the result, since the result's own history is the pull request's, wh
 and corrected without reaching main -- and an entry the section held at any of them, that the result
 carries neither there nor in a major closed since the tag, is refused. A change closing nothing is
 asked nothing by this reading. And a dated section is the note its release shipped: one whose version
-the remote tags, whichever line published it, has to be the base's but for a line of that tag's copy
-put back where that copy has it -- the base rather than the copy, since main's older sections were
-reworded and reordered after their releases and carry a Highlights block their tags' copies do not --
-one the base has not got arrives as that copy and nothing else, the copy being the only text of it
-here and an addition to a published note belonging in the release that follows, and one gone that the
-base or the last release on this line carried is refused, whatever the change closes, since the file
-cannot tell a correction from a deletion.
+the remote tags, whichever line published it, has to be the base's but for the put-back
+`only_put_back` admits -- the base rather than the copy, since main's older sections were reworded
+and reordered after their releases and carry a Highlights block their tags' copies do not -- one the
+base has not got arrives as that copy and nothing else, the copy being the only text of it here and
+an addition to a published note belonging in the release that follows, and one gone that the base or
+the last release on this line carried is refused, whatever the change closes, since the file cannot
+tell a correction from a deletion.
 Where the remote tags no release the result descends from -- a repository before its first
 release -- the breaking section is read one step deep from `--base`, and the pass says so. A remote
 that cannot be listed is refused as unread instead, since none is the reading that passes, and so is
@@ -47,6 +47,7 @@ import json
 import re
 import subprocess
 import sys
+import textwrap
 from collections import Counter
 from itertools import takewhile
 from pathlib import Path
@@ -401,6 +402,15 @@ def in_its_place(lines, index, copy):
     return False
 
 
+# Two copies of this reading came apart here, one refusal naming the routes a put-back heading has
+# and the other naming none, so the write-time hook prints this text rather than one of its own.
+# The refusal that was left without it tells a contributor to do what they have just done.
+HEADING_ROUTES = (
+    "a heading only above something it comes to head, an entry put back with it or lines the "
+    "section already carries, since the section may not come out of the change with a heading "
+    "newly standing over nothing, the put-back's own or one it empties")
+
+
 def only_put_back(lines, before, copy):
     """Whether `lines` are `before` with nothing lost or moved, and nothing added but a line of
     `copy` that `before` is short of, put back where `copy` has it and leaving no heading newly
@@ -453,14 +463,14 @@ def drifted(result_text, base_text, tags, read):
     """The result's dated sections that a release tags and that do not carry its note, as
     (version, tag, how).
 
-    A section the base carries has to be the base's but for a line of its tag's copy put back where
-    that copy has it, heading and date included, so a line deleted, reworded, reordered or put back
-    elsewhere is refused by the change that does it. The base rather than the tag's copy: main's
-    older sections were reworded and reordered after their releases and carry a Highlights block
-    their tags' copies do not, so the copy says which lines may go back and the base says what is
-    there. A section the base does not carry -- a maintenance line's, brought in -- arrives as its
-    tag's copy and nothing else: that copy is the only text of it here, and an addition to a note
-    already published belongs in the release that follows it.
+    A section the base carries has to be the base's but for the put-back `only_put_back` admits,
+    heading and date included, so a line deleted, reworded, reordered or put back elsewhere is
+    refused by the change that does it. The base rather than the tag's copy: main's older sections
+    were reworded and reordered after their releases and carry a Highlights block their tags'
+    copies do not, so the copy says which lines may go back and the base says what is there. A
+    section the base does not carry -- a maintenance line's, brought in -- arrives as its tag's
+    copy and nothing else: that copy is the only text of it here, and an addition to a note already
+    published belongs in the release that follows it.
     """
     ours, theirs = dated_sections(result_text), dated_sections(base_text)
     found = []
@@ -559,19 +569,23 @@ def main():
     gone = gone_sections(result_text, base_text,
                          at(release[1], CHANGELOG) if release else None, tagged)
     if gone or changed:
+        rule = textwrap.fill(
+            "A file cannot tell a correction from a deletion, so neither is made past the tag: a "
+            "dated section is the base's but for a line its tag's copy has and the base is short "
+            "of, put back where that copy has it -- " + HEADING_ROUTES + " -- and one the base has "
+            "not got arrives as that copy entire, an addition to a note already published "
+            "belonging in the release that follows it. Read each copy from the commit the remote "
+            "tags:", 86)
         sys.stderr.write(
             "{} dated section(s) of {} do not carry the note their release shipped:\n{}\n\n"
-            "A file cannot tell a correction from a deletion, so neither is made past the tag: a\n"
-            "dated section is the base's but for a line its tag's copy has and the base is short\n"
-            "of, put back where that copy has it, and one the base has not got arrives as that copy\n"
-            "entire -- an addition to a note already published belongs in the release that follows\n"
-            "it. Read each copy from the commit the remote tags:\n{}\n"
+            "{}\n{}\n"
             "and put what this change has to say under '## [Unreleased]'.\n".format(
                 len(gone) + len(changed), args.result,
                 "\n".join(["  ## [{}]: gone, and {} carries it".format(version, tag)
                            for version, tag in gone]
                           + ["  ## [{}]: {}".format(version, how)
                              for version, _, how in changed]),
+                rule,
                 "\n".join(sorted(
                     "  git show {}:{}   # {}".format(tagged[tag], CHANGELOG, tag)
                     for tag in {tag for _, tag in gone} | {tag for _, tag, _ in changed}))))
