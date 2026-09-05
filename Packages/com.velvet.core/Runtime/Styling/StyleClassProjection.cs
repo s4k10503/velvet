@@ -269,9 +269,8 @@ namespace Velvet
                 }
             }
 
-            // A restored class is APPENDED to the live class list, not returned to where it was. No reader
-            // depends on live-list order today except the clip-path scan, whose tokens carry no USS rule and
-            // so are never suppressed; a new order-sensitive reader has to hold that in mind.
+            // A restored class is APPENDED to the live class list, not returned to where it was.
+            // Which readers resolve an answer from that order is what LiveClassListOrderTests holds.
             //
             // Skipped outright unless something is suppressed or has just become so — the state most
             // elements carrying a model are never in, and the one that turns a class-list toggle into work
