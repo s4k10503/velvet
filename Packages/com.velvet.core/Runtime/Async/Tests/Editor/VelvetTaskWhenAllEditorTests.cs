@@ -13,6 +13,9 @@ namespace Velvet.Tests
 
         static async VelvetTask<int[]> AwaitBounded(VelvetTask<int[]> task) => await task.Bounded();
 
+        static async VelvetTask<int> DoubledWhenSettled(VelvetTaskCompletionSource<int> source) =>
+            await source.Task * 2;
+
         static VelvetTaskSource<int[]> PublishingSourceOf(VelvetTask<int[]> task)
         {
             var composite = ResultTaskSourceField.GetValue(task)!;
@@ -211,18 +214,20 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ACanceledResultTask_When_WhenAllIsConsumed_Then_ThrowsOperationCanceledException()
+        public void Given_ACanceledResultTask_When_WhenAllIsConsumed_Then_ThrowsWithThatMembersToken()
         {
             // Arrange
+            using var cts = new CancellationTokenSource();
+            cts.Cancel();
             var canceled = new VelvetTaskCompletionSource<int>();
-            canceled.SetCanceled();
+            canceled.SetCanceled(cts.Token);
             var all = VelvetTask.WhenAll(canceled.Task, VelvetTask.FromResult(7));
 
             // Act
-            void Consume() => all.GetAwaiter().GetResult();
+            var thrown = Assert.Throws<OperationCanceledException>(() => all.GetAwaiter().GetResult());
 
             // Assert
-            Assert.That(Consume, Throws.InstanceOf<OperationCanceledException>());
+            Assert.That(thrown!.CancellationToken, Is.EqualTo(cts.Token));
         }
 
         [Test]
@@ -318,6 +323,42 @@ namespace Velvet.Tests
             // Assert
             Assert.That(Assert.Throws<InvalidOperationException>(PassTwice)!.Message,
                 Is.EqualTo("The VelvetTask has already been awaited."));
+        }
+
+        [Test]
+        public void Given_ACompletedTaskPassedTwiceBehindAPendingOne_When_WhenAllCalled_Then_ThrowsAlreadyConsumedWithThePendingOneAwaited()
+        {
+            // Arrange
+            var ahead = new VelvetTaskCompletionSource();
+            var duplicated = VelvetTask.FromException(new InvalidOperationException("boom"));
+
+            // Act
+            var fromCall = Assert.Throws<InvalidOperationException>(
+                () => VelvetTask.WhenAll(ahead.Task, duplicated, duplicated))!.Message;
+            var fromAhead = Assert.Throws<InvalidOperationException>(
+                () => ahead.Task.GetAwaiter().OnCompleted(() => { }))!.Message;
+
+            // Assert
+            Assert.That((fromCall, fromAhead), Is.EqualTo((
+                "The VelvetTask has already been consumed.",
+                "The VelvetTask has already been awaited.")));
+        }
+
+        [Test]
+        public void Given_TwoSuspendedAsyncMethods_When_TheyCompleteOutOfOrder_Then_ResultsFollowArgumentOrder()
+        {
+            // Arrange
+            var first = new VelvetTaskCompletionSource<int>();
+            var second = new VelvetTaskCompletionSource<int>();
+            var all = VelvetTask.WhenAll(DoubledWhenSettled(first), DoubledWhenSettled(second));
+
+            // Act
+            second.SetResult(20);
+            first.SetResult(10);
+            var results = all.GetAwaiter().GetResult();
+
+            // Assert
+            Assert.That(results, Is.EqualTo(new[] { 20, 40 }));
         }
 
         [Test]

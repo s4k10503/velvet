@@ -57,7 +57,9 @@ exception is all the combination carries, so await the members separately where 
 
 The combination consumes each member, and one consume is all a `VelvetTask` carrying a source allows.
 So a member must not also be awaited elsewhere, and must not be passed twice into a single call: that
-throws out of the call rather than out of the await. A task that carries a value instead —
+throws out of the call rather than out of the await. It throws part-way, though — a source-backed
+member ahead of the duplicate has been taken by then, consumed or left carrying the combination's
+continuation, so catching it does not hand that one back. A task that carries a value instead —
 `VelvetTask.FromResult`, `VelvetTask.CompletedTask`, and an `async` method that returned without
 suspending — has no version to consume, so the same one may sit at two argument positions. Consume
 what the combination returns once as well.
