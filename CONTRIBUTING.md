@@ -789,8 +789,8 @@ behaviour a working application would notice changing.
    over nothing — so one goes back in the same edit as an entry it heads, and not where it would
    leave the heading above it empty, a twin of its own name included — the base rather than the
    tag's copy, because `main`'s older sections were reworded and reordered after their releases and
-   carry a Highlights block their
-   tags' copies do not, so the copy says which lines may go back and the base says what is there —
+   carry a Highlights block their tags' copies do not, so the copy says which lines may go back and
+   the base says what is there —
    one the file has not got, a maintenance line's carried forward, arrives as that copy and
    nothing else, that copy being the only text of it here and an addition to a note already
    published belonging in the release that follows it, and one gone from the file that the base or
