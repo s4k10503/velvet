@@ -4131,6 +4131,12 @@ class CommentOnlyBranchTests(unittest.TestCase):
     def swapped(self, blocks):
         return "namespace N\n{\n    class ProbeTests\n    {\n" + blocks + "    }\n}\n"
 
+    def fielded(self, row, body):
+        return ("namespace N\n{\n    class ProbeTests\n    {\n"
+                '        static readonly string Row = "' + row + '";\n\n'
+                "        [Test]\n        public void Given_A_When_B_Then_C()\n        {\n"
+                + body + "        }\n    }\n}\n")
+
     def python(self, body):
         return ("import unittest\n\n\nclass ProbeTests(unittest.TestCase):\n"
                 "    def test_Given_A_When_B_Then_C(self):\n" + body)
@@ -4145,6 +4151,11 @@ class CommentOnlyBranchTests(unittest.TestCase):
             [sys.executable, str(REPO_ROOT / "scripts/test_quality/base_red_check.py"),
              "--project", str(root), "--base", "HEAD~1", "--lane", "csharp", "--plan"],
             capture_output=True, text=True).stdout
+
+    def read_as(self, printed):
+        lines = [line.strip() for line in printed.splitlines()]
+        return ([line for line in lines if line.startswith("out of scope:")],
+                [line for line in lines if line.startswith("N.ProbeTests.")])
 
     def test_Given_ARemarkRewrittenInACase_When_TheBranchIsRead_Then_TheCaseIsNotInScope(self):
         # Arrange -- the replacement is as long as what it replaces and sits on its own line, so
@@ -4227,6 +4238,20 @@ class CommentOnlyBranchTests(unittest.TestCase):
                          ["out of scope: 1 case(s) of {} hold a line this branch changed and no "
                           "code it changed".format(self.CSHARP),
                           "no changed test case in scope of --lane csharp"])
+
+    def test_Given_ARemarkRewrittenBesideAChangedField_When_ThePlanIsRead_Then_TheCaseIsPosedAndNotKeptOut(self):
+        # Arrange -- the field puts a changed line outside every case, which is what promotes the
+        # file whole into scope. The remark beside it leaves this case's own code standing, which is
+        # the state the kept-out reading names.
+        root, _ = two_commit_repo(
+            self, {self.CSHARP: self.fielded("one", "            // aaa\n" + self.BODY)},
+            {self.CSHARP: self.fielded("two", "            // bbb\n" + self.BODY)})
+
+        # Act
+        read = self.read_as(self.planned(root))
+
+        # Assert
+        self.assertEqual(read, ([], ["N.ProbeTests.Given_A_When_B_Then_C"]))
 
     # GREEN_ON_BASE(characterization): the base names no kept-out case at all, so it satisfies this
     # by printing nothing rather than by holding what it says. The evidence is the reporting arm
