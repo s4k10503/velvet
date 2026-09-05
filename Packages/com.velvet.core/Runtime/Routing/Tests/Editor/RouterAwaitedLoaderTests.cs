@@ -328,7 +328,7 @@ namespace Velvet.Tests
             // The write-back a resolution triggers records whether the entry on screen finished its loaders,
             // and the round that answers that is the one the entry belongs to rather than whichever is newest:
             // the newer round here is itself unsettled, so reading it would mark a finished entry unfinished
-            // and every Back onto it would load again. The runs are read on both sides of the Back because an
+            // and the Back onto it would load again. The runs are read on both sides of the Back because an
             // after-only reading of one run cannot tell a Back that ran none from a Back that ran the only one.
             // Arrange
             var feedLoaded = new VelvetTaskCompletionSource<object>();
