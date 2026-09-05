@@ -13,6 +13,8 @@ namespace Velvet.Tests
 
         static async VelvetTask<int[]> AwaitBounded(VelvetTask<int[]> task) => await task.Bounded();
 
+        static async VelvetTask Await(VelvetTask task) => await task;
+
         static async VelvetTask<int> DoubledWhenSettled(VelvetTaskCompletionSource<int> source) =>
             await source.Task * 2;
 
@@ -278,6 +280,30 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((beforeLate, results), Is.EqualTo((VelvetTaskStatus.Pending, "10,20")));
+        }
+
+        [Test]
+        public void Given_AWhenAllCarryingNothingAwaitedBeforeItsLastMember_When_ThatMemberCompletes_Then_TheAwaitResumes()
+        {
+            // Arrange
+            var early = new VelvetTaskCompletionSource();
+            var late = new VelvetTaskCompletionSource();
+
+            // A status read never registers a continuation on the combination, so a case built on the
+            // combination's own status stays green with that registration dead. The await is plain
+            // rather than Bounded, whose registration goes through AttachExternalCancellation and
+            // would vanish if that call took its completed-task path.
+            var awaited = Await(VelvetTask.WhenAll(early.Task, late.Task));
+            early.SetResult();
+
+            // Act
+            var beforeLate = awaited.Status;
+            late.SetResult();
+            var afterLate = awaited.Status;
+
+            // Assert
+            Assert.That((beforeLate, afterLate),
+                Is.EqualTo((VelvetTaskStatus.Pending, VelvetTaskStatus.Succeeded)));
         }
 
         [Test]
