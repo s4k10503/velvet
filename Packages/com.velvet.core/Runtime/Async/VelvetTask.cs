@@ -127,6 +127,28 @@ namespace Velvet
 
         public static VelvetTask CompletedTask { get; } = default;
 
+        public static VelvetTask WhenAll(params VelvetTask[] tasks)
+        {
+            if (tasks == null)
+            {
+                throw new ArgumentNullException(nameof(tasks));
+            }
+
+            return tasks.Length == 0 ? CompletedTask : new VelvetTask(new WhenAllVelvetTaskSource(tasks));
+        }
+
+        public static VelvetTask<T[]> WhenAll<T>(params VelvetTask<T>[] tasks)
+        {
+            if (tasks == null)
+            {
+                throw new ArgumentNullException(nameof(tasks));
+            }
+
+            return tasks.Length == 0
+                ? VelvetTask<T[]>.FromResult(Array.Empty<T>())
+                : new VelvetTask<T[]>(new WhenAllVelvetTaskSource<T>(tasks));
+        }
+
         public static IEnumerator ToCoroutine(Func<VelvetTask> taskFactory) => taskFactory().ToCoroutine();
 
         public readonly struct Awaiter : INotifyCompletion

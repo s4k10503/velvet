@@ -42,7 +42,53 @@ the main-thread drain swaps and clears. Keep off-thread work inside the awaited 
 without `ConfigureAwait(false)`, so the continuation is on the main thread before it reaches any of
 that.
 
-There is no combinator for awaiting several tasks at once, and no await that suppresses the
-cancellation throw.
+## Awaiting several tasks at once
+
+`VelvetTask.WhenAll` takes a list of tasks and completes once every one of them has settled. Over
+`VelvetTask` members it completes carrying nothing; over `VelvetTask<T>` members it completes with a
+`T[]` holding each result at its own argument position, whatever order the members arrived in. Over
+an empty list it is complete already. The generic form's members share one result type, so a loader
+fetching two different types awaits them one at a time.
+
+A member that fails does not end the wait — the others are still waited for. What awaiting the
+combination then throws is the first fault in argument order — the member's own exception — or, where
+no member faulted, an `OperationCanceledException` carrying the token of the first cancelled member in
+argument order: a fault outranks a cancellation whichever arrived first. That one exception is all the
+combination carries, so await the members separately where each failure matters.
+
+The combination consumes each member, and one consume is all a `VelvetTask` carrying a source allows.
+So a member must not also be awaited elsewhere, and must not be passed twice into a single call: that
+throws out of the call rather than out of the await. A task that carries a value instead —
+`VelvetTask.FromResult`, `VelvetTask.CompletedTask`, and an `async` method that returned without
+suspending — has no version to consume, so the same one may sit at two argument positions. Consume
+what the combination returns once as well.
+
+The main-thread constraint above covers the combination too: it completes on whichever thread
+completed its last member, so a member that resumed off the main thread publishes from there.
+
+## Declining a cancellation
+
+There is no await that suppresses the cancellation throw. A cancelled task throws
+`OperationCanceledException` when it is awaited, and `catch` is what declines to propagate it. A
+route loader is handed a token to pass down, and can decide there what an abandoned load leaves
+behind:
+
+```csharp
+static async VelvetTask<object> LoadDashboard(RouteLoaderContext context, CancellationToken cancellationToken)
+{
+    try
+    {
+        var id = context.Params["id"];
+        var pages = await VelvetTask.WhenAll(
+            FetchJson($"/users/{id}", cancellationToken),
+            FetchJson($"/users/{id}/feed", cancellationToken));
+        return new Dashboard(pages[0], pages[1]);
+    }
+    catch (OperationCanceledException)
+    {
+        return Dashboard.Empty;
+    }
+}
+```
 
 See [react-migration.md](react-migration.md) for how async hooks and routing loaders map from React.
