@@ -785,8 +785,11 @@ behaviour a working application would notice changing.
    remote tags is held besides, whatever the change closes and whichever line published it, since
    the note is the tag's and the file cannot tell a correction from a deletion: it has to be the
    base's but for a line its own tag's copy has that the base is short of, put back where that copy
-   has it, heading and date included — the base rather than the tag's copy, because `main`'s older
-   sections were reworded and reordered after their releases and carry a Highlights block their
+   has it, heading and date included, and leaving no `###` heading of the section newly standing
+   over nothing — so one goes back in the same edit as an entry it heads, and not where it would
+   leave the heading above it empty, a twin of its own name included — the base rather than the
+   tag's copy, because `main`'s older sections were reworded and reordered after their releases and
+   carry a Highlights block their
    tags' copies do not, so the copy says which lines may go back and the base says what is there —
    one the file has not got, a maintenance line's carried forward, arrives as that copy and
    nothing else, that copy being the only text of it here and an addition to a note already

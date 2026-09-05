@@ -327,10 +327,17 @@ def block(lines, index):
                      lines[index + 1:])
 
 
+def empty_headings(lines):
+    """The headings of `lines` that head nothing, counted by name."""
+    return Counter(one for index, one in enumerate(lines)
+                   if release_notes.SUBSECTION_HEADING.match(one)
+                   and next(block(lines, index), None) is None)
+
+
 def files_as_published(lines, index, copy, where):
     """Whether the note goes on filing each line under the heading that published it: the put-back
-    under the heading the copy files it under, and, where the put-back is itself a heading, at least
-    one line and none whose published name it changes.
+    under the heading the copy files it under, and, where the put-back is itself a heading, none
+    whose published name it changes.
 
     The order readings admit both `## [1.4.0]`'s repair -- a heading put back above the entry the
     copy ends its block with, against a base that merged the two blocks -- and an entry put back
@@ -340,22 +347,17 @@ def files_as_published(lines, index, copy, where):
 
     A heading put back under one of the same name leaves what it comes to file reading as it did, so
     a line the section gained after its release does not stand in the way of it, as it does not of
-    `touching`. A heading put back that heads nothing is refused ahead of both. The question is
-    asked of the put-back's own line, so it does not answer for every empty block a result can
-    carry: one the put-back empties above itself passes, and so does the first of two identical
-    headings it makes adjacent, since `added_positions` charges only one of them. What it costs a
-    contributor is the heading-first half of a two-step restore, which the refusal says to make in
-    one edit with an entry it heads.
+    `touching`. Whether anything is left heading nothing is `only_put_back`'s reading of the whole
+    result rather than one taken here: asked at the index `added_positions` charges, it answered for
+    that line and not for the heading above it, which the same placement can empty -- and on two
+    headings of one name made adjacent, the charged index is the second, whose block is the base's.
     """
     if not release_notes.SUBSECTION_HEADING.match(lines[index]):
         return under(lines, index) == under(copy, where)
-    comes = list(block(lines, index))
-    if not comes:
-        return False
     if under(lines, index) == lines[index]:
         return True
     filed = {one for at, one in enumerate(copy) if under(copy, at) == copy[where]}
-    return all(one in filed for one in comes)
+    return all(one in filed for one in block(lines, index))
 
 
 def in_its_place(lines, index, copy):
@@ -395,16 +397,24 @@ def in_its_place(lines, index, copy):
 
 def only_put_back(lines, before, copy):
     """Whether `lines` are `before` with nothing lost or moved, and nothing added but a line of
-    `copy` that `before` is short of, put back where `copy` has it: the one kind of change a section
-    already here takes, since the note the release shipped is what a repair restores.
+    `copy` that `before` is short of, put back where `copy` has it and leaving no heading newly
+    standing over nothing: the one kind of change a section already here takes, since the note the
+    release shipped is what a repair restores.
 
     Short of the base as well as in the copy, because a line the section already carries is in the
     copy too -- allowed on the copy alone, a second one arrives and the note ships the bullet twice.
+
+    The emptiness question is asked of the result rather than at the index charged for a put-back,
+    which is not always the heading a placement leaves empty. Newly, against the base, rather than
+    of the result outright: a section already carrying an empty heading would otherwise take no
+    put-back but one filling that heading, and not the deletion of it either, which is a line lost.
     """
     added = added_positions(lines, before)
     if added is None:
         return False
     if Counter(lines[index] for index in added) - (Counter(copy) - Counter(before)):
+        return False
+    if empty_headings(lines) - empty_headings(before):
         return False
     return all(in_its_place(lines, index, copy) for index in added)
 
