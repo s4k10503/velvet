@@ -534,6 +534,67 @@ EMPTY_BASE = OPEN.replace(
 
 EMPTY_ABOVE_THE_NEXT = EMPTY_BASE.replace("### Changed\n", "### Fixed\n\n### Changed\n")
 
+# A base short of `### Fixed`, with the entry `### Added` files drifted up into the highlights, so
+# `### Fixed` goes back filing an entry of its own and leaves `### Added` over nothing.
+ABOVE_COPY = OPEN.replace(
+    "### Highlights\n\n- A release.\n",
+    "### Highlights\n\n- A release.\n\n### Added\n\n- Added one.\n\n### Fixed\n\n- Fixed one.\n")
+
+ABOVE_BASE = OPEN.replace(
+    "### Highlights\n\n- A release.\n",
+    "### Highlights\n\n- A release.\n- Added one.\n\n### Added\n\n- Fixed one.\n")
+
+ABOVE_BACK = ABOVE_BASE.replace("### Added\n", "### Added\n\n### Fixed\n")
+
+# A copy heading two blocks of the same name, against a base short of the first heading whose entry
+# now ends the block the copy puts below it, so the one going back can land against the heading that
+# survived or above the entry it heads.
+TWIN_COPY = OPEN.replace(
+    "### Highlights\n\n- A release.\n",
+    "### Highlights\n\n- A release.\n\n### Fixed\n\n- Fixed one.\n"
+    "\n### Changed\n\n- Changed one.\n\n### Fixed\n\n- Fixed two.\n")
+
+TWIN_BASE = OPEN.replace(
+    "### Highlights\n\n- A release.\n",
+    "### Highlights\n\n- A release.\n\n### Changed\n\n- Changed one.\n- Fixed one.\n"
+    "\n### Fixed\n\n- Fixed two.\n")
+
+TWIN_BESIDE = TWIN_BASE.replace("### Fixed\n", "### Fixed\n\n### Fixed\n")
+
+TWIN_ABOVE_ITS_ENTRY = TWIN_BASE.replace("- Fixed one.\n", "\n### Fixed\n\n- Fixed one.\n")
+
+# A base that moved a block's entries out and kept its heading, against a put-back elsewhere in the
+# section that leaves that heading as it found it.
+OVER_NOTHING_COPY = OPEN.replace(
+    "### Highlights\n\n- A release.\n",
+    "### Highlights\n\n- A release.\n\n### Changed\n\n- Changed one.\n- Changed two.\n"
+    "\n### Fixed\n\n- Fixed one.\n")
+
+OVER_NOTHING_BASE = OPEN.replace(
+    "### Highlights\n\n- A release.\n",
+    "### Highlights\n\n- A release.\n\n### Changed\n\n- Changed one.\n\n### Fixed\n")
+
+OVER_NOTHING_BACK = OVER_NOTHING_BASE.replace(
+    "- Changed one.\n", "- Changed one.\n- Changed two.\n")
+
+# A copy heading two blocks `### Added`, against a base short of the first block's entry and of the
+# second block entire, so the section goes into the edit with one `### Added` over nothing and can
+# come out of it with another: the entry fills the one the base left empty, and the heading lands
+# where the copy's own entry for it is still missing and the next block's heading follows.
+TRADED_COPY = OPEN.replace(
+    "### Highlights\n\n- A release.\n",
+    "### Highlights\n\n- A release.\n\n### Added\n\n- Added one.\n\n### Fixed\n\n- Fixed one.\n"
+    "\n### Added\n\n- Added two.\n\n### Changed\n\n- Changed one.\n")
+
+TRADED_BASE = OPEN.replace(
+    "### Highlights\n\n- A release.\n",
+    "### Highlights\n\n- A release.\n\n### Added\n\n### Fixed\n\n- Fixed one.\n"
+    "\n### Changed\n\n- Changed one.\n")
+
+TRADED_BACK = TRADED_BASE.replace(
+    "### Added\n\n### Fixed\n\n- Fixed one.\n",
+    "### Added\n\n- Added one.\n\n### Fixed\n\n- Fixed one.\n\n### Added\n")
+
 # A base whose blocks are in the other order, so the line the copy puts below the missing one is
 # above the line it puts above it.
 BLOCKS_REORDERED = SUBSECTIONS.replace(
@@ -1328,6 +1389,104 @@ class PublishedSections(ReleaseHistory):
         # Assert
         self.assertEqual((done.returncode, "## [2.1.0]: changed against the base" in done.stderr),
                          (UNNAMED, True))
+
+    def test_Given_AHeadingPutBackFilingAnEntry_When_ItEmptiesTheHeadingAboveIt_Then_ItIsRefused(self):
+        # Arrange -- the base drifted the entry `### Added` files up into the highlights, so the
+        # heading going back files an entry of its own and leaves `### Added` over nothing. What a
+        # reading at its own index sees is that entry, and the empty block is not the one it heads.
+        root, commits = self.history(ABOVE_COPY, ABOVE_BASE, ABOVE_BACK, tags={0: RELEASE})
+
+        # Act
+        done = run(root, commits[1], "[]")
+
+        # Assert
+        self.assertEqual((done.returncode, "## [2.1.0]: changed against the base" in done.stderr),
+                         (UNNAMED, True))
+
+    def test_Given_APutBackEmptyingTheHeadingAboveIt_When_ItIsRefused_Then_TheEmptinessIsNamed(self):
+        # Arrange -- the line going back is the copy's and lands where the copy has it, so the rest
+        # of the refusal describes what this contributor has just done and the emptiness is the one
+        # clause of it that says why. A put-back leaving no heading newly over nothing is run first,
+        # so the clause is held to the boundary it draws rather than to this refusal alone. The
+        # landings it names beside the clause are held by the write-time twin, which prints the same
+        # text.
+        carrying, merged = self.history(TWO_FIXED_BLOCKS, MERGED_FIXED, FIXED_BEFORE_ITS_ENTRY,
+                                        tags={0: RELEASE})
+        above_carried = run(carrying, merged[1], "[]")
+        root, commits = self.history(ABOVE_COPY, ABOVE_BASE, ABOVE_BACK, tags={0: RELEASE})
+
+        # Act
+        done = run(root, commits[1], "[]")
+
+        # Assert
+        self.assertEqual((above_carried.returncode, done.returncode,
+                          "a heading newly standing over nothing, the put-back's own or one it "
+                          "empties" in " ".join(done.stderr.split())),
+                         (0, UNNAMED, True))
+
+    def test_Given_AHeadingPutBackAgainstItsTwin_When_TheFirstOfThePairFilesNothing_Then_ItIsRefused(self):
+        # Arrange -- the heading lands against the one of its name that survived rather than above
+        # the entry it heads. Either side of that one is the same text, and `carried_from` reads the
+        # second of the pair as the added one, whose block is the base's own; the first ships empty.
+        root, commits = self.history(TWIN_COPY, TWIN_BASE, TWIN_BESIDE, tags={0: RELEASE})
+        above_its_entry = self.commit(root, TWIN_ABOVE_ITS_ENTRY, "above the entry it heads")
+        landed = run(root, commits[1], "[]", result=above_its_entry)
+
+        # Act
+        done = run(root, commits[1], "[]", result=commits[2])
+
+        # Assert -- the same base taking that heading above the entry it heads rides along: one
+        # taking it nowhere refuses this landing whatever the pair does, and pins the pair in name
+        # only.
+        self.assertEqual((landed.returncode, done.returncode,
+                          "## [2.1.0]: changed against the base" in done.stderr),
+                         (0, UNNAMED, True))
+
+    # GREEN_ON_BASE(characterization): the base here already holds a heading over nothing.
+    # The emptiness reading is asked against the base rather than of the result outright, so a
+    # section carrying one is still open to a put-back that adds none -- read outright, that section
+    # would take no put-back but one filling that heading, and not the deletion of it either.
+    def test_Given_ABaseHoldingAHeadingOverNothing_When_APutBackLeavesItAsItFoundIt_Then_ItPasses(self):
+        # Arrange -- the base moved that block's entries out and kept its heading, and the entry
+        # going back belongs to another block entirely.
+        root, commits = self.history(OVER_NOTHING_COPY, OVER_NOTHING_BASE, OVER_NOTHING_BACK,
+                                     tags={0: RELEASE})
+        held_one = subprocess.run(
+            ["git", "-C", str(root), "show", f"{commits[1]}:{CHANGELOG}"],
+            capture_output=True, text=True).stdout.endswith("### Fixed\n")
+
+        # Act
+        done = run(root, commits[1], "[]")
+
+        # Assert -- the base ending on that heading rides along, and the reading having run with it:
+        # were the base short of it, nothing would be standing over nothing on either side.
+        self.assertEqual((held_one, done.returncode,
+                          "each dated section to its own release's tag" in done.stdout),
+                         (True, 0, True))
+
+    # GREEN_ON_BASE(characterization): the base already refuses this placement. It reads the block
+    # under a put-back at the index that put-back is charged to, and this heading's block is empty
+    # there; what an earlier commit of this branch lost is that refusal where the same edit fills a
+    # heading of that name and leaves the count by name where it was.
+    def test_Given_ABaseHoldingAHeadingOverNothing_When_APutBackTradesItForATwin_Then_ItIsRefused(self):
+        # Arrange -- the entry going back fills the `### Added` the base left over nothing, and the
+        # second `### Added` goes back above the heading of the next block. Counted by name the
+        # section comes out of the edit with as many `### Added` over nothing as it went in with, so
+        # the two cancel and the reading has to be taken heading by heading to see either.
+        root, commits = self.history(TRADED_COPY, TRADED_BASE, TRADED_BACK, tags={0: RELEASE})
+        went_in_with_one = "### Added\n\n### Fixed\n" in subprocess.run(
+            ["git", "-C", str(root), "show", f"{commits[1]}:{CHANGELOG}"],
+            capture_output=True, text=True).stdout
+
+        # Act
+        done = run(root, commits[1], "[]")
+
+        # Assert -- the base's own heading over nothing rides along: were it filled, the one the
+        # put-back leaves empty would have nothing to cancel against and the count by name would
+        # catch it.
+        self.assertEqual((went_in_with_one, done.returncode,
+                          "## [2.1.0]: changed against the base" in done.stderr),
+                         (True, UNNAMED, True))
 
     def test_Given_ABaseCarryingTheBlocksInTheOtherOrder_When_ALineGoesBackAboveThemBoth_Then_ItIsRefused(self):
         # Arrange -- the copy puts `### Fixed` below the missing line and `- Changed one.` above it,

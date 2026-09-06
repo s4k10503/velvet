@@ -17,7 +17,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-from shell_commands import git_invocations
+from shell_commands import UNPLACEABLE_MOVE, UNRESOLVED_CD, command_directory, git_invocations
 
 
 HOOK_TOOLS = {"Bash"}
@@ -54,6 +54,24 @@ def sweeps(command):
     return False
 
 
+def untracked_in(cwd):
+    """The paths this staging would newly add, or None where git did not answer.
+
+    Told apart from the empty list, which is a tree with nothing untracked in it. Answering that of a
+    reading that failed puts "Nothing is untracked right now" in a refusal as a fact about a tree
+    nothing read.
+    """
+    try:
+        listing = subprocess.run(
+            ["git", "-C", cwd, "status", "--porcelain", "--untracked-files=all"],
+            capture_output=True, text=True, timeout=8)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if listing.returncode != 0:
+        return None
+    return [line[3:] for line in listing.stdout.splitlines() if line.startswith("??")]
+
+
 def main():
     try:
         event = json.load(sys.stdin)
@@ -65,11 +83,10 @@ def main():
     if not sweeps(command):
         return 0
 
-    cwd = event.get("cwd") or "."
-    listing = subprocess.run(
-        ["git", "-C", cwd, "status", "--porcelain", "--untracked-files=all"],
-        capture_output=True, text=True)
-    untracked = [line[3:] for line in listing.stdout.splitlines() if line.startswith("??")]
+    # The refusal stands on the command's own text, so an unplaced move costs the listing below and
+    # not the verdict.
+    where = command_directory(command, event.get("cwd") or ".")
+    untracked = None if where is UNRESOLVED_CD else untracked_in(where)
 
     reason = [
         "Refusing `git add -A` / `git add .`: it stages files nobody decided to stage.",
@@ -82,7 +99,10 @@ def main():
         "",
         "Stage the paths you mean.",
     ]
-    if untracked:
+    if untracked is None:
+        reason += ["", "What is untracked was not read, so nothing below lists it.",
+                   UNPLACEABLE_MOVE if where is UNRESOLVED_CD else "git did not answer."]
+    elif untracked:
         reason += ["", f"Untracked right now ({len(untracked)}):"]
         reason += [f"  {path}" for path in untracked[:20]]
         if len(untracked) > 20:

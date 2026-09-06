@@ -239,7 +239,7 @@ class PublishedHeadTests(GuardCase):
         code, text = self.answer('SP=/tmp\ncd "$SP/work" && git commit --amend', cwd=self.clone)
 
         # Assert
-        self.assertEqual((code, "has not expanded" in text), (REFUSE, True))
+        self.assertEqual((code, "a way nothing here places" in text), (REFUSE, True))
 
     def test_Given_AnAssignmentBeforeACdIntoAnUnpublishedTree_When_ItIsPosed_Then_ItIsAllowed(self):
         # Arrange -- the same shape with a target the guard can read: the move is followed, so the
@@ -262,7 +262,7 @@ class PublishedHeadTests(GuardCase):
         code, text = self.answer("cd $SP/work && git commit --amend", cwd=self.clone)
 
         # Assert
-        self.assertEqual((code, "has not expanded" in text), (REFUSE, True))
+        self.assertEqual((code, "a way nothing here places" in text), (REFUSE, True))
 
     def test_Given_AnAmendNamingTheTreeWithDashC_When_ItIsPosed_Then_ThatTreeIsWhatIsRead(self):
         # Arrange — the shell sits in a directory git cannot place, so an answer at all is one
