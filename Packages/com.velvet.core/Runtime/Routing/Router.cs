@@ -392,7 +392,17 @@ namespace Velvet
                     // Dispose of the prior CTS is left to the prior navigation's own finally — disposing
                     // here would double-dispose and confuse ownership, and the synchronous Cancel chain may
                     // already run the prior finally before we proceed.
-                    _activeNavigationCts?.Cancel();
+                    // Contained on RouteLoaderRunner.Retire's terms: a predecessor parked on an Await loader
+                    // runs its round under a token linked to this source, so that round's Loaders have their
+                    // cancellation callbacks run from here, above the install that takes the field.
+                    try
+                    {
+                        _activeNavigationCts?.Cancel();
+                    }
+                    catch (Exception cancellationFailure)
+                    {
+                        FiberLogger.LogException(nameof(Router), cancellationFailure);
+                    }
                     _activeNavigationCts = takeover;
                 }
                 pending = new PendingNavigation(++_navigationSequence, CommitIndexFor(mode), path, mode);
@@ -965,8 +975,18 @@ namespace Velvet
             // destination left published would outlive the navigation that was heading for it.
             PendingLocation = null;
             // Cancel and dispose any in-flight navigation CTS so a pending Blocker await unwinds
-            // cleanly during shutdown.
-            _activeNavigationCts?.Cancel();
+            // cleanly during shutdown. Contained on RouteLoaderRunner.Retire's terms: a navigation parked
+            // on an Await loader runs its round under a token linked to this source, so that round's
+            // Loaders have their cancellation callbacks run from here. The releases below it are this
+            // source, the runner's rounds and the static Current.
+            try
+            {
+                _activeNavigationCts?.Cancel();
+            }
+            catch (Exception cancellationFailure)
+            {
+                FiberLogger.LogException(nameof(Router), cancellationFailure);
+            }
             _activeNavigationCts?.Dispose();
             _activeNavigationCts = null;
             _loaderRunner.Dispose();

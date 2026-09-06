@@ -82,6 +82,10 @@ A `Suspend` loader keeps running while an `Await` loader holds the next commit, 
 belongs to is still the one on screen: it keeps its cancellation token and its result still reaches
 `Hooks.UseLoaderData`. The commit that leaves the route is what cancels it.
 
+A cancellation callback a loader registers on its token runs when that cancellation happens. One that
+throws is reported through `Debug.LogException` rather than raised at the navigation or the disposal
+that caused it.
+
 A loader that throws — or whose task fails — does not abort the navigation. The location commits and
 the error is recorded against that route: the nearest route at or above the failing one that carries
 an `errorElement` renders it in place of its own `element`, and `Hooks.UseRouteError` returns the

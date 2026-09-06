@@ -68,8 +68,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_AWarmRunner_When_ARoundRunningNoLoadersIsOpened_Then_AllocationMatchesPinnedExpectation()
         {
-            // A source the round has no Loader to hand a token to is what the number catches;
-            // RouteLoaderRunner.EmptyRound names the step that opens one.
+            // A source the round has no Loader to hand a token to is what the number catches.
             // Arrange
             for (var i = 0; i < 16; i++)
             {

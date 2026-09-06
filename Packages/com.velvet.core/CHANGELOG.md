@@ -98,11 +98,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   matched navigation rather than the match itself, and an attempt that matches nothing reports through
   its `NavigationResult` alone whenever another is in flight.
 
-- A Loader's cancellation callback that throws no longer escapes the navigation that ends its round.
-  Ending a round cancels the source its Loaders ran under, which runs the callbacks they registered on
-  that token; a failure there was raised at whoever was navigating, and took the source's release down
-  with it. It is reported through `Debug.LogException` now, on the terms a Suspend loader's subscriber
-  failure already was, and the source is released either way.
+- A Loader's cancellation callback that throws no longer escapes the navigation or the disposal that
+  ends its round. Ending a round cancels the source its Loaders ran under, which runs the callbacks they
+  registered on that token — directly, where a commit, a following run or disposal retires the round,
+  and through the link, where a navigation parked on an `Await` loader has the source it runs under
+  cancelled by a newer navigation or by `Router.Dispose`. A failure there was raised at whoever was
+  navigating or disposing and took the rest of that operation with it: a commit landed its location with
+  `Router.Status` still reporting the navigation as in flight, a navigation superseding a parked one
+  raised at its caller with `Router.Status` left on the navigation it had just cancelled, and
+  `Router.Dispose` left the router in `Router.Current` with its loader rounds unreleased. It is reported
+  through `Debug.LogException` now, on the terms a Suspend loader's subscriber failure already was, and
+  the navigation or disposal runs to its end either way.
 
 - An error boundary whose child throws during a subsumed re-render no longer logs a
   `NullReferenceException` from the reconciler. The boundary's inline re-render runs inside its host's
