@@ -116,6 +116,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   through `Debug.LogException` now, on the terms a Suspend loader's subscriber failure already was, and
   the navigation or disposal runs to its end either way.
 
+- A `V.VirtualList` whose item renderer returns a `V.Component` or a `V.Provider` stacks its visible
+  items instead of starting every one of them at the same place. Velvet anchors such an item's fiber on
+  an element of its own, and that element was pinned to the four edges of the container the list's
+  controller stacks the visible items in, so each item covered that container: with a 30px item height
+  the second visible item began at the first one's y rather than 30px below it. That anchor takes a slot
+  in the container now, and its width comes from the container rather than from insets of its own.
+  `V.Outlet` anchors on the same kind of element through a different arm of the same factory and keeps
+  the pinned one, so no route layout moves. A renderer returning an element, a `V.Motion`, a `V.Portal`
+  or a nested `V.VirtualList` builds that element directly and never reached the anchor either.
+
 - An error boundary whose child throws during a subsumed re-render no longer logs a
   `NullReferenceException` from the reconciler. The boundary's inline re-render runs inside its host's
   pass, and the catch disposes that child — which clears the `Reconciler` the re-render is still
