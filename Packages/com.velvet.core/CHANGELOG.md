@@ -25,9 +25,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   three contexts before, so an application had to write the bridge itself — a `Hooks.UseState` over
   `Router.CurrentLocation`, a `Hooks.UseEffect` subscribing to `Router.OnLocationChanged` and a
   re-read to cover the navigation that lands before the subscription attaches, under three nested
-  `V.Provider`s — and the starter sample's copy of it wired only the location, which leaves
-  `Hooks.UseLoaderData` empty and every `errorElement` unreachable with nothing reported. The new
-  routing guide states what the provider publishes and where an outlet context comes from.
+  `V.Provider`s. A bridge publishing the location alone leaves the other two contexts at their empty
+  defaults, so `Hooks.UseLoaderData` answers with nothing whatever the Loader returned, and no
+  `errorElement` is reachable — the boundary is chosen from the error context. That is the shape the
+  starter sample shipped; it declared no Loader, so nothing there depended on the two it left out. The
+  new routing guide states what the provider publishes and where an outlet context comes from.
 
 - A routing guide: `Documentation~/routing.md`. Navigation blocking had one; the rest of routing
   had none.
@@ -50,9 +52,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- A navigation allocates fewer loader rounds. The runner opened one at the start of every run that the
-  run's own round replaced within the same call, and one more at disposal; it now opens one per run
-  and none at disposal.
+- The loader runner allocates fewer rounds. It opened one at the start of every run that the run's own
+  round replaced within the same call, and one more at disposal; it now opens one per run and none at
+  disposal. A Back or Forward the history cache serves runs no loaders; the round it promotes instead is
+  the one round that path allocated before.
 
 - The switches that classify a `StyleVariantKind` are exhaustive by compilation rather than by review:
   `Runtime/csc.rsp` compiles CS8509 as an error, so a member added without an arm fails the build rather
@@ -94,6 +97,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Router.Status` only once it has matched, so `RouterStatus.Matching` spans the guards and blockers of a
   matched navigation rather than the match itself, and an attempt that matches nothing reports through
   its `NavigationResult` alone whenever another is in flight.
+
+- A Loader's cancellation callback that throws no longer escapes the navigation that ends its round.
+  Ending a round cancels the source its Loaders ran under, which runs the callbacks they registered on
+  that token; a failure there was raised at whoever was navigating, and took the source's release down
+  with it. It is reported through `Debug.LogException` now, on the terms a Suspend loader's subscriber
+  failure already was, and the source is released either way.
 
 - An error boundary whose child throws during a subsumed re-render no longer logs a
   `NullReferenceException` from the reconciler. The boundary's inline re-render runs inside its host's

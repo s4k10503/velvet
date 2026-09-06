@@ -207,6 +207,41 @@ namespace Velvet.Tests
                 "A navigation that died in its commit stops reporting itself as in flight, like one that died earlier");
         });
 
+        [Test]
+        public void Given_ADepartingLoadersCancellationCallbackThatThrows_When_TheNextNavigationCommits_Then_TheCommitStillCompletes()
+        {
+            // The commit ends the departing round, which runs whatever cancellation callbacks that round's
+            // Loaders registered — application code, and below the handlers. An escape there leaves the
+            // router reporting a navigation it has already committed as still in flight.
+            // Arrange
+            var router = BuildRouter("/home",
+                Route("home"),
+                Route("registering", loader: (ctx, ct) =>
+                {
+                    ct.Register(() => throw new InvalidOperationException("cancellation-callback-boom"));
+                    return VelvetTask.FromResult<object>("registering-data");
+                }),
+                Route("other"));
+            router.NavigateSync("/registering");
+            ContainedFailureLog.Expect<InvalidOperationException>(
+                nameof(RouteLoaderRunner), "cancellation-callback-boom");
+            Exception caught = null;
+
+            // Act
+            try
+            {
+                router.NavigateSync("/other");
+            }
+            catch (Exception ex)
+            {
+                caught = ex;
+            }
+
+            // Assert
+            Assert.That($"threw={caught != null} status={router.Status}", Is.EqualTo("threw=False status=Ready"),
+                "A Loader's own cancellation callback must not take down the commit that ends its round");
+        }
+
         [UnityTest]
         public IEnumerator Given_AnEntryCommittedWhileItsSuspendLoaderRuns_When_GoingBackToIt_Then_TheLoaderRunsAgain()
             => VelvetTask.ToCoroutine(async () =>

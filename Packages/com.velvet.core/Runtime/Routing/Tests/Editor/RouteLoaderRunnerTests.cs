@@ -602,6 +602,30 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ACancellationCallbackThatThrows_When_TheRoundItRegisteredOnIsRetired_Then_TheSourceBehindItsTokenIsStillReleased()
+        {
+            // Arrange
+            var runner = new RouteLoaderRunner();
+            CancellationToken registeringRoundsToken = default;
+            runner.RunLoadersSync(
+                MakeMatch("registering", loader: (ctx, ct) =>
+                {
+                    registeringRoundsToken = ct;
+                    ct.Register(() => throw new InvalidOperationException("callback-threw"));
+                    return VelvetTask.FromResult<object>("registering-data");
+                }),
+                CancellationToken.None);
+            ContainedFailureLog.Expect<InvalidOperationException>(nameof(RouteLoaderRunner), "callback-threw");
+
+            // Act
+            runner.RunLoadersSync(MakeMatch("second"), CancellationToken.None);
+
+            // Assert
+            Assert.That(() => registeringRoundsToken.WaitHandle, Throws.TypeOf<ObjectDisposedException>(),
+                "A callback that throws must not leave the source behind the token it ran under open");
+        }
+
+        [Test]
         public void Given_ACancellationCallbackThatStartsARound_When_ItRetiresTheRoundBeingInstalled_Then_ThatRoundsLoaderLaunchesUnderTheRetiredToken()
         {
             // Arrange

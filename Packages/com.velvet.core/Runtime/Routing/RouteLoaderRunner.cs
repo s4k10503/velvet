@@ -33,7 +33,7 @@ namespace Velvet
             // and it is nulled there so retiring a round twice disposes its source once.
             internal CancellationTokenSource? Cts;
 
-            internal LoaderRound(CancellationTokenSource cts) => Cts = cts;
+            internal LoaderRound(CancellationTokenSource? cts) => Cts = cts;
 
             internal bool Settled => Pending == 0;
         }
@@ -43,7 +43,7 @@ namespace Velvet
         // The round whose Suspend loaders may announce. Null until the caller promotes one.
         private LoaderRound? _liveRound;
 
-        public RouteLoaderRunner() => _currentRound = new LoaderRound(new CancellationTokenSource());
+        public RouteLoaderRunner() => _currentRound = new LoaderRound(null);
 
         // The events fire only after the live-round check, so a subscriber reading this from inside one of
         // them is reading its own round.
@@ -138,12 +138,12 @@ namespace Velvet
         /// that round's late results announce themselves into the entry the step restored, which shares its
         /// RouteId whenever both entries matched the same route.
         /// </summary>
-        public LoaderRound EmptyRound() => BeginRound(new CancellationTokenSource());
+        public LoaderRound EmptyRound() => BeginRound(null);
 
         // The outgoing round is retired here unless it is the live one: the live round belongs to the
         // location on screen, and Promote — called by the commit that leaves that location — is what ends it.
         // Anything else current has not reached a commit.
-        private LoaderRound BeginRound(CancellationTokenSource cts)
+        private LoaderRound BeginRound(CancellationTokenSource? cts)
         {
             var outgoing = _currentRound;
             var round = new LoaderRound(cts);
@@ -180,7 +180,18 @@ namespace Velvet
                 return;
             }
             round.Cts = null;
-            cts.Cancel();
+            // A callback the application registered on this round's token must not decide the outcome of
+            // the operation ending the round: the caller is installing a different round or disposing the
+            // runner, and the callback belongs to neither. Reported on Announce's terms, with the release
+            // below the catch so a throwing callback still releases the source.
+            try
+            {
+                cts.Cancel();
+            }
+            catch (Exception cancellationFailure)
+            {
+                FiberLogger.LogException(nameof(RouteLoaderRunner), cancellationFailure);
+            }
             cts.Dispose();
         }
 
