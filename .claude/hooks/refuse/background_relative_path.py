@@ -10,10 +10,11 @@ sweep reported "179 holes across 14 fixtures" for a map that had 18, because the
 added were in a file the primary checkout does not have. Nothing distinguishes that from a real
 answer except knowing which tree it came from, and the number it prints is exactly the shape of one.
 
-What is refused is a background command that reaches a repo path relatively AND does not open with a
-`cd`. An absolute path is allowed, as is a leading `cd` — the two spellings that say where the
-command runs. The foreground is left alone: its directory is whatever the previous call left, which
-is knowable, and blocking it would refuse the ordinary shape of every other command in a session.
+What is refused is a background command that reaches a repo path relatively AND does not move the
+shell it runs in into a directory it names. An absolute path is allowed, as is such a move — the two
+spellings that say where the command runs. The foreground is left alone: its directory is whatever
+the previous call left, which is knowable, and blocking it would refuse the ordinary shape of every
+other command in a session.
 """
 
 import fnmatch
@@ -23,7 +24,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-from shell_commands import unexpanded  # noqa: E402  (path set above)
+from shell_commands import (GLOB, leading_program,  # noqa: E402  (path set above)
+                            moves_to_a_named_directory, shell_steps, tokens_of, unexpanded)
 
 
 HOOK_TOOLS = {"Bash"}
@@ -49,14 +51,6 @@ def repo_roots(project):
             if entry.is_dir() and not entry.name.startswith(".")}
 
 
-# A glob is a selector the shell rewrites into a path, so a token carrying one names the same
-# directory a plain spelling would. Read here rather than in `unexpanded`, which several guards share
-# and one of them -- `shared_git_state` -- deliberately treats `git checkout '*.cs'` as an ordinary
-# restore. Measured before this: backgrounded, `python3 script?/pr/settle.py watch` was allowed while
-# `python3 scripts/pr/settle.py watch` was refused, so one character routed around the guard.
-GLOB = re.compile(r"[*?\[]")
-
-
 def relative_repo_tokens(command, roots):
     """Tokens naming a repo directory relatively, in a command that never says where it runs."""
     found = []
@@ -66,17 +60,43 @@ def relative_repo_tokens(command, roots):
         if "/" not in token:
             continue
         head = token.split("/", 1)[0]
-        # By glob where the head carries one, so `script?` reaches `scripts`. A head with no glob is
-        # compared as itself, which is what it was.
+        # By glob where the head carries one, so `script?` reaches `scripts`: the shell rewrites the
+        # selector into the same directory a plain spelling names. A head with no glob is compared as
+        # itself, which is what it was. Measured before this, backgrounded,
+        # `python3 script?/pr/settle.py watch` was allowed while `python3 scripts/pr/settle.py watch`
+        # was refused, so one character routed around the guard.
         if head in roots or (GLOB.search(head)
                              and any(fnmatch.fnmatch(root, head) for root in roots)):
             found.append(token)
     return sorted(set(found))
 
 
-def opens_with_cd(command):
-    """Whether the command's first segment is a cd, which is what makes a relative path answerable."""
-    return re.match(r"\s*cd\s+\S", command) is not None
+def says_where_it_runs(command):
+    """Whether the command moves into a directory it names before running anything, which is what
+    makes a relative path answerable.
+
+    Read through the shared move table rather than by matching `cd` at the head of the text:
+    measured, `pushd <tree> &&`, `builtin cd <tree> &&` and an assignment ahead of the `cd` were
+    each refused here, and each of the three says where the command runs.
+
+    Unlike `command_directory`, an unexpanded target is a yes: the shell resolves it when the command
+    runs, so the command does say where that is even though nothing here can say it back. A move
+    whose destination the text does not carry at all -- the ones `move_target` declines -- is a no,
+    which is the same reading the other way round: what the text does not carry cannot be what the
+    command says.
+
+    A step the shell hands to a child is a no however well its text names a destination, since the
+    move is gone before the work runs. Asked of the step alone it is a yes, so `shell_steps` is read
+    rather than `command_segments`: the parentheses of `(cd <tree>) && <work>` are stripped from the
+    step and the operator of `cd <tree> | cat` and `cd <tree> & <work>` is not part of it either.
+    """
+    for step, kept_by_the_shell in shell_steps(command):
+        tokens = tokens_of(step)
+        if leading_program(tokens) >= len(tokens):
+            # A step that runs no program is still ahead of anything that runs.
+            continue
+        return kept_by_the_shell and moves_to_a_named_directory(step)
+    return False
 
 
 def main():
@@ -92,7 +112,7 @@ def main():
         return 0
 
     command = tool_input.get("command", "")
-    if opens_with_cd(command):
+    if says_where_it_runs(command):
         return 0
 
     found = relative_repo_tokens(command, repo_roots(event.get("cwd") or "."))

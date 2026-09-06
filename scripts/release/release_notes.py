@@ -192,12 +192,13 @@ def absolutize_links(text, repo, tag):
 
 
 def read_unity_requirement(package_json_path):
-    """Return the `unity` field, which is the minimum editor version a consumer needs."""
+    """Return the release floor `package.json` declares: `unity` joined to `unityRelease`."""
     package = json.loads(Path(package_json_path).read_text(encoding="utf-8"))
     unity = package.get("unity")
     if not unity:
         raise ReleaseNotesError(f"{package_json_path} declares no 'unity' version.")
-    return unity
+    release = package.get("unityRelease")
+    return f"{unity}.{release}" if release else unity
 
 
 def compare_link(repo, previous_tag, tag):

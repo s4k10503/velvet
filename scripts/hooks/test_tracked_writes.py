@@ -38,7 +38,7 @@ CHANGELOG_REL = "Packages/com.velvet.core/CHANGELOG.md"
 # by however many entries it has, so it holds when a gap quietly drops out of both.
 UNREAD_GAPS = [
     "yet to expand",
-    "moves into partway through",
+    "under a move nothing here places",
     "`>&`",
     "`>|`",
     "`cp -t`",
@@ -152,10 +152,29 @@ class ReadingTests(unittest.TestCase):
         # Assert
         self.assertEqual(found, [])
 
+    # GREEN_ON_BASE(refactor): the give-up over `pushd` that moving this reading must keep.
+    # The base reaches it by counting how many segments move; the resolver reaches it by declining
+    # `pushd` outright. Measured, a resolver that placed the move names the operand under `sub`.
     def test_Given_AWriteAfterAPushd_When_TheCommandIsRead_Then_NoFileIsNamed(self):
-        # Arrange / Act — `pushd` moves the shell as surely as `cd`, so the operand below belongs
-        # to the directory it moved into rather than to the one the tool call started in.
-        found = self.named("pushd /tmp && printf 'x\\n' > notes.md")
+        # Arrange — a directory of its own, so the three readings this can get are three answers:
+        # nothing, the operand under the handed directory, and the operand under the pushed-into one.
+        self.root.joinpath("sub").mkdir()
+
+        # Act — `pushd` moves the shell as `cd` does and unwinds on a stack the command's text does
+        # not carry, so the resolver declines it. Standing down on a decline is what this reading
+        # does with one, and `UNREAD` is what names the gap.
+        found = self.named(f"pushd {self.under('sub')} && printf 'x\\n' > notes.md")
+
+        # Assert
+        self.assertEqual(found, [])
+
+    # GREEN_ON_BASE(refactor): the giving-up that moving this reading into one resolver must keep.
+    # The base reaches it by counting how many segments move; the resolver reaches it by comparing
+    # where each program runs, and a rewrite that dropped the second would name both operands here.
+    def test_Given_TwoMovesRunningTwoWritesInTwoDirectories_When_TheCommandIsRead_Then_NeitherIsNamed(self):
+        # Arrange / Act — the gap `UNREAD` names. One base cannot place both operands, so the
+        # reading gives up rather than rooting the second at the directory the first ran in.
+        found = self.named(f"cd {self.root} && printf x > a.md && cd /tmp && printf x > b.md")
 
         # Assert
         self.assertEqual(found, [])

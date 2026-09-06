@@ -50,7 +50,7 @@ namespace Velvet.Tests
             }
 
             var blocks = GCAllocationProbe.SampleBlocksDuring(NavigateOnce);
-            Assert.That(blocks, Is.EqualTo(101));
+            Assert.That(blocks, Is.EqualTo(96));
             yield return null;
         }
     }

@@ -19,7 +19,8 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-from shell_commands import COMMIT_VALUE_FLAGS, git_invocations, unexpanded
+from shell_commands import (COMMIT_VALUE_FLAGS, NAME_THE_TREE, UNPLACEABLE_MOVE, UNRESOLVED_CD,
+                            command_directory, git_invocations, unexpanded)
 
 
 HOOK_TOOLS = {"Bash"}
@@ -383,11 +384,19 @@ def main():
     if event.get("tool_name") not in HOOK_TOOLS:
         return 0
 
-    commits = commit_invocations(event.get("tool_input", {}).get("command", ""))
+    command = event.get("tool_input", {}).get("command", "")
+    commits = commit_invocations(command)
     if not commits:
         return 0
 
-    cwd = event.get("cwd") or "."
+    cwd = command_directory(command, event.get("cwd") or ".")
+    if cwd is UNRESOLVED_CD:
+        sys.stderr.write("Refusing `git commit`: the tree it runs in could not be read.\n\n"
+                         f"{UNPLACEABLE_MOVE}\n\n"
+                         "Every check below reads the content the commit would record, and which "
+                         "tree holds that\ncontent is what the move decides.\n\n"
+                         f"{NAME_THE_TREE}\n")
+        return 2
     for directory, commits_all, pathspecs in commits:
         # The two operand kinds are refused apart, because the remedy for one does not reach the
         # other: naming the paths leaves a `-C` unresolved, and the reader told to do it tries
