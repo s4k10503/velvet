@@ -16,7 +16,7 @@ python3 scripts/test_quality/assert_results_from_this_tree.py Logs/results.xml -
 python3 scripts/test_quality/assert_no_inconclusive.py Logs/results.xml
 ```
 
-`-testPlatform PlayMode` for the other suite. `-testFilter "Velvet.Tests.SomeFixture"` narrows it; semicolons separate several, and it matches fully-qualified class or method names.
+`-testPlatform PlayMode` for the other suite. `-testFilter "Velvet.Tests.SomeFixture"` narrows it. Its value is an **unanchored regex matched against each case's full name**, not a name looked up: it selects every case whose full name merely contains the value, and the anchored spelling `^…$` selects nothing at all for a fixture whose cases live in nested classes. Several values separate on `;` and the split does not trim, so `"A; B"` runs A alone and reports green over the smaller set. The count in the XML is the only thing that says which set ran — read it.
 
 **Write into the worktree's own Logs directory, never /tmp/results.xml.** That path is one file for every worktree and every session on the machine, and the compile-error paragraph below is what it costs.
 
