@@ -28,8 +28,7 @@ runs:
       if: steps.replan.outputs.fixtures != ''
       continue-on-error: true
       with:
-        # The version unity-tests runs, for the reason stated there.
-        unityVersion: 6000.3.21f1
+        unityVersion: 6000.3.23f1
         testMode: ${{ inputs.testMode }}
         projectPath: base-tree
         artifactsPath: base-results

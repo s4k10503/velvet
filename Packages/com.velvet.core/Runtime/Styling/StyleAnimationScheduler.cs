@@ -1439,7 +1439,7 @@ namespace Velvet
         // exit). A ring band is a separate element parented BESIDE its caster (see RingOverlay), so it is
         // outside the subtree the caster's opacity composites and only an explicit per-frame push fades it
         // along. A paint that the caster's own opacity does reach needs no push, because the renderer already
-        // scales it (measured in DropShadowSilhouette.DrawShadowQuad) — which is why nothing else is driven
+        // scales it (pinned by PaintOpacityParityPlaybackTests) — which is why nothing else is driven
         // here today, and equally why a paint MOVED out of its caster would have to join. Depends only on the
         // PendingAnimation instance each play already carries, not on any of the scheduler's own map/pool state.
         private static class RingCoFadeCoordinator
