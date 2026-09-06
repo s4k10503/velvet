@@ -16,17 +16,18 @@ namespace Velvet.Tests
     /// creations propagate it to the nearest error boundary, and a case with none mounted logs it too,
     /// through the fallback <c>Debug.LogException</c> the propagation ends at.
     /// <list type="bullet">
-    /// <item>Building a scope, at each of the three sites that ask for one — the mount, a route change,
-    /// and a patch of a route the Outlet is already holding: the route renders without a scope rather
-    /// than not at all. Two cases mount a boundary, and there the fallback takes over instead.</item>
+    /// <item>Building a scope, at each of the three renders that ask for one — the first, a route change,
+    /// and a re-render of a route the Outlet is already holding but built no scope for: the route renders
+    /// without a scope rather than not at all. Two cases mount a boundary, and there the fallback takes
+    /// over instead.</item>
     /// <item>Changing route: the Outlet still mounts the route it navigated to, the incoming route's own
     /// scope is built regardless of the failure, and the scope it left behind is disposed once rather
-    /// than again by the teardown sweep.</item>
-    /// <item>Removing the Outlet: the removal batch continues, so the rows the walk had not reached yet
-    /// leave too.</item>
+    /// than again by the teardown — including where the route it left for matches nothing, which is
+    /// where a registration that outlived its own failed Dispose would still be standing.</item>
+    /// <item>Removing the Outlet: the failure stays inside the reconcile call that removed it.</item>
     /// <item>An AnimatePresence beside the Outlet renders at its position exactly as it does with no
     /// failure in play; the retirement itself is pinned by AnimatePresenceStateRetirementTests.</item>
-    /// <item>Disposing the whole reconciler: the sweep attempts every other scope still registered.</item>
+    /// <item>Disposing the whole reconciler: every Outlet's scope is attempted, not only the first.</item>
     /// </list>
     /// Every case that reads the tree folds in whether the failure left the reconcile call, because a
     /// tree where it escapes never reaches the state the case is named for and a bare rethrow says
@@ -137,7 +138,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_AFactoryThatThrowsOnCreate_When_TheAppFirstMounts_Then_TheThrowDoesNotEscapeTheReconcile()
         {
-            // Arrange — the mount path builds the scope, which is the entrance FiberNodeFactory owns.
+            // Arrange — the Outlet's first render is where the scope is built.
             s_throwOnDispose = false;
             _scopeFactory.ThrowOnCreate = true;
             LogAssert.Expect(LogType.Exception,
@@ -153,8 +154,8 @@ namespace Velvet.Tests
         [Test]
         public void Given_AnOutletLeftWithoutAScope_When_ItIsPatchedAtTheSameRoute_Then_TheRetryIsContainedToo()
         {
-            // Arrange — the mount's own create failed, so no scope is registered and the patch takes the
-            // branch that builds one for a route it is already holding. The arrangement goes through
+            // Arrange — the first render's own create failed, so no scope is registered and the next render
+            // takes the branch that builds one for a route it is already holding. The arrangement goes through
             // EscapesFrom as well, because on a tree with no containment it is the mount that throws and
             // the case would raise out of its own Arrange rather than reach the comparison below.
             s_throwOnDispose = false;
@@ -212,10 +213,10 @@ namespace Velvet.Tests
         [Test]
         public void Given_ARouteScopeDisposeThatThrows_When_TheRouteChanges_Then_TheIncomingRouteStillMounts()
         {
-            // Arrange — the departing route's scope is disposed by the patch that installs the incoming one.
+            // Arrange — the departing route's scope is disposed by the render that installs the incoming one.
             var mounted = MountRoutedApp();
             _router.NavigateAsync("/other").GetAwaiter().GetResult();
-            ContainedFailureLog.Expect<InvalidOperationException>("FiberNodePatcher", DisposeFailureMessage);
+            ContainedFailureLog.Expect<InvalidOperationException>("FiberOutletScope", DisposeFailureMessage);
 
             // Act
             var escaped = EscapesFrom(() => ReRenderAppAtCurrentLocation(mounted));
@@ -224,7 +225,7 @@ namespace Velvet.Tests
             Assert.That((escaped, LabelTextsUnder(_root)), Is.EqualTo((false, "other")));
         }
 
-        // GREEN_ON_BASE(characterization): the shipped patch already builds the replacement scope.
+        // GREEN_ON_BASE(characterization): the shipped Outlet already builds the replacement scope.
         // Nothing read that. Measured, conditioning the build on a clean dispose reddens this case on the
         // count it asserts, and the case below it only through the sweep log it arms and then never gets.
         [Test]
@@ -235,7 +236,7 @@ namespace Velvet.Tests
             // build on a clean disposal is the change it exists to catch.
             var mounted = MountRoutedApp();
             _router.NavigateAsync("/other").GetAwaiter().GetResult();
-            ContainedFailureLog.Expect<InvalidOperationException>("FiberNodePatcher", DisposeFailureMessage);
+            ContainedFailureLog.Expect<InvalidOperationException>("FiberOutletScope", DisposeFailureMessage);
 
             // Act
             var escaped = EscapesFrom(() => ReRenderAppAtCurrentLocation(mounted));
@@ -254,11 +255,11 @@ namespace Velvet.Tests
             // removal back behind the Dispose leaves it wholly green.
             var mounted = MountRoutedApp();
             _router.NavigateAsync("/other").GetAwaiter().GetResult();
-            ContainedFailureLog.Expect<InvalidOperationException>("FiberNodePatcher", DisposeFailureMessage);
-            ContainedFailureLog.Expect<InvalidOperationException>("Reconciler", DisposeFailureMessage);
+            ContainedFailureLog.Expect<InvalidOperationException>("FiberOutletScope", DisposeFailureMessage);
+            ContainedFailureLog.Expect<InvalidOperationException>("FiberOutletScope", DisposeFailureMessage);
             _ = EscapesFrom(() => ReRenderAppAtCurrentLocation(mounted));
 
-            // Act — the sweep that disposes whatever is still registered.
+            // Act — the teardown that disposes every fiber still registered.
             _reconciler.Dispose();
             _reconciler = new Reconciler();
 
@@ -267,9 +268,31 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ARouteScopeDisposeThatThrows_When_TheOutletIsRemovedFirstOfABatch_Then_TheRestOfTheRowsGoToo()
+        public void Given_ARouteScopeDisposeThatThrows_When_TheOutletLeavesTheRouteThenTakesAnother_Then_TheDepartedScopeIsDisposedOnce()
         {
-            // Arrange — the walk removes from the tail, so the Outlet is the one it reaches first.
+            // Arrange — a route reached, left for a location the match chain does not reach, and then a
+            // different one. Over those three the departed scope is disposed once: the count separates that
+            // from never disposing it, which is what the leg through the unmatched location used to cost.
+            var mounted = MountRoutedApp();
+            var unmatched = AppAt(NoMatchLocation());
+            ContainedFailureLog.Expect<InvalidOperationException>("FiberOutletScope", DisposeFailureMessage);
+            _ = EscapesFrom(() => _reconciler.Reconcile(_root, mounted, unmatched));
+
+            // Act — a different route, whose identity a stale entry would fail to match.
+            _router.NavigateAsync("/other").GetAwaiter().GetResult();
+            _ = EscapesFrom(() => ReRenderAppAtCurrentLocation(unmatched));
+
+            // Assert
+            Assert.That(_scopeFactory.Scopes[0].DisposeCount, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_ARouteScopeDisposeThatThrows_When_TheOutletIsRemoved_Then_TheThrowStaysInside()
+        {
+            // Arrange — the scope is disposed by the orphan sweep, which runs after the removal pass, so
+            // the reading that separates a contained failure from an escaping one is whether the call
+            // returned; the names are folded in because a call that escaped before removing anything
+            // satisfies neither half on its own.
             var mounted = new VNode[]
             {
                 V.Div(name: "head"),
@@ -277,7 +300,7 @@ namespace Velvet.Tests
                 RoutedOutlet(),
             };
             _reconciler.Reconcile(_root, Array.Empty<VNode>(), mounted);
-            ContainedFailureLog.Expect<InvalidOperationException>("FiberElementCleaner", DisposeFailureMessage);
+            ContainedFailureLog.Expect<InvalidOperationException>("FiberOutletScope", DisposeFailureMessage);
 
             // Act
             var escaped = EscapesFrom(() => _reconciler.Reconcile(_root, mounted, Array.Empty<VNode>()));
@@ -294,7 +317,7 @@ namespace Velvet.Tests
             // presence that stops retiring for its own reasons moves both readings and leaves this case
             // green: what it separates is the contained failure from no failure, and nothing else.
             var withoutFailure = PresenceNamesAfterRemovalBeside(throwOnDispose: false);
-            ContainedFailureLog.Expect<InvalidOperationException>("FiberElementCleaner", DisposeFailureMessage);
+            ContainedFailureLog.Expect<InvalidOperationException>("FiberOutletScope", DisposeFailureMessage);
 
             // Act
             var withFailure = PresenceNamesAfterRemovalBeside(throwOnDispose: true);
@@ -304,19 +327,19 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_TwoOutletsWhoseScopesBothThrow_When_TheReconcilerIsDisposed_Then_TheSweepAttemptsBoth()
+        public void Given_TwoOutletsWhoseScopesBothThrow_When_TheReconcilerIsDisposed_Then_BothAreAttempted()
         {
-            // Arrange — two registered scopes, both throwing, so which one the sweep reaches first cannot
+            // Arrange — two registered scopes, both throwing, so which one the teardown reaches first cannot
             // decide the reading.
             _reconciler.Reconcile(_root, Array.Empty<VNode>(), new VNode[] { RoutedOutlet(), RoutedOutlet() });
-            ContainedFailureLog.Expect<InvalidOperationException>("Reconciler", DisposeFailureMessage);
-            ContainedFailureLog.Expect<InvalidOperationException>("Reconciler", DisposeFailureMessage);
+            ContainedFailureLog.Expect<InvalidOperationException>("FiberOutletScope", DisposeFailureMessage);
+            ContainedFailureLog.Expect<InvalidOperationException>("FiberOutletScope", DisposeFailureMessage);
 
             // Act
             _reconciler.Dispose();
             _reconciler = new Reconciler();
 
-            // Assert — one attempt means the first throw stranded the rest of the sweep.
+            // Assert — one attempt means the first throw stranded the rest of the teardown.
             Assert.That(s_disposeAttempts, Is.EqualTo(2));
         }
 
@@ -374,8 +397,19 @@ namespace Velvet.Tests
             => _reconciler.Reconcile(_root, mounted, BoundedApp());
 
         private void ReRenderAppAtCurrentLocation(VNode[] mounted)
-            => _reconciler.Reconcile(_root, mounted,
-                new VNode[] { V.Component(RoutedApp, _router.CurrentLocation!, key: "app") });
+            => _reconciler.Reconcile(_root, mounted, AppAt(_router.CurrentLocation!));
+
+        private static VNode[] AppAt(RouterLocation location)
+            => new VNode[] { V.Component(RoutedApp, location, key: "app") };
+
+        // The unmatched direction, handed to the spine as props rather than navigated to.
+        private static RouterLocation NoMatchLocation()
+            => new RouterLocation
+            {
+                Path = "/nope",
+                Params = new Dictionary<string, string>(),
+                Matches = new List<RouteMatch>(),
+            };
 
         // The same spine at the top level, which the cases that never move the location can take.
         private static VNode RoutedOutlet()

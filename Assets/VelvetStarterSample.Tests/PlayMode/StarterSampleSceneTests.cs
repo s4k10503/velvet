@@ -22,6 +22,11 @@ namespace Velvet.Tests
     /// Each case settles on a condition rather than a frame count. Several suites share this machine, so a
     /// budget large enough to be reliable under load would be most of the wall time when it is idle.
     /// </para>
+    /// <para>
+    /// One case reads geometry rather than presence: where the route's first row sits relative to the
+    /// chrome's header. It compares the two measured rects against each other rather than against a pixel
+    /// budget, so the font metrics and panel scale of whichever machine runs it do not decide the outcome.
+    /// </para>
     /// </summary>
     [Timeout(600000)]
     internal sealed class StarterSampleSceneTests
@@ -127,6 +132,32 @@ namespace Velvet.Tests
             // land as inline style and so pass against an entirely unstyled panel.
             // BundledStyleUtilitiesRuntimeTests pins both poles of this reading on a bare panel.
             Assert.That(Find(HeaderName).resolvedStyle.flexDirection, Is.EqualTo(FlexDirection.Row));
+        }
+
+        [UnityTest]
+        public IEnumerator Given_TheStarterSampleScene_When_Played_Then_TheRouteBodyIsLaidOutBelowTheChromesHeader()
+        {
+            // Arrange — the chrome is a column holding the header and then the Outlet, so the route's first
+            // row belongs under the header rather than over it.
+            yield return PlaySampleScene();
+
+            // Act
+            yield return WaitUntil(
+                () => Find(HeaderName) is { } header && header.worldBound.height > 0f
+                      && Find(DraftFieldName) is { } draft && draft.worldBound.height > 0f,
+                $"laid-out elements named {HeaderName} and {DraftFieldName}");
+
+            // Assert — read in panel space, since the two sit at different depths and a local rect would
+            // compare them in different coordinate systems. Both heights ride along, because two elements
+            // that never laid out would satisfy the ordering term at y = 0 and say nothing about where
+            // either one went.
+            var chromeHeader = Find(HeaderName);
+            var routeField = Find(DraftFieldName);
+            Assert.That(
+                (chromeHeader.worldBound.height > 0f, routeField.worldBound.height > 0f,
+                 chromeHeader.worldBound.yMax <= routeField.worldBound.y),
+                Is.EqualTo((true, true, true)),
+                $"header {chromeHeader.worldBound}, route field {routeField.worldBound}");
         }
 
         [UnityTest]

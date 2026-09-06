@@ -2020,15 +2020,17 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Placeholder that renders the matched child route component of a nested route at this position.
+        /// Renders the matched child route component of a nested route at this position, and nothing at all
+        /// when the match chain does not reach this depth. Emits no element of its own: the route's own
+        /// output takes this position in the parent's child list.
         /// </summary>
         /// <param name="context">
         /// Optional value supplied to the rendered child route, consumed by <c>Hooks.UseOutletContext</c>.
         /// </param>
         /// <param name="key">Key used to disambiguate siblings at the same position.</param>
-        /// <returns>The created <see cref="OutletNode"/>.</returns>
-        public static OutletNode Outlet(object? context = null, string? key = null) =>
-            new() { Key = key, OutletContextValue = context };
+        /// <returns>The created <see cref="ComponentNode"/>.</returns>
+        public static ComponentNode Outlet(object? context = null, string? key = null) =>
+            Component<object?>(global::Velvet.RouteOutlet.Render, context, key);
 
         /// <summary>
         /// Fragment node. Returns multiple nodes without an enclosing wrapper element.

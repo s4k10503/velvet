@@ -16,14 +16,8 @@ namespace Velvet
         // to reconstruct context for a wrapper-hosted descendant's isolated re-render.
         internal const string AutoKeyPrefix = "__ap_auto_";
 
-        // USS class added to OutletNode's container so tests and consumers can
-        // distinguish it from the generic layout-passthrough wrappers (all of which use
-        // PickingMode.Ignore so the wrapper never intercepts pointer events).
-        internal const string OutletContainerClass = "velvet-outlet";
-
         // USS class added to the wrapper VisualElement emitted for a
-        // ContextProviderNode. Mirrors OutletContainerClass's role
-        // for OutletNode: the wrapper is layout-passthrough so context propagation does not
+        // ContextProviderNode: the wrapper is layout-passthrough so context propagation does not
         // distort layout, and the class lets tests and consumers identify Provider boundaries
         // in the DOM. A Provider emitting its own wrapper element is a deliberate choice here;
         // the layout-passthrough class keeps it transparent to layout.
@@ -77,8 +71,6 @@ namespace Velvet
                     return CreateForComponentNode(componentNode);
                 case ContextProviderNode providerNode:
                     return CreateForContextProviderNode(providerNode);
-                case OutletNode outletNode:
-                    return CreateForOutletNode(outletNode);
                 default:
                     // Unknown VNode type: FragmentNode (which should have been expanded by the parent),
                     // null, or a missing branch for a newly added VNode type. Log a warning for debuggability.
@@ -587,44 +579,6 @@ namespace Velvet
             return container;
         }
 
-        private VisualElement CreateForOutletNode(OutletNode outletNode)
-        {
-            // The container is layout-transparent so the matched route's element resolves
-            // its size against the Outlet's parent box, and doubles as the fiber anchor
-            // for the matched route's Component (one wrapper, not two).
-            var container = CreateLayoutPassthroughContainer();
-            container.AddToClassList(OutletContainerClass);
-            // Identity-side registration for FiberContextSpine: separate from the USS class
-            // (which is for styling and is user-mutable). Populated unconditionally so the
-            // spine walker can identify Outlet hosts before Router setup completes.
-            _ctx.OutletContainers.Add(container);
-
-            if (!_patcher.ResolveOutletMatch(out var routeElement, out var routeDepth, out var match))
-            {
-                return container;
-            }
-
-            outletNode.Scope = FiberOutletScope.CreateOutletScope(_ctx, match.Route, container);
-
-            // Mount the matched route Component with Depth+1 pushed live so its UseContext
-            // reads the incremented router depth: an Outlet provides the
-            // next RouteContext value to its descendants. The Outlet's context value (if any) is
-            // pushed too so the child route can read it via Hooks.UseOutletContext.
-            _ctx.ComponentContextStack.Push(RouterContext.Depth, routeDepth);
-            _ctx.ComponentContextStack.Push(RouterContext.OutletContext, outletNode.OutletContextValue);
-            try
-            {
-                _patcher.HandleComponentMount(container, routeElement);
-            }
-            finally
-            {
-                _ctx.ComponentContextStack.Pop(RouterContext.OutletContext);
-                _ctx.ComponentContextStack.Pop(RouterContext.Depth);
-            }
-
-            return container;
-        }
-
         // The optional bindings shared by ElementNode and MotionNode's create paths — a Motion can host
         // any element type, so each of these must attach on its create path exactly like the plain
         // element path. classNames is the classes actually applied to element (the declared ClassNames
@@ -770,10 +724,10 @@ namespace Velvet
             }
         }
 
-        // Anchor VisualElement emitted for Provider / Component / Outlet to track fiber lifecycle.
+        // Anchor VisualElement emitted for Provider / Component to track fiber lifecycle.
         // Layout-transparent via absolute insets so the wrapper fills its parent's full box at any
         // depth — bare wrappers collapse to 0 height when their only child is absolute, because
-        // Yoga measures parents from in-flow children alone, and deep Provider / Outlet chains
+        // Yoga measures parents from in-flow children alone, and deep Provider / Component chains
         // then cascade-collapse every descendant to 0x0. PickingMode.Ignore ensures clicks fall
         // through to user-emitted elements (otherwise overlay passthrough wrappers would steal
         // clicks from routed pages beneath them).

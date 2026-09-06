@@ -353,20 +353,6 @@ namespace Velvet
     }
 
     /// <summary>
-    /// Placeholder node that renders the matched child route component of a nested route at this position.
-    /// Dynamically renders the next child route in the matched route hierarchy based on RouterContext depth.
-    /// </summary>
-    public sealed class OutletNode : VNode
-    {
-        internal IRouteScope? Scope { get; set; }
-
-        /// <summary>
-        /// Value supplied to the rendered child route, surfaced via <c>Hooks.UseOutletContext</c>.
-        /// </summary>
-        internal object? OutletContextValue { get; init; }
-    }
-
-    /// <summary>
     /// How an <see cref="AnimatePresenceNode"/> sequences exit and enter when its keyed children change.
     /// </summary>
     public enum AnimatePresenceMode

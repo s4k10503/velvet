@@ -9,8 +9,7 @@ namespace Velvet
     //   inline-mounted: keyed by _inlineInstances' tuple, whose members are documented on it, and the
     //   fiber's rendered output occupies a sub-range of the container's children;
     //   wrapper-mounted: keyed by a dedicated wrapper VE unique to the fiber, with no slot key.
-    //   Retained for Suspense and Outlet route mounts that require a single anchor for pending-fiber
-    //   lookup.
+    //   Retained for Suspense mounts that require a single anchor for pending-fiber lookup.
     // Identity prefers ComponentNode.Identity, and falls back to
     // Body.Method (the function component's MethodInfo) when not specified.
     internal sealed class ComponentRegistry : IDisposable
@@ -46,7 +45,7 @@ namespace Velvet
         // Dispose like the indexes.
         internal Dictionary<(long slotPath, int nodeIndex), object> InlinePositionKeyBoxes { get; } = new();
 
-        // Wrapper-mounted fibers (Velvet divergence: Outlet route mounts / V.List items own a dedicated
+        // Wrapper-mounted fibers (Velvet divergence: V.List items own a dedicated
         // wrapper VE) anchor on that VisualElement. identity disambiguates an identity swap on the same
         // wrapper (see RemoveIfDifferentIdentity).
         private readonly Dictionary<VisualElement, ComponentFiber> _wrapperIndex = new();
@@ -418,8 +417,8 @@ namespace Velvet
         // is ComponentFiber.MountPoint; for wrapper-mounted fibers it is the wrapper VE
         // recorded in _wrapperFiberInfo. Used by the Suspense primary rollback path: a created
         // orphan container is dropped (GC) but its CreateElement step reconciled the container's children,
-        // which may have registered inline AND/OR wrapper-mounted (Outlet route, AnimatePresence child,
-        // etc.) Component fibers under it. Those fibers' anchor VE becomes dangling once the orphan is
+        // which may have registered inline AND/OR wrapper-mounted (an AnimatePresence child, etc.)
+        // Component fibers under it. Those fibers' anchor VE becomes dangling once the orphan is
         // dropped: queued deferred layout effects would fire against a dead VE, and wrapper entries would
         // linger to confuse later identity checks. Disposing here releases registry entries, fires any
         // cleanup that has been registered (setups that never ran have none, since a suspended primary

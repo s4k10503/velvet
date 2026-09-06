@@ -184,7 +184,7 @@ namespace Velvet
             PendingIndexedState = null;
             DiscardPendingKeyedState();
 
-            // ContextProviderNode / ComponentNode / OutletNode are expanded inline (no wrapper VE
+            // ContextProviderNode / ComponentNode are expanded inline (no wrapper VE
             // emitted). Old-side expansion is structural-only (no context push, no fiber render).
             // New-side expansion pushes each Provider's value onto the stack and, while it is
             // still pushed, notifies dependent fibers if the value changed vs the old Provider that

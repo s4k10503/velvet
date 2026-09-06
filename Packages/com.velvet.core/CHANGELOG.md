@@ -578,7 +578,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pose can carry `StaggerChildrenSec` and a `When = BeforeChildren` wait is measured from that pose's
   own span. The motion guide states which pose each play reads.
 
+- `V.Outlet()` emits no element of its own: the matched route's own output takes the Outlet's position
+  in the parent's child list, and an Outlet whose location matches no route at its depth takes no
+  position there at all. It used to emit a layout-passthrough container — absolutely positioned and
+  inset to its parent's box, carrying the `velvet-outlet` class — and mount the route inside that. An
+  absolutely positioned child is out of its parent's flow, so the route it held was out of it too: a
+  chrome of `flex flex-col` with a header above a `V.Outlet()` drew the header and the route's first
+  row both at the top of the container, and a `gap-*`, `divide-*`, `[&>*]:` or grid parent placed its
+  remaining children as though the route were not among them. React Router's `Outlet` is an ordinary
+  function component
+  returning the matched element wrapped in context providers, and this is that shape: `V.Outlet()`
+  returns a `ComponentNode`, `RouteOutlet` is the body it names, and `Hooks.UseOutletContext` reads
+  the value from a Provider that body renders rather than from a push around the mount. What a caller
+  has to edit around: the declared return type, and a USS rule or an element query written against
+  the container or its class, which are gone. A route scope is built and released at the same points
+  as before; `FiberOutletScope` holds it against the Outlet's own fiber, which is what the container
+  element used to key.
+
 ### Removed
+
+- The `V.Outlet` node kind, and the reconciler paths that existed for it alone — its element factory
+  and patch arms, its keying arm, and the context-spine reconstruction that re-pushed a depth around
+  a route re-rendering on its own. `V.Outlet()` returns a `ComponentNode`, which those walks already
+  handle; source declaring the result as the removed type stops compiling, and `V.Outlet` was the only
+  public member that named it.
 
 - `FiberUpdatePriority.Deferred`. Source naming it stops compiling; `FiberUpdatePriority.Transition`
   is what to write instead — the same delayed tier, the same fixed flush delay and the same
@@ -590,6 +613,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   shape.
 
 ### Fixed
+
+- An Outlet navigating to a location that matches no route at its depth no longer keeps the route it
+  was holding. Every path that cleared the Outlet sat below an early return taken on a failed match, so
+  the departed route's elements stayed in the tree, its Component's fiber was never disposed — its hook
+  state and effect cleanups with it — and the scope built for that route was never released. Rendering
+  nothing there is the same walk that drops a `null` child, so the route's elements leave and its fiber
+  is swept as an orphan; the scope goes with it. Only a route change disposed any of that before, and
+  every Outlet case in the suite navigated between two matching locations or mounted once.
 
 - A route whose path ends in a splat no longer accepts children. `ParseRouteSegments` refused a splat
   that was not last within one route path, but a branch is every ancestor's segments joined, and

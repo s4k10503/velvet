@@ -652,14 +652,6 @@ namespace Velvet
                     case ComponentNode component:
                         ExpandComponentInline(walk, component, position, nodeIndex);
                         break;
-                    case OutletNode:
-                        // Wrapper-emitting node: CreateElement(Outlet) / PatchNode(Outlet) resolve the
-                        // matched route during this walk's commit (live context), reading
-                        // RouterContext.Location / Depth from the live stack and pushing Depth+1 around
-                        // the route Component's mount. No pre-captured snapshot / owner is needed.
-                        _keying.RegisterScopedKey(node, position.Scope, nodeIndex);
-                        Emit(node, result, commit);
-                        break;
                     case MemoNode memo:
                         // Memo emits no DOM: resolve its inner via the dep cache and
                         // expand it inline so a Suspense / Component / Provider inner is handled

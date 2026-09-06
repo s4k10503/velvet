@@ -998,15 +998,9 @@ namespace Velvet
         // Reset when the drain runs.
         public bool PassiveEffectDrainScheduled { get; set; }
         public Dictionary<VisualElement, FiberVirtualListController> VirtualListControllers { get; } = new();
-        public Dictionary<VisualElement, IRouteScope> OutletScopes { get; } = new();
-
-        // Set of every Outlet container VE created by FiberNodeFactory. Populated
-        // unconditionally at Outlet mount time (independent of whether a Router is registered, so
-        // scope-less tests are covered). The spine reconstruction reads this to verify a
-        // wrapper-mounted spineChild's MountPoint actually belongs to an Outlet — using the USS
-        // class as an identity discriminator instead would be vulnerable to user code or external
-        // styling toggling the class via className props.
-        public HashSet<VisualElement> OutletContainers { get; } = new();
+        // Keyed on the Outlet's own ComponentFiber; FiberOutletScope owns what an entry holds and when
+        // it is released.
+        public Dictionary<ComponentFiber, FiberOutletScope.Entry> OutletScopes { get; } = new();
 
         // The node array being expanded for the fiber on top of FiberStack, which is the array whose nodes a
         // GetOrCreate reached from here is stamping onto its children. Set where a fiber's own output enters
