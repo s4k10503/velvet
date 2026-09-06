@@ -177,9 +177,9 @@ value instantly, matching CSS's zero-duration behavior.
 
 ### Contract
 
-- **Register before mount.** Resolution happens when a class is applied; a class resolved
-  before its name was registered stays inert until the element's class list changes again.
-  Registration is not reactive.
+- **Register before mount.** Resolution happens when a class is applied, and registration is not
+  reactive: `Register` re-resolves no element and raises no event. A class applied before its name
+  was registered does not resolve at that point.
 - The built-in family names (`blur`, `brightness`, `contrast`, `grayscale`, `hue-rotate`,
   `invert`, `saturate`, `sepia`) are **reserved** and cannot be registered.
 - A name must be free of whitespace, `:`, `[` and `]` (they would break the token grammar).
@@ -189,6 +189,17 @@ value instantly, matching CSS's zero-duration behavior.
   already-resolved filter, so unregister after the consuming trees unmount.
 - A definition destroyed after registration stops rendering: the compose skips dead
   definitions instead of throwing.
+
+### What a late registration does today
+
+Characterization, not contract. This is what the current implementation does; a release that made a
+registry change reach mounted trees would change it, so register before mount rather than building
+on any of it.
+
+A class applied before its name was registered stays on the USS class list instead of resolving to an
+inline value, and paints nothing. It resolves the next time some pass re-applies that element's
+inline values from the classes it still carries — a motion on the element settling, being cancelled
+or detaching does that, and so does a class change that removes another filter-family token.
 
 ### Authoring the definition
 
