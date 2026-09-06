@@ -680,7 +680,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The `V.Outlet` node kind, and the reconciler paths that existed for it alone — its element factory
   and patch arms, its keying arm, and the context-spine reconstruction that re-pushed a depth around
   a route re-rendering on its own. `V.Outlet()` returns a `ComponentNode`, which those walks already
-  handle; source declaring the result as the removed type, or matching on it, stops compiling.
+  handle; source declaring the result as the removed type, constructing one, or matching on it, stops
+  compiling.
 
 - `FiberUpdatePriority.Deferred`. Source naming it stops compiling; `FiberUpdatePriority.Transition`
   is what to write instead — the same delayed tier, the same fixed flush delay and the same
@@ -723,9 +724,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `V.FocusScope(autoFocus: true)` in such a row is mounted afresh by that rebuild and takes focus back
   from wherever the user had moved it. Wrapping the list in
   `V.ListFragment(items, …, key: "rows")` keeps the element: the Fragment's key establishes the scope,
-  each row's leaf then carries the item's own key, and the element moves to the new slot with it. Any
-  parent that establishes a key scope above the rows does the same, since a component's children take a
-  scope only where its own position has one.
+  each row's leaf then carries the item's own key, and the element moves to the new slot with it.
 
 - An Outlet navigating to a location that matches no route at its depth no longer keeps the route it
   was holding. Every clearing path in the Outlet's own patch sat below an early return taken on a

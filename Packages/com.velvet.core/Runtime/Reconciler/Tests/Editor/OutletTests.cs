@@ -18,7 +18,8 @@ namespace Velvet.Tests
     /// <item>An Outlet carries the key supplied to <see cref="V.Outlet"/>.</item>
     /// <item>A location whose match chain does not reach the Outlet's depth — no matches at all, or fewer than
     /// the depth indexes — renders nothing, and a route already mounted there leaves with its scope. So does a
-    /// chain that reaches it and holds a route declaring no element.</item>
+    /// chain that reaches it and holds a route declaring no element. Resolving no route is a render that
+    /// succeeded, so no Error Boundary above the Outlet is asked for a fallback.</item>
     /// <item>The errors map is read for a boundary, and a caller's own Provider of a null one reads as no
     /// route having errored rather than throwing.</item>
     /// <item>A nested route navigation accumulates one match per route segment in parent-to-child order.</item>
@@ -47,6 +48,7 @@ namespace Velvet.Tests
             s_store = null;
             s_errorsSeen = null;
             s_errorsProbeRan = false;
+            s_errorBoundaryCaught = false;
         }
 
         [TearDown]
@@ -172,16 +174,27 @@ namespace Velvet.Tests
         // What moved is where that decision is taken -- a component body rather than the commit that built
         // the container -- and this reads the decision, not its place.
         [Test]
-        public void Given_AMatchWhoseRouteDeclaresNoElement_When_OutletMounted_Then_RendersNothing()
+        public void Given_AMatchWhoseRouteDeclaresNoElement_When_OutletMounted_Then_RendersNothingWithoutFailing()
         {
-            // Arrange — the chain reaches this depth, and the route it reaches has nothing to render
-            var tree = OutletUnderRouter(LocationWithElementlessMatch(), depth: 0);
+            // Arrange — the chain reaches this depth, and the route it reaches has nothing to render.
+            // The Error Boundary is the instrument: an Outlet leaves this position empty whether it
+            // resolved no route or threw trying, and only the throw reaches a fallback.
+            var tree = new VNode[]
+            {
+                V.ErrorBoundary(
+                    fallback: BuildErrorBoundaryFallback,
+                    children: OutletUnderRouter(LocationWithElementlessMatch(), depth: 0),
+                    key: "boundary"),
+            };
 
             // Act
             _reconciler.Reconcile(_root, Array.Empty<VNode>(), tree);
 
             // Assert
-            Assert.That(_root.childCount, Is.EqualTo(0));
+            Assert.That(
+                (_root.childCount, s_errorBoundaryCaught),
+                Is.EqualTo((0, false)),
+                "A route declaring no element leaves the position empty, and resolving none is not a failure");
         }
 
         // GREEN_ON_BASE(characterization): the base read this null guard ahead of the same Count.
@@ -574,6 +587,16 @@ namespace Velvet.Tests
 
         private static VNode[] OutletUnderRouter(RouterLocation location, int depth)
             => new VNode[] { V.Component(RoutedAppRender, new RoutedAppProps(location, depth), key: "app") };
+
+        private static bool s_errorBoundaryCaught;
+
+        // Asked only where the boundary caught a failure below it — the contract VErrorBoundaryHelperTests
+        // pins.
+        private static VNode BuildErrorBoundaryFallback(Exception _)
+        {
+            s_errorBoundaryCaught = true;
+            return V.Label(text: "boundary-fallback");
+        }
 
         #endregion
 
