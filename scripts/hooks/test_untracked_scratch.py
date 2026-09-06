@@ -6,10 +6,14 @@ before the agent started is not one the agent can make — it was handed the sam
 stop. The cases below hold the narrowing that ends that: which of the payload's two transcripts the
 bound comes from and which record of it, that a leftover written during the run survives it, and
 that a reading which fails widens the report rather than silencing it or answering with the other
-transcript the payload carries. One holds the listing the bound is kept away from, the gitignored
-sources; one holds that a source under the project's own trees is not a second such listing, so
-exempting a kind from the bound goes red there. Two more hold the scope the docstring claims — one
-tree, named in the headline — so widening the scan without rewriting that claim goes red.
+transcript the payload carries. Three hold the names porcelain quotes, whose listed spelling is not
+the path's own: an old one the bound reaches, a fresh one named as the file is spelled, and an
+excluded source the quoting had been hiding from the suffix match. Two hold what the report says
+its count is of, in the arm where a bound was taken and in the arm where none was. One holds the
+listing the bound is kept away from, the gitignored sources; one holds that a source under the
+project's own trees is not a second such listing, so exempting a kind from the bound goes red there.
+Two more hold the scope the docstring claims — one tree, named in the headline — so widening the
+scan without rewriting that claim goes red.
 
 Run: python3 scripts/hooks/test_untracked_scratch.py
 """
@@ -41,8 +45,14 @@ EXCLUDED = "Runtime/Excluded.cs"
 NESTED = "sub/deeper/nested-scratch.txt"
 LINK = "link-to-elsewhere.txt"
 SIBLING_PROBE = "SiblingProbeFixture.cs"
-AWKWARD = 'a"b.txt'
-AS_LISTED = '"a\\"b.txt"'
+
+# Three names the listing quotes: one whose quoting adds no escape, one carrying both an escaped
+# quote and a byte spelled in octal, and one for the ignored half. `AS_LISTED` is what porcelain
+# answers for the second, and it is not the name the file was placed under.
+SPACED = "with space.txt"
+AWKWARD = 'a"b ß.txt'
+AS_LISTED = '"a\\"b \\303\\237.txt"'
+EXCLUDED_SPACED = "Runtime/Excluded source.cs"
 
 
 def stamp(moment):
@@ -58,7 +68,8 @@ class UntrackedScratchTests(unittest.TestCase):
         self.project.mkdir()
         subprocess.run(["git", "init", "-q", "-b", "main", str(self.project)], check=True,
                        timeout=60)
-        (self.project / ".gitignore").write_text("Excluded.cs\n", encoding="utf-8")
+        (self.project / ".gitignore").write_text("Excluded.cs\nExcluded source.cs\n",
+                                                 encoding="utf-8")
         subprocess.run(["git", "-C", str(self.project), "-c", "user.email=t@velvet",
                         "-c", "user.name=t", "add", ".gitignore"], check=True, timeout=60)
         subprocess.run(["git", "-C", str(self.project), "-c", "user.email=t@velvet",
@@ -84,16 +95,23 @@ class UntrackedScratchTests(unittest.TestCase):
         return path
 
     def run_hook(self, agent=None, zone=None, cwd=None):
+        """Run the hook with the payload the only thing naming the tree.
+
+        The two ambient readings — the launch directory, and the CLAUDE_PROJECT_DIR the settings
+        entry's own command spells — are aimed at a directory holding no repository, so a hook
+        taking its tree from either finds none and reports nothing. Pointed there rather than
+        unset, because with the variable absent the payload wins either way.
+        """
         working = cwd or self.project
         record = {"hook_event_name": "SubagentStop", "cwd": str(working),
                   "transcript_path": str(self.session)}
         if agent is not None:
             record["agent_transcript_path"] = agent if isinstance(agent, bool) else str(agent)
-        environment = dict(os.environ)
+        environment = dict(os.environ, CLAUDE_PROJECT_DIR=str(self.root))
         if zone is not None:
             environment["TZ"] = zone
         return subprocess.run([sys.executable, "-B", str(HOOK)], input=json.dumps(record),
-                              capture_output=True, text=True, cwd=str(working),
+                              capture_output=True, text=True, cwd=str(self.root),
                               env=environment, timeout=120)
 
     def report(self, agent=None, zone=None, cwd=None):
@@ -147,6 +165,35 @@ class UntrackedScratchTests(unittest.TestCase):
 
         # Assert
         self.assertIn("1 untracked", headline)
+
+    def test_Given_ABoundWasTaken_When_TheReportIsRead_Then_BothChannelsSayTheCountIsBounded(self):
+        # Arrange — asked of both channels at once, since a count of what the report names, read as
+        # a count of what the tree holds, misleads whichever reader it reaches.
+        self.place(WRITTEN, AFTER_AGENT)
+
+        # Act
+        report = json.loads(self.report(self.agent))
+
+        # Assert
+        self.assertEqual(("1 untracked since this subagent started" in report["systemMessage"],
+                          "the tree may hold more"
+                          in report["hookSpecificOutput"]["additionalContext"]), (True, True))
+
+    # GREEN_ON_BASE(characterization): the arm where no bound was taken.
+    # Making the sentence above unconditional is what reddens this, and unconditional it would be
+    # a claim the listing does not carry here.
+    def test_Given_NoBoundWasTaken_When_TheReportIsRead_Then_NeitherChannelClaimsOne(self):
+        # Arrange — no agent transcript in the payload, which is one of the readings that leaves
+        # the listing unnarrowed.
+        self.place(STALE, BEFORE_BOTH)
+
+        # Act
+        report = json.loads(self.report())
+
+        # Assert
+        self.assertEqual(("this subagent started" in report["systemMessage"],
+                          "this subagent started"
+                          in report["hookSpecificOutput"]["additionalContext"]), (False, False))
 
     # GREEN_ON_BASE(characterization): the two times this change compares, posed from a zone behind
     # UTC. A stamp read without its offset lands eight hours late there and withholds a file the run
@@ -238,18 +285,42 @@ class UntrackedScratchTests(unittest.TestCase):
         # Assert
         self.assertIn(STALE, printed)
 
-    # GREEN_ON_BASE(characterization): a path the narrowing cannot age. Dropping what it cannot
-    # measure would be the narrowing deciding a question it never answered.
-    def test_Given_AnUntrackedPathTheListingQuotes_When_TheReportIsTaken_Then_ItIsNamedThoughItsAgeCannotBeRead(self):
-        # Arrange — placed old, so a reading that reached the file would withhold it. The listing
-        # spells this name back C-quoted, and no file answers to that spelling.
-        self.place(AWKWARD, BEFORE_BOTH)
+    def test_Given_AnOldPathTheListingQuotes_When_TheReportIsTaken_Then_TheBoundWithholdsIt(self):
+        # Arrange — the shape four of this repository's own tracked paths carry. The listing spells
+        # it back quoted, and that spelling is not the file's own, which is where the bound stopped
+        # reaching it. The written one is beside it because a report that named neither would
+        # satisfy the half about the quoted path on its own.
+        self.place(SPACED, BEFORE_BOTH)
+        self.place(WRITTEN, AFTER_AGENT)
 
         # Act
         context = json.loads(self.report(self.agent))["hookSpecificOutput"]["additionalContext"]
 
         # Assert
-        self.assertIn(AS_LISTED, context)
+        self.assertEqual((SPACED in context, WRITTEN in context), (False, True))
+
+    def test_Given_AFreshPathTheListingQuotes_When_TheReportIsTaken_Then_ItIsNamedAsTheFileIs(self):
+        # Arrange — a name whose listed spelling carries both escape families, asked of both
+        # spellings at once because a report naming neither would satisfy the half about the
+        # listed one.
+        self.place(AWKWARD, AFTER_AGENT)
+
+        # Act
+        context = json.loads(self.report(self.agent))["hookSpecificOutput"]["additionalContext"]
+
+        # Assert
+        self.assertEqual((AWKWARD in context, AS_LISTED in context), (True, False))
+
+    def test_Given_AnExcludedSourceTheListingQuotes_When_TheReportIsTaken_Then_ItIsNamed(self):
+        # Arrange — the other half of the same listing, where the spelling costs a source file its
+        # suffix rather than its age.
+        self.place(EXCLUDED_SPACED, BEFORE_BOTH)
+
+        # Act
+        printed = self.report(self.agent)
+
+        # Assert
+        self.assertIn(EXCLUDED_SPACED, printed)
 
     def test_Given_AnUntrackedSourceUnderTheProjectsTrees_When_TheReportIsTaken_Then_TheBoundWithholdsItAsWell(self):
         # Arrange — the kind and the age at which a kind exemption from the bound would name a

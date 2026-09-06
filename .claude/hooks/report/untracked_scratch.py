@@ -19,11 +19,11 @@ files of an open PR. The wording below carries the same lesson: this is a report
 a tree decides what is left in it.
 
 The same loop remains for a file in the reported tree that predates the run, so the untracked
-listing is narrowed to what was written since this subagent started. The bound is a time, not an
-author — a sibling writing into this tree while this agent runs falls inside it — and the session's
-start would not serve, since a file written after a session began stays inside that bound for every
-subagent it later spawns. What is read is the modification time, so a file that arrives already
-carrying an older one is dated by where it came from and not by when it appeared here.
+listing is narrowed by when this subagent started. The bound is a time, not an author — a sibling
+writing into this tree while this agent runs falls inside it — and the session's start would not
+serve, since a file written after a session began stays inside that bound for every subagent it
+later spawns. What is read is the modification time, so a file that arrives already carrying an
+older one is dated by where it came from and not by when it appeared here.
 
 The gitignored-source listing is deliberately outside that narrowing. What makes it worth reporting
 is that the file STAYS excluded while local runs stay green, and an age bound would name it while it
@@ -49,6 +49,8 @@ from repository import git  # noqa: E402
 LISTED = 20
 SOURCE_SUFFIXES = re.compile(r"\.(cs|uss|uxml|asmdef|csproj|sln|md)$")
 BUILD_DIRECTORIES = re.compile(r"^(Library|Temp|obj|Logs)/")
+ESCAPE = re.compile(r"\\([abfnrtv\"\\]|[0-7]{3})")
+CONTROLS = {"a": "\a", "b": "\b", "f": "\f", "n": "\n", "r": "\r", "t": "\t", "v": "\v"}
 
 
 def payload():
@@ -90,7 +92,11 @@ def agent_start(transcript):
 
 
 def written_since(path, moment):
-    """Whether a path was last written no earlier than `moment`. One that cannot be read counts."""
+    """Whether a path was last written no earlier than `moment`.
+
+    No moment to compare against, and a path whose age will not read, both count as written. That
+    is the side `agent_start` gives its own failures.
+    """
     if moment is None:
         return True
     try:
@@ -99,9 +105,32 @@ def written_since(path, moment):
         return True
 
 
+def unquoted(listed):
+    """The file a porcelain listing's spelling names.
+
+    Porcelain quotes a path holding a space, a quote, a backslash, a control character or a
+    non-ASCII byte, and the quoted spelling is not the path's own: an age taken from it is not the
+    file's, and a suffix read off its end is the closing quote. Asking git for `-z` output instead
+    was rejected — it hands back raw bytes, which `git()` decodes with the ambient encoding and
+    does not catch a failure of, so one name a locale cannot take loses the whole report rather
+    than one path's age.
+    """
+    if not (listed.startswith('"') and listed.endswith('"') and len(listed) > 1):
+        return listed
+
+    def byte(hit):
+        """The byte the escape spells, as the character with that ordinal, for latin-1 below."""
+        found = hit.group(1)
+        return chr(int(found, 8)) if len(found) == 3 else CONTROLS.get(found, found)
+
+    return ESCAPE.sub(byte, listed[1:-1]).encode(
+        "latin-1", "backslashreplace").decode("utf-8", "surrogateescape")
+
+
 def entries(status, marker):
-    """The paths a porcelain status marked, with the two-character marker and its space removed."""
-    return [line[3:] for line in (status or "").splitlines() if line.startswith(marker)]
+    """The files a porcelain status marked, with the marker dropped and the spelling read back."""
+    return [unquoted(line[3:]) for line in (status or "").splitlines()
+            if line.startswith(marker)]
 
 
 def shown(listing, total):
@@ -132,14 +161,18 @@ def main():
     if not untracked and not ignored:
         return 0
 
+    since = "" if started is None else " since this subagent started"
+    scope = "" if started is None else (
+        " The listing is bounded by when this subagent started; the tree may hold more.")
+
     headline, parts = [], []
     if untracked:
-        headline.append(f"{len(untracked)} untracked")
+        headline.append(f"{len(untracked)} untracked{since}")
         parts.append(
-            f"Untracked files remain in {tree}. Read each before deciding it is harmless — a probe "
-            "fixture left behind reads as production code to the next session, and an agent's own "
-            "report that it cleaned up has been wrong before. What stays is for whoever owns this "
-            "tree to decide; nothing here asks for a deletion:\n"
+            f"Untracked files remain in {tree}.{scope} Read each before deciding it is harmless — a "
+            "probe fixture left behind reads as production code to the next session, and an agent's "
+            "own report that it cleaned up has been wrong before. What stays is for whoever owns "
+            "this tree to decide; nothing here asks for a deletion:\n"
             + shown(untracked[:LISTED], len(untracked))
         )
     if ignored:
