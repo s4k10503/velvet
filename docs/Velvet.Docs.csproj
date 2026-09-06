@@ -17,7 +17,7 @@
     <NoWarn>$(NoWarn);CS1591;CS0436;CS8669;CS0626;CS0824</NoWarn>
     <RestoreSources></RestoreSources>
 
-    <UnityEditorContents Condition="'$(UnityEditorContents)' == ''">/Applications/Unity/Hub/Editor/6000.3.11f1/Unity.app/Contents</UnityEditorContents>
+    <UnityEditorContents Condition="'$(UnityEditorContents)' == ''">/Applications/Unity/Hub/Editor/6000.3.23f1/Unity.app/Contents</UnityEditorContents>
     <!-- macOS install: <Contents>/Resources/Scripting/Managed ; Linux/Windows: <Data>/Managed -->
     <UnityManaged Condition="Exists('$(UnityEditorContents)/Resources/Scripting/Managed')">$(UnityEditorContents)/Resources/Scripting/Managed</UnityManaged>
     <UnityManaged Condition="'$(UnityManaged)' == '' and Exists('$(UnityEditorContents)/Managed')">$(UnityEditorContents)/Managed</UnityManaged>

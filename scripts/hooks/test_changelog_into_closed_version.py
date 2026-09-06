@@ -471,7 +471,7 @@ class AgainstTheTag(unittest.TestCase):
         # Assert
         self.assertEqual((code, "v2.0.1-main" in said), (2, True))
 
-    def test_Given_AHeadingPutBackOnItsOwn_When_ItIsRefused_Then_TheOneEditRemedyIsNamed(self):
+    def test_Given_AHeadingPutBackOnItsOwn_When_ItIsRefused_Then_TheRemediesAreNamed(self):
         # Arrange -- the file is short of a whole block, and the heading goes back where the copy
         # has it, ahead of nothing. Refusing it is right, and the advice above says a line put back
         # where the copy has it is what gets through, which is what this contributor just did.
@@ -486,9 +486,36 @@ class AgainstTheTag(unittest.TestCase):
                             "- A thing that shipped.\n\n### Changed\n")
 
         # Assert -- the one-edit route passing rides along, since advice naming a way through is
-        # worth nothing if that way is refused too.
-        self.assertEqual((one_edit, code, "in the same edit as an entry it heads" in said),
+        # worth nothing if that way is refused too. The other route it names is held to that by
+        # the case below.
+        self.assertEqual((one_edit, code,
+                          "an entry put back in the same change or lines the section already "
+                          "carries" in said),
                          (0, 2, True))
+
+    # GREEN_ON_BASE(characterization): the base accepts this route too. What this branch
+    # changed is the refusal that named only the other one, so the case holds the message
+    # to a verdict rather than pinning one this branch moved.
+    def test_Given_AHeadingPutBackAboveLinesTheSectionCarries_When_Judged_Then_ItPasses(self):
+        # Arrange -- the base merged the block into the one above it, so the heading goes back on
+        # its own and comes to head lines the section already carries. The refusal names this route
+        # beside the one-edit one, and is held to it for the reason the case above gives.
+        root, changelog = published(self, WHOLE_BLOCK, "closed-version-merged-")
+        merged = WHOLE_BLOCK.replace("- A thing that shipped.\n\n### Changed\n\n",
+                                     "- A thing that shipped.\n")
+        changelog.write_text(merged)
+        to_the_end, _ = judged(root, changelog, "- A change that shipped.\n",
+                               "- A change that shipped.\n\n### Changed\n")
+        changelog.write_text(merged)
+
+        # Act
+        code, _ = judged(root, changelog, "- A thing that shipped.\n- A change that shipped.\n",
+                         "- A thing that shipped.\n\n### Changed\n\n- A change that shipped.\n")
+
+        # Assert -- the same base sending that heading past the entry rides along. The two
+        # results carry the same lines and differ only in where the heading sits, so the landing
+        # is what separates the verdicts.
+        self.assertEqual((to_the_end, code), (2, 0))
 
     def test_Given_APutBackMadeHere_When_ItIsUndone_Then_ItIsRefusedTowardsGit(self):
         # Arrange -- the file has lost a line against the tag, and the put-back this guard lets

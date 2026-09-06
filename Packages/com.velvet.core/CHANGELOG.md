@@ -14,9 +14,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   completed tasks held inline so a synchronously-completed path allocates nothing. Frame-bound
   continuations are driven from the PlayerLoop at runtime and from `EditorApplication.update` in the
   editor, so an `async VelvetTask` method resumes in EditMode. A `UnityEngine.Awaitable` and a BCL
-  `Task` are awaited inside one as they stand, with no adapter. Nothing in Velvet returns or takes it
-  yet; it arrives first so that the change moving the framework onto it is one a reader can weigh
-  against a tree that already has the type.
+  `Task` are awaited inside one as they stand, with no adapter.
+
+- `VelvetTask.WhenAll` awaits several tasks as one. Over `VelvetTask` members it completes carrying
+  nothing; over `VelvetTask<T>` members it completes with a `T[]` holding each result at its own
+  argument position, whatever order the members arrived in; over an empty list it is complete already.
+  A member that fails does not end the wait — the others are still waited for, and the combination
+  then throws the first fault in argument order, or, where no member faulted, an
+  `OperationCanceledException` carrying the token of the first cancelled member in argument order. A
+  route loader fetching two resources no longer needs a hand-rolled counter over a completion source.
 
 - `V.RouterProvider(router)` is the router root, as `<RouterProvider router={router}/>` is: it
   subscribes to the router and publishes the location, the loader data and the loader errors that
@@ -527,6 +533,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   which is React Router's `navigation.location` and what a pending-UI branch is keyed on. It used to
   report the location already on screen in that window. The idle half of it still reports the committed
   location where React Router reports `undefined`; the guide states why and what to branch on instead.
+
+- **Minimum supported Unity raised to 6000.3.23f1**, from 6000.3.11f1 — `unity` stays `6000.3` and
+  `unityRelease` moves to `23f1`, so a project on an earlier release of the 6.3 line updates its editor
+  before taking this version. Several of the UI Toolkit fixes Unity shipped between the two land on
+  shapes Velvet itself ships: a `border-color` transition not running when the starting colour is
+  transparent, which the bundled `transition-*` utilities covering `border-color` ask for over
+  `border-transparent` or an alpha-zeroed border colour (6000.3.13f1); a programmatic scroll on a
+  `ScrollView` overriding manual scroll input on every frame after it is requested, when any element
+  in the panel updates its style every frame (6000.3.18f1); opacity not propagating in filtered
+  elements, under the `blur-*`, `grayscale-*` and sibling utilities that compose one inline `filter`
+  list, and `background-image` rendering solid white after the referenced asset's Addressables
+  content was unloaded and reloaded, which is what `bg-[addr:…]` sets (both 6000.3.21f1); and an
+  `ArgumentException` during world-space UI rendering — where `V.WorldSpace` mounts — when the
+  internal draw range list grew while partially full (6000.3.23f1).
 
 - The container a `V.Component` is written into is part of which instance it is, as the position of a
   component is in React. Two sibling containers each holding the same component now hold two instances
