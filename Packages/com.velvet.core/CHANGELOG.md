@@ -67,6 +67,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A `V.VirtualList` whose item renderer returns a `V.Component` or a `V.Provider` stacks its visible
+  items instead of starting every one of them at the same place. Velvet anchors such an item's fiber on
+  an element of its own, and that element was pinned to the four edges of the container the list's
+  controller stacks the visible items in, so each item covered that container: with a 30px item height
+  the second visible item began at the first one's y rather than 30px below it. That anchor takes a slot
+  in the container now, and its width comes from the container rather than from insets of its own.
+  `V.Outlet` anchors on the same kind of element through a different arm of the same factory and keeps
+  the pinned one, so no route layout moves. A renderer returning an element, a `V.Motion`, a `V.Portal`
+  or a nested `V.VirtualList` builds that element directly and never reached the anchor either.
+
 - An error boundary whose child throws during a subsumed re-render no longer logs a
   `NullReferenceException` from the reconciler. The boundary's inline re-render runs inside its host's
   pass, and the catch disposes that child — which clears the `Reconciler` the re-render is still
@@ -584,35 +594,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   shape.
 
 ### Fixed
-
-- A `V.Outlet` takes a slot in the container that declares it, where it used to cover that container.
-  Velvet tracks the matched route's fiber on an anchor element, and that anchor was pinned to its
-  container's four edges: the route body was drawn over the siblings declared ahead of it and ignored
-  the container's padding, so a layout route rendering a header above its `Outlet` drew the route body
-  over that header rather than under it. The anchor now takes its place among the siblings and takes the
-  container's leftover main-axis space while it holds a route, so a percentage-sized route body has a box
-  to resolve against, and an `Outlet` that matched no route leaves that space to the siblings declared
-  beside it. In a `grid` route container it takes a column instead, at the width that container sized its
-  cells to. The same anchor stands in for a `V.VirtualList` item whose renderer returns a
-  `V.Component` or a `V.Provider`, where it had been collapsing the visible items onto one position;
-  they now stack.
-  What a working application sees change: the route container's padding, gap and sibling order reach
-  the route body, so a layout drawn around the covering anchor moves. A route body sized as a percentage
-  resolves against the anchor's slot rather than against the container, and in a container that does not
-  wrap that slot is the main-axis space the other children left — `h-full` under a 40px header in a
-  300px column measures 260 where it measured 300 and drew over the header. A growing sibling shares the
-  container's leftover main-axis space with a matched `Outlet` rather than taking all of it — a
-  `V.Div("flex-1")` beside an `Outlet` rendering a 20px body in a 300px column measures 140px where it
-  measured 300px, and a route body written straight into that container with no `Outlet` between them
-  would leave it 280px. A container whose height came only from the route body under it measured 0 and
-  now measures that body's height.
-  Measured worse than before and not fixed here: in a container that wraps its children the anchor's
-  slot is the flex line it sits on rather than the container, so a percentage on the route body resolves
-  against that line — an `h-full` body in a `flex flex-row flex-wrap w-[400px] h-[300px]` beside two
-  `w-[300px] h-[40px]` siblings measures 40 where it measured 300, and dropping the anchor's `flex-grow`
-  or its `align-self: stretch` leaves it at 40. And an `absolute` route body leaves the anchor taking a
-  share of the container that an out-of-flow body needs none of, so a `V.Div("flex-1")` beside it
-  measures 150px where it measured 300px.
 
 - A route whose path ends in a splat no longer accepts children. `ParseRouteSegments` refused a splat
   that was not last within one route path, but a branch is every ancestor's segments joined, and

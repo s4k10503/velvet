@@ -24,15 +24,9 @@ namespace Velvet.Tests
     /// <item>An Outlet keeps resolving its matched route across a standalone setState re-render — both when the
     /// enclosing layout re-renders and when the route component itself re-renders — because the enclosing
     /// Provider spine is reconstructed from the committed tree for an isolated re-render.</item>
-    /// <item>Every Outlet mount registers its layout anchor in two per-context identity sets — the Outlet
-    /// one the context spine reads to identify Outlet hosts, and the wider anchor one the reconciler reads
-    /// to size an anchor against its container; unmounting the Outlet releases both, so dead containers do
-    /// not accumulate across route changes over a long session, and disposing the reconciler under a live
-    /// tree releases them too.</item>
-    /// <item>An anchor a diff emptied stops growing once that diff finishes, including when it parked
-    /// mid-removal and a resume finished it — on the indexed path and on the keyed one.</item>
-    /// <item>The queue that carries a new anchor to the boundary that can see its container is empty
-    /// again once that boundary has run.</item>
+    /// <item>Every Outlet mount registers its layout-passthrough container in a per-context identity set so the
+    /// context spine can identify Outlet hosts; unmounting the Outlet releases that registration too, so dead
+    /// containers do not accumulate across route changes over a long session.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -344,129 +338,6 @@ namespace Velvet.Tests
 
             // Assert — the registration is gone, so dead containers cannot accumulate across route changes.
             Assert.AreEqual(0, context.OutletContainers.Count);
-        }
-
-        [Test]
-        public void Given_AMountedOutlet_When_ItUnmounts_Then_ItsLayoutAnchorRegistrationIsReleased()
-        {
-            // Arrange — the wider set the Outlet registration sits inside, read on the container itself so
-            // the reading does not turn on how many other anchors the tree holds.
-            using var store = new ToggleStore();
-            s_store = store;
-            using var mounted = V.Mount(_root, V.Component(App, key: "app"));
-            var context = mounted.Root.Reconciler.Context;
-            var scheduler = context.BatchScheduler;
-            var anchor = _root.Q<VisualElement>(className: FiberNodeFactory.OutletContainerClass);
-            var registeredWhileMounted = context.LayoutAnchors.Contains(anchor);
-
-            // Act — the Outlet unmounts.
-            store.Set(false);
-            scheduler.DrainImmediateForTest();
-
-            // Assert — registered while it was mounted, released once it was not.
-            Assert.That(
-                (registeredWhileMounted, context.LayoutAnchors.Contains(anchor)),
-                Is.EqualTo((true, false)));
-        }
-
-        [Test]
-        public void Given_AnOutletStillMounted_When_ItsReconcilerIsDisposed_Then_ItsAnchorRegistrationIsReleased()
-        {
-            // Arrange — mounted and left there. The per-element release above runs on an unmount, and this
-            // is the path with no unmount on it: the reconciler goes down under a live tree.
-            var reconciler = new Reconciler();
-            var root = new VisualElement();
-            reconciler.Reconcile(root, Array.Empty<VNode>(), new VNode[] { V.Outlet() });
-            var context = reconciler.Context;
-            var registeredWhileMounted = context.LayoutAnchors.Count;
-
-            // Act
-            reconciler.Dispose();
-
-            // Assert — the anchor was registered while the tree was live, and disposing released it.
-            Assert.That((registeredWhileMounted, context.LayoutAnchors.Count), Is.EqualTo((1, 0)));
-        }
-
-        // The queue is per-pass: a boundary that kept its entries would go on holding every anchor the
-        // reconciler ever made, the ones that have left the tree included. A count is what sees that.
-        [Test]
-        public void Given_AnOutletMounted_When_ItsPassEnds_Then_ThePendingAnchorPlacementQueueIsEmpty()
-        {
-            // Arrange
-            using var reconciler = new Reconciler();
-            var root = new VisualElement();
-            var context = reconciler.Context;
-
-            // Act
-            reconciler.Reconcile(root, Array.Empty<VNode>(), new VNode[] { V.Outlet() });
-
-            // Assert — the registration is folded in because a pass that queued nothing would leave the
-            // queue empty for the wrong reason.
-            Assert.That(
-                (context.LayoutAnchors.Count, context.PendingLayoutAnchorPlacements.Count),
-                Is.EqualTo((1, 0)));
-        }
-
-        [Test]
-        public void Given_AnAnchorEmptiedByAParkedIndexedDiff_When_TheResumeFinishes_Then_TheAnchorNoLongerGrows()
-        {
-            // Arrange — enough children that a removal under the budget below parks with some still there.
-            using var reconciler = new Reconciler();
-            var root = new VisualElement();
-            reconciler.Reconcile(root, Array.Empty<VNode>(), new VNode[] { V.Outlet() });
-            var anchor = root[0];
-            var children = new VNode[]
-            {
-                V.Label(text: "a"), V.Label(text: "b"), V.Label(text: "c"), V.Label(text: "d"),
-                V.Label(text: "e"), V.Label(text: "f"), V.Label(text: "g"), V.Label(text: "h"),
-            };
-            reconciler.Reconcile(anchor, Array.Empty<VNode>(), children);
-            var grewWhileHolding = anchor.style.flexGrow.value;
-
-            // Act — the budget TimeSlicedReconcilerTests drives these entry points with. That the pass
-            // parked is folded into the assertion rather than assumed of it.
-            reconciler.Reconcile(anchor, children, Array.Empty<VNode>(), frameBudgetMs: 0.001);
-            var parkedStillHolding = reconciler.HasPendingWork && anchor.childCount > 0;
-            while (reconciler.HasPendingWork) { reconciler.ContinueReconcile(); }
-
-            // Assert — the pass that filled it grew it, the park left children behind, and the resume that
-            // emptied it handed the space back. The park is folded in because a budget generous enough to
-            // finish in one pass would leave the entry's own reading to answer, and that one was never wrong.
-            Assert.That(
-                (grewWhileHolding, parkedStillHolding, anchor.style.flexGrow.value),
-                Is.EqualTo((1f, true, 0f)));
-        }
-
-        // The keyed half of the pair above: the two resumes are separate entry points that each reach a
-        // ReconcileXxxFrom directly, so a case on one leaves the other unmeasured. Carrying keys is what
-        // selects this one.
-        [Test]
-        public void Given_AnAnchorEmptiedByAParkedKeyedDiff_When_TheResumeFinishes_Then_TheAnchorNoLongerGrows()
-        {
-            // Arrange — the same shape as the case above, with a key on every entry.
-            using var reconciler = new Reconciler();
-            var root = new VisualElement();
-            reconciler.Reconcile(root, Array.Empty<VNode>(), new VNode[] { V.Outlet() });
-            var anchor = root[0];
-            var children = new VNode[]
-            {
-                V.Label(text: "a", key: "a"), V.Label(text: "b", key: "b"),
-                V.Label(text: "c", key: "c"), V.Label(text: "d", key: "d"),
-                V.Label(text: "e", key: "e"), V.Label(text: "f", key: "f"),
-                V.Label(text: "g", key: "g"), V.Label(text: "h", key: "h"),
-            };
-            reconciler.Reconcile(anchor, Array.Empty<VNode>(), children);
-            var grewWhileHolding = anchor.style.flexGrow.value;
-
-            // Act
-            reconciler.Reconcile(anchor, children, Array.Empty<VNode>(), frameBudgetMs: 0.001);
-            var parkedStillHolding = reconciler.HasPendingWork && anchor.childCount > 0;
-            while (reconciler.HasPendingWork) { reconciler.ContinueReconcile(); }
-
-            // Assert
-            Assert.That(
-                (grewWhileHolding, parkedStillHolding, anchor.style.flexGrow.value),
-                Is.EqualTo((1f, true, 0f)));
         }
 
         #endregion

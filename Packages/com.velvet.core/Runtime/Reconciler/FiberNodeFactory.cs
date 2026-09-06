@@ -17,8 +17,8 @@ namespace Velvet
         internal const string AutoKeyPrefix = "__ap_auto_";
 
         // USS class added to OutletNode's container so tests and consumers can
-        // distinguish it from the generic layout anchors (all of which use
-        // PickingMode.Ignore so the anchor never intercepts pointer events).
+        // distinguish it from the generic fiber-anchor wrappers (all of which use
+        // PickingMode.Ignore so the wrapper never intercepts pointer events).
         internal const string OutletContainerClass = "velvet-outlet";
 
         // USS class added to the wrapper VisualElement emitted for a
@@ -551,8 +551,8 @@ namespace Velvet
             // reaches, a Memo's resolved inner and an AnimatePresence keyed entry included.
             // A Component does not emit a DOM element; its rendered tree attaches
             // directly to the parent. Velvet needs an anchor element for fiber tracking, and
-            // CreateLayoutAnchor owns how that anchor takes part in layout.
-            var wrapper = CreateLayoutAnchor();
+            // CreateItemMountContainer owns how that element takes part in the item container's layout.
+            var wrapper = CreateItemMountContainer();
             _patcher.HandleComponentMount(wrapper, componentNode);
             return wrapper;
         }
@@ -563,8 +563,8 @@ namespace Velvet
             // the parent fiber's host. This path is asked for an element regardless, so an anchor
             // stands in for the Provider.
             // Reached the one way CreateForComponentNode above is, and ruled out on the reconcile
-            // paths for the same reason.
-            var container = CreateLayoutAnchor();
+            // paths for the same reason, so CreateItemMountContainer applies here unchanged.
+            var container = CreateItemMountContainer();
             container.AddToClassList(ContextProviderClassName);
 
             providerNode.PushContext(_ctx.ComponentContextStack);
@@ -584,9 +584,10 @@ namespace Velvet
 
         private VisualElement CreateForOutletNode(OutletNode outletNode)
         {
-            // One wrapper, not two: the container doubles as the fiber anchor for the matched route's
-            // Component. CreateLayoutAnchor owns how it takes part in layout.
-            var container = CreateLayoutAnchor();
+            // The container is layout-transparent so the matched route's element resolves
+            // its size against the Outlet's parent box, and doubles as the fiber anchor
+            // for the matched route's Component (one wrapper, not two).
+            var container = CreateLayoutPassthroughContainer();
             container.AddToClassList(OutletContainerClass);
             // Identity-side registration for FiberContextSpine: separate from the USS class
             // (which is for styling and is user-mutable). Populated unconditionally so the
@@ -764,58 +765,40 @@ namespace Velvet
             }
         }
 
-        // Anchor VisualElement emitted for Provider / Component / Outlet to track fiber lifecycle.
-        // It takes a slot in its container's flow, so the padding, the gap and the sibling order that
-        // container declares reach the subtree under it. Absolute insets were the earlier choice and are
-        // rejected: an anchor pinned to its container's edges is drawn over the siblings declared before it.
-        // Those insets also handed a percentage-sized child the container's whole box to resolve against.
-        // A slot hands it the slot; Align.Stretch and SyncLayoutAnchorGrowth are what make the two agree
-        // where they can, and LayoutAnchorFlowTests pins the arrangements where they do.
+        // The anchor a VirtualList item's Component / Provider root mounts on. It takes a slot in the
+        // visible-items container rather than covering it: FiberVirtualListController stacks the visible
+        // items in that container, so a container pinned to its parent's edges puts every one of them at
+        // that parent's origin, one over another. Dropping the insets hands the cross axis to that
+        // container to decide, which VirtualListItemMountTests pins alongside the stacking.
         // The anchor is not the author's element, which is why it declines picking.
-        private VisualElement CreateLayoutAnchor()
-        {
-            var anchor = new VisualElement
+        private static VisualElement CreateItemMountContainer()
+            => new VisualElement
+            {
+                pickingMode = PickingMode.Ignore,
+                style = { overflow = Overflow.Visible }
+            };
+
+        // Anchor VisualElement emitted for an Outlet to track the matched route's fiber lifecycle.
+        // Layout-transparent via absolute insets so the wrapper fills its parent's full box at any
+        // depth — bare wrappers collapse to 0 height when their only child is absolute, because
+        // Yoga measures parents from in-flow children alone, and deep Outlet chains
+        // then cascade-collapse every descendant to 0x0. PickingMode.Ignore ensures clicks fall
+        // through to user-emitted elements (otherwise overlay passthrough wrappers would steal
+        // clicks from routed pages beneath them).
+        internal static VisualElement CreateLayoutPassthroughContainer()
+            => new VisualElement
             {
                 pickingMode = PickingMode.Ignore,
                 style =
                 {
-                    alignSelf = Align.Stretch,
+                    position = Position.Absolute,
+                    left = 0,
+                    right = 0,
+                    top = 0,
+                    bottom = 0,
                     overflow = Overflow.Visible
                 }
             };
-            _ctx.LayoutAnchors.Add(anchor);
-            _ctx.PendingLayoutAnchorPlacements.Add(anchor);
-            return anchor;
-        }
-
-        // Re-reads the growth of the anchors this pass created, from where the pass left each one: the
-        // reading taken while an anchor was still being created saw no container, so a grid one could not
-        // decline the growth there. Drained at the top-level boundary for the reason RingOverlay's own
-        // pending placements are.
-        internal static void DrainPendingAnchorPlacements(ReconcilerContext ctx)
-        {
-            foreach (var anchor in ctx.PendingLayoutAnchorPlacements)
-            {
-                SyncLayoutAnchorGrowth(anchor);
-            }
-            ctx.PendingLayoutAnchorPlacements.Clear();
-        }
-
-        // An Outlet that matched no route would claim a share of the container away from the siblings
-        // declared beside it, so the anchor grows only while it holds a rendered child. The count is the
-        // logical one because a reading can land while a reconciler-invisible child is inside the anchor:
-        // a z-layer container outlives the reconcile that removed the body it held, and a physical count
-        // would see it sitting there.
-        // A grid container declines the growth: StyleGridManipulator gives the anchor a column, and a
-        // growing child does not keep the width it was given. LayoutAnchorFlowTests pins that width, for a
-        // route that mounts with the container and for one that arrives after it.
-        internal static void SyncLayoutAnchorGrowth(VisualElement anchor)
-        {
-            var holdsARenderedChild = LogicalChildSlots.Count(anchor) > 0;
-            var parent = anchor.parent;
-            anchor.style.flexGrow =
-                holdsARenderedChild && (parent == null || !StyleGridClass.HasGridClass(parent)) ? 1 : 0;
-        }
 
         // Walks node and returns the first MotionNode descendant
         // reachable through transparent wrappers — ContextProviderNode, FragmentNode, and a z-managed
