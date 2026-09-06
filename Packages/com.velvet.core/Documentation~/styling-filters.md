@@ -199,8 +199,7 @@ on any of it.
 A class applied before its name was registered stays on the USS class list instead of resolving to an
 inline value, and paints nothing. It resolves the next time some pass re-applies that element's
 inline values from the classes it still carries — a motion on the element settling, being cancelled
-or detaching does that, and so does a class change that removes another filter-family token — and it
-resolves there with no render behind it.
+or detaching does that, and so does a class change that removes another filter-family token.
 
 ### Authoring the definition
 

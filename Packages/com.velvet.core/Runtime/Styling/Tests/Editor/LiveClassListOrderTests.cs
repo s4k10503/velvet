@@ -19,10 +19,11 @@ namespace Velvet.Tests
     /// <remarks>
     /// Two cases hold the roster: one reads the enumerations off the runtime assembly and the verdicts off
     /// the attributes here, the other reads the IL of the cases carrying those attributes and requires the
-    /// body under a verdict to reach the reader it names. A declaration is therefore answered by a body
-    /// rather than by its string. What that still leaves open is a reader some case already runs while
-    /// arranging something else, and whether the assertion under a verdict measures the verdict at all —
-    /// neither is mechanical, and both stay a reviewer's to check.
+    /// body under a verdict to reach the reader it names by a call of its own — not through the helpers
+    /// ArrangementHelpers names. A declaration is therefore answered by a body rather than by its string.
+    /// What that leaves open is that reaching is not running, since a case can reach its reader down a
+    /// branch its own arguments never take, and whether the assertion under a verdict measures that reader
+    /// at all. Neither is mechanical, and both stay a reviewer's to check.
     /// The cases whose verdict is that the order decides are the ones an editor bump has to settle: they
     /// name what today's answer rests on, so that question is a run rather than a re-audit.
     /// </remarks>
@@ -50,7 +51,7 @@ namespace Velvet.Tests
 
         // Marks the case that measures one reader's verdict. The roster reads these off the methods carrying
         // [Test] rather than off a list of its own, and the case beside it reads the marked method's IL, so
-        // a verdict costs a case whose body reaches the reader.
+        // a verdict costs a case whose body reaches the reader by a call of its own.
         [AttributeUsage(AttributeTargets.Method)]
         private sealed class ReaderVerdictAttribute : Attribute
         {
@@ -67,6 +68,12 @@ namespace Velvet.Tests
 
         private static readonly MethodInfo SettleMotionOwnedInlineValues = typeof(StyleAnimationScheduler)
             .GetMethod("ReapplyMotionOwnedInlineValues", BindingFlags.NonPublic | BindingFlags.Static)!;
+
+        // A helper that applies classes runs the production routing, and the routing reaches production code
+        // an arrangement can leave unexecuted. The edges such a helper contributes are the same for every
+        // case that arranges, so a verdict reached through one is earned by arranging rather than by
+        // measuring: the IL case does not walk through them.
+        private static readonly string[] ArrangementHelpers = { nameof(Carrying), nameof(Patched) };
 
         private readonly Dictionary<FilterFunctionDefinition, string> _customFilterNames = new();
 
@@ -181,23 +188,29 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(construction): both sides here are this assembly's own content.
         // The verdict attributes and the IL of the bodies carrying them therefore agree on a base run,
-        // which cannot separate them. Move a `[ReaderVerdict]` line onto a case that calls no reader —
-        // the roster case itself, or an empty one — and this is what reddens.
+        // which cannot separate them. Move a `[ReaderVerdict]` line onto a case that calls no reader of its
+        // own — the roster case itself, an empty one, or one whose only call into production arranges an
+        // element's classes — and this is what reddens.
         [Test]
         public void Given_EachVerdictDeclaredHere_When_TheILOfTheCaseCarryingItIsRead_Then_ThatCaseReachesTheReaderItNames()
         {
-            // Arrange — a reader this fixture drives through a reflection handle held anywhere but a static
-            // field of this type is invisible to the graph, so a verdict resting on one can read as
-            // unreached: a false red rather than a hole.
+            // Arrange — an edge from a reflection handle lands only where a method declared on this type
+            // reads the field the initializer stored it in, so a verdict resting on a handle the graph
+            // misses can read as unreached: a false red rather than a hole.
             using var runtime = ModuleDefinition.ReadModule(typeof(V).Assembly.Location);
             using var here = ModuleDefinition.ReadModule(typeof(LiveClassListOrderTests).Assembly.Location);
             var fixtureType = here.GetTypes()
                 .Single(type => type.FullName == typeof(LiveClassListOrderTests).FullName);
             var edges = CallEdges(fixtureType, runtime, here);
+            var arrangement = new HashSet<string>(
+                fixtureType.Methods
+                    .Where(method => ArrangementHelpers.Contains(method.Name))
+                    .Select(method => Spelled(method)),
+                StringComparer.Ordinal);
 
             // Act
             var unreached = VerdictsDeclaredHere()
-                .Where(pair => !Reaches(edges, Spelled(InIl(fixtureType, pair.Case)), pair.Reader))
+                .Where(pair => !Reaches(edges, Spelled(InIl(fixtureType, pair.Case)), pair.Reader, arrangement))
                 .Select(pair => $"{pair.Case.Name} declares {pair.Reader}")
                 .OrderBy(line => line, StringComparer.Ordinal);
 
@@ -205,8 +218,8 @@ namespace Velvet.Tests
             // leave nothing to call unreached and agree with a fixture whose every case reached its reader.
             Assert.That((string.Join("\n", unreached), VerdictsDeclaredHere().Any()),
                 Is.EqualTo((string.Empty, true)),
-                "a verdict names a reader the body carrying it never reaches, so what signs that reader off "
-                + "is a line rather than a body that gets to it");
+                "a verdict names a reader the body carrying it never reaches by a call of its own, so what "
+                + "signs that reader off is a line rather than a body that gets to it");
         }
 
         // GREEN_ON_BASE(construction): both sides here are the runtime assembly's own IL.
@@ -531,8 +544,8 @@ namespace Velvet.Tests
         [Test]
         public void Given_TheTokenFamiliesTheMotionReapplyLooksFor_When_EitherRoutingRunsThem_Then_OnlyTheOneNoResolverClaimsReachesTheLiveClassList()
         {
-            // Arrange — the four bracket and static-scale families the settle path re-applies inline values
-            // for, beside one plain utility. Routing decides which of them a class list can hold at all,
+            // Arrange — four bracket and static-scale tokens the settle path re-applies inline values for,
+            // beside one plain utility. Routing decides which of them a class list can hold at all,
             // which is what bounds the settle path's own verdict to the family the case below holds.
             var tokens = new[] { "w-[240px]", "translate-x-4", "opacity-[.5]", "bg-[#ff0000]", "p-4" };
             var created = Carrying(tokens);
@@ -580,33 +593,39 @@ namespace Velvet.Tests
                 + "filter applied there for the first time that list's order is the compose order");
         }
 
-        // GREEN_ON_BASE(characterization): the bundled sheets declare none of these but the canary.
-        // What shows the case can fail is adding a `gap-4` entry to StyleUtilityProperties.g.cs: measured,
-        // the token then joins the canary on the answering side.
+        // GREEN_ON_BASE(characterization): the bundled sheets declare no member of these families but one.
+        // What shows the case can fail is adding a `divide-dashed` entry to StyleUtilityProperties.g.cs:
+        // measured, that token then joins the bare marker on the answering side.
         [Test]
-        public void Given_TheTokensAnOrderDecidedReadingResolvesFrom_When_LookedUpBesideAUtilityWithARule_Then_OnlyThatUtilityDeclaresAProperty()
+        public void Given_TheGeneratedStyleTable_When_ItIsFilteredToTheFamiliesAnOrderDecidedReadingResolvesFrom_Then_OnlyTheBareGridMarkerDeclaresAProperty()
         {
             // Arrange — a class the projection suppresses is restored by APPENDING it to the live class
             // list, which moves it past every class declared after it, and a class that declares no
-            // property is never suppressed in the first place. One token per order-decided value: the clip
-            // shape, the gap, the column count, the two grid gaps, the three divide slots and the custom
-            // filter's compose slot. The bare grid marker is not among them because it does declare one;
-            // what keeps the append clear of the count it feeds is the marker's own case above.
-            var tokens = new[]
-            {
-                "clip-path-[circle(40%)]", "gap-4", "grid-cols-2", "gap-x-4", "gap-y-4",
-                "divide-x-2", "divide-solid", "divide-red-500", "filter-[halo:1]", "p-4",
-            };
+            // property is never suppressed in the first place. The families come from the production
+            // predicates that own them rather than from tokens spelled here, so a rule arriving on any
+            // member answers rather than only on the members a case happened to name. The bare grid marker
+            // is the one that does declare a property; what keeps the append clear of the count it feeds is
+            // the marker's own case above.
+            var byClassName = (Dictionary<string, int>)typeof(StyleUtilityProperties)
+                .GetField("ByClassName", BindingFlags.NonPublic | BindingFlags.Static)!
+                .GetValue(null)!;
 
             // Act
-            var declaring = tokens.Where(cls =>
-                StyleUtilityProperties.TryGet(cls, out var rule) && !rule.Properties.IsEmpty);
+            var declaring = byClassName.Keys
+                .Where(cls => StyleClipPathClass.IsClipPathClass(cls)
+                    || StyleGapClass.IsGapToken(cls)
+                    || StyleGridClass.IsGridToken(cls)
+                    || StyleDivideClass.IsDivideToken(cls)
+                    || StyleFilterValueParser.IsFilterLeaf(cls))
+                .Where(cls => StyleUtilityProperties.TryGet(cls, out var rule) && !rule.Properties.IsEmpty)
+                .OrderBy(cls => cls, StringComparer.Ordinal);
 
-            // Assert — p-4 is the canary: a lookup that answered nothing would leave this empty and agree
-            // with a table that had lost every entry.
-            Assert.That(string.Join(" ", declaring), Is.EqualTo("p-4"),
-                "p-4 apart, no token above declares a property of its own, so the projection can neither "
-                + "suppress one nor re-append it past the reading that token decides");
+            // Assert — the marker is the canary as well as the answer: a table read back empty, or a family
+            // predicate that stopped answering, would leave this empty rather than agree.
+            Assert.That(string.Join(" ", declaring), Is.EqualTo("grid"),
+                "the bare grid marker apart, no class one of these readings resolves from declares a "
+                + "property of its own, so the projection can neither suppress one nor re-append it past "
+                + "the reading that class decides");
         }
 
         // Return type, generic arity and the full parameter type names are all in this because the fold
@@ -647,11 +666,11 @@ namespace Velvet.Tests
                 && written.Name == field
                 && written.DeclaringType.FullName == declaringType);
 
-        // A call site names its callee by reference, and Spelled reads a reference the way it reads a
-        // definition, so an edge lands without resolving anything across the two assemblies. A reflected
-        // call is invisible to it, and the three private production methods the cases drive are all taken
-        // that way, so every method of this type reading a handle field inherits an edge to what
-        // ReflectionHandles resolved that field to.
+        // A reflected call names no callee an instruction scan can follow, and the three private production
+        // methods the cases drive are all taken that way, so every method of this type reading a handle
+        // field inherits an edge to what ReflectionHandles resolved that field to. An edge whose two
+        // spellings do not match is a false red rather than a hole: what the case asks of this graph is
+        // whether a DECLARED reader was reached.
         private static Dictionary<string, HashSet<string>> CallEdges(
             TypeDefinition fixtureType, params ModuleDefinition[] modules)
         {
@@ -752,7 +771,8 @@ namespace Velvet.Tests
             return callees;
         }
 
-        private static bool Reaches(Dictionary<string, HashSet<string>> edges, string from, string target)
+        private static bool Reaches(
+            Dictionary<string, HashSet<string>> edges, string from, string target, HashSet<string> notWalkedThrough)
         {
             var seen = new HashSet<string>(StringComparer.Ordinal) { from };
             var pending = new Queue<string>();
@@ -769,7 +789,7 @@ namespace Velvet.Tests
                     {
                         return true;
                     }
-                    if (seen.Add(callee))
+                    if (!notWalkedThrough.Contains(callee) && seen.Add(callee))
                     {
                         pending.Enqueue(callee);
                     }
