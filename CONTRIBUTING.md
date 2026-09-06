@@ -670,13 +670,15 @@ they see every command in the session, and one that reads the directory before e
 subject refuses `cd - && ls` — naming a command the user never typed, with the move as the whole of
 its reason. Measured: four guards each refused seven such commands before the order was settled.
 
-`scripts/hooks/test_cwd_resolution_check.py` poses every guard in the directory six runs: four carry
-a move — one it could place, that same move carrying the redirection that silences it, one nothing
-can place, and that unplaceable move carrying a command the guard has no subject in — and the other
-two are the bare command in each of the two trees, which is what scores a guard that addressed no
-tree at all. It reads two things off each run: the verdict, from the exit code and from a `deny`
-decision on stdout, and which tree the guard's own `git` and `gh` calls addressed, from shims that
-record where they were run. The tree reading is what separates a guard whose subject is not the tree
+`scripts/hooks/test_cwd_resolution_check.py` poses each guard registered on `Bash` six runs: four
+carry a move — one it could place, that same move carrying the redirection that silences it, one
+nothing can place, and that unplaceable move carrying a command the guard has no subject in — and
+the other two are the bare command in each of the two trees, which is what scores a guard that
+addressed no tree at all. A guard declaring some other tool poses no Bash command and is skipped;
+one declaring `Bash` with no probe command to pose is a fault, because a guard the sweep cannot pose
+is a guard it holds to nothing. It reads two things off each run: the verdict, from the exit code
+and from a `deny` decision on stdout, and which tree the guard's own `git` and `gh` calls addressed,
+from shims that record where they were run. The tree reading is what separates a guard whose subject is not the tree
 from one that read the wrong tree and had nothing to say about it either way, and where neither
 reading speaks the check reports undecided rather than agreement — a guard that lands there wants a
 case in its own suite, as `library_seed_without_room.py` has, since it asks the filesystem rather

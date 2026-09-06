@@ -468,6 +468,63 @@ class DeclinedShapeTests(unittest.TestCase):
         self.assertIs(found, shell_commands.UNRESOLVED_CD)
 
 
+class ShellStepTests(unittest.TestCase):
+    """Which of a command's steps leave their move behind them.
+
+    A caller asking where the work will run reads the step and the flag together, because the step
+    alone cannot say: its parentheses are stripped and the operator that ended it is gone, so
+    `(cd /moved) && work` reads exactly as `cd /moved && work`. The cases pair shapes the shell runs
+    in a child with shapes it runs itself, because a reading narrowed to the first set is as wrong
+    as one widened past it — and `OUTSIDE_A_PREFIX_STEP`, in the same module, is a pattern over the
+    grouping characters that already carries the brace group and the redirection.
+    """
+
+    def test_Given_AMoveInsideASubshell_When_TheStepsAreRead_Then_TheShellDoesNotKeepIt(self):
+        # Arrange / Act
+        found = next(shell_commands.shell_steps("(cd /moved) && work"))
+
+        # Assert
+        self.assertEqual(found, ("cd /moved", False))
+
+    def test_Given_AMoveHandedToAPipeline_When_TheStepsAreRead_Then_TheShellDoesNotKeepIt(self):
+        # Arrange / Act
+        found = next(shell_commands.shell_steps("cd /moved | cat; work"))
+
+        # Assert
+        self.assertEqual(found, ("cd /moved", False))
+
+    def test_Given_AMoveALoneAmpersandBackgrounds_When_TheStepsAreRead_Then_TheShellDoesNotKeepIt(self):
+        # Arrange / Act
+        found = next(shell_commands.shell_steps("cd /moved & work"))
+
+        # Assert
+        self.assertEqual(found, ("cd /moved", False))
+
+    def test_Given_AMoveInsideABraceGroup_When_TheStepsAreRead_Then_TheShellKeepsIt(self):
+        # Arrange / Act — the group the parentheses cannot be read as, since the shell runs this one
+        # itself.
+        found = next(shell_commands.shell_steps("{ cd /moved; } && work"))
+
+        # Assert
+        self.assertEqual(found, ("cd /moved", True))
+
+    def test_Given_AMoveCarryingARedirection_When_TheStepsAreRead_Then_TheShellKeepsIt(self):
+        # Arrange / Act — the redirection characters sit beside the grouping ones in the reading
+        # `command_directory` uses to end its prefix, and a move carrying one still moves.
+        found = next(shell_commands.shell_steps("cd /moved >/dev/null && work"))
+
+        # Assert
+        self.assertEqual(found, ("cd /moved >/dev/null", True))
+
+    def test_Given_AMoveJoinedToTheWorkByAnOr_When_TheStepsAreRead_Then_TheShellKeepsIt(self):
+        # Arrange / Act — the operator whose first character is the one that hands a step to a
+        # child. Read one character at a time this is a pipeline and the move is gone.
+        found = next(shell_commands.shell_steps("cd /moved || work"))
+
+        # Assert
+        self.assertEqual(found, ("cd /moved", True))
+
+
 class LoopHeadReaderTests(unittest.TestCase):
     """A guard whose subject is the keyword itself cannot read it through this table.
 

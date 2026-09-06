@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Every refusing guard is held to which tree it answers about when the command changes directory.
+"""Each guard registered on `Bash` is held to which tree it answers about when the command moves.
 
 The sweep itself is `scripts/hooks/cwd_resolution_check.py`, which states what it reads and why one
 reading is not enough. What is here is the sweep run over the guards, and the stand-in guards that
@@ -15,6 +15,10 @@ the tree without asking git about it, one that reads no tree at all, and one tha
 reading anything are posed alongside, and each is required to come back as the outcomes its shape
 earns. Between them they produce every outcome the sweep reports, which is a count rather than a
 claim: `OUTCOMES` holds the set and one case below compares it.
+
+A ninth earns no outcome at all: it declares `Bash` and no command for the sweep to pose, so the
+sweep can only skip it or say so, and skipping is how a guard this holds to nothing passes for one
+it holds.
 
 Run: python3 scripts/hooks/test_cwd_resolution_check.py
 """
@@ -147,6 +151,24 @@ CRASHING = PREAMBLE + """
 raise ModuleNotFoundError("no module named 'repository'")
 """
 
+# Declares `Bash` and a probe with no command in it, which the sibling unreadable-state check passes
+# and this can pose nothing of: it requires a non-empty probe rather than a command inside one. Its
+# body is `blind.py`'s, so the row it would earn is known, and no row is reported instead. Not built
+# on `PREAMBLE`, whose declaration is the one this has to be missing.
+UNPOSEABLE = """\
+import json
+import subprocess
+import sys
+
+HOOK_TOOLS = {"Bash"}
+UNREADABLE_PROBE = {"run_in_background": True}
+
+event = json.load(sys.stdin)
+subprocess.run(["git", "-C", event.get("cwd") or ".", "rev-parse", "--show-toplevel"],
+               capture_output=True)
+sys.exit(0)
+"""
+
 CONTROLS = {
     "blind.py": BLIND,
     "following.py": FOLLOWING,
@@ -156,6 +178,7 @@ CONTROLS = {
     "silent.py": SILENT,
     "reading_a_file.py": READING_A_FILE,
     "crashing.py": CRASHING,
+    "unposeable.py": UNPOSEABLE,
 }
 
 
@@ -286,6 +309,16 @@ class ControlTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(found, ["blind.py", "falling_back.py"])
+
+    def test_Given_AStandInDeclaringBashAndNoProbeCommand_When_TheSweepRuns_Then_ItIsFaultedRatherThanDropped(self):
+        # Arrange / Act — a guard the sweep can pose nothing of produces no row, and every rule
+        # that names a guard reads a row. Skipped rather than named, it is a guard this holds to
+        # nothing while reporting a clean list over the directory it sits in.
+        wanted = f"no {cwd_resolution_check.PROBE} command"
+        found = sorted({fault.split(":")[0] for fault in self.faults if wanted in fault})
+
+        # Assert
+        self.assertEqual(found, ["unposeable.py"])
 
     def test_Given_AStandInThatRaises_When_TheSweepScoresIt_Then_ItIsFaultedRatherThanReadAsAnAllow(self):
         # Arrange / Act — every column reads this one exactly as it reads `silent.py`: it addresses

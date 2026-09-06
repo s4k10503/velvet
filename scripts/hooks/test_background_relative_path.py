@@ -70,6 +70,19 @@ class PathSpellingTests(unittest.TestCase):
         # Act / Assert
         self.assertEqual(self.judge("popd +1; python3 scripts/pr/settle.py watch"), 2)
 
+    def test_Given_AMoveTheShellRunsInAChild_When_Backgrounded_Then_EverySpellingIsStillRefused(self):
+        # Arrange — each of these moves a shell, and none of them the one the work runs in. The
+        # step read on its own says where it runs in all three: the parentheses are stripped from
+        # the first, and the operator that handed the other two to a child is not part of them.
+        shapes = ("(cd /elsewhere) &&", "cd /elsewhere | cat;", "cd /elsewhere &")
+
+        # Act
+        refused = sorted(shape for shape in shapes
+                         if self.judge(f"{shape} python3 scripts/pr/settle.py watch") == 2)
+
+        # Assert
+        self.assertEqual(refused, sorted(shapes))
+
     def test_Given_APushdOntoItsOwnStack_When_Backgrounded_Then_ItIsStillRefused(self):
         # Arrange — the same selector on the mover that does ordinarily name a destination, which is
         # why the operand alone cannot answer: `pushd /elsewhere` says where it runs and `pushd +1`

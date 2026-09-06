@@ -152,21 +152,53 @@ def mask_shell_literals(command):
     return "".join(out)
 
 
-def command_segments(command):
-    """The command's segments, split at separators that are not inside a literal.
+# The operators that end a step, the two-character ones first so `&&` and `||` are not read as the
+# single characters that stand beside them and mean something else.
+STEP_SEPARATORS = ("&&", "||", ";", "\n", "|", "&")
+
+# The operators that hand the step before them to a child of the shell, where a `cd` moves nothing
+# the next step will see; `SUBSHELL` is the grouping that does the same. A brace group and a
+# redirection are out of both: measured under bash and zsh alike, each moves the shell. So this
+# reads parentheses rather than every grouping character, and `ShellStepTests` in
+# `scripts/hooks/test_shell_commands.py` is what fails when the reading stops telling them apart.
+CHILD_SEPARATORS = ("|", "&")
+SUBSHELL = re.compile(r"[()]")
+
+
+def _next_separator(masked, index, separators):
+    """(where the step ending at or after `index` stops, the operator that stopped it or None)."""
+    while index < len(masked):
+        separator = next((word for word in separators if masked.startswith(word, index)), None)
+        if separator is not None:
+            return index, separator
+        index += 1
+    return len(masked), None
+
+
+def shell_steps(command):
+    """(step, whether the shell keeps a move the step makes) for each step of the command.
 
     The mask preserves length, so a separator's index in it is its index in the original — which
     is what lets the split find boundaries on masked text and take the tokens from unmasked text.
+
+    The second half is what a caller reading where the work will run cannot get from the step alone:
+    the parentheses are stripped from it and the operator that ended it is gone, so a step the shell
+    handed to a child reads exactly as one it ran itself.
     """
     masked = mask_shell_literals(command)
-    segments = []
-    start = 0
-    for index, char in enumerate(masked):
-        if char in SEPARATORS:
-            segments.append(command[start:index])
-            start = index + 1
-    segments.append(command[start:])
-    return [segment for segment in (s.strip().strip("(){} ") for s in segments) if segment]
+    index = 0
+    while True:
+        cut, separator = _next_separator(masked, index, STEP_SEPARATORS)
+        yield (command[index:cut].strip().strip("(){} "),
+               not SUBSHELL.search(masked[index:cut]) and separator not in CHILD_SEPARATORS)
+        if separator is None:
+            return
+        index = cut + len(separator)
+
+
+def command_segments(command):
+    """The command's segments, split at separators that are not inside a literal."""
+    return [segment for segment, _ in shell_steps(command) if segment]
 
 
 # Measured, `cd /moved && mark;# cd /other` and the same comment opened at the start of a line each
@@ -372,14 +404,14 @@ def moves_to_a_named_directory(segment):
 # was tried twice instead, and a construct nobody had written it for was answered rather than
 # declined: the `&` of a `2>&1` read as the operator that backgrounds a list and undid the move
 # before it, and a `case` arm's unmatched `)` drove a nesting count below zero and raised, which
-# turns off the guard that asked. Matching one shape has the opposite default, and what a caller
-# handed a decline may not do is answer about the directory it started in.
+# turns off the guard that asked. What a caller handed a decline may not do is answer about the
+# directory it started in.
 #
-# Past the prefix the default reverses, and that is this reading's residual rather than a second
-# acceptor: the scan below declines on a mover word it can see and keeps the placed directory
-# otherwise. A move whose word the mask blanked, or whose spelling is not that word -- a quoted or
-# backslashed `cd`, one named by a variable, a `.` sourcing a script -- is therefore placed, and the
-# guard answers about a tree the command has left. Neither end of that closes for free:
+# Past the prefix no shape is matched at all, and that is this reading's residual: the scan below
+# declines on a mover word it can see and keeps the placed directory otherwise. A move whose word
+# the mask blanked, or whose spelling is not that word -- a quoted or backslashed `cd`, one named by
+# a variable, a `.` sourcing a script -- is therefore placed, and the guard answers about a tree the
+# command has left. Neither end of that closes for free:
 # `OPAQUE_RUNNERS` carries what one more word costs, and scanning the text rather than the mask is
 # what `AMoveWordInsideAQuotedOperand` in `scripts/hooks/test_shell_commands.py` fails on.
 
@@ -400,9 +432,9 @@ OUTSIDE_A_PREFIX_STEP = re.compile(r"[()|&<>{}]")
 
 # Words whose operand is run as a command rather than passed to one, and this reading follows
 # neither: `source`'s is in a file it never opens, and `eval`'s is text the shell lexes again after
-# expanding it. `.`, `source`'s other spelling, is left out: as a bare word it is far more often
-# the pathspec `git add .` writes than a command, and declining a command for carrying one costs
-# more than the move it catches.
+# expanding it. `.`, `source`'s other spelling, is left out: measured over this project's own
+# transcripts, a bare `.` is far more often an operand — `grep`'s and `find`'s, mostly — than a
+# command, and declining a command for carrying one costs more than the move it catches.
 OPAQUE_RUNNERS = {"eval", "source"}
 
 
@@ -410,17 +442,6 @@ def _holds_a_mover(masked):
     """Whether anything in `masked` could still change the directory the work runs in."""
     return any(os.path.basename(word.group()) in MOVERS or word.group() in OPAQUE_RUNNERS
                for word in BARE_WORD.finditer(masked))
-
-
-def _next_separator(masked, index):
-    """(where the step ending at or after `index` stops, the operator that stopped it or None)."""
-    while index < len(masked):
-        separator = next((word for word in PREFIX_SEPARATORS if masked.startswith(word, index)),
-                         None)
-        if separator is not None:
-            return index, separator
-        index += 1
-    return len(masked), None
 
 
 def command_directory(command, cwd):
@@ -450,7 +471,7 @@ def command_directory(command, cwd):
     masked = mask_shell_literals(text)
     where, index = cwd, 0
     while True:
-        cut, separator = _next_separator(masked, index)
+        cut, separator = _next_separator(masked, index, PREFIX_SEPARATORS)
         if OUTSIDE_A_PREFIX_STEP.search(masked[index:cut]):
             break
         tokens = tokens_of(text[index:cut])

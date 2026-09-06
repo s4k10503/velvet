@@ -10,8 +10,8 @@ sweep reported "179 holes across 14 fixtures" for a map that had 18, because the
 added were in a file the primary checkout does not have. Nothing distinguishes that from a real
 answer except knowing which tree it came from, and the number it prints is exactly the shape of one.
 
-What is refused is a background command that reaches a repo path relatively AND does not move into a
-directory before it runs anything. An absolute path is allowed, as is such a move — the two
+What is refused is a background command that reaches a repo path relatively AND does not move the
+shell it runs in into a directory it names. An absolute path is allowed, as is such a move — the two
 spellings that say where the command runs. The foreground is left alone: its directory is whatever
 the previous call left, which is knowable, and blocking it would refuse the ordinary shape of every
 other command in a session.
@@ -24,8 +24,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-from shell_commands import (GLOB, command_segments, leading_program,  # noqa: E402  (path set above)
-                            moves_to_a_named_directory, tokens_of, unexpanded)
+from shell_commands import (GLOB, leading_program,  # noqa: E402  (path set above)
+                            moves_to_a_named_directory, shell_steps, tokens_of, unexpanded)
 
 
 HOOK_TOOLS = {"Bash"}
@@ -84,13 +84,18 @@ def says_where_it_runs(command):
     whose destination the text does not carry at all -- the ones `move_target` declines -- is a no,
     which is the same reading the other way round: what the text does not carry cannot be what the
     command says.
+
+    A step the shell hands to a child is a no however well its text names a destination, since the
+    move is gone before the work runs. Asked of the step alone it is a yes, so `shell_steps` is read
+    rather than `command_segments`: the parentheses of `(cd <tree>) && <work>` are stripped from the
+    step and the operator of `cd <tree> | cat` and `cd <tree> & <work>` is not part of it either.
     """
-    for segment in command_segments(command):
-        tokens = tokens_of(segment)
+    for step, kept_by_the_shell in shell_steps(command):
+        tokens = tokens_of(step)
         if leading_program(tokens) >= len(tokens):
-            # An assignment and nothing else, which is still before anything that runs.
+            # A step that runs no program is still ahead of anything that runs.
             continue
-        return moves_to_a_named_directory(segment)
+        return kept_by_the_shell and moves_to_a_named_directory(step)
     return False
 
 

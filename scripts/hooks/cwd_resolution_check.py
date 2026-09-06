@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Hold every refusing guard to which tree it answers about when the command changes directory.
+"""Hold each guard registered on `Bash` to which tree it answers about when the command moves.
 
 A `PreToolUse` hook is handed the directory the tool call started in. `cd <worktree> && gh pr create`
 runs somewhere else, so a guard reading that directory answers about a checkout the command has left
@@ -161,21 +161,31 @@ def _assigned(module, name):
 
 
 def declaration(path):
-    """(probe command, the probe's other tool_input keys), or (None, None) where it poses none.
+    """(probe command, the probe's other tool_input keys, why the guard can be posed none).
 
     The probe each guard already declares for the unreadable-state check, rather than a second one
     per guard: it is maintained for the property this needs — that it reaches the guard's own
-    readings — and a guard added without one fails that check before it reaches this.
+    readings.
+
+    A guard declaring no `Bash` is skipped rather than faulted: `HOOK_TOOLS` is what a guard reads to
+    decide whether an event is its own, so one leaving `Bash` out has no command here to change
+    directory, and the unreadable-state check poses it on the tools it does declare. Posing it
+    anyway was measured: it lands on the fault below, which says it declares `Bash` — and it does
+    not.
+
+    Declaring `Bash` and no command to pose is the gap that check leaves — it requires a non-empty
+    probe rather than a command inside one — and before the third value such a guard was dropped
+    here with no row and no fault, a silence the rules over the rows cannot break.
     """
     module = ast.parse(Path(path).read_text(encoding="utf-8"))
-    probe = _assigned(module, PROBE)
     tools = _assigned(module, TOOLS)
-    if not isinstance(probe, dict) or not isinstance(tools, set) or BASH not in tools:
-        return None, None
-    command = probe.get("command")
+    if not isinstance(tools, set) or BASH not in tools:
+        return None, None, None
+    probe = _assigned(module, PROBE)
+    command = probe.get("command") if isinstance(probe, dict) else None
     if not isinstance(command, str) or not command:
-        return None, None
-    return command, {key: value for key, value in probe.items() if key != "command"}
+        return None, None, f"declares {BASH} and no {PROBE} command for this to pose"
+    return command, {key: value for key, value in probe.items() if key != "command"}, None
 
 
 def guards(refuse_directory):
@@ -344,7 +354,9 @@ def readings(refuse_directory, floor=GUARD_FLOOR):
         home.mkdir()
         places = (_shims(root), home, handed, moved)
         for hook in subjects:
-            command, extra = declaration(hook)
+            command, extra, unposeable = declaration(hook)
+            if unposeable:
+                faults.append(f"{hook.name}: {unposeable}")
             if command is None:
                 continue
             posed = [
