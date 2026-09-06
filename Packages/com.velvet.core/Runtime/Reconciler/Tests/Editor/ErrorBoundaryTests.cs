@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
@@ -20,6 +21,8 @@ namespace Velvet.Tests
     /// shows its fallback.</item>
     /// <item>A boundary recovers: once a later render produces no throwing child, the abort state resets, all
     /// children mount, and the fallback factory does not restart.</item>
+    /// <item>A boundary that is not its container's first child shows its fallback in its own slots when a
+    /// re-render below it throws, leaving the sibling ahead of it in place.</item>
     /// </list>
     /// </summary>
     /// <remarks>
@@ -42,6 +45,7 @@ namespace Velvet.Tests
             ResetMultiChild();
             ResetEffectBoundary();
             ResetBrokenFallback();
+            ResetPlacement();
         }
 
         #region No boundary
@@ -560,6 +564,66 @@ namespace Velvet.Tests
             });
             return V.Component(BoundaryWithBrokenFallbackRender, key: "inner");
         }
+
+        #endregion
+
+        #region Where in its container a boundary's fallback lands
+
+        private static bool s_placementShouldThrow;
+        private static Action<int> s_placementSetTick;
+
+        private static void ResetPlacement()
+        {
+            s_placementShouldThrow = false;
+            s_placementSetTick = null;
+        }
+
+        [Test]
+        public void Given_ABoundaryWithSiblingsOnBothSides_When_ItCatches_Then_OnlyItsOwnSlotsAreRewritten()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(PlacementHostRender, key: "host"));
+            s_placementShouldThrow = true;
+
+            // Act
+            s_placementSetTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert — the container's rows by name and in order. The fallback is present on the broken
+            // tree too, sitting where the leading sibling was and beside the subtree that threw, so a
+            // lookup for the fallback alone reads the same on both.
+            Assert.That(
+                string.Join(",", _root.ElementAt(0).Children().Select(child => child.name)),
+                Is.EqualTo("placement-ahead,placement-fallback,placement-behind"));
+        }
+
+        [Component]
+        private static VNode PlacementThrowerRender()
+        {
+            var (_, setTick) = Hooks.UseState(0);
+            s_placementSetTick = setTick;
+            if (s_placementShouldThrow) throw new InvalidOperationException("Placement boundary throw");
+            return V.Label(name: "placement-thrower", text: "ok");
+        }
+
+        [Component(IsErrorBoundary = true)]
+        private static VNode PlacementBoundaryRender()
+        {
+            Hooks.UseFallback(_ => V.Label(name: "placement-fallback", text: "caught"));
+            return V.Div(name: "placement-thrown", children: new VNode[]
+            {
+                V.Component(PlacementThrowerRender, key: "thrower"),
+            });
+        }
+
+        [Component]
+        private static VNode PlacementHostRender()
+            => V.Div(children: new VNode[]
+            {
+                V.Label(name: "placement-ahead", text: "ahead"),
+                V.Component(PlacementBoundaryRender, key: "boundary"),
+                V.Label(name: "placement-behind", text: "behind"),
+            });
 
         #endregion
     }

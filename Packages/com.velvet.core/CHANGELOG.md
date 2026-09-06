@@ -134,6 +134,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   point instead: a disposed fiber has no pass left to be subsumed into, so its layout effect and its
   paint-tick effect are not queued.
 
+- An error boundary that is not its container's first child no longer shows its fallback over the
+  sibling ahead of it. The swap that puts the fallback in reconciled from slot 0 of the boundary's mount
+  point whatever slot the boundary held, so a catch replaced whatever sat at the top of that container
+  and left the subtree that threw painted where it was. The swap starts where the boundary's own slots
+  start now, the offset its ordinary re-render already reconciles from. It is not covered where the
+  catch is raised inside the same parent expansion that is re-placing the boundary: the recorded offset
+  names where the boundary's rows will sit once that expansion commits its placement, and showing a
+  fallback is what stops that placement from running — so the fallback can still land on a sibling
+  there.
+
 - A component's own re-render now reads the Providers of the container it is written into, where the
   declaring body writes the component into each container as its own occurrence. Two sibling containers
   each holding the same component at the same position already mounted two instances, but the walk that

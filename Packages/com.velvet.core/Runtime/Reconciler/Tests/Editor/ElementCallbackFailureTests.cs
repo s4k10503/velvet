@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
@@ -25,6 +26,8 @@ namespace Velvet.Tests
     /// <item>The cleanup a setup returned for an element that left while the setup ran is fired by the drain
     /// itself, and a throw out of that firing is contained on the same terms as the setup's own: it reaches
     /// the boundary, and the abort the boundary raised is consumed before the next setup runs.</item>
+    /// <item>The fallback a boundary shows for a failed setup goes into the boundary's own slots, leaving
+    /// a sibling ahead of it in the same container in place.</item>
     /// </list>
     /// Each reads whether the failure left the reconcile call beside the state it is named for, because a
     /// tree where it escapes never reaches that state and a bare rethrow says nothing about which of the
@@ -335,8 +338,6 @@ namespace Velvet.Tests
             return V.Component(NamedFailingRefChild, "second", key: "child");
         }
 
-        // Each boundary gets a container of its own — the same slot-0 reason the RefFailureHost region
-        // below gives for putting its probe after the boundary rather than before it.
         [Component]
         private static VNode TwoBoundaryHost()
             => V.Div(children: new VNode[]
@@ -376,6 +377,39 @@ namespace Velvet.Tests
 
         #endregion
 
+        #region A boundary with a sibling on each side, catching a ref setup that throws
+
+        [Test]
+        public void Given_ABoundaryWithSiblingsOnBothSides_When_ARefSetupThrowsBeneathIt_Then_OnlyItsOwnSlotsAreRewritten()
+        {
+            // Arrange / Act
+            using var mounted = V.Mount(Root, V.Component(PlacedRefFailureHost, key: "host"));
+
+            // Assert — the container's rows by name and in order, for the reason ErrorBoundaryTests'
+            // own placement case gives.
+            Assert.That(
+                string.Join(",", Root!.ElementAt(0).Children().Select(child => child.name)),
+                Is.EqualTo("placed-ahead,placed-fallback,placed-behind"));
+        }
+
+        [Component(IsErrorBoundary = true)]
+        private static VNode PlacedRefFailureBoundary()
+        {
+            Hooks.UseFallback(_ => V.Label(name: "placed-fallback", text: "caught"));
+            return V.Component(NamedFailingRefChild, "placed", key: "child");
+        }
+
+        [Component]
+        private static VNode PlacedRefFailureHost()
+            => V.Div(children: new VNode[]
+            {
+                V.Label(name: "placed-ahead", text: "ahead"),
+                V.Component(PlacedRefFailureBoundary, key: "boundary"),
+                V.Label(name: "placed-behind", text: "behind"),
+            });
+
+        #endregion
+
         #region RefFailureHost component (a boundary over a child whose ref setup throws, beside a probe)
 
         [Component]
@@ -383,9 +417,6 @@ namespace Velvet.Tests
         {
             var (probe, setProbe) = Hooks.UseState("before");
             s_setProbe = setProbe;
-            // The probe follows the boundary rather than preceding it: a fallback swap reconciles from
-            // the boundary's mount point at slot 0, so a sibling ahead of the boundary sits inside the
-            // range that swap rewrites and would be replaced by the fallback instead.
             return V.Div(children: new VNode[]
             {
                 V.Component(RefFailureBoundary, key: "boundary"),
@@ -488,8 +519,7 @@ namespace Velvet.Tests
             => V.Div(children: new VNode[] { V.Component(OrphanedCleanupBoundary, key: "boundary") });
 
         // The committer's setup is queued behind the victim's, so it runs in the same drain the boundary
-        // caught in — the same slot-0 reason the RefFailureHost region gives for the container around the
-        // boundary.
+        // caught in.
         [Component]
         private static VNode OrphanedCleanupThenCommitHost()
         {

@@ -65,7 +65,9 @@ namespace Velvet
             var fallbackTree = new[] { fallback };
             try
             {
-                fiber.Reconciler.Reconcile(fiber.MountPoint, fiber.PreviousTree ?? Array.Empty<VNode>(), fallbackTree);
+                fiber.Reconciler.Reconcile(
+                    fiber.MountPoint, fiber.PreviousTree ?? Array.Empty<VNode>(), fallbackTree,
+                    slotStart: FiberCommitWork.SlotStartOwnedBy(fiber));
             }
             catch (FiberSuspendSignal)
             {
