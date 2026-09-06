@@ -152,6 +152,9 @@ class ReadingTests(unittest.TestCase):
         # Assert
         self.assertEqual(found, [])
 
+    # GREEN_ON_BASE(refactor): the give-up over `pushd` that moving this reading must keep.
+    # The base reaches it by counting how many segments move; the resolver reaches it by declining
+    # `pushd` outright. Measured, a resolver that placed the move names the operand under `sub`.
     def test_Given_AWriteAfterAPushd_When_TheCommandIsRead_Then_NoFileIsNamed(self):
         # Arrange — a directory of its own, so the three readings this can get are three answers:
         # nothing, the operand under the handed directory, and the operand under the pushed-into one.

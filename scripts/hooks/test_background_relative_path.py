@@ -62,6 +62,9 @@ class PathSpellingTests(unittest.TestCase):
         # Assert
         self.assertEqual(refused, sorted(movers))
 
+    # GREEN_ON_BASE(characterization): the base refuses this on a rule that reads no mover at all.
+    # What says where a command runs there is a literal `cd` at the head of the text. The reading
+    # that replaced it asks the move, and declining `popd` is what keeps this refusal.
     def test_Given_APopdOfANamedStackEntry_When_Backgrounded_Then_ItIsStillRefused(self):
         # Arrange — `+1` is an operand, so a reading that asks only whether the move carries one has
         # this saying where the command runs. Which directory the stack hands back is not in the
@@ -83,6 +86,10 @@ class PathSpellingTests(unittest.TestCase):
         # Assert
         self.assertEqual(refused, sorted(shapes))
 
+    # GREEN_ON_BASE(characterization): the base refuses this on a rule that reads no mover at all.
+    # A literal `cd` at the head of the text is what says where a command runs there, so it refuses
+    # `pushd /elsewhere` too. The reading that replaced it lets that one through, and declining the
+    # `+N` selector is what keeps this refusal.
     def test_Given_APushdOntoItsOwnStack_When_Backgrounded_Then_ItIsStillRefused(self):
         # Arrange — the same selector on the mover that does ordinarily name a destination, which is
         # why the operand alone cannot answer: `pushd /elsewhere` says where it runs and `pushd +1`
@@ -90,6 +97,10 @@ class PathSpellingTests(unittest.TestCase):
         # Act / Assert
         self.assertEqual(self.judge("pushd +1; python3 scripts/pr/settle.py watch"), 2)
 
+    # GREEN_ON_BASE(characterization): the base refuses this on a rule that reads no mover at all.
+    # A literal `cd` at the head of the text is what says where a command runs there, and this is
+    # not one. The reading that replaced it reads past the word, and declining a delegated one is
+    # what keeps this refusal.
     def test_Given_AMoveBehindAWordNamingTheProgram_When_Backgrounded_Then_ItIsStillRefused(self):
         # Arrange — measured under bash and zsh alike, this runs the script where the tool call
         # started rather than in `/elsewhere`. Read as a move it says where it runs, and the guard
