@@ -26,7 +26,7 @@
   "samples": [
     {
       "displayName": "Starter App",
-      "description": "A scene to open and press Play on. Hosts a panel on a UIDocument, attaches the bundled utility stylesheet from code, and mounts a two-route app over a store: keyed list, local state, an effect, hover variants and an enter/exit transition.",
+      "description": "A scene to open and press Play on. Hosts a panel on a UIDocument, attaches the bundled utility stylesheet from code, and mounts a two-route app over a store: keyed list, local state, hover variants and an enter/exit transition.",
       "path": "Samples~/StarterApp"
     }
   ]

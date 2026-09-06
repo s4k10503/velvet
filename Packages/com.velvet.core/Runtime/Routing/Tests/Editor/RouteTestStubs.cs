@@ -187,7 +187,10 @@ namespace Velvet.Tests
 
     /// <summary>
     /// Sync wrappers for Router's async API. Used in tests where awaiting is unergonomic
-    /// (block setup, history manipulation, navigation chains).
+    /// (block setup, history manipulation, navigation chains). Each is only valid where the work it wraps
+    /// completes without suspending; a test whose loader hands back an unresolved task awaits the real API.
+    /// <see cref="Velvet.TestUtilities.RouteLoaderRunnerTestExtensions"/> carries the loader runner's, which
+    /// the PlayMode benchmarks need too.
     /// </summary>
     internal static class RouterTestExtensions
     {
