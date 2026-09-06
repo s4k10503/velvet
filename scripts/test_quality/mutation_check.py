@@ -52,7 +52,7 @@ import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-DEFAULT_UNITY = "/Applications/Unity/Hub/Editor/6000.3.11f1/Unity.app/Contents/MacOS/Unity"
+DEFAULT_UNITY = "/Applications/Unity/Hub/Editor/6000.3.23f1/Unity.app/Contents/MacOS/Unity"
 # Anchored at the editor binary so that a shell waiting on this pattern does not match itself and
 # report a busy machine forever on an idle one.
 UNITY_RUNNING = "^/Applications/.*/MacOS/Unity -runTests"

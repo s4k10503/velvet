@@ -385,6 +385,32 @@ namespace Velvet.Tests
             Assert.That(result, Is.EqualTo(NavigationResult.Blocked));
         }
 
+        // GREEN_ON_BASE(characterization): the path a guard-redirected attempt puts to a blocker.
+        // The routing guide states it and no case read it. Rewrite the `RunBlockerCheck(path, …)` call in
+        // `NavigateCore` as `RunBlockerCheck(pending.OriginPath, …)` and this is what reddens.
+        [Test]
+        public void Given_AGuardRedirectingAnAttempt_When_TheRedirectReachesTheBlocker_Then_TheAttemptNamesTheTarget()
+        {
+            // A guard returning a target ends its own attempt above the blocker phase and re-enters the
+            // pipeline, so the blocker is asked about the redirect rather than about the path the caller
+            // wrote. The result rides along because the seen path says a blocker was asked and not that its
+            // answer stopped the redirect, which a router consulting one and committing anyway would satisfy.
+            // Arrange
+            var router = BuildRouter("/home", Route("home"), Route("admin", guard: _ => "/login"), Route("login"));
+            string seenNextPath = null;
+            router.RouteBlockerManager.Register(attempt =>
+            {
+                seenNextPath = attempt.NextPath;
+                return true;
+            }, new RouteBlockerState());
+
+            // Act
+            var result = router.NavigateSync("/admin");
+
+            // Assert
+            Assert.That($"result={result} next={seenNextPath}", Is.EqualTo("result=Blocked next=/login"));
+        }
+
         #endregion
 
         #region Back and Forward with blocker

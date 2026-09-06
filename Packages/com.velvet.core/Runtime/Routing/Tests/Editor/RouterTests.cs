@@ -120,6 +120,26 @@ namespace Velvet.Tests
             Assert.That(router.Status, Is.EqualTo(RouterStatus.NotFound));
         }
 
+        // GREEN_ON_BASE(characterization): the status a path that resolves to nothing leaves behind.
+        // The base writes it from this branch unconditionally, where the report is now conditional on
+        // nobody else holding a claim. Delete the `ReportUnclaimedOutcome(RouterStatus.NotFound)` call in
+        // `NavigateCore`'s null-path branch and this is what reddens.
+        [Test]
+        public void Given_APathThatResolvesToNothing_When_Navigating_Then_StatusBecomesNotFound()
+        {
+            // The case above is refused by the match; this one is refused before it, and the two branches
+            // report through separate calls, so a status read after either says nothing about the other.
+            // Arrange
+            var router = new Router(_routes);
+
+            // Act
+            var result = router.NavigateSync(null);
+
+            // Assert
+            Assert.That(
+                $"result={result} status={router.Status}", Is.EqualTo("result=NotFound status=NotFound"));
+        }
+
         #endregion
 
         #region Await loader
@@ -954,9 +974,9 @@ namespace Velvet.Tests
             => VelvetTask.ToCoroutine(async () =>
         {
             // Leaving by Back/Forward is the one exit that can serve loader data from the history cache, and
-            // therefore the one that never runs RunLoadersSync, where a previous round is superseded. Both
-            // entries here match the same route pattern, so they share a RouteId and nothing downstream of
-            // the runner can tell the late result apart from the restored one.
+            // therefore the one that runs no loaders of its own to promote a round of. Both entries here
+            // match the same route pattern, so they share a RouteId and nothing downstream of the runner can
+            // tell the late result apart from the restored one.
             // Arrange
             var first = new VelvetTaskCompletionSource<object>();
             var second = new VelvetTaskCompletionSource<object>();

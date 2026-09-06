@@ -207,6 +207,113 @@ namespace Velvet.Tests
                 "A navigation that died in its commit stops reporting itself as in flight, like one that died earlier");
         });
 
+        [Test]
+        public void Given_ADepartingLoadersCancellationCallbackThatThrows_When_TheNextNavigationCommits_Then_TheCommitStillCompletes()
+        {
+            // The commit ends the departing round, which runs whatever cancellation callbacks that round's
+            // Loaders registered — application code, and below the handlers. An escape there leaves the
+            // router reporting a navigation it has already committed as still in flight.
+            // Arrange
+            var router = BuildRouter("/home",
+                Route("home"),
+                Route("registering", loader: (ctx, ct) =>
+                {
+                    ct.Register(() => throw new InvalidOperationException("cancellation-callback-boom"));
+                    return VelvetTask.FromResult<object>("registering-data");
+                }),
+                Route("other"));
+            router.NavigateSync("/registering");
+            ContainedFailureLog.Expect<InvalidOperationException>(
+                nameof(RouteLoaderRunner), "cancellation-callback-boom");
+            Exception caught = null;
+
+            // Act
+            try
+            {
+                router.NavigateSync("/other");
+            }
+            catch (Exception ex)
+            {
+                caught = ex;
+            }
+
+            // Assert
+            Assert.That($"threw={caught != null} status={router.Status}", Is.EqualTo("threw=False status=Ready"),
+                "A Loader's own cancellation callback must not take down the commit that ends its round");
+        }
+
+        [Test]
+        public void Given_AParkedLoadersCancellationCallbackThatThrows_When_ANewerNavigationTakesOver_Then_TheTakeoverCommits()
+        {
+            // The takeover cancels the parked navigation's source, and the parked round runs under a token
+            // linked to it, so that round's Loaders have their cancellation callbacks run from the takeover
+            // rather than from the retire the commit performs.
+            // Arrange
+            var parking = new VelvetTaskCompletionSource<object>();
+            var router = BuildRouter("/home",
+                Route("home"),
+                Route("parking", loader: (ctx, ct) =>
+                {
+                    ct.Register(() => throw new InvalidOperationException("cancellation-callback-boom"));
+                    return parking.Task;
+                }),
+                Route("other"));
+            router.NavigateAsync("/parking").Forget();
+            ContainedFailureLog.Expect<InvalidOperationException>(
+                nameof(Router), "cancellation-callback-boom");
+            Exception caught = null;
+
+            // Act
+            try
+            {
+                router.NavigateSync("/other");
+            }
+            catch (Exception ex)
+            {
+                caught = ex;
+            }
+
+            // Assert
+            Assert.That($"threw={caught != null} status={router.Status}", Is.EqualTo("threw=False status=Ready"),
+                "A Loader's own cancellation callback must not take down the navigation superseding its round");
+        }
+
+        [Test]
+        public void Given_AParkedLoadersCancellationCallbackThatThrows_When_TheRouterIsDisposed_Then_TheTeardownStillCompletes()
+        {
+            // Disposal cancels the parked navigation's source above its own releases, and the parked round
+            // runs under a token linked to it, so that round's Loaders have their cancellation callbacks run
+            // from there rather than from the runner's retire below it.
+            // Arrange
+            var parking = new VelvetTaskCompletionSource<object>();
+            var router = BuildRouter("/home",
+                Route("home"),
+                Route("parking", loader: (ctx, ct) =>
+                {
+                    ct.Register(() => throw new InvalidOperationException("cancellation-callback-boom"));
+                    return parking.Task;
+                }));
+            router.NavigateAsync("/parking").Forget();
+            ContainedFailureLog.Expect<InvalidOperationException>(
+                nameof(Router), "cancellation-callback-boom");
+            Exception caught = null;
+
+            // Act
+            try
+            {
+                router.Dispose();
+            }
+            catch (Exception ex)
+            {
+                caught = ex;
+            }
+
+            // Assert
+            Assert.That($"threw={caught != null} current={(Router.Current == null ? "none" : "set")}",
+                Is.EqualTo("threw=False current=none"),
+                "A Loader's own cancellation callback must not take down the teardown that ends its round");
+        }
+
         [UnityTest]
         public IEnumerator Given_AnEntryCommittedWhileItsSuspendLoaderRuns_When_GoingBackToIt_Then_TheLoaderRunsAgain()
             => VelvetTask.ToCoroutine(async () =>

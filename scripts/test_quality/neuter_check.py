@@ -32,7 +32,7 @@ import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-DEFAULT_UNITY = "/Applications/Unity/Hub/Editor/6000.3.11f1/Unity.app/Contents/MacOS/Unity"
+DEFAULT_UNITY = "/Applications/Unity/Hub/Editor/6000.3.23f1/Unity.app/Contents/MacOS/Unity"
 UNITY_RUNNING = "^/Applications/.*/MacOS/Unity -runTests"
 
 CUTS_FILE = "scripts/test_quality/neuter_cuts.json"

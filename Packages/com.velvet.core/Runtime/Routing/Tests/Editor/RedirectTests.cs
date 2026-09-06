@@ -68,6 +68,31 @@ namespace Velvet.Tests
             Assert.That(result, Is.EqualTo(NavigationResult.Error));
         }
 
+        // GREEN_ON_BASE(characterization): the status a refused redirect chain leaves behind.
+        // The base writes it from this branch unconditionally, where the report is now conditional on
+        // nobody else holding a claim. Delete the `ReportUnclaimedOutcome(RouterStatus.Error)` call in
+        // `NavigateCore`'s redirect-limit branch and this is what reddens.
+        [Test]
+        public void Given_ARedirectCycle_When_ItExhaustsTheRedirectLimit_Then_TheStatusIsError()
+        {
+            // The case above reads the result the caller gets; this one reads what the router is left
+            // reporting, which a pending-UI branch renders from. The result rides along because
+            // `RouterStatus.Error` is also what a throw out of the commit leaves, and only a returned
+            // result says the chain was refused rather than something thrown past.
+            // Arrange
+            var router = new Router(new[]
+            {
+                Route("a", redirectTo: "/b"),
+                Route("b", redirectTo: "/a"),
+            });
+
+            // Act
+            var result = router.NavigateSync("/a");
+
+            // Assert
+            Assert.That($"result={result} status={router.Status}", Is.EqualTo("result=Error status=Error"));
+        }
+
         #endregion
 
         #region Guard

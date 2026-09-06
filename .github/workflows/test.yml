@@ -114,16 +114,7 @@ jobs:
           UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
         with:
-          # Deliberately ahead of ProjectVersion.txt's 6000.3.11f1. game-ci passes -enableCodeCoverage
-          # and -debugCodeOptimization unconditionally, and on 6000.3.11f1 that combination SIGSEGVs
-          # inside ScriptingCoverage::FilterRecordedMethods when a script reload happens during a run.
-          # Unity's 6000.3.14f1 release notes carry the fix as UUM-137724, "Added main-thread guard in
-          # ScriptingCoverage::FilterRecordedMethods for thread safety during script reload".
-          #
-          # What this costs: the floor version is no longer the one under test. It is bounded — the crash
-          # needs -enableCodeCoverage, which nothing but this workflow passes, so no consumer on the floor
-          # is exposed to it — but a Velvet defect that appears only on 6000.3.11f1 would now go unseen.
-          unityVersion: 6000.3.21f1
+          unityVersion: 6000.3.23f1
           testMode: ${{ matrix.testMode }}
           projectPath: .
           artifactsPath: ${{ matrix.testMode }}-results
@@ -338,8 +329,7 @@ jobs:
           UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
         with:
-          # The version unity-tests runs, for the reason stated there.
-          unityVersion: 6000.3.21f1
+          unityVersion: 6000.3.23f1
           testMode: ${{ matrix.testMode }}
           projectPath: base-tree
           artifactsPath: base-results
@@ -474,7 +464,7 @@ jobs:
           UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
         with:
-          unityVersion: 6000.3.21f1
+          unityVersion: 6000.3.23f1
           targetPlatform: StandaloneLinux64
           projectPath: .
           buildMethod: Velvet.Editor.PlayerBuild.PlayerScriptCompilation.CompileForPlayer
