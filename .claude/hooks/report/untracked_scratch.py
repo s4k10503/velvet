@@ -1,26 +1,29 @@
 #!/usr/bin/env python3
-"""Report what a subagent left in the tree IT worked in, into the parent's context.
+"""Report what is untracked in the session's own checkout, into the parent's context.
 
 Two failures this guards. A read-only agent creating a probe fixture and not removing it —
 self-reported cleanup has been wrong before, and the leftover reads as production code to the next
 session. And a source file .gitignore excludes, which stays untracked while every local run passes
 because the file is there.
 
-The tree comes from the session's own cwd, not from CLAUDE_PROJECT_DIR. An agent running in a git
-worktree has its own checkout, and reporting the MAIN checkout's untracked files to it produced a
-non-terminating loop: it was told about files it had not created, could not clear them without
-destroying another agent's in-flight work, and was told again on every stop because nothing it could
-do changed the condition. Three agents hit it in one session, and one was instructed to delete the
-three source files of an open PR. The wording below carries the same lesson: this is a report, and
-whoever owns a tree decides what is left in it.
+Coverage stops at that one checkout: the repository holding the session's cwd. The tree a subagent
+is handed is a different one, read here only where the session's cwd sits inside it, so a leftover
+there is not reported and a silence here says nothing about it. Scanning every tree `git worktree
+list` names was rejected: that listing says which trees exist and not which one the stopping
+subagent worked in, so a sibling's in-flight files would go to whichever agent stopped. That is the
+loop this hook already caused once, reporting the MAIN checkout's untracked files to an agent in a
+worktree: it was told about files it had not created, could not clear them without destroying
+another agent's work, and was told again on every stop because nothing it could do changed the
+condition. Three agents hit it in one session, and one was instructed to delete the three source
+files of an open PR. The wording below carries the same lesson: this is a report, and whoever owns
+a tree decides what is left in it.
 
-That reading leaves the same loop for files sitting in the agent's OWN tree that it did not write,
-so the listing is narrowed to what was written since this subagent started. The session's start is
-the wrong bound for that, and the difference is not academic: one session had been running for three
-days when its checkout's 42 untracked files were last written, so a session bound hands the same ten
-of them to each of that session's 159 subagents, where the subagent bound hands none to an agent
-that started after that write. What is read is the modification time, so a file copied in with its
-mtime preserved reads as one that predates the run.
+The same loop remains for a file in the reported tree that predates the run, so the untracked
+listing is narrowed to what was written since this subagent started. The bound is a time, not an
+author — a sibling writing into this tree while this agent runs falls inside it — and the session's
+start would not serve, since a file written after a session began stays inside that bound for every
+subagent it later spawns. What is read is the modification time, so a file copied in with its mtime
+preserved carries the age of what it was copied from.
 
 The gitignored-source listing is deliberately outside that narrowing. What makes it worth reporting
 is that the file STAYS excluded while local runs stay green, and an age bound would name it while it
@@ -51,7 +54,17 @@ def payload():
 
 
 def session_tree(record):
-    return Path(record.get("cwd") or os.environ.get("CLAUDE_PROJECT_DIR", "."))
+    """The repository root holding the session's cwd, or None where that is not a repository.
+
+    Rooted rather than taken as handed: a porcelain listing spells its paths from the repository
+    root whatever directory git ran in, so a cwd below the root leaves the age bound below reaching
+    for files that are not there.
+    """
+    start = Path(record.get("cwd") or os.environ.get("CLAUDE_PROJECT_DIR", "."))
+    if not start.is_dir():
+        return None
+    root = git(["rev-parse", "--show-toplevel"], cwd=start)
+    return Path(root.strip()) if root and root.strip() else None
 
 
 def agent_start(transcript):
@@ -60,7 +73,7 @@ def agent_start(transcript):
     None widens the report back to every path, which is the side this belongs on: a bound nobody
     could read is not a bound saying nothing was left.
     """
-    if not transcript:
+    if not isinstance(transcript, str) or not transcript:
         return None
     try:
         with open(transcript, encoding="utf-8") as handle:
@@ -95,7 +108,7 @@ def shown(listing, total):
 def main():
     record = payload()
     tree = session_tree(record)
-    if not tree.is_dir() or git(["rev-parse", "--git-dir"], cwd=tree) is None:
+    if tree is None:
         return 0
     started = agent_start(record.get("agent_transcript_path"))
 
@@ -134,7 +147,9 @@ def main():
 
     # systemMessage is the transcript channel; additionalContext is the model's and does not display.
     print(json.dumps({
-        "systemMessage": "subagent left files behind — " + ", ".join(headline),
+        # A reader in another worktree of this repository has to be able to tell at a glance that
+        # the report is not about the tree they are working in, so the headline names the one read.
+        "systemMessage": f"files remain in {tree} — " + ", ".join(headline),
         "hookSpecificOutput": {
             "hookEventName": "SubagentStop",
             "additionalContext": "\n\n".join(parts),
