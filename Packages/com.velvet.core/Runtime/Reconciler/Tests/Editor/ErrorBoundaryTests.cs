@@ -21,8 +21,8 @@ namespace Velvet.Tests
     /// shows its fallback.</item>
     /// <item>A boundary recovers: once a later render produces no throwing child, the abort state resets, all
     /// children mount, and the fallback factory does not restart.</item>
-    /// <item>A boundary that is not its container's first child shows its fallback in its own slots when a
-    /// re-render below it throws, leaving the sibling ahead of it in place.</item>
+    /// <item>A catch rewrites the boundary's own slot range rather than the first slots of its
+    /// container: with a sibling on each side, both stay and the subtree that threw goes.</item>
     /// </list>
     /// </summary>
     /// <remarks>

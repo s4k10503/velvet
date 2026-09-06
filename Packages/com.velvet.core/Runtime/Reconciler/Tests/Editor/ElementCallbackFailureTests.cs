@@ -26,8 +26,8 @@ namespace Velvet.Tests
     /// <item>The cleanup a setup returned for an element that left while the setup ran is fired by the drain
     /// itself, and a throw out of that firing is contained on the same terms as the setup's own: it reaches
     /// the boundary, and the abort the boundary raised is consumed before the next setup runs.</item>
-    /// <item>The fallback a boundary shows for a failed setup goes into the boundary's own slots, leaving
-    /// a sibling ahead of it in the same container in place.</item>
+    /// <item>The fallback for a failed setup goes into the boundary's own slot range rather than the
+    /// first slots of its container: with a sibling on each side, both stay.</item>
     /// </list>
     /// Each reads whether the failure left the reconcile call beside the state it is named for, because a
     /// tree where it escapes never reaches that state and a bare rethrow says nothing about which of the

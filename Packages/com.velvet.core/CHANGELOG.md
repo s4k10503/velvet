@@ -134,15 +134,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   point instead: a disposed fiber has no pass left to be subsumed into, so its layout effect and its
   paint-tick effect are not queued.
 
-- An error boundary that is not its container's first child no longer shows its fallback over the
-  sibling ahead of it. The swap that puts the fallback in reconciled from slot 0 of the boundary's mount
-  point whatever slot the boundary held, so a catch replaced whatever sat at the top of that container
-  and left the subtree that threw painted where it was. The swap starts where the boundary's own slots
-  start now, the offset its ordinary re-render already reconciles from. It is not covered where the
-  catch is raised inside the same parent expansion that is re-placing the boundary: the recorded offset
-  names where the boundary's rows will sit once that expansion commits its placement, and showing a
-  fallback is what stops that placement from running — so the fallback can still land on a sibling
-  there.
+- An error boundary's fallback is written from the boundary's own slot start now, instead of from slot
+  0 of its mount point. A boundary that is not its container's first child had a catch replace whatever
+  sat at the top of that container and leave the subtree that threw painted where it was; the swap
+  starts at the offset the boundary's ordinary re-render already reconciles from. That offset is
+  recorded on the boundary rather than read off the container, so it is only as current as the last
+  placement that wrote it: a parent expansion re-placing the boundary writes it as where the boundary's
+  rows will sit once that expansion commits its placement, and showing a fallback is what stops that
+  placement from running. So a catch raised inside an expansion that adds or removes rows ahead of the
+  boundary reads an offset the container has not reached, and the fallback can still land on a sibling
+  there. An expansion that patches the rows ahead of the boundary in place changes no count, and the
+  fallback lands on the boundary's own rows.
 
 - A component's own re-render now reads the Providers of the container it is written into, where the
   declaring body writes the component into each container as its own occurrence. Two sibling containers
