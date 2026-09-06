@@ -569,15 +569,42 @@ namespace Velvet.Tests
             Assert.That(capturedToken.IsCancellationRequested, Is.True);
         }
 
-        // GREEN_ON_BASE(characterization): the base already releases a superseded round's source.
-        // This branch moved that source from one runner-wide field to a field per round, and the
-        // release has to survive the move.
         [Test]
-        public void Given_ALoaderThatStartsAnotherRound_When_TheOuterRoundsNextLoaderGetsItsToken_Then_TheSourceBehindItIsReleased()
+        public void Given_ALoaderThatStartsAnotherRound_When_TheOuterRoundsNextLoaderReadsItsToken_Then_ItIsCancelledRatherThanReleased()
         {
-            // Retiring a round releases its source as well as cancelling it, and the launch loop goes on
-            // handing that round's token to the loaders below the one that retired it. The release is what
-            // this case is about; the cancellation on the same token is pinned by a case of its own.
+            // The loader below the one that retired the round launches under the retired round's token, so
+            // what it asks that token has to be answerable: a cancelled round is what it must read, not a
+            // source that is no longer there to answer.
+            // Arrange
+            var runner = new RouteLoaderRunner();
+            string nextLoaderSaw = null;
+            var matches = new List<RouteMatch>();
+            matches.AddRange(MakeMatch("nesting", loader: (ctx, ct) =>
+            {
+                runner.RunLoadersSync(MakeMatch("nested"), CancellationToken.None);
+                return VelvetTask.FromResult<object>("nesting-data");
+            }));
+            matches.AddRange(MakeMatch("next", loader: (ctx, ct) =>
+            {
+                nextLoaderSaw = ReadTokenState(ct);
+                return VelvetTask.FromResult<object>("next-data");
+            }));
+
+            // Act
+            runner.RunLoadersSync(matches, CancellationToken.None);
+
+            // Assert
+            Assert.That(nextLoaderSaw, Is.EqualTo("cancelled"),
+                "A loader handed a retired round's token reads the round's cancellation off it");
+        }
+
+        // GREEN_ON_BASE(characterization): the base releases a superseded round's source at the retirement.
+        // This branch defers that release to here, and the release itself has to survive the move.
+        [Test]
+        public void Given_ALoaderThatStartsAnotherRound_When_TheRunThatItRetiredHasReturned_Then_TheSourceBehindItsTokenIsReleased()
+        {
+            // The other half of the rule the sibling above states. This round starts no Suspend loader, so
+            // the run returning is the last thing holding the token and the source goes there.
             // Arrange
             var runner = new RouteLoaderRunner();
             CancellationToken nextLoadersToken = default;
@@ -598,8 +625,38 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(() => nextLoadersToken.WaitHandle, Throws.TypeOf<ObjectDisposedException>(),
-                "A retired round's source is released, not left open behind the token its loaders hold");
+                "A retired round's source is released, not left open behind the token its loaders held");
         }
+
+        // GREEN_ON_BASE(characterization): the base releases a superseded round's source at the retirement.
+        // This branch defers that release to here, and the release itself has to survive the move.
+        [UnityTest]
+        public IEnumerator Given_ARetiredRoundsSuspendLoader_When_ItsTaskCompletes_Then_TheSourceBehindItsTokenIsReleased()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // The release a Suspend loader's own completion reaches: its round was retired while it was
+            // still running, so the loader is what the release waits for.
+            // Arrange
+            var runner = new RouteLoaderRunner();
+            var streaming = new VelvetTaskCompletionSource<object>();
+            CancellationToken streamingLoadersToken = default;
+            runner.RunLoadersSync(
+                MakeMatch("streaming", loaderMode: LoaderMode.Suspend, loader: (ctx, ct) =>
+                {
+                    streamingLoadersToken = ct;
+                    return streaming.Task;
+                }),
+                CancellationToken.None);
+            runner.RunLoadersSync(MakeMatch("second"), CancellationToken.None);
+
+            // Act
+            streaming.TrySetResult("streaming-data");
+            await VelvetTask.Yield();
+
+            // Assert
+            Assert.That(() => streamingLoadersToken.WaitHandle, Throws.TypeOf<ObjectDisposedException>(),
+                "A round retired while a Suspend loader ran releases its source once that loader is done");
+        });
 
         [Test]
         public void Given_ACancellationCallbackThatThrows_When_TheRoundItRegisteredOnIsRetired_Then_TheSourceBehindItsTokenIsStillReleased()
