@@ -12,7 +12,7 @@ Open `StarterApp.unity` and press Play. Nothing else is needed: the scene carrie
 
 | File | Role |
 |------|------|
-| `StarterAppHost.cs` | The `MonoBehaviour` on the `UIDocument`: attaches the stylesheet, builds the `Router`, calls `V.Mount`, and tears all three down again |
+| `StarterAppHost.cs` | The `MonoBehaviour` on the `UIDocument`: attaches the stylesheet, builds the `Router`, mounts `V.RouterProvider` over it, and tears all three down again |
 | `StarterApp.cs` | The screen — the route table, the layout route with its `Outlet`, and the two child routes |
 | `TaskBoardStore.cs` | A `Store<T>` holding the task list, replaced rather than mutated on every edit |
 | `StarterApp.unity` | Camera plus one GameObject carrying `UIDocument` and `StarterAppHost` |
@@ -21,10 +21,10 @@ Open `StarterApp.unity` and press Play. Nothing else is needed: the scene carrie
 
 ## What it exercises
 
-`Hooks.UseState` for the draft field, `Hooks.UseEffect` (with its cleanup) for the router
-subscription, `Hooks.UseStore` for the task list, `V.List` for the keyed rows, `V.Route` / `V.Outlet` /
-`V.NavLink` / `V.Link` for the two routes, `hover:` variants on the buttons and the task rows, and
-`V.Motion` inside `V.AnimatePresence` so a row fades and scales in and out.
+`Hooks.UseState` for the draft field, `Hooks.UseStore` for the task list, `V.List` for the keyed rows,
+`V.RouterProvider` / `V.Route` / `V.Outlet` / `V.NavLink` / `V.Link` for the two routes, `hover:`
+variants on the buttons and the task rows, and `V.Motion` inside `V.AnimatePresence` so a row fades and
+scales in and out. The package's `Documentation~/routing.md` owns what the provider publishes.
 
 ## The stylesheet call
 

@@ -14,7 +14,8 @@ passing run at all.
 
 ## Why `gh pr create` and not `gh pr merge`
 
-Everything below is about the checkout `cwd` names. At `gh pr create` that checkout *is* the change
+Everything below is about the checkout the command runs in — the event's directory, moved by the
+command's own `cd`, which `command_directory` places. At `gh pr create` that checkout *is* the change
 being proposed, so the question and the reading are the same thing. At `gh pr merge <n>` they are
 not: the pull request is named by an operand, the merge is normally run from `main` after a pull, and
 a guard reading the local tree there answers about a tree with no change in it at all — passing every
@@ -40,7 +41,9 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-from shell_commands import program_invocations, unexpanded  # noqa: E402
+from shell_commands import (  # noqa: E402
+    NAME_THE_TREE, UNPLACEABLE_MOVE, UNRESOLVED_CD, command_directory, program_invocations,
+    unexpanded)
 
 HOOK_TOOLS = {"Bash"}
 
@@ -144,7 +147,9 @@ def main():
                           "and\nthe receipt store here is keyed on this checkout's files. Nothing "
                           "read the change\nthat would be proposed.".format(named))
 
-    cwd = event.get("cwd") or "."
+    cwd = command_directory(command, event.get("cwd") or ".")
+    if cwd is UNRESOLVED_CD:
+        return refuse(UNREAD, UNPLACEABLE_MOVE + "\n\n" + NAME_THE_TREE)
     root = repo_root(cwd)
     if root is None:
         return refuse(UNREAD,

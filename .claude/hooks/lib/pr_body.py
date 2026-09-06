@@ -16,7 +16,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from shell_commands import command_segments, leading_program, program_invocations, tokens_of, unexpanded
+from shell_commands import (command_segments, moves_directory, program_invocations, tokens_of,
+                            unexpanded)
 
 BODY_FILE_FLAGS = ("--body-file", "-F")
 BODY_FLAGS = ("--body", "-b")
@@ -98,8 +99,6 @@ STDIN = "stdin"
 RELATIVE_AFTER_MOVE = "relative-after-move"
 MISSING = "missing"
 UNREADABLE = "unreadable"
-
-MOVERS = {"cd", "pushd", "popd"}
 
 
 def options(operands, words=None):
@@ -204,21 +203,6 @@ def effective_body(operands, cwd, after_a_move, words=None):
         text, obstruction = read_body_file(path, cwd, after_a_move)
         return text, obstruction, path
     return valued(operands, BODY_FLAGS, words), None, None
-
-
-def moves_directory(segment):
-    """Whether this segment changes the directory a later segment runs in.
-
-    The command word is read the way shell_commands reads one, past `then`/`do`, `builtin` and an
-    environment assignment: reading tokens[0] instead missed `if true; then cd /tmp; fi`, which is
-    the lib's own documented reason for having leading_program at all.
-    """
-    tokens = tokens_of(segment)
-    index = leading_program(tokens)
-    if index >= len(tokens):
-        return False
-    word = os.path.basename(tokens[index])
-    return word in MOVERS
 
 
 def invocations(command, *word_sets):

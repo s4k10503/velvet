@@ -49,10 +49,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import pr_body  # noqa: E402
 import repository  # noqa: E402
-from shell_commands import (SEPARATORS, UNRESOLVED_CD, command_segments, leading_cd,  # noqa: E402
-                            mask_shell_literals, program_invocations, tokens_of, unexpanded,
+from shell_commands import (SEPARATORS, UNRESOLVED_CD, command_directory,  # noqa: E402
+                            command_segments, comment_opens_at, mask_shell_literals,
+                            opens_a_comment, program_invocations, tokens_of, unexpanded,
                             without_redirections)
 
 # Each gap the reading leaves. `LIMITS` is built from this so the sentence cannot name fewer of them
@@ -61,7 +61,7 @@ from shell_commands import (SEPARATORS, UNRESOLVED_CD, command_segments, leading
 # however many it has come to hold. Every entry was measured against the reading rather than guessed.
 UNREAD = (
     "a target the shell has yet to expand",
-    "a directory the command moves into partway through",
+    "a relative target under a move nothing here places",
     "`>&`, which writes the file it names",
     "`>|`, whose bar the segment split takes for a separator",
     "a destination `cp -t` takes off the end of the operands",
@@ -134,7 +134,7 @@ def _redirect_targets(segment):
         # the span, and `command_segments` slices the original: the comment's own words then land in
         # the preceding command's operand list, which moves guards' verdicts both ways on commands
         # a person writes. `UNREAD` states what that leaves.
-        if masked[index] == "#" and (index == 0 or masked[index - 1] in " \t"):
+        if opens_a_comment(masked, index):
             break
         if masked[index] != ">" or (index and masked[index - 1] in "<>"):
             index += 1
@@ -151,24 +151,6 @@ def _redirect_targets(segment):
     return found
 
 
-def _comment_opens_at(segment):
-    """Where this segment's comment starts, or None if no `#` in it starts one.
-
-    Asked of the mask, which is the one place that already knows a quote from a bare character: an
-    unquoted `#` survives it, a quoted one is blanked. Asking the token list instead cannot tell
-    `cp a.md b.md '#c'`, which writes `#c`, from a trailing comment -- and dropping the last operand
-    there makes a SOURCE the destination, which is a refusal over a file nothing writes.
-
-    The position rather than a yes: the caller needs it to count, and a predicate that knows where
-    the comment is and answers only whether there is one forces a cut on the wrong term.
-    """
-    masked = mask_shell_literals(segment)
-    for index, character in enumerate(masked):
-        if character == "#" and (index == 0 or masked[index - 1] in " \t"):
-            return index
-    return None
-
-
 def _before_any_comment(operands, segment):
     """The operands this segment carries ahead of its comment, where it has one.
 
@@ -178,7 +160,7 @@ def _before_any_comment(operands, segment):
     `comments=True` cuts mid-word, turning `note#1.md` into `note` and `a#b` into `a`, where the
     shell keeps both whole.
     """
-    at = _comment_opens_at(segment)
+    at = comment_opens_at(segment)
     if at is None:
         return operands
     # Counted from the text rather than matched on a leading `#`, because an operand may begin with
@@ -254,35 +236,19 @@ def _copy_targets(operands, segment):
                             for source in sources if not unexpanded(source)]
 
 
-def _moves(segments):
-    """How many of these segments change the directory a later one runs in.
-
-    `pr_body.moves_directory` rather than a comparison against `cd`, so that `pushd`, `popd` and a
-    path-qualified `/bin/cd` count here as they do there. A second set of the same words is the
-    drift the derived stylesheet table exists to prevent one level down, and this one has a fixture
-    behind it.
-    """
-    return sum(1 for segment in segments if pr_body.moves_directory(segment))
-
-
-def _base_directory(command, segments, cwd):
+def _base_directory(command, cwd):
     """Where a relative operand is rooted, or None where nothing here can place one.
 
-    `leading_cd` reads the move a command opens with, and a command that moves again after it has
-    started running has left that directory by the time a later segment writes. Rooting that
-    segment's operand at the event's own directory is how a write into a temporary tree reads as one
-    onto the repository, so a second move gives up on relative operands instead — measured over this
-    project's transcripts, `S=…; rm -rf $S; mkdir -p $S; cd $S; printf … > .gitignore` is the shape,
-    and it is the repository's own `.gitignore` that the reading without this names.
+    A command that moves again after it has started running has left the first directory by the time
+    a later segment writes. Rooting that segment's operand at the event's own directory is how a
+    write into a temporary tree reads as one onto the repository — measured over this project's
+    transcripts, `S=…; rm -rf $S; mkdir -p $S; cd $S; printf … > .gitignore` is the shape, and it is
+    the repository's own `.gitignore` that the reading without this names. `command_directory` is
+    what declines to place such a command, and giving up on its relative operands is this reading's
+    answer to that: an under-approximation `UNREAD` names, rather than a refusal.
     """
-    moved = leading_cd(command)
-    if moved is UNRESOLVED_CD or _moves(segments) > (0 if moved is None else 1):
-        return None
-    if moved is None:
-        return cwd
-    if os.path.isabs(moved):
-        return moved
-    return os.path.join(cwd, moved) if cwd else None
+    where = command_directory(command, cwd)
+    return None if where is UNRESOLVED_CD or not where else where
 
 
 def _placed(target, base):
@@ -297,7 +263,7 @@ def _placed(target, base):
 def literal_write_targets(command, cwd):
     """Absolute paths this command names, literally, as somewhere it writes."""
     segments = _visible_segments(command)
-    base = _base_directory(command, segments, cwd)
+    base = _base_directory(command, cwd)
     candidates = []
     for segment in segments:
         candidates += _redirect_targets(segment)
