@@ -15,10 +15,17 @@ project's own trees is not a second such listing, so exempting a kind from the b
 Two more hold the scope the docstring claims — one tree, named in the headline — so widening the
 scan without rewriting that claim goes red.
 
+Four more hold the listing's own spelling: that an entry carrying a line break of its own still
+occupies one line of the block, that a name spelled with git's lettered escapes comes back as the
+file's, that a byte left raw inside the quotes is the file's too, and that the marker is read off a
+record rather than off a field. One holds the side a path whose age will not read falls on, asked of
+the reading directly rather than through a report.
+
 Run: python3 scripts/hooks/test_untracked_scratch.py
 """
 
 import datetime
+import importlib.util
 import json
 import os
 import shutil
@@ -30,6 +37,17 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 HOOK = REPO_ROOT / ".claude/hooks/report/untracked_scratch.py"
+
+
+def load_hook():
+    """Imports the hook by path, since .claude holds no packages."""
+    spec = importlib.util.spec_from_file_location("untracked_scratch", HOOK)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+hook = load_hook()
 
 AGENT_START = 1788616800.0
 SESSION_START = AGENT_START - 3600
@@ -53,6 +71,25 @@ SPACED = "with space.txt"
 AWKWARD = 'a"b ß.txt'
 AS_LISTED = '"a\\"b \\303\\237.txt"'
 EXCLUDED_SPACED = "Runtime/Excluded source.cs"
+
+# A name whose own line break would divide it across the block, and what the block spells it as
+# instead. `ORDINARY` sorts ahead of it, so the two entries are these two in this order.
+ORDINARY = "ordinary.cs"
+BROKEN = "probe\nfixture.cs"
+BROKEN_AS_SHOWN = '"probe\\nfixture.cs"'
+
+# Three of the escapes git spells with a letter rather than in octal, none of them a line break.
+CONTROLLED = "bell\a-back\b-tab\t.txt"
+
+# A name the quoting reaches for its space, while `core.quotePath` off leaves its ï raw inside
+# those quotes.
+RAW_BYTE = "sp ïce.cs"
+
+# A committed name opening with the untracked marker, and the substring that says the report took a
+# rename's old path for an entry of its own.
+MARKED = "?? phantom.cs"
+PHANTOM = "phantom.cs"
+RENAMED = "renamed.cs"
 
 
 def stamp(moment):
@@ -116,6 +153,11 @@ class UntrackedScratchTests(unittest.TestCase):
 
     def report(self, agent=None, zone=None, cwd=None):
         return self.run_hook(agent, zone, cwd).stdout
+
+    def block(self, printed):
+        """Everything under the report's first paragraph, which is one line however long it reads."""
+        context = json.loads(printed)["hookSpecificOutput"]["additionalContext"]
+        return context.split("\n", 1)[1]
 
     def test_Given_AFileOlderThanTheSubagent_When_TheReportIsTaken_Then_OnlyWhatCameAfterIsNamed(self):
         # Arrange — the pair the narrowing has to separate: a file nobody in this run put there, and
@@ -285,6 +327,17 @@ class UntrackedScratchTests(unittest.TestCase):
         # Assert
         self.assertIn(STALE, printed)
 
+    def test_Given_APathWhoseAgeWillNotRead_When_TheBoundIsAsked_Then_ItCountsAsWritten(self):
+        # Arrange — a path the listing could name and `lstat` will not answer for. Asked of the
+        # reading itself, since a tree posed here would have to lose the file between the two.
+        missing = self.project / "no-such-file.txt"
+
+        # Act
+        kept = hook.written_since(missing, AGENT_START)
+
+        # Assert
+        self.assertIs(kept, True)
+
     def test_Given_AnOldPathTheListingQuotes_When_TheReportIsTaken_Then_TheBoundWithholdsIt(self):
         # Arrange — the shape four of this repository's own tracked paths carry. The listing spells
         # it back quoted, and that spelling is not the file's own, which is where the bound stopped
@@ -310,6 +363,71 @@ class UntrackedScratchTests(unittest.TestCase):
 
         # Assert
         self.assertEqual((AWKWARD in context, AS_LISTED in context), (True, False))
+
+    # GREEN_ON_BASE(characterization): one line per entry is what the base already gives.
+    # It gives it by printing the listed spelling and reading nothing back out of it, which is what
+    # this branch changed, so the block is where that change has to be held to the same shape.
+    def test_Given_ANameHoldingALineBreak_When_TheListingIsRead_Then_EachEntryIsOneLine(self):
+        # Arrange
+        self.place(ORDINARY, AFTER_AGENT)
+        self.place(BROKEN, AFTER_AGENT)
+
+        # Act
+        listing = self.block(self.report(self.agent))
+
+        # Assert
+        self.assertEqual(listing.splitlines(), [ORDINARY, BROKEN_AS_SHOWN])
+
+    def test_Given_ANameSpelledWithGitsControlEscapes_When_TheReportIsTaken_Then_ItIsNamedAsTheFileIs(self):
+        # Arrange — a name the listing spells with three lettered escapes at once, so a reading
+        # that took each escape for its own letter would name a file nothing answers to.
+        self.place(CONTROLLED, AFTER_AGENT)
+
+        # Act
+        context = json.loads(self.report(self.agent))["hookSpecificOutput"]["additionalContext"]
+
+        # Assert
+        self.assertIn(CONTROLLED, context)
+
+    def test_Given_ARawNonASCIIByteInsideTheQuotes_When_TheReportIsTaken_Then_TheBoundReachesTheFile(self):
+        # Arrange — `core.quotePath` off, which quotes this name for its space and leaves the byte
+        # inside those quotes as itself. The written file keeps the report from being empty, so
+        # what is compared is a listing rather than the absence of one.
+        subprocess.run(["git", "-C", str(self.project), "config", "core.quotePath", "false"],
+                       check=True, timeout=60)
+        self.place(RAW_BYTE, BEFORE_BOTH)
+        self.place(WRITTEN, AFTER_AGENT)
+
+        # Act
+        listing = self.block(self.report(self.agent))
+
+        # Assert
+        self.assertEqual(listing.splitlines(), [WRITTEN])
+
+    # GREEN_ON_BASE(characterization): both trees read the porcelain by lines, not by fields.
+    # Asking git for `-z` instead and splitting the answer on NUL is what reddens this: a rename's
+    # old path arrives there as a bare field, and this one opens with the marker.
+    def test_Given_ARenameWhoseOldNameOpensWithTheMarker_When_TheReportIsTaken_Then_NoPhantomIsNamed(self):
+        # Arrange — the rename is staged, so the old name reaches the listing only as the far half
+        # of one record. That git paired the two rather than reporting a delete and an add is what
+        # puts the name there at all, so it is compared beside the report.
+        (self.project / MARKED).write_text("phantom\n", encoding="utf-8")
+        for command in (["add", MARKED], ["commit", "-q", "-m", "commit the marked name"]):
+            subprocess.run(["git", "-C", str(self.project), "-c", "user.email=t@velvet",
+                            "-c", "user.name=t", *command], check=True, timeout=60)
+        os.rename(self.project / MARKED, self.project / RENAMED)
+        subprocess.run(["git", "-C", str(self.project), "-c", "user.email=t@velvet",
+                        "-c", "user.name=t", "add", "-A"], check=True, timeout=60)
+        paired = subprocess.run(["git", "-C", str(self.project), "status", "--porcelain"],
+                                capture_output=True, text=True, check=True, timeout=60).stdout
+        self.place(WRITTEN, AFTER_AGENT)
+
+        # Act
+        printed = self.report(self.agent)
+
+        # Assert
+        self.assertEqual((PHANTOM in printed, WRITTEN in printed, paired.startswith("R ")),
+                         (False, True, True))
 
     def test_Given_AnExcludedSourceTheListingQuotes_When_TheReportIsTaken_Then_ItIsNamed(self):
         # Arrange — the other half of the same listing, where the spelling costs a source file its

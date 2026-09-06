@@ -49,8 +49,9 @@ from repository import git  # noqa: E402
 LISTED = 20
 SOURCE_SUFFIXES = re.compile(r"\.(cs|uss|uxml|asmdef|csproj|sln|md)$")
 BUILD_DIRECTORIES = re.compile(r"^(Library|Temp|obj|Logs)/")
-ESCAPE = re.compile(r"\\([abfnrtv\"\\]|[0-7]{3})")
-CONTROLS = {"a": "\a", "b": "\b", "f": "\f", "n": "\n", "r": "\r", "t": "\t", "v": "\v"}
+ESCAPE = re.compile(rb"\\([abfnrtv\"\\]|[0-7]{3})")
+CONTROLS = {b"a": b"\a", b"b": b"\b", b"f": b"\f", b"n": b"\n", b"r": b"\r", b"t": b"\t",
+            b"v": b"\v"}
 
 
 def payload():
@@ -108,23 +109,29 @@ def written_since(path, moment):
 def unquoted(listed):
     """The file a porcelain listing's spelling names.
 
-    Porcelain quotes a path holding a space, a quote, a backslash, a control character or a
-    non-ASCII byte, and the quoted spelling is not the path's own: an age taken from it is not the
-    file's, and a suffix read off its end is the closing quote. Asking git for `-z` output instead
-    was rejected — it hands back raw bytes, which `git()` decodes with the ambient encoding and
-    does not catch a failure of, so one name a locale cannot take loses the whole report rather
-    than one path's age.
+    Porcelain answers a path holding a space, a quote, a backslash or a control character with a
+    C-quoted spelling, and that spelling is not the path's own: an age taken from it is not the
+    file's, and a suffix read off its end is the closing quote. A non-ASCII byte is escaped into
+    that spelling too, unless `core.quotePath` is off — then it arrives as itself, inside whatever
+    quoting the rest of the name forced. So the unescaping runs over the encoded bytes rather than
+    over the decoded characters;
+    `Given_ARawNonASCIIByteInsideTheQuotes_When_TheReportIsTaken_Then_TheBoundReachesTheFile` is
+    what fails when it stops.
+
+    Asking git for `-z` output instead was rejected: it answers in NUL-separated fields rather than
+    lines, and a rename's second field is a bare path a marker filter would take for an entry of its
+    own. `Given_ARenameWhoseOldNameOpensWithTheMarker_When_TheReportIsTaken_Then_NoPhantomIsNamed`
+    is what fails when the form changes.
     """
     if not (listed.startswith('"') and listed.endswith('"') and len(listed) > 1):
         return listed
 
     def byte(hit):
-        """The byte the escape spells, as the character with that ordinal, for latin-1 below."""
         found = hit.group(1)
-        return chr(int(found, 8)) if len(found) == 3 else CONTROLS.get(found, found)
+        return bytes([int(found, 8)]) if len(found) == 3 else CONTROLS.get(found, found)
 
-    return ESCAPE.sub(byte, listed[1:-1]).encode(
-        "latin-1", "backslashreplace").decode("utf-8", "surrogateescape")
+    return ESCAPE.sub(byte, listed[1:-1].encode("utf-8", "surrogateescape")).decode(
+        "utf-8", "surrogateescape")
 
 
 def entries(status, marker):
@@ -133,9 +140,18 @@ def entries(status, marker):
             if line.startswith(marker)]
 
 
+def displayed(path):
+    """How a path is spelled inside the block, whose entries a reader separates by line.
+
+    A path carrying a line break of its own does not survive that separation, so it is spelled
+    quoted and escaped instead.
+    """
+    return path if path.splitlines() == [path] else json.dumps(path)
+
+
 def shown(listing, total):
     """The truncated listing, told how much it is hiding."""
-    text = "\n".join(listing)
+    text = "\n".join(displayed(path) for path in listing)
     return text if total <= len(listing) else f"{text}\n... and {total - len(listing)} more"
 
 
@@ -183,7 +199,6 @@ def main():
             + shown(ignored[:LISTED], len(ignored))
         )
 
-    # systemMessage is the transcript channel; additionalContext is the model's and does not display.
     print(json.dumps({
         # A reader in another worktree of this repository has to be able to tell at a glance
         # whether the report is about the tree they are working in, so the headline names the one
