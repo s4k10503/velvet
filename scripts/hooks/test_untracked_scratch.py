@@ -4,10 +4,13 @@
 What the report names is a decision the reader is asked to make, and a file that was in the tree
 before the agent started is not one the agent can make — it was handed the same one again on every
 stop. The cases below hold the narrowing that ends that: which of the payload's two transcripts the
-bound comes from and which record of it, that a leftover written during the run survives it, that a
-reading which fails widens the report rather than silencing it, and that the gitignored-source half
-is not narrowed at all. Two more hold the scope the docstring claims — one tree, named in the
-headline — so widening the scan without rewriting that claim goes red.
+bound comes from and which record of it, that a leftover written during the run survives it, and
+that a reading which fails widens the report rather than silencing it or answering with the other
+transcript the payload carries. Three hold the two listings the bound is kept away from: the
+gitignored sources, and the sources under the project's own trees — where the bound would leave the
+guard silent for the agent spawned to clear one, that agent having started after it was written.
+Two more hold the scope the docstring claims — one tree, named in the headline — so widening the
+scan without rewriting that claim goes red.
 
 Run: python3 scripts/hooks/test_untracked_scratch.py
 """
@@ -33,7 +36,10 @@ AFTER_AGENT = AGENT_START + 1800
 AGENT_END = AGENT_START + 3600
 
 STALE = "stale-scratch.txt"
+WRITTEN = "written-during-the-run.txt"
 PROBE = "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ProbeFixture.cs"
+PACKAGE_SCRATCH = "Packages/com.velvet.core/Runtime/Component/Tests/Editor/probe-notes.txt"
+LOOSE_SOURCE = "LooseFixture.cs"
 EXCLUDED = "Runtime/Excluded.cs"
 NESTED = "sub/deeper/nested-scratch.txt"
 LINK = "link-to-elsewhere.txt"
@@ -98,16 +104,16 @@ class UntrackedScratchTests(unittest.TestCase):
 
     def test_Given_AFileOlderThanTheSubagent_When_TheReportIsTaken_Then_OnlyWhatCameAfterIsNamed(self):
         # Arrange — the pair the narrowing has to separate: a file nobody in this run put there, and
-        # the probe fixture this hook exists to catch. Asked as one comparison, since a report that
-        # named neither would satisfy the half about the stale file on its own.
+        # one the run wrote. Asked as one comparison, since a report that named neither would
+        # satisfy the half about the stale file on its own.
         self.place(STALE, BEFORE_BOTH)
-        self.place(PROBE, AFTER_AGENT)
+        self.place(WRITTEN, AFTER_AGENT)
 
         # Act
         printed = self.report(self.agent)
 
         # Assert
-        self.assertEqual((STALE in printed, PROBE in printed), (False, True))
+        self.assertEqual((STALE in printed, WRITTEN in printed), (False, True))
 
     def test_Given_EveryUntrackedFileOlderThanTheSubagent_When_TheReportIsTaken_Then_NothingIsPrinted(self):
         # Arrange — the exit status is compared beside the output because a hook that died on its
@@ -125,19 +131,19 @@ class UntrackedScratchTests(unittest.TestCase):
         # carries, which is where the two readings disagree: the case above is withheld under
         # either, and this one only under the subagent's own start.
         self.place(STALE, BETWEEN)
-        self.place(PROBE, AFTER_AGENT)
+        self.place(WRITTEN, AFTER_AGENT)
 
         # Act
         printed = self.report(self.agent)
 
         # Assert
-        self.assertEqual((STALE in printed, PROBE in printed), (False, True))
+        self.assertEqual((STALE in printed, WRITTEN in printed), (False, True))
 
     def test_Given_APartlyStaleTree_When_TheReportIsTaken_Then_TheHeadlineCountsOnlyWhatItNames(self):
         # Arrange — two withheld against one named, so a count taken before the narrowing reads 3.
         self.place(STALE, BEFORE_BOTH)
         self.place("also-stale.txt", BEFORE_BOTH)
-        self.place(PROBE, AFTER_AGENT)
+        self.place(WRITTEN, AFTER_AGENT)
 
         # Act
         headline = json.loads(self.report(self.agent))["systemMessage"]
@@ -150,13 +156,13 @@ class UntrackedScratchTests(unittest.TestCase):
     # wrote, and the same misreading is invisible on a runner already keeping UTC.
     def test_Given_AZoneBehindUTC_When_TheReportIsTaken_Then_AFileWrittenDuringTheRunIsNamed(self):
         # Arrange — POSIX form, whose sign is inverted, so no zone database has to be installed.
-        self.place(PROBE, AFTER_AGENT)
+        self.place(WRITTEN, AFTER_AGENT)
 
         # Act
         printed = self.report(self.agent, zone="UTC+08")
 
         # Assert
-        self.assertIn(PROBE, printed)
+        self.assertIn(WRITTEN, printed)
 
     # GREEN_ON_BASE(characterization): a file written at the bound itself, which the narrowing keeps
     # for the reason it keeps a path it cannot age.
@@ -173,9 +179,9 @@ class UntrackedScratchTests(unittest.TestCase):
     # GREEN_ON_BASE(characterization): a payload this change reads a new key out of, posed without
     # that key. The narrowing is what has a side to fail to, and this says which side that is.
     def test_Given_NoAgentTranscriptInThePayload_When_TheReportIsTaken_Then_TheFileIsStillNamed(self):
-        # Arrange — placed where the session's start would have withheld it, so nothing else in the
-        # payload can stand in for the reading that is missing.
-        self.place(STALE, BETWEEN)
+        # Arrange — placed before the session's start as well, so a hook answering a failed reading
+        # with the other transcript the payload carries would withhold it rather than widen.
+        self.place(STALE, BEFORE_BOTH)
 
         # Act
         printed = self.report()
@@ -186,7 +192,7 @@ class UntrackedScratchTests(unittest.TestCase):
     # GREEN_ON_BASE(characterization): the same widening, reached through a path that does not open.
     def test_Given_AnAgentTranscriptThatIsNotThere_When_TheReportIsTaken_Then_TheFileIsStillNamed(self):
         # Arrange
-        self.place(STALE, BETWEEN)
+        self.place(STALE, BEFORE_BOTH)
 
         # Act
         printed = self.report(self.root / "no-such-transcript.jsonl")
@@ -198,7 +204,7 @@ class UntrackedScratchTests(unittest.TestCase):
     # appended to as it is read.
     def test_Given_AnAgentTranscriptOpeningOnAPartialLine_When_TheReportIsTaken_Then_TheFileIsStillNamed(self):
         # Arrange
-        self.place(STALE, BETWEEN)
+        self.place(STALE, BEFORE_BOTH)
         partial = self.root / "partial.jsonl"
         partial.write_text('{"type": "user", "timesta', encoding="utf-8")
 
@@ -212,7 +218,7 @@ class UntrackedScratchTests(unittest.TestCase):
     # whole JSON and carries no key to ask for.
     def test_Given_AnAgentTranscriptOpeningOnANonObject_When_TheReportIsTaken_Then_TheFileIsStillNamed(self):
         # Arrange
-        self.place(STALE, BETWEEN)
+        self.place(STALE, BEFORE_BOTH)
         scalar = self.root / "scalar.jsonl"
         scalar.write_text("42\n", encoding="utf-8")
 
@@ -227,7 +233,7 @@ class UntrackedScratchTests(unittest.TestCase):
     # here, and this is the one a guard written against the object's failure would let through.
     def test_Given_AnAgentTranscriptPathThatIsNotAPath_When_TheReportIsTaken_Then_TheFileIsStillNamed(self):
         # Arrange
-        self.place(STALE, BETWEEN)
+        self.place(STALE, BEFORE_BOTH)
 
         # Act
         printed = self.report(True)
@@ -248,6 +254,29 @@ class UntrackedScratchTests(unittest.TestCase):
         # Assert
         self.assertIn(AS_LISTED, context)
 
+    def test_Given_AnUntrackedSourceOlderThanTheSubagent_When_TheReportIsTaken_Then_ItIsNamedWhereAScratchFileIsNot(self):
+        # Arrange — both are older than the subagent, so only their kind separates them, and a
+        # report that named everything would satisfy the half about the source on its own.
+        self.place(PACKAGE_SCRATCH, BEFORE_BOTH)
+        self.place(PROBE, BEFORE_BOTH)
+
+        # Act
+        printed = self.report(self.agent)
+
+        # Assert
+        self.assertEqual((PACKAGE_SCRATCH in printed, PROBE in printed), (False, True))
+
+    def test_Given_AnUntrackedSourceOutsideTheProjectsTrees_When_TheReportIsTaken_Then_TheBoundWithholdsItStill(self):
+        # Arrange — both are the same kind and the same age, so only where they sit separates them.
+        self.place(LOOSE_SOURCE, BEFORE_BOTH)
+        self.place(PROBE, BEFORE_BOTH)
+
+        # Act
+        printed = self.report(self.agent)
+
+        # Assert
+        self.assertEqual((LOOSE_SOURCE in printed, PROBE in printed), (False, True))
+
     # GREEN_ON_BASE(characterization): the half this change leaves alone. An excluded source file
     # matters because it STAYS excluded, so an age bound would name it while it was new and never
     # again.
@@ -265,13 +294,13 @@ class UntrackedScratchTests(unittest.TestCase):
         # Arrange — the listing spells both of these from the root whatever directory git ran in, so
         # a cwd one level down is where a bound joined to the cwd stops reaching any of them.
         self.place(NESTED, BEFORE_BOTH)
-        self.place(PROBE, AFTER_AGENT)
+        self.place(WRITTEN, AFTER_AGENT)
 
         # Act
         printed = self.report(self.agent, cwd=self.project / "sub")
 
         # Assert
-        self.assertEqual((NESTED in printed, PROBE in printed), (False, True))
+        self.assertEqual((NESTED in printed, WRITTEN in printed), (False, True))
 
     def test_Given_ASubagentTranscriptWhoseLastRecordIsLater_When_TheReportIsTaken_Then_TheFirstIsTheBound(self):
         # Arrange — a transcript whose two records straddle the named file, so only a bound taken
@@ -279,13 +308,13 @@ class UntrackedScratchTests(unittest.TestCase):
         # satisfy that half alone.
         finished = self.transcript("finished.jsonl", AGENT_START, AGENT_END)
         self.place(STALE, BEFORE_BOTH)
-        self.place(PROBE, AFTER_AGENT)
+        self.place(WRITTEN, AFTER_AGENT)
 
         # Act
         printed = self.report(finished)
 
         # Assert
-        self.assertEqual((STALE in printed, PROBE in printed), (False, True))
+        self.assertEqual((STALE in printed, WRITTEN in printed), (False, True))
 
     def test_Given_ASymlinkMadeDuringTheRunToAnOlderTarget_When_TheReportIsTaken_Then_TheLinkIsAgedNotItsTarget(self):
         # Arrange — the target sits outside the tree, so the listing names the link and not what it
@@ -316,26 +345,28 @@ class UntrackedScratchTests(unittest.TestCase):
                         str(elsewhere)], check=True, timeout=60)
         (elsewhere / SIBLING_PROBE).write_text("sibling\n", encoding="utf-8")
         os.utime(elsewhere / SIBLING_PROBE, (AFTER_AGENT, AFTER_AGENT))
-        self.place(PROBE, AFTER_AGENT)
+        self.place(WRITTEN, AFTER_AGENT)
 
         # Act
         printed = self.report(self.agent)
 
         # Assert
-        self.assertEqual((SIBLING_PROBE in printed, PROBE in printed), (False, True))
+        self.assertEqual((SIBLING_PROBE in printed, WRITTEN in printed), (False, True))
 
     def test_Given_AReportWithSomethingToName_When_TheHeadlineIsRead_Then_ItNamesTheTreeItRead(self):
-        # Arrange — the cwd is posed already resolved, and the expected spelling comes from here
-        # rather than from git, so this asks whether the headline names a tree and not how the tree
-        # was arrived at.
+        # Arrange — posed from below the root, and asked of both spellings at once because one
+        # path can contain the other, which would let a headline printing the cwd it was handed
+        # pass the half about the root.
         rooted = self.project.resolve()
-        self.place(PROBE, AFTER_AGENT)
+        below = self.project / "sub"
+        below.mkdir()
+        self.place(WRITTEN, AFTER_AGENT)
 
         # Act
-        headline = json.loads(self.report(self.agent, cwd=rooted))["systemMessage"]
+        headline = json.loads(self.report(self.agent, cwd=below))["systemMessage"]
 
         # Assert
-        self.assertIn(str(rooted), headline)
+        self.assertEqual((str(rooted) in headline, str(below) in headline), (True, False))
 
 
 if __name__ == "__main__":

@@ -22,12 +22,17 @@ The same loop remains for a file in the reported tree that predates the run, so 
 listing is narrowed to what was written since this subagent started. The bound is a time, not an
 author — a sibling writing into this tree while this agent runs falls inside it — and the session's
 start would not serve, since a file written after a session began stays inside that bound for every
-subagent it later spawns. What is read is the modification time, so a file copied in with its mtime
-preserved carries the age of what it was copied from.
+subagent it later spawns. What is read is the modification time, so a file that arrives already
+carrying an older one is dated by where it came from and not by when it appeared here.
 
-The gitignored-source listing is deliberately outside that narrowing. What makes it worth reporting
-is that the file STAYS excluded while local runs stay green, and an age bound would name it while it
-was new and never again.
+Two listings sit outside that narrowing for one reason: a source under `Assets/` or `Packages/`
+that git does not track, and a source .gitignore excludes. What makes either worth reporting is that
+it STAYS that way while local runs stay green, and an age bound would name it while it was new and
+never again. The agent spawned to clear a leftover starts after the leftover was written, so on the
+untracked half that bound would silence the guard for the cleanup it exists to check.
+
+Everything else the bound decides, and there that silence stays. A leftover it withholds is one
+this hook says nothing about, not a tree it reports clean.
 """
 
 import datetime
@@ -44,6 +49,7 @@ from repository import git  # noqa: E402
 LISTED = 20
 SOURCE_SUFFIXES = re.compile(r"\.(cs|uss|uxml|asmdef|csproj|sln|md)$")
 BUILD_DIRECTORIES = re.compile(r"^(Library|Temp|obj|Logs)/")
+PROJECT_SOURCE = re.compile(r"^(Assets|Packages)/.*" + SOURCE_SUFFIXES.pattern)
 
 
 def payload():
@@ -56,9 +62,9 @@ def payload():
 def session_tree(record):
     """The repository root holding the session's cwd, or None where that is not a repository.
 
-    Rooted rather than taken as handed: a porcelain listing spells its paths from the repository
-    root whatever directory git ran in, so a cwd below the root leaves the age bound below reaching
-    for files that are not there.
+    Rooted rather than taken as handed, so the age bound below reaches the files the listing names.
+    `Given_ACwdBelowTheRepositoryRoot_When_TheReportIsTaken_Then_TheBoundStillApplies` is what fails
+    when it stops.
     """
     start = Path(record.get("cwd") or os.environ.get("CLAUDE_PROJECT_DIR", "."))
     if not start.is_dir():
@@ -116,7 +122,8 @@ def main():
     # thirty-seven, and a reader who clears the twenty believes they are done.
     untracked = [path for path in
                  entries(git(["status", "--porcelain", "--untracked-files=all"], tree), "??")
-                 if not path.startswith("Library/") and written_since(tree / path, started)]
+                 if not path.startswith("Library/")
+                 and (PROJECT_SOURCE.match(path) or written_since(tree / path, started))]
 
     # An ignored source file is the dangerous case; build output is ignored on purpose.
     ignored = [path for path in
