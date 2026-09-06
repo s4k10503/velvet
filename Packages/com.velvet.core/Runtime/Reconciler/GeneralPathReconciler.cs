@@ -107,8 +107,10 @@ namespace Velvet
             }
         }
 
-        // Reconcile entry for a container whose new children require inline expansion (they contain a
-        // ComponentNode / ContextProviderNode / FragmentNode / SuspenseNode / MemoNode). The new tree
+        // Reconcile entry for a container whose new children require inline expansion (NeedsExpansion
+        // names the kinds), or whose old side reached a descendant fiber — ChildReconciler's call site
+        // gives why that second one cannot take the time-sliced diff, and neither can this: nothing
+        // here reads a frame budget, so a pass that enters here runs to completion. The new tree
         // is walked once under live context: Providers push (and stay pushed through the subtree),
         // Components render, and each emitted host leaf is matched against oldNodes
         // and committed via CommitLeaf while the live stack still reflects its ancestor
@@ -588,10 +590,8 @@ namespace Velvet
             }
             if (!needsExpand)
             {
-                // The returned array is `nodes` itself, nulls and all, so owners is filled per input slot
-                // rather than per emitted leaf: what CommitLeaf indexes into it with is an index into the
-                // array returned here. Nothing on this branch descends into a fiber, so every leaf belongs
-                // to the fiber the walk entered under.
+                // Nothing on this branch descends into a fiber, so every leaf belongs to the fiber the
+                // walk entered under.
                 if (owners != null)
                 {
                     // MUTANT_SURVIVES(equivalent): nothing indexes this list past the array returned here.

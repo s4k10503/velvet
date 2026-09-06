@@ -112,11 +112,11 @@ namespace Velvet
             IReadOnlyList<RouteMatch> matches,
             IReadOnlyDictionary<string, Exception>? errors)
         {
-            // MUTANT_SURVIVES(equivalent): this is a fast path over an answer the scan below reaches anyway.
-            // Its one caller passes location.Matches having rejected a null one and a depth past its end,
-            // so the two matches terms are already false; RouterContext.Errors defaults to an empty
-            // dictionary and the package's own Provider of it passes the router's map, so the null term is
-            // too; and where errors is empty the scan finds no errored route and returns the same -1.
+            // MUTANT_SURVIVES(equivalent): a fast path over an answer the scan below reaches anyway.
+            // Its one caller has already rejected a null Matches and a depth past its end and indexed
+            // Matches at that depth, so both matches terms here are false, and where errors is empty the
+            // scan finds no errored route and returns the same -1. The null term is the one that decides
+            // something: it short-circuits ahead of a Count read on the same reference.
             if (errors == null || errors.Count == 0 || matches == null || matches.Count == 0)
             {
                 return -1;

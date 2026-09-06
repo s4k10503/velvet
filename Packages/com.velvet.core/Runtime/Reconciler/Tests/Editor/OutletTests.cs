@@ -17,7 +17,10 @@ namespace Velvet.Tests
     /// the parent's child list, and an Outlet that matches nothing leaves no position at all.</item>
     /// <item>An Outlet carries the key supplied to <see cref="V.Outlet"/>.</item>
     /// <item>A location whose match chain does not reach the Outlet's depth — no matches at all, or fewer than
-    /// the depth indexes — renders nothing, and a route already mounted there leaves with its scope.</item>
+    /// the depth indexes — renders nothing, and a route already mounted there leaves with its scope. So does a
+    /// chain that reaches it and holds a route declaring no element.</item>
+    /// <item>The errors map is read for a boundary, and a caller's own Provider of a null one reads as no
+    /// route having errored rather than throwing.</item>
     /// <item>A nested route navigation accumulates one match per route segment in parent-to-child order.</item>
     /// <item>An Outlet keeps resolving its matched route across a standalone setState re-render — both when the
     /// enclosing layout re-renders and when the route component itself re-renders — because the enclosing
@@ -42,6 +45,8 @@ namespace Velvet.Tests
             _reconciler = new Reconciler();
             _root = new VisualElement();
             s_store = null;
+            s_errorsSeen = null;
+            s_errorsProbeRan = false;
         }
 
         [TearDown]
@@ -161,6 +166,49 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(_root.childCount, Is.EqualTo(0));
+        }
+
+        // GREEN_ON_BASE(characterization): a match whose route declares no element already rendered nothing.
+        // What moved is where that decision is taken -- a component body rather than the commit that built
+        // the container -- and this reads the decision, not its place.
+        [Test]
+        public void Given_AMatchWhoseRouteDeclaresNoElement_When_OutletMounted_Then_RendersNothing()
+        {
+            // Arrange — the chain reaches this depth, and the route it reaches has nothing to render
+            var tree = OutletUnderRouter(LocationWithElementlessMatch(), depth: 0);
+
+            // Act
+            _reconciler.Reconcile(_root, Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(_root.childCount, Is.EqualTo(0));
+        }
+
+        // GREEN_ON_BASE(characterization): the base read this null guard ahead of the same Count.
+        // It reached the errors map from the reconciler's live context cursor, where this reads it
+        // through a hook.
+        [Test]
+        public void Given_ANullErrorsProvider_When_OutletMounted_Then_TheMatchedRouteStillRenders()
+        {
+            // Arrange — RouterContext.Errors is public, so a caller's own Provider can put a null where
+            // the router's own map would be.
+            var location = LocationWithSingleMatch(V.Component(SimpleRender, key: "simple"));
+            var tree = new VNode[]
+            {
+                V.Provider(RouterContext.Errors, (IReadOnlyDictionary<string, Exception>)null!,
+                    children: new VNode[]
+                    {
+                        WrapInRouter(location, depth: 0, V.Component(ErrorsProbeRender, key: "probe")),
+                    }),
+            };
+
+            // Act
+            _reconciler.Reconcile(_root, Array.Empty<VNode>(), tree);
+
+            // Assert — the null is what the Outlet's own depth read, and the route rendered under it
+            Assert.That(
+                (s_errorsProbeRan, s_errorsSeen is null, _root.FindLabelByText("simple") != null),
+                Is.EqualTo((true, true, true)));
         }
 
         #endregion
@@ -486,6 +534,22 @@ namespace Velvet.Tests
                 Matches = new List<RouteMatch>(),
             };
 
+        private static RouterLocation LocationWithElementlessMatch()
+            => new RouterLocation
+            {
+                Path = "/",
+                Params = new Dictionary<string, string>(),
+                Matches = new List<RouteMatch>
+                {
+                    new RouteMatch
+                    {
+                        Route = new RouteDefinition { Path = "/" },
+                        Params = new Dictionary<string, string>(),
+                        MatchedPath = "/",
+                    },
+                },
+            };
+
         // The scope factory is reached through Router.Current, so a fixture that wants one has to have a
         // router standing even when it builds its locations by hand.
         private static Router RouterWithScopeFactory(IRouteScopeFactory scopeFactory)
@@ -520,6 +584,19 @@ namespace Velvet.Tests
 
         [Component]
         private static VNode OtherRender() => V.Label(text: "other");
+
+        private static IReadOnlyDictionary<string, Exception>? s_errorsSeen;
+        private static bool s_errorsProbeRan;
+
+        // Reads the errors map at the depth the Outlet below it reads it, so a case can tell a null that
+        // reached the read from one the Provider never delivered.
+        [Component]
+        private static VNode ErrorsProbeRender()
+        {
+            s_errorsSeen = Hooks.UseContext(RouterContext.Errors);
+            s_errorsProbeRan = true;
+            return V.Outlet();
+        }
 
         private static readonly string[] PresenceRows = { "a", "b", "c" };
 

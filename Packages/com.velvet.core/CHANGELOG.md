@@ -670,17 +670,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   returns a `ComponentNode`, `RouteOutlet` is the body it names, and `Hooks.UseOutletContext` reads
   the value from a Provider that body renders rather than from a push around the mount. What a caller
   has to edit around: the declared return type, and a USS rule or an element query written against
-  the container or its class, which are gone. A route scope is built and released at the same points
-  as before; `FiberOutletScope` holds it against the Outlet's own fiber, which is what the container
-  element used to key.
+  the container or its class, which are gone. `FiberOutletScope` holds the route scope against the
+  Outlet's own fiber, which is what the container element used to key, and
+  `IRouteScopeFactory.CreateScope` runs inside the Outlet's render where it used to run in the commit
+  that built or patched that container.
 
 ### Removed
 
 - The `V.Outlet` node kind, and the reconciler paths that existed for it alone — its element factory
   and patch arms, its keying arm, and the context-spine reconstruction that re-pushed a depth around
   a route re-rendering on its own. `V.Outlet()` returns a `ComponentNode`, which those walks already
-  handle; source declaring the result as the removed type stops compiling, and `V.Outlet` was the only
-  public member that named it.
+  handle; source declaring the result as the removed type, or matching on it, stops compiling.
 
 - `FiberUpdatePriority.Deferred`. Source naming it stops compiling; `FiberUpdatePriority.Transition`
   is what to write instead — the same delayed tier, the same fixed flush delay and the same
@@ -699,36 +699,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   children the arriving component had not declared. Where the departing body held a
   `V.AnimatePresence`, those were its committed children, and a second copy arrived with the next
   swap: the composition an old side reproduces them from is held against the boundary that rendered
-  it, which the arriving component's own boundary cannot name. A leaf patches in place where the same
-  component instance emitted both sides of the match — the remount the position rule in
+  it, which the arriving component's own boundary cannot name. A leaf patches in place only where the
+  same component instance emitted both sides of the match — the remount the position rule in
   `Documentation~/react-migration.md` already stated for hook state, now reaching the element as well.
   A component re-rendering itself keeps the element it emitted, unchanged. A navigation between two
   different route components is such a swap, since a matched route renders at the Outlet's own position.
+  A container whose old side reached a component takes the same walk even where its new children are
+  all host leaves, since the time-sliced diff carries no owner to compare: a `Transition`-lane pass
+  over such a container runs to completion, where the time-sliced one could park at the frame budget.
 
   What a caller has to edit around, in three places. A `refCallback` on the arriving component is
   handed a freshly built element where it used to be handed the departing component's, so a reference
   taken on an earlier render is stale — read the element from the callback each time it fires rather
-  than holding one across renders. What lives on the element instance does not cross the swap either —
-  focus and a `V.ScrollView`'s scroll offset among them — since that instance is the departing
-  component's and leaves with it, so state to keep across the swap is lifted above both components,
-  into a `Store` or a `Hooks.UseState` in the component that declares the slot. And a `V.List` of
-  components written straight into a container rebuilds a row's element when the item moves to a
-  different slot — a reorder, or an insert ahead of it — because a component at a scope-less position
-  opens no key scope, so the leaves it emits reconcile by sibling index and a moved row lands on a leaf
-  a different component emitted; its hook state still travels, since the fiber is found by the item's
-  key. A `V.FocusScope(autoFocus: true)` in such a row is mounted afresh by that rebuild and takes
-  focus back from wherever the user had moved it. Wrapping the list in
-  `V.ListFragment(items, …, key: "rows")` is what keeps the element: the Fragment's key establishes
-  the scope, each row's leaf then carries the item's own key, and the element moves to the new slot
-  with it.
+  than holding one across renders. What the element instance itself carries does not survive a freshly
+  built one — focus, a `V.ScrollView`'s scroll offset, a `V.TextField`'s caret and selection among
+  them — so state to keep is lifted above both components, into a `Store` or a `Hooks.UseState` in the
+  component that declares the slot. And a `V.List` of components written straight into a container
+  rebuilds a row's element when the item moves to a different slot — a reorder, or an insert ahead of
+  it — because a component at a scope-less position opens no key scope, so the leaves it emits
+  reconcile by sibling index and a moved row lands on a leaf a different component emitted; its hook
+  state still travels, since the fiber is found by the item's key, but its element does not, so
+  everything above about a freshly built one reaches a reordered row too. A
+  `V.FocusScope(autoFocus: true)` in such a row is mounted afresh by that rebuild and takes focus back
+  from wherever the user had moved it. Wrapping the list in
+  `V.ListFragment(items, …, key: "rows")` keeps the element: the Fragment's key establishes the scope,
+  each row's leaf then carries the item's own key, and the element moves to the new slot with it. Any
+  parent that establishes a key scope above the rows does the same, since a component's children take a
+  scope only where its own position has one.
 
 - An Outlet navigating to a location that matches no route at its depth no longer keeps the route it
-  was holding. Every path that cleared the Outlet sat below an early return taken on a failed match, so
-  the departed route's elements stayed in the tree, its Component's fiber was never disposed — its hook
-  state and effect cleanups with it — and the scope built for that route was never released. Rendering
-  nothing there is the same walk that drops a `null` child, so the route's elements leave and its fiber
-  is swept as an orphan; the scope goes with it. Only a route change disposed any of that before, and
-  every Outlet case in the suite navigated between two matching locations or mounted once.
+  was holding. Every clearing path in the Outlet's own patch sat below an early return taken on a
+  failed match, so the departed route's elements stayed in the tree, its Component's fiber was never
+  disposed — its hook state and effect cleanups with it — and the scope built for that route was never
+  released. Rendering nothing there is the same walk that drops a `null` child, so the route's elements
+  leave and its fiber is swept as an orphan, and `RouteOutlet` releases the scope itself before it
+  returns that empty render. A route change disposed all three before, and so did an Outlet unmounting
+  and a whole-reconciler teardown; a location that stopped matching disposed none of them.
 
 - A route whose path ends in a splat no longer accepts children. `ParseRouteSegments` refused a splat
   that was not last within one route path, but a branch is every ancestor's segments joined, and

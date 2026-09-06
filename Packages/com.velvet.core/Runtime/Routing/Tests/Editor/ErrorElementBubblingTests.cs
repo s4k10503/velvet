@@ -55,6 +55,14 @@ namespace Velvet.Tests
         private static VNode ChildErrorRender() => V.Label(text: "child-error");
 
         [Component]
+        private static VNode ParentErrorWithOutletRender()
+            => V.Div(children: new VNode[]
+            {
+                V.Label(text: "parent-error-with-outlet"),
+                V.Outlet(),
+            });
+
+        [Component]
         private static VNode GrandparentLayoutRender()
             => V.Div(children: new VNode[]
             {
@@ -223,6 +231,74 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(HasLabel(_root, "child"), Is.False, "The child's normal Element is replaced by its ErrorElement");
+        }
+
+        // GREEN_ON_BASE(characterization): an Outlet below the boundary already rendered nothing.
+        // Carried because the branch moves that resolution into a component body, whose success path
+        // dereferences the match this arm leaves null.
+        [Test]
+        public void Given_ABoundaryElementHoldingAnOutlet_When_ItRenders_Then_TheRouteBelowStaysUnrendered()
+        {
+            // Arrange — the boundary's own subtree has an Outlet, so the depth below the boundary is
+            // reached; the child's loader is what puts the boundary there in the first place.
+            var routes = V.Routes(
+                V.Route(
+                    path: "parent",
+                    element: V.Component(ParentLayoutRender, key: "parent"),
+                    errorElement: V.Component(ParentErrorWithOutletRender, key: "parent-error-outlet"),
+                    children: new[]
+                    {
+                        V.Route(
+                            path: "child",
+                            element: V.Component(ChildRender, key: "child"),
+                            loader: ThrowingLoader("child-boom")),
+                    }));
+            var router = new Router(routes);
+            router.NavigateSync("/parent/child");
+
+            // Act
+            using var mounted = MountWithRouter(router);
+
+            // Assert
+            Assert.That(
+                (HasLabel(_root, "parent-error-with-outlet"), HasLabel(_root, "child")),
+                Is.EqualTo((true, false)),
+                "The boundary renders, and the Outlet inside it resolves no route to put below it");
+        }
+
+        // GREEN_ON_BASE(characterization): the deepest errored route already decided the boundary.
+        // Carried because no arrangement standing here separated it from the deepest matched route:
+        // where the two differed, the deeper route defined no ErrorElement and the scan up from either
+        // of them reached the same one.
+        [Test]
+        public void Given_AnErroredParentAboveAnUnerroredChildBoundary_When_Rendered_Then_TheParentsBoundaryCatchesIt()
+        {
+            // Arrange — both routes define an ErrorElement and only the parent's loader throws, so the
+            // deepest errored route and the deepest matched route are different routes.
+            var routes = V.Routes(
+                V.Route(
+                    path: "parent",
+                    element: V.Component(ParentLayoutRender, key: "parent"),
+                    errorElement: V.Component(ParentErrorRender, key: "parent-error"),
+                    loader: ThrowingLoader("parent-boom"),
+                    children: new[]
+                    {
+                        V.Route(
+                            path: "child",
+                            element: V.Component(ChildRender, key: "child"),
+                            errorElement: V.Component(ChildErrorRender, key: "child-error")),
+                    }));
+            var router = new Router(routes);
+            router.NavigateSync("/parent/child");
+
+            // Act
+            using var mounted = MountWithRouter(router);
+
+            // Assert
+            Assert.That(
+                (HasLabel(_root, "parent-error"), HasLabel(_root, "child-error")),
+                Is.EqualTo((true, false)),
+                "The boundary is chosen from the route that errored, not from the deepest route matched");
         }
 
         private Router BuildChildBoundaryRouter()
