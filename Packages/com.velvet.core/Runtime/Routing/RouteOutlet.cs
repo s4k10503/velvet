@@ -80,6 +80,8 @@ namespace Velvet
                     return true;
                 }
 
+                // MUTANT_SURVIVES(equivalent): the depth == boundaryDepth arm above returns on both paths.
+                // This is therefore reached only where the two depths differ.
                 if (depth > boundaryDepth)
                 {
                     // Below the boundary: the ErrorElement subtree replaced everything here, so render nothing.
@@ -110,6 +112,11 @@ namespace Velvet
             IReadOnlyList<RouteMatch> matches,
             IReadOnlyDictionary<string, Exception>? errors)
         {
+            // MUTANT_SURVIVES(equivalent): this is a fast path over an answer the scan below reaches anyway.
+            // Its one caller passes location.Matches having rejected a null one and a depth past its end,
+            // so the two matches terms are already false; RouterContext.Errors defaults to an empty
+            // dictionary and the package's own Provider of it passes the router's map, so the null term is
+            // too; and where errors is empty the scan finds no errored route and returns the same -1.
             if (errors == null || errors.Count == 0 || matches == null || matches.Count == 0)
             {
                 return -1;
@@ -133,6 +140,8 @@ namespace Velvet
                 return -1;
             }
 
+            // MUTANT_SURVIVES(equivalent): the root iteration and the fallthrough below both answer 0.
+            // Stopping one short of the root therefore cannot change what this returns.
             for (var i = deepestErrored; i >= 0; i--)
             {
                 if (matches[i].Route?.ErrorElement != null)

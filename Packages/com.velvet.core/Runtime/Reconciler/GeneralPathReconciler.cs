@@ -259,13 +259,13 @@ namespace Velvet
             commit.CommittedKeys.Add(key);
         }
 
-        // Whether the old leaf at oldIndex was emitted by the same component instance as the new leaf being
-        // committed. A Component's subtree is expanded away before the leaves are matched, so without this
-        // term the diff sees two plain elements at one position and patches the departing component's into
-        // the arriving one — carrying its live children, and the AnimatePresence composition ReconcilerContext
-        // holds against the pair (boundary fiber, parent element), which the arriving component's own
-        // boundary cannot name. A fiber outlives its own re-renders, so what this separates from an ordinary
-        // render is a swap and a remount together rather than either from the other.
+        // A Component's subtree is expanded away before the leaves are matched, so without this term the
+        // diff sees two plain elements at one position and patches the departing component's element into
+        // the arriving one. What the departing body left inside it then has to leave through the diff, and
+        // an AnimatePresence's committed leaves reach an old side only from ReconcilerContext.PresenceStates,
+        // keyed on the boundary fiber that rendered them: the reused element's children reconcile under the
+        // arriving fiber, so that lookup misses and those leaves are absent from the old side the removal
+        // pass reads.
         private bool SameEmittingFiber(GeneralCommitState commit, int oldIndex)
             => ReferenceEquals(commit.OldOwners[oldIndex], _ctx.FiberStack.Current);
 
@@ -276,6 +276,8 @@ namespace Velvet
         {
             if (walk.Commit != null) CommitLeaf(node, walk.Commit);
             else if (node != null) walk.Result!.Add(node);
+            // MUTANT_SURVIVES(unreachable): no caller reaches this method with a null node.
+            // Both call sites sit under a switch whose first arm is `case null: continue;`.
             if (walk.OwnersOut != null && node != null) walk.OwnersOut.Add(_ctx.FiberStack.Current);
         }
 
@@ -592,6 +594,9 @@ namespace Velvet
                 // to the fiber the walk entered under.
                 if (owners != null)
                 {
+                    // MUTANT_SURVIVES(equivalent): nothing indexes this list past the array returned here.
+                    // OldKeyMap is built over that array alone, so an entry beyond its last slot is never
+                    // reached.
                     for (var i = 0; i < nodes.Length; i++) owners.Add(_ctx.FiberStack.Current);
                 }
                 return nodes;

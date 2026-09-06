@@ -19,6 +19,9 @@ namespace Velvet
         {
             var fiber = FiberAmbientStack.Current;
             var ctx = fiber?.Reconciler?.Context;
+            // MUTANT_SURVIVES(unreachable): a fiber whose render reaches this cannot carry a null ctx.
+            // FiberRenderer sets fiber.Reconciler at mount and clears it at unmount, and
+            // Reconciler.Context is a readonly field every constructor fills.
             if (fiber == null || ctx == null)
             {
                 return;

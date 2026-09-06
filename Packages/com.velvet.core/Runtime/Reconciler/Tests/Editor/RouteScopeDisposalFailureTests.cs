@@ -225,9 +225,6 @@ namespace Velvet.Tests
             Assert.That((escaped, LabelTextsUnder(_root)), Is.EqualTo((false, "other")));
         }
 
-        // GREEN_ON_BASE(characterization): the shipped Outlet already builds the replacement scope.
-        // Nothing read that. Measured, conditioning the build on a clean dispose reddens this case on the
-        // count it asserts, and the case below it only through the sweep log it arms and then never gets.
         [Test]
         public void Given_ARouteScopeDisposeThatThrows_When_TheRouteChanges_Then_TheIncomingRouteStillGetsAScope()
         {

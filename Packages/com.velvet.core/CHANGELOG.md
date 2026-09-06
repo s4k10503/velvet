@@ -702,11 +702,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   it, which the arriving component's own boundary cannot name. A leaf patches in place where the same
   component instance emitted both sides of the match — the remount the position rule in
   `Documentation~/react-migration.md` already stated for hook state, now reaching the element as well.
-  A component re-rendering itself keeps the element it emitted, unchanged. What a caller has to edit
-  around: a swap between two components at one slot hands the arriving one a freshly built element, so
-  a `refCallback` on it runs again and a reference taken from the departing one is stale. A navigation
-  between two different route components is such a swap, since a matched route renders at the Outlet's
-  own position.
+  A component re-rendering itself keeps the element it emitted, unchanged. A navigation between two
+  different route components is such a swap, since a matched route renders at the Outlet's own position.
+
+  What a caller has to edit around, in three places. A `refCallback` on the arriving component is
+  handed a freshly built element where it used to be handed the departing component's, so a reference
+  taken on an earlier render is stale — read the element from the callback each time it fires rather
+  than holding one across renders. What lives on the element instance does not cross the swap either —
+  focus and a `V.ScrollView`'s scroll offset among them — since that instance is the departing
+  component's and leaves with it, so state to keep across the swap is lifted above both components,
+  into a `Store` or a `Hooks.UseState` in the component that declares the slot. And a `V.List` of
+  components written straight into a container rebuilds a row's element when the item moves to a
+  different slot — a reorder, or an insert ahead of it — because a component at a scope-less position
+  opens no key scope, so the leaves it emits reconcile by sibling index and a moved row lands on a leaf
+  a different component emitted; its hook state still travels, since the fiber is found by the item's
+  key. A `V.FocusScope(autoFocus: true)` in such a row is mounted afresh by that rebuild and takes
+  focus back from wherever the user had moved it. Wrapping the list in
+  `V.ListFragment(items, …, key: "rows")` is what keeps the element: the Fragment's key establishes
+  the scope, each row's leaf then carries the item's own key, and the element moves to the new slot
+  with it.
 
 - An Outlet navigating to a location that matches no route at its depth no longer keeps the route it
   was holding. Every path that cleared the Outlet sat below an early return taken on a failed match, so

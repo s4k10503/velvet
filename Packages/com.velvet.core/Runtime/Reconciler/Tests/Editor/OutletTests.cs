@@ -117,6 +117,8 @@ namespace Velvet.Tests
                 "An Outlet with nothing to render occupies no slot between its siblings");
         }
 
+        // GREEN_ON_BASE(characterization): the factory already stamped the key on the node it built.
+        // What this change alters is which kind of node that is, which the reading does not name.
         [Test]
         public void Given_KeyedOutlet_When_Created_Then_NodeCarriesTheKey()
         {
@@ -258,6 +260,9 @@ namespace Velvet.Tests
 
         #region Nested route matching
 
+        // GREEN_ON_BASE(characterization): the match chain a navigation records is the matcher's.
+        // This change touches neither it nor the Router; the reading is here because what an Outlet
+        // renders is read out of that chain by depth.
         [Test]
         public void Given_NestedRoutes_When_NavigatedToChild_Then_MatchesAccumulateParentThenChild()
         {
