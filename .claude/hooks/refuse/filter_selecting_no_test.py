@@ -37,20 +37,21 @@ Five values it declines to answer for, each because answering would mean guessin
   test sources at all.
 
 And two shapes of command it declines for, whatever their values, both about the tree the run will
-find rather than about the filter. One is a segment ahead of the run led by a program this cannot
-place the writes of, `unread_writes` holding which names it can; the set is what is read, so a
-program nobody has thought of stands the command down rather than being refused against a tree it may
-have changed. The other is a write this DOES place, onto a file the reading below would have taken
-names from: the hook is posed before the command, so a fixture written in a heredoc is not on disk
-yet, and a refused hook discards the whole command, so the refusal takes the source with the run it
-was for.
+find rather than about the filter. One is a segment ahead of the run that runs a program this cannot
+place the writes of -- the word it opens with, or a word a substitution in it opens with -- with
+`unread_writes` holding which names it can, and a backtick standing the segment down whole because
+which of a pair opens the substitution is not read. The set is what is read, so a program nobody has
+thought of costs a check rather than a wrong refusal against a tree it may have changed. The other
+is a write this DOES place, onto a file the reading below would have taken names from: the hook is
+posed before the command, so a fixture written in a heredoc is not on disk yet, and a refused hook
+discards the whole command, so the refusal takes the source with the run it was for.
 
 The last three declines are where the reading's under-approximation costs something. Of the 4328 case
 names one EditMode run of this repository reports, 125 are missing from it: a name composed through a
 variable or an interpolation, a case an abstract owner writes and each concrete heir reports as its
 own, a name assembled from a case's arguments. Five of the 352 fixtures reporting a case are missing
 too -- one a test a package brings with it, declared outside `Packages` and `Assets`, and four nested
-fixtures, which the run names below the type nesting them and this names beside it. Buying those back
+fixtures, whose nesting the run spells with a `+` where this spells it with a `.`. Buying those back
 is what the declines are for, and the price is measured rather than argued: over that run's 354 fixture
 names and all three spellings of each of its 4328 case names, one value is refused -- the package's
 fixture spelled without its namespace, a case of it behind, its opening segment landing inside an
@@ -59,17 +60,19 @@ unrelated type's name here so that the decline above does not fire.
 Exit 2 refuses; exit 1 lets the tool through, so nothing here may raise.
 """
 
+import hashlib
 import importlib.util
 import json
 import os
 import re
 import sys
+import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 
-from shell_commands import (comment_opens_at, leading_program, tokens_of,  # noqa: E402
-                            unexpanded, visible_segments)
+from shell_commands import (comment_opens_at, leading_program, mask_shell_literals,  # noqa: E402
+                            tokens_of, unexpanded, visible_segments)
 
 HOOK_TOOLS = {"Bash"}
 
@@ -115,9 +118,24 @@ ACCOUNTED = {"cp", "mv",
              "cd", "pushd", "popd", "mkdir", "rmdir", "rm", "touch", "chmod", "sleep",
              "for", "done", "fi", "case", "esac", "select", "exit", "break", "continue"}
 
-# A substitution runs a program of its own inside a segment the word in front of it would otherwise
-# settle, so a segment carrying one is not placed by that word.
-SUBSTITUTION = re.compile(r"\$\(|`")
+# Where a substitution opens. `<(` and `>(` alongside `$(`, both running a program the word in
+# front of them does not settle -- `diff <(python3 ...) x` opens with `diff`, which this places.
+OPENS = re.compile(r"[$<>]\(")
+
+# What separates one program from the next inside its body. `command_segments` splits at these too,
+# so an unquoted substitution's later commands reach `unread_writes` as segments of their own; one
+# written inside double quotes reaches it only through the reading below.
+INSIDE = re.compile(r"[;&|\n]")
+
+# A backtick opens and closes a substitution with the same character, so which occurrence a word
+# follows takes a pairing this does not read. One anywhere ahead of the run stands the command down.
+BACKTICK = "`"
+
+# The two words above whose write `tracked_writes.py` finds by the word a segment opens with, which
+# a substitution stands in front of -- so a copy written inside one is placed by nothing. Its
+# redirect reading is per segment and does reach inside a substitution, which is why the rest of the
+# set may open one.
+PLACED_BY_A_LEADING_WORD = {"cp", "mv"}
 
 # What the shell expands `-projectPath "$PWD"` to is where the command runs, which is read here rather
 # than given up on: it is the spelling `CLAUDE.md` documents beside the flag, and standing down on it
@@ -215,15 +233,75 @@ def filters_in(command):
             for part in operand.split(";") if part]
 
 
+def _substitutions(segment):
+    """(the segment with each substitution blanked, the masked body of each).
+
+    Masked from just past the opening rather than through a mask of the whole segment: a
+    substitution written inside double quotes has its opening blanked by that one, and this
+    repository's own idle check is written `"$(ps ... | grep ...)"`. Masking at all is what keeps a
+    separator inside a quoted operand from reading as one, a grep pattern being where those sit.
+
+    A body that does not close inside this segment runs to its end, which is what the shell's own
+    split leaves of `H=$(ps ... | grep ...)`: the half in front of the pipe. The half behind it is a
+    segment of its own that the caller asks the same question of.
+    """
+    blanked = list(segment)
+    bodies = []
+    for opening in OPENS.finditer(segment):
+        masked = mask_shell_literals(segment[opening.end():])
+        depth, end = 0, len(masked)
+        for index, character in enumerate(masked):
+            if character == "(":
+                depth += 1
+            elif character == ")":
+                if depth:
+                    depth -= 1
+                else:
+                    end = index
+                    break
+        bodies.append(masked[:end])
+        for offset in range(opening.start(), min(opening.end() + end + 1, len(segment))):
+            blanked[offset] = " "
+    return "".join(blanked), bodies
+
+
+def _programs_run(segment):
+    """(the word this segment opens with, the words its substitutions run programs by), or None.
+
+    Two readings rather than one because the sets they are asked against differ, and separate from
+    the segment's own word because a substitution stands in front of it: `H=$(ps ...)` opens with an
+    assignment and runs `ps`.
+    """
+    if BACKTICK in segment:
+        return None
+    blanked, bodies = _substitutions(segment)
+    tokens = tokens_of(blanked)
+    index = leading_program(tokens)
+    opened = []
+    for body in bodies:
+        for piece in INSIDE.split(body):
+            words = piece.split()
+            at = leading_program(words)
+            if at < len(words):
+                opened.append(words[at])
+    return tokens[index] if index < len(tokens) else None, opened
+
+
 def unread_writes(command):
     """Whether a segment ahead of the run could write a file this cannot place.
 
     Which names the tree carries when the run opens it is what every verdict below rests on, and a
-    write this cannot see leaves that unknown. So the question is asked of the whole segment rather
-    than of a write shape, `ACCOUNTED` holding the words a segment may open with: every other name --
-    `python3`, `tee`, `git`, one nobody has thought of -- falls on the side that says nothing. A
-    refused hook discards the whole command, so a source written there is destroyed by the very
-    refusal its absence produced.
+    write this cannot see leaves that unknown. So the question is asked of the word the segment opens
+    with and of each word a substitution in it runs one by, `ACCOUNTED` holding what those may be:
+    every other name -- `python3`, `tee`, `git`, one nobody has thought of -- falls on the side that
+    says nothing, and so does every other way of reaching a program, each of them a word that is not
+    in the set. A refused hook discards the whole command, so a source written there is destroyed by
+    the very refusal its absence produced.
+
+    A substitution is one of those words, not a reason to stand down on the segment holding it. It
+    was, and what that cost is the check `.claude/skills/unity-tests/SKILL.md` prescribes before a
+    run: `H=$(ps -Ao command= | grep -c ...)` in front of the invocation left this guard silent on
+    the shape its own evidence was gathered from.
 
     Ahead of the run, because the shell runs the segments in order and one behind the last of them
     cannot change the tree that run opened. A run of the runner ahead of another is not asked about:
@@ -236,10 +314,20 @@ def unread_writes(command):
     for segment, tokens in zip(segments[:last], words[:last]):
         if RUNNER_FLAG in tokens:
             continue
-        if SUBSTITUTION.search(segment):
+        programs = _programs_run(segment)
+        if programs is None:
             return True
-        index = leading_program(tokens)
-        if index < len(tokens) and os.path.basename(tokens[index]) not in ACCOUNTED:
+        own, opened = programs
+        if own is not None and os.path.basename(own) not in ACCOUNTED:
+            return True
+        # The one spelling of those two that `tracked_writes.py` publishes as unread. Accounted for
+        # by the word alone, a `cp -t` into a test directory is a source arriving that nothing here
+        # places, and the refusal it earns discards the copy with the run it was for.
+        if (own is not None and os.path.basename(own) in PLACED_BY_A_LEADING_WORD
+                and _writes().names_a_target_directory(tokens)):
+            return True
+        if any(os.path.basename(one) not in ACCOUNTED - PLACED_BY_A_LEADING_WORD
+               for one in opened):
             return True
     return False
 
@@ -299,6 +387,55 @@ def reads_as_source(harness, relative):
     return relative.endswith(".cs") and bool(harness.platform_of(relative))
 
 
+# Where the readings below are kept between commands. Parsing this repository's test sources costs
+# seconds, and a hook spends them in front of the command rather than while it runs: one that
+# overruns its own timeout does not refuse, it goes quiet, and a quiet guard reads exactly like one
+# with nothing to say.
+#
+# Keyed by a digest of a file's text rather than by its path and stamp. A worktree cut this morning
+# then reads what a sibling parsed last week, which is the case that matters here -- a session drives
+# several at once -- and there is no staleness to weigh against it, an edited file being a different
+# key rather than a stale entry.
+NAMES_KEPT = Path(tempfile.gettempdir()) / "velvet-testfilter-names"
+
+# Nothing is dropped from it. One entry per distinct file text is 1.6 KB, this repository's whole
+# test corpus 543 KB, and a bound would cost a directory listing on every entry written; the system
+# temp directory is where it sits so that what accumulates is somebody else's to reap.
+
+
+def _digest(text):
+    return hashlib.blake2b(text.encode("utf-8"), digest_size=16).hexdigest()
+
+
+def _kept_names(digest):
+    """The parse kept for a text, or None where none is."""
+    try:
+        stored = json.loads((NAMES_KEPT / digest).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(stored, dict):
+        return None
+    return {owner: set(cases) for owner, cases in stored.items()}
+
+
+def _keep_names(digest, classes):
+    """Keep a parse for the next command, or leave it unkept.
+
+    Nothing here may fail the guard: a cache that cannot be written costs the next invocation the
+    parse this one would have saved it, where a raise costs the command.
+    """
+    try:
+        NAMES_KEPT.mkdir(parents=True, exist_ok=True)
+        beside = NAMES_KEPT / "{}.{}".format(digest, os.getpid())
+        beside.write_text(json.dumps({owner: sorted(cases) for owner, cases in classes.items()}),
+                          encoding="utf-8")
+        # Written beside and moved onto the name, so a second session reading the entry while this
+        # one writes it takes either parse rather than half of one.
+        os.replace(beside, NAMES_KEPT / digest)
+    except OSError:
+        return
+
+
 class Tree:
     """The names Unity's test tree carries, read out of the project's test sources on demand.
 
@@ -356,24 +493,38 @@ class Tree:
         """
         if relative not in self.parsed:
             text = self.texts[relative]
-            classes = {}
-            for case in self.harness.csharp_cases(text, relative):
-                if case.abstract_owner:
-                    continue
-                classes.setdefault(case.name.rsplit(".", 1)[0], set()).add(case.name)
-            # A heir is qualified by its namespace alone, so one declared inside another type is named
-            # here as though it sat beside it. Its cases are already under the nesting spelling, so a
-            # simple name the parse has settled is left alone rather than added twice under two names.
-            settled = {owner.rsplit(".", 1)[-1] for owner in classes}
-            for heirs in self.harness.concrete_heirs({relative: text}).values():
-                for heir in heirs:
-                    if heir.rsplit(".", 1)[-1] not in settled:
-                        classes.setdefault(heir, set())
-            for found in NAMED_CASE.finditer(text):
-                for owner in list(classes):
-                    classes[owner].add(owner + "." + found.group(1))
-            self.parsed[relative] = classes
+            digest = _digest(text)
+            found = _kept_names(digest)
+            if found is None:
+                found = self._parse(relative, text)
+                _keep_names(digest, found)
+            self.parsed[relative] = found
         return self.parsed[relative]
+
+    def _parse(self, relative, text):
+        """The reading kept under the text's digest, which every name below is a function of alone.
+
+        `relative` reaches `base_red_check.py` as the path it hangs on a case for reporting; no name
+        here is spelled out of it, which is what lets one file's reading answer for another holding
+        the same bytes.
+        """
+        classes = {}
+        for case in self.harness.csharp_cases(text, relative):
+            if case.abstract_owner:
+                continue
+            classes.setdefault(case.name.rsplit(".", 1)[0], set()).add(case.name)
+        # A heir is qualified by its namespace alone, so one declared inside another type is named
+        # here as though it sat beside it. Its cases are already under the nesting spelling, so a
+        # simple name the parse has settled is left alone rather than added twice under two names.
+        settled = {owner.rsplit(".", 1)[-1] for owner in classes}
+        for heirs in self.harness.concrete_heirs({relative: text}).values():
+            for heir in heirs:
+                if heir.rsplit(".", 1)[-1] not in settled:
+                    classes.setdefault(heir, set())
+        for found in NAMED_CASE.finditer(text):
+            for owner in list(classes):
+                classes[owner].add(owner + "." + found.group(1))
+        return classes
 
     def candidates(self, value):
         """The files a value could match a name in -- the ones holding its rarest literal segment."""
@@ -388,7 +539,7 @@ class Tree:
 class Value:
     """One `-testFilter` value, and what it selects."""
 
-    def __init__(self, raw, anchored=None):
+    def __init__(self, raw, anchored=None, separated=False):
         self.raw = raw
         self.excludes = raw.startswith("!")
         text = raw[1:] if self.excludes else raw
@@ -396,8 +547,14 @@ class Value:
         self.text = text[1:-1] if written else text
         self.anchored = written if anchored is None else anchored
         self.readable = bool(PLAIN.fullmatch(self.text)) and not self.excludes
-        self.pattern = re.compile(self.text) if self.readable else None
-        self.ending = re.compile(self.text + r"\Z") if self.readable else None
+        # `separated` reads each `.` as the separator of a qualified name rather than as the wildcard
+        # the runner reads it as. A value gets the runner's reading; the head below is not a value the
+        # runner sees but a question about where one name ends and the next begins, and a wildcard
+        # there lets a head run out in the MIDDLE of a name: one fixture spelled `Velvet` + a
+        # character + `Tests` answers for every value spelled `Velvet.Tests.<anything>`.
+        pattern = re.escape(self.text) if separated else self.text
+        self.pattern = re.compile(pattern) if self.readable else None
+        self.ending = re.compile(pattern + r"\Z") if self.readable else None
         self.reach = None
 
     def hits(self, name):
@@ -468,7 +625,7 @@ class Value:
         """
         if "." not in self.text:
             return not self.anchored
-        head = Value(self.text.rsplit(".", 1)[0], anchored=self.anchored)
+        head = Value(self.text.rsplit(".", 1)[0], anchored=self.anchored, separated=True)
         if not head.readable:
             return False
         return any(head.tails(owner)

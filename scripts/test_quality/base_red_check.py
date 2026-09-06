@@ -105,6 +105,7 @@ Run: python3 scripts/test_quality/base_red_check.py --base origin/main
 
 import argparse
 import ast
+import functools
 import importlib.util
 import io
 import json
@@ -364,6 +365,10 @@ def masked_lines(text, mask):
             for raw, (start, _) in zip(text.splitlines(), line_spans(text))]
 
 
+# Kept for the same reason `mutation_check.mask_spans` is, and read by index alone the same way:
+# `csharp_cases` and `concrete_heirs` each ask for one file's lines, and a reading over a whole test
+# corpus asks for both.
+@functools.lru_cache(maxsize=8)
 def code_lines(text):
     """Each line with every comment, string and character literal blanked to spaces."""
     return masked_lines(text, code_mask(text))

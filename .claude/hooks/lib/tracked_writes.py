@@ -197,6 +197,16 @@ def _sed_targets(operands, segment):
     return found
 
 
+def names_a_target_directory(operands):
+    """Whether a `cp` or an `mv` takes its destination off the front rather than off the end.
+
+    Published because that spelling is on `UNREAD`, and a guard standing on this module's placing of
+    a copy has to be able to tell when it placed none: it reads no target here, so a caller reasoning
+    from an empty answer would read "writes nothing" where the truth is "writes somewhere unread".
+    """
+    return any(token == "-t" or token.startswith("--target-directory") for token in operands)
+
+
 def _copy_targets(operands, segment):
     """Where a `cp` or an `mv` writes: its last operand, and each source placed under it.
 
@@ -206,7 +216,7 @@ def _copy_targets(operands, segment):
     a destination taken off the wrong end names a source, and a source is not written.
     """
     operands = _before_any_comment(operands, segment)
-    if any(token == "-t" or token.startswith("--target-directory") for token in operands):
+    if names_a_target_directory(operands):
         return []
     named = [token for token in operands if not token.startswith("-")]
     if len(named) < 2:

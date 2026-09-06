@@ -13,16 +13,47 @@ silence, both being 0, and reading it alone is how a guard that has stopped sayi
 Run: python3 scripts/hooks/test_filter_selecting_no_test.py
 """
 
+import importlib.util
 import json
 import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
+import uuid
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 GUARD = REPO_ROOT / ".claude/hooks/refuse/filter_selecting_no_test.py"
+
+
+def guard_module():
+    """The guard imported into this process, for the case that counts its readings.
+
+    Every other case poses it as a subprocess, which is how a notice is told from silence; that one
+    counts what it reads rather than reading what it says, and a counter has to sit inside it.
+    """
+    spec = importlib.util.spec_from_file_location("velvet_filter_guard_under_test", GUARD)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def registered_timeout():
+    """The milliseconds `.claude/settings.json` allows this guard, or None where it registers none.
+
+    The budget below is a share of this rather than a number of its own: a hook that overruns its
+    registration does not refuse, it goes quiet, so what the cost has to fit inside is whatever the
+    registration says today.
+    """
+    settings = json.loads((REPO_ROOT / ".claude/settings.json").read_text(encoding="utf-8"))
+    for groups in settings.get("hooks", {}).values():
+        for group in groups:
+            for hook in group.get("hooks", []):
+                if GUARD.name in (hook.get("command") or ""):
+                    return hook.get("timeout")
+    return None
 
 TEST_DIRECTORY = "Packages/com.velvet.core/Runtime/Probe/Tests/Editor"
 
@@ -345,6 +376,16 @@ class FilterSelectingNoTestTests(unittest.TestCase):
         # Act / Assert
         self.assertEqual((answer[0], "PairEdgeTests" in self.notice(answer)), (0, True))
 
+    def test_Given_AFilterEndingInASemicolon_When_ItSelectsOneClassOfTwo_Then_TheOtherIsStillNamed(self):
+        # Arrange -- the runner drops the empty part a trailing semicolon leaves. A reading that
+        # keeps it holds one value it cannot read, and one unreadable value stands the whole notice
+        # down -- over a filter that is complete as written.
+        answer = self.judge('Unity -runTests -projectPath "{}" '
+                            '-testFilter "Velvet.Tests.PairTests;"'.format(self.project))
+
+        # Act / Assert
+        self.assertEqual((answer[0], "PairEdgeTests" in self.notice(answer)), (0, True))
+
     def test_Given_AFilterSelectingBothClassesOfThatFile_When_ItIsPosed_Then_NothingIsLeftToSay(self):
         # Arrange -- the control: a notice that fires once the author has named the whole file is a
         # notice on a correct command.
@@ -423,11 +464,71 @@ class FilterSelectingNoTestTests(unittest.TestCase):
         # Act / Assert
         self.assertEqual((answer[0], "SoloTests" in answer[2]), (2, True))
 
-    def test_Given_ASubstitutionAheadOfTheRun_When_ItIsPosed_Then_TheGuardStandsDown(self):
-        # Arrange -- what runs inside a substitution is not the word the segment opens with, so the
-        # program deciding whether the tree can change between here and the run is one no reading of
-        # the leading word reaches. The word in front of this one IS read, and reads as harmless.
-        answer = self.judge("mkdir -p $(dirname Logs/run.log) && "
+    def test_Given_TheIdleCheckThisRepositoryPrescribes_When_ItLeadsTheRun_Then_TheFilterIsAnswered(self):
+        # Arrange -- `.claude/skills/unity-tests/SKILL.md` puts this in front of a Unity run, so a
+        # reading that stood down on the substitution carrying it answered for no run an agent
+        # following this repository's own recipe posed. What each word here runs is placed: `ps` and
+        # `grep` read, and the assignment in front of them writes nothing.
+        answer = self.judge("H=$(ps -Ao command= | grep -c "
+                            "'^/Applications/.*/MacOS/Uni[t]y -runTests') && "
+                            'Unity -runTests -projectPath "{}" '
+                            "-testFilter Velvet.Tests.NoSuchTests".format(self.project))
+
+        # Act / Assert
+        self.assertEqual((answer[0], "NoSuchTests" in answer[2]), (2, True))
+
+    def test_Given_TheHarnessCheckInsideDoubleQuotes_When_ItLeadsTheRun_Then_TheFilterIsAnswered(self):
+        # Arrange -- the second check that skill prescribes, spelled as the transcripts spell it. The
+        # shell splits nothing inside the quotes, so the whole pipeline is one segment and the pipes
+        # in the grep pattern are what a reading of the body has to not take for separators.
+        pattern = r"'^[^ ]*[Pp]ython[^ ]* .*[ /](mutation_check|neuter_check)\.py'"
+        answer = self.judge('echo "harness=$(ps -Ao command= | grep -cE ' + pattern + ')" && '
+                            'Unity -runTests -projectPath "{}" '
+                            "-testFilter Velvet.Tests.NoSuchTests".format(self.project))
+
+        # Act / Assert
+        self.assertEqual((answer[0], "NoSuchTests" in answer[2]), (2, True))
+
+    def test_Given_ASubstitutionInsideDoubleQuotes_When_ItRunsAProgramThisCannotPlace_Then_TheGuardStandsDown(self):
+        # Arrange -- the same quoting, and now the command behind the pipe is one whose writes no
+        # reading of a command's text enumerates. Nothing outside the quotes separates it from the
+        # word in front, so a reading that stopped at that word would place a `python3` as a `grep`.
+        answer = self.judge('echo "$(grep -c x f | python3 -c print)" && '
+                            'Unity -runTests -projectPath "{}" '
+                            "-testFilter Velvet.Tests.NoSuchTests".format(self.project))
+
+        # Act / Assert
+        self.assertEqual((answer[0], self.notice(answer)), (0, ""))
+
+    def test_Given_ASubstitutionCopyingASourceIntoTheTree_When_ItLeadsTheRun_Then_TheGuardStandsDown(self):
+        # Arrange -- `tracked_writes.py` finds a copy by the word its segment opens with, and a
+        # substitution stands in front of that word, so this one is placed by nothing. The refusal it
+        # would earn discards the copy along with the run it was for.
+        answer = self.judge("H=$(cp {0}/{1}/SoloTests.cs {0}/{1}/FreshTests.cs) && "
+                            'Unity -runTests -projectPath "{0}" '
+                            "-testFilter Velvet.Tests.FreshTests"
+                            .format(self.project, TEST_DIRECTORY))
+
+        # Act / Assert
+        self.assertEqual((answer[0], self.notice(answer)), (0, ""))
+
+    def test_Given_AProcessSubstitutionRunningAProgramThisCannotPlace_When_ItLeadsTheRun_Then_TheGuardStandsDown(self):
+        # Arrange -- `<(...)` runs a program too, and the word in front of it is one the reading
+        # places, so nothing but the substitution's own word decides this. The shape a session
+        # reaches for when it compares two readings of the same tree.
+        answer = self.judge("diff <(python3 -c print) {0}/{1}/SoloTests.cs && "
+                            'Unity -runTests -projectPath "{0}" '
+                            "-testFilter Velvet.Tests.NoSuchTests"
+                            .format(self.project, TEST_DIRECTORY))
+
+        # Act / Assert
+        self.assertEqual((answer[0], self.notice(answer)), (0, ""))
+
+    def test_Given_ASubstitutionWrittenWithBackticks_When_ItLeadsTheRun_Then_TheGuardStandsDown(self):
+        # Arrange -- a backtick opens and closes with the same character, so which occurrence a word
+        # follows takes a pairing this does not read. The word in front of them is one it does place,
+        # so nothing but the backticks decides this.
+        answer = self.judge("echo `pwd` && "
                             'Unity -runTests -projectPath "{}" '
                             "-testFilter Velvet.Tests.NoSuchTests".format(self.project))
 
@@ -615,6 +716,38 @@ class FilterSelectingNoTestTests(unittest.TestCase):
         # Act / Assert
         self.assertEqual((answer[0], "FreshTests" in answer[2]), (2, True))
 
+    def test_Given_ACopyNamingItsTargetDirectory_When_ItLeadsTheRun_Then_TheGuardStandsDown(self):
+        # Arrange -- `tracked_writes.py` publishes that spelling as one it does not read, so the
+        # source arriving in the test directory is placed by nothing while the word leading the
+        # segment reads as harmless. The refusal it would earn discards the copy.
+        elsewhere = Path(tempfile.mkdtemp(prefix="velvet-test-filter-source-"))
+        self.addCleanup(shutil.rmtree, elsewhere, ignore_errors=True)
+        (elsewhere / "FreshTests.cs").write_text(HEADER + fixture("FreshTests") + FOOTER,
+                                                 encoding="utf-8")
+        answer = self.judge("cp -t {0}/{1} {2}/FreshTests.cs && "
+                            'Unity -runTests -projectPath "{0}" '
+                            "-testFilter Velvet.Tests.FreshTests"
+                            .format(self.project, TEST_DIRECTORY, elsewhere))
+
+        # Act / Assert
+        self.assertEqual((answer[0], self.notice(answer)), (0, ""))
+
+    def test_Given_ACommandWritingASourceIntoAnotherTree_When_TheSameFilterIsPosed_Then_ItIsRefused(self):
+        # Arrange -- the control for the write that does stand this down. The fixture is written
+        # under a test folder of a tree the run does not open, so the name it declares is one the
+        # run's tree will not hold however the command goes.
+        elsewhere = Path(tempfile.mkdtemp(prefix="velvet-test-filter-outside-"))
+        self.addCleanup(shutil.rmtree, elsewhere, ignore_errors=True)
+        (elsewhere / TEST_DIRECTORY).mkdir(parents=True)
+        answer = self.judge("cat > {}/{}/FreshTests.cs <<'EOF'\n{}EOF\n"
+                            'Unity -runTests -projectPath "{}" '
+                            "-testFilter Velvet.Tests.FreshTests"
+                            .format(elsewhere, TEST_DIRECTORY,
+                                    HEADER + fixture("FreshTests") + FOOTER, self.project))
+
+        # Act / Assert
+        self.assertEqual((answer[0], "FreshTests" in answer[2]), (2, True))
+
     def test_Given_ACommandWritingThroughAProgramTheReadingCannotPlace_When_ItRunsAfter_Then_TheGuardStandsDown(self):
         # Arrange -- the same destruction as the heredoc above, through a program whose writes no
         # reading of a command's text can enumerate. What decides it is the program leading the
@@ -682,6 +815,26 @@ class FilterSelectingNoTestTests(unittest.TestCase):
         # Act / Assert
         self.assertEqual((code, "VariablyNamedTests" in said), (2, True))
 
+    def test_Given_AFixtureTheHeadMatchesAsAPattern_When_AValueUnderThatHeadIsPosed_Then_ItIsRefused(self):
+        # Arrange -- read as a pattern, `Velvet.Tests` runs out at the end of
+        # `Velvet.Tests.VelvetXTests` through its own wildcard, which would make the segment behind
+        # every value spelled `Velvet.Tests.<anything>` a possible case name. One fixture anywhere in
+        # the tree is all that takes; `SoloTests` beside it holds no such name, so what the refusal
+        # says is that the head read its dots as separators.
+        project = Path(tempfile.mkdtemp(prefix="velvet-test-filter-pattern-"))
+        self.addCleanup(shutil.rmtree, project, ignore_errors=True)
+        (project / TEST_DIRECTORY).mkdir(parents=True)
+        for name in ("SoloTests", "VelvetXTests"):
+            (project / TEST_DIRECTORY / (name + ".cs")).write_text(
+                HEADER + fixture(name) + FOOTER, encoding="utf-8")
+
+        # Act
+        answer = self.judge('Unity -runTests -projectPath "{0}" '
+                            "-testFilter Velvet.Tests.NoSuchTests".format(project), cwd=project)
+
+        # Assert
+        self.assertEqual((answer[0], "NoSuchTests" in answer[2]), (2, True))
+
     def test_Given_AFilterOpeningWithASegmentNoSourceSpells_When_ItIsPosed_Then_TheGuardStandsDown(self):
         # Arrange -- a package brings its own tests, compiled out of a directory this does not walk,
         # and a value naming one of them opens with a namespace no file here spells. Refusing it is
@@ -738,6 +891,61 @@ class FilterSelectingNoTestTests(unittest.TestCase):
 
         # Act / Assert
         self.assertEqual((answer[0], self.notice(answer)), (0, ""))
+
+    # ------------------------------------------------------------------------------------------
+    # What it costs to ask
+    # ------------------------------------------------------------------------------------------
+
+    def test_Given_ATreeAlreadyRead_When_ItIsReadAgain_Then_NoFileIsParsedASecondTime(self):
+        # Arrange -- a nonce per file, because the parses are kept under a digest of a file's text
+        # and a second run of this suite would otherwise answer out of the first run's. Three files
+        # rather than one, so that a reading which kept only the last still reports a second pass.
+        guard = guard_module()
+        project = Path(tempfile.mkdtemp(prefix="velvet-test-filter-kept-"))
+        self.addCleanup(shutil.rmtree, project, ignore_errors=True)
+        (project / TEST_DIRECTORY).mkdir(parents=True)
+        for index in range(3):
+            (project / TEST_DIRECTORY / "Kept{}Tests.cs".format(index)).write_text(
+                "// {}\n".format(uuid.uuid4()) + HEADER
+                + fixture("Kept{}Tests".format(index)) + FOOTER, encoding="utf-8")
+        parsed = []
+        parse = guard.Tree._parse
+        guard.Tree._parse = (lambda tree, relative, text:
+                             parsed.append(relative) or parse(tree, relative, text))
+
+        def read():
+            tree = guard.Tree(guard._harness(), str(project))
+            for relative in sorted(tree.texts):
+                tree.classes_in(relative)
+            return len(parsed)
+
+        first = read()
+        parsed.clear()
+
+        # Act
+        second = read()
+
+        # Assert
+        self.assertEqual((first, second), (3, 0))
+
+    def test_Given_ThisRepositorysOwnSources_When_TheyHaveBeenReadOnce_Then_TheNextReadingFitsTheBudget(self):
+        # Arrange -- the one case posed against the real tree, because what it measures is a function
+        # of that tree's size and a project this file writes carries none of it. The budget is an
+        # eighth of what `.claude/settings.json` allows the hook -- a budget rather than a measurement,
+        # so anything that costs the reading time reddens it, which is the point of having one. What
+        # it separates: a reading that answers out of what it kept, against one that parses the
+        # corpus, which is what the hook did before it kept anything.
+        command = ('Unity -runTests -batchmode -projectPath "{}" '
+                   "-testFilter Velvet.Tests.NoFixtureIsCalledThis".format(REPO_ROOT))
+        self.judge(command, cwd=REPO_ROOT)
+        budget = (registered_timeout() or 0) / 8000.0
+        started = time.monotonic()
+
+        # Act
+        answer = self.judge(command, cwd=REPO_ROOT)
+
+        # Assert
+        self.assertEqual((answer[0], time.monotonic() - started < budget), (2, True))
 
     def test_Given_AToolNothingRoutesHere_When_TheSameCommandIsPosed_Then_TheGuardSaysNothing(self):
         # Arrange -- a gate reading anything but the event's tool name answers under every name, and

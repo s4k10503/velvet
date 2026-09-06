@@ -41,6 +41,7 @@ already touching, and two of them reached a commit that way.
 
 import argparse
 import bisect
+import functools
 import hashlib
 import json
 import os
@@ -282,6 +283,17 @@ CHARACTER = "character literal"
 SINGLE_LINE_CONSTRUCTS = (DIRECTIVE, LINE_COMMENT, STRING, CHARACTER)
 
 
+# Reading one file for its cases masks it several times over -- `comment_spans` asks here, and
+# `code_lines` and `brace_profile` each ask `code_mask`, which asks here again. Kept rather than
+# recomputed, and keyed on the text itself, so there is no staleness to weigh against that: an
+# edited file is a different key rather than a stale entry. What made it worth keeping is
+# `filter_selecting_no_test.py`, which takes that reading over a whole test corpus in front of a
+# Bash command; measured there, this keep, the one on `code_mask` and the one on
+# `base_red_check.code_lines` together take that reading from 11.4 to 5.7 CPU seconds.
+#
+# A kept list is handed to every caller rather than a copy, so what makes this safe is that no
+# caller writes to one: both are read by index and by iteration.
+@functools.lru_cache(maxsize=8)
 def mask_spans(text):
     """(start, end, kind) for the spans this reads as something other than code.
 
@@ -349,6 +361,7 @@ def mask_spans(text):
     return spans
 
 
+@functools.lru_cache(maxsize=8)
 def code_mask(text):
     """True at each offset `mask_spans` did not read as a comment, a literal or a directive."""
     mask = [True] * len(text)
