@@ -23,12 +23,13 @@ namespace Velvet.Tests
     /// ArrangementHelpers names. A declaration is therefore answered by a body rather than by its string.
     /// What that leaves open is that reaching is not running, since a case can reach its reader down a
     /// branch its own arguments never take, and whether the assertion under a verdict measures that reader
-    /// at all. Neither is mechanical, and both stay a reviewer's to check.
+    /// at all. Neither is mechanical, and both stay a reviewer's to check, as does the residual below.
     /// The roster quantifies over GetClasses() call sites, so a reading that takes the ARRAY LiveClasses
     /// returns rather than an element sits outside it — which is seven of the nine values below. Cases pin
     /// those seven, but no roster obliges one: the case listing what the layout dispatcher hands that array
-    /// on to is what reddens when a tenth reading arrives, and only where it arrives beside the four
-    /// appliers that case lists rather than inside one of them.
+    /// on to reddens when a reading joins that callee set, and a reading taking the array anywhere else
+    /// costs nothing here, including inside one of those callees, beside the dispatcher call in the re-sync
+    /// that binds the array, and at a second call site of LiveClasses.
     /// The cases whose verdict is that the order decides are the ones an editor bump has to settle: they
     /// name what today's answer rests on, so that question is a run rather than a re-audit.
     /// </remarks>
