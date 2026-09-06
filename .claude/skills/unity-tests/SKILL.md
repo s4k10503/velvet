@@ -19,8 +19,8 @@ python3 scripts/test_quality/assert_no_inconclusive.py Logs/results.xml
 `-testPlatform PlayMode` for the other suite. `-testFilter "Velvet.Tests.SomeFixture"` narrows it, and several things about the value decide what actually runs:
 
 - It is matched as a **regex** against a case's full name **and every enclosing suite and assembly name**, so a value naming an assembly selects every case in it.
-- **Metacharacters are live, so a value pasted out of the XML's `fullname` is a pattern rather than a name.** A parameterised case's arguments carry `(` and `)` and often `[`; a nested fixture's node carries `+`. Either way the paste selects nothing, the run exits 0, and the refusal that follows names a stale `Library` rather than the filter.
-- **`^…$` selects an ordinary fixture's cases**, and nothing at all for a fixture that declares no cases of its own — NUnit makes nested fixtures siblings of the outer one rather than children of it. Anchoring an assembly name selects nothing either, so anchoring is not a way to be precise about which of the two a value named.
+- **Metacharacters are live, so a value pasted out of the XML's `fullname` is a pattern rather than a name.** Some names carry `(`, `)` and `[` from arguments rendered into them; a nested fixture's node carries `+`. Such a paste selects nothing and the run exits 0.
+- **`^…$` selects an ordinary fixture's cases**, and nothing at all for a fixture that declares no cases of its own — NUnit makes nested fixtures siblings of the outer one rather than children of it.
 - **Several values separate on `;` and the split does not trim**, so `"A; B"` runs A alone and reports green over the smaller set.
 
 Read the `fullname` roster in the XML, not only the count, before trusting a filtered run: a filter that took a whole assembly reports a count that looks entirely plausible.
