@@ -24,6 +24,11 @@ namespace Velvet.Tests
     /// What that leaves open is that reaching is not running, since a case can reach its reader down a
     /// branch its own arguments never take, and whether the assertion under a verdict measures that reader
     /// at all. Neither is mechanical, and both stay a reviewer's to check.
+    /// The roster quantifies over GetClasses() call sites, so a reading that takes the ARRAY LiveClasses
+    /// returns rather than an element sits outside it — which is seven of the nine values below. Cases pin
+    /// those seven, but no roster obliges one: the case listing what the layout dispatcher hands that array
+    /// on to is what reddens when a tenth reading arrives, and only where it arrives beside the four
+    /// appliers that case lists rather than inside one of them.
     /// The cases whose verdict is that the order decides are the ones an editor bump has to settle: they
     /// name what today's answer rests on, so that question is a run rather than a re-audit.
     /// </remarks>
@@ -70,10 +75,23 @@ namespace Velvet.Tests
             .GetMethod("ReapplyMotionOwnedInlineValues", BindingFlags.NonPublic | BindingFlags.Static)!;
 
         // A helper that applies classes runs the production routing, and the routing reaches production code
-        // an arrangement can leave unexecuted. The edges such a helper contributes are the same for every
-        // case that arranges, so a verdict reached through one is earned by arranging rather than by
-        // measuring: the IL case does not walk through them.
+        // an arrangement can leave unexecuted.
         private static readonly string[] ArrangementHelpers = { nameof(Carrying), nameof(Patched) };
+
+        // What Velvet.FiberNodePatcher.ApplyResolvedLayoutManipulators hands its class array on to, in the
+        // form Spelled builds.
+        private static readonly string[] LayoutGateReadings =
+        {
+            "System.Boolean Velvet.StyleGridClass.HasGridClass(System.String[])",
+            "System.Void Velvet.FiberNodePatcher.ApplyDivideManipulator("
+                + "UnityEngine.UIElements.VisualElement, System.String[])",
+            "System.Void Velvet.FiberNodePatcher.ApplyGapManipulator("
+                + "UnityEngine.UIElements.VisualElement, System.String[], System.Boolean)",
+            "System.Void Velvet.FiberNodePatcher.ApplyGridManipulator("
+                + "UnityEngine.UIElements.VisualElement, System.String[])",
+            "System.Void Velvet.FiberNodePatcher.ApplyTextBalanceManipulator("
+                + "UnityEngine.UIElements.VisualElement, System.String[])",
+        };
 
         private readonly Dictionary<FilterFunctionDefinition, string> _customFilterNames = new();
 
@@ -255,6 +273,38 @@ namespace Velvet.Tests
                 "a paint verdict is recorded on a variant gate state by a body that records no class array "
                 + "beside it, so a state can carry the verdict with no array beside it and the re-sync's "
                 + "live-class-list stand-in stops being confined to the layout gates");
+        }
+
+        // GREEN_ON_BASE(characterization): the base already hands the array to these five and no others.
+        // What shows the case can fail is a fifth applier beside them — measured with an
+        // `ApplyRingManipulator` driving `StyleRingClass.TryExtract`, whose last-wins `ring-*` reading then
+        // rides on the stand-in array with every other case in this fixture still green.
+        [Test]
+        public void Given_TheDispatcherTheReSyncHandsItsStandInClassArrayTo_When_ItsCalleesAreReadFromTheIL_Then_TheyAreTheReadingsListedHere()
+        {
+            // Arrange — the roster above quantifies over GetClasses() call sites, and seven of the nine
+            // values below resolve from the ARRAY this dispatcher hands on rather than from an element, so
+            // the roster obliges no case for them. The set rather than the call sequence: which of gap and
+            // grid runs first is the departing manipulator's handoff, which the dispatcher's own comment
+            // owns.
+            using var runtime = ModuleDefinition.ReadModule(typeof(V).Assembly.Location);
+            var dispatcher = runtime.GetTypes()
+                .SelectMany(type => type.Methods)
+                .Single(method => method.Name == "ApplyResolvedLayoutManipulators");
+
+            // Act
+            var readings = dispatcher.Body.Instructions
+                .Where(instruction => instruction.Operand is MethodReference)
+                .Select(instruction => Spelled((MethodReference)instruction.Operand))
+                .Distinct()
+                .OrderBy(name => name, StringComparer.Ordinal);
+
+            // Assert
+            Assert.That(string.Join("\n", readings), Is.EqualTo(string.Join("\n", LayoutGateReadings)),
+                "the layout dispatcher hands the class array to a set this fixture does not list: a reading "
+                + "joining it takes the array the re-sync stands in with for an element carrying no "
+                + "reconciled array of its own, so whether that array's order decides its answer belongs in "
+                + "a case here and the reading belongs in this list; one leaving it takes its line with it");
         }
 
         // GREEN_ON_BASE(characterization): the base already resolves the last clip token on the list.
