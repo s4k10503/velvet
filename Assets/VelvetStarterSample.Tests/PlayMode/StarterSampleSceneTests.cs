@@ -27,6 +27,10 @@ namespace Velvet.Tests
     /// chrome's header. It compares the two measured rects against each other rather than against a pixel
     /// budget, so the font metrics and panel scale of whichever machine runs it do not decide the outcome.
     /// </para>
+    /// <para>
+    /// One case counts rather than finds: the task route's keyed rows over two swaps, since what a swap
+    /// appending rather than replacing leaves behind is a copy of the departed route's children.
+    /// </para>
     /// </summary>
     [Timeout(600000)]
     internal sealed class StarterSampleSceneTests
@@ -40,6 +44,10 @@ namespace Velvet.Tests
         // The nav sits in the layout and survives both routes, so the departure term has to come from
         // the task route's own body.
         private const string DraftFieldName = "draft-field";
+
+        // The task route's keyed rows, which sit under its AnimatePresence rather than beside the field
+        // above: the field's departure is the ordinary diff's and says nothing about theirs.
+        private const string TaskRowName = "task-row";
 
         private const double SettleSeconds = 20;
 
@@ -104,6 +112,12 @@ namespace Velvet.Tests
         }
 
         private static VisualElement Find(string name) => PanelRoot()?.Q<VisualElement>(name);
+
+        private static int CountOf(string name)
+        {
+            var root = PanelRoot();
+            return root == null ? 0 : root.Query<VisualElement>(name).ToList().Count;
+        }
 
         [UnityTest]
         public IEnumerator Given_TheStarterSampleScene_When_Played_Then_TheMountedTreeReachesTheDocumentPanel()
@@ -180,6 +194,32 @@ namespace Velvet.Tests
             Assert.That(
                 (tasksBefore, Find(DraftFieldName) != null, PanelRoot().Q<Button>(BackLinkName) != null),
                 Is.EqualTo((true, false, true)));
+        }
+
+        [UnityTest]
+        public IEnumerator Given_TheStarterSampleScene_When_TheRouteIsSwappedTwice_Then_NoTaskRowSurvivesTheDeparture()
+        {
+            // Arrange — the rows reach a diff's old side only through their AnimatePresence's committed
+            // composition, which is held against the boundary that rendered it.
+            yield return PlaySampleScene();
+            yield return WaitUntil(() => CountOf(TaskRowName) > 0, $"at least one element named {TaskRowName}");
+            var rowsOnTheTaskRoute = CountOf(TaskRowName);
+
+            // Act — twice, so the return to the task route is read as a swap of its own rather than left
+            // to the departure.
+            PanelRoot().Q<Button>(AboutLinkName).SimulateClick();
+            yield return WaitUntil(() => PanelRoot()?.Q<Button>(BackLinkName) != null, $"a Button named {BackLinkName}");
+            PanelRoot().Q<Button>(BackLinkName).SimulateClick();
+            yield return WaitUntil(() => Find(DraftFieldName) != null, $"an element named {DraftFieldName}");
+            PanelRoot().Q<Button>(AboutLinkName).SimulateClick();
+            yield return WaitUntil(() => PanelRoot()?.Q<Button>(BackLinkName) != null, $"a Button named {BackLinkName}");
+
+            // Assert — the count on the task route rides along, since a scene that rendered no row would
+            // satisfy the zero on the about route while saying nothing about a departure.
+            Assert.That(
+                (rowsOnTheTaskRoute > 0, CountOf(TaskRowName)),
+                Is.EqualTo((true, 0)),
+                $"{rowsOnTheTaskRoute} row(s) on the task route");
         }
     }
 }

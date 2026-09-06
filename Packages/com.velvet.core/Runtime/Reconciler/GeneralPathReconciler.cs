@@ -59,6 +59,9 @@ namespace Velvet
             public HashSet<ChildKey> ReplacedKeys = null!;
             public HashSet<int> OrphanedOldIndices = null!;
             public List<(VisualElement? element, bool isExisting)> NewElements = null!;
+            // The fiber whose output emitted each OldNodes entry, index-aligned with it. SameEmittingFiber
+            // owns what it decides.
+            public List<ComponentFiber?> OldOwners = null!;
             // Key committed for each NewElements entry (parallel list), so a
             // speculative subtree (Suspense primary) can be rolled back on suspend.
             public List<ChildKey> CommittedKeys = null!;
@@ -88,6 +91,7 @@ namespace Velvet
             internal List<ComponentFiber> OldFibers { get; init; }
             internal HashSet<ComponentFiber> NewFibers { get; init; }
             internal ProviderPairTable OldProviders { get; init; }
+            internal List<ComponentFiber?> OldOwners { get; init; }
         }
 
         // Fully disposes orphan fibers (old-side, absent on the new side) and unregisters
@@ -131,6 +135,7 @@ namespace Velvet
                 ReplacedKeys = pool.RentReplacedKeySet(),
                 OrphanedOldIndices = pool.RentOrphanedIndexSet(),
                 NewElements = pool.RentElementList(),
+                OldOwners = pairing.OldOwners,
                 CommittedKeys = new List<ChildKey>(),
                 NewIndex = 0,
             };
@@ -218,7 +223,7 @@ namespace Velvet
             if (oldMatched)
             {
                 var existingDom = parent.ElementAt(LogicalChildSlots.ToPhysical(parent, slotStart + old.index));
-                if (ReconcileKeying.CanPatch(old.node, node))
+                if (ReconcileKeying.CanPatch(old.node, node) && SameEmittingFiber(commit, old.index))
                 {
                     var actual = _patcher.ResolveWrapped(existingDom);
                     _patcher.PatchNode(actual, old.node, node);
@@ -254,12 +259,24 @@ namespace Velvet
             commit.CommittedKeys.Add(key);
         }
 
+        // Whether the old leaf at oldIndex was emitted by the same component instance as the new leaf being
+        // committed. A Component's subtree is expanded away before the leaves are matched, so without this
+        // term the diff sees two plain elements at one position and patches the departing component's into
+        // the arriving one — carrying its live children, and the AnimatePresence composition ReconcilerContext
+        // holds against the pair (boundary fiber, parent element), which the arriving component's own
+        // boundary cannot name. A fiber outlives its own re-renders, so what this separates from an ordinary
+        // render is a swap and a remount together rather than either from the other.
+        private bool SameEmittingFiber(GeneralCommitState commit, int oldIndex)
+            => ReferenceEquals(commit.OldOwners[oldIndex], _ctx.FiberStack.Current);
+
         // Emits one expanded leaf: commits it in place under live context (general path) or collects
-        // it into the flat structural result (old-side / fast-path expansion).
-        private void Emit(VNode? node, List<VNode>? result, GeneralCommitState? commit)
+        // it into the flat structural result (old-side / fast-path expansion), recording beside it the
+        // fiber the walk had reached. One method writes both, so OwnersOut cannot fall behind Result.
+        private void Emit(InlineWalk walk, VNode? node)
         {
-            if (commit != null) CommitLeaf(node, commit);
-            else if (node != null) result!.Add(node);
+            if (walk.Commit != null) CommitLeaf(node, walk.Commit);
+            else if (node != null) walk.Result!.Add(node);
+            if (walk.OwnersOut != null && node != null) walk.OwnersOut.Add(_ctx.FiberStack.Current);
         }
 
         // Rolls a speculative subtree's commits back to preCount entries. A
@@ -428,6 +445,10 @@ namespace Velvet
             // resolving is not the inner one resolving. Held on the walk rather than rented per expansion,
             // since the enclosing loop reads it after the inner one has returned its own buffers.
             public readonly HashSet<ComponentFiber> OffscreenPrimaries = new();
+            // The fiber the walk had reached as each leaf was emitted, index-aligned with Result. Filled
+            // only where the caller hands a list in, which is the old side: the new side reads the live
+            // FiberStack at the match instead.
+            public List<ComponentFiber?>? OwnersOut;
             public ProviderPairTable? Providers;
             public ProviderPairTable? OldProvidersForPairing;
             public GeneralCommitState? Commit;
@@ -447,6 +468,7 @@ namespace Velvet
                 SlotStart = 0;
                 OldFibers = null!;
                 NewFibers = null!;
+                OwnersOut = null;
                 Providers = null;
                 OldProvidersForPairing = null;
                 Commit = null;
@@ -539,7 +561,8 @@ namespace Velvet
             List<ComponentFiber> oldFibers,
             HashSet<ComponentFiber> newFibers,
             ProviderPairTable? providers = null,
-            ProviderPairTable? oldProvidersForPairing = null)
+            ProviderPairTable? oldProvidersForPairing = null,
+            List<ComponentFiber?>? owners = null)
         {
             AssertProviderTableMatchesSide(isNewSide, providers, oldProvidersForPairing);
 
@@ -561,7 +584,18 @@ namespace Velvet
                     break;
                 }
             }
-            if (!needsExpand) return nodes;
+            if (!needsExpand)
+            {
+                // The returned array is `nodes` itself, nulls and all, so owners is filled per input slot
+                // rather than per emitted leaf: what CommitLeaf indexes into it with is an index into the
+                // array returned here. Nothing on this branch descends into a fiber, so every leaf belongs
+                // to the fiber the walk entered under.
+                if (owners != null)
+                {
+                    for (var i = 0; i < nodes.Length; i++) owners.Add(_ctx.FiberStack.Current);
+                }
+                return nodes;
+            }
 
             var buffer = _ctx.BufferPool.RentNodeList();
             var prevFlag = _ctx.ContextValueChanged;
@@ -572,6 +606,7 @@ namespace Velvet
             walk.SlotStart = slotStart;
             walk.OldFibers = oldFibers;
             walk.NewFibers = newFibers;
+            walk.OwnersOut = owners;
             walk.Providers = providers;
             walk.OldProvidersForPairing = oldProvidersForPairing;
             try
@@ -611,9 +646,7 @@ namespace Velvet
             VNode?[] nodes,
             WalkPosition position)
         {
-            var result = walk.Result;
             var isNewSide = walk.IsNewSide;
-            var commit = walk.Commit;
 
             for (var nodeIndex = 0; nodeIndex < nodes.Length; nodeIndex++)
             {
@@ -686,11 +719,11 @@ namespace Velvet
                         // host's ReconcileChildren during this walk's commit, so descendant Components
                         // render in-scope of their ancestor Providers without a pre-captured snapshot.
                         _keying.RegisterScopedKey(node, position.Scope, nodeIndex);
-                        Emit(node, result, commit);
+                        Emit(walk, node);
                         break;
                     default:
                         _keying.RegisterScopedKey(node, position.Scope, nodeIndex);
-                        Emit(node, result, commit);
+                        Emit(walk, node);
                         break;
                 }
             }

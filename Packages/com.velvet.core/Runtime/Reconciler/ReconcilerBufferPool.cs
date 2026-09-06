@@ -110,6 +110,13 @@ namespace Velvet
         public HashSet<ComponentFiber> RentFiberSet() => _fiberSetPool.Rent();
         public void ReturnFiberSet(HashSet<ComponentFiber> set) => _fiberSetPool.Return(set);
 
+        private readonly ClearablePool<List<ComponentFiber?>> _fiberOwnerListPool = new(l => l.Clear());
+
+        // Nullable elements, unlike the list above: a leaf reaching Emit with no fiber on the stack still
+        // takes a slot, since what indexes this list is a leaf's position rather than a fiber's.
+        public List<ComponentFiber?> RentFiberOwnerList() => _fiberOwnerListPool.Rent();
+        public void ReturnFiberOwnerList(List<ComponentFiber?> list) => _fiberOwnerListPool.Return(list);
+
         #endregion
 
         #region ChildReconciler — for duplicate-key orphans (HashSet<int>)

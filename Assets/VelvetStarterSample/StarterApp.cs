@@ -140,6 +140,7 @@ namespace Velvet.Samples.StarterApp
         {
             return V.Motion(
                 className: RowClass,
+                name: "task-row",
                 variants: RowPoses,
                 initial: "entering",
                 animate: "shown",

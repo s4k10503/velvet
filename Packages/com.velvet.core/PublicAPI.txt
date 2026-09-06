@@ -75,7 +75,6 @@
 [Velvet] ctor Velvet.MutationResult`2[TVariables, TData].ctor(): System.Void
 [Velvet] ctor Velvet.NavigationAttempt.ctor(): System.Void
 [Velvet] ctor Velvet.NullStoreLogger.ctor(): System.Void
-[Velvet] ctor Velvet.OutletNode.ctor(): System.Void
 [Velvet] ctor Velvet.ParticlesElement.ctor(): System.Void
 [Velvet] ctor Velvet.ParticlesSettings.ctor(UnityEngine.ParticleSystem?, Velvet.PlayTrigger, System.Single): System.Void
 [Velvet] ctor Velvet.PointerDownBinding.ctor(): System.Void
@@ -486,7 +485,7 @@
 [Velvet] method Velvet.V.Mount(UnityEngine.UIElements.VisualElement, Velvet.VNode): Velvet.MountedTree
 [Velvet] method Velvet.V.NavLink(System.String, System.String, System.String?, System.String?, System.String?, Velvet.VNode?[]?, System.Boolean, System.Boolean, System.Boolean, System.String?): Velvet.ComponentNode
 [Velvet] method Velvet.V.Navigate(System.String, System.Boolean, System.String?): Velvet.ComponentNode
-[Velvet] method Velvet.V.Outlet(System.Object?, System.String?): Velvet.OutletNode
+[Velvet] method Velvet.V.Outlet(System.Object?, System.String?): Velvet.ComponentNode
 [Velvet] method Velvet.V.Particles(UnityEngine.ParticleSystem?, System.String?, System.String?, System.String?, Velvet.PlayTrigger, System.Single, Velvet.StyleOverrides?, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?): Velvet.ElementNode
 [Velvet] method Velvet.V.Portal(System.String, Velvet.VNode?[]?, System.String?): Velvet.PortalNode
 [Velvet] method Velvet.V.Portal(UnityEngine.UIElements.VisualElement, Velvet.VNode?[]?, System.String?): Velvet.PortalNode
@@ -1044,7 +1043,6 @@
 [Velvet] type Velvet.NavigationResult
 [Velvet] type Velvet.NavigationState
 [Velvet] type Velvet.NullStoreLogger
-[Velvet] type Velvet.OutletNode
 [Velvet] type Velvet.PanelFocusOrder
 [Velvet] type Velvet.ParticlesElement
 [Velvet] type Velvet.ParticlesSettings

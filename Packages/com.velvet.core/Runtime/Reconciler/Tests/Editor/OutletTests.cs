@@ -24,7 +24,11 @@ namespace Velvet.Tests
     /// Provider spine is reconstructed from the committed tree for an isolated re-render.</item>
     /// <item>The route scope is held on the Outlet's own fiber: a route change replaces it, and the Outlet
     /// unmounting releases it — including the unmount a whole-reconciler teardown drives.</item>
+    /// <item>A route change leaves nothing of the departed route behind, including the children of an
+    /// <c>V.AnimatePresence</c> in its body — which the arriving route never declares, so only the
+    /// departing route's own boundary could have put them on the diff's old side.</item>
     /// </list>
+    /// <see cref="ComponentSwapElementOwnershipTests"/> owns that last reading without a router above it.
     /// </summary>
     [TestFixture]
     internal sealed class OutletTests
@@ -224,6 +228,30 @@ namespace Velvet.Tests
             Assert.That(
                 (departing!.IsDisposed, scopeFactory.CreateScopeCount),
                 Is.EqualTo((true, 2)));
+        }
+
+        [Test]
+        public void Given_AMountedRouteHoldingAPresence_When_ADifferentRouteMatches_Then_ItsChildrenLeaveWithIt()
+        {
+            // Arrange — with the route rendered at the Outlet's own position, a route change is a slot whose
+            // component changes, and the departing route's body holds children only its own presence
+            // boundary can put on a diff's old side.
+            var first = OutletUnderRouter(
+                LocationWithSingleMatch(V.Component(PresenceRouteRender, key: "presence")), depth: 0);
+            _reconciler.Reconcile(_root, Array.Empty<VNode>(), first);
+            var rowsBefore = _root.ElementAt(0).childCount;
+            var second = OutletUnderRouter(
+                LocationWithSingleMatch(V.Component(PlainRouteRender, key: "plain")), depth: 0);
+
+            // Act
+            _reconciler.Reconcile(_root, first, second);
+
+            // Assert — the departing row count rides along, because an arrangement that mounted no rows
+            // would satisfy the arriving route's own count while saying nothing about a departure.
+            Assert.That(
+                (rowsBefore, _root.ElementAt(0).name, _root.ElementAt(0).childCount),
+                Is.EqualTo((3, "plain-route", 1)),
+                "The arriving route's body is all the Outlet's position holds");
         }
 
         #endregion
@@ -487,6 +515,20 @@ namespace Velvet.Tests
 
         [Component]
         private static VNode OtherRender() => V.Label(text: "other");
+
+        private static readonly string[] PresenceRows = { "a", "b", "c" };
+
+        [Component]
+        private static VNode PresenceRouteRender()
+            => V.Div(name: "presence-route", children: new VNode[]
+            {
+                V.AnimatePresence(children: V.List(PresenceRows, row => row, row => V.Motion(
+                    name: "row-" + row, children: new VNode[] { V.Label(text: row) }))),
+            });
+
+        [Component]
+        private static VNode PlainRouteRender()
+            => V.Div(name: "plain-route", children: new VNode[] { V.Label(text: "plain") });
 
         [Component]
         private static VNode RootLayoutRender()

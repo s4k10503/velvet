@@ -614,6 +614,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A slot whose component changes builds the arriving component's element rather than patching the
+  departing one's into it. A component's subtree is expanded away before the host leaves are matched,
+  so the diff saw two plain containers at one position and patched the first into the second, carrying
+  children the arriving component had not declared. Where the departing body held a
+  `V.AnimatePresence`, those were its committed children, and a second copy arrived with the next
+  swap: the composition an old side reproduces them from is held against the boundary that rendered
+  it, which the arriving component's own boundary cannot name. A leaf patches in place where the same
+  component instance emitted both sides of the match — the remount the position rule in
+  `Documentation~/react-migration.md` already stated for hook state, now reaching the element as well.
+  A component re-rendering itself keeps the element it emitted, unchanged. What a caller has to edit
+  around: a swap between two components at one slot hands the arriving one a freshly built element, so
+  a `refCallback` on it runs again and a reference taken from the departing one is stale. A navigation
+  between two different route components is such a swap, since a matched route renders at the Outlet's
+  own position.
+
 - An Outlet navigating to a location that matches no route at its depth no longer keeps the route it
   was holding. Every path that cleared the Outlet sat below an early return taken on a failed match, so
   the departed route's elements stayed in the tree, its Component's fiber was never disposed — its hook
