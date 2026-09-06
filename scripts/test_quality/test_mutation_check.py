@@ -216,10 +216,11 @@ class NeighbouringCampaignTests(unittest.TestCase):
         # Act / Assert
         self.assertIsNone(mutation_check.CAMPAIGN_RUNNING.match(line))
 
+    # GREEN_ON_BASE(refactor): the matcher never reads the version this branch respells in the path.
     def test_Given_AnEditorRunningTests_When_TheProcessListIsRead_Then_ItIsNotACampaign(self):
         # Arrange — the other control: an editor is what the existing wait already counts, and
         # counting it twice would report a neighbour where there is one explanation, not two.
-        line = "/Applications/Unity/Hub/Editor/6000.3.11f1/Unity.app/Contents/MacOS/Unity -runTests"
+        line = "/Applications/Unity/Hub/Editor/6000.3.23f1/Unity.app/Contents/MacOS/Unity -runTests"
 
         # Act / Assert
         self.assertIsNone(mutation_check.CAMPAIGN_RUNNING.match(line))

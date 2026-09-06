@@ -325,13 +325,11 @@ namespace Velvet
         // Draws the baked shadow silhouette quad. Returns early if the shadow color is transparent or the bake
         // is not yet available (no graphics device / shader) — the geometry callback retries.
         //
-        // The alpha is the spec's alone: a fading caster needs no correction here. Measured on 6000.3.11f1 by
-        // reading back a render-texture panel, UI Toolkit scales a textured mgc.Allocate quad by the element's
-        // own opacity and by an ancestor's byte-for-byte the same as it scales painter2D output — under a
-        // clipped opacity group, under an inline filter, and on this very paint with the sentinel face
-        // suppression active. An animation-driven multiplier here therefore applies the caster's opacity a
-        // SECOND time and lands the shadow at opacity squared; one existed and was removed. Restoring one
-        // needs a fresh measurement, not the old claim that a baked quad is opacity-blind.
+        // A fading caster needs no correction here, and a multiplier would apply the caster's opacity a SECOND
+        // time and land the shadow at opacity squared; one existed and was removed. What makes that so is the
+        // renderer behaviour pinned by PaintOpacityParityPlaybackTests, with its consequence on this paint
+        // pinned by ShadowFadeOpacityPlaybackTests — so restoring a multiplier means refuting those rather
+        // than re-deriving a measurement.
         private static void DrawShadowQuad(MeshGenerationContext mgc, VisualElement ve, DropShadowBinding binding,
             float w, float h)
         {
