@@ -6,9 +6,9 @@ self-reported cleanup has been wrong before, and the leftover reads as productio
 session. And a source file .gitignore excludes, which stays untracked while every local run passes
 because the file is there.
 
-Coverage stops at that one checkout: the repository holding the session's cwd. The tree a subagent
-is handed is a different one, read here only where the session's cwd sits inside it, so a leftover
-there is not reported and a silence here says nothing about it. Scanning every tree `git worktree
+Coverage stops at that one checkout: the repository holding the session's cwd. A tree a subagent was
+handed some other way is read here only where the session's cwd sits inside it, so a leftover there
+is not reported and a silence here says nothing about it. Scanning every tree `git worktree
 list` names was rejected: that listing says which trees exist and not which one the stopping
 subagent worked in, so a sibling's in-flight files would go to whichever agent stopped. That is the
 loop this hook already caused once, reporting the MAIN checkout's untracked files to an agent in a
@@ -25,14 +25,14 @@ start would not serve, since a file written after a session began stays inside t
 subagent it later spawns. What is read is the modification time, so a file that arrives already
 carrying an older one is dated by where it came from and not by when it appeared here.
 
-Two listings sit outside that narrowing for one reason: a source under `Assets/` or `Packages/`
-that git does not track, and a source .gitignore excludes. What makes either worth reporting is that
-it STAYS that way while local runs stay green, and an age bound would name it while it was new and
-never again. The agent spawned to clear a leftover starts after the leftover was written, so on the
-untracked half that bound would silence the guard for the cleanup it exists to check.
+The gitignored-source listing is deliberately outside that narrowing. What makes it worth reporting
+is that the file STAYS excluded while local runs stay green, and an age bound would name it while it
+was new and never again. Exempting the untracked half the same way, for a source under `Assets/` or
+`Packages/`, was tried and rejected: an open branch's uncommitted work is untracked source under
+those roots too and the exemption has no reading that declines it, so it reached the loop above
+through a second door.
 
-Everything else the bound decides, and there that silence stays. A leftover it withholds is one
-this hook says nothing about, not a tree it reports clean.
+What the bound withholds is a leftover this hook says nothing about, not a tree it reports clean.
 """
 
 import datetime
@@ -49,7 +49,6 @@ from repository import git  # noqa: E402
 LISTED = 20
 SOURCE_SUFFIXES = re.compile(r"\.(cs|uss|uxml|asmdef|csproj|sln|md)$")
 BUILD_DIRECTORIES = re.compile(r"^(Library|Temp|obj|Logs)/")
-PROJECT_SOURCE = re.compile(r"^(Assets|Packages)/.*" + SOURCE_SUFFIXES.pattern)
 
 
 def payload():
@@ -76,8 +75,8 @@ def session_tree(record):
 def agent_start(transcript):
     """When this subagent's own transcript opened, or None where the reading did not answer.
 
-    None widens the report back to every path, which is the side this belongs on: a bound nobody
-    could read is not a bound saying nothing was left.
+    None leaves the listing unnarrowed, which is the side this belongs on: a bound nobody could
+    read is not a bound saying nothing was left.
     """
     if not isinstance(transcript, str) or not transcript:
         return None
@@ -122,8 +121,7 @@ def main():
     # thirty-seven, and a reader who clears the twenty believes they are done.
     untracked = [path for path in
                  entries(git(["status", "--porcelain", "--untracked-files=all"], tree), "??")
-                 if not path.startswith("Library/")
-                 and (PROJECT_SOURCE.match(path) or written_since(tree / path, started))]
+                 if not path.startswith("Library/") and written_since(tree / path, started)]
 
     # An ignored source file is the dangerous case; build output is ignored on purpose.
     ignored = [path for path in
@@ -154,8 +152,9 @@ def main():
 
     # systemMessage is the transcript channel; additionalContext is the model's and does not display.
     print(json.dumps({
-        # A reader in another worktree of this repository has to be able to tell at a glance that
-        # the report is not about the tree they are working in, so the headline names the one read.
+        # A reader in another worktree of this repository has to be able to tell at a glance
+        # whether the report is about the tree they are working in, so the headline names the one
+        # read.
         "systemMessage": f"files remain in {tree} — " + ", ".join(headline),
         "hookSpecificOutput": {
             "hookEventName": "SubagentStop",

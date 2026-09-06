@@ -6,11 +6,10 @@ before the agent started is not one the agent can make — it was handed the sam
 stop. The cases below hold the narrowing that ends that: which of the payload's two transcripts the
 bound comes from and which record of it, that a leftover written during the run survives it, and
 that a reading which fails widens the report rather than silencing it or answering with the other
-transcript the payload carries. Three hold the two listings the bound is kept away from: the
-gitignored sources, and the sources under the project's own trees — where the bound would leave the
-guard silent for the agent spawned to clear one, that agent having started after it was written.
-Two more hold the scope the docstring claims — one tree, named in the headline — so widening the
-scan without rewriting that claim goes red.
+transcript the payload carries. One holds the listing the bound is kept away from, the gitignored
+sources; one holds that a source under the project's own trees is not a second such listing, so
+exempting a kind from the bound goes red there. Two more hold the scope the docstring claims — one
+tree, named in the headline — so widening the scan without rewriting that claim goes red.
 
 Run: python3 scripts/hooks/test_untracked_scratch.py
 """
@@ -38,8 +37,6 @@ AGENT_END = AGENT_START + 3600
 STALE = "stale-scratch.txt"
 WRITTEN = "written-during-the-run.txt"
 PROBE = "Packages/com.velvet.core/Runtime/Component/Tests/Editor/ProbeFixture.cs"
-PACKAGE_SCRATCH = "Packages/com.velvet.core/Runtime/Component/Tests/Editor/probe-notes.txt"
-LOOSE_SOURCE = "LooseFixture.cs"
 EXCLUDED = "Runtime/Excluded.cs"
 NESTED = "sub/deeper/nested-scratch.txt"
 LINK = "link-to-elsewhere.txt"
@@ -254,28 +251,18 @@ class UntrackedScratchTests(unittest.TestCase):
         # Assert
         self.assertIn(AS_LISTED, context)
 
-    def test_Given_AnUntrackedSourceOlderThanTheSubagent_When_TheReportIsTaken_Then_ItIsNamedWhereAScratchFileIsNot(self):
-        # Arrange — both are older than the subagent, so only their kind separates them, and a
-        # report that named everything would satisfy the half about the source on its own.
-        self.place(PACKAGE_SCRATCH, BEFORE_BOTH)
+    def test_Given_AnUntrackedSourceUnderTheProjectsTrees_When_TheReportIsTaken_Then_TheBoundWithholdsItAsWell(self):
+        # Arrange — the kind and the age at which a kind exemption from the bound would name a
+        # file. The written one is beside it because a report that named neither would satisfy the
+        # half about the source on its own.
         self.place(PROBE, BEFORE_BOTH)
+        self.place(WRITTEN, AFTER_AGENT)
 
         # Act
         printed = self.report(self.agent)
 
         # Assert
-        self.assertEqual((PACKAGE_SCRATCH in printed, PROBE in printed), (False, True))
-
-    def test_Given_AnUntrackedSourceOutsideTheProjectsTrees_When_TheReportIsTaken_Then_TheBoundWithholdsItStill(self):
-        # Arrange — both are the same kind and the same age, so only where they sit separates them.
-        self.place(LOOSE_SOURCE, BEFORE_BOTH)
-        self.place(PROBE, BEFORE_BOTH)
-
-        # Act
-        printed = self.report(self.agent)
-
-        # Assert
-        self.assertEqual((LOOSE_SOURCE in printed, PROBE in printed), (False, True))
+        self.assertEqual((PROBE in printed, WRITTEN in printed), (False, True))
 
     # GREEN_ON_BASE(characterization): the half this change leaves alone. An excluded source file
     # matters because it STAYS excluded, so an age bound would name it while it was new and never
