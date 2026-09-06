@@ -16,7 +16,14 @@ python3 scripts/test_quality/assert_results_from_this_tree.py Logs/results.xml -
 python3 scripts/test_quality/assert_no_inconclusive.py Logs/results.xml
 ```
 
-`-testPlatform PlayMode` for the other suite. `-testFilter "Velvet.Tests.SomeFixture"` narrows it. Its value is an **unanchored regex matched against each case's full name**, not a name looked up: it selects every case whose full name merely contains the value, and the anchored spelling `^…$` selects nothing at all for a fixture whose cases live in nested classes. Several values separate on `;` and the split does not trim, so `"A; B"` runs A alone and reports green over the smaller set. The count in the XML is the only thing that says which set ran — read it.
+`-testPlatform PlayMode` for the other suite. `-testFilter "Velvet.Tests.SomeFixture"` narrows it, and four things about the value decide what actually runs:
+
+- It is matched as a **regex**, not looked up as a name, and against a case's full name **and every enclosing suite and assembly name** — so a value naming an assembly selects every case in it, and no case's own name has to contain the value for the run to be large.
+- **Regex metacharacters are live.** A case inside a nested fixture carries a `+` in the full name the results XML prints, and `+` is a quantifier: that spelling selects nothing, while the same string with the `+` written as `.` selects the cases.
+- **`^…$` selects an ordinary fixture's cases**, and selects nothing at all for a fixture whose cases live in nested classes — NUnit makes those siblings of the outer fixture rather than children of it.
+- **Several values separate on `;` and the split does not trim**, so `"A; B"` runs A alone and reports green over the smaller set.
+
+Read the `fullname` roster in the XML, not only the count, before trusting a filtered run: a filter that took a whole assembly reports a count that looks entirely plausible.
 
 **Write into the worktree's own Logs directory, never /tmp/results.xml.** That path is one file for every worktree and every session on the machine, and the compile-error paragraph below is what it costs.
 
