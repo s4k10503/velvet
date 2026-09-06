@@ -116,15 +116,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   through `Debug.LogException` now, on the terms a Suspend loader's subscriber failure already was, and
   the navigation or disposal runs to its end either way.
 
-- A Loader's `CancellationToken` still answers for its round once that round has ended. The round's
-  source used to be disposed at the moment the round ended, which lands before the run that launched
-  the Loaders has handed that token to the matches below the one that ended it, before an `Await`
-  loader a newer navigation superseded has unwound, and before a `Suspend` loader streaming into the
-  route on screen has finished. `CancellationToken.WaitHandle` read from any of those three then
-  raised `ObjectDisposedException`, which a Loader written to catch `OperationCanceledException` does
-  not catch, and the round recorded that throw as the Loader's own failure. The source is released
-  once the run that launched the round has returned and every `Suspend` loader it started has
-  finished.
+- A Loader's `CancellationToken` answers for its round while that round is ending, rather than
+  reporting the source behind it as gone. The round's source used to be disposed at the moment the
+  round ended, which lands before the run that launched the Loaders has handed that token to the
+  matches below the one that ended it, before an `Await` loader a newer navigation superseded has
+  unwound, and before a `Suspend` loader streaming into the route on screen has finished.
+  `CancellationToken.WaitHandle` read from any of those three then raised `ObjectDisposedException`,
+  which a Loader written to catch `OperationCanceledException` does not catch, and the round recorded
+  that throw as the Loader's own failure. The source is released once the round has ended, its
+  cancellation has run the callbacks registered on the token, the run that launched it has returned,
+  and every `Suspend` loader it started has finished.
 
 - A `V.VirtualList` whose item renderer returns a `V.Component` or a `V.Provider` stacks its visible
   items instead of starting every one of them at the same place. Velvet anchors such an item's fiber on

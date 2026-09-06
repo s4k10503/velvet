@@ -129,6 +129,51 @@ namespace Velvet.Tests
             Assert.That(settled.Errors.GetValueOrDefault("fail")?.Message, Is.EqualTo("late-failure"));
         });
 
+        // GREEN_ON_BASE(characterization): the base records this the same way. What the case adds is the
+        // round's own completion beside the error the sibling above pins, which no case read.
+        [UnityTest]
+        public IEnumerator Given_AnUnresolvedAwaitLoader_When_ItsTaskFails_Then_TheRoundDoesNotReportAllCompleted()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Only a task that fails after the await loop has been entered reaches that loop's catch; a
+            // delegate that throws before handing one back is caught in the launch loop instead, and the
+            // completion it writes there is a different statement.
+            // Arrange
+            var runner = new RouteLoaderRunner();
+            var unresolved = new VelvetTaskCompletionSource<object>();
+            var round = runner.RunLoadersAsync(
+                MakeMatch("fail", loader: (ctx, ct) => unresolved.Task), CancellationToken.None);
+
+            // Act
+            unresolved.TrySetException(new InvalidOperationException("late-failure"));
+            var settled = await round;
+
+            // Assert
+            Assert.That(settled.AllCompleted, Is.False);
+        });
+
+        // GREEN_ON_BASE(characterization): the base records this the same way. Its catch is a second
+        // statement, and the case above pins only the first.
+        [UnityTest]
+        public IEnumerator Given_AnUnresolvedAwaitLoader_When_ItsTaskIsCancelled_Then_TheRoundDoesNotReportAllCompleted()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Cancellation has a catch of its own beside the failure one, and the completion is the
+            // only thing it writes.
+            // Arrange
+            var runner = new RouteLoaderRunner();
+            var unresolved = new VelvetTaskCompletionSource<object>();
+            var round = runner.RunLoadersAsync(
+                MakeMatch("cancelled", loader: (ctx, ct) => unresolved.Task), CancellationToken.None);
+
+            // Act
+            unresolved.TrySetCanceled();
+            var settled = await round;
+
+            // Assert
+            Assert.That(settled.AllCompleted, Is.False);
+        });
+
         #endregion
 
         #region Suspend mode
@@ -658,6 +703,69 @@ namespace Velvet.Tests
                 "A round retired while a Suspend loader ran releases its source once that loader is done");
         });
 
+        // GREEN_ON_BASE(characterization): the base releases only once Cancel() has returned.
+        // Nothing there reaches the release from inside the cancellation. This branch moves the release
+        // onto the holders of the token, where a holder that unwinds inside the cancellation does.
+        [Test]
+        public void Given_ASuspendLoaderCancelledByItsOwnCallback_When_ThatCallbackThenReadsTheToken_Then_ItIsCancelledRatherThanReleased()
+        {
+            // Completing the loader's task from the callback resumes that loader on this thread, so the
+            // release its finally reaches would land before the callback running it is done with the token.
+            // Arrange
+            var runner = new RouteLoaderRunner();
+            var streaming = new VelvetTaskCompletionSource<object>();
+            string callbackSaw = null;
+            runner.RunLoadersSync(
+                MakeMatch("streaming", loaderMode: LoaderMode.Suspend, loader: (ctx, ct) =>
+                {
+                    ct.Register(() =>
+                    {
+                        streaming.TrySetCanceled();
+                        callbackSaw = ReadTokenState(ct);
+                    });
+                    return streaming.Task;
+                }),
+                CancellationToken.None);
+
+            // Act
+            runner.RunLoadersSync(MakeMatch("second"), CancellationToken.None);
+
+            // Assert
+            Assert.That(callbackSaw, Is.EqualTo("cancelled"),
+                "A cancellation callback holds the token for as long as the cancellation running it does");
+        }
+
+        // GREEN_ON_BASE(characterization): the base holds this on the Suspend sibling's terms above.
+        // Both entrances to this branch's release are its own, so each is pinned rather than one of them.
+        [Test]
+        public void Given_AnAwaitLoaderCancelledByItsOwnCallback_When_ThatCallbackThenReadsTheToken_Then_ItIsCancelledRatherThanReleased()
+        {
+            // The other entrance to the window the sibling above covers: nothing here is pending, so what
+            // the release was waiting on is the run, and the callback completing the task is what returns it.
+            // Arrange
+            var runner = new RouteLoaderRunner();
+            var parked = new VelvetTaskCompletionSource<object>();
+            string callbackSaw = null;
+            runner.RunLoadersAsync(
+                MakeMatch("parked", loader: (ctx, ct) =>
+                {
+                    ct.Register(() =>
+                    {
+                        parked.TrySetCanceled();
+                        callbackSaw = ReadTokenState(ct);
+                    });
+                    return parked.Task;
+                }),
+                CancellationToken.None).Forget();
+
+            // Act
+            runner.RunLoadersSync(MakeMatch("second"), CancellationToken.None);
+
+            // Assert
+            Assert.That(callbackSaw, Is.EqualTo("cancelled"),
+                "An Await loader unwinding inside the cancellation leaves the token answering for the round");
+        }
+
         [Test]
         public void Given_ACancellationCallbackThatThrows_When_TheRoundItRegisteredOnIsRetired_Then_TheSourceBehindItsTokenIsStillReleased()
         {
@@ -708,6 +816,38 @@ namespace Velvet.Tests
             // Assert
             Assert.That(secondRoundsLoaderSawCancellation, Is.True,
                 "A round retired mid-installation still reaches its Loaders, under the token its own source issued");
+        }
+
+        // GREEN_ON_BASE(characterization): the base nulls the round's source before it cancels.
+        // That is what turns a re-entrant Retire there into a no-op. This branch nulls it at the release
+        // instead, so the retirement flag is what has to do that work.
+        [Test]
+        public void Given_ACancellationCallbackThatStartsARound_When_ItThenReadsTheRetiringRoundsToken_Then_ItIsCancelledRatherThanReleased()
+        {
+            // Installing a round from the callback reaches Retire for the round already being retired. That
+            // second entry has to stop at the door: a release taken there lands inside the cancellation that
+            // is still running this callback.
+            // Arrange
+            var runner = new RouteLoaderRunner();
+            string callbackSaw = null;
+            runner.RunLoadersSync(
+                MakeMatch("registering", loader: (ctx, ct) =>
+                {
+                    ct.Register(() =>
+                    {
+                        runner.RunLoadersSync(MakeMatch("from-callback"), CancellationToken.None);
+                        callbackSaw = ReadTokenState(ct);
+                    });
+                    return VelvetTask.FromResult<object>("registering-data");
+                }),
+                CancellationToken.None);
+
+            // Act
+            runner.Dispose();
+
+            // Assert
+            Assert.That(callbackSaw, Is.EqualTo("cancelled"),
+                "A round already being retired is not retired again from inside its own cancellation");
         }
 
         #endregion

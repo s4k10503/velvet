@@ -36,7 +36,9 @@ namespace Velvet
 
             internal bool Retired;
 
-            internal bool Launched;
+            internal bool Cancelling;
+
+            internal bool RunReturned;
 
             internal LoaderRound(CancellationTokenSource? cts) => Cts = cts;
 
@@ -140,7 +142,7 @@ namespace Velvet
             }
             finally
             {
-                round.Launched = true;
+                round.RunReturned = true;
                 ReleaseIfUnheld(round);
             }
         }
@@ -193,6 +195,7 @@ namespace Velvet
                 return;
             }
             round.Retired = true;
+            round.Cancelling = true;
             // A callback the application registered on this round's token must not decide the outcome of
             // the operation ending the round: the caller is installing a different round or disposing the
             // runner, and the callback belongs to neither. Reported on Announce's terms, and the release
@@ -205,19 +208,23 @@ namespace Velvet
             {
                 FiberLogger.LogException(nameof(RouteLoaderRunner), cancellationFailure);
             }
+            round.Cancelling = false;
             ReleaseIfUnheld(round);
         }
 
         // Separate from the cancellation above because a retired round's token can still be in use. The
         // launch loop goes on handing it to the matches below a loader that retired the round, the await
-        // loop holds it for the Await-mode loaders it launched, and a Suspend-mode loader launched under it
-        // runs until its own task completes. Releasing it earlier is what left a loader's read of the token
-        // answering that the source is gone rather than that the round was cancelled;
-        // CancellationTokenReleaseTests holds which read that is.
+        // loop holds it for the Await-mode loaders it launched, a Suspend-mode loader launched under it
+        // runs until its own task completes, and the cancellation holds it for the whole of its own run: a
+        // callback registered on this token can complete a loader's task, whose continuation resumes on
+        // this thread, so the release that loader's finally reaches would otherwise land while Cancel() is
+        // still going. Releasing it earlier is what left a read of the token answering that the source is
+        // gone rather than that the round was cancelled; CancellationTokenReleaseTests holds which read
+        // that is.
         private static void ReleaseIfUnheld(LoaderRound round)
         {
             var cts = round.Cts;
-            if (cts == null || !round.Retired || !round.Launched || round.Pending > 0)
+            if (cts == null || !round.Retired || round.Cancelling || !round.RunReturned || round.Pending > 0)
             {
                 return;
             }
