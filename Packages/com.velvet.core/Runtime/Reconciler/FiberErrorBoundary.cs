@@ -63,9 +63,18 @@ namespace Velvet
             }
             if (fallback == null) return false;
             var fallbackTree = new[] { fallback };
+            // The rows to rewrite are the ones the container holds for this fiber now. An expansion that
+            // re-placed it wrote where those rows will be rather than where they are, and showing a
+            // fallback is what stops that expansion from placing them —
+            // ComponentFiber.PrePlacementSlotStart owns that window.
+            var slotStart = fiber.PrePlacementSlotStart >= 0
+                ? fiber.PrePlacementSlotStart
+                : FiberCommitWork.SlotStartOwnedBy(fiber);
             try
             {
-                fiber.Reconciler.Reconcile(fiber.MountPoint, fiber.PreviousTree ?? Array.Empty<VNode>(), fallbackTree);
+                fiber.Reconciler.Reconcile(
+                    fiber.MountPoint, fiber.PreviousTree ?? Array.Empty<VNode>(), fallbackTree,
+                    slotStart: slotStart);
             }
             catch (FiberSuspendSignal)
             {
