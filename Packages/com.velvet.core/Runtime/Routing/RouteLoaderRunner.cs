@@ -27,8 +27,6 @@ namespace Velvet
 
             internal int Pending;
 
-            internal bool AllCompleted = true;
-
             // The source every loader of this round was launched under. Cancelling it is what ends the round,
             // and nulling it at the release is what keeps a second path reaching that release from
             // disposing it again.
@@ -105,7 +103,6 @@ namespace Velvet
                     catch (Exception ex)
                     {
                         round.Errors[key] = ex;
-                        round.AllCompleted = false;
                         continue;
                     }
 
@@ -115,7 +112,6 @@ namespace Velvet
                     }
                     else
                     {
-                        round.AllCompleted = false;
                         round.Pending++;
                         RunSuspendLoader(key, task, round).Forget();
                     }
@@ -129,12 +125,12 @@ namespace Velvet
                     }
                     catch (OperationCanceledException)
                     {
-                        round.AllCompleted = false;
+                        // Above the failure catch to keep a cancellation out of Errors: a route whose
+                        // loader was cancelled must not present the error UI a failed load presents.
                     }
                     catch (Exception ex)
                     {
                         round.Errors[routeId] = ex;
-                        round.AllCompleted = false;
                     }
                 }
 
@@ -215,12 +211,11 @@ namespace Velvet
         // Separate from the cancellation above because a retired round's token can still be in use. The
         // launch loop goes on handing it to the matches below a loader that retired the round, the await
         // loop holds it for the Await-mode loaders it launched, a Suspend-mode loader launched under it
-        // runs until its own task completes, and the cancellation holds it for the whole of its own run: a
-        // callback registered on this token can complete a loader's task, whose continuation resumes on
-        // this thread, so the release that loader's finally reaches would otherwise land while Cancel() is
-        // still going. Releasing it earlier is what left a read of the token answering that the source is
-        // gone rather than that the round was cancelled; CancellationTokenReleaseTests holds which read
-        // that is.
+        // runs until its own task completes, and Retire holds it across the Cancel() it issues itself, so
+        // a holder unwinding from inside that call does not take the release out from under it. A
+        // cancellation this round's source receives from anywhere else is outside what that flag spans.
+        // Releasing it earlier is what left a read of the token answering that the source is gone rather
+        // than that the round was cancelled; CancellationTokenReleaseTests holds which read that is.
         private static void ReleaseIfUnheld(LoaderRound round)
         {
             var cts = round.Cts;

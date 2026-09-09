@@ -18,19 +18,6 @@ namespace Velvet.Tests
         #region No loaders
 
         [Test]
-        public void Given_MatchesWithoutLoaders_When_RunLoaders_Then_AllCompleted()
-        {
-            // Arrange
-            var runner = new RouteLoaderRunner();
-
-            // Act
-            var allCompleted = runner.RunLoadersSync(MakeMatch("/"), CancellationToken.None).AllCompleted;
-
-            // Assert
-            Assert.That(allCompleted, Is.True);
-        }
-
-        [Test]
         public void Given_MatchesWithoutLoaders_When_RunLoaders_Then_ResultsAreEmpty()
         {
             // Arrange
@@ -46,20 +33,6 @@ namespace Velvet.Tests
         #endregion
 
         #region Await mode
-
-        [Test]
-        public void Given_CompletedAwaitLoader_When_RunLoaders_Then_AllCompleted()
-        {
-            // Arrange
-            var runner = new RouteLoaderRunner();
-            var matches = MakeMatch("test", loader: (ctx, ct) => VelvetTask.FromResult<object>("loaded-data"));
-
-            // Act
-            var allCompleted = runner.RunLoadersSync(matches, CancellationToken.None).AllCompleted;
-
-            // Assert
-            Assert.That(allCompleted, Is.True);
-        }
 
         [Test]
         public void Given_CompletedAwaitLoader_When_RunLoaders_Then_ResultIsKeyedByRouteId()
@@ -129,37 +102,16 @@ namespace Velvet.Tests
             Assert.That(settled.Errors.GetValueOrDefault("fail")?.Message, Is.EqualTo("late-failure"));
         });
 
-        // GREEN_ON_BASE(characterization): the base records this the same way. What the case adds is the
-        // round's own completion beside the error the sibling above pins, which no case read.
+        // GREEN_ON_BASE(characterization): the base swallows a cancellation the same way. What the case
+        // adds is a reading of the error map on the path that reaches the await loop's other catch, which
+        // no case made.
         [UnityTest]
-        public IEnumerator Given_AnUnresolvedAwaitLoader_When_ItsTaskFails_Then_TheRoundDoesNotReportAllCompleted()
+        public IEnumerator Given_AnUnresolvedAwaitLoader_When_ItsTaskIsCancelled_Then_NoErrorIsRecordedAgainstItsRoute()
             => VelvetTask.ToCoroutine(async () =>
         {
-            // Only a task that fails after the await loop has been entered reaches that loop's catch; a
-            // delegate that throws before handing one back is caught in the launch loop instead, and the
-            // completion it writes there is a different statement.
-            // Arrange
-            var runner = new RouteLoaderRunner();
-            var unresolved = new VelvetTaskCompletionSource<object>();
-            var round = runner.RunLoadersAsync(
-                MakeMatch("fail", loader: (ctx, ct) => unresolved.Task), CancellationToken.None);
-
-            // Act
-            unresolved.TrySetException(new InvalidOperationException("late-failure"));
-            var settled = await round;
-
-            // Assert
-            Assert.That(settled.AllCompleted, Is.False);
-        });
-
-        // GREEN_ON_BASE(characterization): the base records this the same way. Its catch is a second
-        // statement, and the case above pins only the first.
-        [UnityTest]
-        public IEnumerator Given_AnUnresolvedAwaitLoader_When_ItsTaskIsCancelled_Then_TheRoundDoesNotReportAllCompleted()
-            => VelvetTask.ToCoroutine(async () =>
-        {
-            // Cancellation has a catch of its own beside the failure one, and the completion is the
-            // only thing it writes.
+            // A cancellation arrives at the same await loop as the failure the sibling above pins, and is
+            // the one thing that loop does not record: an error here would put the route's ErrorElement on
+            // screen for a load nobody failed.
             // Arrange
             var runner = new RouteLoaderRunner();
             var unresolved = new VelvetTaskCompletionSource<object>();
@@ -171,27 +123,13 @@ namespace Velvet.Tests
             var settled = await round;
 
             // Assert
-            Assert.That(settled.AllCompleted, Is.False);
+            Assert.That(settled.Errors, Is.Empty,
+                "A loader whose task was cancelled has no failure of its own for the route to present");
         });
 
         #endregion
 
         #region Suspend mode
-
-        [Test]
-        public void Given_SuspendLoader_When_RunLoaders_Then_DoesNotReportAllCompleted()
-        {
-            // Arrange
-            var runner = new RouteLoaderRunner();
-            var tcs = new VelvetTaskCompletionSource<object>();
-            var matches = MakeMatch("test", loader: (ctx, ct) => tcs.Task, loaderMode: LoaderMode.Suspend);
-
-            // Act
-            var allCompleted = runner.RunLoadersSync(matches, CancellationToken.None).AllCompleted;
-
-            // Assert
-            Assert.That(allCompleted, Is.False);
-        }
 
         [UnityTest]
         public IEnumerator Given_SuspendLoader_When_TaskResolves_Then_FiresOnCompletedWithPathAndResult()
@@ -736,12 +674,12 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base holds this on the Suspend sibling's terms above.
-        // Both entrances to this branch's release are its own, so each is pinned rather than one of them.
         [Test]
         public void Given_AnAwaitLoaderCancelledByItsOwnCallback_When_ThatCallbackThenReadsTheToken_Then_ItIsCancelledRatherThanReleased()
         {
-            // The other entrance to the window the sibling above covers: nothing here is pending, so what
-            // the release was waiting on is the run, and the callback completing the task is what returns it.
+            // Where the sibling above defers the release onto a Suspend loader, this case defers it onto
+            // the run: nothing here is pending, so the run is what the release waits on, and the callback
+            // completing the task is what returns it.
             // Arrange
             var runner = new RouteLoaderRunner();
             var parked = new VelvetTaskCompletionSource<object>();
@@ -853,20 +791,6 @@ namespace Velvet.Tests
         #endregion
 
         #region Error handling
-
-        [Test]
-        public void Given_ThrowingAwaitLoader_When_RunLoaders_Then_DoesNotReportAllCompleted()
-        {
-            // Arrange
-            var runner = new RouteLoaderRunner();
-            var matches = MakeMatch("fail", loader: (ctx, ct) => throw new InvalidOperationException("loader failed"));
-
-            // Act
-            var allCompleted = runner.RunLoadersSync(matches, CancellationToken.None).AllCompleted;
-
-            // Assert
-            Assert.That(allCompleted, Is.False);
-        }
 
         [Test]
         public void Given_ThrowingAwaitLoader_When_RunLoaders_Then_RecordsErrorKeyedByRouteId()
