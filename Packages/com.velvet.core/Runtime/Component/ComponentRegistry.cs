@@ -138,6 +138,27 @@ namespace Velvet
             return CreateAndMountFiber(node, identity, in site);
         }
 
+        // The fibers re-placed since a caller's mark, so it can put every ComponentFiber.PrePlacementSlotStart
+        // back. Kept here rather than on the walk that reads it because a re-placement's own re-render can
+        // unwind past the walk's record of which fibers it reached — a suspend does, before the fiber
+        // reaches GeneralPathReconciler's NewFibers at all. A stack rather than an index: the outermost
+        // walk releases to a mark of zero, so it holds nothing between passes and the disposal contract
+        // below has nothing of it to clear.
+        private readonly List<ComponentFiber> _prePlacementStack = new();
+
+        internal int MarkPrePlacements() => _prePlacementStack.Count;
+
+        // Releases everything recorded since mark. Callers pair this with MarkPrePlacements in a finally,
+        // so the count is what bounds the release rather than any record of what the pass reached.
+        internal void ReleasePrePlacementsTo(int mark)
+        {
+            for (var i = _prePlacementStack.Count - 1; i >= mark; i--)
+            {
+                _prePlacementStack[i].PrePlacementSlotStart = -1;
+                _prePlacementStack.RemoveAt(i);
+            }
+        }
+
         private ComponentFiber ReconcileExistingFiber(
             ComponentFiber existingFiber,
             ComponentNode node,
@@ -189,6 +210,12 @@ namespace Velvet
                 // FiberStack consistent across the root and descendant Reconcilers, so a synchronous
                 // render here does not collide with a subsequent FlushState pass: clearing IsDirty
                 // makes the later traversal short-circuit while the rendered output is already committed.
+                // The MountSlotStart write below names rows the container reaches only once this walk's
+                // placement pass runs, and the re-render further down can abort that pass or unwind out
+                // of it on a suspend. Keep the start the container holds meanwhile, on the stack the walk
+                // releases.
+                existingFiber.PrePlacementSlotStart = existingFiber.MountSlotStart;
+                _prePlacementStack.Add(existingFiber);
                 existingFiber.MountSlotStart = site.SlotStart;
                 // Rewritten even where the reconcile reaching the fiber names no Portal, which erases the
                 // stamp a fiber below a Portal's own child was given at creation — its parent's isolated

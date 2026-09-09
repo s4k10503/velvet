@@ -134,6 +134,7 @@ namespace Velvet
                 CommittedKeys = new List<ChildKey>(),
                 NewIndex = 0,
             };
+            var placementMark = _ctx.ComponentRegistry.MarkPrePlacements();
             try
             {
                 // Build the old-key → (domIndex, node) map. Duplicate keys register the earlier index
@@ -174,6 +175,10 @@ namespace Velvet
             }
             finally
             {
+                // A fiber this walk re-placed recorded the start the container held, because the placement
+                // above had not run yet. The walk is over now, so nothing after it may read that
+                // record as describing where the fiber's rows are.
+                _ctx.ComponentRegistry.ReleasePrePlacementsTo(placementMark);
                 pool.Return(commit.OldKeyMap);
                 pool.ReturnKeySet(commit.UsedKeys);
                 pool.ReturnReplacedKeySet(commit.ReplacedKeys);

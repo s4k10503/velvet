@@ -134,17 +134,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   point instead: a disposed fiber has no pass left to be subsumed into, so its layout effect and its
   paint-tick effect are not queued.
 
-- An error boundary's fallback is written from the boundary's own slot start now, instead of from slot
-  0 of its mount point. A boundary that is not its container's first child had a catch replace whatever
-  sat at the top of that container and leave the subtree that threw painted where it was; the swap
-  starts at the offset the boundary's ordinary re-render already reconciles from. That offset is
-  recorded on the boundary rather than read off the container, so it is only as current as the last
-  placement that wrote it: a parent expansion re-placing the boundary writes it as where the boundary's
-  rows will sit once that expansion commits its placement, and showing a fallback is what stops that
-  placement from running. So a catch raised inside an expansion that adds or removes rows ahead of the
-  boundary reads an offset the container has not reached, and the fallback can still land on a sibling
-  there. An expansion that patches the rows ahead of the boundary in place changes no count, and the
-  fallback lands on the boundary's own rows.
+- An error boundary's fallback is written into the rows its container is holding for the boundary now,
+  instead of into the first rows of its mount point. A boundary that is not its container's first child
+  had a catch replace whatever sat at the top of that container and leave the subtree that threw painted
+  where it was. That holds where the pass raising the exception was itself moving the boundary — a
+  reorder that puts a sibling in front of it, a sibling that grew or shrank ahead of it — because
+  showing a fallback stops that pass from placing anything, so the container is still holding the rows
+  where they were and the swap is written there. It does not hold where the boundary's rows moved with
+  no pass placing them: a fiber that grows inside a co-located sibling shifts this boundary's rows along
+  the container, and a catch after that still writes the fallback over the sibling's rows and leaves the
+  boundary's own painted.
 
 - A component's own re-render now reads the Providers of the container it is written into, where the
   declaring body writes the component into each container as its own occurrence. Two sibling containers
