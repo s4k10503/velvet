@@ -129,6 +129,30 @@ namespace Velvet.Tests
 
         #region Suspend mode
 
+        // GREEN_ON_BASE(characterization): the base drops a cancelled Suspend loader's exception the same
+        // way. What the case adds is a reading of the error map after one, which no case made.
+        [UnityTest]
+        public IEnumerator Given_ASuspendLoader_When_ItsTaskIsCancelled_Then_NoErrorIsRecordedAgainstItsRoute()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // The Await case in the mode above reads the same map, and reads it off a different catch: this
+            // loader unwinds inside the task the runner forgot rather than inside the run.
+            // Arrange
+            var runner = new RouteLoaderRunner();
+            var streaming = new VelvetTaskCompletionSource<object>();
+            var round = runner.RunLoadersSync(
+                MakeMatch("cancelled", loader: (ctx, ct) => streaming.Task, loaderMode: LoaderMode.Suspend),
+                CancellationToken.None);
+
+            // Act
+            streaming.TrySetCanceled();
+            await VelvetTask.Yield();
+
+            // Assert
+            Assert.That(round.Errors, Is.Empty,
+                "A Suspend loader whose task was cancelled has no failure of its own for the route to present");
+        });
+
         [UnityTest]
         public IEnumerator Given_SuspendLoader_When_TaskResolves_Then_FiresOnCompletedWithPathAndResult()
             => VelvetTask.ToCoroutine(async () =>
