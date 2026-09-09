@@ -131,9 +131,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   controller stacks the visible items in, so each item covered that container: with a 30px item height
   the second visible item began at the first one's y rather than 30px below it. That anchor takes a slot
   in the container now, and its width comes from the container rather than from insets of its own.
-  `V.Outlet` anchors on the same kind of element through a different arm of the same factory and keeps
-  the pinned one, so no route layout moves. A renderer returning an element, a `V.Motion`, a `V.Portal`
-  or a nested `V.VirtualList` builds that element directly and never reached the anchor either.
+  A renderer returning an element, a `V.Motion`, a `V.Portal` or a nested `V.VirtualList` builds that
+  element directly and never reached the anchor either.
 
 - An error boundary whose child throws during a subsumed re-render no longer logs a
   `NullReferenceException` from the reconciler. The boundary's inline re-render runs inside its host's
@@ -162,7 +161,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   by key alone until the resume commits it.
 
 - An `IRouteScopeFactory.CreateScope` that throws no longer takes the reconcile with it. The scope's
-  *disposal* was already contained; its creation was not, at any of the three sites that ask for one —
+  *disposal* was already contained; its creation was not, at any of the sites that asked for one —
   so an application whose factory failed on a route change lost the render as well as the scope. The
   route now renders without a scope and the exception is propagated: an application with an error
   boundary above the Outlet gets to refuse a scope-less route there, and one with none gets the
@@ -283,10 +282,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   naming a child that was gone, and the next render at that position spliced it back as an exiting
   ghost. The delegate is the caller's, and reconciler disposal already contained it this way.
 
-- An `IRouteScope.Dispose` that throws is reported the same way, at each of the three places a route
-  scope is disposed: the patch that swaps in a newly matched route, an unmounting `V.Outlet`, and the
-  whole-reconciler teardown sweep. The scope is the application's, built by the `IRouteScopeFactory`
-  handed to `Router`. From the route change the escape left the `V.Outlet` blank — the route navigated
+- An `IRouteScope.Dispose` that throws is reported the same way wherever a route scope is disposed. The
+  scope is the application's, built by the `IRouteScopeFactory` handed to `Router`. From the route
+  change the escape left the `V.Outlet` blank — the route navigated
   away from torn down, the route navigated to never mounted — and a later render at that position
   mounted the new route on the already-disposed scope. From the unmount it reached the same interrupted
   removal batch and the same resurrected `AnimatePresence` child as above. Both also left the scope
