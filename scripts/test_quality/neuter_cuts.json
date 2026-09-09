@@ -609,6 +609,18 @@
           "neuter": "return;"
         }
       ]
+    },
+    {
+      "name": "patch-reuse-gate",
+      "mechanism": "patch-reuse",
+      "summary": "the patch gate answers false for every node pair, so a slot that would have been patched is replaced",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Runtime/Reconciler/ReconcileKeying.cs",
+          "anchor": "internal static bool CanPatch(VNode? oldNode, VNode? newNode)",
+          "neuter": "return false;"
+        }
+      ]
     }
   ],
   "fixtures": [
@@ -899,6 +911,14 @@
       "fixture": "Velvet.Tests.FilterTransitionPanelTests",
       "cuts": [
         "filter-transition-applier"
+      ],
+      "caseScopes": [],
+      "platform": "EditMode"
+    },
+    {
+      "fixture": "Velvet.Tests.PropsDiffTests",
+      "cuts": [
+        "patch-reuse-gate"
       ],
       "caseScopes": [],
       "platform": "EditMode"

@@ -328,8 +328,7 @@ namespace Velvet.Tests
             // Act
             Reconciler.Reconcile(Root, oldTree, newTree);
 
-            // Assert — the identity term separates a survival from a remount, whose fresh element would
-            // run the callback again and read true however the applier behaved.
+            // Assert
             Assert.That(
                 (ReferenceEquals(Root!.ElementAt(0), element), element.isPasswordField),
                 Is.EqualTo((true, true)));
@@ -352,7 +351,7 @@ namespace Velvet.Tests
             // Act
             Reconciler.Reconcile(Root, oldTree, newTree);
 
-            // Assert — same identity term, and for the same reason.
+            // Assert
             Assert.That(
                 (ReferenceEquals(Root!.ElementAt(0), element), element.textEdition.placeholder),
                 Is.EqualTo((true, "from ref")));
@@ -375,7 +374,7 @@ namespace Velvet.Tests
             // Act
             Reconciler.Reconcile(Root, oldTree, newTree);
 
-            // Assert — same identity term, and for the same reason.
+            // Assert
             Assert.That(
                 (ReferenceEquals(Root!.ElementAt(0), element), element.maxLength),
                 Is.EqualTo((true, 4)));
@@ -398,7 +397,7 @@ namespace Velvet.Tests
             // Act
             Reconciler.Reconcile(Root, oldTree, newTree);
 
-            // Assert — same identity term, and for the same reason.
+            // Assert
             Assert.That(
                 (ReferenceEquals(Root!.ElementAt(0), element), element.isReadOnly),
                 Is.EqualTo((true, true)));
@@ -421,7 +420,7 @@ namespace Velvet.Tests
             // Act
             Reconciler.Reconcile(Root, oldTree, newTree);
 
-            // Assert — same identity term, and for the same reason.
+            // Assert
             Assert.That(
                 (ReferenceEquals(Root!.ElementAt(0), element), element.isDelayed),
                 Is.EqualTo((true, true)));

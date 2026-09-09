@@ -214,10 +214,6 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base patches this slot and restores the constructed value.
-        // What this change adds is the pool saturation that lets the case tell that from a
-        // discard-and-recreate: without it the pool hands the same Label back, with the return's reset
-        // having written the -1 the restore is read for, and the case passes under a reconciler that
-        // replaces here.
         [Test]
         public void Given_TabIndexDeclared_When_PatchedToUnset_Then_ElementConstructedValueRestored()
         {
@@ -245,8 +241,6 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base patches this slot and restores the constructed value.
-        // The saturation this change adds is what lets the case tell that from a discard-and-recreate,
-        // for the reason the tab-index case above gives.
         [Test]
         public void Given_DelegatesFocusDeclared_When_PatchedToUnset_Then_ElementConstructedValueRestored()
         {
