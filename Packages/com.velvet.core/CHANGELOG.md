@@ -116,15 +116,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   through `Debug.LogException` now, on the terms a Suspend loader's subscriber failure already was, and
   the navigation or disposal runs to its end either way.
 
-- A Loader's `CancellationToken` answers for the round a navigation or a disposal cancelled, rather
-  than reporting the source behind it as gone. The round's source used to be disposed at the moment
-  the round ended, which lands before the run that launched the Loaders has handed that token to the
-  matches below the one that ended it, before an `Await` loader a newer navigation superseded has
+- A Loader that still holds its round's `CancellationToken` when the round ends reads the cancellation
+  off it, rather than finding the source behind it gone. The round's source used to be disposed at the
+  moment the round ended, which lands before the run that launched the Loaders has handed that token to
+  the matches below the one that ended it, before an `Await` loader a newer navigation superseded has
   unwound, and before a `Suspend` loader streaming into the route on screen has finished.
   `CancellationToken.WaitHandle` read from any of those three then raised `ObjectDisposedException`,
   which a Loader written to catch `OperationCanceledException` does not catch. The source is now not
-  released until the round has ended, the run that launched it has returned, and every `Suspend`
-  loader it started has finished.
+  released until the round has ended, the run that launched it has returned, and every `Suspend` loader
+  it started has finished.
 
 - A `V.VirtualList` whose item renderer returns a `V.Component` or a `V.Provider` stacks its visible
   items instead of starting every one of them at the same place. Velvet anchors such an item's fiber on

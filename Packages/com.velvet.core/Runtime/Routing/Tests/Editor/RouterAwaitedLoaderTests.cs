@@ -29,9 +29,9 @@ namespace Velvet.Tests
     /// it.</item>
     /// <item>What that Suspend loader settles is its own round, so the history entry it writes back to
     /// stays servable even while the round holding the commit is unsettled.</item>
-    /// <item>A loader whose round the router ends reads that ending off its token rather than finding
-    /// the source gone — the awaited one superseded inside its own run, and the Suspend one on screen at
-    /// the commit that leaves it.</item>
+    /// <item>A loader still holding its round's token when the router ends that round reads the ending
+    /// off it rather than finding the source gone — the awaited one superseded inside its own run, and
+    /// the Suspend one on screen at the commit that leaves it.</item>
     /// <item>A navigation that matches no route neither cancels the attempt holding the window open nor
     /// takes over the status describing it.</item>
     /// </list>

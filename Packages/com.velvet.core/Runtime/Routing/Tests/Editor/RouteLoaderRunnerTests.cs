@@ -103,15 +103,13 @@ namespace Velvet.Tests
         });
 
         // GREEN_ON_BASE(characterization): the base swallows a cancellation the same way. What the case
-        // adds is a reading of the error map on the path that reaches the await loop's other catch, which
-        // no case made.
+        // adds is a reading of the error map after one, which no case made.
         [UnityTest]
         public IEnumerator Given_AnUnresolvedAwaitLoader_When_ItsTaskIsCancelled_Then_NoErrorIsRecordedAgainstItsRoute()
             => VelvetTask.ToCoroutine(async () =>
         {
             // A cancellation arrives at the same await loop as the failure the sibling above pins, and is
-            // the one thing that loop does not record: an error here would put the route's ErrorElement on
-            // screen for a load nobody failed.
+            // the one thing that loop does not record.
             // Arrange
             var runner = new RouteLoaderRunner();
             var unresolved = new VelvetTaskCompletionSource<object>();

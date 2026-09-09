@@ -125,8 +125,8 @@ namespace Velvet
                     }
                     catch (OperationCanceledException)
                     {
-                        // Above the failure catch to keep a cancellation out of Errors: a route whose
-                        // loader was cancelled must not present the error UI a failed load presents.
+                        // A cancellation is not this route's load failure. What goes in Errors is
+                        // what Router.RunLoaderPhase hands to UseRouteError.
                     }
                     catch (Exception ex)
                     {
