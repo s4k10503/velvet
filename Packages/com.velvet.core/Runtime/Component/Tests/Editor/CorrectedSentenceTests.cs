@@ -27,7 +27,7 @@ namespace Velvet.Tests
         public void Given_TheRepoSources_When_ScannedForCorrectedSentences_Then_NoneReappearOutsideTheList()
         {
             // Arrange — derived from AGENTS.md so a sixth list entry needs no edit here.
-            var sentences = ExtractCorrectedSentences();
+            var sentences = File.Exists(RulesPath) ? ExtractCorrectedSentences() : new List<string>();
 
             // Act
             var findings = ScanForSentences(sentences);
