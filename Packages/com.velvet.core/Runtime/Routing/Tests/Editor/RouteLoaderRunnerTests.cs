@@ -149,8 +149,10 @@ namespace Velvet.Tests
             await VelvetTask.Yield();
 
             // Assert
-            Assert.That(round.Errors, Is.Empty,
-                "A Suspend loader whose task was cancelled has no failure of its own for the route to present");
+            Assert.That($"settled={round.Settled} errors={round.Errors.Count}",
+                Is.EqualTo("settled=True errors=0"),
+                "A Suspend loader whose task was cancelled has no failure of its own for the route to "
+                + "present, and settled is in the comparison because a loader still running records none either");
         });
 
         [UnityTest]
