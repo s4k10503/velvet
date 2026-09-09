@@ -94,6 +94,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `V.ListFragment` refuses a `key` holding a NUL (U+0000) before it maps the list rather than after.
+  The refusal is `V.Fragment`'s — NUL is the delimiter the reconciler composes Fragment scope chains
+  from — and both `V.ListFragment` overloads reached it by handing `V.List(...)` to `V.Fragment`, an
+  argument C# evaluates before the call. So a refused call had already run the renderer for every item,
+  and the pooled child array `V.List` took for the result, together with whatever the mapped nodes
+  took, was out on loan when the refusal fired. A refused call builds no Fragment, so no later
+  retirement could carry those back, and nothing else gives a pooled object back. Both overloads refuse
+  ahead of the mapping now: a refused call runs no renderer and takes nothing from a pool.
+
 - A navigation to a path that matches no route no longer cancels the navigation already in flight, nor
   takes `Router.Status` away from it. It used to cancel and to write its status before matching, so a
   stale deep link or a renamed `redirectTo` target made a navigation the user had actually asked for
