@@ -89,7 +89,7 @@ Three traps in the folding itself, each of which passes a count check:
 
 - **`Is.EqualTo(tuple)` matches a nested collection by reference.** Join to strings instead.
 - **Do not fold a scalar comparison into a tuple — the tolerance stops applying.** `Assert.That((0.99999f, 0.00001f), Is.EqualTo((1f, 0f)).Within(1e-4f))` fails, and prints the tolerance it did not use, so a passing one looks like proof it applied. `VEL503` reports the shape; it does not see a tuple inside an expected collection, which traps the same way. Keep the compared value a scalar or an array of scalars and fold the control in as a gate substituting `float.NaN`. Rounding does not rescue it: two values inside the tolerance can round to different buckets.
-- **The logically sharpest gate is not always the discriminating one.** A `ReferenceEquals` precondition on a LIFO pool holds even when the mechanism is neutered, and a count term next to it is what goes red.
+- **The logically sharpest gate is not always the discriminating one.** A `ReferenceEquals` precondition on a LIFO pool holds even when the mechanism is neutered, because the pool hands the same instance straight back. What separates a patch from a discard-and-recreate there is a reading taken *between* two `Reconcile` calls, or an arrangement that stops the discarded element coming back at all — saturating the pool, so the return is dropped. A count term folded into the same assertion does not: the return pushes and the rent pops, so the depth nets out across one call.
 
 ## Neuter at every layer, not at one
 
