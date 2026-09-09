@@ -26,9 +26,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 from shell_commands import (  # noqa: E402
     COMMIT_VALUE_FLAGS,
+    NAME_THE_TREE,
+    UNPLACEABLE_MOVE,
     UNRESOLVED_CD,
+    command_directory,
     git_invocations,
-    leading_cd,
     unexpanded,
 )
 import repository
@@ -267,10 +269,10 @@ ANSWER_ON_TOP = ("Where this is a review round being answered, the answer is a c
 NOTHING_READ = f"{repository.SELF_REPORT} the commit. What failed is the reading:"
 
 
-def findings(command, cwd):
+def findings(amending, cwd):
     """(headline, the trees read, the trees that did not, what to do about those), or None."""
     read, blind, actions = [], [], []
-    for context in amends(command):
+    for context in amending:
         refs = publishing_refs(context, cwd)
         if isinstance(refs, Unreadable):
             selectors = repository_selectors(context)
@@ -315,14 +317,15 @@ def main():
     if not isinstance(command, str) or not command:
         return 0
 
-    where = leading_cd(command)
+    amending = amends(command)
+    if not amending:
+        return 0
+    where = command_directory(command, event.get("cwd") or ".")
     if where is UNRESOLVED_CD:
-        sys.stderr.write(
-            "Refusing `git commit --amend`: the command changes into a directory the shell has not "
-            "expanded yet, so which tree this amends cannot be read.\n\n"
-            "Spell the path out, or run the amend from the worktree itself.\n")
+        sys.stderr.write("Refusing `git commit --amend`: which tree this amends could not be "
+                         f"read.\n\n{UNPLACEABLE_MOVE}\n\n{NAME_THE_TREE}\n")
         return 2
-    found = findings(command, where or event.get("cwd") or ".")
+    found = findings(amending, where)
     if found is None:
         return 0
 

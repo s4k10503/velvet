@@ -94,6 +94,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `V.ListFragment` refuses a `key` holding a NUL (U+0000) before it maps the list rather than after.
+  The refusal is `V.Fragment`'s — NUL is the delimiter the reconciler composes Fragment scope chains
+  from — and both `V.ListFragment` overloads reached it by handing `V.List(...)` to `V.Fragment`, an
+  argument C# evaluates before the call. So a refused call had already run the renderer for every item,
+  and the pooled child array `V.List` took for the result, together with whatever the mapped nodes
+  took, was out on loan when the refusal fired. A refused call builds no Fragment, so no later
+  retirement could carry those back, and nothing else gives a pooled object back. Both overloads refuse
+  ahead of the mapping now: a refused call runs no renderer and takes nothing from a pool.
+
 - A navigation to a path that matches no route no longer cancels the navigation already in flight, nor
   takes `Router.Status` away from it. It used to cancel and to write its status before matching, so a
   stale deep link or a renamed `redirectTo` target made a navigation the user had actually asked for
@@ -115,6 +124,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Router.Dispose` left the router in `Router.Current` with its loader rounds unreleased. It is reported
   through `Debug.LogException` now, on the terms a Suspend loader's subscriber failure already was, and
   the navigation or disposal runs to its end either way.
+
+- A `V.VirtualList` whose item renderer returns a `V.Component` or a `V.Provider` stacks its visible
+  items instead of starting every one of them at the same place. Velvet anchors such an item's fiber on
+  an element of its own, and that element was pinned to the four edges of the container the list's
+  controller stacks the visible items in, so each item covered that container: with a 30px item height
+  the second visible item began at the first one's y rather than 30px below it. That anchor takes a slot
+  in the container now, and its width comes from the container rather than from insets of its own.
+  `V.Outlet` anchors on the same kind of element through a different arm of the same factory and keeps
+  the pinned one, so no route layout moves. A renderer returning an element, a `V.Motion`, a `V.Portal`
+  or a nested `V.VirtualList` builds that element directly and never reached the anchor either.
 
 - An error boundary whose child throws during a subsumed re-render no longer logs a
   `NullReferenceException` from the reconciler. The boundary's inline re-render runs inside its host's

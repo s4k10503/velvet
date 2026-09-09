@@ -17,6 +17,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 from merge_target import UNRESOLVED, merge_targets, refs_of
+from shell_commands import NAME_THE_TREE, UNPLACEABLE_MOVE, UNRESOLVED_CD, command_directory
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts" / "release"))
 import published_check
@@ -66,7 +67,12 @@ def main():
             "  python3 scripts/pr/settle.py merge <pr> --dry-run\n")
         return 2
 
-    cwd = Path(event.get("cwd") or ".").resolve()
+    where = command_directory(command, event.get("cwd") or ".")
+    if where is UNRESOLVED_CD:
+        sys.stderr.write("Refusing `gh pr merge`: which checkout's release state this asks about "
+                         f"could not be read.\n\n{UNPLACEABLE_MOVE}\n\n{NAME_THE_TREE}\n")
+        return 2
+    cwd = Path(where).resolve()
     # Every merge the command carries, deduplicated: a compound command lands each of them, and the
     # release state is a fact about a base rather than about a pull request, so two merges onto one
     # base cost one reading.

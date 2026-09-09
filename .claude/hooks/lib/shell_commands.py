@@ -152,21 +152,102 @@ def mask_shell_literals(command):
     return "".join(out)
 
 
-def command_segments(command):
-    """The command's segments, split at separators that are not inside a literal.
+# The operators that end a step, the two-character ones first so `&&` and `||` are not read as the
+# single characters that stand beside them and mean something else.
+STEP_SEPARATORS = ("&&", "||", ";", "\n", "|", "&")
+
+# The operators that hand the step before them to a child of the shell, where a `cd` moves nothing
+# the next step will see; `SUBSHELL` is the grouping that does the same. A brace group and a
+# redirection are out of both: measured under bash and zsh alike, each moves the shell. So this
+# reads parentheses rather than every grouping character, and `ShellStepTests` in
+# `scripts/hooks/test_shell_commands.py` is what fails when the reading stops telling them apart.
+CHILD_SEPARATORS = ("|", "&")
+SUBSHELL = re.compile(r"[()]")
+
+
+def _next_separator(masked, index, separators):
+    """(where the step ending at or after `index` stops, the operator that stopped it or None)."""
+    while index < len(masked):
+        separator = next((word for word in separators if masked.startswith(word, index)), None)
+        if separator is not None:
+            return index, separator
+        index += 1
+    return len(masked), None
+
+
+def shell_steps(command):
+    """(step, whether the shell keeps a move the step makes) for each step of the command.
 
     The mask preserves length, so a separator's index in it is its index in the original — which
     is what lets the split find boundaries on masked text and take the tokens from unmasked text.
+
+    The second half is what a caller reading where the work will run cannot get from the step alone:
+    the parentheses are stripped from it and the operator that ended it is gone, so a step the shell
+    handed to a child reads exactly as one it ran itself.
     """
     masked = mask_shell_literals(command)
-    segments = []
-    start = 0
-    for index, char in enumerate(masked):
-        if char in SEPARATORS:
-            segments.append(command[start:index])
-            start = index + 1
-    segments.append(command[start:])
-    return [segment for segment in (s.strip().strip("(){} ") for s in segments) if segment]
+    index = 0
+    while True:
+        cut, separator = _next_separator(masked, index, STEP_SEPARATORS)
+        yield (command[index:cut].strip().strip("(){} "),
+               not SUBSHELL.search(masked[index:cut]) and separator not in CHILD_SEPARATORS)
+        if separator is None:
+            return
+        index = cut + len(separator)
+
+
+def command_segments(command):
+    """The command's segments, split at separators that are not inside a literal."""
+    return [segment for segment, _ in shell_steps(command) if segment]
+
+
+# Measured, `cd /moved && mark;# cd /other` and the same comment opened at the start of a line each
+# run `mark` once in `/moved`, under bash and zsh alike: a `#` beginning a word opens a comment, and
+# a separator ends the word before it as a space does. Left unblanked, the body reads as commands,
+# and a move written in one declines the whole reading.
+COMMENT_OPENERS = SEPARATORS | {" ", "\t"}
+
+
+def opens_a_comment(masked, index):
+    """Whether the `#` at `index` starts a comment rather than sitting inside a word.
+
+    Read off the mask, which keeps a quoted `#` apart from a bare one: a quoted one is blanked there
+    and a bare one survives. The token list cannot -- measured, `cp a.md b.md '#c'`, which writes
+    `#c`, and `cp a.md b.md #c`, which has a comment, tokenise identically, and cutting the last
+    operand from the first makes a SOURCE the destination.
+    """
+    return masked[index] == "#" and (index == 0 or masked[index - 1] in COMMENT_OPENERS)
+
+
+def comment_opens_at(text):
+    """Where a comment opens in `text`, or None if none does.
+
+    The position rather than a yes: a caller counting the operands a comment swallowed needs it, and
+    a predicate that knows where the comment is and answers only whether there is one forces a cut
+    on the wrong term.
+    """
+    masked = mask_shell_literals(text)
+    return next((index for index in range(len(masked)) if opens_a_comment(masked, index)), None)
+
+
+def without_comments(command):
+    """`command` with each of its comments blanked, keeping every other index where it was.
+
+    A splitter that finds its boundaries in the mask and slices the original puts a comment's words
+    into the segment before it, so `cd /wt # && cd /x`, newline, `git commit --amend` read as a move
+    into `/x`. The length is kept for the reason `command_segments` states.
+    """
+    masked = mask_shell_literals(command)
+    out = list(command)
+    index = 0
+    while index < len(masked):
+        if not opens_a_comment(masked, index):
+            index += 1
+            continue
+        while index < len(masked) and masked[index] != "\n":
+            out[index] = " "
+            index += 1
+    return "".join(out)
 
 
 def tokens_of(segment):
@@ -249,43 +330,188 @@ def git_invocation(tokens, git_directory=False):
     return context, tokens[index], tokens[index + 1:]
 
 
-# What a leading `cd` names, when the segment before the work is one. `PreToolUse` fires before the
-# command runs, so a hook reading the event's own directory reads where the tool call *started* —
-# the session's checkout — for `cd <worktree> && git ...`. `background_relative_path.py` refuses that
-# shape outright for a background command; a foreground one is answerable, and this is the answer.
+# Where a move left the shell when nothing here places it.
 UNRESOLVED_CD = object()
 
+# The words that change the directory a later segment runs in.
+MOVERS = {"cd", "pushd", "popd"}
 
-def leading_cd(command):
-    """The directory the command changes into before running anything else, or None.
+# Words that hand what follows to another program instead of to the shell's own mover. Measured,
+# `nohup cd <tree>` leaves the shell where it started under bash and zsh alike, `exec cd <tree>` runs
+# nothing after itself, and zsh's `command cd` runs an external program where bash runs the builtin.
+# `builtin` and `time`, which `LEADING_WORDS` also carries, are out: both moved under both shells.
+DELEGATED_WORDS = {"command", "exec", "nohup"}
 
-    UNRESOLVED_CD, not None, for a target the shell has not expanded: a hook that reads `$SP` as a
-    literal directory answers about a path nothing holds, and answering about the wrong tree is what
-    the callers of this exist to stop. None is "it did not move", which sends the caller to the
-    event's own directory -- so anything this cannot read has to come back as the first, or a guard
-    reads a tree the command was never in and says nothing.
 
-    Every segment up to the first that runs a program is read, not the first segment alone. A
-    variable assignment is a segment of its own, and stopping at one left `SP=/tmp; cd "$SP/x"`
-    answering None -- the shape a session types whenever it names a worktree once and moves into it.
+def moves_directory(segment):
+    """Whether this segment changes the directory a later segment runs in.
+
+    The command word is read the way `leading_program` reads one, past `then`/`do`, `builtin` and an
+    environment assignment: reading tokens[0] instead missed `if true; then cd /tmp; fi`, which is
+    this module's own documented reason for having `leading_program` at all.
     """
-    for segment in command_segments(command):
-        tokens = tokens_of(segment)
-        index = leading_program(tokens)
-        if index >= len(tokens):
-            # An assignment and nothing else. It runs where the last `cd` left the shell, and the
-            # next segment is still before anything this cares about.
-            continue
-        if tokens[index] != "cd":
-            return None
-        rest = [token for token in tokens[index + 1:] if not token.startswith("-")]
-        if not rest:
-            return None
-        target = rest[0]
-        if "$" in target or "`" in target or "~" in target:
-            return UNRESOLVED_CD
-        return target
-    return None
+    tokens = tokens_of(segment)
+    index = leading_program(tokens)
+    if index >= len(tokens):
+        return False
+    return os.path.basename(tokens[index]) in MOVERS
+
+
+def move_target(tokens, index):
+    """The destination a move spells out, or None where its text carries none.
+
+    `popd`, and `pushd` given a `+N`, select an entry of the stack the running shell keeps rather
+    than naming a directory — measured, `pushd +1` rotates that stack past a `+1` in the current
+    directory. `cd -` names where the shell was before, and a bare `cd` `$HOME`. So the destination
+    is in none of them, and neither a caller placing the move nor one asking only whether the
+    command says where it runs can read one off them.
+    """
+    word = os.path.basename(tokens[index])
+    if word == "popd":
+        return None
+    target = next((token for token in tokens[index + 1:] if not token.startswith("-")), None)
+    if word == "pushd" and target is not None and target.startswith("+"):
+        return None
+    return target
+
+
+def moves_to_a_named_directory(segment):
+    """Whether a move in this segment spells its destination out.
+
+    `moves_directory` answers whether the shell ends up somewhere else; this answers whether the
+    command's own text says where. The two part over the movers `move_target` declines and over a
+    delegated word, and a caller reading a command to find out where it will run cannot take one of
+    those for an answer.
+
+    They part rather than agree because their callers read them with opposite polarity: a yes here
+    lets a command through, so a word the shell may not move on has to be a no; a yes there costs a
+    caller its relative operand, so the same word has to stay a yes.
+    """
+    tokens = tokens_of(segment)
+    index = leading_program(tokens)
+    if index >= len(tokens) or os.path.basename(tokens[index]) not in MOVERS:
+        return False
+    if any(token in DELEGATED_WORDS for token in tokens[:index]):
+        return False
+    return move_target(tokens, index) is not None
+
+
+# What is placed:
+#
+#     [assignment ...] cd <literal>  ( && | ; | newline )  ...repeated...  <the work>
+#
+# The prefix is matched and a step outside it ends the match. A walk over the command's operators
+# was tried twice instead, and a construct nobody had written it for was answered rather than
+# declined: the `&` of a `2>&1` read as the operator that backgrounds a list and undid the move
+# before it, and a `case` arm's unmatched `)` drove a nesting count below zero and raised, which
+# turns off the guard that asked. What a caller handed a decline may not do is answer about the
+# directory it started in.
+#
+# Past the prefix no shape is matched at all, and that is this reading's residual: the scan below
+# declines on a mover word it can see and keeps the placed directory otherwise. A move whose word
+# the mask blanked, or whose spelling is not that word -- a quoted or backslashed `cd`, one named by
+# a variable, a `.` sourcing a script -- is therefore placed, and the guard answers about a tree the
+# command has left. Neither end of that closes for free:
+# `OPAQUE_RUNNERS` carries what one more word costs, and scanning the text rather than the mask is
+# what `AMoveWordInsideAQuotedOperand` in `scripts/hooks/test_shell_commands.py` fails on.
+
+# A run of characters between the separators, read off the mask so a quoted word is not one.
+BARE_WORD = re.compile(r"[^\s;&|<>()]+")
+
+# The operators that carry a move to the next step. `;` and a newline are here although a `cd` that
+# fails leaves the work where it started -- restricting this to `&&`, which cannot, declined most of
+# the moves this project's own transcripts make.
+PREFIX_SEPARATORS = ("&&", ";", "\n")
+
+# What a step this places may not contain. Read off the step's TEXT rather than off its tokens,
+# because `shlex` gives none of these a meaning: `cd /wt&pwd` is one token to it and two commands to
+# the shell, which backgrounds the move and runs the rest where it started. Meeting one ends the
+# prefix rather than the reading -- the scan below is what then decides between a move already
+# behind us and a decline.
+OUTSIDE_A_PREFIX_STEP = re.compile(r"[()|&<>{}]")
+
+# Words whose operand is run as a command rather than passed to one, and this reading follows
+# neither: `source`'s is in a file it never opens, and `eval`'s is text the shell lexes again after
+# expanding it. `.`, `source`'s other spelling, is left out: measured over this project's own
+# transcripts, a bare `.` is far more often an operand — `grep`'s and `find`'s, mostly — than a
+# command, and declining a command for carrying one costs more than the move it catches.
+OPAQUE_RUNNERS = {"eval", "source"}
+
+
+def _holds_a_mover(masked):
+    """Whether anything in `masked` could still change the directory the work runs in."""
+    return any(os.path.basename(word.group()) in MOVERS or word.group() in OPAQUE_RUNNERS
+               for word in BARE_WORD.finditer(masked))
+
+
+def command_directory(command, cwd):
+    """The directory this command's work runs in, or UNRESOLVED_CD where the shape above is not met.
+
+    `PreToolUse` fires before the command runs, so `cwd` is where the tool call *started*: the
+    session's checkout, for `cd <worktree> && git ...`, which is not the tree the command acts on. A
+    guard that reads `cwd` alone answers about that other tree, and it answers positively -- which is
+    the failure this exists to remove.
+
+    The decline is acted on only where the guard already has something to judge. These guards are
+    registered on `Bash`, so every command in the session reaches them, and one that refuses over a
+    decline before finding a subject refuses a command the user did not type -- with the move as the
+    whole of its reason. `scripts/hooks/cwd_resolution_check.py` is what fails when a
+    guard takes them in the other order.
+
+    Placing the move is what is done here rather than at the call sites. Reading it was already
+    shared; placing it was written three times and no two the same: one joined a relative target
+    to the hook PROCESS's own directory, so `cd sub && git commit --amend` refused the amend over
+    a path nothing holds wherever that directory was not the one the event named.
+
+    An assignment runs nothing, so a step that is only assignments does not end the prefix: ending
+    it there left `SP=/tmp; cd "$SP/x"` reading as no move at all -- the shape a session types
+    whenever it names a worktree once and moves into it.
+    """
+    text = without_comments(command)
+    masked = mask_shell_literals(text)
+    where, index = cwd, 0
+    while True:
+        cut, separator = _next_separator(masked, index, PREFIX_SEPARATORS)
+        if OUTSIDE_A_PREFIX_STEP.search(masked[index:cut]):
+            break
+        tokens = tokens_of(text[index:cut])
+        # `past_assignments` rather than `leading_program`: reading past a keyword as well placed
+        # `nohup cd /wt && git commit --amend` in `/wt`, which is not where the amend runs.
+        program = past_assignments(tokens)
+        if program < len(tokens):
+            # `cd`, not every mover: `popd` carries no destination in the command's own text and
+            # `pushd` is its partner. Declining `pushd` here loses a reading rather than missing a
+            # move, because the scan below takes all three.
+            if tokens[program] != "cd":
+                break
+            target = tokens[program + 1:]
+            if (len(target) != 1 or unexpanded(target[0]) or GLOB.search(target[0])
+                    or target[0].startswith(("~", "-"))):
+                break
+            where = os.path.normpath(target[0] if os.path.isabs(target[0])
+                                     else os.path.join(where, target[0]))
+        if separator is None:
+            index = cut
+            break
+        index = cut + len(separator)
+    return UNRESOLVED_CD if _holds_a_mover(masked[index:]) else where
+
+
+# What a guard says when `command_directory` declined to place the move, and what it asks for
+# instead. Owned here so that a family of guards refusing one shape cannot become a family of
+# explanations of it.
+UNPLACEABLE_MOVE = (
+    "The command changes directory in a way nothing here places. What is placed is a `cd` to a "
+    "literal path: one or several, each joined to what follows by `&&`, `;` or a newline, and all "
+    "of them ahead of the work. Among what is declined instead: a target the shell has yet "
+    "to expand or match, or one opening on `~`; a `cd` behind any word but an assignment; `popd`, "
+    "`pushd`, `cd -` and a bare `cd`; a move inside a pipeline, a group or a `||`; a move carrying "
+    "a redirection; an `eval` or a `source`, whose own text is not read here; and a move that runs "
+    "after some other program has. So which tree it acts on was not read, and answering from the "
+    "directory the tool call started in would be a verdict about a tree the command has already "
+    "left.")
+NAME_THE_TREE = ("Spell the move out as a single `cd` to a literal path ahead of the work, or run "
+                 "the command from the tree itself.")
 
 
 def git_invocations(command, subcommands, git_directory=False):
@@ -300,6 +526,14 @@ def git_invocations(command, subcommands, git_directory=False):
         if invocation and invocation[1] in subcommands:
             found.append(invocation)
     return found
+
+
+def past_assignments(tokens):
+    """The index of the step's command word, past the environment assignments before it."""
+    index = 0
+    while index < len(tokens) and ENV_ASSIGNMENT.match(tokens[index]):
+        index += 1
+    return index
 
 
 def leading_program(tokens):
@@ -337,6 +571,11 @@ def program_invocations(command, program, words):
 # pass, so the check silently does not happen. Each guard states which way it errs there; this only
 # recognises the case.
 UNEXPANDED = re.compile(r"[$`]")
+
+# The other operand the shell rewrites, kept out of `unexpanded` because a caller may want what it
+# expands to rather than a refusal over it: `shared_git_state` expands `git checkout '*.cs'` and asks
+# git about the names it matched.
+GLOB = re.compile(r"[*?\[]")
 
 
 def unexpanded(token):

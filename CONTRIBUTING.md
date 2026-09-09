@@ -653,6 +653,49 @@ guard in the directory a pull request based on a branch that is not `main`, in a
 `main` holds both of those things and the named base holds neither. A guard that judges either of
 them against `main` fails it without anybody having remembered to write a case.
 
+A fourth is being right about the wrong tree. A `PreToolUse` hook is handed the directory the tool
+call started in, and `cd <worktree> && gh pr create` runs somewhere else — so a guard reading that
+directory answers about a checkout the command has left, and prints a positive verdict about a tree
+it never opened. Two false refusals of that shape were reported before this, one guard both times,
+and what nobody asked afterwards is which of the others read a directory at all. The sweep below is
+what counts them, so no count is kept here. `command_directory` in
+`.claude/hooks/lib/shell_commands.py` owns the reading, and what a guard handed its decline may not
+do is answer about the directory it started in. It matches one shape — `cd` to a literal path, one
+or several, joined by `&&`, `;` or a newline, all of them ahead of the work — and a step outside it
+ends the match; the module states what the reading then does with the rest, and why matching one
+shape beat walking the operators. Reading a leading `cd` was already shared before that; placing its
+answer was written three times at three call sites and the three disagreed, one of them against the
+hook process's own directory rather than the event's.
+
+The decline is only reached where the guard already has something to judge. These run on `Bash`, so
+they see every command in the session, and one that reads the directory before establishing its
+subject refuses `cd - && ls` — naming a command the user never typed, with the move as the whole of
+its reason. Measured: four guards each refused seven such commands before the order was settled.
+
+`scripts/hooks/test_cwd_resolution_check.py` poses each guard registered on `Bash` six runs: four
+carry a move — one it could place, that same move carrying the redirection that silences it, one
+nothing can place, and that unplaceable move carrying a command the guard has no subject in — and
+the other two are the bare command in each of the two trees, which is what scores a guard that
+addressed no tree at all. A guard declaring some other tool poses no Bash command and is skipped;
+one declaring `Bash` with no probe command to pose is a fault, because a guard the sweep cannot pose
+is a guard it holds to nothing. It reads two things off each run: the verdict, from the exit code
+and from a `deny` decision on stdout, and which tree the guard's own `git` and `gh` calls addressed,
+from shims that record where they were run. The tree reading is what separates a guard whose subject is not the tree
+from one that read the wrong tree and had nothing to say about it either way, and where neither
+reading speaks the check reports undecided rather than agreement — a guard that lands there wants a
+case in its own suite, as `library_seed_without_room.py` has, since it asks the filesystem rather
+than git and the shims see nothing of that. What the check does not decide is which way a guard
+should go once it has declined to place a move: refusing and standing down are both defensible and
+the guards differ, `tracked_writes.py` naming its own gap and `edit_while_a_ready_pr_sits.py`
+standing down. That suite's stand-in guards ride alongside, between them producing every outcome the
+sweep reports — a case compares the two sets rather than a sentence claiming it — so a sweep whose
+shims have stopped recording fails rather than coming back clean. Two trees that stop being two are
+the degeneracy the decided count cannot see, and the sweep compares them to each other for it. A
+guard that raises is the third: it exits 1, which is neither the code that allows nor the code that
+refuses, and read as an allow it scores exactly as a guard whose subject is not the tree — measured,
+five of nineteen guards replaced by files that raise on import and the sweep came back clean. So an
+exit that is neither is reported as the fault it is.
+
 The `Stop` guards declare the same policy and are held to one thing more, because blocking was never
 what they got wrong. They blocked, and described the pull requests rather than the reading — so the
 deferral the message invited named the API error instead of whatever the work was waiting on.

@@ -17,10 +17,7 @@ namespace Velvet
         internal const string AutoKeyPrefix = "__ap_auto_";
 
         // USS class added to the wrapper VisualElement emitted for a
-        // ContextProviderNode: the wrapper is layout-passthrough so context propagation does not
-        // distort layout, and the class lets tests and consumers identify Provider boundaries
-        // in the DOM. A Provider emitting its own wrapper element is a deliberate choice here;
-        // the layout-passthrough class keeps it transparent to layout.
+        // ContextProviderNode: the class lets tests and consumers identify Provider boundaries in the DOM.
         internal const string ContextProviderClassName = "velvet-context-provider";
 
         public FiberNodeFactory(ReconcilerContext ctx, FiberNodePatcher patcher)
@@ -545,10 +542,9 @@ namespace Velvet
             // GeneralPathReconciler.NeedsExpansion found none, and the general one expands each one it
             // reaches, a Memo's resolved inner and an AnimatePresence keyed entry included.
             // A Component does not emit a DOM element; its rendered tree attaches
-            // directly to the parent. Velvet needs an anchor element for fiber tracking,
-            // so the wrapper is made layout-transparent so its single child can size
-            // against the real parent.
-            var wrapper = CreateLayoutPassthroughContainer();
+            // directly to the parent. Velvet needs an anchor element for fiber tracking, and
+            // CreateItemMountContainer owns how that element takes part in the item container's layout.
+            var wrapper = CreateItemMountContainer();
             _patcher.HandleComponentMount(wrapper, componentNode);
             return wrapper;
         }
@@ -556,12 +552,11 @@ namespace Velvet
         private VisualElement CreateForContextProviderNode(ContextProviderNode providerNode)
         {
             // A context Provider emits no DOM element of its own; descendants attach directly to
-            // the parent fiber's host. Velvet maps each VNode to exactly one VisualElement so a
-            // layout-passthrough wrapper anchors the Provider subtree without imposing layout — a
-            // deliberate choice, as documented on ContextProviderNode.
+            // the parent fiber's host. This path is asked for an element regardless, so an anchor
+            // stands in for the Provider.
             // Reached the one way CreateForComponentNode above is, and ruled out on the reconcile
-            // paths for the same reason.
-            var container = CreateLayoutPassthroughContainer();
+            // paths for the same reason, so CreateItemMountContainer applies here unchanged.
+            var container = CreateItemMountContainer();
             container.AddToClassList(ContextProviderClassName);
 
             providerNode.PushContext(_ctx.ComponentContextStack);
@@ -724,26 +719,17 @@ namespace Velvet
             }
         }
 
-        // Anchor VisualElement emitted for Provider / Component to track fiber lifecycle.
-        // Layout-transparent via absolute insets so the wrapper fills its parent's full box at any
-        // depth — bare wrappers collapse to 0 height when their only child is absolute, because
-        // Yoga measures parents from in-flow children alone, and deep Provider / Component chains
-        // then cascade-collapse every descendant to 0x0. PickingMode.Ignore ensures clicks fall
-        // through to user-emitted elements (otherwise overlay passthrough wrappers would steal
-        // clicks from routed pages beneath them).
-        internal static VisualElement CreateLayoutPassthroughContainer()
+        // The anchor a VirtualList item's Component / Provider root mounts on. It takes a slot in the
+        // visible-items container rather than covering it: FiberVirtualListController stacks the visible
+        // items in that container, so a container pinned to its parent's edges puts every one of them at
+        // that parent's origin, one over another. Dropping the insets hands the cross axis to that
+        // container to decide, which VirtualListItemMountTests pins alongside the stacking.
+        // The anchor is not the author's element, which is why it declines picking.
+        private static VisualElement CreateItemMountContainer()
             => new VisualElement
             {
                 pickingMode = PickingMode.Ignore,
-                style =
-                {
-                    position = Position.Absolute,
-                    left = 0,
-                    right = 0,
-                    top = 0,
-                    bottom = 0,
-                    overflow = Overflow.Visible
-                }
+                style = { overflow = Overflow.Visible }
             };
 
         // Walks node and returns the first MotionNode descendant
