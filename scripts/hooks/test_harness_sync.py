@@ -20,7 +20,7 @@ class HarnessSyncTests(unittest.TestCase):
         self.root = Path(self.directory.name)
         sources = {
             ".harness/hooks/refuse/check.py": "print('shared policy')\n",
-            ".harness/skills/sample/SKILL.md": "---\nname: sample\n---\nShared skill\n",
+            ".agents/skills/sample/SKILL.md": "---\nname: sample\n---\nShared skill\n",
             ".harness/agents/reviewer.md": "---\nname: reviewer\ndescription: Review\n---\nShared prompt\n",
             ".harness/hooks.json": json.dumps([{
                 "event": "PreToolUse", "tools": ["Bash"],
@@ -37,7 +37,7 @@ class HarnessSyncTests(unittest.TestCase):
         sync.synchronize(self.root)
         sources = {
             ".harness/hooks/refuse/check.py": (".claude/hooks/refuse/check.py", ".codex/hooks/refuse/check.py"),
-            ".harness/skills/sample/SKILL.md": (".claude/skills/sample/SKILL.md", ".agents/skills/sample/SKILL.md", ".cursor/skills/sample/SKILL.md"),
+            ".agents/skills/sample/SKILL.md": (".claude/skills/sample/SKILL.md", ".agents/skills/sample/SKILL.md"),
             ".harness/agents/reviewer.md": (".claude/agents/reviewer.md",),
         }
         # Act
@@ -51,24 +51,33 @@ class HarnessSyncTests(unittest.TestCase):
     def test_Given_LinkedSkillDirectories_When_SourceIsAdded_Then_ClientsSeeItWithoutSynchronization(self):
         # Arrange
         sync.synchronize(self.root)
-        source = self.root / ".harness/skills/new/SKILL.md"
+        source = self.root / ".agents/skills/new/SKILL.md"
         source.parent.mkdir()
         # Act
         source.write_text("New skill\n")
         # Assert
         self.assertEqual([(self.root / client / "skills/new/SKILL.md").read_text()
-                          for client in (".claude", ".agents", ".cursor")], ["New skill\n"] * 3)
+                          for client in (".claude", ".agents")], ["New skill\n"] * 2)
 
     def test_Given_LinkedSkillDirectories_When_SourceIsRemoved_Then_ClientsLoseItWithoutSynchronization(self):
         # Arrange
         sync.synchronize(self.root)
         targets = [self.root / client / "skills/sample/SKILL.md"
-                   for client in (".claude", ".agents", ".cursor")]
+                   for client in (".claude", ".agents")]
         before = [path.exists() for path in targets]
         # Act
-        (self.root / ".harness/skills/sample/SKILL.md").unlink()
+        (self.root / ".agents/skills/sample/SKILL.md").unlink()
         # Assert
-        self.assertEqual((before, [path.exists() for path in targets]), ([True] * 3, [False] * 3))
+        self.assertEqual((before, [path.exists() for path in targets]), ([True] * 2, [False] * 2))
+
+    def test_Given_NativeSharedSkills_When_Synchronized_Then_CursorSpecificSkillDirectoryIsAbsent(self):
+        # Arrange
+        target = self.root / ".cursor/skills"
+        # Act
+        sync.synchronize(self.root)
+        # Assert
+        self.assertEqual(((self.root / ".cursor/hooks.json").is_file(), target.exists(), target.is_symlink()),
+                         (True, False, False))
 
     def test_Given_SynchronizedClients_When_CheckedAgain_Then_NoFilesAreWritten(self):
         # Arrange
@@ -84,7 +93,7 @@ class HarnessSyncTests(unittest.TestCase):
 
     def test_Given_RealClientDirectory_When_Synchronized_Then_LocalFilesArePreservedAndConflictIsRefused(self):
         # Arrange
-        target = self.root / ".agents/skills/local/SKILL.md"
+        target = self.root / ".claude/skills/local/SKILL.md"
         target.parent.mkdir(parents=True)
         target.write_text("Local skill\n")
         # Act

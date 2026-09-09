@@ -560,8 +560,23 @@ Claude Code, Codex, and Cursor share these owning sources:
 | Repository instructions | `AGENTS.md` | `CLAUDE.md` imports it; Codex and Cursor read it directly |
 | Hook registration and timeouts in seconds | `.harness/hooks.json` | `.claude/settings.json`, `.codex/hooks.json`, `.cursor/hooks.json` |
 | Hook policy and shared helpers | `.harness/hooks/` | `.claude/hooks/` and `.codex/hooks/` are relative symlinks |
-| Skills | `.harness/skills/` | `.claude/skills/`, `.agents/skills/`, `.cursor/skills/` are relative symlinks |
+| Skills | `.agents/skills/` | Codex and Cursor discover it directly; `.claude/skills/` is a relative symlink |
 | Agent prompts | `.harness/agents/` | `.claude/agents/` is a symlink; Codex/Cursor descriptors instruct the agent to read the owning file |
+
+The instruction entry point follows [Claude's documented AGENTS.md import](https://code.claude.com/docs/en/memory#agents-md).
+The skill root is a documented discovery location for both
+[Codex](https://developers.openai.com/codex/skills) and [Cursor](https://cursor.com/docs/skills),
+so Cursor needs no extra skill link. For ecosystem practice,
+[Vercel's skills installer](https://github.com/vercel-labs/skills#installation-methods) recommends
+symlinking to a canonical copy, and [agentcanon](https://github.com/buildermethods/agentcanon#the-convention)
+uses `.agents/skills/` as that copy. These are interoperability choices, not a requirement
+that hooks and agent-role schemas share one format.
+
+[Cursor's Claude compatibility](https://cursor.com/docs/reference/third-party-hooks) can reuse
+Claude hook configuration, but requires an enabled account feature and the third-party configuration
+setting. This repository keeps native Cursor hooks and role descriptors so discovery does not
+require that setting. Hook registrations use seconds, as specified by the
+[Claude hook reference](https://code.claude.com/docs/en/hooks#common-fields).
 
 Hook code, skill content, and agent prompt bodies are not copied. Editing the owning file
 is visible through the links or reference without synchronization. Commit symlinks as symlinks;

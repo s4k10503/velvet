@@ -13,9 +13,7 @@ EVENTS = {name: name[0].lower() + name[1:] for name in
 LINKS = {
     ".claude/hooks": "../.harness/hooks",
     ".codex/hooks": "../.harness/hooks",
-    ".claude/skills": "../.harness/skills",
-    ".agents/skills": "../.harness/skills",
-    ".cursor/skills": "../.harness/skills",
+    ".claude/skills": "../.agents/skills",
     ".claude/agents": "../.harness/agents",
 }
 
