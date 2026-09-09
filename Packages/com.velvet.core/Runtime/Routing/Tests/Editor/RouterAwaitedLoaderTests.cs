@@ -29,6 +29,9 @@ namespace Velvet.Tests
     /// it.</item>
     /// <item>What that Suspend loader settles is its own round, so the history entry it writes back to
     /// stays servable even while the round holding the commit is unsettled.</item>
+    /// <item>A loader still holding its round's token when the router ends that round reads the ending
+    /// off it rather than finding the source gone — the awaited one superseded inside its own run, and
+    /// the Suspend one on screen at the commit that leaves it.</item>
     /// <item>A navigation that matches no route neither cancels the attempt holding the window open nor
     /// takes over the status describing it.</item>
     /// </list>
@@ -356,6 +359,67 @@ namespace Velvet.Tests
             Assert.That(
                 $"path={router.CurrentLocation?.Path} cancelled={captured.IsCancellationRequested}",
                 Is.EqualTo("path=/profile cancelled=True"));
+        });
+
+        [UnityTest]
+        public IEnumerator Given_ASuspendLoaderOnTheRouteOnScreen_When_TheAwaitedNavigationCommits_Then_ItReadsCancellationRatherThanAReleasedSource()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // This loader's own run returned at the commit that put it on screen, so this loader is what
+            // still holds the token — where the awaited loader below is inside the run that launched it.
+            // Arrange
+            CancellationToken captured = default;
+            var (router, _, awaited) = RouterStreamingUnderAnAwaitedNavigation((ctx, ct) =>
+            {
+                captured = ct;
+                return new VelvetTaskCompletionSource<object>().Task;
+            });
+
+            // Act
+            awaited.TrySetResult("profile-data");
+            await VelvetTask.Yield();
+
+            // Assert
+            Assert.That(ReadTokenState(captured), Is.EqualTo("cancelled"),
+                "A loader the commit cancelled is still able to ask its token what happened");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_ANavigationAwaitingItsLoader_When_ANewerNavigationSupersedesIt_Then_TheLoaderReadsCancellationRatherThanAReleasedSource()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // The supersession retires this round while the run that launched it is still awaiting this
+            // loader, which is the half of the window the Suspend case above cannot reach.
+            // Arrange
+            var parked = new VelvetTaskCompletionSource<object>();
+            var entered = new VelvetTaskCompletionSource();
+            string loaderSaw = null;
+            var router = BuildRouter("/home",
+                Route("home"),
+                Route("users/:id", loader: async (ctx, ct) =>
+                {
+                    entered.TrySetResult();
+                    try
+                    {
+                        return await parked.Task;
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        loaderSaw = ReadTokenState(ct);
+                        throw;
+                    }
+                }),
+                Route("other"));
+            router.NavigateAsync("/users/7").Forget();
+            await entered.Task;
+
+            // Act
+            await router.NavigateAsync("/other");
+            parked.TrySetCanceled();
+
+            // Assert
+            Assert.That(loaderSaw, Is.EqualTo("cancelled"),
+                "A loader unwinding on the cancellation that superseded it is still able to ask its token");
         });
 
         [UnityTest]
