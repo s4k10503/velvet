@@ -551,7 +551,54 @@ reaching for `python3` from inside a shell script by the end. What the rule buys
 be tested by importing it, and that `Generators~/build` is one file instead of a bash and a
 PowerShell copy that nothing compared.
 
-`.claude/hooks/` is grouped by what a script is able to stop:
+### Agent harness
+
+Claude Code, Codex, and Cursor share these owning sources:
+
+| Content | Edit here | Client entry points |
+| --- | --- | --- |
+| Repository instructions | `AGENTS.md` | `CLAUDE.md` imports it; Codex and Cursor read it directly |
+| Hook registration and timeouts in seconds | `.harness/hooks.json` | `.claude/settings.json`, `.codex/hooks.json`, `.cursor/hooks.json` |
+| Hook policy and shared helpers | `.harness/hooks/` | `.claude/hooks/` and `.codex/hooks/` are relative symlinks |
+| Skills | `.harness/skills/` | `.claude/skills/`, `.agents/skills/`, `.cursor/skills/` are relative symlinks |
+| Agent prompts | `.harness/agents/` | `.claude/agents/` is a symlink; Codex/Cursor descriptors instruct the agent to read the owning file |
+
+Hook code, skill content, and agent prompt bodies are not copied. Editing the owning file
+is visible through the links or reference without synchronization. Commit symlinks as symlinks;
+a checkout that materializes them as plain text cannot discover those skills or execute the hooks.
+
+Run `python3 scripts/harness/sync.py` when changing hook registration or agent discovery metadata.
+Only the client-specific JSON/TOML and thin Markdown descriptors are generated. `--check`
+checks those adapters and the links without writing; CI runs it. The command refuses to
+replace a real directory with a link, so it cannot discard a pre-existing local harness.
+Personal settings such as `.claude/settings.local.json` are outside this generator.
+
+`scripts/harness/adapter.py` translates Codex and Cursor events before invoking the shared
+policy. Cursor's `Shell` becomes `Bash`; shell working directories and relative file paths
+are resolved before the guards run. Codex's `apply_patch` becomes a `Write` for each affected
+path. The adapter reconstructs exact-context add/update/delete/move patches without modifying
+files. Missing or ambiguous context is refused before editing; retry with more exact context.
+The shell guards retain their existing command-parser limits.
+
+Hook session identifiers are passed to the deferral reader, and non-Claude refusal messages
+contain the literal session identifier needed to write a deferral. No cross-session identifier
+is inferred when the event lacks one. Cursor stop refusals become follow-up messages and are
+subject to Cursor's loop limit; aborted/error stops do not resume. Cursor subagent reports go
+to the Hooks log because its subagent-stop output offers continuation rather than an
+observational context field. Agent tool restrictions remain client-specific: Claude's
+`disallowedTools` is not translated to an OS sandbox; the shared reviewer prompt retains
+its read-only instructions.
+
+Python 3, Git, and the existing guards' GitHub CLI dependencies must be available to the
+client process. Enable/trust project hooks in each client and restart an existing session
+after changing agent or skill definitions. Client loading and runtime behavior follow the
+[Codex hook contract](https://developers.openai.com/codex/hooks) and
+[Cursor hook contract](https://cursor.com/docs/hooks); adapter tests exercise payloads and
+guard subprocesses, not the applications' hook loaders. Avoid enabling Cursor's additional
+Claude-hook import alongside its native generated hooks, which would register the guards twice.
+
+The linked `.claude/hooks/` paths below remain available to existing guard tests.
+The owning `.harness/hooks/` directory is grouped by what a script is able to stop:
 
 - `refuse/` — `PreToolUse`. Stops the tool call, by exiting 2 with the reason on stderr or by
   answering with a `permissionDecision` of `deny`.
@@ -573,7 +620,7 @@ grep -rl 'claude/hooks' --include='*.cs' --include='*.py' Packages scripts
 ```
 
 A guard over state that is shared rather than owned by one session — a branch, the stash — belongs
-in `.claude/settings.json`, where it runs for every session. An agent's frontmatter can only narrow
+in `.harness/hooks.json`, which generates the project registrations. An agent's frontmatter can only narrow
 that: a guard named there and nowhere else is absent from the main session and from every other
 agent type. Such a guard says so with a `HOOK_SCOPE = "session"` line.
 

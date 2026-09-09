@@ -14,8 +14,6 @@ namespace Velvet.Tests
     /// </summary>
     internal static class DocumentationCorpus
     {
-        // Unity's CWD during a test run is the project root (see CLAUDE.md), so these resolve the same way
-        // whether the suite runs from the Editor or from -runTests batchmode.
         internal static string DocumentationDirectory =>
             Path.GetFullPath("Packages/com.velvet.core/Documentation~");
 
@@ -28,9 +26,8 @@ namespace Velvet.Tests
             RepoEntries(includeClaude: true)
                 .Where(entry => entry.EndsWith(".md", StringComparison.Ordinal) && File.Exists(entry));
 
-        // Every entry under the walked roots, repo-relative and slash-separated. includeClaude adds
-        // .claude/skills and agent definitions to the tree; worktrees is skipped there because each is a
-        // full checkout of this repository and would report its own copy of every path.
+        // includeClaude includes the canonical harness and generated client roots. Worktrees stay
+        // excluded so a nested checkout cannot supply a removed identifier.
         internal static IReadOnlyList<string> RepoEntries(bool includeClaude) =>
             (includeClaude ? ClaudeAwareWalk : DocumentationWalk).Value;
 
@@ -176,7 +173,8 @@ namespace Velvet.Tests
         private static readonly string[] BaseWalkedRoots =
             { "Packages", "Assets", ".github", "scripts", "ProjectSettings", "docs" };
 
-        private static readonly string[] ClaudeAwareRoots = BaseWalkedRoots.Append(".claude").ToArray();
+        private static readonly string[] ClaudeAwareRoots = BaseWalkedRoots
+            .Concat(new[] { ".harness", ".agents", ".codex", ".cursor", ".claude" }).ToArray();
 
         /// <remarks>
         /// One derivation for the three readers — the walk, the unwalked-root report, and the caller asking

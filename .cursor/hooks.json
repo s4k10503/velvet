@@ -1,0 +1,168 @@
+{
+  "hooks": {
+    "sessionStart": [
+      {
+        "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" cursor SessionStart report/stale_main.py",
+        "timeout": 15.0
+      },
+      {
+        "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" cursor SessionStart report/wedged_processes.py",
+        "timeout": 10.0
+      },
+      {
+        "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" cursor SessionStart report/repository_litter.py",
+        "timeout": 10.0
+      },
+      {
+        "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" cursor SessionStart report/unreleased_maintenance_line.py",
+        "timeout": 10.0
+      }
+    ],
+    "subagentStop": [
+      {
+        "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" cursor SubagentStop report/untracked_scratch.py",
+        "timeout": 15.0
+      }
+    ],
+    "postToolUse": [
+      {
+        "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" cursor PostToolUse report/gitignored_write.py",
+        "timeout": 10.0,
+        "matcher": "Write"
+      }
+    ],
+    "stop": [
+      {
+        "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" cursor Stop stop/unsettled_pr.py",
+        "timeout": 20.0
+      },
+      {
+        "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" cursor Stop stop/open_backlog.py",
+        "timeout": 20.0
+      }
+    ],
+    "preToolUse": [
+      {
+        "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" cursor PreToolUse refuse/stale_merge.py",
+        "timeout": 25.0,
+        "matcher": "Shell",
+        "failClosed": true
+      },
+      {
+        "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" cursor PreToolUse refuse/branch_from_unmerged.py",
+        "timeout": 15.0,
+        "matcher": "Shell",
+        "failClosed": true
+      },
+      {
+        "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" cursor PreToolUse refuse/blind_git_add.py",
+        "timeout": 10.0,
+        "matcher": "Shell",
+        "failClosed": true
+      },
+      {
+        "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" cursor PreToolUse refuse/metadata_less_create.py",
+        "timeout": 15.0,
+        "matcher": "Shell",
+        "failClosed": true
+      },
+      {
+        "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" cursor PreToolUse refuse/commit_failing_fast_checks.py",
+        "timeout": 15.0,
+        "matcher": "Shell",
+        "failClosed": true
+      },
+      {
+        "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" cursor PreToolUse refuse/amend_of_published_commit.py",
+        "timeout": 15.0,
+        "matcher": "Shell",
+        "failClosed": true
+      },
+      {
+        "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" cursor PreToolUse refuse/merge_unproven_head.py",
+        "timeout": 25.0,
+        "matcher": "Shell",
+        "failClosed": true
+      },
+      {
+        "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" cursor PreToolUse refuse/merge_branch_held_by_worktree.py",
+        "timeout": 20.0,
+        "matcher": "Shell",
+        "failClosed": true
+      },
+      {
+        "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" cursor PreToolUse refuse/merge_without_branch_deletion.py",
+        "timeout": 10.0,
+        "matcher": "Shell",
+        "failClosed": true
+      },
+      {
+        "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" cursor PreToolUse refuse/shared_git_state.py",
+        "timeout": 10.0,
+        "matcher": "Shell",
+        "failClosed": true
+      },
+      {
+        "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" cursor PreToolUse refuse/merge_onto_unpublished_release.py",
+        "timeout": 25.0,
+        "matcher": "Shell",
+        "failClosed": true
+      },
+      {
+        "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" cursor PreToolUse refuse/pr_body_of_another_branch.py",
+        "timeout": 15.0,
+        "matcher": "Shell",
+        "failClosed": true
+      },
+      {
+        "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" cursor PreToolUse refuse/message_outside_its_worktree.py",
+        "timeout": 15.0,
+        "matcher": "Shell",
+        "failClosed": true
+      },
+      {
+        "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" cursor PreToolUse refuse/library_seed_without_room.py",
+        "timeout": 20.0,
+        "matcher": "Shell",
+        "failClosed": true
+      },
+      {
+        "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" cursor PreToolUse refuse/pr_without_mutation_receipt.py",
+        "timeout": 25.0,
+        "matcher": "Shell",
+        "failClosed": true
+      },
+      {
+        "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" cursor PreToolUse refuse/edit_while_a_ready_pr_sits.py",
+        "timeout": 15.0,
+        "matcher": "Shell|Edit|Write|NotebookEdit",
+        "failClosed": true
+      },
+      {
+        "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" cursor PreToolUse refuse/changelog_into_closed_version.py",
+        "timeout": 15.0,
+        "matcher": "Shell|Edit|Write",
+        "failClosed": true
+      },
+      {
+        "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" cursor PreToolUse refuse/declaration_first_line_fragment.py",
+        "timeout": 10.0,
+        "matcher": "Edit|Write",
+        "failClosed": true
+      },
+      {
+        "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" cursor PreToolUse refuse/background_relative_path.py",
+        "timeout": 10.0,
+        "matcher": "Shell",
+        "failClosed": true
+      },
+      {
+        "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" cursor PreToolUse refuse/hand_rolled_pr_poller.py",
+        "timeout": 10.0,
+        "matcher": "Shell",
+        "failClosed": true
+      }
+    ]
+  },
+  "version": 1
+}
