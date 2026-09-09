@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
@@ -20,6 +21,11 @@ namespace Velvet.Tests
     /// shows its fallback.</item>
     /// <item>A boundary recovers: once a later render produces no throwing child, the abort state resets, all
     /// children mount, and the fallback factory does not restart.</item>
+    /// <item>A catch rewrites the boundary's own slot range rather than the first slots of its
+    /// container: with a sibling on each side, both stay and the subtree that threw goes.</item>
+    /// <item>Where the pass that catches was itself re-placing the boundary, the rows rewritten are the
+    /// ones the container is still holding rather than the ones that pass was moving them to; where such
+    /// a pass has already committed, they are the rows it placed.</item>
     /// </list>
     /// </summary>
     /// <remarks>
@@ -42,6 +48,8 @@ namespace Velvet.Tests
             ResetMultiChild();
             ResetEffectBoundary();
             ResetBrokenFallback();
+            ResetPlacement();
+            ResetMoved();
         }
 
         #region No boundary
@@ -559,6 +567,220 @@ namespace Velvet.Tests
                 return V.Label(text: "outer-fallback-shown");
             });
             return V.Component(BoundaryWithBrokenFallbackRender, key: "inner");
+        }
+
+        #endregion
+
+        #region Where in its container a boundary's fallback lands
+
+        private static bool s_placementShouldThrow;
+        private static Action<int> s_placementSetTick;
+
+        private static void ResetPlacement()
+        {
+            s_placementShouldThrow = false;
+            s_placementSetTick = null;
+        }
+
+        [Test]
+        public void Given_ABoundaryWithSiblingsOnBothSides_When_ItCatches_Then_OnlyItsOwnSlotsAreRewritten()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(PlacementHostRender, key: "host"));
+            s_placementShouldThrow = true;
+
+            // Act
+            s_placementSetTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert — the container's rows by name and in order. The fallback is present on the broken
+            // tree too, sitting where the leading sibling was and beside the subtree that threw, so a
+            // lookup for the fallback alone reads the same on both.
+            Assert.That(
+                string.Join(",", _root.ElementAt(0).Children().Select(child => child.name)),
+                Is.EqualTo("placement-ahead,placement-fallback,placement-behind"));
+        }
+
+        [Component]
+        private static VNode PlacementThrowerRender()
+        {
+            var (_, setTick) = Hooks.UseState(0);
+            s_placementSetTick = setTick;
+            if (s_placementShouldThrow) throw new InvalidOperationException("Placement boundary throw");
+            return V.Label(name: "placement-thrower", text: "ok");
+        }
+
+        [Component(IsErrorBoundary = true)]
+        private static VNode PlacementBoundaryRender()
+        {
+            Hooks.UseFallback(_ => V.Label(name: "placement-fallback", text: "caught"));
+            return V.Div(name: "placement-thrown", children: new VNode[]
+            {
+                V.Component(PlacementThrowerRender, key: "thrower"),
+            });
+        }
+
+        [Component]
+        private static VNode PlacementHostRender()
+            => V.Div(children: new VNode[]
+            {
+                V.Label(name: "placement-ahead", text: "ahead"),
+                V.Component(PlacementBoundaryRender, key: "boundary"),
+                V.Label(name: "placement-behind", text: "behind"),
+            });
+
+        #endregion
+
+        #region A catch on either side of the expansion that re-places the boundary
+
+        private static bool s_movedShouldThrow;
+        private static Action<int> s_movedSetOrder;
+        private static Action<int> s_movedSetLeading;
+        private static Action<int> s_movedSetGrow;
+        private static Action<int> s_movedSetTick;
+
+        private static void ResetMoved()
+        {
+            s_movedShouldThrow = false;
+            s_movedSetOrder = null;
+            s_movedSetLeading = null;
+            s_movedSetGrow = null;
+            s_movedSetTick = null;
+        }
+
+        // GREEN_ON_BASE(characterization): the merge base already leaves this container's sibling alone.
+        // It writes the fallback from row 0 of the mount point and this boundary's rows start there, so
+        // the two coincide for a reason this arrangement does not test. Writing the fallback from the offset an
+        // uncommitted placement recorded is what loses it, and this is the case that says so.
+        [Test]
+        public void Given_APassReorderingTheBoundaryBehindItsSibling_When_ItCatches_Then_TheRowsItStillHoldsAreTheOnesRewritten()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(ReorderHostRender, key: "host"));
+            s_movedShouldThrow = true;
+
+            // Act
+            s_movedSetOrder.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(
+                string.Join(",", _root.ElementAt(0).Children().Select(child => child.name)),
+                Is.EqualTo("moved-fallback,moved-ahead"));
+        }
+
+        [Test]
+        public void Given_APassDroppingRowsAheadOfTheBoundary_When_ItCatches_Then_TheRowsItStillHoldsAreTheOnesRewritten()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(ShrinkHostRender, key: "host"));
+            s_movedShouldThrow = true;
+
+            // Act
+            s_movedSetLeading.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(
+                string.Join(",", _root.ElementAt(0).Children().Select(child => child.name)),
+                Is.EqualTo("moved-lead0,moved-lead1,moved-lead2,moved-fallback"));
+        }
+
+        [Test]
+        public void Given_APassAddingRowsAheadOfTheBoundary_When_ItCatches_Then_TheRowsItStillHoldsAreTheOnesRewritten()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(GrowHostRender, key: "host"));
+            s_movedShouldThrow = true;
+
+            // Act
+            s_movedSetGrow.Invoke(3);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(
+                string.Join(",", _root.ElementAt(0).Children().Select(child => child.name)),
+                Is.EqualTo("moved-lead0,moved-fallback"));
+        }
+
+        [Test]
+        public void Given_APassAlreadyReorderedTheBoundaryBehindItsSibling_When_ALaterRenderThrows_Then_TheRowsItStillHoldsAreTheOnesRewritten()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(ReorderHostRender, key: "host"));
+            s_movedSetOrder.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Act — the thrower's own re-render, so no expansion re-places the boundary this time.
+            s_movedShouldThrow = true;
+            s_movedSetTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(
+                string.Join(",", _root.ElementAt(0).Children().Select(child => child.name)),
+                Is.EqualTo("moved-ahead,moved-fallback"));
+        }
+
+        [Component]
+        private static VNode MovedThrowerRender()
+        {
+            var (_, setTick) = Hooks.UseState(0);
+            s_movedSetTick = setTick;
+            if (s_movedShouldThrow) throw new InvalidOperationException("Moved boundary throw");
+            return V.Label(name: "moved-thrown", text: "ok");
+        }
+
+        [Component(IsErrorBoundary = true)]
+        private static VNode MovedBoundaryRender()
+        {
+            Hooks.UseFallback(_ => V.Label(name: "moved-fallback", text: "caught"));
+            return V.Component(MovedThrowerRender, key: "thrower");
+        }
+
+        [Component]
+        private static VNode ReorderHostRender()
+        {
+            var (order, setOrder) = Hooks.UseState(0);
+            s_movedSetOrder = setOrder;
+            return order == 0
+                ? V.Div(children: new VNode[]
+                {
+                    V.Component(MovedBoundaryRender, key: "boundary"),
+                    V.Label(name: "moved-ahead", text: "ahead", key: "ahead"),
+                })
+                : V.Div(children: new VNode[]
+                {
+                    V.Label(name: "moved-ahead", text: "ahead", key: "ahead"),
+                    V.Component(MovedBoundaryRender, key: "boundary"),
+                });
+        }
+
+        [Component]
+        private static VNode GrowHostRender()
+        {
+            var (leading, setGrow) = Hooks.UseState(1);
+            s_movedSetGrow = setGrow;
+            return LeadingRowsBefore(leading);
+        }
+
+        [Component]
+        private static VNode ShrinkHostRender()
+        {
+            var (leading, setLeading) = Hooks.UseState(3);
+            s_movedSetLeading = setLeading;
+            return LeadingRowsBefore(leading);
+        }
+
+        private static VNode LeadingRowsBefore(int leading)
+        {
+            var children = new VNode[leading + 1];
+            for (var i = 0; i < leading; i++)
+            {
+                children[i] = V.Label(name: "moved-lead" + i, text: "lead", key: "lead" + i);
+            }
+            children[leading] = V.Component(MovedBoundaryRender, key: "boundary");
+            return V.Div(children: children);
         }
 
         #endregion

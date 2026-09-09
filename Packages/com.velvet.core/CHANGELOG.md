@@ -153,6 +153,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   point instead: a disposed fiber has no pass left to be subsumed into, so its layout effect and its
   paint-tick effect are not queued.
 
+- An error boundary's fallback is written into the rows its container is holding for the boundary now,
+  instead of into the first rows of its mount point. A boundary that is not its container's first child
+  had a catch rewrite the rows at the top of that container rather than its own, so the fallback replaced
+  a sibling ahead of it. That holds where the pass raising the exception was itself moving the boundary — a
+  reorder that puts a sibling in front of it, a sibling that grew or shrank ahead of it — because
+  showing a fallback stops that pass from placing anything, so the container is still holding the rows
+  where they were and the swap is written there. It does not hold where the boundary's rows moved with
+  no pass placing them: a fiber that grows inside a co-located sibling shifts this boundary's rows along
+  the container, and a catch after that still writes the fallback over the sibling's rows and leaves the
+  boundary's own painted.
+
 - A component's own re-render now reads the Providers of the container it is written into, where the
   declaring body writes the component into each container as its own occurrence. Two sibling containers
   each holding the same component at the same position already mounted two instances, but the walk that
