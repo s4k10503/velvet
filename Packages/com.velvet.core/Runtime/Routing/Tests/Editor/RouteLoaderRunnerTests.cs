@@ -135,8 +135,8 @@ namespace Velvet.Tests
         public IEnumerator Given_ASuspendLoader_When_ItsTaskIsCancelled_Then_NoErrorIsRecordedAgainstItsRoute()
             => VelvetTask.ToCoroutine(async () =>
         {
-            // The Await case in the mode above reads the same map, and reads it off a different catch: this
-            // loader unwinds inside the task the runner forgot rather than inside the run.
+            // The Await case in the mode above reads the same map after the same kind of cancellation.
+            // The catch keeping this one out of it is RunSuspendLoader's, not the run's.
             // Arrange
             var runner = new RouteLoaderRunner();
             var streaming = new VelvetTaskCompletionSource<object>();

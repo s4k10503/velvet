@@ -125,8 +125,8 @@ namespace Velvet
                     }
                     catch (OperationCanceledException)
                     {
-                        // A cancellation is not this route's load failure. What goes in Errors is
-                        // what Router.RunLoaderPhase hands to UseRouteError.
+                        // A cancellation is not this route's load failure. What this loop leaves in
+                        // Errors is what Router.RunLoaderPhase hands to UseRouteError.
                     }
                     catch (Exception ex)
                     {
@@ -194,8 +194,9 @@ namespace Velvet
             round.Cancelling = true;
             // A callback the application registered on this round's token must not decide the outcome of
             // the operation ending the round: the caller is installing a different round or disposing the
-            // runner, and the callback belongs to neither. Reported on Announce's terms, and the release
-            // below sits under the catch so a throwing callback does not skip it.
+            // runner, and the callback belongs to neither. Reported on Announce's terms, and the flag's
+            // clear and the release below both sit under the catch: a throwing callback that left the
+            // flag set would decline every release after it.
             try
             {
                 cts.Cancel();

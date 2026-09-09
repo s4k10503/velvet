@@ -29,7 +29,7 @@ namespace Velvet.Tests
         /// Reports what <paramref name="token"/> answers to a read its source has to serve:
         /// <c>"released"</c> where the source behind it has been disposed, and otherwise
         /// <c>"cancelled"</c> or <c>"not-cancelled"</c>. <see cref="CancellationTokenReleaseTests"/> pins
-        /// that the wait handle is what tells the first of those from the other two.
+        /// that the wait handle is what tells a released source from a cancelled one.
         /// </summary>
         public static string ReadTokenState(CancellationToken token)
         {
