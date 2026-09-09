@@ -586,7 +586,7 @@ Run `python3 scripts/harness/sync.py` when changing hook registration or agent d
 Only the client-specific JSON/TOML and thin Markdown descriptors are generated. `--check`
 checks those adapters and the links without writing; CI runs it. The command refuses to
 replace a real directory with a link, so it cannot discard a pre-existing local harness.
-Personal settings, such as a local `settings.local.json` inside `.claude/`, are outside this generator.
+Personal settings are outside this generator.
 
 `scripts/harness/adapter.py` translates Codex and Cursor events before invoking the shared
 policy. Cursor's `Shell` becomes `Bash`; shell working directories and relative file paths
