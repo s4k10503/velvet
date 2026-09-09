@@ -68,6 +68,12 @@ namespace Velvet
         // Rent, removed on Return) rather than created-scoped, so the return is idempotent: the recycle
         // sweep can encounter one bag through several retired trees (a baseline retired by its owner and
         // again by a parent expansion) and only the first return recycles it. Mirrors s_ownedNodeArrays.
+        //
+        // A V.* factory that refuses AFTER its arguments were evaluated returns none of what they
+        // rented, for the reason above: the node an argument built may be one the caller still holds.
+        // What returns a bag is FiberTreeReturn's sweep over a retired tree, whose live marks say
+        // which nodes committed state still reaches; a factory has no such marks, and may run with no
+        // fiber on the stack at all.
         private static readonly HashSet<FiberElementProps> s_ownedProps = new();
 
         public static FiberElementProps RentProps()
