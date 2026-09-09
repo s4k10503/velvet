@@ -2630,6 +2630,9 @@ class MutationRefusalStatusTests(unittest.TestCase):
         # Assert
         self.assertEqual(mirrored, mutation_check.CARRIED_REFUSAL)
 
+    # GREEN_ON_BASE(construction): both timeouts come from the checked-out tree; the base's larger
+    # registration also exceeds the subprocess timeout in seconds. Setting its `timeout` to
+    # `CARRIED_TIMEOUT` makes this case fail.
     def test_Given_TheCommitHook_When_ItsSubprocessTimeoutIsRead_Then_ItIsUnderTheRegisteredOne(self):
         # Arrange — the harness kills a hook at its registered timeout, and a subprocess outliving
         # that takes the refusal with it, which is the reading that lets the commit through.
