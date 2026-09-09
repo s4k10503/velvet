@@ -649,8 +649,8 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the merge base already leaves this container's sibling alone.
-        // It writes every fallback from row 0 and this boundary's rows start there, so the two coincide
-        // for a reason this arrangement does not test. Writing the fallback from the offset an
+        // It writes the fallback from row 0 of the mount point and this boundary's rows start there, so
+        // the two coincide for a reason this arrangement does not test. Writing the fallback from the offset an
         // uncommitted placement recorded is what loses it, and this is the case that says so.
         [Test]
         public void Given_APassReorderingTheBoundaryBehindItsSibling_When_ItCatches_Then_TheRowsItStillHoldsAreTheOnesRewritten()

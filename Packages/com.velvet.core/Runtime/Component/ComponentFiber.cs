@@ -647,9 +647,9 @@ namespace Velvet
         /// <summary>
         /// The <see cref="MountSlotStart"/> the container still holds this fiber's rows at while an
         /// expansion has re-placed the fiber and not yet run its placement pass, or <c>-1</c> outside such
-        /// an expansion. The two differ because the placement runs after the whole walk
-        /// (<c>GeneralPathReconciler.FinalizeGeneralCommit</c>), so between the re-placement and it the
-        /// recorded start names rows the container has not got yet.
+        /// an expansion. They part where the walk moves the fiber, because its placement runs after the
+        /// whole walk (<c>GeneralPathReconciler.FinalizeGeneralCommit</c>): until then the recorded start
+        /// names rows the container has not got yet.
         /// <c>ComponentRegistry.ReleasePrePlacementsTo</c> owns putting it back, from a finally and by
         /// count, so it does not outlive the walk that recorded it.
         /// </summary>

@@ -175,9 +175,8 @@ namespace Velvet
             }
             finally
             {
-                // A fiber this walk re-placed recorded the start the container held, because the placement
-                // above had not run yet. The walk is over now, so nothing after it may read that
-                // record as describing where the fiber's rows are.
+                // Nothing after this walk may read the record a re-placement left as saying where the
+                // fiber's rows are; ComponentFiber.PrePlacementSlotStart owns what it does say.
                 _ctx.ComponentRegistry.ReleasePrePlacementsTo(placementMark);
                 pool.Return(commit.OldKeyMap);
                 pool.ReturnKeySet(commit.UsedKeys);

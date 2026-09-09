@@ -210,10 +210,10 @@ namespace Velvet
                 // FiberStack consistent across the root and descendant Reconcilers, so a synchronous
                 // render here does not collide with a subsequent FlushState pass: clearing IsDirty
                 // makes the later traversal short-circuit while the rendered output is already committed.
-                // The MountSlotStart write below names rows the container reaches only once this walk's
-                // placement pass runs, and the re-render further down can abort that pass or unwind out
-                // of it on a suspend. Keep the start the container holds meanwhile, on the stack the walk
-                // releases.
+                // The MountSlotStart write below names where this walk's placement pass will put the
+                // fiber's rows; the container is still holding them where they were until that pass runs,
+                // and the re-render further down can abort it or unwind out of it on a suspend. Keep the
+                // start the container holds meanwhile, on the stack the walk releases.
                 existingFiber.PrePlacementSlotStart = existingFiber.MountSlotStart;
                 _prePlacementStack.Add(existingFiber);
                 existingFiber.MountSlotStart = site.SlotStart;

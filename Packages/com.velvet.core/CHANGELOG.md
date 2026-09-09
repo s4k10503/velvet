@@ -145,8 +145,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - An error boundary's fallback is written into the rows its container is holding for the boundary now,
   instead of into the first rows of its mount point. A boundary that is not its container's first child
-  had a catch replace whatever sat at the top of that container and leave the subtree that threw painted
-  where it was. That holds where the pass raising the exception was itself moving the boundary — a
+  had a catch rewrite the rows at the top of that container rather than its own, so the fallback replaced
+  a sibling ahead of it. That holds where the pass raising the exception was itself moving the boundary — a
   reorder that puts a sibling in front of it, a sibling that grew or shrank ahead of it — because
   showing a fallback stops that pass from placing anything, so the container is still holding the rows
   where they were and the swap is written there. It does not hold where the boundary's rows moved with
