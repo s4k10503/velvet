@@ -170,9 +170,6 @@ namespace Velvet.Tests
             Assert.That(_root.childCount, Is.EqualTo(0));
         }
 
-        // GREEN_ON_BASE(characterization): a match whose route declares no element already rendered nothing.
-        // What moved is where that decision is taken -- a component body rather than the commit that built
-        // the container -- and this reads the decision, not its place.
         [Test]
         public void Given_AMatchWhoseRouteDeclaresNoElement_When_OutletMounted_Then_RendersNothingWithoutFailing()
         {
