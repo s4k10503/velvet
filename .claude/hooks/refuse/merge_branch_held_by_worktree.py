@@ -45,10 +45,18 @@ UNREADABLE = object()
 
 
 def held_branches(cwd):
-    """Branch names a worktree has checked out, or None when the list could not be read."""
+    """Branch names a worktree has checked out, or None when the list could not be read.
+
+    The decode is spelled rather than left to `text=True`, whose failure raises inside
+    `subprocess.run` — past the handler below rather than into it. Same reason `lib/repository.py`
+    answers None rather than raising: a hook that raises exits 1, and 1 lets the tool through, so
+    the strict spelling let through the merge this None refuses. What a listing can hold is
+    arranged in `scripts/hooks/test_merge_branch_held_by_worktree.py`.
+    """
     try:
         result = subprocess.run(["git", "-C", cwd, "worktree", "list", "--porcelain"],
-                                capture_output=True, text=True, timeout=20)
+                                capture_output=True, encoding="utf-8", errors="surrogateescape",
+                                timeout=20)
     except (OSError, subprocess.SubprocessError):
         return None
     if result.returncode != 0:
