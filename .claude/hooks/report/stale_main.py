@@ -19,7 +19,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
 from merge_target import refs_of  # noqa: E402
-from repository import git, project_tree  # noqa: E402
+from repository import git, printable, project_tree  # noqa: E402
 
 # The hook is registered for 15 s, and a report the harness kills prints nothing at all — including
 # the local-main half, which no base takes part in. So the pull-request read and both fetches sum
@@ -149,11 +149,11 @@ def main():
         return 0
 
     if main_report and branch_report:
-        print(f"This checkout may not match what it is based on.\n\n{main_report}\n")
-        print(f"{branch_report}\n{note}")
+        print(printable(f"This checkout may not match what it is based on.\n\n{main_report}\n"))
+        print(printable(f"{branch_report}\n{note}"))
     else:
-        print(f"This checkout may not match what it is based on.\n\n"
-              f"{main_report or branch_report}\n{note}")
+        print(printable(f"This checkout may not match what it is based on.\n\n"
+                        f"{main_report or branch_report}\n{note}"))
     return 0
 
 
