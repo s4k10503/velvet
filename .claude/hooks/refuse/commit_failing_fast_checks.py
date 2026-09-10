@@ -11,6 +11,7 @@ file staged and then deleted was refused with a `FileNotFoundError` for a commit
 `git commit -a` and `git commit <pathspec>` record the working tree, so for those it is read too.
 """
 
+import collections
 import json
 import os
 import subprocess
@@ -41,9 +42,17 @@ UNREADABLE_POLICY = "refuse"
 UNREADABLE_PROBE = {"command": "git commit -m probe"}
 
 
-# What a reading that did not answer resolves to. Every reader below otherwise reports it as an
-# empty result, and an empty result is "this commit records nothing that could fail a check".
-UNREADABLE = object()
+# What a reading that did not answer resolves to, and what to tell the reader about it. Every reader
+# below otherwise reports such a reading as an empty result, and an empty result is "this commit
+# records nothing that could fail a check".
+#
+# The subject and the remedy travel with the answer for the reason the two unexpanded operands are
+# refused apart below: a git that would not answer and a file that would not open are different
+# facts about the reader's tree, and the remedy for one does not reach the other.
+Unreadable = collections.namedtuple("Unreadable", "subject remedy")
+
+UNREADABLE = Unreadable("what this commit would record could not be read.",
+                        "Retry when git answers.")
 
 
 def git(cwd, *args):
@@ -105,13 +114,26 @@ def commit_invocations(command):
     return found
 
 
+def records(listing):
+    """The paths a NUL-delimited listing named.
+
+    Same reading `report/untracked_scratch.py` takes of its own listing. In
+    scripts/hooks/test_commit_failing_fast_checks.py,
+    `Given_ANameGitQuotes_When_BrokenInTheWorktree_Then_TheRefusalNamesIt` is what fails when the
+    split is a line break instead, and
+    `Given_ANameHoldingACarriageReturn_When_BrokenInTheWorktree_Then_TheRefusalNamesIt` when a
+    caller decodes the listing before handing it over.
+    """
+    return [record.decode(**repository.DECODING)
+            for record in listing.split(b"\0") if record.strip()]
+
+
 def staged_paths(cwd):
     # R is included: a rename reports it, and dropping it left a file renamed and broken in one
     # staged change checked by nothing.
-    result = git(cwd, "diff", "--cached", "--name-only", "--diff-filter=ACMR")
-    if result is None or result.returncode != 0:
-        return UNREADABLE
-    return [line for line in result.stdout.splitlines() if line.strip()]
+    listing = repository.git_bytes(
+        ["diff", "--cached", "-z", "--name-only", "--diff-filter=ACMR"], cwd)
+    return UNREADABLE if listing is None else records(listing)
 
 
 def worktree_paths(cwd, pathspecs):
@@ -123,20 +145,18 @@ def worktree_paths(cwd, pathspecs):
     absolute path outside the repository and git refuses it, which reaches the refusal above rather
     than the silence.
     """
-    args = ["diff", "--name-only", "--diff-filter=ACMR"]
+    args = ["diff", "-z", "--name-only", "--diff-filter=ACMR"]
     if pathspecs:
         args += ["--", *(os.path.expanduser(spec) for spec in pathspecs)]
-    result = git(cwd, *args)
-    if result is None or result.returncode != 0:
-        return UNREADABLE
-    return [line for line in result.stdout.splitlines() if line.strip()]
+    listing = repository.git_bytes(args, cwd)
+    return UNREADABLE if listing is None else records(listing)
 
 
 def committed_content(cwd, commits_all, pathspecs):
-    """path -> bytes the commit would record, or UNREADABLE when git did not answer."""
+    """path -> bytes the commit would record, or an `Unreadable` when part of it did not read."""
     staged = staged_paths(cwd)
-    if staged is UNREADABLE:
-        return UNREADABLE
+    if isinstance(staged, Unreadable):
+        return staged
     content = {}
     for path in staged:
         blob = repository.git_bytes(["show", ":" + path], cwd)
@@ -145,14 +165,20 @@ def committed_content(cwd, commits_all, pathspecs):
         content[path] = blob
     if commits_all or pathspecs:
         worktree = worktree_paths(cwd, pathspecs)
-        if worktree is UNREADABLE:
-            return UNREADABLE
+        if isinstance(worktree, Unreadable):
+            return worktree
         for path in worktree:
             try:
                 with open(os.path.join(cwd, path), "rb") as handle:
                     content[path] = handle.read()
-            except OSError:
-                continue
+            except OSError as error:
+                # Answered rather than skipped, so that the two halves of this function agree about
+                # a path that would not read. A skip left the refusal over the files that did read
+                # looking like a verdict over the whole commit.
+                return Unreadable(
+                    "a file this commit records could not be opened.\n\n  {}: {}".format(
+                        path, error),
+                    "Make it readable, or commit without it.")
     return content
 
 
@@ -330,12 +356,11 @@ def carried_neuters(content, edits):
 def audit(cwd, commits_all, pathspecs):
     root = repo_root(cwd)
     content = committed_content(root, commits_all, pathspecs)
-    if content is UNREADABLE:
+    if isinstance(content, Unreadable):
         sys.stderr.write(
-            "Refusing `git commit`: what this commit would record could not be read.\n\n"
-            "Every check below reads that content, so they would all run over nothing and pass, and "
-            "the commit would be recorded with none of them having seen it.\n\n"
-            "Retry when git answers.\n")
+            f"Refusing `git commit`: {content.subject}\n\n"
+            "What could not be read would be recorded with no check below having seen it.\n\n"
+            f"{content.remedy}\n")
         return 2
     if not content:
         return 0
