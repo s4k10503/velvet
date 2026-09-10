@@ -82,6 +82,10 @@ namespace Velvet.Tests
         // branches in it, `kept.txt` and `sub` exist in it, and `gone.txt` names neither — the shape of
         // a path git can restore that the working tree no longer holds. It also holds files named after
         // three of those branches, which is what lets a glob expand onto a ref.
+        //
+        // It has no remote, so git records no base branch in it and the guard's one exemption — a
+        // checkout of the branch worktrees are cut from — fires on no row here.
+        // `scripts/hooks/test_shared_git_state.py` is what poses that exemption.
         private static readonly (string Command, string Expected)[] SharedState =
         {
             ("git checkout main", "checkout"),

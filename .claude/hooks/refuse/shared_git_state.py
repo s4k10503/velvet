@@ -10,6 +10,11 @@ containing a slash, which is the shape of every branch in this repository, so `g
 passed while only a slash-free ref such as `main` was refused. It also required `git` to be followed
 immediately by the subcommand, so `git -C <other worktree> checkout` — the reach-into-another-tree
 case the rule exists for — was invisible to it.
+
+One move out is allowed: onto the branch git records as the default. Without it two rules of this
+repository contradict each other — `scripts/pr/settle.py` will not merge a pull request while a
+worktree holds its branch, and the command that moves a worktree off a branch is the one refused
+here.
 """
 
 import glob
@@ -64,6 +69,15 @@ CHECKOUT_REFUSAL = (
     "Refused: `git checkout` of a branch moves state other worktrees share. Restoring a file "
     "(`git checkout -- <path>`) is allowed; changing branch is not.\n"
 )
+RETURN_TO_BASE = (
+    "The one move out is back to `{base}`, which git records here as the default branch: "
+    "`git checkout {base}` or `git switch {base}`, with nothing else on the command.\n"
+)
+NO_RECORDED_BASE = (
+    "No default branch is recorded here — `git symbolic-ref refs/remotes/origin/HEAD` answers "
+    "nothing — so there is no branch to offer a move out to. `git remote set-head origin -a` "
+    "records it.\n"
+)
 
 
 def names_a_commit(root, token):
@@ -89,6 +103,59 @@ def names_a_commit(root, token):
     except Exception:
         return True
     return completed.returncode != 1
+
+
+def base_branch(root):
+    """The default branch as git records it, or None where git records none.
+
+    Read off git's own record rather than spelled out here. A literal would be a second copy of what
+    git already holds, and a copy is what goes stale when the record it copies changes — the same
+    objection `names_a_commit` states against resolving refs without asking git.
+
+    Where git records none, `returns_to_base` exempts nothing — the direction `UNREADABLE_POLICY`
+    declares.
+    """
+    prefix = "refs/remotes/origin/"
+    try:
+        completed = subprocess.run(
+            ["git", "-C", root, "symbolic-ref", "--quiet", prefix + "HEAD"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            timeout=10,
+        )
+    except Exception:
+        return None
+    if completed.returncode != 0:
+        return None
+    named = completed.stdout.decode("utf-8", "replace").strip()
+    return named[len(prefix):] if named.startswith(prefix) else None
+
+
+def returns_to_base(context, operands, cwd):
+    """Whether this moves the tree the caller is standing in onto the default branch.
+
+    Nothing but the base name may be on the command: any flag, and any second operand, is an operand
+    that is not the base, so it keeps the refusal without this having to know what the flag does.
+    An operand the shell has yet to rewrite keeps it as well, since the text compared below is not
+    the text git would receive — the same policy `UNEXPANDED_POLICY` declares for `restores_paths`.
+
+    A `-C`, a `--git-dir` or a `GIT_DIR=` keeps the refusal too: each can aim the command at a tree
+    the caller is not standing in, and leaving somebody else's branch is the harm the rest of this
+    guard exists to stop, where leaving your own is what you typed.
+
+    Cleanliness is not asked about at all, because git decides it and decides it later:
+    `GitOwnCheckoutRefusalTests` in `scripts/hooks/test_shared_git_state.py` poses both a checkout
+    git declines and the contest — two worktrees on one branch — that would otherwise want a rule
+    here, and fails when either stops holding.
+    """
+    if cwd is UNRESOLVED_CD:
+        return False
+    if context.working_directory is not None or context.git_directory is not None:
+        return False
+    if any(unexpanded(token) for token in operands):
+        return False
+    base = base_branch(cwd)
+    return base is not None and operands == [base]
 
 
 def sole_expansions(named, cwd):
@@ -145,15 +212,29 @@ def refusals(command, cwd):
     Split from `main` so a command table can pose one without a hook payload around it, and left
     lazy so a caller wanting only the first refusal resolves no operand belonging to a later one.
     """
-    for directory, subcommand, operands in git_invocations(command, {"switch", "stash", "checkout"}):
+    for context, subcommand, operands in git_invocations(
+            command, {"switch", "stash", "checkout"}, git_directory=True):
         if subcommand == "stash":
             first = next((token for token in operands if not token.startswith("-")), "")
             if first not in STASH_READS:
                 yield subcommand
-        elif subcommand == "switch":
+        elif returns_to_base(context, operands, cwd):
+            continue
+        elif subcommand == "switch" or not restores_paths(context.working_directory, operands, cwd):
             yield subcommand
-        elif not restores_paths(directory, operands, cwd):
-            yield subcommand
+
+
+def move_out(cwd):
+    """What a refusal offers instead, given where the command was going to run.
+
+    An unplaced tree gets nothing rather than `NO_RECORDED_BASE`: a base nobody could look for is
+    not a base git failed to record, and saying so would send a reader to `git remote` over a
+    reading that never happened.
+    """
+    if cwd is UNRESOLVED_CD:
+        return ""
+    base = base_branch(cwd)
+    return NO_RECORDED_BASE if base is None else RETURN_TO_BASE.format(base=base)
 
 
 def main():
@@ -180,7 +261,8 @@ def main():
                          f"branch state could not be read.\n\n{UNPLACEABLE_MOVE}\n\n"
                          f"{NAME_THE_TREE}\n")
         return 2
-    sys.stderr.write(CHECKOUT_REFUSAL if refused == "checkout" else SWITCH_REFUSAL)
+    text = CHECKOUT_REFUSAL if refused == "checkout" else SWITCH_REFUSAL
+    sys.stderr.write(text if refused == "stash" else text + move_out(cwd))
     return 2
 
 
