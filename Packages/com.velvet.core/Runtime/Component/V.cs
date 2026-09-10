@@ -1125,6 +1125,9 @@ namespace Velvet
         /// <param name="items">Source collection. When null or empty, returns an empty VNode array.</param>
         /// <param name="keySelector">Selector that derives a stable per-item key.</param>
         /// <param name="renderer">Function that produces a VNode for each item.</param>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="keySelector"/> returns a key
+        /// containing a NUL character, after <paramref name="renderer"/> has run for that item and every
+        /// item before it.</exception>
         /// <returns>Array of rendered VNodes (each carrying the selected key).</returns>
         public static VNode?[] List<T>(
             IReadOnlyList<T> items,
@@ -1171,6 +1174,9 @@ namespace Velvet
         /// <param name="items">Source collection. When null or empty, returns an empty VNode array.</param>
         /// <param name="keySelector">Selector that derives a stable per-item key from the item and its index.</param>
         /// <param name="renderer">Function that produces a VNode from the item and its index.</param>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="keySelector"/> returns a key
+        /// containing a NUL character, after <paramref name="renderer"/> has run for that item and every
+        /// item before it.</exception>
         /// <returns>Array of rendered VNodes (each carrying the selected key).</returns>
         public static VNode?[] List<T>(
             IReadOnlyList<T> items,
@@ -1218,8 +1224,9 @@ namespace Velvet
         /// <param name="keySelector">Selector that derives a stable per-item key.</param>
         /// <param name="renderer">Function that produces a VNode for each item.</param>
         /// <param name="key">Optional key disambiguating this Fragment from siblings at the same position.</param>
-        /// <exception cref="ArgumentException">Thrown, before <paramref name="renderer"/> is invoked for
-        /// any item, when <paramref name="key"/> contains a NUL character.</exception>
+        /// <exception cref="ArgumentException">Thrown before <paramref name="renderer"/> is invoked for any
+        /// item when <paramref name="key"/> contains a NUL character; thrown after it has run for that item
+        /// and every item before it when <paramref name="keySelector"/> returns a key containing one.</exception>
         /// <returns>A <see cref="FragmentNode"/> wrapping the rendered VNodes.</returns>
         public static FragmentNode ListFragment<T>(
             IReadOnlyList<T> items,
@@ -1245,8 +1252,9 @@ namespace Velvet
         /// <param name="keySelector">Selector that derives a stable per-item key from the item and its index.</param>
         /// <param name="renderer">Function that produces a VNode from the item and its index.</param>
         /// <param name="key">Optional key disambiguating this Fragment from siblings at the same position.</param>
-        /// <exception cref="ArgumentException">Thrown, before <paramref name="renderer"/> is invoked for
-        /// any item, when <paramref name="key"/> contains a NUL character.</exception>
+        /// <exception cref="ArgumentException">Thrown before <paramref name="renderer"/> is invoked for any
+        /// item when <paramref name="key"/> contains a NUL character; thrown after it has run for that item
+        /// and every item before it when <paramref name="keySelector"/> returns a key containing one.</exception>
         /// <returns>A <see cref="FragmentNode"/> wrapping the rendered VNodes.</returns>
         public static FragmentNode ListFragment<T>(
             IReadOnlyList<T> items,
@@ -2326,13 +2334,17 @@ namespace Velvet
         /// </summary>
         /// <typeparam name="T">Element type of the source collection.</typeparam>
         /// <param name="items">Source collection. Must not be null.</param>
-        /// <param name="keySelector">Selector that derives a stable per-item key. Must not be null.</param>
+        /// <param name="keySelector">Selector that derives a stable per-item key, held to
+        /// <see cref="VNode.Key"/>'s rule on what a key may contain. Must not be null. An item whose key
+        /// breaks that rule is left out of the rendered range with a warning; the selector runs from a
+        /// range update rather than from this call, which has no item's key to refuse yet.</param>
         /// <param name="itemHeight">Fixed height (pixels) used for layout and visible-range calculation.</param>
         /// <param name="renderer">Function that produces a VNode for each visible item. Must not be null.</param>
         /// <param name="overscan">Extra items rendered above/below the visible window to smooth scroll-in.</param>
         /// <param name="key">Key used to disambiguate siblings at the same position.</param>
         /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces.</param>
         /// <param name="name">Element name assigned to <see cref="VisualElement.name"/> for query/debug.</param>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="key"/> contains a NUL character.</exception>
         /// <returns>The created <see cref="VirtualListNode"/>.</returns>
         public static VirtualListNode VirtualList<T>(
             IReadOnlyList<T> items,

@@ -35,13 +35,15 @@ namespace Velvet
         // once the node's initializer runs, which is after such a factory's rent.
         internal static void RequireKey(string? key)
         {
-            if (key != null && key.IndexOf('\0') >= 0)
+            if (KeyHoldsDelimiter(key))
             {
                 throw new ArgumentException(
                     "A VNode key must not contain a NUL (U+0000) character; NUL is reserved as the internal scope delimiter.",
                     nameof(key));
             }
         }
+
+        internal static bool KeyHoldsDelimiter(string? key) => key != null && key.IndexOf('\0') >= 0;
     }
 
     /// <summary>

@@ -3,23 +3,29 @@ using System.Collections.Generic;
 using System.Reflection;
 using NUnit.Framework;
 using UnityEngine.UIElements;
+using Velvet.Experimental;
 
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Pins a NUL-key refusal to renting nothing, at the <c>V.*</c> calls that take from a pool before
-    /// the node carrying the key exists. A refused call builds no node, so nothing is left to
-    /// carry what it rented to a later retirement and no later call can reach it to return it. Three
+    /// Pins a NUL-key refusal to renting nothing, at the calls that take from a pool on the way to the
+    /// node the key goes on. A refused call builds no node, so nothing is left to
+    /// carry what it rented to a later retirement and no later call can reach it to return it. Five
     /// shapes reach that: each <c>V.ListFragment</c> overload, where C# evaluates <c>V.List(...)</c>
     /// before the <c>V.Fragment</c> call it feeds; the factories that rent a props bag or an event array
-    /// ahead of building the node their key goes on; and each <c>V.List</c> overload, whose selector key
-    /// is not known until an item is mapped, so the array it rented is given back instead.
+    /// ahead of building the node their key goes on; the factories whose object initializer writes the
+    /// key above the member that rents; the <c>Velvet.Experimental</c> builders, whose <c>Build()</c>
+    /// hands a rented child array to a factory as an argument; and each <c>V.List</c> overload, whose
+    /// selector key is not known until an item is mapped, so the array it rented is given back instead.
     /// </summary>
     /// <remarks>
     /// What these calls MAP to stays <c>VListTests</c>'s; only what they take from the pools is read
-    /// here. An argument the CALLER built is a different question again and is not pinned here either:
-    /// a refusing factory has that node in hand and returns none of what it rented, and
-    /// <see cref="VNodePool"/>'s rented-out identity set states why.
+    /// here. What an APPLICATION's own argument expression rented is a different question and is not
+    /// pinned here: <c>V.Div(key: k, children: V.List(...))</c> evaluates that argument before the call,
+    /// so no ordering inside <c>V.Div</c> reaches it. The builders are pinned because that rent is the
+    /// package's own — <c>VBuilder.BuildChildren()</c> can refuse above it. What the builders keep in
+    /// their own scratch-list pool is outside this too: that pool holds no rented-out set, so a list a
+    /// refused <c>Build()</c> does not hand back is collected rather than held.
     /// </remarks>
     [TestFixture]
     internal sealed class VFactoryRefusalRentalTests
@@ -217,6 +223,107 @@ namespace Velvet.Tests
             // Assert
             Assert.That(measured, Is.EqualTo(Report(Array.ConvertAll(
                 FactoriesRentingBeforeTheirNode, factory => $"{factory.Name}=/True"))));
+        }
+
+        private static readonly IReadOnlyDictionary<string, string> OneDataAttribute =
+            new Dictionary<string, string> { ["state"] = "open" };
+
+        // One call per factory whose key is written by its object initializer above the member of that
+        // same initializer which rents, so member order is what keeps a refusal from stranding. Supplying
+        // data: is what makes that member rent.
+        private static readonly (string Name, Func<string?, VNode> Build)[] FactoriesRentingInsideTheirInitializer =
+        {
+            ("Div", k => V.Div(className: "row", key: k, data: OneDataAttribute)),
+            ("Custom", k => V.Custom<Label>(className: "row", key: k, data: OneDataAttribute)),
+            ("Image", k => V.Image(className: "row", key: k, data: OneDataAttribute)),
+        };
+
+        [Test]
+        public void Given_EveryFactoryRentingInsideItsInitializer_When_ANulKeyIsRefused_Then_TheCallRentsNothing()
+        {
+            // Arrange + Act — one report rather than one case each, so a failure names the factory
+            var measured = Report(Array.ConvertAll(FactoriesRentingInsideTheirInitializer, factory =>
+            {
+                var refusal = Measure(() => factory.Build(NulKey));
+                return $"{factory.Name}={refusal.RefusedParam}/{refusal.Props}/{refusal.EventArrays}/{refusal.NodeArrays}";
+            }));
+
+            // Assert
+            Assert.That(measured, Is.EqualTo(Report(Array.ConvertAll(
+                FactoriesRentingInsideTheirInitializer, factory => $"{factory.Name}=key/0/0/0"))));
+        }
+
+        // GREEN_ON_BASE(characterization): all three rows rent on the base as well, their keys accepted
+        // there. It is the control for the row report above, which asserts absences: a row whose call
+        // happens to rent nothing satisfies that report's zeroes without the member order having done
+        // anything.
+        [Test]
+        public void Given_EveryFactoryRentingInsideItsInitializer_When_ItsKeyIsAccepted_Then_ItTakesFromAPool()
+        {
+            // Arrange + Act — the row report's calls, with the delimiter taken out of the key
+            var measured = Report(Array.ConvertAll(FactoriesRentingInsideTheirInitializer, factory =>
+            {
+                var accepted = Measure(() => _unretired.Add(factory.Build(AcceptedKey)));
+                var took = accepted.Props + accepted.EventArrays + accepted.NodeArrays;
+                return $"{factory.Name}={accepted.RefusedParam}/{took > 0}";
+            }));
+
+            // Assert
+            Assert.That(measured, Is.EqualTo(Report(Array.ConvertAll(
+                FactoriesRentingInsideTheirInitializer, factory => $"{factory.Name}=/True"))));
+        }
+
+        // One builder per Build() that hands VBuilder.BuildChildren() to a V.* factory as an argument,
+        // which is a rent C# performs before that factory is entered at all.
+        private static readonly (string Name, Func<VNode, VBuilder> Author)[] BuildersRentingForTheirChildren =
+        {
+            ("VDiv", child => new VDiv("row") { child }),
+            ("VButton", child => new VButton("row") { child }),
+            ("VScrollView", child => new VScrollView("row") { child }),
+            ("VCustom", child => new VCustom<Label>("row") { child }),
+        };
+
+        [Test]
+        public void Given_EveryBuilderRentingForItsChildren_When_ANulKeyIsRefused_Then_TheBuildRentsNothing()
+        {
+            // Arrange + Act — the child is authored outside the measurement, so the report reads what
+            // Build() itself took and not what the collection initializer took before it.
+            var measured = Report(Array.ConvertAll(BuildersRentingForTheirChildren, builder =>
+            {
+                var child = V.Label(text: "x");
+                _unretired.Add(child);
+                var authored = builder.Author(child);
+                authored.Key = NulKey;
+                var refusal = Measure(() => authored.Build());
+                return $"{builder.Name}={refusal.RefusedParam}/{refusal.Props}/{refusal.EventArrays}/{refusal.NodeArrays}";
+            }));
+
+            // Assert
+            Assert.That(measured, Is.EqualTo(Report(Array.ConvertAll(
+                BuildersRentingForTheirChildren, builder => $"{builder.Name}=key/0/0/0"))));
+        }
+
+        // GREEN_ON_BASE(characterization): every builder takes a child array on the base too. Its key
+        // is accepted there, and it is the control for the report above, which asserts absences: a
+        // builder whose Build() happens to rent nothing satisfies those zeroes without the refusal
+        // having done anything.
+        [Test]
+        public void Given_EveryBuilderRentingForItsChildren_When_ItsKeyIsAccepted_Then_ItTakesFromAPool()
+        {
+            // Arrange + Act — the report above's builders, with the delimiter taken out of the key
+            var measured = Report(Array.ConvertAll(BuildersRentingForTheirChildren, builder =>
+            {
+                var authored = builder.Author(V.Label(text: "x"));
+                authored.Key = AcceptedKey;
+                VNode built = null;
+                var accepted = Measure(() => built = authored.Build());
+                _unretiredArrays.Add(((BaseElementNode)built).Children);
+                return $"{builder.Name}={accepted.RefusedParam}/{accepted.Props}/{accepted.EventArrays}/{accepted.NodeArrays}";
+            }));
+
+            // Assert
+            Assert.That(measured, Is.EqualTo(Report(Array.ConvertAll(
+                BuildersRentingForTheirChildren, builder => $"{builder.Name}=/0/0/1"))));
         }
 
         [Test]
