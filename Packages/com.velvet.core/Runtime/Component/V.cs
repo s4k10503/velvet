@@ -2339,7 +2339,9 @@ namespace Velvet
         /// breaks that rule is left out of the rendered range with a warning; the selector runs from a
         /// range update rather than from this call, which has no item's key to refuse yet.</param>
         /// <param name="itemHeight">Fixed height (pixels) used for layout and visible-range calculation.</param>
-        /// <param name="renderer">Function that produces a VNode for each visible item. Must not be null.</param>
+        /// <param name="renderer">Function that produces a VNode for each visible item. Must not be null.
+        /// A key it sets on the node it returns is overwritten by <paramref name="keySelector"/>'s, which is
+        /// the identity a range change reuses a row by.</param>
         /// <param name="overscan">Extra items rendered above/below the visible window to smooth scroll-in.</param>
         /// <param name="key">Key used to disambiguate siblings at the same position.</param>
         /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces.</param>
