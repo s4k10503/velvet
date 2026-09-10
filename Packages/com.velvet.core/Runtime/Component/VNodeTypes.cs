@@ -11,10 +11,37 @@ namespace Velvet
     /// </summary>
     public abstract class VNode
     {
+        private string? _key;
+
         /// <summary>
         /// Key used by the Reconciler to track node identity across renders. Null when omitted at the call site.
+        /// Must not contain a NUL (U+0000) character: NUL is the delimiter the reconciler's scope chains are
+        /// composed from, so a key holding one lets two distinct tree positions compose to the same scope
+        /// string and reconcile as one identity.
         /// </summary>
-        public string? Key { get; internal set; }
+        /// <exception cref="ArgumentException">Thrown when the key contains a NUL (U+0000) character.</exception>
+        public string? Key
+        {
+            get => _key;
+            internal set
+            {
+                RequireKey(value);
+                _key = value;
+            }
+        }
+
+        // A factory that takes from a pool before it builds its node calls this above that rent, under the
+        // ordering rule V.Draggable's own refusal states. The setter above refuses the same key, but only
+        // once the node's initializer runs, which is after such a factory's rent.
+        internal static void RequireKey(string? key)
+        {
+            if (key != null && key.IndexOf('\0') >= 0)
+            {
+                throw new ArgumentException(
+                    "A VNode key must not contain a NUL (U+0000) character; NUL is reserved as the internal scope delimiter.",
+                    nameof(key));
+            }
+        }
     }
 
     /// <summary>

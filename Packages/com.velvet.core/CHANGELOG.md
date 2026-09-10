@@ -94,10 +94,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A key holding a NUL (U+0000) is refused wherever one reaches a VNode, and not at `V.Fragment` alone.
+  NUL is the delimiter the reconciler's scope chains are composed from, and `V.Fragment` was the only
+  factory refusing one, so a key carrying it contributed two segments instead of one and let two
+  different tree positions compose to the same scope string — where they then reconciled as one
+  identity. Measured on a `V.Label` whose key holds the delimiter, sitting beside a `V.Fragment` keyed
+  `"a"` that holds a `V.Label` keyed `"b"`, both under one keyed Fragment: a re-render left the second
+  label's element in the first label's slot and built a fresh one for the second, so the element the
+  first label had — with the fiber state, refs and focus riding on it — was gone, and the second
+  label's had moved to the wrong row. `V.Provider`, `V.Suspense`, `V.AnimatePresence`, `V.Component`,
+  `V.MemoizedWithKey`, `V.DragOverlay`, every element factory's `key:` and a `V.List` selector's key
+  all reached that delimiter and none of them refused it. The refusal now sits on `VNode.Key`, which
+  each of them assigns through. A factory that takes from a pool before building its node refuses
+  ahead of that rent, so a refusal strands nothing that factory rented; `V.List`, whose selector key
+  is not known until an item is mapped, gives the child array it rented back instead.
+
 - `V.ListFragment` refuses a `key` holding a NUL (U+0000) before it maps the list rather than after.
-  The refusal is `V.Fragment`'s — NUL is the delimiter the reconciler composes Fragment scope chains
-  from — and both `V.ListFragment` overloads reached it by handing `V.List(...)` to `V.Fragment`, an
-  argument C# evaluates before the call. So a refused call had already run the renderer for every item,
+  NUL is the delimiter the reconciler composes Fragment scope chains from, and both `V.ListFragment`
+  overloads reached the refusal of it by handing `V.List(...)` to `V.Fragment`, an argument C#
+  evaluates before the call. So a refused call had already run the renderer for every item,
   and the pooled child array `V.List` took for the result, together with whatever the mapped nodes
   took, was out on loan when the refusal fired. A refused call builds no Fragment, so no later
   retirement could carry those back, and nothing else gives a pooled object back. Both overloads refuse
