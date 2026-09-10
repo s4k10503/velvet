@@ -107,15 +107,19 @@ def entries(status, marker):
 
     Read as NUL-delimited records rather than as lines, so that no character a name may hold can
     divide one. `Given_ANameGitLeavesRaw_When_TheReportIsTaken_Then_TheBoundReachesTheFile` is what
-    fails when the split is a line break instead.
+    fails when the split is a line break instead, and
+    `Given_ARenameWhoseOldNameHoldsAByteOutsideTheEncoding_When_TheReportIsTaken_Then_NoPhantomIsNamed`
+    when the decode below stops escaping.
 
-    A rename's or a copy's origin path follows its record as a field of its own, carrying no
-    marker, so it is stepped over rather than read. Both status columns are asked, since porcelain
-    pairs a record with an origin from either, and a field left unread there is taken for a record
-    of its own — which drops the record after it as that one's origin.
+    A rename's or a copy's origin path follows its record as a field of its own, carrying no status
+    pair, so it is stepped over rather than read. Both status columns are asked, since porcelain
+    pairs a record with an origin from either, and a field left unread there is read as a record of
+    its own — so an origin whose path opens with the marker becomes an entry the listing never
+    marked.
     `Given_ARenameWhoseOldNameOpensWithTheMarker_When_TheReportIsTaken_Then_NoPhantomIsNamed`,
-    `Given_AWorktreeRenameBeforeAnUntrackedFile_When_TheReportIsTaken_Then_TheUntrackedFileIsNamed`
-    and `Given_AWorktreeCopyBeforeAnUntrackedFile_When_TheReportIsTaken_Then_TheUntrackedFileIsNamed`
+    `Given_AWorktreeRenameWhoseOldNameOpensWithTheMarker_When_TheListingIsRead_Then_ItHoldsTheUntrackedFileAlone`
+    and
+    `Given_AWorktreeCopyWhoseSourceNameOpensWithTheMarker_When_TheListingIsRead_Then_ItHoldsTheUntrackedFileAlone`
     are what fail when any of that stops.
     """
     fields = (status or b"").decode(**DECODING).split("\0")

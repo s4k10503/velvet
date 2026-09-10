@@ -18,13 +18,15 @@ scan without rewriting that claim goes red.
 
 One holds the root the reading answers with, where the directory's own name ends in a space.
 
-Nine more hold what the report reads and what it writes. Two hold that an entry carrying a line
+Eleven more hold what the report reads and what it writes. Two hold that an entry carrying a line
 break of its own still occupies one line of the block, one for each half of the listing. One holds
 that a name git leaves as itself is not divided into two, and one that a name holding a return is
-aged by the file's. Three hold that a record's marker is read off a record: one where a rename's
-origin would be taken for an entry, and two where an origin left unread swallows the record behind
-it. Two hold a root whose own name holds a line break, one per channel. One holds the side a path
-whose age will not read falls on, asked of the reading directly rather than through a report.
+aged by the file's. Four hold that a record's marker is read off a record and never off an origin
+field, each posing an origin path that opens with the marker: one per pairing letter in the worktree
+column, and two in the index column, the second of those holding a byte the encoding does not map
+and written straight into the index, this filesystem not carrying it. Two hold a root whose own
+name holds a line break, one per channel. One holds the side a path whose age will not read falls
+on, asked of the reading directly rather than through a report.
 
 Run: python3 scripts/hooks/test_untracked_scratch.py
 """
@@ -105,14 +107,27 @@ MARKED = "?? phantom.cs"
 PHANTOM = "phantom.cs"
 RENAMED = "renamed.cs"
 
-# A pairing whose origin path opens with one of the two letters a record's status columns spell a
-# pairing with, and an untracked name sorting after the record that carries it. Content enough for
-# git to pair the two on.
-PAIRED_SOURCE = "Runtime/aaa-original.cs"
-PAIRED_RENAME = "Runtime/mmm-moved.cs"
-PAIRED_COPY = "Runtime/mmm-copy.cs"
+# The same name with a byte UTF-8 does not map added to it, and the spelling a printed report
+# carries it as: the escape leaves a surrogate in the path and `json.dumps` writes that surrogate
+# out as text, so a search for the path itself finds nothing in the report and pins nothing. The
+# name is written into the index rather than onto disk — a file carrying the byte was the first
+# arrangement tried and this filesystem refused to make one, with `Illegal byte sequence`.
+RAW_BYTE_MARKED = b"?? lat\xedn1.cs"
+RAW_BYTE_PHANTOM = "lat\\udcedn1.cs"
+
+UNTRACKED_MARKER = "?? "
+
+# A pairing whose origin path opens with that marker, so that a reading which does not step over
+# the origin names it as an entry of its own. What the origin is called is what makes that visible:
+# measured, for an origin opening with neither the marker nor a pairing letter, a reading that
+# misses the worktree column answers with the same listing as this one — which is why both cases
+# below compare the marker as a term of their own. Beside it an untracked file, so the report holds
+# a listing rather than nothing, and content enough for git to pair on.
+PAIRED_SOURCE = "?? original.cs"
+PAIRED_RENAME = "moved.cs"
+PAIRED_COPY = "copy.cs"
 PAIRED_BODY = "".join("line {}\n".format(number) for number in range(40))
-BEHIND_THE_PAIRING = "Runtime/zzz-scratch.txt"
+BESIDE_THE_PAIRING = "Runtime/scratch.txt"
 
 
 def stamp(moment):
@@ -156,6 +171,23 @@ class UntrackedScratchTests(unittest.TestCase):
             subprocess.run(["git", "-C", str(self.project), "-c", "user.email=t@velvet",
                             "-c", "user.name=t", *command], check=True, timeout=60)
         return path
+
+    def listed(self):
+        """The bytes git's own untracked listing holds.
+
+        A name git never listed and a name the report withheld are the same absence, so a case
+        posing a name the filesystem might mangle and asserting the report does not carry it
+        compares this beside that absence. Without it, a `place` whose file the listing never
+        reached passes having measured no withholding at all.
+        """
+        return subprocess.run(["git", "-C", str(self.project), "status", "--porcelain", "-z",
+                               "--untracked-files=all"], capture_output=True, check=True,
+                              timeout=60).stdout
+
+    def index(self, records):
+        """Index records written straight in, for a path this filesystem will not hold."""
+        subprocess.run(["git", "-C", str(self.project), "update-index", "-z", "--index-info"],
+                       input=records, check=True, timeout=60)
 
     def place(self, relative, moment):
         path = self.project / relative
@@ -380,12 +412,14 @@ class UntrackedScratchTests(unittest.TestCase):
         # on its own.
         self.place(SPACED, BEFORE_BOTH)
         self.place(WRITTEN, AFTER_AGENT)
+        listed = self.listed()
 
         # Act
         context = json.loads(self.report(self.agent))["hookSpecificOutput"]["additionalContext"]
 
         # Assert
-        self.assertEqual((SPACED in context, WRITTEN in context), (False, True))
+        self.assertEqual((SPACED in context, WRITTEN in context,
+                          SPACED.encode("utf-8") in listed), (False, True, True))
 
     # GREEN_ON_BASE(characterization): a name holding a quote and a byte over 0x80 named as the file
     # is, which the base gets by decoding a quoted spelling and this branch gets from a listing that
@@ -439,12 +473,14 @@ class UntrackedScratchTests(unittest.TestCase):
         # from being empty, so what is compared is a listing rather than the absence of one.
         self.place(RETURNING, BEFORE_BOTH)
         self.place(WRITTEN, AFTER_AGENT)
+        listed = self.listed()
 
         # Act
         listing = self.block(self.report(self.agent))
 
         # Assert
-        self.assertEqual(listing.splitlines(), [WRITTEN])
+        self.assertEqual((listing.splitlines(), RETURNING.encode("utf-8") in listed),
+                         ([WRITTEN], True))
 
     def test_Given_ANameGitLeavesRaw_When_TheReportIsTaken_Then_TheBoundReachesTheFile(self):
         # Arrange — `core.quotePath` off makes no difference to this reading and decides a
@@ -455,12 +491,14 @@ class UntrackedScratchTests(unittest.TestCase):
                        check=True, timeout=60)
         self.place(RAW_SEPARATORS, BEFORE_BOTH)
         self.place(WRITTEN, AFTER_AGENT)
+        listed = self.listed()
 
         # Act
         listing = self.block(self.report(self.agent))
 
         # Assert
-        self.assertEqual(listing.splitlines(), [WRITTEN])
+        self.assertEqual((listing.splitlines(), RAW_SEPARATORS.encode("utf-8") in listed),
+                         ([WRITTEN], True))
 
     # GREEN_ON_BASE(characterization): no phantom, which the base gets from reading the porcelain
     # by lines and this branch has to get from stepping over a rename's origin field, that field
@@ -487,35 +525,69 @@ class UntrackedScratchTests(unittest.TestCase):
         self.assertEqual((PHANTOM in printed, WRITTEN in printed, paired.startswith("R ")),
                          (False, True, True))
 
-    # GREEN_ON_BASE(characterization): an untracked file behind a worktree rename is named, which
-    # the base gets from reading the porcelain by lines and this branch has to get from asking the
-    # worktree column too. Dropping `record[1] in "RC"` is what reddens it: the origin is then a
-    # record of its own, and its own first letter takes the entry behind it for its origin.
-    def test_Given_AWorktreeRenameBeforeAnUntrackedFile_When_TheReportIsTaken_Then_TheUntrackedFileIsNamed(self):
-        # Arrange — intent-to-add is what puts the new path where git can pair it with the old one
-        # without the rename being staged. That git paired them, and in the worktree column, is
-        # compared beside the report, since an unpaired tree poses nothing.
-        self.commit(PAIRED_SOURCE, PAIRED_BODY)
-        os.rename(self.project / PAIRED_SOURCE, self.project / PAIRED_RENAME)
-        subprocess.run(["git", "-C", str(self.project), "add", "-N", PAIRED_RENAME],
+    # GREEN_ON_BASE(characterization): no phantom where the origin holds a byte the encoding does
+    # not map, which the base gets from the same escape this branch reads the records through.
+    # Decoding the listing as strict UTF-8 rather than through `DECODING` is what reddens it, and
+    # no other case here poses a byte outside the encoding.
+    def test_Given_ARenameWhoseOldNameHoldsAByteOutsideTheEncoding_When_TheReportIsTaken_Then_NoPhantomIsNamed(self):
+        # Arrange — the sibling above renames a file to put its old name in a pairing; here the
+        # index is written directly, since no file on this filesystem can carry the byte. The
+        # written file keeps the report from being empty, so what is compared is a listing rather
+        # than the absence of one, and that git paired the two is compared beside it.
+        blob = subprocess.run(["git", "-C", str(self.project), "hash-object", "-w", "--stdin"],
+                              input=b"tracked\n", capture_output=True, check=True,
+                              timeout=60).stdout.strip()
+        self.index(b"100644 " + blob + b"\t" + RAW_BYTE_MARKED + b"\x00")
+        subprocess.run(["git", "-C", str(self.project), "-c", "user.email=t@velvet",
+                        "-c", "user.name=t", "commit", "-q", "-m", "commit the raw name"],
                        check=True, timeout=60)
-        self.place(BEHIND_THE_PAIRING, AFTER_AGENT)
+        self.index(b"0 " + b"0" * 40 + b"\t" + RAW_BYTE_MARKED + b"\x00"
+                   + b"100644 " + blob + b"\t" + RENAMED.encode("utf-8") + b"\x00")
+        (self.project / RENAMED).write_bytes(b"tracked\n")
         paired = subprocess.run(["git", "-C", str(self.project), "status", "--porcelain"],
                                 capture_output=True, text=True, check=True, timeout=60).stdout
+        self.place(WRITTEN, AFTER_AGENT)
 
         # Act
         printed = self.report(self.agent)
 
         # Assert
-        self.assertEqual((BEHIND_THE_PAIRING in printed, paired.startswith(" R ")), (True, True))
+        self.assertEqual((RAW_BYTE_PHANTOM in printed, WRITTEN in printed,
+                          paired.startswith("R ")), (False, True, True))
 
-    # GREEN_ON_BASE(characterization): the same file behind the other letter, which the base gets
-    # the same way. Dropping the `C` from `record[0] in "RC" or record[1] in "RC"` is what reddens
-    # it, and nothing else here poses a copy.
-    def test_Given_AWorktreeCopyBeforeAnUntrackedFile_When_TheReportIsTaken_Then_TheUntrackedFileIsNamed(self):
+    # GREEN_ON_BASE(characterization): a worktree rename's origin is no entry, which the base gets
+    # from reading the porcelain by lines — where an origin sits inside a line the status pair
+    # starts — and this branch has to get from stepping over a field. Narrowing `record[1] in "RC"`
+    # to `record[1] in "C"` is what reddens it, and nothing else here poses a worktree rename.
+    def test_Given_AWorktreeRenameWhoseOldNameOpensWithTheMarker_When_TheListingIsRead_Then_ItHoldsTheUntrackedFileAlone(self):
+        # Arrange — intent-to-add is what puts the new path where git can pair it with the old one
+        # without the rename being staged. Two controls sit in the comparison: that git paired the
+        # two in the worktree column, since an unpaired tree poses nothing, and that the source is
+        # still spelled with the marker, since a source renamed past that poses nothing either.
+        self.commit(PAIRED_SOURCE, PAIRED_BODY)
+        os.rename(self.project / PAIRED_SOURCE, self.project / PAIRED_RENAME)
+        subprocess.run(["git", "-C", str(self.project), "add", "-N", PAIRED_RENAME],
+                       check=True, timeout=60)
+        self.place(BESIDE_THE_PAIRING, AFTER_AGENT)
+        paired = subprocess.run(["git", "-C", str(self.project), "status", "--porcelain"],
+                                capture_output=True, text=True, check=True, timeout=60).stdout
+
+        # Act
+        listing = self.block(self.report(self.agent))
+
+        # Assert
+        self.assertEqual((listing, " R " in paired,
+                          PAIRED_SOURCE.startswith(UNTRACKED_MARKER)),
+                         (BESIDE_THE_PAIRING, True, True))
+
+    # GREEN_ON_BASE(characterization): the same origin behind the other letter, which the base gets
+    # the same way. Narrowing `record[1] in "RC"` to `record[1] in "R"` is what reddens it, and
+    # nothing else here poses a copy.
+    def test_Given_AWorktreeCopyWhoseSourceNameOpensWithTheMarker_When_TheListingIsRead_Then_ItHoldsTheUntrackedFileAlone(self):
         # Arrange — copy detection is off unless `status.renames` asks for it, and it pairs a new
-        # path with a source the same change modifies. That git paired them is compared beside the
-        # report, since a tree where it paired nothing poses nothing.
+        # path with a source the same change modifies, so here the source stays in the tree and
+        # reports a modification of its own beside the pairing. The two controls are the ones the
+        # rename case states.
         subprocess.run(["git", "-C", str(self.project), "config", "status.renames", "copies"],
                        check=True, timeout=60)
         self.commit(PAIRED_SOURCE, PAIRED_BODY)
@@ -523,15 +595,17 @@ class UntrackedScratchTests(unittest.TestCase):
         (self.project / PAIRED_COPY).write_text(PAIRED_BODY, encoding="utf-8")
         subprocess.run(["git", "-C", str(self.project), "add", "-N", PAIRED_COPY],
                        check=True, timeout=60)
-        self.place(BEHIND_THE_PAIRING, AFTER_AGENT)
+        self.place(BESIDE_THE_PAIRING, AFTER_AGENT)
         paired = subprocess.run(["git", "-C", str(self.project), "status", "--porcelain"],
                                 capture_output=True, text=True, check=True, timeout=60).stdout
 
         # Act
-        printed = self.report(self.agent)
+        listing = self.block(self.report(self.agent))
 
         # Assert
-        self.assertEqual((BEHIND_THE_PAIRING in printed, " C " in paired), (True, True))
+        self.assertEqual((listing, " C " in paired,
+                          PAIRED_SOURCE.startswith(UNTRACKED_MARKER)),
+                         (BESIDE_THE_PAIRING, True, True))
 
     # GREEN_ON_BASE(characterization): the suffix match reaching a name a line-based listing would
     # spell back quoted, which the base gets by decoding that spelling and this branch gets from a

@@ -21,6 +21,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 from shell_commands import (COMMIT_VALUE_FLAGS, NAME_THE_TREE, UNPLACEABLE_MOVE, UNRESOLVED_CD,
                             command_directory, git_invocations, unexpanded)
+import repository
 
 
 HOOK_TOOLS = {"Bash"}
@@ -55,14 +56,6 @@ def git(cwd, *args):
         return subprocess.run(["git", "-C", cwd, *args], capture_output=True, text=True, timeout=30)
     except (OSError, subprocess.SubprocessError):
         return None
-
-
-def git_bytes(cwd, *args):
-    try:
-        result = subprocess.run(["git", "-C", cwd, *args], capture_output=True, timeout=30)
-    except (OSError, subprocess.SubprocessError):
-        return None
-    return result.stdout if result.returncode == 0 else None
 
 
 def repo_root(cwd):
@@ -146,7 +139,7 @@ def committed_content(cwd, commits_all, pathspecs):
         return UNREADABLE
     content = {}
     for path in staged:
-        blob = git_bytes(cwd, "show", ":" + path)
+        blob = repository.git_bytes(["show", ":" + path], cwd)
         if blob is None:
             return UNREADABLE
         content[path] = blob

@@ -30,11 +30,11 @@ from deferrals import DEFERRALS  # noqa: E402
 GitAnswer = collections.namedtuple("GitAnswer", "stdout stderr code")
 
 # git and gh write bytes — paths, JSON, messages — rather than text in whatever encoding the
-# ambient locale names. Read as that encoding, a byte outside it raises past both handlers below and
-# the hook exits 1 with a traceback, where this module promises an unavailable answer instead. The
-# escape is reversible rather than lossy because a caller re-encodes what it reads:
-# untracked_scratch ages a file by the name a listing gave it, and a replaced byte gives a name
-# that is no longer that file's.
+# ambient locale names. Read as that encoding, a byte outside it raises past the handler of each
+# reader that decodes and the hook exits 1 with a traceback, where this module promises an
+# unavailable answer instead. The escape is reversible rather than lossy because a caller re-encodes
+# what it reads: untracked_scratch ages a file by the name a listing gave it, and a replaced byte
+# gives a name that is no longer that file's.
 DECODING = {"encoding": "utf-8", "errors": "surrogateescape"}
 
 
@@ -64,11 +64,11 @@ def git(args, cwd, timeout=15):
 def git_bytes(args, cwd, timeout=15):
     """git's stdout as the bytes it wrote, or None when it could not answer.
 
-    A second reader rather than a flag on `git` above, since a caller reading paths that carry no
-    quoting of their own needs them byte for byte.
+    A second reader rather than a flag on `git` above: a flag would make the return type depend on
+    an argument, where every reader in this module answers at one type or with None.
     scripts/hooks/test_untracked_scratch.py's
     `Given_ANameHoldingACarriageReturn_When_TheReportIsTaken_Then_TheBoundReachesTheFile` is what
-    fails when such a caller takes the other one.
+    fails when a caller that needs the bytes takes the decoding reader instead.
     """
     try:
         result = subprocess.run(["git", *args], cwd=cwd, capture_output=True, timeout=timeout)
