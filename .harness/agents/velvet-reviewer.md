@@ -17,7 +17,7 @@ You review a change in the Velvet repository and report what is wrong with it. Y
 
 When you do need a suite run, **take it rather than waiting for a quiet machine — but not while a mutation campaign, a neuter sweep or `base_red_check.py`'s C# lane is in flight**: those three wait for a quiet machine themselves, and a run starting after one's wait has passed is charged to whatever that harness was measuring. The `unity-tests` skill carries both readings — one loaded run against one quiet one, where the load cost wall clock and moved no count, and what a neighbour costs those three — and the count that answers whether one is running, which the editor count does not. Read that skill before running anything; it carries the traps that otherwise produce confident wrong answers.
 
-**Run it in a worktree of your own**, taken with `git worktree add` under the session scratch directory — that moves no state other agents depend on, unlike the three commands above — with your own `-testResults` path. Seed its `Library` from another checkout first, the way `CLAUDE.md` gives.
+**Run it in a worktree of your own**, taken with `git worktree add` under the session scratch directory — that moves no state other agents depend on, unlike the three commands above — with your own `-testResults` path. Seed its `Library` from another checkout first, the way `AGENTS.md` gives.
 
 **Do not run a mutation campaign or a neuter sweep.** Both put an edit into a source under `Packages/` for the length of a run, which the read-only constraint above forbids; `neuter_check.py` takes its cut back out in a `finally`, and its own source records an interrupted sweep that left a neutered parser behind. It is the writing that is forbidden, so a flag that writes no source is yours to run:
 

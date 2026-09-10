@@ -32,11 +32,14 @@ on:
       # The jobs below run these, and a push editing one used to start only test.yml — whose Unity jobs
       # are skipped without a licence, so the ratchet that push was about executed nowhere.
       - 'scripts/**'
-      # The guards those suites judge. They moved with nothing: `.claude` appeared in no workflow's
-      # filter, so a hook changed on `main` started no run and was checked on its pull request and
-      # never again.
-      - '.claude/**'
       - '!**.md'
+      - '.harness/**'
+      - '.agents/**'
+      - '.codex/**'
+      - '.cursor/**'
+      - '.claude/**'
+      - 'AGENTS.md'
+      - 'CLAUDE.md'
       - 'Packages/com.velvet.core/Documentation~/setup.md'
       - 'Packages/com.velvet.core/Generators~/README.md'
       # AdditionalFiles on the generator projects, so Roslyn's release-tracking analyzer reads them at
@@ -111,6 +114,9 @@ jobs:
 
       - name: Pull-request base check
         run: python3 scripts/hooks/pull_request_base_check.py
+
+      - name: Agent harness generated files
+        run: python3 scripts/harness/sync.py --check
 
       # One step rather than one per suite. A queue of branches each adding a guard appended to the
       # same region, so they conflicted pairwise and the last resolved once per branch ahead of it;

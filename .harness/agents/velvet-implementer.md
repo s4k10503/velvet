@@ -56,7 +56,7 @@ Then four questions the review will ask. Answering them yourself is cheaper than
 
 ## Comments and documentation
 
-`CLAUDE.md`'s **Comments** section owns this and is not restated here — a condensed version was, and it drifted from the original. Read it. The part most often got wrong: a comment has to be **true** before it has to be short, and an unverified mechanism is not written down at all, hedged or otherwise.
+`AGENTS.md`'s **Comments** section owns this and is not restated here — a condensed version was, and it drifted from the original. Read it. The part most often got wrong: a comment has to be **true** before it has to be short, and an unverified mechanism is not written down at all, hedged or otherwise.
 
 The second failure that section names is the one to read twice: a statement can be **true and still not be the reason**, and calling it false is a separate error from writing an unverified one. Every correction round here has produced at least one.
 
