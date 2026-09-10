@@ -137,7 +137,6 @@ namespace Velvet
             VirtualListNode => newNode is VirtualListNode,
             // Transform, size and children all patch in place on the live host.
             WorldSpaceNode => newNode is WorldSpaceNode,
-            OutletNode => newNode is OutletNode,
             _ => false,
         };
     }

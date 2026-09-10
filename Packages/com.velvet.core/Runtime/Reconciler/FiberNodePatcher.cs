@@ -119,7 +119,7 @@ namespace Velvet
         }
 
         // The node kinds whose VisualElement is a placeholder (Portal / WorldSpace: the children live in
-        // another panel) or a fiber anchor (Provider / Component / Outlet), rather than the
+        // another panel) or a fiber anchor (Provider / Component), rather than the
         // node's own rendered surface.
         private void PatchIndirectNode(VisualElement element, VNode? oldNode, VNode? newNode)
         {
@@ -137,65 +137,6 @@ namespace Velvet
                 case ComponentNode when newNode is ComponentNode newComp:
                     HandleComponentMount(element, newComp);
                     break;
-                case OutletNode oldOutlet when newNode is OutletNode newOutlet:
-                    PatchOutlet(element, oldOutlet, newOutlet);
-                    break;
-            }
-        }
-
-        private void PatchOutlet(VisualElement element, OutletNode oldOutlet, OutletNode newOutlet)
-        {
-            if (!ResolveOutletMatch(out var routeElement, out var routeDepth, out var match)
-                || routeElement == null)
-            {
-                return;
-            }
-
-            // The Outlet's container doubles as the route Component's fiber anchor.
-            // RemoveIfDifferentIdentity detects route change and disposes the previous fiber.
-            if (_ctx.ComponentRegistry.RemoveIfDifferentIdentity(element, routeElement.ResolvedIdentity))
-            {
-                element.Clear();
-
-                // The departing route's scope is the application's, built by the IRouteScopeFactory
-                // handed to Router, so its Dispose is a call out into the caller's code — contained the
-                // way FiberElementCleaner contains the same Dispose on the unmount path. element.Clear()
-                // has already run by the time it is called, so a throw leaving instead would strand the
-                // Outlet holding neither the route it left nor the route being patched in.
-                _ctx.OutletScopes.Remove(element);
-                try
-                {
-                    oldOutlet.Scope?.Dispose();
-                }
-                catch (System.Exception exception)
-                {
-                    FiberLogger.LogException("FiberNodePatcher", exception);
-                }
-                newOutlet.Scope = FiberOutletScope.CreateOutletScope(_ctx, match!.Route, element);
-            }
-            else if (_ctx.OutletScopes.TryGetValue(element, out var existingScope))
-            {
-                newOutlet.Scope = existingScope;
-            }
-            else
-            {
-                // First match: no fiber exists yet, and no scope is registered.
-                newOutlet.Scope = FiberOutletScope.CreateOutletScope(_ctx, match!.Route, element);
-            }
-
-            // Mount the matched route Component with Depth+1 pushed live so the next nested
-            // Outlet resolves the following route in the match chain.
-            // The Outlet's context value is pushed too for Hooks.UseOutletContext.
-            _ctx.ComponentContextStack.Push(RouterContext.Depth, routeDepth);
-            _ctx.ComponentContextStack.Push(RouterContext.OutletContext, newOutlet.OutletContextValue);
-            try
-            {
-                HandleComponentMount(element, routeElement);
-            }
-            finally
-            {
-                _ctx.ComponentContextStack.Pop(RouterContext.OutletContext);
-                _ctx.ComponentContextStack.Pop(RouterContext.Depth);
             }
         }
 
@@ -1649,149 +1590,13 @@ namespace Velvet
 
         #region Component Handling
 
-        // Resolves the matched RouteMatch for an Outlet by reading
-        // RouterContext.Location / RouterContext.Depth from the live
-        // ComponentContextStack (valid because the Outlet is reconciled during the
-        // walk's commit while ancestor Providers are pushed), and returns the depth to push for the
-        // matched route's Component (routeDepth = current depth + 1). Returns false when there
-        // is no match to render (no location, depth out of range, or the matched Route has no element).
-        internal bool ResolveOutletMatch(
-            out ComponentNode? routeElement,
-            out int routeDepth,
-            out RouteMatch match)
-        {
-            // RouterContext is read from the live cursor: CreateElement(Outlet) / PatchNode(Outlet) run
-            // during the reconcile walk's commit while the ancestor Providers are still pushed, so the
-            // live ComponentContextStack reflects the Outlet's enclosing Location / Depth. A standalone
-            // re-render (a layout component's own setState) reconstructs those ancestor Providers onto the
-            // cursor via FiberContextSpine before the body / its Outlet reconcile runs, so the live read
-            // is correct on that path too. The matched route Component is then mounted with Depth+1 pushed
-            // live (see the Outlet mount sites).
-            var location = _ctx.ComponentContextStack.Get(RouterContext.Location);
-            var depth = _ctx.ComponentContextStack.Get(RouterContext.Depth);
-
-            if (location?.Matches == null || depth >= location.Matches.Count)
-            {
-                routeElement = null;
-                routeDepth = 0;
-                match = null!;
-                return false;
-            }
-
-            match = location.Matches[depth];
-
-            // A loader error bubbles to the nearest ancestor route (at or above the
-            // errored route) that defines an ErrorElement. That boundary route renders its ErrorElement in
-            // place of its Element and descendant Outlet subtree; ancestors above the boundary render
-            // normally, and routes below the boundary do not render. Errors are keyed by RouteId on
-            // RouterContext.Errors, read from the live cursor (reconstructed via FiberContextSpine on a
-            // standalone re-render, the same as Location / Depth above).
-            var errors = _ctx.ComponentContextStack.Get(RouterContext.Errors);
-
-            var boundaryDepth = ResolveErrorBoundaryDepth(location.Matches, errors);
-            if (boundaryDepth >= 0)
-            {
-                var boundaryElement = location.Matches[boundaryDepth].Route?.ErrorElement;
-
-                if (depth == boundaryDepth)
-                {
-                    if (boundaryElement == null)
-                    {
-                        // Implicit root boundary with no ErrorElement (Velvet has no default error surface):
-                        // the error bubbles to the root and, with no boundary defined anywhere in the
-                        // chain, the erroring subtree renders nothing.
-                        routeElement = null;
-                        routeDepth = 0;
-                        match = null!;
-                        return false;
-                    }
-
-                    // This Outlet renders the boundary route's ErrorElement in place of its Element.
-                    routeElement = boundaryElement;
-                    routeDepth = depth + 1;
-                    return true;
-                }
-
-                if (depth > boundaryDepth)
-                {
-                    // Below the boundary: the ErrorElement subtree replaced everything here, so render nothing.
-                    routeElement = null;
-                    routeDepth = 0;
-                    match = null!;
-                    return false;
-                }
-
-                // depth < boundaryDepth: an ancestor above the boundary renders normally below.
-            }
-
-            routeElement = match.Route?.Element;
-            if (routeElement == null)
-            {
-                routeDepth = 0;
-                match = null!;
-                return false;
-            }
-
-            routeDepth = depth + 1;
-            return true;
-        }
-
-        // Computes the error boundary depth (index into the parent-first matched chain) for the current
-        // errors: the nearest route, scanning from the deepest errored route up toward the root, that
-        // defines an RouteDefinition.ErrorElement. The boundary route's ErrorElement renders
-        // in place of its Element and descendant Outlet subtree. Returns -1 when no
-        // route errored. When a route errored but no route at or above it defines an ErrorElement, returns
-        // the root index 0 as an implicit boundary (the error bubbles all the way to the root):
-        // because Velvet has no default error surface, the caller renders nothing at that boundary, so the
-        // erroring matched tree renders nothing.
-        private static int ResolveErrorBoundaryDepth(
-            IReadOnlyList<RouteMatch> matches,
-            IReadOnlyDictionary<string, Exception> errors)
-        {
-            if (errors == null || errors.Count == 0 || matches == null || matches.Count == 0)
-            {
-                return -1;
-            }
-
-            // The deepest errored route determines the boundary: a deeper error truncates the chain at the
-            // nearest boundary at or above it, which is at least as deep as any shallower error's boundary.
-            var deepestErrored = -1;
-            for (var i = matches.Count - 1; i >= 0; i--)
-            {
-                var routeId = matches[i].RouteId;
-                if (routeId != null && errors.ContainsKey(routeId))
-                {
-                    deepestErrored = i;
-                    break;
-                }
-            }
-
-            if (deepestErrored < 0)
-            {
-                return -1;
-            }
-
-            for (var i = deepestErrored; i >= 0; i--)
-            {
-                if (matches[i].Route?.ErrorElement != null)
-                {
-                    return i;
-                }
-            }
-
-            // No route at or above the errored route defines an ErrorElement: bubble to the implicit root
-            // boundary. The root has no ErrorElement, so the caller renders nothing there.
-            return 0;
-        }
-
         internal void HandleComponentMount(VisualElement wrapper, ComponentNode? componentNode)
         {
             if (componentNode == null) return;
-            // The wrapper-mounted Component (an Outlet route Component) is mounted during the
-            // reconcile walk's commit while its enclosing Providers — and, for an Outlet, the pushed
-            // Depth+1 — are live on the ComponentContextStack. UseContext reads that live cursor, so no
-            // snapshot is captured here; an isolated re-render reconstructs the enclosing Providers via
-            // FiberContextSpine.
+            // The wrapper-mounted Component is mounted during the reconcile walk's commit while its
+            // enclosing Providers are live on the ComponentContextStack. UseContext reads that live
+            // cursor, so no snapshot is captured here; an isolated re-render reconstructs the enclosing
+            // Providers via FiberContextSpine.
             componentNode.Mount(_ctx.ComponentRegistry, wrapper);
         }
 

@@ -103,13 +103,9 @@ namespace Velvet
             //
             // INLINE-mounted spine children match the canonical wrapper-less Component path: a
             // ComponentNode in the ancestor's committed tree resolves to `child` via the registry's
-            // tree-position keying. WRAPPER-mounted spine children (an Outlet route Component or a
-            // V.List item) are hosted by a wrapper-emitting node (OutletNode / AnimatePresenceNode)
-            // whose container VE is the child's MountPoint; the providers enclosing that container in
-            // the ancestor's committed tree are the ones that enclose the wrapper-mounted child. For
-            // an Outlet, the routing layer's wrapper-local context (Depth+1 / OutletContext) is pushed
-            // on top after the spine providers so the isolated re-render of the route observes the
-            // same context the top-down mount walked under.
+            // tree-position keying. A WRAPPER-mounted spine child is hosted by a wrapper-emitting node
+            // whose container VE is the child's MountPoint; the providers enclosing that container in the
+            // ancestor's committed tree are the ones that enclose it.
             for (var i = 0; i < spine.Count; i++)
             {
                 var ancestor = spine[i];
@@ -205,46 +201,13 @@ namespace Velvet
             }
         }
 
-        // Pushes an OutletNode's wrapper-local routing context (Depth+1 / OutletContext) onto the live
-        // cursor. The top-down mount walks <Outlet/> with the matched route's depth pushed
-        // live around the wrapper-mounted route Component's mount; an isolated re-render of the route
-        // bypasses the Outlet's mount path, so this layer is reconstructed here on top of the enclosing
-        // spine Providers. The current Depth value on the live cursor (= the enclosing layout's depth
-        // pushed by the spine walk so far) plus one matches what the Outlet pushed at mount time without
-        // re-resolving the match.
-        private static void PushOutletWrapperLocalContext(
-            ComponentContextStack stack,
-            List<ContextProviderNode> pushed,
-            OutletNode outlet)
-        {
-            var depth = stack.Get(RouterContext.Depth) + 1;
-            var depthProvider = new ContextProviderNode<int>
-            {
-                Context = RouterContext.Depth,
-                Value = depth,
-                Children = System.Array.Empty<VNode>(),
-            };
-            var outletProvider = new ContextProviderNode<object>
-            {
-                Context = RouterContext.OutletContext,
-                Value = outlet.OutletContextValue!,
-                Children = System.Array.Empty<VNode>(),
-            };
-            depthProvider.PushContext(stack);
-            pushed.Add(depthProvider);
-            outletProvider.PushContext(stack);
-            pushed.Add(outletProvider);
-        }
-
         // Walks nodes (one reconcile scope of ancestor's committed
         // output) depth-first, pushing each Provider before descending its children. Returns true once the
         // node that hosts spineChild is reached — its enclosing Providers stay pushed
         // (recorded in pushed). The host node is a ComponentNode resolving to
-        // spineChild for inline-mounted children, or an OutletNode / AnimatePresenceNode
+        // spineChild for inline-mounted children, or an AnimatePresenceNode
         // whose dynamic wrapper VE matches spineChild's MountPoint for wrapper-mounted
-        // children. For an Outlet hosting a wrapper-mounted route Component, the routing layer's wrapper-local
-        // context (Depth+1 / OutletContext) is pushed on top of the spine Providers so the isolated re-render
-        // observes the same context the top-down mount walked under. Providers on a subtree that does NOT
+        // children. Providers on a subtree that does NOT
         // contain the spine child are popped on the way out so only the path to spineChild
         // remains on the cursor.
         private static bool PushEnclosingProviders(
@@ -288,9 +251,6 @@ namespace Velvet
 
                 case ComponentNode component when walk.IsInlineSpineChild:
                     return MatchesInlineSpineChild(component, position, nodeIndex, in walk);
-
-                case OutletNode outlet when !walk.IsInlineSpineChild:
-                    return PushOutletHost(outlet, in walk);
 
                 case MemoNode memo:
                     return PushMemoInner(memo, nodeIndex, position, in walk);
@@ -371,27 +331,6 @@ namespace Velvet
             var resolved = registry.TryGetFiberForInlineKey(
                 walk.Ancestor, slotKey, identity, walk.PortalScope, walk.Container);
             return ReferenceEquals(resolved, walk.SpineChild);
-        }
-
-        // Wrapper-mounted spine child: an OutletNode hosts a wrapper-mounted route Component whose
-        // MountPoint is the Outlet's container VE. Before pushing the Outlet's wrapper-local context,
-        // verify that spineChild is actually hosted by an Outlet (not by a sibling
-        // AnimatePresence/Portal/VirtualList) by consulting ReconcilerContext.OutletContainers — a
-        // structural identity register populated at FiberNodeFactory mount time, immune to USS class
-        // manipulation. Without this check, a layout like V.Div(V.Outlet(), V.AnimatePresence(...)) would
-        // walker-match the first Outlet and push a wrong Depth+1 context for any non-Outlet
-        // wrapper-mounted sibling's isolated re-render.
-        private static bool PushOutletHost(OutletNode outlet, in SpineWalk walk)
-        {
-            var spineHost = walk.SpineChild.MountPoint;
-            if (spineHost == null || !walk.Ancestor.Reconciler!.Context.OutletContainers.Contains(spineHost))
-            {
-                // spineChild is not Outlet-hosted; the Outlet here is a sibling — keep searching for the
-                // actual wrapper host.
-                return false;
-            }
-            PushOutletWrapperLocalContext(walk.Stack, walk.Pushed, outlet);
-            return true;
         }
 
         private static bool PushMemoInner(

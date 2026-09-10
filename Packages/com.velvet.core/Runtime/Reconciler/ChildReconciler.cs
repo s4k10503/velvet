@@ -184,7 +184,7 @@ namespace Velvet
             PendingIndexedState = null;
             DiscardPendingKeyedState();
 
-            // ContextProviderNode / ComponentNode / OutletNode are expanded inline (no wrapper VE
+            // ContextProviderNode / ComponentNode are expanded inline (no wrapper VE
             // emitted). Old-side expansion is structural-only (no context push, no fiber render).
             // New-side expansion pushes each Provider's value onto the stack and, while it is
             // still pushed, notifies dependent fibers if the value changed vs the old Provider that
@@ -203,11 +203,13 @@ namespace Velvet
             var oldProviders = _ctx.BufferPool.RentProviderTable();
             var oldFibers = _ctx.BufferPool.RentFiberList();
             var newFibers = _ctx.BufferPool.RentFiberSet();
+            var oldOwners = _ctx.BufferPool.RentFiberOwnerList();
             var pairing = new GeneralPathReconciler.InlinePairing
             {
                 OldFibers = oldFibers,
                 NewFibers = newFibers,
                 OldProviders = oldProviders,
+                OldOwners = oldOwners,
             };
             VNode?[] oldNodes;
             // The presence reproductions this container's own walk takes, retirable only once the removal
@@ -219,9 +221,14 @@ namespace Velvet
             {
                 // Old side is always expanded structurally into the flat leaf array used for matching.
                 // (No context push, no render — it reproduces the previously committed leaf order.)
-                oldNodes = _general.ExpandInlineForReconcile(oldChildren, isNewSide: false, parent, slotStart, oldFibers, newFibers, oldProviders);
+                oldNodes = _general.ExpandInlineForReconcile(oldChildren, isNewSide: false, parent, slotStart, oldFibers, newFibers, oldProviders, owners: oldOwners);
 
-                if (GeneralPathReconciler.NeedsExpansion(newChildren))
+                // oldFibers is non-empty wherever the old side reached a descendant fiber, so a leaf of
+                // this container may have been emitted by one. That pairing is what the fast path cannot
+                // read: its diff carries no owner, and its parked state outlives the rented list that would
+                // carry one. The general walk takes such a container instead — it holds the owners for the
+                // whole of its own pass and never parks.
+                if (GeneralPathReconciler.NeedsExpansion(newChildren) || oldFibers.Count > 0)
                 {
                     // General path: a single live-context walk commits each emitted leaf
                     // (CreateElement / PatchNode) while its ancestor Providers are still pushed, so
@@ -257,6 +264,7 @@ namespace Velvet
                 _ctx.BufferPool.ReturnProviderTable(oldProviders);
                 _ctx.BufferPool.ReturnFiberList(oldFibers);
                 _ctx.BufferPool.ReturnFiberSet(newFibers);
+                _ctx.BufferPool.ReturnFiberOwnerList(oldOwners);
             }
         }
 

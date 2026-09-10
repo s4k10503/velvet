@@ -8,7 +8,7 @@ namespace Velvet
     // element back to VNodePool so it appears as a freshly constructed instance to
     // the next consumer.
     // Velvet-managed state (event bindings via FiberEventBindingManager, gesture manipulators, ref cleanups,
-    // component registry entries, animation schedules, virtual list controllers, outlet scopes, suspense
+    // component registry entries, animation schedules, virtual list controllers, suspense
     // fallback flags) is released earlier in FiberElementCleaner.CleanupElementResources.
     // This helper handles the residual UIToolkit-side state (inline style / userData / focusable / etc.)
     // that would otherwise ghost into the next caller of the pool.
