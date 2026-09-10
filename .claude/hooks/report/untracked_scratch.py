@@ -44,6 +44,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
+from display import displayed  # noqa: E402
 from repository import DECODING, git_bytes, toplevel  # noqa: E402
 
 LISTED = 20
@@ -133,14 +134,6 @@ def entries(status, marker):
         if record.startswith(marker):
             found.append(record[3:])
     return found
-
-
-def displayed(path):
-    """Every line of this report is read whole — an entry, the headline, the sentence a listing
-    hangs under — and a path carrying a line break of its own divides the line it lands in. Such
-    a path is spelled quoted and escaped instead.
-    """
-    return path if path.splitlines() == [path] else json.dumps(path)
 
 
 def shown(listing, total):
