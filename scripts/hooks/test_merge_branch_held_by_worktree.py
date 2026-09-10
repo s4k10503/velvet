@@ -12,11 +12,17 @@ holds is still named as held, and a branch no worktree holds is still let throug
 survives the byte by refusing whatever it is asked is not what makes them pass. The third holds the
 fail-closed branch itself, which those two ride on and neither would miss.
 
+Three more hold the remedy rather than the verdict, because a refusal naming a command that cannot
+run leaves nowhere to go. Two run what the refusal prints and ask the guard again; the third asks git
+what it does when either kind of worktree is offered to `worktree remove`, since the split between
+the two remedies rests on that answer and nothing else here would notice it moving.
+
 Run: python3 scripts/hooks/test_merge_branch_held_by_worktree.py
 """
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -37,6 +43,10 @@ STUB_GH = '#!/bin/sh\nprintf "%s\\n" "$VELVET_MERGE_HEAD_REF"\n'
 
 # A byte no UTF-8 sequence starts with, so a strict decode of a listing carrying it stops there.
 STRAY = b"\xff"
+
+# A remedy line, read off the refusal rather than compared with a fixed string: what has to hold is
+# that the printed command frees the branch, and a case comparing text says nothing about that.
+REMEDY = re.compile(r"^[ \t]*(git .+?)[ \t]*$", re.M)
 
 
 def git(cwd, *args):
@@ -129,6 +139,49 @@ class HeldBranchTests(unittest.TestCase):
 
         # Assert
         self.assertEqual((arranged, result.returncode), (True, ALLOWED))
+
+    def run_remedy(self, refusal):
+        """Run every command the refusal printed, leaving what git said to the verdict that follows."""
+        for command in REMEDY.findall(refusal.stderr):
+            subprocess.run(command, shell=True, cwd=str(self.repo), capture_output=True,
+                           timeout=120)
+
+    def test_Given_ALinkedWorktreeHoldsTheBranch_When_TheRemedyIsRun_Then_TheMergeIsLetThrough(self):
+        # Arrange — `feature` is held by a linked worktree, which is the kind a removal can free.
+        first = self.ask("feature")
+
+        # Act
+        self.run_remedy(first)
+
+        # Assert — the first code rides in the comparison because a guard that refused nothing would
+        # print no remedy and leave the second code at ALLOWED regardless of what was run.
+        self.assertEqual((first.returncode, self.ask("feature").returncode), (REFUSED, ALLOWED))
+
+    def test_Given_TheMainWorkingTreeHoldsTheBranch_When_TheRemedyIsRun_Then_TheMergeIsLetThrough(self):
+        # Arrange — the main working tree on the branch being merged, which is the live shape here:
+        # the primary checkout sits on whatever was last worked on, and git refuses to remove it.
+        git(self.repo, "checkout", "-q", "-b", "primary-work")
+        first = self.ask("primary-work")
+
+        # Act
+        self.run_remedy(first)
+
+        # Assert
+        self.assertEqual((first.returncode, self.ask("primary-work").returncode),
+                         (REFUSED, ALLOWED))
+
+    # GREEN_ON_BASE(characterization): the git answer the two remedies are split by. It is a fact
+    # about git rather than about this repository, so `freeing` names this case instead of saying it.
+    def test_Given_BothKindsOfWorktree_When_GitIsAskedToRemoveEach_Then_OnlyTheLinkedOneGoes(self):
+        # Arrange / Act
+        primary = subprocess.run(["git", "-C", str(self.repo), "worktree", "remove", "--force",
+                                  str(self.repo)], capture_output=True, text=True, timeout=60)
+        linked = subprocess.run(["git", "-C", str(self.repo), "worktree", "remove", "--force",
+                                 str(self.root / "held")], capture_output=True, text=True,
+                                timeout=60)
+
+        # Assert
+        self.assertEqual((primary.returncode == 0, linked.returncode == 0), (False, True))
 
     # GREEN_ON_BASE(characterization): the fail-closed branch is what the cases above are read
     # against, and none of them reaches it — each arranges a git that answers.

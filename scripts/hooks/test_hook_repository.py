@@ -18,6 +18,7 @@ Run: python3 scripts/hooks/test_hook_repository.py
 import contextlib
 import importlib.util
 import os
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -190,6 +191,52 @@ class ProjectTreeTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(found, root)
+
+
+class WorktreeListingTests(unittest.TestCase):
+    """What separates the worktree a guard can offer to remove from the one no removal reaches.
+
+    git lists the main working tree first and the linked ones after it, so `primary` is read off the
+    position. Reading it off anything else — a `.git` that is a directory rather than a file, a
+    `--git-common-dir` comparison — is a second answer to the same question, and two answers to one
+    question disagree in silence.
+    """
+
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp(prefix="velvet-worktrees-"))
+        self.project = self.root / "project"
+        subprocess.run(["git", "init", "-q", "-b", "main", str(self.project)], check=True,
+                       timeout=60)
+        subprocess.run(["git", "-C", str(self.project), "-c", "user.email=t@velvet", "-c",
+                        "user.name=t", "commit", "-q", "--allow-empty", "-m", "first"], check=True,
+                       timeout=60)
+        subprocess.run(["git", "-C", str(self.project), "worktree", "add", "-q", "-b", "feature",
+                        str(self.root / "linked")], check=True, timeout=60)
+
+    def tearDown(self):
+        shutil.rmtree(self.root, ignore_errors=True)
+
+    def test_Given_ARepositoryWithALinkedWorktree_When_TheListIsRead_Then_OnlyTheMainOneIsPrimary(self):
+        # Arrange / Act — asked from inside the linked worktree, so a reading that answered "the one
+        # I am standing in" would name the wrong tree and this case would say so.
+        read = repository.worktrees(str(self.root / "linked"))
+
+        # Assert
+        self.assertEqual([(Path(tree.path).name, tree.branch, tree.primary) for tree in read or []],
+                         [("project", "main", True), ("linked", "feature", False)])
+
+    def test_Given_AGitThatCannotRun_When_TheListIsRead_Then_ThereIsNoAnswerAtAll(self):
+        # Arrange — the reading failure every caller's fail-closed branch is written against. An
+        # empty list and "could not be read" are the same falsy value to a caller that conflates
+        # them, and only one of them means nothing holds a branch.
+        empty = self.root / "empty"
+        empty.mkdir()
+        with mock.patch.dict(os.environ, {"PATH": str(empty)}):
+            # Act
+            read = repository.worktrees(str(self.project))
+
+        # Assert
+        self.assertIsNone(read)
 
 
 class OpenPullRequestTests(unittest.TestCase):

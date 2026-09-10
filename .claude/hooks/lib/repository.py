@@ -77,6 +77,32 @@ def git_bytes(args, cwd, timeout=15):
     return result.stdout if result.returncode == 0 else None
 
 
+Worktree = collections.namedtuple("Worktree", "path branch primary")
+
+
+def worktrees(cwd, timeout=20):
+    """Every worktree of `cwd`'s repository in the order git lists them, or None when unread.
+
+    `primary` marks the main working tree. It is here because a caller that finds a branch held has
+    a different remedy for each kind — scripts/hooks/test_merge_branch_held_by_worktree.py poses to
+    git which kind a removal reaches — and scripts/hooks/test_hook_repository.py holds the reading
+    that marks it.
+
+    Read here rather than in each caller because a second spelling of how git's bytes are decoded
+    drifts from `git` above in silence, and a guard that mis-reads this list exits 0.
+    """
+    listing = git(["worktree", "list", "--porcelain"], cwd=cwd, timeout=timeout)
+    if listing is None:
+        return None
+    found = []
+    for line in listing.splitlines():
+        if line.startswith("worktree "):
+            found.append([line.split(" ", 1)[1].strip(), None])
+        elif line.startswith("branch ") and found:
+            found[-1][1] = line.split(" ", 1)[1].strip().removeprefix("refs/heads/")
+    return [Worktree(path, branch, index == 0) for index, (path, branch) in enumerate(found)]
+
+
 Answer = collections.namedtuple("Answer", "stdout combined code")
 
 

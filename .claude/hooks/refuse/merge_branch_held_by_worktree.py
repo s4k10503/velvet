@@ -12,10 +12,13 @@ pull request is closed, which from inside the checkout is indistinguishable from
 that never landed — the same ambiguity `merge_without_branch_deletion.py` exists to avoid, arrived at
 from the other side.
 
-Ordering, not prohibition: remove the worktree, then merge.
+Ordering, not prohibition: free the branch, then merge. What frees it is not one command — a linked
+worktree is removed, and the main working tree returns to the base branch instead — so the refusal
+reads the list rather than printing one sentence for both, and `freeing` says why.
 """
 
 import json
+import shlex
 import sys
 from pathlib import Path
 
@@ -44,22 +47,16 @@ UNREADABLE = object()
 
 
 def held_branches(cwd):
-    """Branch names a worktree has checked out, or None when the list could not be read.
+    """Each branch a worktree has checked out, mapped to that worktree, or None when unread.
 
-    Read through `repository.git` rather than a local `subprocess.run`: a second spelling of how
-    git's bytes are decoded drifts from that one in silence, and what this guard does when the two
-    disagree is exit 0 and let the merge run.
+    The list comes from `repository.worktrees`, which owns both the decode and what marks the main
+    working tree; reading it here a second way is what would let this guard exit 0 on a listing the
+    other reader refused.
     """
-    listing = repository.git(["worktree", "list", "--porcelain"], cwd=cwd, timeout=20)
+    listing = repository.worktrees(cwd)
     if listing is None:
         return None
-    held, path = {}, None
-    for line in listing.splitlines():
-        if line.startswith("worktree "):
-            path = line.split(" ", 1)[1].strip()
-        elif line.startswith("branch ") and path:
-            held[line.split(" ", 1)[1].strip().removeprefix("refs/heads/")] = path
-    return held
+    return {tree.branch: tree for tree in listing if tree.branch}
 
 
 def branch_of(cwd, operands):
@@ -84,12 +81,15 @@ def merges(command):
 
 
 def blocked(asked, cwd):
-    """(branch, why this merge cannot clear it) for each merge whose branch is not clear.
+    """(branch, why this merge cannot clear it, the worktree holding it) for each unclear merge.
 
     The unexpanded operand is answered before the worktree list is consulted. Returning early on an
     empty list put the refusal behind "some worktree exists", so the policy held on a checkout that
     happened to have one and lapsed on a runner that did not — which is the guard being exercised
     only in the states its environment happens to be in.
+
+    The worktree rides along because the two kinds take different remedies, and this reading is
+    what tells them apart; an entry that names no worktree is one no remedy here fits.
     """
     held, read = None, False
     found = []
@@ -97,21 +97,45 @@ def blocked(asked, cwd):
         named = [token for token in operands if not token.startswith("-")]
         if any(unexpanded(token) for token in named):
             found.append(("the branch named by an unexpanded operand",
-                          "unreadable — resolve it, or name the pull request"))
+                          "unreadable — resolve it, or name the pull request", None))
             continue
         if not read:
             held, read = held_branches(cwd), True
         if held is None:
             found.append(("the branch this merge would delete",
-                          "unreadable — git did not list the worktrees"))
+                          "unreadable — git did not list the worktrees", None))
             continue
         branch = branch_of(cwd, operands)
         if branch is UNREADABLE:
             found.append(("the branch this merge would delete",
-                          "unreadable — its name did not come back"))
+                          "unreadable — its name did not come back", None))
         elif branch in held:
-            found.append((branch, "held by " + held[branch]))
+            tree = held[branch]
+            where = "held by " + tree.path
+            found.append((branch, where + ", the main working tree" if tree.primary else where,
+                          tree))
     return found
+
+
+def freeing(trees):
+    """The command that frees each held branch, in the order the entries were found.
+
+    A worktree the caller can drop takes `worktree remove`; the main working tree takes a return to
+    the base branch instead. scripts/hooks/test_merge_branch_held_by_worktree.py poses to git which
+    kind a removal reaches, so the split is pinned rather than argued here.
+
+    Printing the path git listed rather than a placeholder is the difference between a remedy a
+    reader runs and one they have to reconstruct.
+    """
+    seen, lines = set(), []
+    for tree in trees:
+        where = shlex.quote(tree.path)
+        line = (f"git -C {where} checkout main" if tree.primary
+                else f"git worktree remove --force {where}")
+        if line not in seen:
+            seen.add(line)
+            lines.append(line)
+    return lines
 
 
 def main():
@@ -135,16 +159,22 @@ def main():
     if not found:
         return 0
 
-    lines = "\n".join(f"  {branch}  {why}" for branch, why in found)
+    lines = "\n".join(f"  {branch}  {why}" for branch, why, _ in found)
+    trees = [tree for _, _, tree in found if tree is not None]
+    remedy = ""
+    if trees:
+        commands = "\n".join("  " + line for line in freeing(trees))
+        base = ("\nA return to the base branch is what frees the main working tree: git declines to "
+                "remove it, so no ordering of the merge and a removal exists for it.\n"
+                if any(tree.primary for tree in trees) else "")
+        remedy = f"\nFree the branch first, then merge:\n{commands}\n{base}"
     sys.stderr.write(
         "Refusing `gh pr merge`: the branch it would delete is not clear.\n\n"
         f"{lines}\n\n"
         "The delete is not atomic with the merge. The remote head goes and the merge lands, then the "
         "local delete fails because git will not remove a branch a worktree has checked out, and gh "
         "prints that failure after having already merged. Nothing is left to retry — which is also "
-        "why an unread answer is refused rather than taken for an empty one.\n\n"
-        "Remove the worktree first, then merge:\n"
-        "  git worktree remove --force <path>\n"
+        f"why an unread answer is refused rather than taken for an empty one.\n{remedy}"
     )
     return 2
 
