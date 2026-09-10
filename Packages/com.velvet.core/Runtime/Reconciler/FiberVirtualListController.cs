@@ -275,8 +275,8 @@ namespace Velvet
                     }
                     // IndexOldRenderedItems keys the next pass's reuse table off VNode.Key, and that table
                     // is read back by the selector's key, so the two sides answer each other only while
-                    // the selector's key is the one that lands on the node — the authority V.List's
-                    // mapping states.
+                    // the selector's key is the one that lands on the node — the same overwrite V.List
+                    // makes at its own mapping site.
                     vnode.Key = key;
                     newNodes[i] = vnode;
 

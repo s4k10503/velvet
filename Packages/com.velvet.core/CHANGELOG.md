@@ -119,12 +119,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   already keyed kept the renderer's. Where those two strings differ the reuse lookup missed, the row read
   as scrolled out of the range it was leaving, and it was disposed and rebuilt on every range change. The
   list still rendered the right content, which is why this was silent; what it cost was identity. A rebuilt
-  row renders from a fresh fiber, so its `Hooks.UseState` values return to their initial ones on every
-  range change. The selector's key is now what lands on the node, as `V.List` does at its own mapping
-  site, so a row still inside the range is patched in place. A renderer that leaves the key
-  alone, or that sets the same string the selector returns, is unaffected — but keying inside a renderer
-  is not exotic: one returning a shared component, or building its child through a helper that keys for
-  its own reasons, reaches it without the author thinking about the list's key at all.
+  row renders from a fresh fiber, so its `Hooks.UseState` values return to their initial ones and the
+  per-mount work its body does — a lazy fetch, an impression ping, a subscription a `Hooks.UseEffect`
+  takes under an empty dependency array — runs again. Measured on a ten-item list with a five-row window
+  scrolled by one row: all five rows ran their `refCallback` cleanup and a fresh setup, where the same
+  scroll now runs one of each. The selector's key is now the one that lands on the node — the same
+  overwrite `V.List` makes at its own mapping site — so a row still inside the range is patched in place.
+  A renderer that returns a freshly built node and leaves its key alone, or that sets the same string the
+  selector returns, is unaffected; a renderer whose node arrives already keyed is not exotic, though — a
+  shared row component that keys itself, or a child built through a helper that keys for its own reasons,
+  reaches this without the author thinking about the list's key at all.
 
 - A renderer throwing inside `V.List` no longer strands the node array it rented. `V.List` takes that
   array from `VNodePool` and fills it by calling the caller's `renderer` for each item, and a throw out

@@ -412,17 +412,23 @@ namespace Velvet.Tests
             var visibleContainer = scrollView.contentContainer.ElementAt(1);
             var controller = mounted.Root.Reconciler.Context.VirtualListControllers[scrollView];
             controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+            var markSetterCaptured = !s_keptRowMark.Equals(default(StateUpdater<string>));
             s_keptRowMark.Invoke("b");
             mounted.FlushStateForTest();
 
             // Act — the window becomes items 1..5.
             controller.UpdateVisibleRange(scrollY: 50f, viewportHeight: 200f);
 
-            // Assert — the name of the row now at the head of the window travels with the mark, because a
-            // range update that returned before rendering leaves the mark reading as it was written.
+            // Assert — the name of the row now at the head of the window and the capture of the setter
+            // travel with the mark, and they answer opposite failures. A range update that returned before
+            // rendering leaves the mark reading as it was written, which would pass; a first window that
+            // never rendered item-2 leaves the setter default, whose Invoke is a silent no-op, which would
+            // fail in the words a lost row reuse fails in.
             Assert.That(
-                scrollView.Q<Label>("row-item-2")?.text + " under " + visibleContainer.Q<Label>()?.name,
-                Is.EqualTo("b under row-item-1"));
+                scrollView.Q<Label>("row-item-2")?.text
+                    + " under " + visibleContainer.Q<Label>()?.name
+                    + " via a " + (markSetterCaptured ? "captured" : "default") + " setter",
+                Is.EqualTo("b under row-item-1 via a captured setter"));
         }
 
         // GREEN_ON_BASE(characterization): the base reuses a row whose node the renderer left unkeyed.
@@ -440,16 +446,20 @@ namespace Velvet.Tests
             var visibleContainer = scrollView.contentContainer.ElementAt(1);
             var controller = mounted.Root.Reconciler.Context.VirtualListControllers[scrollView];
             controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+            var markSetterCaptured = !s_keptRowMark.Equals(default(StateUpdater<string>));
             s_keptRowMark.Invoke("b");
             mounted.FlushStateForTest();
 
             // Act — the window becomes items 1..5.
             controller.UpdateVisibleRange(scrollY: 50f, viewportHeight: 200f);
 
-            // Assert — the head-of-window name travels with the mark for the reason the case above gives.
+            // Assert — the head-of-window name and the setter's capture travel with the mark for the
+            // reason the case above gives.
             Assert.That(
-                scrollView.Q<Label>("row-item-2")?.text + " under " + visibleContainer.Q<Label>()?.name,
-                Is.EqualTo("b under row-item-1"));
+                scrollView.Q<Label>("row-item-2")?.text
+                    + " under " + visibleContainer.Q<Label>()?.name
+                    + " via a " + (markSetterCaptured ? "captured" : "default") + " setter",
+                Is.EqualTo("b under row-item-1 via a captured setter"));
         }
 
         #endregion
