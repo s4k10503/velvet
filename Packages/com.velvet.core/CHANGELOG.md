@@ -125,6 +125,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   through `Debug.LogException` now, on the terms a Suspend loader's subscriber failure already was, and
   the navigation or disposal runs to its end either way.
 
+- A cancellation callback an application registered on a token Velvet owns no longer escapes the
+  teardown that runs it, on the terms a Loader's already does. Three teardowns cancelled such a source
+  unwrapped. Unmounting a component walks every in-flight `Hooks.UseMutation` call's source and cancels
+  each, so a throw out of one call's callback left the sources after it in that walk uncancelled and
+  undisposed, and abandoned the rest of the unmount below the walk. Discarding a `Hooks.Use` resource —
+  on unmount, or on the render that hands it a new resource key — skipped the source's disposal and left
+  the completion callback attached. `Store.Dispose` caught `ObjectDisposedException` alone, so any other
+  failure skipped the state notifier's disposal and `OnDispose`, while an `ObjectDisposedException`
+  skipped the source's release and was reported nowhere. Each failure is reported now — through
+  `Debug.LogException` at the two fiber sites and through `StoreLogger.LogError` at the store — and
+  the teardown runs to its end.
+
 - A Loader that still holds its round's `CancellationToken` when the round ends reads the cancellation
   off it, rather than finding the source behind it gone. The round's source used to be disposed at the
   moment the round ended, which lands before the run that launched the Loaders has handed that token to

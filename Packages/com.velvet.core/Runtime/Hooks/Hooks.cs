@@ -1884,8 +1884,8 @@ namespace Velvet
             finally
             {
                 // Only the owner disposes. Unmount clears the list before cancelling, so a call this
-                // one's cancellation settles reaches here with its source already gone — and Cancel()
-                // on a disposed source throws, out of the unmount reconcile.
+                // one's cancellation settles reaches here with its source already gone, and disposing
+                // it here would leave that loop cancelling a source this finally had already disposed.
                 if (slot.Live.Remove(cts)) cts.Dispose();
             }
         }

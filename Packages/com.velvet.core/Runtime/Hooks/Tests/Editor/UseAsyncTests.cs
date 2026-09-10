@@ -32,6 +32,8 @@ namespace Velvet.Tests
     /// <item>When no explicit resource key is passed and the factory delegate identity changes across renders, the
     /// resource restarts and a footgun warning is emitted; an explicit key silences that warning.</item>
     /// <item>Unmounting a component with a pending resource cancels the factory's token.</item>
+    /// <item>A factory's cancellation callback that throws at disposal is reported rather than raised, and the
+    /// source release and the completion detach below the cancel still happen.</item>
     /// </list>
     /// </summary>
     /// <remarks>
@@ -297,6 +299,36 @@ namespace Velvet.Tests
             // Assert
             Assert.That((reachedLoader, resource.Status), Is.EqualTo((true, FiberAsyncResourceStatus.Pending)),
                 "The resource's own cancellation reaches the loader and still records no outcome");
+        }
+
+        [Test]
+        public void Given_APendingResource_When_ItsFactoryTokenCallbackThrows_Then_TheSourceIsReleasedAndTheCompletionDetached()
+        {
+            // Arrange — the factory registers on the token it is handed, which is the resource's own.
+            // The sibling above already reads that the resource's cancellation reaches a loader; this
+            // reads what Dispose does below the cancel. The completion is attached first, or the detach
+            // below it has nothing to move.
+            var resource = new FiberAsyncResource<int>(Array.Empty<object>());
+            var source = new VelvetTaskCompletionSource<int>();
+            CancellationToken factoryToken = default;
+            resource.OnCompleted = () => { };
+            resource.Start(ct =>
+            {
+                factoryToken = ct;
+                ct.Register(() => throw new InvalidOperationException("loader-cancellation-threw"));
+                return source.Task.AttachExternalCancellation(ct);
+            });
+            ContainedFailureLog.Expect<InvalidOperationException>("FiberAsyncResource", "loader-cancellation-threw");
+
+            // Act
+            Exception disposeEscape = null;
+            try { resource.Dispose(); } catch (Exception disposeFailure) { disposeEscape = disposeFailure; }
+
+            // Assert
+            Assert.That(
+                $"{disposeEscape?.GetType().Name ?? "none"} {CancellationTokenStateProbe.ReadTokenState(factoryToken)} {resource.OnCompleted == null}",
+                Is.EqualTo("none released True"),
+                "A loader's cancellation callback must not cost the resource its source release or leave the completion attached");
         }
 
         #endregion

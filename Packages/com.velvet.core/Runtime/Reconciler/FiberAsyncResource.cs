@@ -123,7 +123,17 @@ namespace Velvet
             _disposed = true;
             if (!_cts.IsCancellationRequested)
             {
-                _cts.Cancel();
+                // Contained on RouteLoaderRunner.Retire's terms: this source is the resource's own
+                // and its token goes to the factory, so a callback firing here can be the
+                // application's.
+                try
+                {
+                    _cts.Cancel();
+                }
+                catch (Exception cancellationFailure)
+                {
+                    FiberLogger.LogException(nameof(FiberAsyncResource<T>), cancellationFailure);
+                }
             }
             _cts.Dispose();
             OnCompleted = null;
