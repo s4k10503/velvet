@@ -1,0 +1,218 @@
+[
+  {
+    "event": "SessionStart",
+    "tools": [],
+    "script": "report/stale_main.py",
+    "timeout": 15.0
+  },
+  {
+    "event": "SessionStart",
+    "tools": [],
+    "script": "report/wedged_processes.py",
+    "timeout": 10.0
+  },
+  {
+    "event": "SessionStart",
+    "tools": [],
+    "script": "report/repository_litter.py",
+    "timeout": 10.0
+  },
+  {
+    "event": "SessionStart",
+    "tools": [],
+    "script": "report/unreleased_maintenance_line.py",
+    "timeout": 10.0
+  },
+  {
+    "event": "SubagentStop",
+    "tools": [],
+    "script": "report/untracked_scratch.py",
+    "timeout": 15.0
+  },
+  {
+    "event": "PostToolUse",
+    "tools": [
+      "Write"
+    ],
+    "script": "report/gitignored_write.py",
+    "timeout": 10.0
+  },
+  {
+    "event": "Stop",
+    "tools": [],
+    "script": "stop/unsettled_pr.py",
+    "timeout": 20.0
+  },
+  {
+    "event": "Stop",
+    "tools": [],
+    "script": "stop/open_backlog.py",
+    "timeout": 20.0
+  },
+  {
+    "event": "PreToolUse",
+    "tools": [
+      "Bash"
+    ],
+    "script": "refuse/stale_merge.py",
+    "timeout": 25.0
+  },
+  {
+    "event": "PreToolUse",
+    "tools": [
+      "Bash"
+    ],
+    "script": "refuse/branch_from_unmerged.py",
+    "timeout": 15.0
+  },
+  {
+    "event": "PreToolUse",
+    "tools": [
+      "Bash"
+    ],
+    "script": "refuse/blind_git_add.py",
+    "timeout": 10.0
+  },
+  {
+    "event": "PreToolUse",
+    "tools": [
+      "Bash"
+    ],
+    "script": "refuse/metadata_less_create.py",
+    "timeout": 15.0
+  },
+  {
+    "event": "PreToolUse",
+    "tools": [
+      "Bash"
+    ],
+    "script": "refuse/commit_failing_fast_checks.py",
+    "timeout": 15.0
+  },
+  {
+    "event": "PreToolUse",
+    "tools": [
+      "Bash"
+    ],
+    "script": "refuse/amend_of_published_commit.py",
+    "timeout": 15.0
+  },
+  {
+    "event": "PreToolUse",
+    "tools": [
+      "Bash"
+    ],
+    "script": "refuse/merge_unproven_head.py",
+    "timeout": 25.0
+  },
+  {
+    "event": "PreToolUse",
+    "tools": [
+      "Bash"
+    ],
+    "script": "refuse/merge_branch_held_by_worktree.py",
+    "timeout": 20.0
+  },
+  {
+    "event": "PreToolUse",
+    "tools": [
+      "Bash"
+    ],
+    "script": "refuse/merge_without_branch_deletion.py",
+    "timeout": 10.0
+  },
+  {
+    "event": "PreToolUse",
+    "tools": [
+      "Bash"
+    ],
+    "script": "refuse/shared_git_state.py",
+    "timeout": 10.0
+  },
+  {
+    "event": "PreToolUse",
+    "tools": [
+      "Bash"
+    ],
+    "script": "refuse/merge_onto_unpublished_release.py",
+    "timeout": 25.0
+  },
+  {
+    "event": "PreToolUse",
+    "tools": [
+      "Bash"
+    ],
+    "script": "refuse/pr_body_of_another_branch.py",
+    "timeout": 15.0
+  },
+  {
+    "event": "PreToolUse",
+    "tools": [
+      "Bash"
+    ],
+    "script": "refuse/message_outside_its_worktree.py",
+    "timeout": 15.0
+  },
+  {
+    "event": "PreToolUse",
+    "tools": [
+      "Bash"
+    ],
+    "script": "refuse/library_seed_without_room.py",
+    "timeout": 20.0
+  },
+  {
+    "event": "PreToolUse",
+    "tools": [
+      "Bash"
+    ],
+    "script": "refuse/pr_without_mutation_receipt.py",
+    "timeout": 25.0
+  },
+  {
+    "event": "PreToolUse",
+    "tools": [
+      "Bash",
+      "Edit",
+      "Write",
+      "NotebookEdit"
+    ],
+    "script": "refuse/edit_while_a_ready_pr_sits.py",
+    "timeout": 15.0
+  },
+  {
+    "event": "PreToolUse",
+    "tools": [
+      "Bash",
+      "Edit",
+      "Write"
+    ],
+    "script": "refuse/changelog_into_closed_version.py",
+    "timeout": 15.0
+  },
+  {
+    "event": "PreToolUse",
+    "tools": [
+      "Edit",
+      "Write"
+    ],
+    "script": "refuse/declaration_first_line_fragment.py",
+    "timeout": 10.0
+  },
+  {
+    "event": "PreToolUse",
+    "tools": [
+      "Bash"
+    ],
+    "script": "refuse/background_relative_path.py",
+    "timeout": 10.0
+  },
+  {
+    "event": "PreToolUse",
+    "tools": [
+      "Bash"
+    ],
+    "script": "refuse/hand_rolled_pr_poller.py",
+    "timeout": 10.0
+  }
+]

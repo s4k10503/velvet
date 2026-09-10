@@ -2630,11 +2630,14 @@ class MutationRefusalStatusTests(unittest.TestCase):
         # Assert
         self.assertEqual(mirrored, mutation_check.CARRIED_REFUSAL)
 
+    # GREEN_ON_BASE(construction): both timeouts come from the checked-out tree; the base's larger
+    # registration also exceeds the subprocess timeout in seconds. Setting its `timeout` to
+    # `CARRIED_TIMEOUT` makes this case fail.
     def test_Given_TheCommitHook_When_ItsSubprocessTimeoutIsRead_Then_ItIsUnderTheRegisteredOne(self):
         # Arrange — the harness kills a hook at its registered timeout, and a subprocess outliving
         # that takes the refusal with it, which is the reading that lets the commit through.
         settings = json.loads((REPO_ROOT / ".claude/settings.json").read_text())
-        registered = [held["timeout"] / 1000 for entry in settings["hooks"]["PreToolUse"]
+        registered = [held["timeout"] for entry in settings["hooks"]["PreToolUse"]
                       for held in entry["hooks"] if self.HOOK.name in held["command"]]
         declared = re.search(r"^CARRIED_TIMEOUT = (\d+)", self.HOOK.read_text(), re.MULTILINE)
 

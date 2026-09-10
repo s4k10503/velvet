@@ -4,7 +4,7 @@
       {
         "hooks": [
           {
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/report/stale_main.py\"",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" codex SessionStart report/stale_main.py",
             "timeout": 15.0,
             "type": "command"
           }
@@ -13,7 +13,7 @@
       {
         "hooks": [
           {
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/report/wedged_processes.py\"",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" codex SessionStart report/wedged_processes.py",
             "timeout": 10.0,
             "type": "command"
           }
@@ -22,7 +22,7 @@
       {
         "hooks": [
           {
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/report/repository_litter.py\"",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" codex SessionStart report/repository_litter.py",
             "timeout": 10.0,
             "type": "command"
           }
@@ -31,7 +31,7 @@
       {
         "hooks": [
           {
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/report/unreleased_maintenance_line.py\"",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" codex SessionStart report/unreleased_maintenance_line.py",
             "timeout": 10.0,
             "type": "command"
           }
@@ -42,7 +42,7 @@
       {
         "hooks": [
           {
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/report/untracked_scratch.py\"",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" codex SubagentStop report/untracked_scratch.py",
             "timeout": 15.0,
             "type": "command"
           }
@@ -53,7 +53,7 @@
       {
         "hooks": [
           {
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/report/gitignored_write.py\"",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" codex PostToolUse report/gitignored_write.py",
             "timeout": 10.0,
             "type": "command"
           }
@@ -65,7 +65,7 @@
       {
         "hooks": [
           {
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/stop/unsettled_pr.py\"",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" codex Stop stop/unsettled_pr.py",
             "timeout": 20.0,
             "type": "command"
           }
@@ -74,7 +74,7 @@
       {
         "hooks": [
           {
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/stop/open_backlog.py\"",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" codex Stop stop/open_backlog.py",
             "timeout": 20.0,
             "type": "command"
           }
@@ -85,7 +85,7 @@
       {
         "hooks": [
           {
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse/stale_merge.py\"",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" codex PreToolUse refuse/stale_merge.py",
             "timeout": 25.0,
             "type": "command"
           }
@@ -95,7 +95,7 @@
       {
         "hooks": [
           {
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse/branch_from_unmerged.py\"",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" codex PreToolUse refuse/branch_from_unmerged.py",
             "timeout": 15.0,
             "type": "command"
           }
@@ -105,7 +105,7 @@
       {
         "hooks": [
           {
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse/blind_git_add.py\"",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" codex PreToolUse refuse/blind_git_add.py",
             "timeout": 10.0,
             "type": "command"
           }
@@ -115,7 +115,7 @@
       {
         "hooks": [
           {
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse/metadata_less_create.py\"",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" codex PreToolUse refuse/metadata_less_create.py",
             "timeout": 15.0,
             "type": "command"
           }
@@ -125,7 +125,7 @@
       {
         "hooks": [
           {
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse/commit_failing_fast_checks.py\"",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" codex PreToolUse refuse/commit_failing_fast_checks.py",
             "timeout": 15.0,
             "type": "command"
           }
@@ -135,7 +135,7 @@
       {
         "hooks": [
           {
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse/amend_of_published_commit.py\"",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" codex PreToolUse refuse/amend_of_published_commit.py",
             "timeout": 15.0,
             "type": "command"
           }
@@ -145,7 +145,7 @@
       {
         "hooks": [
           {
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse/merge_unproven_head.py\"",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" codex PreToolUse refuse/merge_unproven_head.py",
             "timeout": 25.0,
             "type": "command"
           }
@@ -155,7 +155,7 @@
       {
         "hooks": [
           {
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse/merge_branch_held_by_worktree.py\"",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" codex PreToolUse refuse/merge_branch_held_by_worktree.py",
             "timeout": 20.0,
             "type": "command"
           }
@@ -165,7 +165,7 @@
       {
         "hooks": [
           {
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse/merge_without_branch_deletion.py\"",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" codex PreToolUse refuse/merge_without_branch_deletion.py",
             "timeout": 10.0,
             "type": "command"
           }
@@ -175,7 +175,7 @@
       {
         "hooks": [
           {
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse/shared_git_state.py\"",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" codex PreToolUse refuse/shared_git_state.py",
             "timeout": 10.0,
             "type": "command"
           }
@@ -185,7 +185,7 @@
       {
         "hooks": [
           {
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse/merge_onto_unpublished_release.py\"",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" codex PreToolUse refuse/merge_onto_unpublished_release.py",
             "timeout": 25.0,
             "type": "command"
           }
@@ -195,7 +195,7 @@
       {
         "hooks": [
           {
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse/pr_body_of_another_branch.py\"",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" codex PreToolUse refuse/pr_body_of_another_branch.py",
             "timeout": 15.0,
             "type": "command"
           }
@@ -205,7 +205,7 @@
       {
         "hooks": [
           {
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse/message_outside_its_worktree.py\"",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" codex PreToolUse refuse/message_outside_its_worktree.py",
             "timeout": 15.0,
             "type": "command"
           }
@@ -215,7 +215,7 @@
       {
         "hooks": [
           {
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse/library_seed_without_room.py\"",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" codex PreToolUse refuse/library_seed_without_room.py",
             "timeout": 20.0,
             "type": "command"
           }
@@ -225,7 +225,7 @@
       {
         "hooks": [
           {
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse/pr_without_mutation_receipt.py\"",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" codex PreToolUse refuse/pr_without_mutation_receipt.py",
             "timeout": 25.0,
             "type": "command"
           }
@@ -235,7 +235,7 @@
       {
         "hooks": [
           {
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse/edit_while_a_ready_pr_sits.py\"",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" codex PreToolUse refuse/edit_while_a_ready_pr_sits.py",
             "timeout": 15.0,
             "type": "command"
           }
@@ -245,7 +245,7 @@
       {
         "hooks": [
           {
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse/changelog_into_closed_version.py\"",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" codex PreToolUse refuse/changelog_into_closed_version.py",
             "timeout": 15.0,
             "type": "command"
           }
@@ -255,7 +255,7 @@
       {
         "hooks": [
           {
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse/declaration_first_line_fragment.py\"",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" codex PreToolUse refuse/declaration_first_line_fragment.py",
             "timeout": 10.0,
             "type": "command"
           }
@@ -265,7 +265,7 @@
       {
         "hooks": [
           {
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse/background_relative_path.py\"",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" codex PreToolUse refuse/background_relative_path.py",
             "timeout": 10.0,
             "type": "command"
           }
@@ -275,7 +275,7 @@
       {
         "hooks": [
           {
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse/hand_rolled_pr_poller.py\"",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" codex PreToolUse refuse/hand_rolled_pr_poller.py",
             "timeout": 10.0,
             "type": "command"
           }

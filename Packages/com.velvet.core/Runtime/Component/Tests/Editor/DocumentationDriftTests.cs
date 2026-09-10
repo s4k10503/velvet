@@ -836,10 +836,8 @@ namespace Velvet.Tests
         // about is that the word is code — see the stripping patterns for why prose cannot be trusted here.
         // What is stripped per format is StripProse's to say.
         //
-        // includeClaude decides whether the files under .claude are part of the answer. The markdown scans
-        // below ask for them, because CONTRIBUTING.md names the hook events .claude/settings.json registers
-        // and nothing else in the tree spells those as code; a caller resolving C# API against this set
-        // wants the narrower reading and says so.
+        // The markdown scans include the harness roots through DocumentationCorpus; callers resolving
+        // C# API names use the narrower reading.
         internal static HashSet<string> SourceIdentifiers(bool includeClaude) =>
             (includeClaude ? ClaudeAwareIdentifiers : DocumentationIdentifiers).Value;
 
