@@ -48,7 +48,7 @@ TRUE_SPELLINGS = {"1", "t", "true"}
 # and owns what each direction of a disagreement costs.
 VALUE_FLAGS = {
     "--add-assignee", "--add-label", "--add-project", "--add-reviewer", "--assignee", "-a",
-    "--attach", "--base", "-B", "--body", "-b", "--body-file", "-F", "--head", "-H", "--label", "-l",
+    "--base", "-B", "--body", "-b", "--body-file", "-F", "--head", "-H", "--label", "-l",
     "--milestone", "-m", "--project", "-p", "--recover", "--remove-assignee",
     "--remove-label", "--remove-project", "--remove-reviewer", "--repo", "-R", "--reviewer",
     "-r", "--template", "-T", "--title", "-t",
