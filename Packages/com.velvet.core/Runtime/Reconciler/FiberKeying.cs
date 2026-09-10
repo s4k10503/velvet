@@ -250,8 +250,8 @@ namespace Velvet
 
         // Composes a new scope by extending parentScope with
         // contribution. The NUL byte (U+0000) delimits scope segments;
-        // V.Fragment rejects keys containing NUL at the factory so scope segments cannot collide
-        // with user-supplied key contents. A null parentScope means the outermost
+        // VNode.Key refuses a key holding one, so a user-supplied key contributes a whole segment
+        // instead of splitting into more than one. A null parentScope means the outermost
         // keyed boundary — the contribution becomes the entire scope.
         internal static string ComposeFragmentScope(string? parentScope, string contribution)
             => parentScope == null ? contribution : parentScope + "\0" + contribution;

@@ -92,12 +92,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   value naming no member of the enum, where they returned `0f` and `false`. Both have done so since
   2.0.1.
 
+- A key holding a NUL (U+0000) is refused wherever one reaches a VNode, where `V.Fragment` and the
+  two `V.ListFragment` overloads were the only factories refusing one. NUL is the delimiter the
+  reconciler's scope chains are composed from, so a key carrying it split into more segments than
+  one and let two different tree positions compose to the same scope string — where they then
+  reconciled as one identity. Measured on a `V.Label` keyed `"a\0b"` sitting beside a `V.Fragment`
+  keyed `"a"` that holds a `V.Label` keyed `"b"`, both under one keyed Fragment: the two labels
+  compose the same scope, and a re-render left the second label's element in the first label's
+  slot, a fresh element in the second's, and the first label's own element nowhere in the tree.
+  `V.Provider`, `V.Suspense`, `V.AnimatePresence`, `V.Component`, `V.MemoizedWithKey`,
+  `V.DragOverlay`, every element factory's `key:`, a `V.List` selector's key and a `V.VirtualList`
+  selector's key all reached that delimiter and none of them refused it. The refusal now sits on
+  `VNode.Key`, which each of them assigns through, so a call passing such a key throws
+  `ArgumentException` naming `key` where it used to build a node. A factory that takes from a pool
+  before building its node refuses ahead of that rent, so a refusal strands nothing that factory
+  rented; `V.List`, whose selector key is not known until an item is mapped, gives the child array
+  it rented back instead. A `V.VirtualList` `keySelector` returning such a key is answered without
+  a throw: that item is left out of the rendered range and a warning names the key, the selector
+  being read from a range update rather than from the `V.VirtualList(...)` call.
+
 ### Fixed
 
+- A renderer throwing inside `V.List` no longer strands the node array it rented. `V.List` takes that
+  array from `VNodePool` and fills it by calling the caller's `renderer` for each item, and a throw out
+  of the mapping left it out on loan with nothing able to give it back, so `RentNodeArray` found the
+  pool that much emptier on every pass — unbounded across a session, since an enclosing error boundary
+  re-renders and the renderer throws again. The array is now given back and the throw continues: it is
+  the one object the call can prove it owns, having just been popped from the pool with the local as its
+  only reference. The props bags of nodes the renderer already built are not given back, and cannot be —
+  the renderer is the caller's and may have returned a node the application still holds, which returning
+  would clear and alias into the shared pool.
+
 - `V.ListFragment` refuses a `key` holding a NUL (U+0000) before it maps the list rather than after.
-  The refusal is `V.Fragment`'s — NUL is the delimiter the reconciler composes Fragment scope chains
-  from — and both `V.ListFragment` overloads reached it by handing `V.List(...)` to `V.Fragment`, an
-  argument C# evaluates before the call. So a refused call had already run the renderer for every item,
+  NUL is the delimiter the reconciler composes Fragment scope chains from, and both `V.ListFragment`
+  overloads reached the refusal of it by handing `V.List(...)` to `V.Fragment`, an argument C#
+  evaluates before the call. So a refused call had already run the renderer for every item,
   and the pooled child array `V.List` took for the result, together with whatever the mapped nodes
   took, was out on loan when the refusal fired. A refused call builds no Fragment, so no later
   retirement could carry those back, and nothing else gives a pooled object back. Both overloads refuse

@@ -220,6 +220,7 @@ namespace Velvet
             IReadOnlyDictionary<string, string>? data = null,
             IReadOnlyDictionary<string, string>? aria = null)
         {
+            VNode.RequireKey(key);
             FiberElementProps? props = null;
             if (verticalScrollerVisibility.HasValue || horizontalScrollerVisibility.HasValue || touchScrollBehavior.HasValue)
             {
@@ -305,6 +306,7 @@ namespace Velvet
             IReadOnlyDictionary<string, string>? data = null,
             IReadOnlyDictionary<string, string>? aria = null)
         {
+            VNode.RequireKey(key);
             var events = SingleEvent(onClick != null ? new ClickedBinding { Handler = onClick } : null);
 
             FiberElementProps? props = null;
@@ -379,6 +381,7 @@ namespace Velvet
             IReadOnlyDictionary<string, string>? data = null,
             IReadOnlyDictionary<string, string>? aria = null)
         {
+            VNode.RequireKey(key);
             FiberElementProps? props = null;
             if (text != null)
             {
@@ -439,6 +442,7 @@ namespace Velvet
             IReadOnlyDictionary<string, string>? data = null,
             IReadOnlyDictionary<string, string>? aria = null)
         {
+            VNode.RequireKey(key);
             var events = SingleEvent(onValueChanged != null ? new ChangeEventBinding<float> { Handler = onValueChanged } : null);
 
             FiberElementProps? props = null;
@@ -502,6 +506,7 @@ namespace Velvet
             IReadOnlyDictionary<string, string>? data = null,
             IReadOnlyDictionary<string, string>? aria = null)
         {
+            VNode.RequireKey(key);
             var events = SingleEvent(onValueChanged != null ? new ChangeEventBinding<bool> { Handler = onValueChanged } : null);
 
             FiberElementProps? props = null;
@@ -580,6 +585,7 @@ namespace Velvet
             bool? isReadOnly = null,
             bool? isDelayed = null)
         {
+            VNode.RequireKey(key);
             var events = SingleEvent(onValueChanged != null ? new ChangeEventBinding<string> { Handler = onValueChanged } : null);
 
             var declaresTextField = isPasswordField.HasValue || placeholder != null || maxLength.HasValue
@@ -697,6 +703,7 @@ namespace Velvet
             IReadOnlyDictionary<string, string>? data = null,
             IReadOnlyDictionary<string, string>? aria = null)
         {
+            VNode.RequireKey(key);
             // Validated BEFORE renting pooled props so a throwing call leaks nothing (the settings
             // constructor fail-fasts on an invalid scale for every construction path, this factory
             // included). Always carried (even with a null camera): the patcher needs the settings on
@@ -762,6 +769,7 @@ namespace Velvet
             IReadOnlyDictionary<string, string>? data = null,
             IReadOnlyDictionary<string, string>? aria = null)
         {
+            VNode.RequireKey(key);
             if (playOn is not (PlayTrigger.Mount or PlayTrigger.Manual))
             {
                 throw new ArgumentOutOfRangeException(nameof(playOn), playOn,
@@ -826,6 +834,7 @@ namespace Velvet
             IReadOnlyDictionary<string, string>? data = null,
             IReadOnlyDictionary<string, string>? aria = null)
         {
+            VNode.RequireKey(key);
             var events = SingleEvent(onValueChanged != null ? new ChangeEventBinding<string> { Handler = onValueChanged } : null);
 
             FiberElementProps? props = null;
@@ -883,6 +892,7 @@ namespace Velvet
             IReadOnlyDictionary<string, string>? data = null,
             IReadOnlyDictionary<string, string>? aria = null)
         {
+            VNode.RequireKey(key);
             FiberElementProps? props = null;
             if (enabled.HasValue)
             {
@@ -940,6 +950,7 @@ namespace Velvet
             IReadOnlyDictionary<string, string>? data = null,
             IReadOnlyDictionary<string, string>? aria = null)
         {
+            VNode.RequireKey(key);
             var events = SingleEvent(onValueChanged != null ? new ChangeEventBinding<bool> { Handler = onValueChanged } : null);
 
             FiberElementProps? props = null;
@@ -1002,6 +1013,7 @@ namespace Velvet
             IReadOnlyDictionary<string, string>? data = null,
             IReadOnlyDictionary<string, string>? aria = null)
         {
+            VNode.RequireKey(key);
             var events = SingleEvent(onValueChanged != null ? new ChangeEventBinding<int> { Handler = onValueChanged } : null);
 
             FiberElementProps? props = null;
@@ -1063,6 +1075,7 @@ namespace Velvet
             IReadOnlyDictionary<string, string>? data = null,
             IReadOnlyDictionary<string, string>? aria = null)
         {
+            VNode.RequireKey(key);
             var events = SingleEvent(onValueChanged != null ? new ChangeEventBinding<int> { Handler = onValueChanged } : null);
 
             FiberElementProps? props = null;
@@ -1112,6 +1125,9 @@ namespace Velvet
         /// <param name="items">Source collection. When null or empty, returns an empty VNode array.</param>
         /// <param name="keySelector">Selector that derives a stable per-item key.</param>
         /// <param name="renderer">Function that produces a VNode for each item.</param>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="keySelector"/> returns a key
+        /// containing a NUL character, after <paramref name="renderer"/> has run for that item and every
+        /// item before it.</exception>
         /// <returns>Array of rendered VNodes (each carrying the selected key).</returns>
         public static VNode?[] List<T>(
             IReadOnlyList<T> items,
@@ -1124,16 +1140,27 @@ namespace Velvet
             }
 
             var result = VNodePool.RentNodeArray(items.Count);
-            for (var i = 0; i < items.Count; i++)
+            // The selector's key is not known until its item is mapped, so the refusal of one cannot be
+            // hoisted above this rent the way a key: parameter's is. Any throw out of the mapping gives
+            // the array back instead: a call that throws returns none, so nothing later can retire it.
+            try
             {
-                var node = renderer(items[i]);
-                if (node != null)
+                for (var i = 0; i < items.Count; i++)
                 {
-                    // The selector key is authoritative: it overrides any key the renderer set on the
-                    // node, so the list-mapping site owns the identity used for reconciliation.
-                    node.Key = keySelector(items[i]);
+                    var node = renderer(items[i]);
+                    if (node != null)
+                    {
+                        // The selector key is authoritative: it overrides any key the renderer set on the
+                        // node, so the list-mapping site owns the identity used for reconciliation.
+                        node.Key = keySelector(items[i]);
+                    }
+                    result[i] = node;
                 }
-                result[i] = node;
+            }
+            catch
+            {
+                VNodePool.ReturnNodeArray(result);
+                throw;
             }
 
             return result;
@@ -1147,6 +1174,9 @@ namespace Velvet
         /// <param name="items">Source collection. When null or empty, returns an empty VNode array.</param>
         /// <param name="keySelector">Selector that derives a stable per-item key from the item and its index.</param>
         /// <param name="renderer">Function that produces a VNode from the item and its index.</param>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="keySelector"/> returns a key
+        /// containing a NUL character, after <paramref name="renderer"/> has run for that item and every
+        /// item before it.</exception>
         /// <returns>Array of rendered VNodes (each carrying the selected key).</returns>
         public static VNode?[] List<T>(
             IReadOnlyList<T> items,
@@ -1159,16 +1189,25 @@ namespace Velvet
             }
 
             var result = VNodePool.RentNodeArray(items.Count);
-            for (var i = 0; i < items.Count; i++)
+            // Same ordering constraint as the overload above.
+            try
             {
-                var node = renderer(items[i], i);
-                if (node != null)
+                for (var i = 0; i < items.Count; i++)
                 {
-                    // The selector key is authoritative: it overrides any key the renderer set on the
-                    // node, so the list-mapping site owns the identity used for reconciliation.
-                    node.Key = keySelector(items[i], i);
+                    var node = renderer(items[i], i);
+                    if (node != null)
+                    {
+                        // The selector key is authoritative: it overrides any key the renderer set on the
+                        // node, so the list-mapping site owns the identity used for reconciliation.
+                        node.Key = keySelector(items[i], i);
+                    }
+                    result[i] = node;
                 }
-                result[i] = node;
+            }
+            catch
+            {
+                VNodePool.ReturnNodeArray(result);
+                throw;
             }
 
             return result;
@@ -1185,8 +1224,9 @@ namespace Velvet
         /// <param name="keySelector">Selector that derives a stable per-item key.</param>
         /// <param name="renderer">Function that produces a VNode for each item.</param>
         /// <param name="key">Optional key disambiguating this Fragment from siblings at the same position.</param>
-        /// <exception cref="ArgumentException">Thrown, before <paramref name="renderer"/> is invoked for
-        /// any item, when <paramref name="key"/> contains a NUL character.</exception>
+        /// <exception cref="ArgumentException">Thrown before <paramref name="renderer"/> is invoked for any
+        /// item when <paramref name="key"/> contains a NUL character; thrown after it has run for that item
+        /// and every item before it when <paramref name="keySelector"/> returns a key containing one.</exception>
         /// <returns>A <see cref="FragmentNode"/> wrapping the rendered VNodes.</returns>
         public static FragmentNode ListFragment<T>(
             IReadOnlyList<T> items,
@@ -1198,7 +1238,7 @@ namespace Velvet
             // refusal to the V.Fragment call below strands the child array List rented and whatever
             // the renderer's nodes rented, with no Fragment built to carry them to a later
             // retirement. Same ordering rule as V.Draggable's refusal above its own rent.
-            RequireFragmentKey(key);
+            VNode.RequireKey(key);
             return Fragment(List(items, keySelector, renderer), key);
         }
 
@@ -1212,8 +1252,9 @@ namespace Velvet
         /// <param name="keySelector">Selector that derives a stable per-item key from the item and its index.</param>
         /// <param name="renderer">Function that produces a VNode from the item and its index.</param>
         /// <param name="key">Optional key disambiguating this Fragment from siblings at the same position.</param>
-        /// <exception cref="ArgumentException">Thrown, before <paramref name="renderer"/> is invoked for
-        /// any item, when <paramref name="key"/> contains a NUL character.</exception>
+        /// <exception cref="ArgumentException">Thrown before <paramref name="renderer"/> is invoked for any
+        /// item when <paramref name="key"/> contains a NUL character; thrown after it has run for that item
+        /// and every item before it when <paramref name="keySelector"/> returns a key containing one.</exception>
         /// <returns>A <see cref="FragmentNode"/> wrapping the rendered VNodes.</returns>
         public static FragmentNode ListFragment<T>(
             IReadOnlyList<T> items,
@@ -1222,7 +1263,7 @@ namespace Velvet
             string? key = null)
         {
             // Same ordering constraint as the overload above.
-            RequireFragmentKey(key);
+            VNode.RequireKey(key);
             return Fragment(List(items, keySelector, renderer), key);
         }
 
@@ -1752,6 +1793,7 @@ namespace Velvet
             IReadOnlyDictionary<string, string>? data = null,
             IReadOnlyDictionary<string, string>? aria = null)
         {
+            VNode.RequireKey(key);
             // Validated BEFORE renting pooled props so a throwing call leaks nothing (mirrors V.SceneView):
             // the settings constructor fail-fasts on an invalid distanceFactor for every construction path,
             // this factory included.
@@ -1813,6 +1855,7 @@ namespace Velvet
             IReadOnlyDictionary<string, string>? data = null,
             IReadOnlyDictionary<string, string>? aria = null)
         {
+            VNode.RequireKey(key);
             var mergedProps = WithAttributes(props, data, aria) ?? VNodePool.RentProps();
             mergedProps.FocusScope = new FocusScopeSettings(contain, restoreFocus, autoFocus, singleTabStop);
 
@@ -1870,6 +1913,7 @@ namespace Velvet
             IReadOnlyDictionary<string, string>? data = null,
             IReadOnlyDictionary<string, string>? aria = null)
         {
+            VNode.RequireKey(key);
             var mergedProps = WithAttributes(props, data, aria) ?? VNodePool.RentProps();
             mergedProps.DndContext = new DndContextSettings(
                 onDragStart, onDragOver, onDragEnd, onDragCancel, collisionDetection, activation);
@@ -1928,6 +1972,7 @@ namespace Velvet
             IReadOnlyDictionary<string, string>? data = null,
             IReadOnlyDictionary<string, string>? aria = null)
         {
+            VNode.RequireKey(key);
             // Above the rent below, so a refusal here strands no bag this factory rented.
             if (movement is not (DragMovement.Translate or DragMovement.None))
             {
@@ -1985,6 +2030,7 @@ namespace Velvet
             IReadOnlyDictionary<string, string>? data = null,
             IReadOnlyDictionary<string, string>? aria = null)
         {
+            VNode.RequireKey(key);
             var mergedProps = WithAttributes(props, data, aria) ?? VNodePool.RentProps();
             mergedProps.Droppable = new DroppableSettings(
                 id, dropData, disabled, whileOverClass, whileDragActiveClass);
@@ -2019,6 +2065,7 @@ namespace Velvet
         /// <returns>The created <see cref="PortalNode"/>.</returns>
         public static PortalNode DragOverlay(VNode?[]? children = null, string? key = null)
         {
+            VNode.RequireKey(key);
             var positionerProps = VNodePool.RentProps();
             positionerProps.DragOverlay = new DragOverlaySettings();
             return Portal(UILayer.Overlay, key: key, children: new VNode?[]
@@ -2057,30 +2104,18 @@ namespace Velvet
         /// </summary>
         /// <param name="children">Child VNodes returned as a flat sibling list.</param>
         /// <param name="key">
-        /// Optional key used to disambiguate the Fragment from siblings at the same position. Must
-        /// not contain a NUL (U+0000) character; NUL is reserved as the internal scope delimiter
-        /// used by the reconciler to compose Fragment scope chains.
+        /// Optional key used to disambiguate the Fragment from siblings at the same position, held to
+        /// <see cref="VNode.Key"/>'s rule on what a key may contain.
         /// </param>
         /// <exception cref="ArgumentException">Thrown when <paramref name="key"/> contains a NUL character.</exception>
         /// <returns>The created <see cref="FragmentNode"/>.</returns>
         public static FragmentNode Fragment(VNode?[] children, string? key = null)
         {
-            RequireFragmentKey(key);
             return new FragmentNode
             {
                 Key = key,
                 Children = children ?? EmptyChildren,
             };
-        }
-
-        private static void RequireFragmentKey(string? key)
-        {
-            if (key != null && key.IndexOf('\0') >= 0)
-            {
-                throw new ArgumentException(
-                    "Fragment key must not contain a NUL (U+0000) character; NUL is reserved as the internal scope delimiter.",
-                    nameof(key));
-            }
         }
 
         #endregion
@@ -2299,13 +2334,17 @@ namespace Velvet
         /// </summary>
         /// <typeparam name="T">Element type of the source collection.</typeparam>
         /// <param name="items">Source collection. Must not be null.</param>
-        /// <param name="keySelector">Selector that derives a stable per-item key. Must not be null.</param>
+        /// <param name="keySelector">Selector that derives a stable per-item key, held to
+        /// <see cref="VNode.Key"/>'s rule on what a key may contain. Must not be null. An item whose key
+        /// breaks that rule is left out of the rendered range with a warning; the selector runs from a
+        /// range update rather than from this call, which has no item's key to refuse yet.</param>
         /// <param name="itemHeight">Fixed height (pixels) used for layout and visible-range calculation.</param>
         /// <param name="renderer">Function that produces a VNode for each visible item. Must not be null.</param>
         /// <param name="overscan">Extra items rendered above/below the visible window to smooth scroll-in.</param>
         /// <param name="key">Key used to disambiguate siblings at the same position.</param>
         /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces.</param>
         /// <param name="name">Element name assigned to <see cref="VisualElement.name"/> for query/debug.</param>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="key"/> contains a NUL character.</exception>
         /// <returns>The created <see cref="VirtualListNode"/>.</returns>
         public static VirtualListNode VirtualList<T>(
             IReadOnlyList<T> items,

@@ -79,8 +79,16 @@ namespace Velvet.Experimental
         /// <see cref="VNodePool"/>, so the reconciler reclaims it on the next diff exactly as it does for
         /// <c>V.List</c> output — keeping the builder's only irreducible per-build cost the builder object itself.
         /// </summary>
+        /// <exception cref="ArgumentException">
+        /// Thrown when <see cref="Key"/> holds a NUL character, before this call takes anything from the pool.
+        /// </exception>
         protected VNode?[] BuildChildren()
         {
+            // Above the rent below: a Build() passes this call to its V.* factory as an argument, so the
+            // factory's own refusal of the same key comes too late. Same ordering rule as
+            // V.ListFragment's refusal above the mapping it feeds V.Fragment.
+            VNode.RequireKey(Key);
+
             if (_children == null)
             {
                 return Array.Empty<VNode>();
@@ -106,6 +114,10 @@ namespace Velvet.Experimental
         }
 
         /// <summary>Converts this builder into a concrete <see cref="VNode"/> by delegating to the matching <c>V.*</c> factory.</summary>
+        /// <exception cref="ArgumentException">
+        /// Thrown when <see cref="Key"/> holds a NUL character, under <see cref="VNode.Key"/>'s rule on what
+        /// a key may contain.
+        /// </exception>
         public abstract VNode Build();
 
         /// <summary>
