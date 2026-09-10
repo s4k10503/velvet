@@ -16,7 +16,14 @@ python3 scripts/test_quality/assert_results_from_this_tree.py Logs/results.xml -
 python3 scripts/test_quality/assert_no_inconclusive.py Logs/results.xml
 ```
 
-`-testPlatform PlayMode` for the other suite. `-testFilter "Velvet.Tests.SomeFixture"` narrows it; semicolons separate several, and it matches fully-qualified class or method names.
+`-testPlatform PlayMode` for the other suite. `-testFilter "Velvet.Tests.SomeFixture"` narrows it, and several things about the value decide what actually runs:
+
+- It is matched as a **regex** against a case's full name **and every enclosing suite and assembly name**, so a value naming an assembly selects every case in it.
+- **Metacharacters are live, so a value pasted out of the XML's `fullname` is a pattern rather than a name.** Some names carry `(`, `)` and `[` from arguments rendered into them; a nested fixture's node carries `+`. Such a paste selects nothing and the run exits 0.
+- **`^…$` selects an ordinary fixture's cases**, and nothing at all for a fixture that declares no cases of its own — NUnit makes nested fixtures siblings of the outer one rather than children of it.
+- **Several values separate on `;` and the split does not trim**, so `"A; B"` runs A alone and reports green over the smaller set.
+
+Read the `fullname` roster in the XML, not only the count, before trusting a filtered run: a filter that took a whole assembly reports a count that looks entirely plausible.
 
 **Write into the worktree's own Logs directory, never /tmp/results.xml.** That path is one file for every worktree and every session on the machine, and the compile-error paragraph below is what it costs.
 
@@ -48,7 +55,7 @@ Measured over one snapshot of this machine's process table, 603 lines with one c
 
 Concurrent instances cost wall clock. Measured on one tree, one EditMode suite, **one run per arm**, sampling the neighbour count every three seconds for each run's whole life and subtracting the run itself: alone — 34 samples, every one zero — 3943 passed / 0 failed / 0 inconclusive / 0 skipped over a reported 81.7 s; beside three other full suites — 48 samples, peak three and never below two — the same four counts over 122.7 s. One run per arm settles the wall clock; it does not settle whether load can redden a timing-sensitive case. So do not wait for a quiet machine for a suite run, and take a single failure to the per-case question below.
 
-**Three harnesses are the exception.** A mutation campaign, a neuter sweep and `base_red_check.py`'s C# lane each wait for the machine to go quiet before starting an editor — a campaign before its baseline and again before every mutant, a sweep before every fixture's baseline and again before every cut, the lane once before its first platform — up to `--busy-timeout`, 1800 s by default. All three poll that count every five seconds. **The wait returns at the first sample that finds the count at zero, and nothing afterwards acts on a neighbour**: `mutation_check.run_suite` and `base_red_check.run_unity` sample nothing while their own editor is up, and `neuter_check.run_suite`, the one of the three that samples at all, prints the peak beside the result rather than refusing on it. So a run of yours that starts after a wait has passed is charged to what the harness was measuring.
+**Three harnesses are the exception.** A mutation campaign, a neuter sweep and `base_red_check.py`'s C# lane each wait for the machine to go quiet before starting an editor — a campaign before its baseline and again before every mutant, a sweep before every fixture's baseline and again before every cut, the lane once before its first platform — up to `--busy-timeout`, 1800 s by default. All three poll that count every five seconds. **The wait returns at the first sample that finds the count at zero, and nothing afterwards acts on a neighbour.** All three keep sampling for their own run's whole life and record the most other editors they saw at once — `mutation_check.run_suite` into each mutant's verdict, `base_red_check.run_unity` into the lane's reading, `neuter_check.run_suite` beside the result — and none of them refuses on it. So the peak is there to be read after the fact, which is how a verdict taken under load is told from one taken alone. So a run of yours that starts after a wait has passed is charged to what the harness was measuring.
 
 Each of the three charges it differently. A campaign is built on every failure in its run being the mutation's — `wait_for_quiet` in `mutation_check.py` says so where it waits — and a case your load reddens reads there as `KILLED`, a survivor recorded as covered, with nothing in the receipt to tell it from a mutant a test really killed. In the base-red lane, which takes up to `--max-rounds` editors per platform on that single wait, the same failure is reported as red on the base — the verdict that harness exists to produce. The sweep's is the quiet one: `report_pair` scores a hole as a scoped case that passed the baseline and did **not** fail under the cut, so a case your load reddens is not one — it reads there as the cut being caught. The sweep then reports coverage it never measured, and a `--report` run over `neuter_holes.txt` records the absence.
 
@@ -82,7 +89,6 @@ Three traps in the folding itself, each of which passes a count check:
 
 - **`Is.EqualTo(tuple)` matches a nested collection by reference.** Join to strings instead.
 - **Do not fold a scalar comparison into a tuple — the tolerance stops applying.** `Assert.That((0.99999f, 0.00001f), Is.EqualTo((1f, 0f)).Within(1e-4f))` fails, and prints the tolerance it did not use, so a passing one looks like proof it applied. `VEL503` reports the shape; it does not see a tuple inside an expected collection, which traps the same way. Keep the compared value a scalar or an array of scalars and fold the control in as a gate substituting `float.NaN`. Rounding does not rescue it: two values inside the tolerance can round to different buckets.
-- **The logically sharpest gate is not always the discriminating one.** A `ReferenceEquals` precondition on a LIFO pool holds even when the mechanism is neutered, and a count term next to it is what goes red.
 
 ## Neuter at every layer, not at one
 
