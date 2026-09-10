@@ -25,6 +25,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+from repository import NO_RECORDED_BASE, base_branch  # noqa: E402
 from shell_commands import (GLOB, NAME_THE_TREE, UNPLACEABLE_MOVE, UNRESOLVED_CD,
                             command_directory, git_invocations, unexpanded)
 
@@ -75,11 +76,6 @@ RETURN_TO_BASE = (
     "them under a `-C` naming the primary checkout. Nothing may follow the subcommand but that "
     "branch name.\n"
 )
-NO_RECORDED_BASE = (
-    "No default branch is recorded here — `git symbolic-ref refs/remotes/origin/HEAD` answers "
-    "nothing — so there is no branch to offer a move out to. `git remote set-head origin -a` "
-    "records it.\n"
-)
 
 
 def names_a_commit(root, token):
@@ -105,32 +101,6 @@ def names_a_commit(root, token):
     except Exception:
         return True
     return completed.returncode != 1
-
-
-def base_branch(root):
-    """The default branch as git records it, or None where git records none.
-
-    Read off git's own record rather than spelled out here. A literal would be a second copy of what
-    git already holds, and a copy is what goes stale when the record it copies changes — the same
-    objection `names_a_commit` states against resolving refs without asking git.
-
-    Where git records none, `returns_to_base` exempts nothing — the direction `UNREADABLE_POLICY`
-    declares.
-    """
-    prefix = "refs/remotes/origin/"
-    try:
-        completed = subprocess.run(
-            ["git", "-C", root, "symbolic-ref", "--quiet", prefix + "HEAD"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            timeout=10,
-        )
-    except Exception:
-        return None
-    if completed.returncode != 0:
-        return None
-    named = completed.stdout.decode("utf-8", "replace").strip()
-    return named[len(prefix):] if named.startswith(prefix) else None
 
 
 def primary_worktree(root):

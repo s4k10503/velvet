@@ -10,7 +10,9 @@ rebase rather than a different starting point.
 The command is split into segments and tokenised rather than matched as text. A regex over the
 masked command missed eleven spellings of a creation, quoting the branch name among them, and
 each miss is silent: exit 0 and no output is what a guard with nothing to say looks like.
-`BranchGuardParsingTests` holds the table of what is and is not a creation.
+`BranchGuardParsingTests` holds the table of what is and is not a creation for `checkout`, `switch`
+and `branch`; `scripts/hooks/test_branch_from_unmerged.py` holds it for `git worktree add`, whose
+start point is a positional beside the path rather than the token after the flag.
 """
 
 import json
@@ -29,6 +31,15 @@ HOOK_TOOLS = {"Bash"}
 
 CHECKOUT_CREATE = ("-b", "-B")
 SWITCH_CREATE = ("-c", "-C", "--create", "--force-create")
+WORKTREE_CREATE = ("-b", "-B")
+
+# `--reason` carries a value, so it is stepped over instead of counted; the start point is read off
+# the positionals, and a value left among them is read as one.
+WORKTREE_VALUE_FLAGS = {"--reason"}
+
+# An unborn branch carries no commit at all, so nothing about where HEAD is decides what it holds —
+# which is the whole subject of this guard.
+WORKTREE_UNBORN = "--orphan"
 
 # `git branch` creates only when it is not doing one of these instead. Copy and move are excluded
 # because both name their source, which is the explicit-start-point case.
@@ -89,6 +100,39 @@ def created_by_branch(operands):
     return None
 
 
+def created_by_worktree(operands):
+    """The branch `git worktree add` would create, with the start point it would cut from.
+
+    Not `created_by_flag`: this subcommand takes its two positionals in either order around the
+    flags, so the token after `-b <name>` is the path as often as it is the start point. Read that
+    way, `git worktree add -b topic ../tree` names `../tree` as an explicit start point, which is an
+    allowance — and the shape the guard exists to stop passes under the guard's own allowance.
+
+    A path with no start point and no `--orphan` beside it is a branch cut from HEAD, which is
+    exactly what `git checkout -b` does and is refused for the same reason.
+    """
+    if not operands or operands[0] != "add":
+        return None
+    name, positionals, unborn, index = None, [], False, 1
+    while index < len(operands):
+        token = operands[index]
+        if token.startswith("-") and token != "-":
+            following = operands[index + 1] if index + 1 < len(operands) else None
+            found, consumed = flag_value(token, following, WORKTREE_CREATE)
+            if found:
+                name = found
+                index += consumed
+                continue
+            unborn = unborn or token == WORKTREE_UNBORN
+            index += 2 if token in WORKTREE_VALUE_FLAGS else 1
+            continue
+        positionals.append(token)
+        index += 1
+    if not name or unborn:
+        return None
+    return name, positionals[1] if len(positionals) > 1 else None
+
+
 def creations(command):
     """Every branch this command would create, as (name, start point, -C directory)."""
     found = []
@@ -103,6 +147,8 @@ def creations(command):
             made = created_by_flag(operands, SWITCH_CREATE)
         elif subcommand == "branch":
             made = created_by_branch(operands)
+        elif subcommand == "worktree":
+            made = created_by_worktree(operands)
         else:
             made = None
         if made:
@@ -146,11 +192,28 @@ def record_branch_base(name, sha):
         return False
 
 
+def from_origin_main(name):
+    """The remedy both arms print, spelled so that the commands in it run where the refusal fires.
+
+    A refusal whose remedy another guard refuses leaves the repository with no sanctioned exit at
+    all, which is what `git checkout main` / `git pull` / `git checkout -b <name>` left here. So the
+    branch is cut from `origin/main` by name and nothing here moves a checkout's HEAD.
+    scripts/hooks/test_guard_remedies.py puts every command these lines print back through the
+    guards that run on a Bash call.
+    """
+    return [
+        "git fetch origin main",
+        f"git worktree add <path> -b {name} origin/main",
+        "",
+        f"Or `git branch {name} origin/main` to create it in this checkout without moving HEAD.",
+    ]
+
+
 def refusal(cwd, name, start_point):
     """The refusal text for one creation, or None when it is allowed."""
-    # A start point named on purpose is the sanctioned way to stack, and origin/main is current by
-    # definition. `main` is the exception: it is what the refusal below recommends, and it is stale
-    # exactly when the guard's second arm exists to say so.
+    # A start point named on purpose is the sanctioned way to stack. `main` is the exception because
+    # it is a local branch that can lag the remote, so naming it is not evidence the new branch
+    # starts anywhere current — which is what the second arm below measures.
     explicit_elsewhere = start_point is not None and start_point != "main"
     if explicit_elsewhere:
         return None
@@ -189,9 +252,7 @@ def refusal(cwd, name, start_point):
             "produced a rebase against squash-merged content already on main, conflicts, and a pull "
             "request that had to be abandoned and reopened.",
             "",
-            "git checkout main",
-            "git pull",
-            f"git checkout -b {name}",
+            *from_origin_main(name),
             "",
             f"To stack on unmerged work on purpose, record intent and retry:",
             f'  echo "{name} <why> $(date +%s) $CLAUDE_CODE_SESSION_ID" >> ~/.velvet-pr-deferrals',
@@ -208,9 +269,7 @@ def refusal(cwd, name, start_point):
             "Branching from a stale main produces a branch the merge guard refuses later; the fix "
             "then is a rebase rather than a different starting point.",
             "",
-            "git checkout main",
-            "git pull",
-            f"git checkout -b {name}",
+            *from_origin_main(name),
         ]
 
     if origin_missing and not main_behind:
