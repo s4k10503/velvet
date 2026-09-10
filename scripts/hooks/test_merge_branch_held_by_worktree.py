@@ -105,6 +105,19 @@ class HeldBranchTests(unittest.TestCase):
         self.assertEqual((arranged, result.returncode, "  feature  held by " in result.stderr),
                          (True, REFUSED, True))
 
+    def test_Given_AHeldPathHoldingAStrayByte_When_ThatBranchIsMerged_Then_ItIsNamedAsHeld(self):
+        # Arrange — the branch named here is the one whose recorded path carries the stray byte, so
+        # the line the guard writes to stderr carries a surrogate. The case above names a branch on
+        # a clean path, so nothing in the suite reaches that write until this one does.
+        arranged = self.listing_is_undecodable()
+
+        # Act
+        result = self.ask("sibling")
+
+        # Assert
+        self.assertEqual((arranged, result.returncode, "  sibling  held by " in result.stderr),
+                         (True, REFUSED, True))
+
     def test_Given_AListingHoldingAStrayByte_When_AnUnheldBranchIsMerged_Then_TheMergeIsLetThrough(self):
         # Arrange — the other side of the same listing. A reading that named every branch as held
         # would satisfy the case above, whose branch is held either way, so what the listing decides
@@ -117,8 +130,8 @@ class HeldBranchTests(unittest.TestCase):
         # Assert
         self.assertEqual((arranged, result.returncode), (True, ALLOWED))
 
-    # GREEN_ON_BASE(characterization): the fail-closed branch is what the two cases above are read
-    # against, and neither of them reaches it — both arrange a git that answers.
+    # GREEN_ON_BASE(characterization): the fail-closed branch is what the cases above are read
+    # against, and none of them reaches it — each arranges a git that answers.
     def test_Given_AGitThatCannotRun_When_AMergeIsAsked_Then_TheUnreadListIsRefused(self):
         # Arrange — PATH holding no git at all, which is the reading failure the guard's None was
         # written for and the one it names in what it prints.
