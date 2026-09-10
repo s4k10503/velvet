@@ -1,32 +1,6 @@
 #!/usr/bin/env python3
 """Unit tests for .claude/hooks/refuse/commit_failing_fast_checks.py.
 
-Five hold the unexpanded-operand readings and the remedies a reading that did not answer carries.
-The two operand kinds are refused apart because the remedy for one does not reach the other. They
-were folded into one list under a sentence written for a pathspec, and an agent's own
-`git -C "$SP" commit` was refused with `$SP` printed under advice to name the paths or commit the
-index — two things that cannot resolve a `-C`. The same split runs one level down: a git that never
-ran is worth retrying and a git that refused is not, and a tilde-spelled pathspec is the second
-wearing the first's remedy.
-
-Four hold which content the checks run over, the index's rather than the working tree's. The first
-gives the two halves different text and reads which of them the refusal quotes back. Two stage a
-name git does not spell back as it stands — one it quotes, one holding a byte the encoding does not
-map. The fourth stages a submodule, which records a commit and no blob at all.
-
-Nine hold the working-tree half. What reached it before was the pathspec pair above, which git
-refuses, so the listing came back unanswered and no file was ever opened. Three are broken in the
-tree alone
-and differ only in the name — one needing no quoting, one git quotes, one holding a character
-universal newlines rewrite — so what separates them is which spelling of a listing reaches the
-reader. A fourth breaks the refusal's own line rather than the listing. Two pose symlinks, whose
-recorded content is the target they name rather than whatever that name reaches, and one a
-submodule. The last two are paths the listing names that nothing can open at all, read once for the
-remedy and once for the line the path is spelled into.
-
-One holds the tree the checks run in, whose name ends in a character a reading that trims whitespace
-takes off it.
-
 Run: python3 scripts/hooks/test_commit_failing_fast_checks.py
 """
 
@@ -48,19 +22,21 @@ STAGED_AND_BROKEN = "indexed_and_broken = (\n"
 TREE_AND_WHOLE = "tree_is_fine = 1\n"
 
 # One name needing no quoting, one git quotes under the default `core.quotePath`, one holding a
-# character universal newlines rewrite, and one holding a line break that survives that rewriting.
-# The last two destroy the line they are printed in; the escape is what a refusal spells them with.
+# character universal newlines rewrite, one holding a line break that survives that rewriting, and
+# one `str.splitlines()` reads as a single line. A refusal spells the last three quoted and
+# escaped, and the first two as they stand.
 PLAIN = "plain.py"
 QUOTED = "café.py"
 RETURNING = "with-return\r.py"
 BREAKING = "with\nnewline.py"
+OVERWRITING = "a\x1b[999Dnothing is wrong.py"
 
 # A name whose bytes are not valid UTF-8, written into the index rather than onto disk so that the
 # arrangement needs no filesystem able to carry it — measured, the one this was written on refused
-# such a name with `Illegal byte sequence`. `SHOWN` is the escape a refusal spells it with, which
-# is where the decoding that kept the byte is visible.
+# such a name with `Illegal byte sequence`. `RAW_BYTE_SHOWN` is how a refusal spells it, which is
+# where the decoding that kept the byte is visible.
 RAW_BYTE_NAME = b"bad\xffname.py"
-RAW_BYTE_SHOWN = "bad\\udcffname.py"
+RAW_BYTE_SHOWN = '"bad\\udcffname.py"'
 
 # A symlink and the two names it is repointed at: one nothing answers to, one a file this repository
 # holds. Only the first is a name Python will not parse, so the first has to be refused and the
@@ -70,13 +46,20 @@ FIRST_TARGET = "first.py"
 MISSING_TARGET = "1bad.py"
 BROKEN_TARGET = "also.py"
 
+# A symlink whose recorded target holds a byte UTF-8 does not map. The suffix is what sends
+# those bytes to a check at all, and that check is what rejects them.
+RAW_LINK = "raw.json"
+RAW_TARGET = b'{"a": "\xff"}'
+
 # A tracked file at a mode that lets nobody read it.
 CLOSED = "closed.py"
 
-# A submodule's path. Its index entry is written directly rather than cloned: what the guard reads
-# is the mode and the listing, and `git submodule add` adds a working tree and a `.gitmodules` that
-# neither reading looks at.
+# Two submodule paths. Their index entries are written directly rather than cloned: what the guard
+# reads is the mode and the listing, and `git submodule add` adds a working tree and a `.gitmodules`
+# that neither reading looks at. The second ends in a suffix a fast check knows, which is what
+# carries the answer for a path recording no blob as far as a check.
 SUB = "sub"
+SUB_CHECKED = "mod.py"
 GITLINK_MODE = "160000"
 
 WHOLE = "whole = 1\n"
@@ -93,6 +76,9 @@ MAKE_IT_READABLE = "Make it readable, or commit without it."
 RETRY_WHEN_GIT_ANSWERS = "Retry when git answers."
 CORRECT_WHAT_GIT_NAMED = "Correct what git named and retry."
 
+# What git says of a directory with no repository at or above it.
+NOT_A_REPOSITORY = "not a git repository"
+
 
 class GuardTestCase(unittest.TestCase):
     def setUp(self):
@@ -107,11 +93,7 @@ class GuardTestCase(unittest.TestCase):
         return root
 
     def judge(self, command, cwd=None):
-        """The guard's verdict, as (exit code, stderr).
-
-        Through a text pipe the return in `RETURNING` arrives as a line break, and the case posing
-        that name compares against a refusal this reading had already repaired.
-        """
+        """The guard's verdict, as (exit code, stderr)."""
         event = {"tool_name": "Bash", "cwd": str(cwd or self.root),
                  "tool_input": {"command": command}}
         done = subprocess.run(["python3", str(GUARD)], input=json.dumps(event).encode("utf-8"),
@@ -135,9 +117,9 @@ class GuardTestCase(unittest.TestCase):
                               input=data, check=True, capture_output=True, timeout=60)
         return done.stdout.strip()
 
-    def submodule(self, extra=None):
-        """A nested repository at `SUB`, as the commit its HEAD names once `extra` is committed."""
-        inner = self.root / SUB
+    def submodule(self, extra=None, path=SUB):
+        """A nested repository at `path`, as the commit its HEAD names once `extra` is committed."""
+        inner = self.root / path
         inner.mkdir(exist_ok=True)
         subprocess.run(["git", "-C", str(inner), "init", "--quiet"], check=True,
                        capture_output=True, timeout=60)
@@ -334,6 +316,19 @@ class WorktreeContent(GuardTestCase):
             (code, said.splitlines()[:1], staged),
             (2, ["Refusing `git commit`: " + json.dumps(BREAKING) + FAILED_A_CHECK + "."], ""))
 
+    def test_Given_ANameHoldingAnEscapeSequence_When_Refused_Then_TheRefusalSpellsItOut(self):
+        # Arrange — a name `str.splitlines()` reads as one line, so what separates this from the
+        # case above is which characters the quoting predicate is asked about.
+        staged = self.broken_only_in_the_worktree(OVERWRITING)
+
+        # Act
+        code, said = self.judge("git commit -a -m x")
+
+        # Assert — the whole first line, for the reason the line-break case gives.
+        self.assertEqual(
+            (code, said.splitlines()[:1], staged),
+            (2, ["Refusing `git commit`: " + json.dumps(OVERWRITING) + FAILED_A_CHECK + "."], ""))
+
     def test_Given_ASymlinkRepointedAtAMissingName_When_Judged_Then_TheRecordedTargetIsChecked(self):
         # Arrange — the symlink is what changed, so the listing names it; following it finds
         # nothing. The name it now carries is one Python will not parse, so a refusal here is a
@@ -376,6 +371,28 @@ class WorktreeContent(GuardTestCase):
         self.assertEqual((code, said, (self.root / BROKEN_TARGET).read_text(encoding="utf-8")),
                          (0, "", BROKEN))
 
+    def test_Given_ASymlinkWhoseTargetHoldsAByteOutsideTheEncoding_When_Judged_Then_ItsRecordedBytesAreChecked(self):
+        # Arrange — the target is the blob, and as bytes it is not content the check for this
+        # suffix accepts. A re-encoding that substitutes the byte hands the check a document that
+        # parses instead.
+        (self.root / FIRST_TARGET).write_text(WHOLE, encoding="utf-8")
+        os.symlink(FIRST_TARGET, self.root / RAW_LINK)
+        self.git("add", FIRST_TARGET, RAW_LINK)
+        self.git("commit", "-q", "-m", "arranged")
+        os.unlink(self.root / RAW_LINK)
+        os.symlink(os.fsdecode(RAW_TARGET), self.root / RAW_LINK)
+        staged = self.git("diff", "--cached", "--name-only")
+
+        # Act
+        code, said = self.judge("git commit -a -m x")
+
+        # Assert — what the commit then wrote sits in the comparison, because checking the target's
+        # own bytes is right only for as long as those bytes are the blob.
+        self.git("commit", "-a", "-q", "-m", "recorded")
+        self.assertEqual((code, RAW_LINK + FAILED_A_CHECK in said, staged,
+                          self.git("show", "HEAD:" + RAW_LINK)),
+                         (2, True, "", os.fsdecode(RAW_TARGET)))
+
     # GREEN_ON_BASE(characterization): the base allows this too, by dropping every path it could
     # not open and going on. Opening the path rather than reading what kind of entry it is reddens
     # it, and the refusal that follows is the one neither of its halves can be acted on.
@@ -395,6 +412,30 @@ class WorktreeContent(GuardTestCase):
         self.git("commit", "-a", "-q", "-m", "recorded")
         self.assertEqual((code, said, listings, self.git("ls-tree", "HEAD", "--", SUB).split()[:2]),
                          (0, "", ("", SUB + "\n"), [GITLINK_MODE, "commit"]))
+
+    # GREEN_ON_BASE(characterization): the base allows this too, by dropping every path it could
+    # not open and going on. Carrying the answer for a path that records no blob into the checks
+    # reddens it, and what fails then is the hook itself, at the exit that lets a commit through.
+    def test_Given_ASubmoduleAtAPathAFastCheckKnows_When_Judged_Then_TheCommitIsAllowed(self):
+        # Arrange — the case above with the suffix changed, which is the whole of what separates
+        # them: a path whose suffix no fast check knows is returned on before its content is read.
+        self.index(("160000 " + self.submodule(path=SUB_CHECKED) + "\t" + SUB_CHECKED
+                    + "\x00").encode("utf-8"))
+        self.git("commit", "-q", "-m", "arranged")
+        self.submodule(extra="b.py", path=SUB_CHECKED)
+        listings = (self.git("diff", "--cached", "--name-only"), self.git("diff", "--name-only"))
+
+        # Act
+        code, said = self.judge("git commit -a -m x")
+
+        # Assert — what the commit then wrote sits in the comparison, because the guard is allowed
+        # to skip this path only for as long as git records a commit there and no blob; and the
+        # suffix beside it, since a path renamed past the checks poses nothing and says nothing.
+        self.git("commit", "-a", "-q", "-m", "recorded")
+        self.assertEqual((code, said, listings, os.path.splitext(SUB_CHECKED)[1],
+                          self.git("ls-tree", "HEAD", "--", SUB_CHECKED).split()[:2]),
+                         (0, "", ("", SUB_CHECKED + "\n"), os.path.splitext(PROBE)[1],
+                          [GITLINK_MODE, "commit"]))
 
     def test_Given_APathTheListingNamesThatWillNotOpen_When_Judged_Then_TheRemedyIsAboutTheFile(self):
         # Arrange — a tracked file whose mode lets nobody read it. That the mode really closed the
@@ -445,6 +486,19 @@ class TreeTheChecksRunIn(GuardTestCase):
 
         # Assert
         self.assertEqual((code, PLAIN + FAILED_A_CHECK in said), (2, True))
+
+    def test_Given_ATreeThatIsNoRepository_When_Judged_Then_TheRefusalNamesWhatGitSaid(self):
+        # Arrange — outside `self.root`, since a directory under it would find that repository
+        # above. Falling back to this directory as the tree sends every reading below to a git that
+        # has already refused, and what those readings answer is about a question none of them asked.
+        plain = Path(tempfile.mkdtemp(prefix="fast-checks-none-")).resolve()
+        self.addCleanup(shutil.rmtree, plain, ignore_errors=True)
+
+        # Act
+        code, said = self.judge("git commit -a -m x", cwd=plain)
+
+        # Assert
+        self.assertEqual((code, NOT_A_REPOSITORY in said), (2, True))
 
 
 if __name__ == "__main__":

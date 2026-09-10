@@ -43,35 +43,21 @@ UNREADABLE_POLICY = "refuse"
 UNREADABLE_PROBE = {"command": "git commit -m probe"}
 
 
-# What a reading that did not answer resolves to, and what to tell the reader about it. Handed back
-# as an ordinary value instead, each reader below reads its own failure as a finding: an empty
-# listing says this commit records nothing a check could fail, and an empty index says nothing in it
-# is a submodule.
-#
-# The subject and the remedy travel with the answer for the reason the two unexpanded operands are
-# refused apart below: the states a reading fails in are different facts about the reader's tree,
-# and the remedy for one does not reach the others. `unread` is where the two git ones part.
+# An empty listing says this commit records nothing a check could fail, and an empty index says
+# nothing in it is a submodule, so a reading that did not answer must not resolve to either.
 Unreadable = collections.namedtuple("Unreadable", "subject remedy")
 
 # What git wrote, what was asked of it, and the exit code — None where git did not run at all.
 GitRead = collections.namedtuple("GitRead", "stdout said code asked")
 
 
-def spelled(text):
-    return repository.printable(displayed(text))
-
-
 def git(cwd, *args):
     """git's stdout as the bytes it wrote, alongside what was asked and how it ended.
-
-    Bytes rather than `repository.git_answer`'s text for the reason `records` below gives. The
-    code rather than `repository.git_bytes`'s answer-or-None because the refusal a failed reading
-    earns turns on it.
 
     Same reason `lib/repository.py` answers rather than raising: a hook that raises exits 1, and 1
     lets the tool through.
     """
-    asked = spelled("git " + " ".join(args))
+    asked = displayed("git " + " ".join(args))
     try:
         done = subprocess.run(["git", "-C", cwd, *args], capture_output=True, timeout=30)
     except (OSError, subprocess.SubprocessError) as failure:
@@ -87,11 +73,7 @@ def unread(answer):
     not reach the other: `Given_ATildeSpelledPathspec_When_Judged_Then_ItIsNotSentBackToGit` in
     scripts/hooks/test_commit_failing_fast_checks.py is what fails when both take the retry.
     """
-    lines = [answer.asked]
-    if answer.code is not None:
-        lines.append("exited {}".format(answer.code))
-    lines += repository.printable(answer.said).splitlines()
-    detail = "\n".join("  " + line for line in lines)
+    detail = "\n".join("  " + line for line in [answer.asked] + answer.said.splitlines())
     if answer.code is None:
         return Unreadable("what this commit would record could not be read.\n\n" + detail,
                           "Retry when git answers.")
@@ -100,9 +82,14 @@ def unread(answer):
 
 
 def repo_root(cwd):
+    """The tree the checks run in, or an `Unreadable` when the reading did not answer.
+
+    Falling back to `cwd` was rejected: it drops this reading's account of what went wrong and
+    sends every reading below into a directory nothing has established is a tree.
+    """
     answer = git(cwd, "rev-parse", "--show-toplevel")
     if answer.code != 0:
-        return cwd
+        return unread(answer)
     # Same terminator-only reading as `repository.toplevel`, and for the reason given there.
     return answer.stdout.decode(**repository.DECODING).removesuffix("\n") or cwd
 
@@ -150,15 +137,7 @@ def commit_invocations(command):
 
 
 def records(listing):
-    """The paths a NUL-delimited listing named.
-
-    Same reading `report/untracked_scratch.py` takes of its own listing. In
-    scripts/hooks/test_commit_failing_fast_checks.py,
-    `Given_ANameGitQuotes_When_BrokenInTheWorktree_Then_TheRefusalNamesIt` is what fails when the
-    split is a line break instead, and
-    `Given_ANameHoldingACarriageReturn_When_BrokenInTheWorktree_Then_ItsContentIsChecked` when a
-    caller decodes the listing before handing it over.
-    """
+    """The paths a NUL-delimited listing named."""
     return [record.decode(**repository.DECODING)
             for record in listing.split(b"\0") if record.strip()]
 
@@ -205,14 +184,7 @@ def worktree_paths(cwd, pathspecs):
 
 
 def recorded(full):
-    """The bytes a commit records for a worktree path, or None where it records no blob at all.
-
-    `open` is the reader for neither of the two kinds this separates out.
-    `Given_ASymlinkRepointedAtAMissingName_When_Judged_Then_TheRecordedTargetIsChecked` and
-    `Given_ASubmoduleWhoseCommitMoved_When_Judged_Then_TheCommitIsAllowed` in
-    scripts/hooks/test_commit_failing_fast_checks.py are what fail when either stops being
-    separated, and each pins what git records there.
-    """
+    """The bytes at a worktree path, or None where a commit records no blob there at all."""
     if os.path.islink(full):
         return os.readlink(full).encode(**repository.DECODING)
     if os.path.isdir(full):
@@ -250,7 +222,7 @@ def committed_content(cwd, commits_all, pathspecs):
                 # looking like a verdict over the whole commit.
                 return Unreadable(
                     "a file this commit records could not be opened.\n\n  {}: {}".format(
-                        spelled(path), spelled(str(error))),
+                        displayed(path), displayed(str(error))),
                     "Make it readable, or commit without it.")
             if data is not None:
                 content[path] = data
@@ -274,7 +246,7 @@ def cut_targets(root):
 
 def refuse(display, output, reproduce):
     sys.stderr.write(
-        f"Refusing `git commit`: {spelled(display)} failed a fast check.\n\n"
+        f"Refusing `git commit`: {displayed(display)} failed a fast check.\n\n"
         f"{output.rstrip()}\n\n"
         f"Reproduce: {reproduce}\n"
     )
@@ -294,8 +266,8 @@ def check_content(display, data):
     # The reproduce line is read as a line too, and it is built here rather than in `refuse`. Two
     # spellings, because one of the two lines below puts the path in a shell word and the other in
     # a Python string literal, which is quoted whatever the name holds.
-    shown = spelled(display)
-    literal = repository.printable(json.dumps(display))
+    shown = displayed(display)
+    literal = json.dumps(display)
     if suffix == ".json":
         try:
             json.loads(data.decode("utf-8"))
@@ -372,8 +344,8 @@ def check_carried_mutation(root, paths):
         proc = subprocess.run(["python3", "-B", script, "--project", root, "--carried", *paths],
                               capture_output=True, text=True, timeout=CARRIED_TIMEOUT, cwd=root)
     except (OSError, subprocess.SubprocessError) as failure:
-        # Raising here exits 1, which this file's header records as letting the tool through — and
-        # it would take every check below out with it.
+        # Raising here exits 1, which lets the tool through — and it would take every check
+        # below out with it.
         return refuse_mutation("this check could not be run at all.",
                                "{}: {}".format(script, failure))
     if proc.returncode == 0:
@@ -434,13 +406,18 @@ def carried_neuters(content, edits):
     return found
 
 
+def refuse_unreadable(state):
+    sys.stderr.write(f"Refusing `git commit`: {state.subject}\n\n{state.remedy}\n")
+    return 2
+
+
 def audit(cwd, commits_all, pathspecs):
     root = repo_root(cwd)
+    if isinstance(root, Unreadable):
+        return refuse_unreadable(root)
     content = committed_content(root, commits_all, pathspecs)
     if isinstance(content, Unreadable):
-        sys.stderr.write(
-            f"Refusing `git commit`: {content.subject}\n\n{content.remedy}\n")
-        return 2
+        return refuse_unreadable(content)
     if not content:
         return 0
 
