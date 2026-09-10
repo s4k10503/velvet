@@ -30,11 +30,11 @@ from deferrals import DEFERRALS  # noqa: E402
 GitAnswer = collections.namedtuple("GitAnswer", "stdout stderr code")
 
 # git and gh write bytes — paths, JSON, messages — rather than text in whatever encoding the
-# ambient locale names. Read as that encoding, a byte outside it raises past both handlers below and
-# the hook exits 1 with a traceback, where this module promises an unavailable answer instead. The
-# escape is reversible rather than lossy because a caller re-encodes what it reads:
-# untracked_scratch's `unquoted` takes a path's own bytes back out of the listing's spelling, and a
-# replaced one names a file nothing answers to.
+# ambient locale names. Read as that encoding, a byte outside it raises past the handler of each
+# reader that decodes and the hook exits 1 with a traceback, where this module promises an
+# unavailable answer instead. The escape is reversible rather than lossy because a caller re-encodes
+# what it reads: untracked_scratch ages a file by the name a listing gave it, and a replaced byte
+# gives a name that is no longer that file's.
 DECODING = {"encoding": "utf-8", "errors": "surrogateescape"}
 
 
@@ -59,6 +59,22 @@ def git(args, cwd, timeout=15):
     """Run git and return its stdout, or None when it could not answer."""
     answer = git_answer(args, cwd, timeout)
     return answer.stdout if answer.code == 0 else None
+
+
+def git_bytes(args, cwd, timeout=15):
+    """git's stdout as the bytes it wrote, or None when it could not answer.
+
+    A second reader rather than a flag on `git` above: a flag would make the return type depend on
+    an argument, where every reader in this module answers at one type or with None.
+    scripts/hooks/test_untracked_scratch.py's
+    `Given_ANameHoldingACarriageReturn_When_TheReportIsTaken_Then_TheBoundReachesTheFile` is what
+    fails when a caller that needs the bytes takes the decoding reader instead.
+    """
+    try:
+        result = subprocess.run(["git", *args], cwd=cwd, capture_output=True, timeout=timeout)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return result.stdout if result.returncode == 0 else None
 
 
 Answer = collections.namedtuple("Answer", "stdout combined code")

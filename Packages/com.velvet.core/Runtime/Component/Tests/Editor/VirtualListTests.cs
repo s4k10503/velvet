@@ -20,6 +20,9 @@ namespace Velvet.Tests
     /// <item>The visible range is firstVisible..lastVisible derived from scroll offset, viewport height, and
     /// itemHeight, widened by overscan on both sides and clamped to the collection bounds.</item>
     /// <item>An empty collection renders no visible items and tolerates range updates without throwing.</item>
+    /// <item>An item whose <c>keySelector</c> returns a key holding the reconciler's scope delimiter is left
+    /// out of the rendered range under a warning naming it, the rest of the range rendering as it would
+    /// without it, and a key the renderer set on its own node does not put that item back in.</item>
     /// <item>An item's <c>refCallback</c> has run by the time a range update returns, though the update is
     /// driven from a scroll rather than from a reconcile pass.</item>
     /// <item>The DSL rejects a null items / keySelector / renderer with <see cref="ArgumentNullException"/>, and a
@@ -183,6 +186,103 @@ namespace Velvet.Tests
 
             // Assert — the last item the window rendered is the one the shared capture holds.
             Assert.That(captured, Is.SameAs(visibleContainer.ElementAt(visibleContainer.childCount - 1)));
+        }
+
+        [Test]
+        public void Given_AKeySelectorReturningTheDelimiter_When_TheRangeIsRendered_Then_TheOtherItemsStillRender()
+        {
+            // Arrange — item 1's key holds the delimiter; the renderer sets no key of its own, so the
+            // selector's is the one that would go on the node.
+            var node = V.VirtualList(
+                items: CreateItems(3),
+                keySelector: item => item.Id == "item-1" ? "a\0b" : item.Id,
+                itemHeight: 50f,
+                renderer: item => V.Label(text: item.Name),
+                overscan: 0);
+            var scrollView = new ScrollView(ScrollViewMode.Vertical);
+            using var controller = new FiberVirtualListController(scrollView, node, Reconciler);
+            var visibleContainer = scrollView.contentContainer.ElementAt(1);
+
+            // Act
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+
+            // Assert
+            Assert.That(
+                string.Join(",", visibleContainer.Children().Cast<Label>().Select(label => label.text)),
+                Is.EqualTo("Item 0,Item 2"));
+        }
+
+        [Test]
+        public void Given_ARendererKeyingItsOwnNode_When_TheSelectorReturnsTheDelimiter_Then_TheItemIsStillLeftOut()
+        {
+            // Arrange — the same, with the renderer keying its own node, which is what decides whether the
+            // selector's key would ever reach VNode.Key.
+            var node = V.VirtualList(
+                items: CreateItems(3),
+                keySelector: item => item.Id == "item-1" ? "a\0b" : item.Id,
+                itemHeight: 50f,
+                renderer: item => V.Label(text: item.Name, key: item.Id),
+                overscan: 0);
+            var scrollView = new ScrollView(ScrollViewMode.Vertical);
+            using var controller = new FiberVirtualListController(scrollView, node, Reconciler);
+            var visibleContainer = scrollView.contentContainer.ElementAt(1);
+
+            // Act
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+
+            // Assert
+            Assert.That(
+                string.Join(",", visibleContainer.Children().Cast<Label>().Select(label => label.text)),
+                Is.EqualTo("Item 0,Item 2"));
+        }
+
+        [Test]
+        public void Given_AKeySelectorReturningTheDelimiter_When_TheRangeIsRendered_Then_TheSkippedItemIsReported()
+        {
+            // Arrange
+            var node = V.VirtualList(
+                items: CreateItems(3),
+                keySelector: item => item.Id == "item-1" ? "a\0b" : item.Id,
+                itemHeight: 50f,
+                renderer: item => V.Label(text: item.Name),
+                overscan: 0);
+            var scrollView = new ScrollView(ScrollViewMode.Vertical);
+            using var controller = new FiberVirtualListController(scrollView, node, Reconciler);
+            UnityEngine.TestTools.LogAssert.Expect(UnityEngine.LogType.Warning,
+                new System.Text.RegularExpressions.Regex("FiberVirtualListController.*NUL"));
+
+            // Act
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+
+            // Assert — LogAssert.Expect verifies the item that left the range is named rather than
+            // dropped in silence
+        }
+
+        // GREEN_ON_BASE(characterization): the base renders all three of these items. No key of
+        // theirs holds a delimiter, and it is the control for the cases above that read an item's
+        // absence from the range: a range rendering two items whatever their keys would satisfy
+        // them, and this is their arrangement with the delimiter taken out of the one key holding it.
+        [Test]
+        public void Given_NoKeyHoldingTheDelimiter_When_TheRangeIsRendered_Then_EveryItemRenders()
+        {
+            // Arrange — the two cases above, minus the delimiter.
+            var node = V.VirtualList(
+                items: CreateItems(3),
+                keySelector: item => item.Id,
+                itemHeight: 50f,
+                renderer: item => V.Label(text: item.Name),
+                overscan: 0);
+            var scrollView = new ScrollView(ScrollViewMode.Vertical);
+            using var controller = new FiberVirtualListController(scrollView, node, Reconciler);
+            var visibleContainer = scrollView.contentContainer.ElementAt(1);
+
+            // Act
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+
+            // Assert
+            Assert.That(
+                string.Join(",", visibleContainer.Children().Cast<Label>().Select(label => label.text)),
+                Is.EqualTo("Item 0,Item 1,Item 2"));
         }
 
         [Test]
