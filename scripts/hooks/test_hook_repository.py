@@ -114,6 +114,21 @@ def rooted_at(directory):
             os.chdir(previous)
 
 
+def answered(reading):
+    """The bytes `reading` handed back, re-encoded, or the name of what it raised instead.
+
+    Turning a raise into a value rather than letting it end the case is `answered` in
+    scripts/pr/test_settle.py, which owns why; this one re-encodes too, because the cases below
+    compare bytes. Dropping it leaves those cases passing and leaves the base with nothing to say:
+    a raise there is not a failed assertion, and base_red_check.py counts it as no verdict rather
+    than as a red one.
+    """
+    try:
+        return reading().encode("utf-8", "surrogateescape")
+    except Exception as raised:  # noqa: BLE001
+        return type(raised).__name__
+
+
 class SubprocessDecodingTests(unittest.TestCase):
     """What a subprocess wrote, for a reading that promises an unavailable answer over a failure.
 
@@ -126,10 +141,10 @@ class SubprocessDecodingTests(unittest.TestCase):
         # Arrange
         with writing("git", LISTED):
             # Act
-            answer = repository.git_answer(["status"], cwd=None)
+            read = answered(lambda: repository.git_answer(["status"], cwd=None).stdout)
 
             # Assert
-            self.assertEqual(answer.stdout.encode("utf-8", "surrogateescape"), LISTED)
+            self.assertEqual(read, LISTED)
 
     def test_Given_StderrHoldingAByteThatIsNotUTF8_When_TheReadingIsTaken_Then_TheBytesComeBackWhole(self):
         # Arrange — the other stream, which a reading that decoded only the answer would drop.
@@ -137,19 +152,19 @@ class SubprocessDecodingTests(unittest.TestCase):
         # this text, so a stderr the reading spent changes which refusal a reader is handed.
         with writing("git", b"", COMPLAINED):
             # Act
-            answer = repository.git_answer(["status"], cwd=None)
+            read = answered(lambda: repository.git_answer(["status"], cwd=None).stderr)
 
             # Assert
-            self.assertEqual(answer.stderr.encode("utf-8", "surrogateescape"), COMPLAINED.strip())
+            self.assertEqual(read, COMPLAINED.strip())
 
     def test_Given_ghWritingAByteThatIsNotUTF8_When_TheReadingIsTaken_Then_TheBytesComeBackWhole(self):
         # Arrange — the sibling reader, whose JSON carries whatever a title or a branch name holds.
         with writing("gh", TITLED):
             # Act
-            answer = repository.gh(["pr", "view", "612", "--json", "title"])
+            read = answered(lambda: repository.gh(["pr", "view", "612", "--json", "title"]))
 
             # Assert
-            self.assertEqual(answer.encode("utf-8", "surrogateescape"), TITLED)
+            self.assertEqual(read, TITLED)
 
 
 class ProjectTreeTests(unittest.TestCase):
