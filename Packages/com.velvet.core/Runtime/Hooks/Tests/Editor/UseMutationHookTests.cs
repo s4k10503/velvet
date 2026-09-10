@@ -31,6 +31,8 @@ namespace Velvet.Tests
     /// resulting error.</item>
     /// <item>If the component unmounts while a mutation is in flight, the caller's await still observes the function
     /// result but the disposed fiber does not receive a Success state transition.</item>
+    /// <item>A cancellation callback that throws while the unmount walks the live sources is reported rather than
+    /// raised, and the walk goes on to the sources after it.</item>
     /// </list>
     /// </summary>
     /// <remarks>
@@ -427,6 +429,46 @@ namespace Velvet.Tests
             // Assert — the first term keeps the reading load-bearing: with fewer than two calls in flight
             // the disposal order this pins is never exercised.
             Assert.That((bothStarted, thrown), Is.EqualTo((2, (Exception?)null)));
+            await firstCall;
+            await secondCall;
+        });
+
+        [UnityTest]
+        public IEnumerator Given_TwoMutationsInFlight_When_TheFirstTokensCallbackThrows_Then_TheSecondSourceIsCancelledAndReleased() => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange — the throw sits on the first call's token, so the loop reaches the second source
+            // only by surviving it. The sibling above arranges the same two calls with no throw and
+            // reads whether the unmount completed; what this reads is the state the second source was
+            // left in.
+            var first = new VelvetTaskCompletionSource<int>();
+            var second = new VelvetTaskCompletionSource<int>();
+            var callIndex = 0;
+            CancellationToken secondToken = default;
+            s_mutationFn = (v, ct) =>
+            {
+                if (callIndex++ == 0)
+                {
+                    ct.Register(() => throw new InvalidOperationException("mutation-cancellation-threw"));
+                    return first.Task.AttachExternalCancellation(ct);
+                }
+                secondToken = ct;
+                return second.Task.AttachExternalCancellation(ct);
+            };
+            var mounted = V.Mount(_root, V.Component(CaptureMutationRender, key: "throwing-cancellation"));
+            var firstCall = s_captured!.MutateAsync(1);
+            var secondCall = s_captured.MutateAsync(2);
+            await VelvetTask.Yield();
+            ContainedFailureLog.Expect<InvalidOperationException>("HookMutationSlot", "mutation-cancellation-threw");
+
+            // Act
+            Exception? escaped = null;
+            try { mounted.Dispose(); } catch (Exception unmountFailure) { escaped = unmountFailure; }
+
+            // Assert
+            Assert.That(
+                $"{escaped?.GetType().Name ?? "none"} {secondToken.IsCancellationRequested} {CancellationTokenStateProbe.ReadTokenState(secondToken)}",
+                Is.EqualTo("none True released"),
+                "A cancellation callback belonging to one call must not cost the next call its cancellation or its release");
             await firstCall;
             await secondCall;
         });

@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using System.Threading;
 using NUnit.Framework;
+using Velvet.TestUtilities;
 
 namespace Velvet.Tests.Editor
 {
@@ -548,6 +550,40 @@ namespace Velvet.Tests.Editor
             Assert.That(token.IsCancellationRequested, Is.True);
         }
 
+        [Test]
+        public void Given_AStoreWhoseTokenCallbackThrows_When_Disposed_Then_TheDisposeTailStillRuns()
+        {
+            // Arrange — a subclass registers on the token the base owns. The other Dispose cases in
+            // this region park nothing there, so a cancel that throws is the arrangement this one adds.
+            var recorder = new RecordingStoreLogger();
+            StoreLogger.Default = recorder;
+            var store = new ThrowingCancellationStore();
+            var token = store.PublicCancellationToken;
+
+            // Act
+            Exception disposeEscape = null;
+            try { store.Dispose(); } catch (Exception disposeFailure) { disposeEscape = disposeFailure; }
+
+            // Assert
+            Assert.That(
+                $"{disposeEscape?.GetType().Name ?? "none"} {recorder.Errors.Count} "
+                + $"{CancellationTokenStateProbe.ReadTokenState(token)} "
+                + $"{StateNotifierDisposed(store)} {store.OnDisposeCallCount}",
+                Is.EqualTo("none 1 released True 1"),
+                "A subclass's cancellation callback is reported rather than raised, and the source release, "
+                + "the state release and OnDispose below the cancel still run");
+        }
+
+        private static bool StateNotifierDisposed(Store<TestState> store)
+        {
+            var notifier = typeof(Store<TestState>)
+                .GetField("_state", BindingFlags.NonPublic | BindingFlags.Instance)
+                !.GetValue(store);
+            return (bool)notifier.GetType()
+                .GetField("_disposed", BindingFlags.NonPublic | BindingFlags.Instance)
+                !.GetValue(notifier);
+        }
+
         #endregion
 
         #region Reset
@@ -609,6 +645,35 @@ namespace Velvet.Tests.Editor
             {
                 Mutate(_ => new StructState(0));
             }
+        }
+
+        public sealed class RecordingStoreLogger : StoreLogger
+        {
+            public List<string> Errors { get; } = new();
+
+            public override void Log(string message) { }
+
+            public override void LogWarning(string message) { }
+
+            public override void LogError(string message) => Errors.Add(message);
+        }
+
+        public sealed class ThrowingCancellationStore : Store<TestState>
+        {
+            public ThrowingCancellationStore() : base(new TestState(0, "Initial"))
+            {
+                CancellationToken.Register(() => throw new InvalidOperationException("store-cancellation-threw"));
+            }
+
+            public int OnDisposeCallCount { get; private set; }
+
+            public CancellationToken PublicCancellationToken => CancellationToken;
+
+            protected override void ResetCore()
+                => Mutate(_ => new TestState(0, "Initial"));
+
+            protected override void OnDispose()
+                => OnDisposeCallCount++;
         }
 
         public sealed class TestStore : Store<TestState>
