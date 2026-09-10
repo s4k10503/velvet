@@ -25,25 +25,9 @@ namespace Velvet.Tests
         [Component]
         public static VNode StubC() => V.Label(text: "stub-c");
 
-        /// <summary>
-        /// Reports what <paramref name="token"/> answers to a read its source has to serve:
-        /// <c>"released"</c> where the source behind it has been disposed, and otherwise
-        /// <c>"cancelled"</c> or <c>"not-cancelled"</c>. <see cref="CancellationTokenReleaseTests"/> pins
-        /// that the wait handle is what tells a released source from a cancelled one.
-        /// </summary>
+        /// <inheritdoc cref="CancellationTokenStateProbe.ReadTokenState"/>
         public static string ReadTokenState(CancellationToken token)
-        {
-            try
-            {
-                _ = token.WaitHandle;
-            }
-            catch (ObjectDisposedException)
-            {
-                return "released";
-            }
-
-            return token.IsCancellationRequested ? "cancelled" : "not-cancelled";
-        }
+            => CancellationTokenStateProbe.ReadTokenState(token);
 
         /// <summary>
         /// Creates a RouteDefinition with sensible test defaults. Element defaults to <see cref="StubA"/>;

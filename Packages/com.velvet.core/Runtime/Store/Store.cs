@@ -231,12 +231,25 @@ namespace Velvet
 
             _disposed = true;
 
-            try { _cancellationTokenSource.Cancel(); _cancellationTokenSource.Dispose(); }
-            catch (ObjectDisposedException) { }
+            // Contained on RouteLoaderRunner.Retire's terms: this source is the store's own and its
+            // token is exposed to subclasses, so a callback firing here can be the application's.
+            try
+            {
+                _cancellationTokenSource.Cancel();
+            }
+            catch (Exception cancellationFailure)
+            {
+                Logger.LogError($"[{GetType().Name}] error while cancelling CancellationToken: {cancellationFailure.Message}");
+            }
+            finally
+            {
+                _cancellationTokenSource.Dispose();
+            }
 
             try { _state.Dispose(); }
             catch (Exception ex) { Logger.LogError($"[{GetType().Name}] error while disposing State: {ex.Message}"); }
 
+            // Uncontained, unlike the cancellation above: nothing follows it to be skipped.
             OnDispose();
         }
 
