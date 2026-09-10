@@ -24,8 +24,11 @@ existing container. Four independent knobs, mirroring React Aria's props:
   take focus (an unmounted origin is dropped rather than chased into pool reuse). Pair with
   `contain` for dialogs.
 - **`autoFocus`** — on mount, the scope's first focusable descendant takes focus (skipped when
-  focus already sits inside). Mount-once, like React's `autoFocus`: a keyed reorder physically
-  re-attaches the scope and must not steal focus back, so a re-attach never re-fires it.
+  focus already sits inside). Mount-once, like React's `autoFocus`: a reorder that moves the scope's
+  element physically re-attaches it and must not steal focus back, so a re-attach never re-fires it.
+  A reorder that rebuilds the element is a fresh mount and does fire it, taking focus back from
+  wherever the user had moved it — [react-migration.md, what a position is](react-migration.md#what-a-position-is)
+  states which reorders rebuild, and what to write instead.
 - **`singleTabStop`** — the whole subtree behaves as ONE Tab stop, the WAI-ARIA composite-widget
   (roving tabindex) contract: Tab from inside exits past the remaining members, and Tab entering
   from outside — in either direction — lands on the member last used (else the first). The exit

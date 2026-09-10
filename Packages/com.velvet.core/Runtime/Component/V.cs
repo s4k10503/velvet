@@ -1185,13 +1185,22 @@ namespace Velvet
         /// <param name="keySelector">Selector that derives a stable per-item key.</param>
         /// <param name="renderer">Function that produces a VNode for each item.</param>
         /// <param name="key">Optional key disambiguating this Fragment from siblings at the same position.</param>
+        /// <exception cref="ArgumentException">Thrown, before <paramref name="renderer"/> is invoked for
+        /// any item, when <paramref name="key"/> contains a NUL character.</exception>
         /// <returns>A <see cref="FragmentNode"/> wrapping the rendered VNodes.</returns>
         public static FragmentNode ListFragment<T>(
             IReadOnlyList<T> items,
             Func<T, string> keySelector,
             Func<T, VNode> renderer,
-            string? key = null) =>
-            Fragment(List(items, keySelector, renderer), key);
+            string? key = null)
+        {
+            // Refuses the key BEFORE List runs: C# evaluates that argument first, so leaving the
+            // refusal to the V.Fragment call below strands the child array List rented and whatever
+            // the renderer's nodes rented, with no Fragment built to carry them to a later
+            // retirement. Same ordering rule as V.Draggable's refusal above its own rent.
+            RequireFragmentKey(key);
+            return Fragment(List(items, keySelector, renderer), key);
+        }
 
         /// <summary>
         /// Sibling-friendly variant of <see cref="List{T}(IReadOnlyList{T}, Func{T, int, string}, Func{T, int, VNode})"/>
@@ -1203,13 +1212,19 @@ namespace Velvet
         /// <param name="keySelector">Selector that derives a stable per-item key from the item and its index.</param>
         /// <param name="renderer">Function that produces a VNode from the item and its index.</param>
         /// <param name="key">Optional key disambiguating this Fragment from siblings at the same position.</param>
+        /// <exception cref="ArgumentException">Thrown, before <paramref name="renderer"/> is invoked for
+        /// any item, when <paramref name="key"/> contains a NUL character.</exception>
         /// <returns>A <see cref="FragmentNode"/> wrapping the rendered VNodes.</returns>
         public static FragmentNode ListFragment<T>(
             IReadOnlyList<T> items,
             Func<T, int, string> keySelector,
             Func<T, int, VNode> renderer,
-            string? key = null) =>
-            Fragment(List(items, keySelector, renderer), key);
+            string? key = null)
+        {
+            // Same ordering constraint as the overload above.
+            RequireFragmentKey(key);
+            return Fragment(List(items, keySelector, renderer), key);
+        }
 
         #endregion
 
@@ -2020,15 +2035,17 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Placeholder that renders the matched child route component of a nested route at this position.
+        /// Renders the matched child route component of a nested route at this position, and nothing at all
+        /// when the match chain does not reach this depth. Emits no element of its own: the route's own
+        /// output takes this position in the parent's child list.
         /// </summary>
         /// <param name="context">
         /// Optional value supplied to the rendered child route, consumed by <c>Hooks.UseOutletContext</c>.
         /// </param>
         /// <param name="key">Key used to disambiguate siblings at the same position.</param>
-        /// <returns>The created <see cref="OutletNode"/>.</returns>
-        public static OutletNode Outlet(object? context = null, string? key = null) =>
-            new() { Key = key, OutletContextValue = context };
+        /// <returns>The created <see cref="ComponentNode"/>.</returns>
+        public static ComponentNode Outlet(object? context = null, string? key = null) =>
+            Component<object?>(global::Velvet.RouteOutlet.Render, context, key);
 
         /// <summary>
         /// Fragment node. Returns multiple nodes without an enclosing wrapper element.
@@ -2048,17 +2065,22 @@ namespace Velvet
         /// <returns>The created <see cref="FragmentNode"/>.</returns>
         public static FragmentNode Fragment(VNode?[] children, string? key = null)
         {
+            RequireFragmentKey(key);
+            return new FragmentNode
+            {
+                Key = key,
+                Children = children ?? EmptyChildren,
+            };
+        }
+
+        private static void RequireFragmentKey(string? key)
+        {
             if (key != null && key.IndexOf('\0') >= 0)
             {
                 throw new ArgumentException(
                     "Fragment key must not contain a NUL (U+0000) character; NUL is reserved as the internal scope delimiter.",
                     nameof(key));
             }
-            return new FragmentNode
-            {
-                Key = key,
-                Children = children ?? EmptyChildren,
-            };
         }
 
         #endregion

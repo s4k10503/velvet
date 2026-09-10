@@ -94,6 +94,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `V.ListFragment` refuses a `key` holding a NUL (U+0000) before it maps the list rather than after.
+  The refusal is `V.Fragment`'s — NUL is the delimiter the reconciler composes Fragment scope chains
+  from — and both `V.ListFragment` overloads reached it by handing `V.List(...)` to `V.Fragment`, an
+  argument C# evaluates before the call. So a refused call had already run the renderer for every item,
+  and the pooled child array `V.List` took for the result, together with whatever the mapped nodes
+  took, was out on loan when the refusal fired. A refused call builds no Fragment, so no later
+  retirement could carry those back, and nothing else gives a pooled object back. Both overloads refuse
+  ahead of the mapping now: a refused call runs no renderer and takes nothing from a pool.
+
 - A navigation to a path that matches no route no longer cancels the navigation already in flight, nor
   takes `Router.Status` away from it. It used to cancel and to write its status before matching, so a
   stale deep link or a renamed `redirectTo` target made a navigation the user had actually asked for
@@ -116,15 +125,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   through `Debug.LogException` now, on the terms a Suspend loader's subscriber failure already was, and
   the navigation or disposal runs to its end either way.
 
+- A Loader that still holds its round's `CancellationToken` when the round ends reads the cancellation
+  off it, rather than finding the source behind it gone. The round's source used to be disposed at the
+  moment the round ended, which lands before the run that launched the Loaders has handed that token to
+  the matches below the one that ended it, before an `Await` loader a newer navigation superseded has
+  unwound, and before a `Suspend` loader streaming into the route on screen has finished.
+  `CancellationToken.WaitHandle` read from any of those three then raised `ObjectDisposedException`,
+  which a Loader written to catch `OperationCanceledException` does not catch. The source is now not
+  released until the round has ended, the run that launched it has returned, and every `Suspend` loader
+  it started has finished.
+
 - A `V.VirtualList` whose item renderer returns a `V.Component` or a `V.Provider` stacks its visible
   items instead of starting every one of them at the same place. Velvet anchors such an item's fiber on
   an element of its own, and that element was pinned to the four edges of the container the list's
   controller stacks the visible items in, so each item covered that container: with a 30px item height
   the second visible item began at the first one's y rather than 30px below it. That anchor takes a slot
   in the container now, and its width comes from the container rather than from insets of its own.
-  `V.Outlet` anchors on the same kind of element through a different arm of the same factory and keeps
-  the pinned one, so no route layout moves. A renderer returning an element, a `V.Motion`, a `V.Portal`
-  or a nested `V.VirtualList` builds that element directly and never reached the anchor either.
+  A renderer returning an element, a `V.Motion`, a `V.Portal` or a nested `V.VirtualList` builds that
+  element directly and never reached the anchor either.
 
 - An error boundary whose child throws during a subsumed re-render no longer logs a
   `NullReferenceException` from the reconciler. The boundary's inline re-render runs inside its host's
@@ -133,6 +151,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   read for the same reason a few lines further on, where it was checked. The render now returns at that
   point instead: a disposed fiber has no pass left to be subsumed into, so its layout effect and its
   paint-tick effect are not queued.
+
+- An error boundary's fallback is written into the rows its container is holding for the boundary now,
+  instead of into the first rows of its mount point. A boundary that is not its container's first child
+  had a catch rewrite the rows at the top of that container rather than its own, so the fallback replaced
+  a sibling ahead of it. That holds where the pass raising the exception was itself moving the boundary — a
+  reorder that puts a sibling in front of it, a sibling that grew or shrank ahead of it — because
+  showing a fallback stops that pass from placing anything, so the container is still holding the rows
+  where they were and the swap is written there. It does not hold where the boundary's rows moved with
+  no pass placing them: a fiber that grows inside a co-located sibling shifts this boundary's rows along
+  the container, and a catch after that still writes the fallback over the sibling's rows and leaves the
+  boundary's own painted.
 
 - A component's own re-render now reads the Providers of the container it is written into, where the
   declaring body writes the component into each container as its own occurrence. Two sibling containers
@@ -153,7 +182,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   by key alone until the resume commits it.
 
 - An `IRouteScopeFactory.CreateScope` that throws no longer takes the reconcile with it. The scope's
-  *disposal* was already contained; its creation was not, at any of the three sites that ask for one —
+  *disposal* was already contained; its creation was not, at any of the sites that asked for one —
   so an application whose factory failed on a route change lost the render as well as the scope. The
   route now renders without a scope and the exception is propagated: an application with an error
   boundary above the Outlet gets to refuse a scope-less route there, and one with none gets the
@@ -274,10 +303,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   naming a child that was gone, and the next render at that position spliced it back as an exiting
   ghost. The delegate is the caller's, and reconciler disposal already contained it this way.
 
-- An `IRouteScope.Dispose` that throws is reported the same way, at each of the three places a route
-  scope is disposed: the patch that swaps in a newly matched route, an unmounting `V.Outlet`, and the
-  whole-reconciler teardown sweep. The scope is the application's, built by the `IRouteScopeFactory`
-  handed to `Router`. From the route change the escape left the `V.Outlet` blank — the route navigated
+- An `IRouteScope.Dispose` that throws is reported the same way wherever a route scope is disposed. The
+  scope is the application's, built by the `IRouteScopeFactory` handed to `Router`. From the route
+  change the escape left the `V.Outlet` blank — the route navigated
   away from torn down, the route navigated to never mounted — and a later render at that position
   mounted the new route on the already-disposed scope. From the unmount it reached the same interrupted
   removal batch and the same resurrected `AnimatePresence` child as above. Both also left the scope
@@ -667,7 +695,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pose can carry `StaggerChildrenSec` and a `When = BeforeChildren` wait is measured from that pose's
   own span. The motion guide states which pose each play reads.
 
+- `V.Outlet()` emits no element of its own: the matched route's own output takes the Outlet's position
+  in the parent's child list, and an Outlet whose location matches no route at its depth takes no
+  position there at all. It used to emit a layout-passthrough container — absolutely positioned and
+  inset to its parent's box, carrying the `velvet-outlet` class — and mount the route inside that. An
+  absolutely positioned child is out of its parent's flow, so the route it held was out of it too: a
+  chrome of `flex flex-col` with a header above a `V.Outlet()` drew the header and the route's first
+  row both at the top of the container, and a `gap-*`, `divide-*`, `[&>*]:` or grid parent placed its
+  remaining children as though the route were not among them. React Router's `Outlet` is an ordinary
+  function component
+  returning the matched element wrapped in context providers, and this is that shape: `V.Outlet()`
+  returns a `ComponentNode`, `RouteOutlet` is the body it names, and `Hooks.UseOutletContext` reads
+  the value from a Provider that body renders rather than from a push around the mount. What a caller
+  has to edit around: the declared return type, and a USS rule or an element query written against
+  the container or its class, which are gone. `FiberOutletScope` holds the route scope against the
+  Outlet's own fiber, which is what the container element used to key, and
+  `IRouteScopeFactory.CreateScope` runs inside the Outlet's render where it used to run in the commit
+  that built or patched that container.
+
 ### Removed
+
+- The `V.Outlet` node kind, and the reconciler paths that existed for it alone — its element factory
+  and patch arms, its keying arm, and the context-spine reconstruction that re-pushed a depth around
+  a route re-rendering on its own. `V.Outlet()` returns a `ComponentNode`, which those walks already
+  handle; source declaring the result as the removed type, constructing one, or matching on it, stops
+  compiling.
 
 - `FiberUpdatePriority.Deferred`. Source naming it stops compiling; `FiberUpdatePriority.Transition`
   is what to write instead — the same delayed tier, the same fixed flush delay and the same
@@ -679,6 +731,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   shape.
 
 ### Fixed
+
+- A slot whose component changes builds the arriving component's element rather than patching the
+  departing one's into it. A component's subtree is expanded away before the host leaves are matched,
+  so the diff saw two plain containers at one position and patched the first into the second, carrying
+  children the arriving component had not declared. Where the departing body held a
+  `V.AnimatePresence`, those were its committed children, and a second copy arrived with the next
+  swap: the composition an old side reproduces them from is held against the boundary that rendered
+  it, which the arriving component's own boundary cannot name. A leaf patches in place only where the
+  same component instance emitted both sides of the match — the remount the position rule in
+  `Documentation~/react-migration.md` already stated for hook state, now reaching the element as well.
+  A component re-rendering itself keeps the element it emitted, unchanged. A navigation between two
+  different route components is such a swap, since a matched route renders at the Outlet's own position.
+  A container whose old side reached a component takes the same walk even where its new children are
+  all host leaves, since the time-sliced diff carries no owner to compare: a `Transition`-lane pass
+  over such a container runs to completion, where the time-sliced one could park at the frame budget.
+
+  What a caller has to edit around, in three places. A `refCallback` on the arriving component is
+  handed a freshly built element where it used to be handed the departing component's, so a reference
+  taken on an earlier render is stale — read the element from the callback each time it fires rather
+  than holding one across renders. What the element instance itself carries does not survive a freshly
+  built one — focus, a `V.ScrollView`'s scroll offset, a `V.TextField`'s caret and selection among
+  them — so state to keep is lifted above both components, into a `Store` or a `Hooks.UseState` in the
+  component that declares the slot. And a `V.List` of components written straight into a container
+  rebuilds a row's element when the item moves to a different slot — a reorder, or an insert ahead of
+  it — because a component at a scope-less position opens no key scope, so the leaves it emits
+  reconcile by sibling index and a moved row lands on a leaf a different component emitted; its hook
+  state still travels, since the fiber is found by the item's key, but its element does not, so
+  everything above about a freshly built one reaches a reordered row too. A
+  `V.FocusScope(autoFocus: true)` in such a row is mounted afresh by that rebuild and takes focus back
+  from wherever the user had moved it. Wrapping the list in
+  `V.ListFragment(items, …, key: "rows")` keeps the element: the Fragment's key establishes the scope,
+  each row's leaf then carries the item's own key, and the element moves to the new slot with it.
+
+- An Outlet navigating to a location that matches no route at its depth no longer keeps the route it
+  was holding. Every clearing path in the Outlet's own patch sat below an early return taken on a
+  failed match, so the departed route's elements stayed in the tree, its Component's fiber was never
+  disposed — its hook state and effect cleanups with it — and the scope built for that route was never
+  released. Rendering nothing there is the same walk that drops a `null` child, so the route's elements
+  leave and its fiber is swept as an orphan, and `RouteOutlet` releases the scope itself before it
+  returns that empty render. A route change disposed all three before, and so did an Outlet unmounting
+  and a whole-reconciler teardown; a location that stopped matching disposed none of them.
 
 - A route whose path ends in a splat no longer accepts children. `ParseRouteSegments` refused a splat
   that was not last within one route path, but a branch is every ancestor's segments joined, and

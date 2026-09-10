@@ -873,9 +873,8 @@ namespace Velvet.Tests
             return V.Div(name: "inner-" + mark);
         }
 
-        // Wrapper-mounted on the Outlet's container rather than inline-expanded, so its body's own
-        // reconcile runs inside FiberRenderer.RenderAndReconcile — once from the portal's deferred mount,
-        // and every time after that from its own state, with no portal reconcile anywhere on the stack.
+        // Rendered once from the portal's deferred mount, and every time after that from its own state,
+        // with no portal reconcile anywhere on the stack.
         [Component]
         private static VNode RouteBody()
         {

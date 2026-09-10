@@ -324,6 +324,7 @@ namespace Velvet
             FiberEffects.CleanupAllInsertionEffects(fiber);
             FiberEffects.CleanupAllLayoutEffects(fiber);
             FiberEffects.CleanupAllEffects(fiber);
+            FiberOutletScope.Release(fiber);
             fiber.DisposeBlockerSlots();
             fiber.DisposeStoreSlots();
             fiber.DisposeMemoSlots();

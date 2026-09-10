@@ -19,6 +19,7 @@ namespace Velvet.Tests
         {
             _root = new VisualElement();
             s_capturedRouteError = null;
+            s_errorBoundaryCaught = false;
         }
 
         [TearDown]
@@ -55,6 +56,14 @@ namespace Velvet.Tests
         private static VNode ChildErrorRender() => V.Label(text: "child-error");
 
         [Component]
+        private static VNode ParentErrorWithOutletRender()
+            => V.Div(children: new VNode[]
+            {
+                V.Label(text: "parent-error-with-outlet"),
+                V.Outlet(),
+            });
+
+        [Component]
         private static VNode GrandparentLayoutRender()
             => V.Div(children: new VNode[]
             {
@@ -67,6 +76,23 @@ namespace Velvet.Tests
         #region Helpers
 
         private MountedTree MountWithRouter(Router router) => V.Mount(_root, V.RouterProvider(router));
+
+        private MountedTree MountWithRouterUnderErrorBoundary(Router router)
+            => V.Mount(_root, V.ErrorBoundary(
+                fallback: BuildErrorBoundaryFallback,
+                children: new VNode[] { V.RouterProvider(router) },
+                key: "boundary"));
+
+        private static bool s_errorBoundaryCaught;
+
+        // Asked only where the boundary caught a failure below it — the contract VErrorBoundaryHelperTests
+        // pins. Distinct from a route's ErrorElement, which this fixture is otherwise about: that one the
+        // Outlet resolves out of the router's errors map, not out of a throw the reconciler caught.
+        private static VNode BuildErrorBoundaryFallback(Exception _)
+        {
+            s_errorBoundaryCaught = true;
+            return V.Label(text: "boundary-fallback");
+        }
 
         private static bool HasLabel(VisualElement element, string text) => element.FindLabelByText(text) != null;
 
@@ -223,6 +249,77 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(HasLabel(_root, "child"), Is.False, "The child's normal Element is replaced by its ErrorElement");
+        }
+
+        // GREEN_ON_BASE(characterization): an Outlet below the boundary already rendered nothing.
+        // Carried because the branch moves that resolution into a component body, whose success path
+        // dereferences the match this arm leaves null.
+        [Test]
+        public void Given_ABoundaryElementHoldingAnOutlet_When_ItRenders_Then_TheRouteBelowStaysUnrenderedWithoutFailing()
+        {
+            // Arrange — the boundary's own subtree has an Outlet, so the depth below the boundary is
+            // reached; the child's loader is what puts the boundary there in the first place. The Error
+            // Boundary around the mount is the instrument: the route below stays unrendered whether the
+            // Outlet resolved no route or threw trying, and only the throw reaches a fallback.
+            var routes = V.Routes(
+                V.Route(
+                    path: "parent",
+                    element: V.Component(ParentLayoutRender, key: "parent"),
+                    errorElement: V.Component(ParentErrorWithOutletRender, key: "parent-error-outlet"),
+                    children: new[]
+                    {
+                        V.Route(
+                            path: "child",
+                            element: V.Component(ChildRender, key: "child"),
+                            loader: ThrowingLoader("child-boom")),
+                    }));
+            var router = new Router(routes);
+            router.NavigateSync("/parent/child");
+
+            // Act
+            using var mounted = MountWithRouterUnderErrorBoundary(router);
+
+            // Assert
+            Assert.That(
+                (HasLabel(_root, "parent-error-with-outlet"), HasLabel(_root, "child"), s_errorBoundaryCaught),
+                Is.EqualTo((true, false, false)),
+                "The boundary renders, the Outlet inside it resolves no route to put below it, and"
+                + " resolving none is not a failure");
+        }
+
+        // GREEN_ON_BASE(characterization): the deepest errored route already decided the boundary.
+        // Carried because no arrangement standing here separated it from the deepest matched route:
+        // where the two differed, the deeper route defined no ErrorElement and the scan up from either
+        // of them reached the same one.
+        [Test]
+        public void Given_AnErroredParentAboveAnUnerroredChildBoundary_When_Rendered_Then_TheParentsBoundaryCatchesIt()
+        {
+            // Arrange — both routes define an ErrorElement and only the parent's loader throws, so the
+            // deepest errored route and the deepest matched route are different routes.
+            var routes = V.Routes(
+                V.Route(
+                    path: "parent",
+                    element: V.Component(ParentLayoutRender, key: "parent"),
+                    errorElement: V.Component(ParentErrorRender, key: "parent-error"),
+                    loader: ThrowingLoader("parent-boom"),
+                    children: new[]
+                    {
+                        V.Route(
+                            path: "child",
+                            element: V.Component(ChildRender, key: "child"),
+                            errorElement: V.Component(ChildErrorRender, key: "child-error")),
+                    }));
+            var router = new Router(routes);
+            router.NavigateSync("/parent/child");
+
+            // Act
+            using var mounted = MountWithRouter(router);
+
+            // Assert
+            Assert.That(
+                (HasLabel(_root, "parent-error"), HasLabel(_root, "child-error")),
+                Is.EqualTo((true, false)),
+                "The boundary is chosen from the route that errored, not from the deepest route matched");
         }
 
         private Router BuildChildBoundaryRouter()
@@ -393,32 +490,45 @@ namespace Velvet.Tests
 
         #region No ancestor boundary bubbles to root
 
+        // GREEN_ON_BASE(characterization): the implicit root boundary already blanked the parent layout.
+        // Carried because the branch moves that resolution into a component body, whose success path
+        // dereferences the match this arm leaves null. Hence the Error Boundary, the instrument the
+        // boundary-holding-an-Outlet case above introduces: the blank survives that dereference too.
         [Test]
-        public void Given_ChildErrorNoAncestorBoundary_When_Rendered_Then_ParentLayoutBlanks()
+        public void Given_ChildErrorNoAncestorBoundary_When_Rendered_Then_ParentLayoutBlanksWithoutFailing()
         {
             // Arrange
             var router = BuildNoBoundaryRouter();
 
             // Act
-            using var mounted = MountWithRouter(router);
+            using var mounted = MountWithRouterUnderErrorBoundary(router);
 
             // Assert
-            Assert.That(HasLabel(_root, "parent-layout"), Is.False,
-                "The implicit root boundary renders nothing, so even the parent layout blanks");
+            Assert.That(
+                (HasLabel(_root, "parent-layout"), s_errorBoundaryCaught),
+                Is.EqualTo((false, false)),
+                "The implicit root boundary renders nothing, so even the parent layout blanks — and"
+                + " rendering nothing there is not a failure");
         }
 
+        // GREEN_ON_BASE(characterization): the errored child already did not render with no ancestor
+        // errorElement anywhere in the chain. Carried, and mounted under the Error Boundary, for the
+        // reason the case above it gives.
         [Test]
-        public void Given_ChildErrorNoAncestorBoundary_When_Rendered_Then_ErroredChildDoesNotRender()
+        public void Given_ChildErrorNoAncestorBoundary_When_Rendered_Then_ErroredChildDoesNotRenderWithoutFailing()
         {
             // Arrange
             var router = BuildNoBoundaryRouter();
 
             // Act
-            using var mounted = MountWithRouter(router);
+            using var mounted = MountWithRouterUnderErrorBoundary(router);
 
             // Assert
-            Assert.That(HasLabel(_root, "child"), Is.False,
-                "The errored child does not render when no ancestor errorElement exists");
+            Assert.That(
+                (HasLabel(_root, "child"), s_errorBoundaryCaught),
+                Is.EqualTo((false, false)),
+                "The errored child does not render when no ancestor errorElement exists, and not"
+                + " rendering it is not a failure");
         }
 
         private Router BuildNoBoundaryRouter()

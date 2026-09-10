@@ -45,6 +45,9 @@ namespace Velvet.TestUtilities
         // Bypasses: nothing — it reads a static pool's depth.
         public static int ButtonPoolCountForTest => Count(ButtonPoolFieldName);
 
+        // Bypasses: nothing — it reads a static pool's depth.
+        public static int TextFieldPoolCountForTest => Count(TextFieldPoolFieldName);
+
         private static void Clear(string fieldName)
         {
             var pool = Pool(fieldName);
