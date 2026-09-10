@@ -44,7 +44,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
-from repository import git  # noqa: E402
+from repository import git, toplevel  # noqa: E402
 
 LISTED = 20
 SOURCE_SUFFIXES = re.compile(r"\.(cs|uss|uxml|asmdef|csproj|sln|md)$")
@@ -69,10 +69,7 @@ def session_tree(record):
     when it stops.
     """
     start = Path(record.get("cwd") or os.environ.get("CLAUDE_PROJECT_DIR", "."))
-    if not start.is_dir():
-        return None
-    root = git(["rev-parse", "--show-toplevel"], cwd=start)
-    return Path(root.strip()) if root and root.strip() else None
+    return toplevel(start) if start.is_dir() else None
 
 
 def agent_start(transcript):
