@@ -251,6 +251,16 @@ namespace Velvet
                     var item = _node.Items[itemIndex];
                     var key = _node.KeySelector(item);
 
+                    // Taken out of the range here rather than left to VNode.Key's refusal below:
+                    // RenderRange has no unwind, so a throw from inside this loop leaves the buffers it
+                    // cleared half-filled, the visible container never rebuilt, and the tracked range
+                    // still naming the one before it.
+                    if (VNode.KeyHoldsDelimiter(key))
+                    {
+                        FiberLogger.LogWarning("FiberVirtualListController", $"Key holding a NUL (U+0000) detected: \"{key}\". Skipping the item; NUL is reserved as the internal scope delimiter.");
+                        continue;
+                    }
+
                     if (!_reusedKeys.Add(key))
                     {
                         FiberLogger.LogWarning("FiberVirtualListController", $"Duplicate key detected: \"{key}\". Skipping duplicate item to prevent tracking inconsistency.");
