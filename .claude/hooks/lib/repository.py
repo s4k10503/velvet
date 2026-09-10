@@ -92,6 +92,17 @@ def gh(args, cwd=None, timeout=7):
     return answer.stdout if answer.code == 0 else None
 
 
+def printable(text):
+    """`text` with whatever stdout's encoding cannot carry spelled out in ASCII.
+
+    `DECODING` keeps a byte UTF-8 does not map, because a caller re-encoding a path needs it
+    kept, so the spelling belongs at the line a report prints rather than at the reading. Spelled
+    rather than replaced for the reason `DECODING` gives — a replacement names nothing.
+    """
+    encoding = getattr(sys.stdout, "encoding", None) or "utf-8"
+    return text.encode(encoding, "backslashreplace").decode(encoding, "backslashreplace")
+
+
 # Two ways of asking the same question, drawn in order. `gh pr list` goes through GraphQL and
 # `gh api` through REST; scripts/pr/settle.py owns why the difference matters.
 #
@@ -174,10 +185,10 @@ not that, and naming it there is how a deferral comes to record something nothin
 def toplevel(cwd):
     """The root of the repository holding `cwd`, or None where `cwd` sits in none.
 
-    Only the terminator `rev-parse` writes is removed: a trailing space belongs to the root's name,
-    and trimming whitespace instead hands back a path no repository sits at.
+    A trailing space, tab or newline can belong to the root's own name, so the reading's terminator
+    comes off rather than whatever whitespace it ends in.
     """
-    root = (git(["rev-parse", "--show-toplevel"], cwd=cwd) or "").rstrip("\n")
+    root = (git(["rev-parse", "--show-toplevel"], cwd=cwd) or "").removesuffix("\n")
     return Path(root) if root else None
 
 

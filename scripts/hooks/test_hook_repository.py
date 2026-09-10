@@ -8,9 +8,9 @@ asked before blindness is declared, and that the report names the guard as what 
 deferral about the work.
 
 Three more hold what a subprocess writes: that a byte which is not UTF-8 comes back off stdout and
-off stderr rather than ending the hook, and that gh's reader answers the same. One holds the root a
-repository whose directory name ends in a space sits at, which is the character a trimmed reading
-spent.
+off stderr rather than ending the hook, and that gh's reader answers the same. Two hold the root of
+a repository whose directory name ends in whitespace — a space, which a trimmed reading spends, and
+a newline, which a reading trimming newlines alone spends as well.
 
 Run: python3 scripts/hooks/test_hook_repository.py
 """
@@ -63,8 +63,8 @@ def gh_answering(pull_request_list, api):
             yield asked
 
 
-# Invalid UTF-8. Posed as bytes rather than as a file carrying the same name, because macOS
-# refuses that name with EILSEQ and what reaches the reading is the same either way.
+# Invalid UTF-8, posed as bytes a program writes rather than as a file carrying the same name:
+# what reaches the reading is the same either way.
 LISTED = b"?? \xb1odd.cs\n"
 COMPLAINED = b"warning: \xb1\n"
 TITLED = b'{"title":"\xb1"}\n'
@@ -101,8 +101,8 @@ def rooted_at(directory):
     """A session whose only reading of its own tree is the working directory.
 
     CLAUDE_PROJECT_DIR is removed rather than aimed somewhere holding no repository, which is how
-    the neighbouring untracked-scratch fixture withholds a tree: `project_tree` hands back a
-    declared one untouched, so a case posed with it set never reaches the reading under test.
+    the neighbouring untracked-scratch fixture withholds a tree: a case posed with it set never
+    reaches the reading under test.
     """
     previous = Path.cwd()
     with mock.patch.dict(os.environ):
@@ -157,6 +157,18 @@ class ProjectTreeTests(unittest.TestCase):
         # Arrange — a trailing space is a character the directory owns. Trimming it names a
         # directory that is not there, and the reading then answers with no tree at all.
         with repository_named("project ") as root:
+            with rooted_at(root):
+                # Act
+                found = repository.project_tree()
+
+        # Assert
+        self.assertEqual(found, root)
+
+    def test_Given_ARootWhoseNameEndsInANewline_When_TheTreeIsRooted_Then_TheRootKeepsThatCharacter(self):
+        # Arrange — the name's own newline arrives behind the reading's terminator, so a reading
+        # that takes off every trailing one takes this one with it and the space case says nothing
+        # about it.
+        with repository_named("project\n") as root:
             with rooted_at(root):
                 # Act
                 found = repository.project_tree()
