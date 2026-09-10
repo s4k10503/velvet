@@ -44,14 +44,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
-from repository import git, toplevel  # noqa: E402
+from repository import DECODING, git_bytes, toplevel  # noqa: E402
 
 LISTED = 20
 SOURCE_SUFFIXES = re.compile(r"\.(cs|uss|uxml|asmdef|csproj|sln|md)$")
 BUILD_DIRECTORIES = re.compile(r"^(Library|Temp|obj|Logs)/")
-ESCAPE = re.compile(rb"\\([abfnrtv\"\\]|[0-7]{3})")
-CONTROLS = {b"a": b"\a", b"b": b"\b", b"f": b"\f", b"n": b"\n", b"r": b"\r", b"t": b"\t",
-            b"v": b"\v"}
 
 
 def payload():
@@ -64,9 +61,11 @@ def payload():
 def session_tree(record):
     """The repository root holding the session's cwd, or None where that is not a repository.
 
-    Rooted rather than taken as handed, so the age bound below reaches the files the listing names.
-    `Given_ACwdBelowTheRepositoryRoot_When_TheReportIsTaken_Then_TheBoundStillApplies` is what fails
-    when it stops.
+    Rooted rather than taken as handed: the listing spells its paths from the root, which is where
+    the age bound joins them, and the report names the tree it read rather than the directory it
+    was handed. `Given_ACwdBelowTheRepositoryRoot_When_TheReportIsTaken_Then_TheBoundStillApplies`
+    and `Given_AReportWithSomethingToName_When_TheHeadlineIsRead_Then_ItNamesTheTreeItRead` are what
+    fail when it stops.
     """
     start = Path(record.get("cwd") or os.environ.get("CLAUDE_PROJECT_DIR", "."))
     return toplevel(start) if start.is_dir() else None
@@ -103,45 +102,39 @@ def written_since(path, moment):
         return True
 
 
-def unquoted(listed):
-    """The file a porcelain listing's spelling names.
-
-    Porcelain answers a path holding a space, a quote, a backslash or a control character with a
-    C-quoted spelling, and that spelling is not the path's own: an age taken from it is not the
-    file's, and a suffix read off its end is the closing quote. A non-ASCII byte is escaped into
-    that spelling too, unless `core.quotePath` is off — then it arrives as itself, inside whatever
-    quoting the rest of the name forced. So the unescaping runs over the encoded bytes rather than
-    over the decoded characters;
-    `Given_ARawNonASCIIByteInsideTheQuotes_When_TheReportIsTaken_Then_TheBoundReachesTheFile` is
-    what fails when it stops.
-
-    Asking git for `-z` output instead was rejected: it answers in NUL-separated fields rather than
-    lines, and a rename's second field is a bare path a marker filter would take for an entry of its
-    own. `Given_ARenameWhoseOldNameOpensWithTheMarker_When_TheReportIsTaken_Then_NoPhantomIsNamed`
-    is what fails when the form changes.
-    """
-    if not (listed.startswith('"') and listed.endswith('"') and len(listed) > 1):
-        return listed
-
-    def byte(hit):
-        found = hit.group(1)
-        return bytes([int(found, 8)]) if len(found) == 3 else CONTROLS.get(found, found)
-
-    return ESCAPE.sub(byte, listed[1:-1].encode("utf-8", "surrogateescape")).decode(
-        "utf-8", "surrogateescape")
-
-
 def entries(status, marker):
-    """The files a porcelain status marked, with the marker dropped and the spelling read back."""
-    return [unquoted(line[3:]) for line in (status or "").splitlines()
-            if line.startswith(marker)]
+    """The files a porcelain status marked, with the marker dropped.
+
+    Read as NUL-delimited records rather than as lines, so that no character a name may hold can
+    divide one. `Given_ANameGitLeavesRaw_When_TheReportIsTaken_Then_TheBoundReachesTheFile` is what
+    fails when the split is a line break instead.
+
+    A rename's or a copy's origin path follows its record as a field of its own, carrying no
+    marker, so it is stepped over rather than read. Both status columns are asked, since porcelain
+    pairs a record with an origin from either, and a field left unread there is taken for a record
+    of its own — which drops the record after it as that one's origin.
+    `Given_ARenameWhoseOldNameOpensWithTheMarker_When_TheReportIsTaken_Then_NoPhantomIsNamed`,
+    `Given_AWorktreeRenameBeforeAnUntrackedFile_When_TheReportIsTaken_Then_TheUntrackedFileIsNamed`
+    and `Given_AWorktreeCopyBeforeAnUntrackedFile_When_TheReportIsTaken_Then_TheUntrackedFileIsNamed`
+    are what fail when any of that stops.
+    """
+    fields = (status or b"").decode(**DECODING).split("\0")
+    found, index = [], 0
+    while index < len(fields):
+        record, index = fields[index], index + 1
+        if len(record) < 3:
+            continue
+        if record[0] in "RC" or record[1] in "RC":
+            index += 1
+        if record.startswith(marker):
+            found.append(record[3:])
+    return found
 
 
 def displayed(path):
-    """How a path is spelled inside the block, whose entries a reader separates by line.
-
-    A path carrying a line break of its own does not survive that separation, so it is spelled
-    quoted and escaped instead.
+    """Every line of this report is read whole — an entry, the headline, the sentence a listing
+    hangs under — and a path carrying a line break of its own divides the line it lands in. Such
+    a path is spelled quoted and escaped instead.
     """
     return path if path.splitlines() == [path] else json.dumps(path)
 
@@ -162,13 +155,14 @@ def main():
     # Counted before the truncation, not after: the headline read "20 untracked" for a tree holding
     # thirty-seven, and a reader who clears the twenty believes they are done.
     untracked = [path for path in
-                 entries(git(["status", "--porcelain", "--untracked-files=all"], tree), "??")
+                 entries(git_bytes(["status", "--porcelain", "-z", "--untracked-files=all"], tree),
+                         "??")
                  if not path.startswith("Library/") and written_since(tree / path, started)]
 
     # An ignored source file is the dangerous case; build output is ignored on purpose.
     ignored = [path for path in
-               entries(git(["status", "--porcelain", "--ignored=matching",
-                            "--untracked-files=all"], tree), "!!")
+               entries(git_bytes(["status", "--porcelain", "-z", "--ignored=matching",
+                                  "--untracked-files=all"], tree), "!!")
                if SOURCE_SUFFIXES.search(path) and not BUILD_DIRECTORIES.match(path)]
 
     if not untracked and not ignored:
@@ -178,11 +172,13 @@ def main():
     scope = "" if started is None else (
         " The listing is bounded by when this subagent started; the tree may hold more.")
 
+    named = displayed(str(tree))
+
     headline, parts = [], []
     if untracked:
         headline.append(f"{len(untracked)} untracked{since}")
         parts.append(
-            f"Untracked files remain in {tree}.{scope} Read each before deciding it is harmless — a "
+            f"Untracked files remain in {named}.{scope} Read each before deciding it is harmless — a "
             "probe fixture left behind reads as production code to the next session, and an agent's "
             "own report that it cleaned up has been wrong before. What stays is for whoever owns "
             "this tree to decide; nothing here asks for a deletion:\n"
@@ -200,7 +196,7 @@ def main():
         # A reader in another worktree of this repository has to be able to tell at a glance
         # whether the report is about the tree they are working in, so the headline names the one
         # read.
-        "systemMessage": f"files remain in {tree} — " + ", ".join(headline),
+        "systemMessage": f"files remain in {named} — " + ", ".join(headline),
         "hookSpecificOutput": {
             "hookEventName": "SubagentStop",
             "additionalContext": "\n\n".join(parts),

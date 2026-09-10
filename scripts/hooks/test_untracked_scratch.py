@@ -6,22 +6,25 @@ before the agent started is not one the agent can make — it was handed the sam
 stop. The cases below hold the narrowing that ends that: which of the payload's two transcripts the
 bound comes from and which record of it, that a leftover written during the run survives it, and
 that a reading which fails widens the report rather than silencing it or answering with the other
-transcript the payload carries. Three hold the names porcelain quotes, whose listed spelling is not
-the path's own: an old one the bound reaches, a fresh one named as the file is spelled, and an
-excluded source the quoting had been hiding from the suffix match. Two hold what the report says
-its count is of, in the arm where a bound was taken and in the arm where none was. One holds the
-listing the bound is kept away from, the gitignored sources; one holds that a source under the
-project's own trees is not a second such listing, so exempting a kind from the bound goes red there.
+transcript the payload carries. Three hold names a line-based listing would have spelled back
+quoted, that spelling not being the path's own: an old one the bound reaches, a fresh one named as
+the file is, and an excluded source whose spelling had been hiding it from the suffix match. Two
+hold what the report says its count is of, in the arm where a bound was taken and in the arm where
+none was. One holds the listing the bound is kept away from, the gitignored sources; one holds that
+a source under the project's own trees is not a second such listing, so exempting a kind from the
+bound goes red there.
 Two more hold the scope the docstring claims — one tree, named in the headline — so widening the
 scan without rewriting that claim goes red.
 
 One holds the root the reading answers with, where the directory's own name ends in a space.
 
-Four more hold the listing's own spelling: that an entry carrying a line break of its own still
-occupies one line of the block, that a name spelled with git's lettered escapes comes back as the
-file's, that a byte left raw inside the quotes is the file's too, and that the marker is read off a
-record rather than off a field. One holds the side a path whose age will not read falls on, asked of
-the reading directly rather than through a report.
+Nine more hold what the report reads and what it writes. Two hold that an entry carrying a line
+break of its own still occupies one line of the block, one for each half of the listing. One holds
+that a name git leaves as itself is not divided into two, and one that a name holding a return is
+aged by the file's. Three hold that a record's marker is read off a record: one where a rename's
+origin would be taken for an entry, and two where an origin left unread swallows the record behind
+it. Two hold a root whose own name holds a line break, one per channel. One holds the side a path
+whose age will not read falls on, asked of the reading directly rather than through a report.
 
 Run: python3 scripts/hooks/test_untracked_scratch.py
 """
@@ -66,12 +69,10 @@ NESTED = "sub/deeper/nested-scratch.txt"
 LINK = "link-to-elsewhere.txt"
 SIBLING_PROBE = "SiblingProbeFixture.cs"
 
-# Three names the listing quotes: one whose quoting adds no escape, one carrying both an escaped
-# quote and a byte spelled in octal, and one for the ignored half. `AS_LISTED` is what porcelain
-# answers for the second, and it is not the name the file was placed under.
+# Three names a line-based listing would have had to quote: one whose quoting would add no escape,
+# one carrying both a quote and a byte over 0x80, and one for the ignored half.
 SPACED = "with space.txt"
 AWKWARD = 'a"b ß.txt'
-AS_LISTED = '"a\\"b \\303\\237.txt"'
 EXCLUDED_SPACED = "Runtime/Excluded source.cs"
 
 # A name whose own line break would divide it across the block, and what the block spells it as
@@ -80,18 +81,38 @@ ORDINARY = "ordinary.cs"
 BROKEN = "probe\nfixture.cs"
 BROKEN_AS_SHOWN = '"probe\\nfixture.cs"'
 
-# Three of the escapes git spells with a letter rather than in octal, none of them a line break.
-CONTROLLED = "bell\a-back\b-tab\t.txt"
+# A name holding a carriage return, for the half of the reading that is about bytes rather than
+# about records.
+RETURNING = "with-return\r.txt"
 
-# A name the quoting reaches for its space, while `core.quotePath` off leaves its ï raw inside
-# those quotes.
-RAW_BYTE = "sp ïce.cs"
+# Three of the eleven boundaries `splitlines()` documents, chosen because git leaves them as
+# themselves once `core.quotePath` is off. All three in one name, so that a reading which handled
+# two of them would still fail.
+RAW_SEPARATORS = "mid\u0085a\u2028b\u2029c.txt"
+
+# A gitignored source whose own name holds a line break, and what the block spells it as instead.
+EXCLUDED_BROKEN = "Runtime/broken\nsource.cs"
+EXCLUDED_BROKEN_AS_SHOWN = '"Runtime/broken\\nsource.cs"'
+EXCLUDING = "Excluded.cs\nExcluded source.cs\nbroken*.cs\n"
+
+# A checkout whose own directory name holds a line break, which both channels have to spell
+# rather than write as it is.
+BROKEN_ROOT = "pro\nject"
 
 # A committed name opening with the untracked marker, and the substring that says the report took a
 # rename's old path for an entry of its own.
 MARKED = "?? phantom.cs"
 PHANTOM = "phantom.cs"
 RENAMED = "renamed.cs"
+
+# A pairing whose origin path opens with one of the two letters a record's status columns spell a
+# pairing with, and an untracked name sorting after the record that carries it. Content enough for
+# git to pair the two on.
+PAIRED_SOURCE = "Runtime/aaa-original.cs"
+PAIRED_RENAME = "Runtime/mmm-moved.cs"
+PAIRED_COPY = "Runtime/mmm-copy.cs"
+PAIRED_BODY = "".join("line {}\n".format(number) for number in range(40))
+BEHIND_THE_PAIRING = "Runtime/zzz-scratch.txt"
 
 
 def stamp(moment):
@@ -124,6 +145,16 @@ class UntrackedScratchTests(unittest.TestCase):
         path = self.root / name
         path.write_text("".join(json.dumps({"type": "user", "timestamp": stamp(at)}) + "\n"
                                 for at in moments), encoding="utf-8")
+        return path
+
+    def commit(self, relative, body):
+        """A tracked file with `body` in it, so that git has something to pair a later path with."""
+        path = self.project / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(body, encoding="utf-8")
+        for command in (["add", relative], ["commit", "-q", "-m", "commit " + relative]):
+            subprocess.run(["git", "-C", str(self.project), "-c", "user.email=t@velvet",
+                            "-c", "user.name=t", *command], check=True, timeout=60)
         return path
 
     def place(self, relative, moment):
@@ -340,11 +371,13 @@ class UntrackedScratchTests(unittest.TestCase):
         # Assert
         self.assertIs(kept, True)
 
-    def test_Given_AnOldPathTheListingQuotes_When_TheReportIsTaken_Then_TheBoundWithholdsIt(self):
-        # Arrange — the shape four of this repository's own tracked paths carry. The listing spells
-        # it back quoted, and that spelling is not the file's own, which is where the bound stopped
-        # reaching it. The written one is beside it because a report that named neither would
-        # satisfy the half about the quoted path on its own.
+    # GREEN_ON_BASE(characterization): the bound reaching a name a line-based listing would spell
+    # back quoted, which the base gets by decoding that spelling and this branch gets from a listing
+    # that has no spelling of its own. Dropping `-z` from the two status reads is what reddens it.
+    def test_Given_AnOldPathHoldingASpace_When_TheReportIsTaken_Then_TheBoundWithholdsIt(self):
+        # Arrange — the shape four of this repository's own tracked paths carry. The written one is
+        # beside it because a report that named neither would satisfy the half about the spaced path
+        # on its own.
         self.place(SPACED, BEFORE_BOTH)
         self.place(WRITTEN, AFTER_AGENT)
 
@@ -354,21 +387,22 @@ class UntrackedScratchTests(unittest.TestCase):
         # Assert
         self.assertEqual((SPACED in context, WRITTEN in context), (False, True))
 
-    def test_Given_AFreshPathTheListingQuotes_When_TheReportIsTaken_Then_ItIsNamedAsTheFileIs(self):
-        # Arrange — a name whose listed spelling carries both escape families, asked of both
-        # spellings at once because a report naming neither would satisfy the half about the
-        # listed one.
+    # GREEN_ON_BASE(characterization): a name holding a quote and a byte over 0x80 named as the file
+    # is, which the base gets by decoding a quoted spelling and this branch gets from a listing that
+    # has none. Dropping `-z` from the two status reads is what reddens it.
+    def test_Given_AFreshPathHoldingAQuoteAndAHighByte_When_TheReportIsTaken_Then_ItIsNamedAsTheFileIs(self):
+        # Arrange
         self.place(AWKWARD, AFTER_AGENT)
 
         # Act
         context = json.loads(self.report(self.agent))["hookSpecificOutput"]["additionalContext"]
 
         # Assert
-        self.assertEqual((AWKWARD in context, AS_LISTED in context), (True, False))
+        self.assertIn(AWKWARD, context)
 
-    # GREEN_ON_BASE(characterization): one line per entry is what the base already gives.
-    # It gives it by printing the listed spelling and reading nothing back out of it, which is what
-    # this branch changed, so the block is where that change has to be held to the same shape.
+    # GREEN_ON_BASE(characterization): one line per entry in the untracked half, which the base
+    # already gives. Replacing `shown(untracked[:LISTED], len(untracked))` with a join over the
+    # paths themselves is what reddens it.
     def test_Given_ANameHoldingALineBreak_When_TheListingIsRead_Then_EachEntryIsOneLine(self):
         # Arrange
         self.place(ORDINARY, AFTER_AGENT)
@@ -380,24 +414,30 @@ class UntrackedScratchTests(unittest.TestCase):
         # Assert
         self.assertEqual(listing.splitlines(), [ORDINARY, BROKEN_AS_SHOWN])
 
-    def test_Given_ANameSpelledWithGitsControlEscapes_When_TheReportIsTaken_Then_ItIsNamedAsTheFileIs(self):
-        # Arrange — a name the listing spells with three lettered escapes at once, so a reading
-        # that took each escape for its own letter would name a file nothing answers to.
-        self.place(CONTROLLED, AFTER_AGENT)
+    # GREEN_ON_BASE(characterization): the same one line per entry in the gitignored half, which
+    # the base already gives and no case reached, so that half was free to join its paths as they
+    # are. Replacing `shown(ignored[:LISTED], len(ignored))` with such a join is what reddens it.
+    def test_Given_AGitignoredSourceHoldingALineBreak_When_TheListingIsRead_Then_ItsEntryIsOneLine(self):
+        # Arrange — the pattern is written here rather than into the shared setUp, since no other
+        # case wants a name shaped like this excluded. Nothing untracked is placed beside it, so
+        # the block holds the gitignored listing alone.
+        (self.project / ".gitignore").write_text(EXCLUDING, encoding="utf-8")
+        self.place(EXCLUDED_BROKEN, BEFORE_BOTH)
 
         # Act
-        context = json.loads(self.report(self.agent))["hookSpecificOutput"]["additionalContext"]
+        listing = self.block(self.report(self.agent))
 
         # Assert
-        self.assertIn(CONTROLLED, context)
+        self.assertEqual(listing.splitlines(), [EXCLUDED_BROKEN_AS_SHOWN])
 
-    def test_Given_ARawNonASCIIByteInsideTheQuotes_When_TheReportIsTaken_Then_TheBoundReachesTheFile(self):
-        # Arrange — `core.quotePath` off, which quotes this name for its space and leaves the byte
-        # inside those quotes as itself. The written file keeps the report from being empty, so
-        # what is compared is a listing rather than the absence of one.
-        subprocess.run(["git", "-C", str(self.project), "config", "core.quotePath", "false"],
-                       check=True, timeout=60)
-        self.place(RAW_BYTE, BEFORE_BOTH)
+    # GREEN_ON_BASE(characterization): the bound reaching a name holding a carriage return, which
+    # the base gets by decoding git's quoted spelling and this branch has to get from git's own
+    # bytes. Reading the listing through the text pipe `git` uses is what reddens it.
+    def test_Given_ANameHoldingACarriageReturn_When_TheReportIsTaken_Then_TheBoundReachesTheFile(self):
+        # Arrange — asked of the bound rather than of the block's spelling, so that how the block
+        # spells such a name is left to the case that poses it. The written file keeps the report
+        # from being empty, so what is compared is a listing rather than the absence of one.
+        self.place(RETURNING, BEFORE_BOTH)
         self.place(WRITTEN, AFTER_AGENT)
 
         # Act
@@ -406,9 +446,25 @@ class UntrackedScratchTests(unittest.TestCase):
         # Assert
         self.assertEqual(listing.splitlines(), [WRITTEN])
 
-    # GREEN_ON_BASE(characterization): both trees read the porcelain by lines, not by fields.
-    # Asking git for `-z` instead and splitting the answer on NUL is what reddens this: a rename's
-    # old path arrives there as a bare field, and this one opens with the marker.
+    def test_Given_ANameGitLeavesRaw_When_TheReportIsTaken_Then_TheBoundReachesTheFile(self):
+        # Arrange — `core.quotePath` off makes no difference to this reading and decides a
+        # line-based one, which is the arrangement this is written against. The written file keeps
+        # the report from being empty, so what is compared is a listing rather than the absence of
+        # one.
+        subprocess.run(["git", "-C", str(self.project), "config", "core.quotePath", "false"],
+                       check=True, timeout=60)
+        self.place(RAW_SEPARATORS, BEFORE_BOTH)
+        self.place(WRITTEN, AFTER_AGENT)
+
+        # Act
+        listing = self.block(self.report(self.agent))
+
+        # Assert
+        self.assertEqual(listing.splitlines(), [WRITTEN])
+
+    # GREEN_ON_BASE(characterization): no phantom, which the base gets from reading the porcelain
+    # by lines and this branch has to get from stepping over a rename's origin field, that field
+    # carrying no marker of its own. Stepping over no origin field at all is what reddens it.
     def test_Given_ARenameWhoseOldNameOpensWithTheMarker_When_TheReportIsTaken_Then_NoPhantomIsNamed(self):
         # Arrange — the rename is staged, so the old name reaches the listing only as the far half
         # of one record. That git paired the two rather than reporting a delete and an add is what
@@ -431,9 +487,58 @@ class UntrackedScratchTests(unittest.TestCase):
         self.assertEqual((PHANTOM in printed, WRITTEN in printed, paired.startswith("R ")),
                          (False, True, True))
 
-    def test_Given_AnExcludedSourceTheListingQuotes_When_TheReportIsTaken_Then_ItIsNamed(self):
-        # Arrange — the other half of the same listing, where the spelling costs a source file its
-        # suffix rather than its age.
+    # GREEN_ON_BASE(characterization): an untracked file behind a worktree rename is named, which
+    # the base gets from reading the porcelain by lines and this branch has to get from asking the
+    # worktree column too. Dropping `record[1] in "RC"` is what reddens it: the origin is then a
+    # record of its own, and its own first letter takes the entry behind it for its origin.
+    def test_Given_AWorktreeRenameBeforeAnUntrackedFile_When_TheReportIsTaken_Then_TheUntrackedFileIsNamed(self):
+        # Arrange — intent-to-add is what puts the new path where git can pair it with the old one
+        # without the rename being staged. That git paired them, and in the worktree column, is
+        # compared beside the report, since an unpaired tree poses nothing.
+        self.commit(PAIRED_SOURCE, PAIRED_BODY)
+        os.rename(self.project / PAIRED_SOURCE, self.project / PAIRED_RENAME)
+        subprocess.run(["git", "-C", str(self.project), "add", "-N", PAIRED_RENAME],
+                       check=True, timeout=60)
+        self.place(BEHIND_THE_PAIRING, AFTER_AGENT)
+        paired = subprocess.run(["git", "-C", str(self.project), "status", "--porcelain"],
+                                capture_output=True, text=True, check=True, timeout=60).stdout
+
+        # Act
+        printed = self.report(self.agent)
+
+        # Assert
+        self.assertEqual((BEHIND_THE_PAIRING in printed, paired.startswith(" R ")), (True, True))
+
+    # GREEN_ON_BASE(characterization): the same file behind the other letter, which the base gets
+    # the same way. Dropping the `C` from `record[0] in "RC" or record[1] in "RC"` is what reddens
+    # it, and nothing else here poses a copy.
+    def test_Given_AWorktreeCopyBeforeAnUntrackedFile_When_TheReportIsTaken_Then_TheUntrackedFileIsNamed(self):
+        # Arrange — copy detection is off unless `status.renames` asks for it, and it pairs a new
+        # path with a source the same change modifies. That git paired them is compared beside the
+        # report, since a tree where it paired nothing poses nothing.
+        subprocess.run(["git", "-C", str(self.project), "config", "status.renames", "copies"],
+                       check=True, timeout=60)
+        self.commit(PAIRED_SOURCE, PAIRED_BODY)
+        (self.project / PAIRED_SOURCE).write_text(PAIRED_BODY + "one more\n", encoding="utf-8")
+        (self.project / PAIRED_COPY).write_text(PAIRED_BODY, encoding="utf-8")
+        subprocess.run(["git", "-C", str(self.project), "add", "-N", PAIRED_COPY],
+                       check=True, timeout=60)
+        self.place(BEHIND_THE_PAIRING, AFTER_AGENT)
+        paired = subprocess.run(["git", "-C", str(self.project), "status", "--porcelain"],
+                                capture_output=True, text=True, check=True, timeout=60).stdout
+
+        # Act
+        printed = self.report(self.agent)
+
+        # Assert
+        self.assertEqual((BEHIND_THE_PAIRING in printed, " C " in paired), (True, True))
+
+    # GREEN_ON_BASE(characterization): the suffix match reaching a name a line-based listing would
+    # spell back quoted, which the base gets by decoding that spelling and this branch gets from a
+    # listing that has none. Dropping `-z` from the two status reads is what reddens it.
+    def test_Given_AnExcludedSourceHoldingASpace_When_TheReportIsTaken_Then_ItIsNamed(self):
+        # Arrange — the other half of the same listing, where a spelling that is not the file's own
+        # costs a source file its suffix rather than its age.
         self.place(EXCLUDED_SPACED, BEFORE_BOTH)
 
         # Act
@@ -571,6 +676,53 @@ class WhitespaceRootTests(unittest.TestCase):
 
         # Assert
         self.assertIn(STALE, done.stdout)
+
+
+class LineBrokenRootTests(unittest.TestCase):
+    """Its own class for the reason `WhitespaceRootTests` gives, posing a root whose name divides
+    the line it is written into rather than one whose name ends in whitespace."""
+
+    def rooted(self):
+        """A checkout whose own directory name holds a line break, with one leftover in it."""
+        root = Path(tempfile.mkdtemp(prefix="velvet-untracked-scratch-"))
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        project = root / BROKEN_ROOT
+        project.mkdir()
+        subprocess.run(["git", "init", "-q", "-b", "main", str(project)], check=True, timeout=60)
+        (project / STALE).write_text("scratch\n", encoding="utf-8")
+        return project
+
+    def report(self, project):
+        done = subprocess.run(
+            [sys.executable, "-B", str(HOOK)],
+            input=json.dumps({"hook_event_name": "SubagentStop", "cwd": str(project)}),
+            capture_output=True, text=True, cwd=str(project.parent),
+            env=dict(os.environ, CLAUDE_PROJECT_DIR=str(project.parent)), timeout=120)
+        return json.loads(done.stdout)
+
+    def test_Given_ARootHoldingALineBreak_When_TheHeadlineIsRead_Then_ItIsOneLineNamingTheTree(self):
+        # Arrange — asked of the line count and of the name at once, since a headline that stopped
+        # naming the tree at all would occupy one line as well.
+        project = self.rooted()
+
+        # Act
+        headline = self.report(project)["systemMessage"]
+
+        # Assert
+        self.assertEqual((headline.splitlines(), json.dumps(str(project.resolve())) in headline),
+                         ([headline], True))
+
+    def test_Given_ARootHoldingALineBreak_When_TheBlockIsRead_Then_ItsOpeningSentenceIsOneLine(self):
+        # Arrange — asked of that sentence and of what hangs under it at once, since the entries a
+        # reader takes off the block are whatever the first line does not cover.
+        project = self.rooted()
+
+        # Act
+        context = self.report(project)["hookSpecificOutput"]["additionalContext"]
+
+        # Assert
+        self.assertEqual((json.dumps(str(project.resolve())) in context.split("\n", 1)[0],
+                          context.split("\n", 1)[1].splitlines()), (True, [STALE]))
 
 
 if __name__ == "__main__":
