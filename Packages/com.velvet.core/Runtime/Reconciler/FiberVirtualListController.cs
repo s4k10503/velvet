@@ -273,7 +273,11 @@ namespace Velvet
                         _reusedKeys.Remove(key);
                         continue;
                     }
-                    vnode.Key ??= key;
+                    // IndexOldRenderedItems keys the next pass's reuse table off VNode.Key, and that table
+                    // is read back by the selector's key, so the two sides answer each other only while
+                    // the selector's key is the one that lands on the node — the authority V.List's
+                    // mapping states.
+                    vnode.Key = key;
                     newNodes[i] = vnode;
 
                     // Not routed through ChildReconciler.PatchOrReplaceAtSlot despite the same CanPatch

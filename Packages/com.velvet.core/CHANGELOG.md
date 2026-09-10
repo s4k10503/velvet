@@ -113,6 +113,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A `V.VirtualList` row whose renderer keys its own node is reused across a scroll rather than rebuilt.
+  The controller tracks a row by the key `keySelector` returns, but indexed the previous range's rows by
+  whatever key had ended up on the node — and it wrote that key with `??=`, so a node the renderer had
+  already keyed kept the renderer's. Where those two strings differ the reuse lookup missed, the row read
+  as scrolled out of the range it was leaving, and it was disposed and rebuilt on every range change. The
+  list still rendered the right content, which is why this was silent; what it cost was identity. A rebuilt
+  row renders from a fresh fiber, so its `Hooks.UseState` values return to their initial ones on every
+  range change. The selector's key is now what lands on the node, as `V.List` does at its own mapping
+  site, so a row still inside the range is patched in place. A renderer that leaves the key
+  alone, or that sets the same string the selector returns, is unaffected — but keying inside a renderer
+  is not exotic: one returning a shared component, or building its child through a helper that keys for
+  its own reasons, reaches it without the author thinking about the list's key at all.
+
 - A renderer throwing inside `V.List` no longer strands the node array it rented. `V.List` takes that
   array from `VNodePool` and fills it by calling the caller's `renderer` for each item, and a throw out
   of the mapping left it out on loan with nothing able to give it back, so `RentNodeArray` found the

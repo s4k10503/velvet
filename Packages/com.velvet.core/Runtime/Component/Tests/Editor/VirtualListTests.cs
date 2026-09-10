@@ -23,6 +23,9 @@ namespace Velvet.Tests
     /// <item>An item whose <c>keySelector</c> returns a key holding the reconciler's scope delimiter is left
     /// out of the rendered range under a warning naming it, the rest of the range rendering as it would
     /// without it, and a key the renderer set on its own node does not put that item back in.</item>
+    /// <item>A row still inside the range after a range change keeps the state on its fiber, and a key
+    /// the renderer set on that row's own node does not change that: the selector's key is the identity
+    /// the range diff runs on.</item>
     /// <item>An item's <c>refCallback</c> has run by the time a range update returns, though the update is
     /// driven from a scroll rather than from a reconcile pass.</item>
     /// <item>The DSL rejects a null items / keySelector / renderer with <see cref="ArgumentNullException"/>, and a
@@ -357,6 +360,96 @@ namespace Velvet.Tests
 
             // Assert: item 0 is a fresh VisualElement, not the old Label patched in place.
             Assert.That(visibleContainer.ElementAt(0).GetType(), Is.EqualTo(typeof(VisualElement)));
+        }
+
+        #endregion
+
+        #region Row identity across a range change
+
+        private static StateUpdater<string> s_keptRowMark;
+
+        // The mark a row shows is that row's own hook state, which is what separates a row whose fiber
+        // survived a range change from one rebuilt in its place: a rebuild runs UseState again and shows
+        // the initial value, whichever element instance the pool hands the replacement.
+        [Component]
+        private static VNode MarkedRowRender(string id)
+        {
+            var (mark, setMark) = Hooks.UseState("a");
+            if (id == "item-2")
+            {
+                s_keptRowMark = setMark;
+            }
+            return V.Label(name: "row-" + id, text: mark);
+        }
+
+        [Component]
+        private static VNode RendererKeyedRowsHostRender()
+            => V.VirtualList(
+                items: CreateItems(10),
+                keySelector: item => "sel-" + item.Id,
+                itemHeight: 50f,
+                renderer: item => V.Component(MarkedRowRender, item.Id, key: "ren-" + item.Id),
+                overscan: 0);
+
+        [Component]
+        private static VNode UnkeyedRowsHostRender()
+            => V.VirtualList(
+                items: CreateItems(10),
+                keySelector: item => "sel-" + item.Id,
+                itemHeight: 50f,
+                renderer: item => V.Component(MarkedRowRender, item.Id),
+                overscan: 0);
+
+        [Test]
+        public void Given_ARendererKeyingItsOwnNode_When_ARangeChangeKeepsTheRowInRange_Then_TheRowKeepsItsState()
+        {
+            // Arrange — the renderer's key and the selector's are different strings, which is the whole
+            // arrangement. Items 0..4 render, and item-2 is inside the window the Act moves to as well.
+            s_keptRowMark = default;
+            var root = new VisualElement();
+            using var mounted = V.Mount(root, V.Component(RendererKeyedRowsHostRender, key: "host"));
+            var scrollView = root.Q<ScrollView>();
+            var visibleContainer = scrollView.contentContainer.ElementAt(1);
+            var controller = mounted.Root.Reconciler.Context.VirtualListControllers[scrollView];
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+            s_keptRowMark.Invoke("b");
+            mounted.FlushStateForTest();
+
+            // Act — the window becomes items 1..5.
+            controller.UpdateVisibleRange(scrollY: 50f, viewportHeight: 200f);
+
+            // Assert — the name of the row now at the head of the window travels with the mark, because a
+            // range update that returned before rendering leaves the mark reading as it was written.
+            Assert.That(
+                scrollView.Q<Label>("row-item-2")?.text + " under " + visibleContainer.Q<Label>()?.name,
+                Is.EqualTo("b under row-item-1"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base reuses a row whose node the renderer left unkeyed.
+        // The selector's key is the only one there is to index such a row under, so this is what says
+        // the mark-writing arrangement answers on the base at all — and that the sibling case's red
+        // there is the renderer's key rather than a mount that marked nothing.
+        [Test]
+        public void Given_ARendererLeavingTheKeyAlone_When_ARangeChangeKeepsTheRowInRange_Then_TheRowKeepsItsState()
+        {
+            // Arrange — the case above, with the renderer's key taken off.
+            s_keptRowMark = default;
+            var root = new VisualElement();
+            using var mounted = V.Mount(root, V.Component(UnkeyedRowsHostRender, key: "host"));
+            var scrollView = root.Q<ScrollView>();
+            var visibleContainer = scrollView.contentContainer.ElementAt(1);
+            var controller = mounted.Root.Reconciler.Context.VirtualListControllers[scrollView];
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+            s_keptRowMark.Invoke("b");
+            mounted.FlushStateForTest();
+
+            // Act — the window becomes items 1..5.
+            controller.UpdateVisibleRange(scrollY: 50f, viewportHeight: 200f);
+
+            // Assert — the head-of-window name travels with the mark for the reason the case above gives.
+            Assert.That(
+                scrollView.Q<Label>("row-item-2")?.text + " under " + visibleContainer.Q<Label>()?.name,
+                Is.EqualTo("b under row-item-1"));
         }
 
         #endregion
