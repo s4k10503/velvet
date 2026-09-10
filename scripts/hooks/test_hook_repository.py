@@ -225,6 +225,22 @@ class WorktreeListingTests(unittest.TestCase):
         self.assertEqual([(Path(tree.path).name, tree.branch, tree.primary) for tree in read or []],
                          [("project", "main", True), ("linked", "feature", False)])
 
+    def test_Given_AWorktreeAtAPathHoldingANewline_When_TheListIsRead_Then_ThePathComesBackWhole(self):
+        # Arrange — git writes such a path into the listing raw, so a reading delimited by lines ends
+        # it at the newline and hands a caller the path cut short there. That the path really holds
+        # the byte rides in the comparison, because a fixture whose directory name had lost it would
+        # read here as a listing delimited correctly.
+        named = self.root / "lin\nked"
+        subprocess.run(["git", "-C", str(self.project), "worktree", "add", "-q", "-b", "split",
+                        str(named)], check=True, timeout=60)
+        read = repository.worktrees(str(self.project))
+
+        # Act
+        found = next((tree.path for tree in read or [] if tree.branch == "split"), None)
+
+        # Assert
+        self.assertEqual((found, "\n" in str(named)), (os.path.realpath(named), True))
+
     def test_Given_AGitThatCannotRun_When_TheListIsRead_Then_ThereIsNoAnswerAtAll(self):
         # Arrange — the reading failure every caller's fail-closed branch is written against. An
         # empty list and "could not be read" are the same falsy value to a caller that conflates

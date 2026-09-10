@@ -117,20 +117,26 @@ def blocked(asked, cwd):
     return found
 
 
-def freeing(trees):
+def freeing(trees, base):
     """The command that frees each held branch, in the order the entries were found.
 
     A worktree the caller can drop takes `worktree remove`; the main working tree takes a return to
-    the base branch instead. scripts/hooks/test_merge_branch_held_by_worktree.py poses to git which
-    kind a removal reaches, so the split is pinned rather than argued here.
+    `base` instead. scripts/hooks/test_merge_branch_held_by_worktree.py poses to git which kind a
+    removal reaches, so the split is pinned rather than argued here.
+
+    `base` is what `repository.base_branch` read, and nothing here supplies a name where it read
+    none — the caller says so instead. `shared_git_state.py` decides what checkout it lets through
+    by reading that same record, so the two have to come from one reading.
 
     Printing the path git listed rather than a placeholder is the difference between a remedy a
     reader runs and one they have to reconstruct.
     """
     seen, lines = set(), []
     for tree in trees:
+        if tree.primary and base is None:
+            continue
         where = shlex.quote(tree.path)
-        line = (f"git -C {where} checkout main" if tree.primary
+        line = (f"git -C {where} checkout {base}" if tree.primary
                 else f"git worktree remove --force {where}")
         if line not in seen:
             seen.add(line)
@@ -163,11 +169,16 @@ def main():
     trees = [tree for _, _, tree in found if tree is not None]
     remedy = ""
     if trees:
-        commands = "\n".join("  " + line for line in freeing(trees))
-        base = ("\nA return to the base branch is what frees the main working tree: git declines to "
-                "remove it, so no ordering of the merge and a removal exists for it.\n"
-                if any(tree.primary for tree in trees) else "")
-        remedy = f"\nFree the branch first, then merge:\n{commands}\n{base}"
+        base = repository.base_branch(cwd)
+        commands = freeing(trees, base)
+        note = ""
+        if any(tree.primary for tree in trees):
+            note = ("\nA return to the base branch is what frees the main working tree: git declines "
+                    "to remove it, so no ordering of the merge and a removal exists for it.\n")
+            if base is None:
+                note += "\n" + repository.NO_RECORDED_BASE
+        listed = "".join(f"  {line}\n" for line in commands)
+        remedy = (f"\nFree the branch first, then merge:\n{listed}" if commands else "") + note
     sys.stderr.write(
         "Refusing `gh pr merge`: the branch it would delete is not clear.\n\n"
         f"{lines}\n\n"

@@ -90,17 +90,48 @@ def worktrees(cwd, timeout=20):
 
     Read here rather than in each caller because a second spelling of how git's bytes are decoded
     drifts from `git` above in silence, and a guard that mis-reads this list exits 0.
+
+    Read under `-z` so a record ends on a byte a path cannot hold, and the path is taken whole rather
+    than stripped, because it is printed back as a command to run and one that lost a character at
+    either end is not the path git listed. scripts/hooks/test_hook_repository.py holds a path with a
+    newline in it.
     """
-    listing = git(["worktree", "list", "--porcelain"], cwd=cwd, timeout=timeout)
+    listing = git(["worktree", "list", "--porcelain", "-z"], cwd=cwd, timeout=timeout)
     if listing is None:
         return None
     found = []
-    for line in listing.splitlines():
-        if line.startswith("worktree "):
-            found.append([line.split(" ", 1)[1].strip(), None])
-        elif line.startswith("branch ") and found:
-            found[-1][1] = line.split(" ", 1)[1].strip().removeprefix("refs/heads/")
+    for record in listing.split("\0"):
+        if record.startswith("worktree "):
+            found.append([record[len("worktree "):], None])
+        elif record.startswith("branch ") and found:
+            found[-1][1] = record[len("branch "):].removeprefix("refs/heads/")
     return [Worktree(path, branch, index == 0) for index, (path, branch) in enumerate(found)]
+
+
+ORIGIN_HEAD_PREFIX = "refs/remotes/origin/"
+
+# Owned beside the reader that returns None so two guards cannot drift into two ways of saying it —
+# the same ownership rule as `SELF_REPORT` below.
+NO_RECORDED_BASE = (
+    "No default branch is recorded here — `git symbolic-ref refs/remotes/origin/HEAD` answers "
+    "nothing — so there is no branch to offer a move out to. `git remote set-head origin -a` "
+    "records it.\n"
+)
+
+
+def base_branch(cwd, timeout=10):
+    """The default branch as git records it, or None where git records none.
+
+    Read off git's own record rather than spelled out here. A literal would be a second copy of what
+    git already holds, and a copy is what goes stale when the record it copies changes.
+
+    Read in one place for a second reason: refuse/shared_git_state.py decides which checkout it lets
+    through by comparing against this, and refuse/merge_branch_held_by_worktree.py prints a checkout
+    as its remedy. scripts/hooks/test_guard_remedies.py puts that remedy back through the guard set.
+    """
+    named = (git(["symbolic-ref", "--quiet", ORIGIN_HEAD_PREFIX + "HEAD"], cwd=cwd,
+                 timeout=timeout) or "").strip()
+    return named[len(ORIGIN_HEAD_PREFIX):] if named.startswith(ORIGIN_HEAD_PREFIX) else None
 
 
 Answer = collections.namedtuple("Answer", "stdout combined code")

@@ -12,10 +12,12 @@ holds is still named as held, and a branch no worktree holds is still let throug
 survives the byte by refusing whatever it is asked is not what makes them pass. The third holds the
 fail-closed branch itself, which those two ride on and neither would miss.
 
-Three more hold the remedy rather than the verdict, because a refusal naming a command that cannot
-run leaves nowhere to go. Two run what the refusal prints and ask the guard again; the third asks git
-what it does when either kind of worktree is offered to `worktree remove`, since the split between
-the two remedies rests on that answer and nothing else here would notice it moving.
+Five more hold the remedy rather than the verdict, because a refusal naming a command that cannot run
+leaves nowhere to go. Two run what the refusal prints and ask the guard again; one asks git what it
+does when either kind of worktree is offered to `worktree remove`, since the split between the two
+remedies rests on that answer and nothing else here would notice it moving; the last two stand in a
+repository where git records no default branch, which is the state the main working tree's remedy
+cannot be spelled in.
 
 Run: python3 scripts/hooks/test_merge_branch_held_by_worktree.py
 """
@@ -38,6 +40,10 @@ ALLOWED = 0
 
 MERGE = "gh pr merge 7 --squash --delete-branch"
 
+# The default branch git records in `HeldBranchTests`, chosen so that a remedy spelling the base out
+# names a branch that fixture has not got and the checkout it prints frees nothing.
+TRUNK = "trunk"
+
 # The `gh api` read `branch_of` takes, answered without a network.
 STUB_GH = '#!/bin/sh\nprintf "%s\\n" "$VELVET_MERGE_HEAD_REF"\n'
 
@@ -55,14 +61,49 @@ def git(cwd, *args):
                           timeout=60)
 
 
-class HeldBranchTests(unittest.TestCase):
+def seeded_clone(root, branch):
+    """A clone at `root/repo` of a bare origin whose recorded default branch is `branch`."""
+    remote = root / "origin.git"
+    subprocess.run(["git", "init", "-q", "--bare", "-b", branch, str(remote)], check=True,
+                   timeout=60)
+    seed = root / "seed"
+    subprocess.run(["git", "init", "-q", "-b", branch, str(seed)], check=True, timeout=60)
+    (seed / "a").write_text("x", encoding="utf-8")
+    git(seed, "add", "a")
+    git(seed, "-c", "user.email=t@velvet", "-c", "user.name=t", "commit", "-qm", "initial")
+    git(seed, "remote", "add", "origin", str(remote))
+    git(seed, "push", "-q", "origin", branch)
+    shutil.rmtree(seed)
+    repo = root / "repo"
+    subprocess.run(["git", "clone", "-q", str(remote), str(repo)], check=True, timeout=60)
+    return repo
+
+
+class Asking:
+    """Putting `MERGE` to the guard, given a fixture holding `repo` and `stub`."""
+
+    def ask(self, head_ref, path=None):
+        """What the guard does with `MERGE`, against a `gh` naming `head_ref` as the head."""
+        environment = dict(os.environ)
+        inherited = environment.get("PATH", "")
+        environment["PATH"] = (str(self.stub) + os.pathsep + inherited) if path is None else path
+        environment["VELVET_MERGE_HEAD_REF"] = head_ref
+        event = {"tool_name": "Bash", "cwd": str(self.repo), "tool_input": {"command": MERGE}}
+        return subprocess.run([sys.executable, "-B", str(HOOK)], input=json.dumps(event),
+                              capture_output=True, text=True, env=environment, timeout=120)
+
+    def gh_stub_at(self, root):
+        stub = root / "bin"
+        stub.mkdir()
+        (stub / "gh").write_text(STUB_GH, encoding="utf-8")
+        (stub / "gh").chmod(0o755)
+        return stub
+
+
+class HeldBranchTests(Asking, unittest.TestCase):
     def setUp(self):
         self.root = Path(tempfile.mkdtemp(prefix="velvet-merge-held-"))
-        self.repo = self.root / "repo"
-        subprocess.run(["git", "init", "-q", "-b", "main", str(self.repo)], check=True, timeout=60)
-        (self.repo / "a").write_text("x", encoding="utf-8")
-        git(self.repo, "add", "a")
-        git(self.repo, "-c", "user.email=t@velvet", "-c", "user.name=t", "commit", "-qm", "initial")
+        self.repo = seeded_clone(self.root, TRUNK)
         git(self.repo, "worktree", "add", "-q", "-b", "feature", str(self.root / "held"))
         git(self.repo, "worktree", "add", "-q", "-b", "sibling", str(self.root / "bytes"))
 
@@ -71,10 +112,7 @@ class HeldBranchTests(unittest.TestCase):
         recorded = self.repo / ".git" / "worktrees" / "bytes" / "gitdir"
         recorded.write_bytes(recorded.read_bytes().replace(b"/bytes/", b"/by" + STRAY + b"tes/"))
 
-        self.stub = self.root / "bin"
-        self.stub.mkdir()
-        (self.stub / "gh").write_text(STUB_GH, encoding="utf-8")
-        (self.stub / "gh").chmod(0o755)
+        self.stub = self.gh_stub_at(self.root)
 
     def tearDown(self):
         shutil.rmtree(self.root, ignore_errors=True)
@@ -89,16 +127,6 @@ class HeldBranchTests(unittest.TestCase):
         except UnicodeDecodeError:
             return True
         return False
-
-    def ask(self, head_ref, path=None):
-        """What the guard does with `MERGE`, against a `gh` naming `head_ref` as the head."""
-        environment = dict(os.environ)
-        inherited = environment.get("PATH", "")
-        environment["PATH"] = (str(self.stub) + os.pathsep + inherited) if path is None else path
-        environment["VELVET_MERGE_HEAD_REF"] = head_ref
-        event = {"tool_name": "Bash", "cwd": str(self.repo), "tool_input": {"command": MERGE}}
-        return subprocess.run([sys.executable, "-B", str(HOOK)], input=json.dumps(event),
-                              capture_output=True, text=True, env=environment, timeout=120)
 
     def test_Given_AListingHoldingAStrayByte_When_AHeldBranchIsMerged_Then_ItIsNamedAsHeld(self):
         # Arrange — the stray byte goes into a second worktree's recorded path, so the branch the
@@ -197,6 +225,55 @@ class HeldBranchTests(unittest.TestCase):
         # Assert
         self.assertEqual((result.returncode, "git did not list the worktrees" in result.stderr),
                          (REFUSED, True))
+
+
+class UnrecordedBaseTests(Asking, unittest.TestCase):
+    """A repository with no remote, so git records no default branch and the one remedy for the main
+    working tree has no branch to name."""
+
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp(prefix="velvet-merge-unrecorded-"))
+        self.repo = self.root / "repo"
+        subprocess.run(["git", "init", "-q", "-b", "work", str(self.repo)], check=True, timeout=60)
+        (self.repo / "a").write_text("x", encoding="utf-8")
+        git(self.repo, "add", "a")
+        git(self.repo, "-c", "user.email=t@velvet", "-c", "user.name=t", "commit", "-qm", "initial")
+        self.stub = self.gh_stub_at(self.root)
+
+    def tearDown(self):
+        shutil.rmtree(self.root, ignore_errors=True)
+
+    def unrecorded(self):
+        """That git records no default here, read rather than assumed: a repository that had one
+        would take the other arm and leave a case named for a state it never posed."""
+        return subprocess.run(["git", "-C", str(self.repo), "symbolic-ref", "--quiet",
+                               "refs/remotes/origin/HEAD"], capture_output=True,
+                              timeout=60).returncode
+
+    def test_Given_NoRecordedDefault_When_TheMainWorkingTreeHoldsTheBranch_Then_NoCheckoutIsOffered(self):
+        # Arrange
+        arranged = self.unrecorded()
+
+        # Act
+        result = self.ask("work")
+
+        # Assert — nothing here can name the branch, and a command naming something in its place is
+        # one no reader can run, so no command at all is what the refusal offers.
+        self.assertEqual((arranged, result.returncode, REMEDY.findall(result.stderr)),
+                         (1, REFUSED, []))
+
+    def test_Given_NoRecordedDefault_When_TheMainWorkingTreeHoldsTheBranch_Then_TheRecordIsWhatIsAskedFor(self):
+        # Arrange
+        arranged = self.unrecorded()
+
+        # Act
+        result = self.ask("work")
+
+        # Assert — a refusal printing no remedy and saying nothing about why leaves the same nowhere
+        # to go that a refusal printing an unrunnable one does.
+        self.assertEqual((arranged, result.returncode,
+                          "git remote set-head origin -a" in result.stderr),
+                         (1, REFUSED, True))
 
 
 if __name__ == "__main__":

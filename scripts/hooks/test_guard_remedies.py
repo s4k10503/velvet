@@ -4,18 +4,19 @@
 A refusal exists to leave the caller somewhere to go. When the command it names is one another guard
 refuses, it leaves the repository with no sanctioned exit at all, and the state that produces is the
 ordinary one: `branch_from_unmerged.py` printed `git checkout main`, `git pull` and
-`git checkout -b <name>`, and measured from a worktree on a feature branch — the shape an agent here
-is handed — the first and the third were refused, the third of them twice over: once by a sibling
-guard, and once by the guard that had just printed it.
+`git checkout -b <name>`, and from a worktree on a feature branch — the shape an agent here is
+handed — the third of those was refused twice over: once by a sibling guard, and once by the guard
+that had just printed it.
 
 Read off what the guard prints rather than compared with a fixed string: a remedy is allowed to
 change shape, and a case that compares text passes the day the text moves without anyone checking
 the new text is runnable. What the reading cannot reach is a command written into prose with neither
 backticks around it nor a line of its own; those are the two shapes the guards here use.
 
-Being let through is half of being runnable, so one case runs the commands instead and reads the
-state they were supposed to reach: git declines to fetch into a branch a worktree has checked out,
-which no guard here has anything to say about.
+Being let through is half of being runnable, so two cases run the commands instead and read the
+state they were supposed to reach: a command every guard here allows can still leave that state as
+it was. git declining to fetch into a branch a worktree has checked out is one way of producing
+that, and no guard here has anything to say about it.
 
 Which guards get asked comes from .claude/settings.json rather than from the directory listing, so a
 guard registered on a Bash call is asked whether or not anyone remembered this suite, and a file
@@ -37,9 +38,23 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SETTINGS = REPO_ROOT / ".claude/settings.json"
 BRANCH_GUARD = REPO_ROOT / ".claude/hooks/refuse/branch_from_unmerged.py"
+MERGE_GUARD = REPO_ROOT / ".claude/hooks/refuse/merge_branch_held_by_worktree.py"
 STALE_MAIN = REPO_ROOT / ".claude/hooks/report/stale_main.py"
 
 REFUSED = 2
+ALLOWED = 0
+
+# A default branch that is not `main`, with an ordinary `main` beside it, so a remedy spelling the
+# base out and one reading git's record name different branches.
+TRUNK = "trunk"
+
+MERGE = "gh pr merge 7 --squash --delete-branch"
+
+# The branch the primary checkout holds, and what the `gh` below names as the merge's head. Named by
+# the pull request rather than read off HEAD, because the remedy moves that HEAD and a merge read the
+# other way would then be asked about a different branch afterwards.
+PRIMARY = "primary-work"
+STUB_MERGE_GH = f'#!/bin/sh\nprintf "%s\\n" "{PRIMARY}"\n'
 
 # A name no deferral could be carrying, since a deferred name suppresses the refusal under test.
 CREATED = "tooling/remedy-probe"
@@ -57,10 +72,16 @@ QUOTED_COMMAND = re.compile(r"`((?:git|gh) [^`]+)`")
 PLACEHOLDER = re.compile(r"<[^<>\s]+>")
 
 
-def commands(text):
-    """Each git or gh command the text offers as a line or in backticks, placeholders filled in."""
+def commands(text, quoted=True):
+    """Each git or gh command the text offers as a line or in backticks, placeholders filled in.
+
+    `quoted=False` drops the backticked shape, for a guard that spells the command it is refusing
+    that way — `Refusing \\`gh pr merge\\`` is not a way out, and putting it back through the guards
+    asks whether the refused command is refused.
+    """
     found = []
-    for match in list(COMMAND_LINE.findall(text)) + list(QUOTED_COMMAND.findall(text)):
+    quotations = list(QUOTED_COMMAND.findall(text)) if quoted else []
+    for match in list(COMMAND_LINE.findall(text)) + quotations:
         filled = PLACEHOLDER.sub("substituted", match).strip()
         if filled not in found:
             found.append(filled)
@@ -98,7 +119,37 @@ def commit(cwd, message):
         "-m", message)
 
 
-class RemedyTests(unittest.TestCase):
+class GuardSet:
+    """Putting a command to the guards a Bash tool call runs, given a fixture holding `stub`."""
+
+    def environment(self, tree):
+        made = dict(os.environ)
+        made["PATH"] = str(self.stub) + os.pathsep + made.get("PATH", "")
+        made["CLAUDE_PROJECT_DIR"] = str(tree)
+        return made
+
+    def refusal_of(self, guard, command, tree):
+        """What `guard` writes to stderr when asked about `command` running in `tree`."""
+        event = {"tool_name": "Bash", "cwd": str(tree), "tool_input": {"command": command}}
+        return subprocess.run([sys.executable, "-B", str(guard)], input=json.dumps(event),
+                              capture_output=True, text=True, env=self.environment(tree),
+                              timeout=120)
+
+    def refused_among(self, printed, tree):
+        """(command, guard, first line of the refusal) for each printed command a guard refuses."""
+        found, guards = [], bash_guards()
+        for command in printed:
+            event = {"tool_name": "Bash", "cwd": str(tree), "tool_input": {"command": command}}
+            for guard in guards:
+                answer = subprocess.run([sys.executable, "-B", str(guard)],
+                                        input=json.dumps(event), capture_output=True, text=True,
+                                        env=self.environment(tree), timeout=120)
+                if answer.returncode != 0:
+                    found.append((command, guard.name, answer.stderr.strip().splitlines()[:1]))
+        return found
+
+
+class RemedyTests(GuardSet, unittest.TestCase):
     def setUp(self):
         self.root = Path(tempfile.mkdtemp(prefix="velvet-remedies-"))
         self.origin = self.root / "origin.git"
@@ -116,8 +167,12 @@ class RemedyTests(unittest.TestCase):
         commit(self.project, "second")
         self.second = git(self.project, "rev-parse", "HEAD").stdout.strip()
         commit(self.project, "third")
-        git(self.project, "push", "-q", "origin", "main")
+        git(self.project, "push", "-q", "origin", "main", f"main:{TRUNK}")
         git(self.project, "fetch", "-q", "origin")
+        # The recorded default is not the branch these two guards report on. `shared_git_state.py`
+        # lets a checkout of the recorded default through, so a remedy spelling `main` out is
+        # refused here while one that moves no HEAD is not — which is what separates the two.
+        git(self.project, "remote", "set-head", "origin", TRUNK)
         git(self.project, "worktree", "add", "-q", str(self.wt), "feature")
 
         self.stub = self.root / "bin"
@@ -128,19 +183,6 @@ class RemedyTests(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.root, ignore_errors=True)
 
-    def environment(self, tree):
-        made = dict(os.environ)
-        made["PATH"] = str(self.stub) + os.pathsep + made.get("PATH", "")
-        made["CLAUDE_PROJECT_DIR"] = str(tree)
-        return made
-
-    def refusal_of(self, guard, command, tree):
-        """What `guard` writes to stderr when asked about `command` running in `tree`."""
-        event = {"tool_name": "Bash", "cwd": str(tree), "tool_input": {"command": command}}
-        return subprocess.run([sys.executable, "-B", str(guard)], input=json.dumps(event),
-                              capture_output=True, text=True, env=self.environment(tree),
-                              timeout=120)
-
     def report_of(self, tree):
         """What the session-start report prints for `tree`."""
         return subprocess.run([sys.executable, "-B", str(STALE_MAIN)], capture_output=True,
@@ -149,19 +191,6 @@ class RemedyTests(unittest.TestCase):
     def distance(self):
         """How many commits local main is behind origin/main."""
         return int(git(self.project, "rev-list", "--count", "main..origin/main").stdout.strip())
-
-    def refused_among(self, printed, tree):
-        """(command, guard, first line of the refusal) for each printed command a guard refuses."""
-        found, guards = [], bash_guards()
-        for command in printed:
-            event = {"tool_name": "Bash", "cwd": str(tree), "tool_input": {"command": command}}
-            for guard in guards:
-                answer = subprocess.run([sys.executable, "-B", str(guard)],
-                                        input=json.dumps(event), capture_output=True, text=True,
-                                        env=self.environment(tree), timeout=120)
-                if answer.returncode != 0:
-                    found.append((command, guard.name, answer.stderr.strip().splitlines()[:1]))
-        return found
 
     def test_Given_HeadOnUnmergedWork_When_ABranchCreationIsRefused_Then_EveryCommandItPrintsIsAllowed(self):
         # Arrange — a worktree on a branch main does not contain, with local main current, so the
@@ -272,6 +301,63 @@ class RemedyTests(unittest.TestCase):
         # Assert
         self.assertEqual(("HEAD is detached at" in report.stdout, bool(printed), refused),
                          (True, True, []))
+
+
+class MergeRemedyTests(GuardSet, unittest.TestCase):
+    """The merge guard's remedy for a branch the primary checkout holds, where the branch git records
+    as the default is not called `main`.
+
+    Its remedy is the one move `shared_git_state.py` lets out, so the two have to name the same
+    branch. The default here is `trunk` with an ordinary `main` beside it, and neither half is what
+    makes this case pass — simplify either away and it still does, while a remedy spelling `main`
+    out stops being told apart from one that reads git's record.
+    """
+
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp(prefix="velvet-merge-remedy-"))
+        remote = self.root / "origin.git"
+        subprocess.run(["git", "init", "-q", "--bare", "-b", TRUNK, str(remote)], check=True,
+                       timeout=60)
+        seed = self.root / "seed"
+        subprocess.run(["git", "init", "-q", "-b", TRUNK, str(seed)], check=True, timeout=60)
+        commit(seed, "root")
+        git(seed, "remote", "add", "origin", str(remote))
+        git(seed, "push", "-q", "origin", TRUNK, f"{TRUNK}:main")
+        shutil.rmtree(seed)
+        self.repo = self.root / "repo"
+        subprocess.run(["git", "clone", "-q", str(remote), str(self.repo)], check=True, timeout=60)
+        git(self.repo, "branch", "main", "origin/main")
+        git(self.repo, "checkout", "-q", "-b", PRIMARY)
+
+        self.stub = self.root / "bin"
+        self.stub.mkdir()
+        (self.stub / "gh").write_text(STUB_MERGE_GH, encoding="utf-8")
+        (self.stub / "gh").chmod(0o755)
+
+    def tearDown(self):
+        shutil.rmtree(self.root, ignore_errors=True)
+
+    def test_Given_ThePrimaryCheckoutHoldsTheBranch_When_ItsSanctionedCommandsAreRun_Then_TheMergeIsLetThrough(self):
+        # Arrange — the primary on the branch under merge, the one kind of holder no removal reaches.
+        # The backticked shape is left out: this guard spells the command it is refusing that way,
+        # and that is not a way out of the refusal.
+        first = self.refusal_of(MERGE_GUARD, MERGE, self.repo)
+        printed = commands(first.stderr, quoted=False)
+        refused = self.refused_among(printed, self.repo)
+
+        # Act — only what the guard set let through, since a remedy this repository refuses is one
+        # no reader can run. What git says about each is left to the verdict below.
+        for command in [line for line in printed if line not in {c for c, _, _ in refused}]:
+            subprocess.run(command, shell=True, cwd=str(self.repo), capture_output=True,
+                           timeout=120)
+
+        # Assert — the first code and the refusals ride in the comparison so that a guard which
+        # printed nothing, and one whose remedy was refused rather than ineffective, are each told
+        # apart from a remedy that ran and freed the branch.
+        self.assertEqual(
+            (first.returncode, refused,
+             self.refusal_of(MERGE_GUARD, MERGE, self.repo).returncode),
+            (REFUSED, [], ALLOWED))
 
 
 if __name__ == "__main__":
