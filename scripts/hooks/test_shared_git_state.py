@@ -11,15 +11,19 @@ refusal.
 The fixture's base is `trunk` and it carries an ordinary branch called `main` beside it, so a guard
 that spelled the base out instead of reading git's record answers both of those the wrong way round.
 
-Two cases pose git rather than the guard. What the exemption rests on — that git declines a checkout
-which would lose a local change, and declines a branch a second worktree already holds — is a fact
-about git rather than about this repository, and a comment asserting it would go stale with nothing
-failing. They are here instead.
+Some cases pose git rather than the guard. What the exemption rests on — that git declines a checkout
+which would lose a local change, declines a branch a second worktree already holds, lists the primary
+working tree first, declines to remove that tree even under `--force`, and under a bare `--git-dir`
+moves a repository's HEAD without moving its files — is a fact about git rather than about this
+repository, and a comment asserting any of it would go stale with nothing failing. Those cases are
+here instead, in the `GitOwn...` classes below.
 
 Run: python3 scripts/hooks/test_shared_git_state.py
 """
 
 import json
+import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -36,7 +40,8 @@ ALLOWED = 0
 # The fixture's own base, chosen so no case can pass against a guard that spells `main` out.
 BASE = "trunk"
 
-# A legal branch name that is also the shell's spelling of a substitution.
+# A legal branch name, and a legal directory name, that is also the shell's spelling of a
+# substitution.
 VARIABLE = "$BRANCH"
 
 # `--template=` keeps a template directory on the machine running this out of the fixture, and the
@@ -189,9 +194,9 @@ class BaseReturnTests(unittest.TestCase):
         # Assert
         self.assertEqual(result.returncode, REFUSED)
 
-    # GREEN_ON_BASE(characterization): reaching into another worktree keeps the refusal.
-    # Leaving your own branch is what you typed; a `-C` leaves somebody else's, which is the harm
-    # the rest of this guard exists to stop.
+    # GREEN_ON_BASE(characterization): a `-C` onto a linked worktree keeps the refusal.
+    # Those are the trees this repository hands to agents, so one is likely to have somebody
+    # standing in it; exempt every `-C` rather than the primary alone and this tree gets moved.
     def test_Given_AnotherWorktreeNamedByDashC_When_TheBaseIsCheckedOutThere_Then_ItIsRefused(self):
         # Arrange — what stands at the end of the `-C`. It rides in the comparison because the guard
         # answers off the token, so a case pointing at nothing would read the same and be named for
@@ -204,16 +209,73 @@ class BaseReturnTests(unittest.TestCase):
         # Assert
         self.assertEqual((result.returncode, standing_on), (REFUSED, "held"))
 
-    # GREEN_ON_BASE(characterization): a git directory named on the command keeps the refusal too.
-    # It is the other spelling of the case above, and an exemption reading only the working
-    # directory a command names would refuse one of the pair and allow the other.
+    def test_Given_ThePrimaryCheckoutNamedByDashC_When_TheBaseIsCheckedOutThere_Then_ItIsAllowed(self):
+        # Arrange — the call runs from the linked worktree and reaches into the primary, the shape a
+        # caller types who is standing in their own tree and has to free the primary's branch. Which
+        # branch the primary stands on rides in the comparison: from the base itself the command
+        # frees nothing, and the case would then be named for a deadlock it never posed.
+        standing_on = git(self.repo, "rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
+
+        # Act
+        result = ask(f"git -C {self.repo} checkout {BASE}", self.other)
+
+        # Assert
+        self.assertEqual((result.returncode, standing_on), (ALLOWED, "work"))
+
+    def test_Given_ThePrimaryCheckoutNamedByDashC_When_TheBaseIsSwitchedToThere_Then_ItIsAllowed(self):
+        # Arrange — `git switch` reaches `returns_to_base` by the same call as the checkout above,
+        # and a widening that took one and not the other would be a distinction the caller cannot
+        # act on.
+        # Act
+        result = ask(f"git -C {self.repo} switch {BASE}", self.other)
+
+        # Assert
+        self.assertEqual(result.returncode, ALLOWED)
+
+    # GREEN_ON_BASE(characterization): another repository's primary keeps the refusal.
+    # The listing the exemption reads is taken in the tree the caller stands in, so a primary
+    # outside this repository's worktrees is in no listing it takes; read the listing in the tree
+    # the `-C` names instead and this is the stranger's checkout that gets moved.
+    def test_Given_APrimaryOfAnotherRepository_When_TheBaseIsCheckedOutThere_Then_ItIsRefused(self):
+        # Arrange — a second clone, whose own listing calls it a primary. That reading rides in the
+        # comparison, because a `-C` onto a path that was no worktree at all would be refused for a
+        # reason this case is not about.
+        foreign = self.root / "foreign"
+        subprocess.run(["git", "clone", "-q", "--template=", str(self.root / "origin.git"),
+                        str(foreign)], check=True, capture_output=True, timeout=60)
+        listed = git(foreign, "worktree", "list", "--porcelain").stdout.splitlines()[0]
+
+        # Act
+        result = ask(f"git -C {foreign} checkout {BASE}", self.repo)
+
+        # Assert
+        self.assertEqual((result.returncode, listed),
+                         (REFUSED, f"worktree {os.path.realpath(foreign)}"))
+
+    # GREEN_ON_BASE(characterization): a git directory named on the command keeps the refusal.
+    # `GitOwnGitDirectoryTests` holds what such a command does instead of returning a tree to the
+    # base, which is why the `-C` widening stops short of this spelling.
     def test_Given_AGitDirectoryNamedOnTheCommand_When_TheBaseIsCheckedOut_Then_ItIsRefused(self):
-        # Arrange — a real git directory rather than a path that only looks like one, for the reason
-        # the case above gives about what the `-C` points at.
+        # Arrange — a real git directory rather than a path that only looks like one, so the case
+        # cannot be named for a git directory that was never there.
         named = git(self.root / "origin.git", "rev-parse", "--is-bare-repository").stdout.strip()
 
         # Act
         result = ask(f"git --git-dir={self.root}/origin.git checkout {BASE}", self.repo)
+
+        # Assert
+        self.assertEqual((result.returncode, named), (REFUSED, "true"))
+
+    # GREEN_ON_BASE(characterization): the environment's spelling of it keeps the refusal too.
+    # One term in `returns_to_base` answers both spellings, and a widening that read only the flag
+    # would refuse one of the pair and exempt the other.
+    def test_Given_AGitDirectoryNamedByTheEnvironment_When_TheBaseIsCheckedOut_Then_ItIsRefused(self):
+        # Arrange — the directory the flag case names, so that the two differ in the spelling and in
+        # nothing else, and neither can be named for a git directory that was never there.
+        named = git(self.root / "origin.git", "rev-parse", "--is-bare-repository").stdout.strip()
+
+        # Act
+        result = ask(f"GIT_DIR={self.root}/origin.git git checkout {BASE}", self.repo)
 
         # Assert
         self.assertEqual((result.returncode, named), (REFUSED, "true"))
@@ -313,6 +375,149 @@ class VariableNamedBaseTests(unittest.TestCase):
         # Assert
         self.assertEqual((result.returncode, recorded),
                          (REFUSED, f"refs/remotes/origin/{VARIABLE}"))
+
+
+def clone_at(root, name):
+    """A clone of a freshly seeded remote at `root/name`, standing on `work`, with a linked worktree
+    called `other` beside it — the two ends of a `-C` that reaches from a linked tree to the primary.
+    """
+    remote = seeded_remote(root)
+    repo = root / name
+    subprocess.run(["git", "clone", "-q", "--template=", str(remote), str(repo)],
+                   check=True, capture_output=True, timeout=60)
+    git(repo, "checkout", "-q", "-b", "work")
+    other = root / "other"
+    git(repo, "worktree", "add", "-q", "-b", "held", str(other))
+    return repo, other
+
+
+class NewlineNamedPathTests(unittest.TestCase):
+    """A repository whose primary checkout sits at a path holding a newline, which is the byte a
+    listing read line by line would end the path on."""
+
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp(prefix="velvet-shared-state-newline-"))
+        self.repo, self.other = clone_at(self.root, "nl\nname")
+
+    def tearDown(self):
+        shutil.rmtree(self.root, ignore_errors=True)
+
+    def test_Given_APrimaryAtAPathHoldingANewline_When_ItIsNamedByDashC_Then_ItIsAllowed(self):
+        # Arrange — that the path really holds the byte rides in the comparison, because a fixture
+        # whose directory name had lost it would read here as a listing delimited correctly.
+        holds_one = "\n" in str(self.repo)
+
+        # Act
+        result = ask(f"git -C {shlex.quote(str(self.repo))} checkout {BASE}", self.other)
+
+        # Assert
+        self.assertEqual((result.returncode, holds_one), (ALLOWED, True))
+
+
+class VariableNamedPathTests(unittest.TestCase):
+    """A repository whose primary checkout sits at a path spelled the way a shell variable is, so the
+    `-C` literal a command carries and the directory it will reach come apart."""
+
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp(prefix="velvet-shared-state-path-"))
+        self.repo, self.other = clone_at(self.root, VARIABLE)
+
+    def tearDown(self):
+        shutil.rmtree(self.root, ignore_errors=True)
+
+    # GREEN_ON_BASE(characterization): a `-C` the shell will rewrite keeps the refusal.
+    # Its literal text resolves to the primary checkout here, so removing the `unexpanded` term from
+    # `aims_at_primary` exempts a command whose substitution reaches somewhere else entirely.
+    def test_Given_APrimaryAtAPathSpeltLikeAVariable_When_ThatLiteralIsNamedByDashC_Then_ItIsRefused(self):
+        # Arrange — git lists the operand's own text as the primary, which is what a comparison of
+        # resolved literals reads as a match.
+        listed = git(self.other, "worktree", "list", "--porcelain").stdout.splitlines()[0]
+
+        # Act
+        result = ask(f"git -C {self.repo} checkout {BASE}", self.other)
+
+        # Assert
+        self.assertEqual((result.returncode, listed),
+                         (REFUSED, f"worktree {os.path.realpath(self.repo)}"))
+
+
+class GitOwnPrimaryWorktreeTests(unittest.TestCase):
+    """What git says about the primary working tree: which record of a listing it is, and that git
+    declines to remove it — so freeing its branch is a move onto another branch, not a removal."""
+
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp(prefix="velvet-shared-state-primary-"))
+        remote = seeded_remote(self.root)
+        self.repo = self.root / "repo"
+        subprocess.run(["git", "clone", "-q", "--template=", str(remote), str(self.repo)],
+                       check=True, capture_output=True, timeout=60)
+        self.other = self.root / "other"
+        git(self.repo, "worktree", "add", "-q", "-b", "held", str(self.other))
+
+    def tearDown(self):
+        shutil.rmtree(self.root, ignore_errors=True)
+
+    # GREEN_ON_BASE(characterization): the listing puts the primary first.
+    # That is git's behaviour rather than this branch's, so the base holds it too. Read the last
+    # record rather than the first and the exemption starts answering about a linked worktree.
+    def test_Given_ALinkedWorktreeSortingAheadOfIt_When_TheListingIsTaken_Then_ThePrimaryIsFirst(self):
+        # Arrange — `other` sorts ahead of `repo`, so a listing ordered by path alone answers this
+        # the other way round. Taken from the linked worktree, where a caller who needs the primary
+        # freed is standing.
+        # Act
+        listed = [line.split(" ", 1)[1] for line
+                  in git(self.other, "worktree", "list", "--porcelain").stdout.splitlines()
+                  if line.startswith("worktree ")]
+
+        # Assert
+        self.assertEqual((listed[0], len(listed)), (os.path.realpath(self.repo), 2))
+
+    # GREEN_ON_BASE(characterization): git declines to remove the primary working tree.
+    # `--force` does not reach it either. That is git's behaviour rather than this branch's, so the
+    # base holds it too, and it is why freeing that branch has to be a move onto another one.
+    def test_Given_ThePrimaryWorkingTree_When_ItsRemovalIsForced_Then_GitRefuses(self):
+        # Arrange — asked from the linked worktree, which is where the caller who needs the primary
+        # freed is standing.
+        # Act
+        result = subprocess.run(["git", "-C", str(self.other), "worktree", "remove", "--force",
+                                 str(self.repo)], capture_output=True, text=True, timeout=60)
+
+        # Assert
+        self.assertIn("is a main working tree", result.stderr)
+
+
+class GitOwnGitDirectoryTests(unittest.TestCase):
+    """What a `--git-dir` with no `--work-tree` beside it does, which is why the exemption stops at
+    `-C` rather than taking every spelling that names a tree."""
+
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp(prefix="velvet-shared-state-dir-"))
+        remote = seeded_remote(self.root)
+        self.repo = self.root / "repo"
+        subprocess.run(["git", "clone", "-q", "--template=", str(remote), str(self.repo)],
+                       check=True, capture_output=True, timeout=60)
+        git(self.repo, "checkout", "-q", "-b", "work")
+        (self.repo / "differs.txt").write_text("work\n", encoding="utf-8")
+        git(self.repo, "add", "differs.txt")
+        git(self.repo, *NEUTRAL, "commit", "-qm", "work")
+        self.elsewhere = self.root / "elsewhere"
+        self.elsewhere.mkdir()
+
+    def tearDown(self):
+        shutil.rmtree(self.root, ignore_errors=True)
+
+    # GREEN_ON_BASE(characterization): a bare `--git-dir` leaves the named tree's files behind.
+    # It moves that repository's HEAD and index and returns no working tree to the base, so there is
+    # nothing for the `-C` exemption to be asked about. Git's behaviour, so the base holds it too.
+    def test_Given_AGitDirectoryWithNoWorkTree_When_TheBaseIsCheckedOut_Then_TheNamedTreeIsLeftBehind(self):
+        # Arrange — `differs.txt` is committed differently on each branch, so a checkout that took
+        # the named tree with it would leave the status below with nothing to report.
+        # Act
+        subprocess.run(["git", f"--git-dir={self.repo}/.git", "checkout", BASE],
+                       cwd=str(self.elsewhere), capture_output=True, text=True, timeout=60)
+
+        # Assert
+        self.assertEqual(git(self.repo, "status", "--porcelain").stdout, " M differs.txt\n")
 
 
 class GitOwnCheckoutRefusalTests(unittest.TestCase):

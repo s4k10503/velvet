@@ -71,7 +71,9 @@ CHECKOUT_REFUSAL = (
 )
 RETURN_TO_BASE = (
     "The one move out is back to `{base}`, which git records here as the default branch: "
-    "`git checkout {base}` or `git switch {base}`, with nothing else on the command.\n"
+    "`git checkout {base}` or `git switch {base}` in the tree you are standing in, or either of "
+    "them under a `-C` naming the primary checkout. Nothing may follow the subcommand but that "
+    "branch name.\n"
 )
 NO_RECORDED_BASE = (
     "No default branch is recorded here — `git symbolic-ref refs/remotes/origin/HEAD` answers "
@@ -131,17 +133,70 @@ def base_branch(root):
     return named[len(prefix):] if named.startswith(prefix) else None
 
 
-def returns_to_base(context, operands, cwd):
-    """Whether this moves the tree the caller is standing in onto the default branch.
+def primary_worktree(root):
+    """The repository's primary working tree, which is the record git lists first, or None where git
+    did not answer.
 
-    Nothing but the base name may be on the command: any flag, and any second operand, is an operand
-    that is not the base, so it keeps the refusal without this having to know what the flag does.
+    `GitOwnPrimaryWorktreeTests` in `scripts/hooks/test_shared_git_state.py` poses that ordering to
+    git against a linked worktree whose path sorts ahead of it, alongside the removal git declines
+    for a primary — the pair the exemption in `returns_to_base` rests on.
+
+    Read under `-z` so the record ends on a byte a path cannot hold; `NewlineNamedPathTests` is what
+    fails if a line-delimited reading comes back.
+    """
+    try:
+        completed = subprocess.run(
+            ["git", "-C", root, "worktree", "list", "--porcelain", "-z"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            timeout=10,
+        )
+    except Exception:
+        return None
+    if completed.returncode != 0:
+        return None
+    first = os.fsdecode(completed.stdout).split("\0", 1)[0]
+    return first[len("worktree "):] if first.startswith("worktree ") else None
+
+
+def aims_at_primary(directory, cwd):
+    """Whether a `-C` names the primary checkout — of the repository the caller stands in, not of
+    whichever repository stands at the far end of it.
+
+    So a `-C` onto a tree git does not list here keeps the refusal, another repository's primary
+    included: the exemption exists to unblock a merge of this repository, and that turns on this
+    repository's own worktrees. A path the shell has yet to rewrite keeps it too, for the reason
+    `returns_to_base` gives about the operand.
+    """
+    if unexpanded(directory):
+        return False
+    primary = primary_worktree(cwd)
+    if primary is None:
+        return False
+    named = directory if os.path.isabs(directory) else os.path.join(cwd, directory)
+    return os.path.realpath(primary) == os.path.realpath(named)
+
+
+def returns_to_base(context, operands, cwd):
+    """Whether this moves the tree the caller stands in, or the primary checkout, onto the default
+    branch.
+
+    Nothing but the base name may follow the subcommand: any flag, and any second operand, is an
+    operand that is not the base, so it keeps the refusal without this having to know what it does.
     An operand the shell has yet to rewrite keeps it as well, since the text compared below is not
     the text git would receive — the same policy `UNEXPANDED_POLICY` declares for `restores_paths`.
 
-    A `-C`, a `--git-dir` or a `GIT_DIR=` keeps the refusal too: each can aim the command at a tree
-    the caller is not standing in, and leaving somebody else's branch is the harm the rest of this
-    guard exists to stop, where leaving your own is what you typed.
+    A `-C` is exempt only onto the primary checkout. Linked worktrees are what this repository hands
+    to agents — `.claude/agents/velvet-implementer.md` says so — so one is likely to have somebody
+    standing in it, and pulling that tree out from under them is the harm the rest of this guard
+    exists to stop. The primary is nobody's assigned workspace under that convention, so its sitting
+    on a feature branch is the anomaly, and the return to the base is what repairs one rather than
+    what causes one.
+
+    A `--git-dir` or a `GIT_DIR=` keeps the refusal whatever it names. With no `--work-tree` beside
+    it such a command moves the named repository's HEAD and index and leaves its files where they
+    were — `GitOwnGitDirectoryTests` poses that — so it returns no working tree to the base, and
+    returning one is the move this exempts.
 
     Cleanliness is not asked about at all, because git decides it and decides it later:
     `GitOwnCheckoutRefusalTests` in `scripts/hooks/test_shared_git_state.py` poses both a checkout
@@ -150,12 +205,15 @@ def returns_to_base(context, operands, cwd):
     """
     if cwd is UNRESOLVED_CD:
         return False
-    if context.working_directory is not None or context.git_directory is not None:
+    if context.git_directory is not None:
         return False
     if any(unexpanded(token) for token in operands):
         return False
     base = base_branch(cwd)
-    return base is not None and operands == [base]
+    if base is None or operands != [base]:
+        return False
+    named = context.working_directory
+    return named is None or aims_at_primary(named, cwd)
 
 
 def sole_expansions(named, cwd):
