@@ -133,8 +133,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on unmount, or on the render that hands it a new resource key — skipped the source's disposal and left
   the completion callback attached. `Store.Dispose` caught `ObjectDisposedException` alone, so any other
   failure skipped the state notifier's disposal and `OnDispose`, while an `ObjectDisposedException`
-  skipped the source's release and was reported nowhere. Each failure is reported now — through `Debug.LogException` at the two fiber
-  sites and through `StoreLogger.LogError` at the store — and the teardown runs to its end.
+  skipped the source's release and was reported nowhere. Each failure is reported now — through
+  `Debug.LogException` at the two fiber sites and through `StoreLogger.LogError` at the store — and
+  the teardown runs to its end.
 
 - A Loader that still holds its round's `CancellationToken` when the round ends reads the cancellation
   off it, rather than finding the source behind it gone. The round's source used to be disposed at the

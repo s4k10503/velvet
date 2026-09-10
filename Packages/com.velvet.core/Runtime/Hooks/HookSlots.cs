@@ -195,20 +195,20 @@ namespace Velvet
             // is how it knows not to dispose a source this loop still has to cancel.
             var live = Live.ToArray();
             Live.Clear();
-            foreach (var cts in live)
+            foreach (var callSource in live)
             {
                 // Contained on RouteLoaderRunner.Retire's terms: this source is the slot's own and
                 // its token goes to the mutation function, so a callback firing here can be the
                 // application's.
                 try
                 {
-                    cts.Cancel();
+                    callSource.Cancel();
                 }
                 catch (Exception cancellationFailure)
                 {
                     FiberLogger.LogException(nameof(HookMutationSlot<TVariables, TData>), cancellationFailure);
                 }
-                cts.Dispose();
+                callSource.Dispose();
             }
         }
     }
