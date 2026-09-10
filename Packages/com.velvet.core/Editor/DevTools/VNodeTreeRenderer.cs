@@ -102,10 +102,6 @@ namespace Velvet.Editor.DevTools
                     AppendElementNode(sb, motionNode, depth, prefix: "[Motion] ");
                     break;
 
-                case OutletNode:
-                    AppendLine(sb, "[Outlet]", depth);
-                    break;
-
                 default:
                     AppendLine(sb, $"[{node.GetType().Name}]", depth);
                     break;

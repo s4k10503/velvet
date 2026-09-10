@@ -9,6 +9,10 @@ fifty commits behind main and told to rebase onto it.
 Every remote-tracking ref is dropped before each run, so a fetch that stops happening takes the
 reading with it rather than answering from what an earlier push left behind.
 
+Two cases name a branch the stream the report is written to will not take — one holding a byte that
+is not UTF-8, which is what a reading escapes, and one holding a character the stream has no room
+for. The report is where the escape a reading keeps has to become something a stream will take.
+
 Run: python3 scripts/hooks/test_stale_main.py
 """
 
@@ -72,8 +76,12 @@ class BranchBaseTests(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.root, ignore_errors=True)
 
-    def report(self, view="", view_code=0):
+    def report(self, view="", view_code=0, stream=None):
         environment = dict(os.environ)
+        if stream is not None:
+            # Named rather than arranged through a locale, so the case is posed by what it says and
+            # not by which locales the machine running it has installed.
+            environment["PYTHONIOENCODING"] = stream
         environment["PATH"] = str(self.stub) + os.pathsep + environment.get("PATH", "")
         environment["CLAUDE_PROJECT_DIR"] = str(self.project)
         environment["VELVET_STALE_MAIN_VIEW"] = view
@@ -138,6 +146,38 @@ class BranchBaseTests(unittest.TestCase):
 
         # Assert
         self.assertIn("Not fetched: origin/main, origin/2.x", printed)
+
+    def test_Given_ABranchNameHoldingAByteThatIsNotUTF8_When_TheReportIsTaken_Then_TheBranchIsNamed(self):
+        # Arrange — planted in packed-refs and checked out from there, which is a ref's content
+        # rather than a filename. It then reaches the report through the same reading every other
+        # case's branch does, and a report that ends at its own print prints what a checkout with
+        # nothing to say prints.
+        odd = "feat/\udcb1odd".encode("utf-8", "surrogateescape")
+        at = subprocess.run(["git", "-C", str(self.project), "rev-parse", "HEAD"],
+                            capture_output=True, check=True, timeout=60).stdout.strip()
+        (self.project / ".git" / "packed-refs").write_bytes(
+            b"# pack-refs with: peeled fully-peeled sorted \n" + at + b" refs/heads/" + odd + b"\n")
+        git(self.project, "checkout", "-q", odd)
+
+        # Act
+        printed = self.report(view=self.named("main"), stream="utf-8:strict")
+
+        # Assert
+        self.assertIn("Branch feat/\\udcb1odd is", printed)
+
+    def test_Given_ABranchNameTheStreamCannotCarry_When_TheReportIsTaken_Then_TheBranchIsNamed(self):
+        # Arrange — feat/naïve, a name a repository holds with nothing odd about it, written to a
+        # stream whose encoding has no room for it. Spelling only what the reading escaped leaves
+        # this one to end the report, and a name `git branch` will take is a wider input than one
+        # that had to be planted.
+        git(self.project, "branch", "feat/naïve")
+        git(self.project, "checkout", "-q", "feat/naïve")
+
+        # Act
+        printed = self.report(view=self.named("main"), stream="ascii")
+
+        # Assert
+        self.assertIn("Branch feat/na\\xefve is", printed)
 
     def test_Given_ABaseWhoseRefIsNotHere_When_TheReportIsTaken_Then_TheBranchIsNotMeasuredAgainstMain(self):
         # Arrange / Act

@@ -458,8 +458,7 @@ namespace Velvet
             }
         }
 
-        // The controller-owned bindings: VirtualList (disposes its own pooled buffer) and Outlet
-        // (disposes the route scope, then drops the identity-side container registration).
+        // The controller-owned bindings: VirtualList, which disposes its own pooled buffer.
         private void CleanupControllerResources(VisualElement element)
         {
             if (_ctx.VirtualListControllers.TryGetValue(element, out var virtualListController))
@@ -467,24 +466,6 @@ namespace Velvet
                 virtualListController.Dispose();
                 _ctx.VirtualListControllers.Remove(element);
             }
-            if (_ctx.OutletScopes.TryGetValue(element, out var routeScope))
-            {
-                // The scope comes from the application's IRouteScopeFactory — user code, contained for
-                // the reason CleanupEffectAndStyleBindingResources gives for the refCallback cleanup.
-                _ctx.OutletScopes.Remove(element);
-                try
-                {
-                    routeScope.Dispose();
-                }
-                catch (System.Exception exception)
-                {
-                    FiberLogger.LogException("FiberElementCleaner", exception);
-                }
-            }
-            // Identity-side registration added on every Outlet mount; without this per-element
-            // removal the set would pin every unmounted Outlet's dead container element until the
-            // whole reconciler disposes. No-op for non-Outlet elements.
-            _ctx.OutletContainers.Remove(element);
         }
 
         // Removes only this Portal's slot range from the target's children

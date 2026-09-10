@@ -12,7 +12,7 @@ namespace Velvet.Tests
     ///
     /// Exposes factory helpers (Route / MakeMatch / Attempt / MakeToggleGuard / MakeOneShotBlocker /
     /// MakeDeferredBlocker / BuildRouter) that eliminate boilerplate envelope construction in
-    /// routing test files.
+    /// routing test files, and <see cref="ReadTokenState"/> for the cases that read a loader's token.
     /// </summary>
     internal static class RouteTestStubs
     {
@@ -24,6 +24,10 @@ namespace Velvet.Tests
 
         [Component]
         public static VNode StubC() => V.Label(text: "stub-c");
+
+        /// <inheritdoc cref="CancellationTokenStateProbe.ReadTokenState"/>
+        public static string ReadTokenState(CancellationToken token)
+            => CancellationTokenStateProbe.ReadTokenState(token);
 
         /// <summary>
         /// Creates a RouteDefinition with sensible test defaults. Element defaults to <see cref="StubA"/>;

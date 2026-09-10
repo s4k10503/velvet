@@ -23,12 +23,12 @@ namespace Velvet.Tests
     /// </list>
     /// </summary>
     /// <remarks>
-    /// The matched route Component is wrapper-mounted on the Outlet container. On the existing-fiber path the
-    /// wrapper-mount reconcile treats a non-memo Component's props as always changed, so each Outlet reconcile
-    /// schedules an async re-render of the route Component; a memoized Component bails on shallow-equal props.
-    /// The slot-stable layout (<c>LayoutWithOutletRender</c>) patches the Outlet in place so the route fiber is
-    /// preserved, while the slot-shifting layout (<c>LayoutWithShiftingOutletRender</c>) drops the leading
-    /// sibling so the unkeyed position mismatch remounts the Outlet container.
+    /// The matched route Component is a child of the Outlet's own fiber. A non-memo Component re-renders
+    /// whenever its parent does, so each Outlet reconcile renders the route once; a memoized Component bails
+    /// on shallow-equal props. The slot-stable layout (<c>LayoutWithOutletRender</c>) keeps the Outlet at the
+    /// same position so its fiber and the route's are preserved, while the slot-shifting layout
+    /// (<c>LayoutWithShiftingOutletRender</c>) drops the leading sibling so the unkeyed position mismatch
+    /// remounts the Outlet's fiber and the route's with it.
     /// </remarks>
     [TestFixture]
     internal sealed class OutletRouteRerenderTests
@@ -75,9 +75,9 @@ namespace Velvet.Tests
 
         // Layout that owns the Outlet and a tick state. Bumping the tick forces a top-down re-render of the
         // layout, which reconciles its Outlet without changing the router location. Only the leading sibling's
-        // text changes; the children structure (Label, Outlet) is stable, so the Outlet patches in place at the
-        // same slot. This keeps the wrapper-mounted route fiber preserved, exercising the existing-fiber
-        // re-render path where memoization decides bail vs re-render.
+        // text changes; the children structure (Label, Outlet) is stable, so the Outlet stays at the same
+        // position. This keeps the route fiber preserved, exercising the existing-fiber re-render path where
+        // memoization decides bail vs re-render.
         [Component]
         private static VNode LayoutWithOutletRender()
         {
@@ -86,9 +86,9 @@ namespace Velvet.Tests
             return V.Div(children: new VNode[] { V.Label(text: $"header-{tick}"), V.Outlet() });
         }
 
-        // Layout that shifts the Outlet's slot on re-render by dropping the leading sibling. The unkeyed
-        // Label->Outlet position mismatch forces a remount of the Outlet container (and the route fiber
-        // wrapper-mounted on it), pinning that memoization does not bail a remount.
+        // Layout that shifts the Outlet's position on re-render by dropping the leading sibling. The unkeyed
+        // Label->Outlet position mismatch forces a remount of the Outlet's fiber (and of the route fiber
+        // below it), pinning that memoization does not bail a remount.
         [Component]
         private static VNode LayoutWithShiftingOutletRender()
         {
@@ -153,8 +153,8 @@ namespace Velvet.Tests
         [Test]
         public void Given_NonMemoRoute_When_LocationInvariantReconcile_Then_ReRendersExactlyOnce()
         {
-            // The slot-stable layout patches the Outlet in place, so the wrapper-mounted route fiber is
-            // preserved; a non-memo Component treats its props as changed and re-renders once per reconcile.
+            // The slot-stable layout keeps the Outlet at the same position, so the route fiber is preserved;
+            // a non-memo Component re-renders once per reconcile of its parent.
             // Arrange
             var router = BuildRouterFor(NonMemoRouteRender);
             using var mounted = MountLayoutWithRouter(router, LayoutWithOutletRender);
@@ -211,9 +211,9 @@ namespace Velvet.Tests
         [Test]
         public void Given_MemoRoute_When_SlotShiftRemountsIt_Then_StillRenders()
         {
-            // Dropping the leading sibling shifts the Outlet's slot; the unkeyed position mismatch remounts the
-            // Outlet container and the route fiber. Memoization bails a preserved fiber's re-render, not a
-            // mount, so the remounted memo route Component renders again.
+            // Dropping the leading sibling shifts the Outlet's position; the unkeyed mismatch remounts the
+            // Outlet's fiber and the route fiber below it. Memoization bails a preserved fiber's re-render,
+            // not a mount, so the remounted memo route Component renders again.
             // Arrange
             var router = BuildRouterFor(MemoRouteRender);
             using var mounted = MountLayoutWithRouter(router, LayoutWithShiftingOutletRender);

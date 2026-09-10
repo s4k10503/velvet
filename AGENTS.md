@@ -26,7 +26,7 @@ python3 scripts/test_quality/assert_results_from_this_tree.py Logs/results.xml -
 python3 scripts/test_quality/assert_no_inconclusive.py Logs/results.xml
 ```
 
-- **Run a subset / single fixture:** add `-testFilter "Velvet.Tests.SomeFixture"` (semicolon-separates multiple; matches fully-qualified class or method names).
+- **Run a subset / single fixture:** add `-testFilter "Velvet.Tests.SomeFixture"`. The value is a regex, matched against a case's full name and every suite and assembly name above it, and the `;` split does not trim — so a filter can select a far larger or far smaller set than it reads as, and the run still reports green. `.agents/skills/unity-tests/SKILL.md` owns what a spelling costs.
 - **PlayMode:** `-testPlatform PlayMode`.
 - **Seeding `Library` from another checkout** is what makes a `git worktree` run practical, and it is what puts another checkout's compiled test assemblies under `Library/ScriptAssemblies`. Leave that directory behind — `rsync -a --exclude ScriptAssemblies <other>/Library/ Library/` — so nothing another checkout compiled is sitting there to be reported.
 - **Do NOT pass `-nographics`.** Everything that needs a real panel (an `EditorWindow.rootVisualElement`, or anything reading `resolvedStyle` / firing pointer/focus events) goes through `TestGraphics.IgnoreIfHeadless`, so the flag does not fail those tests — it **skips** them, and the run reports green having exercised none of the panel behavior. Graphics-free tests all pass with graphics on, so the flag buys nothing and costs the half of the suite that is hardest to get right.

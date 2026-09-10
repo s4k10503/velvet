@@ -117,6 +117,9 @@ namespace Velvet
             FiberTreeReturn.ReturnRetiredTree(parkedTree, fiber);
         }
 
+        internal static int SlotStartOwnedBy(ComponentFiber fiber)
+            => fiber.IsInlineMounted ? fiber.MountSlotStart : 0;
+
         // Reconciles this render's output into the fiber's slot range and commits the sibling-shift delta.
         // For wrapper-less (inline-mounted) fibers, reconcile only the sub-range
         // [MountSlotStart, MountSlotStart + MountSlotCount) of MountPoint.children so
@@ -132,7 +135,7 @@ namespace Velvet
         internal static void ReconcileIntoSlotRange(
             ComponentFiber fiber, VNode?[] oldTree, VNode?[] newTree, double frameBudgetMs, bool deferReconcile)
         {
-            var slotStart = fiber.IsInlineMounted ? fiber.MountSlotStart : 0;
+            var slotStart = SlotStartOwnedBy(fiber);
             // The array this reconcile is expanding, for the children it stamps on the way through.
             var treeContext = fiber.Reconciler?.Context;
             var enclosingFiberTree = treeContext?.CurrentFiberTree;

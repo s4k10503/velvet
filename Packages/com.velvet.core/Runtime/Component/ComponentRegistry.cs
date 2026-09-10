@@ -9,8 +9,7 @@ namespace Velvet
     //   inline-mounted: keyed by _inlineInstances' tuple, whose members are documented on it, and the
     //   fiber's rendered output occupies a sub-range of the container's children;
     //   wrapper-mounted: keyed by a dedicated wrapper VE unique to the fiber, with no slot key.
-    //   Retained for Suspense and Outlet route mounts that require a single anchor for pending-fiber
-    //   lookup.
+    //   Retained for Suspense mounts that require a single anchor for pending-fiber lookup.
     // Identity prefers ComponentNode.Identity, and falls back to
     // Body.Method (the function component's MethodInfo) when not specified.
     internal sealed class ComponentRegistry : IDisposable
@@ -46,7 +45,7 @@ namespace Velvet
         // Dispose like the indexes.
         internal Dictionary<(long slotPath, int nodeIndex), object> InlinePositionKeyBoxes { get; } = new();
 
-        // Wrapper-mounted fibers (Velvet divergence: Outlet route mounts / V.List items own a dedicated
+        // Wrapper-mounted fibers (Velvet divergence: V.List items own a dedicated
         // wrapper VE) anchor on that VisualElement. identity disambiguates an identity swap on the same
         // wrapper (see RemoveIfDifferentIdentity).
         private readonly Dictionary<VisualElement, ComponentFiber> _wrapperIndex = new();
@@ -138,6 +137,27 @@ namespace Velvet
             return CreateAndMountFiber(node, identity, in site);
         }
 
+        // The fibers re-placed since a caller's mark, so it can put every ComponentFiber.PrePlacementSlotStart
+        // back. Kept here rather than on the walk that reads it because a re-placement's own re-render can
+        // unwind past the walk's record of which fibers it reached — a suspend does, before the fiber
+        // reaches GeneralPathReconciler's NewFibers at all. A stack rather than an index: the outermost
+        // walk releases to a mark of zero, so it holds nothing between passes and the disposal contract
+        // below has nothing of it to clear.
+        private readonly List<ComponentFiber> _prePlacementStack = new();
+
+        internal int MarkPrePlacements() => _prePlacementStack.Count;
+
+        // Releases everything recorded since mark. Callers pair this with MarkPrePlacements in a finally,
+        // so the count is what bounds the release rather than any record of what the pass reached.
+        internal void ReleasePrePlacementsTo(int mark)
+        {
+            for (var i = _prePlacementStack.Count - 1; i >= mark; i--)
+            {
+                _prePlacementStack[i].PrePlacementSlotStart = -1;
+                _prePlacementStack.RemoveAt(i);
+            }
+        }
+
         private ComponentFiber ReconcileExistingFiber(
             ComponentFiber existingFiber,
             ComponentNode node,
@@ -189,6 +209,12 @@ namespace Velvet
                 // FiberStack consistent across the root and descendant Reconcilers, so a synchronous
                 // render here does not collide with a subsequent FlushState pass: clearing IsDirty
                 // makes the later traversal short-circuit while the rendered output is already committed.
+                // The MountSlotStart write below names where this walk's placement pass will put the
+                // fiber's rows; the container is still holding them where they were until that pass runs,
+                // and the re-render further down can abort it or unwind out of it on a suspend. Keep the
+                // start the container holds meanwhile, on the stack the walk releases.
+                existingFiber.PrePlacementSlotStart = existingFiber.MountSlotStart;
+                _prePlacementStack.Add(existingFiber);
                 existingFiber.MountSlotStart = site.SlotStart;
                 // Rewritten even where the reconcile reaching the fiber names no Portal, which erases the
                 // stamp a fiber below a Portal's own child was given at creation — its parent's isolated
@@ -418,8 +444,8 @@ namespace Velvet
         // is ComponentFiber.MountPoint; for wrapper-mounted fibers it is the wrapper VE
         // recorded in _wrapperFiberInfo. Used by the Suspense primary rollback path: a created
         // orphan container is dropped (GC) but its CreateElement step reconciled the container's children,
-        // which may have registered inline AND/OR wrapper-mounted (Outlet route, AnimatePresence child,
-        // etc.) Component fibers under it. Those fibers' anchor VE becomes dangling once the orphan is
+        // which may have registered inline AND/OR wrapper-mounted (an AnimatePresence child, etc.)
+        // Component fibers under it. Those fibers' anchor VE becomes dangling once the orphan is
         // dropped: queued deferred layout effects would fire against a dead VE, and wrapper entries would
         // linger to confuse later identity checks. Disposing here releases registry entries, fires any
         // cleanup that has been registered (setups that never ran have none, since a suspended primary
