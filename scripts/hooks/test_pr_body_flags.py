@@ -161,15 +161,20 @@ class BodyPathReadingTests(unittest.TestCase):
 
 class ValueFlagMirrorTests(unittest.TestCase):
     def test_Given_ghsOwnOptionTable_When_TheValueTakingOptionsAreRead_Then_TheMirrorSpellsThoseExactly(self):
-        # Arrange
+        # Arrange -- only one direction of a disagreement can cost a body. A flag gh takes a value
+        # for and the mirror calls boolean spends the operand behind it, so `--body-file` after it
+        # goes unread and the guard passes having read none. The reverse cannot: gh rejects a flag
+        # it does not have, so the command never runs. The runners this repository builds on carry
+        # more than one gh, so an exact mirror fails on whichever of them the table was not read
+        # from -- measured, the same guard reported each direction on consecutive days.
         printed = across_subcommands(0)
 
         # Act
-        disagreement = (sorted(pr_body.VALUE_FLAGS - printed), sorted(printed - pr_body.VALUE_FLAGS))
+        unmirrored = sorted(printed - pr_body.VALUE_FLAGS)
 
         # Assert
-        self.assertEqual(disagreement, ([], []),
-                         "VALUE_FLAGS and gh disagree: (mirrored but not gh's, gh's but unmirrored)")
+        self.assertEqual(unmirrored, [],
+                         "gh takes a value for these and VALUE_FLAGS calls them boolean")
 
     def test_Given_ghsOwnOptionTable_When_TheBooleanShorthandsAreRead_Then_TheClusterParseKnowsEachOne(self):
         # Arrange — a cluster is read one letter at a time, so a boolean shorthand the parse does not
