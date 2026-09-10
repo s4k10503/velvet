@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
-"""Unit tests for the unexpanded-operand readings in .claude/hooks/refuse/commit_failing_fast_checks.py.
+"""Unit tests for .claude/hooks/refuse/commit_failing_fast_checks.py.
 
-The two operand kinds are refused apart because the remedy for one does not reach the other. They were
-folded into one list under a sentence written for a pathspec, and an agent's own `git -C "$SP" commit`
-was refused with `$SP` printed under advice to name the paths or commit the index — two things that
-cannot resolve a `-C`.
+Four hold the unexpanded-operand readings. The two operand kinds are refused apart because the remedy
+for one does not reach the other. They were folded into one list under a sentence written for a
+pathspec, and an agent's own `git -C "$SP" commit` was refused with `$SP` printed under advice to name
+the paths or commit the index — two things that cannot resolve a `-C`.
+
+One holds which content the checks run over, the index's rather than the working tree's, by giving the
+two different text and reading which of them the refusal quotes back.
 
 Run: python3 scripts/hooks/test_commit_failing_fast_checks.py
 """
@@ -19,8 +22,14 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 GUARD = REPO_ROOT / ".claude/hooks/refuse/commit_failing_fast_checks.py"
 
+# A file whose two versions are both distinctive, so that a refusal quoting one of them says which
+# half the guard read. The staged half is what a fast check has to reject.
+PROBE = "probe.py"
+STAGED_AND_BROKEN = "indexed_and_broken = (\n"
+TREE_AND_WHOLE = "tree_is_fine = 1\n"
 
-class UnexpandedOperands(unittest.TestCase):
+
+class GuardTestCase(unittest.TestCase):
     def setUp(self):
         self.root = Path(tempfile.mkdtemp(prefix="fast-checks-")).resolve()
         self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
@@ -35,6 +44,8 @@ class UnexpandedOperands(unittest.TestCase):
                               capture_output=True, text=True, timeout=60)
         return done.returncode, done.stderr
 
+
+class UnexpandedOperands(GuardTestCase):
     def test_Given_AnUnexpandedDirectory_When_Refused_Then_TheRemedyIsToSpellItOut(self):
         # Arrange — naming the paths leaves the `-C` unresolved, and so does committing the index.
         code, said = self.judge('git -C "$SP" commit -m "x"')
@@ -69,6 +80,30 @@ class UnexpandedOperands(unittest.TestCase):
 
         # Act / Assert
         self.assertEqual((code, "Name the paths" in said), (2, True))
+
+
+class IndexedContent(GuardTestCase):
+    # GREEN_ON_BASE(refactor): the index read this guard's collapse onto a shared reader preserves.
+    # `repository.git_bytes` takes its arguments the other way round from the reader removed here,
+    # so passing `cwd` where the paths go is what reddens this — measured, on a TypeError no handler
+    # catches, which exits 1 and lets the commit through rather than refusing it.
+    def test_Given_ABlobBrokenInTheIndexAndWholeInTheTree_When_Judged_Then_TheRefusalQuotesTheIndex(self):
+        # Arrange — the two halves carry different text, so the quoted line says which was read. A
+        # refusal alone would not: the working tree's copy is what a commit of the index must not be
+        # judged on, and both halves failing would be a case that passes either way — so what the
+        # tree held while the guard ran is compared beside the refusal.
+        (self.root / PROBE).write_text(STAGED_AND_BROKEN, encoding="utf-8")
+        subprocess.run(["git", "-C", str(self.root), "add", PROBE], check=True,
+                       capture_output=True, timeout=60)
+        (self.root / PROBE).write_text(TREE_AND_WHOLE, encoding="utf-8")
+
+        # Act
+        code, said = self.judge("git commit -m x")
+
+        # Assert
+        self.assertEqual((code, STAGED_AND_BROKEN.strip() in said,
+                          (self.root / PROBE).read_text(encoding="utf-8")),
+                         (2, True, TREE_AND_WHOLE))
 
 
 if __name__ == "__main__":
