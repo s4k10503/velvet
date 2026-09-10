@@ -29,6 +29,14 @@ from deferrals import DEFERRALS  # noqa: E402
 
 GitAnswer = collections.namedtuple("GitAnswer", "stdout stderr code")
 
+# git and gh write bytes — paths, JSON, messages — rather than text in whatever encoding the
+# ambient locale names. Read as that encoding, a byte outside it raises past both handlers below and
+# the hook exits 1 with a traceback, where this module promises an unavailable answer instead. The
+# escape is reversible rather than lossy because a caller re-encodes what it reads:
+# untracked_scratch's `unquoted` takes a path's own bytes back out of the listing's spelling, and a
+# replaced one names a file nothing answers to.
+DECODING = {"encoding": "utf-8", "errors": "surrogateescape"}
+
 
 def git_answer(args, cwd, timeout=15):
     """git's stdout, what it wrote about a failure, and its exit code. A git that never started
@@ -40,7 +48,7 @@ def git_answer(args, cwd, timeout=15):
     """
     try:
         result = subprocess.run(
-            ["git", *args], cwd=cwd, capture_output=True, text=True, timeout=timeout,
+            ["git", *args], cwd=cwd, capture_output=True, timeout=timeout, **DECODING,
         )
     except (OSError, subprocess.SubprocessError) as error:
         return GitAnswer("", str(error), 1)
@@ -65,7 +73,7 @@ def gh_answer(args, cwd=None, timeout=7):
     """
     try:
         result = subprocess.run(
-            ["gh", *args], cwd=cwd, capture_output=True, text=True, timeout=timeout,
+            ["gh", *args], cwd=cwd, capture_output=True, timeout=timeout, **DECODING,
         )
     except (OSError, subprocess.SubprocessError) as error:
         return Answer("", str(error), 1)
@@ -82,6 +90,17 @@ def gh(args, cwd=None, timeout=7):
     """
     answer = gh_answer(args, cwd, timeout)
     return answer.stdout if answer.code == 0 else None
+
+
+def printable(text):
+    """`text` with whatever stdout's encoding cannot carry spelled out in ASCII.
+
+    `DECODING` keeps a byte UTF-8 does not map, because a caller re-encoding a path needs it
+    kept, so the spelling belongs at the line a report prints rather than at the reading. Spelled
+    rather than replaced for the reason `DECODING` gives — a replacement names nothing.
+    """
+    encoding = getattr(sys.stdout, "encoding", None) or "utf-8"
+    return text.encode(encoding, "backslashreplace").decode(encoding, "backslashreplace")
 
 
 # Two ways of asking the same question, drawn in order. `gh pr list` goes through GraphQL and
@@ -163,6 +182,16 @@ not that, and naming it there is how a deferral comes to record something nothin
   echo "{key} <what the work is waiting on> $(date +%s) $CLAUDE_CODE_SESSION_ID" >> {DEFERRALS}"""
 
 
+def toplevel(cwd):
+    """The root of the repository holding `cwd`, or None where `cwd` sits in none.
+
+    A trailing space, tab or newline can belong to the root's own name, so the reading's terminator
+    comes off rather than whatever whitespace it ends in.
+    """
+    root = (git(["rev-parse", "--show-toplevel"], cwd=cwd) or "").removesuffix("\n")
+    return Path(root) if root else None
+
+
 def project_tree():
     """The checkout to report on, or None when there is no git repository to read.
 
@@ -170,12 +199,7 @@ def project_tree():
     toplevel keeps a guard useful when it is run by hand.
     """
     declared = os.environ.get("CLAUDE_PROJECT_DIR", "")
-    tree = Path(declared) if declared else None
-    if tree is None:
-        toplevel = git(["rev-parse", "--show-toplevel"], cwd=Path.cwd())
-        if toplevel is None:
-            return None
-        tree = Path(toplevel.strip())
-    if not tree.is_dir() or git(["rev-parse", "--git-dir"], cwd=tree) is None:
+    tree = Path(declared) if declared else toplevel(Path.cwd())
+    if tree is None or not tree.is_dir() or git(["rev-parse", "--git-dir"], cwd=tree) is None:
         return None
     return tree

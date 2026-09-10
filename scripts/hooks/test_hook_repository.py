@@ -1,10 +1,16 @@
 #!/usr/bin/env python3
-"""Unit tests for the pull-request reading two Stop guards share, and for what it says on failing.
+"""Unit tests for the pull-request reading two Stop guards share, for what it says on failing, and
+for two ways this module answered nothing where it holds an answer.
 
 A guard that could not read had one way of asking and one thing to say, and what it said was a claim
 about the pull requests rather than about itself. Both halves are held here: that a second way is
 asked before blindness is declared, and that the report names the guard as what failed and asks the
 deferral about the work.
+
+Three more hold what a subprocess writes: that a byte which is not UTF-8 comes back off stdout and
+off stderr rather than ending the hook, and that gh's reader answers the same. Two hold the root of
+a repository whose directory name ends in whitespace — a space, which a trimmed reading spends, and
+a newline, which a reading trimming newlines alone spends as well.
 
 Run: python3 scripts/hooks/test_hook_repository.py
 """
@@ -12,6 +18,7 @@ Run: python3 scripts/hooks/test_hook_repository.py
 import contextlib
 import importlib.util
 import os
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -54,6 +61,135 @@ def gh_answering(pull_request_list, api):
         with mock.patch.dict(os.environ, {"PATH": f"{root}{os.pathsep}{os.environ['PATH']}",
                                           "VELVET_GH_ASKED": str(asked)}):
             yield asked
+
+
+# Invalid UTF-8, posed as bytes a program writes rather than as a file carrying the same name:
+# what reaches the reading is the same either way.
+LISTED = b"?? \xb1odd.cs\n"
+COMPLAINED = b"warning: \xb1\n"
+TITLED = b'{"title":"\xb1"}\n'
+
+
+@contextlib.contextmanager
+def writing(program, stdout, stderr=b""):
+    """A `program` on PATH writing exactly these bytes and exiting 0."""
+    with tempfile.TemporaryDirectory(prefix="hook-repository-bytes-") as directory:
+        root = Path(directory)
+        (root / "out").write_bytes(stdout)
+        (root / "err").write_bytes(stderr)
+        stub = root / program
+        stub.write_text('#!/bin/sh\ncat "$VELVET_STUB_OUT"\ncat "$VELVET_STUB_ERR" >&2\n')
+        stub.chmod(0o755)
+        with mock.patch.dict(os.environ, {"PATH": f"{root}{os.pathsep}{os.environ['PATH']}",
+                                          "VELVET_STUB_OUT": str(root / "out"),
+                                          "VELVET_STUB_ERR": str(root / "err")}):
+            yield
+
+
+@contextlib.contextmanager
+def repository_named(name):
+    """A repository whose directory carries `name`, yielding the root git will answer with."""
+    with tempfile.TemporaryDirectory(prefix="hook-repository-root-") as directory:
+        root = Path(directory) / name
+        root.mkdir()
+        subprocess.run(["git", "init", "-q", "-b", "main", str(root)], check=True, timeout=60)
+        yield root.resolve()
+
+
+@contextlib.contextmanager
+def rooted_at(directory):
+    """A session whose only reading of its own tree is the working directory.
+
+    CLAUDE_PROJECT_DIR is removed rather than aimed somewhere holding no repository, which is how
+    the neighbouring untracked-scratch fixture withholds a tree: a case posed with it set never
+    reaches the reading under test.
+    """
+    previous = Path.cwd()
+    with mock.patch.dict(os.environ):
+        os.environ.pop("CLAUDE_PROJECT_DIR", None)
+        os.chdir(directory)
+        try:
+            yield
+        finally:
+            os.chdir(previous)
+
+
+def answered(reading):
+    """The bytes `reading` handed back, re-encoded, or the name of what it raised instead.
+
+    Turning a raise into a value rather than letting it end the case is `answered` in
+    scripts/pr/test_settle.py, which owns why; this one re-encodes too, because the cases below
+    compare bytes. Dropping it leaves those cases passing and leaves the base with nothing to say:
+    a raise there is not a failed assertion, and base_red_check.py counts it as no verdict rather
+    than as a red one.
+    """
+    try:
+        return reading().encode("utf-8", "surrogateescape")
+    except Exception as raised:  # noqa: BLE001
+        return type(raised).__name__
+
+
+class SubprocessDecodingTests(unittest.TestCase):
+    """What a subprocess wrote, for a reading that promises an unavailable answer over a failure.
+
+    Compared re-encoded rather than against a spelling, because the point is that the reading spent
+    none of the bytes: a lossy handler answers a listing that names a file nothing answers to, and
+    that reads as an answer.
+    """
+
+    def test_Given_StdoutHoldingAByteThatIsNotUTF8_When_TheReadingIsTaken_Then_TheBytesComeBackWhole(self):
+        # Arrange
+        with writing("git", LISTED):
+            # Act
+            read = answered(lambda: repository.git_answer(["status"], cwd=None).stdout)
+
+            # Assert
+            self.assertEqual(read, LISTED)
+
+    def test_Given_StderrHoldingAByteThatIsNotUTF8_When_TheReadingIsTaken_Then_TheBytesComeBackWhole(self):
+        # Arrange — the other stream, which a reading that decoded only the answer would drop.
+        # amend_of_published_commit.py picks both the line it quotes and the remedy it offers out of
+        # this text, so a stderr the reading spent changes which refusal a reader is handed.
+        with writing("git", b"", COMPLAINED):
+            # Act
+            read = answered(lambda: repository.git_answer(["status"], cwd=None).stderr)
+
+            # Assert
+            self.assertEqual(read, COMPLAINED.strip())
+
+    def test_Given_ghWritingAByteThatIsNotUTF8_When_TheReadingIsTaken_Then_TheBytesComeBackWhole(self):
+        # Arrange — the sibling reader, whose JSON carries whatever a title or a branch name holds.
+        with writing("gh", TITLED):
+            # Act
+            read = answered(lambda: repository.gh(["pr", "view", "612", "--json", "title"]))
+
+            # Assert
+            self.assertEqual(read, TITLED)
+
+
+class ProjectTreeTests(unittest.TestCase):
+    def test_Given_ARootWhoseNameEndsInASpace_When_TheTreeIsRooted_Then_TheRootKeepsThatCharacter(self):
+        # Arrange — a trailing space is a character the directory owns. Trimming it names a
+        # directory that is not there, and the reading then answers with no tree at all.
+        with repository_named("project ") as root:
+            with rooted_at(root):
+                # Act
+                found = repository.project_tree()
+
+        # Assert
+        self.assertEqual(found, root)
+
+    def test_Given_ARootWhoseNameEndsInANewline_When_TheTreeIsRooted_Then_TheRootKeepsThatCharacter(self):
+        # Arrange — the name's own newline arrives behind the reading's terminator, so a reading
+        # that takes off every trailing one takes this one with it and the space case says nothing
+        # about it.
+        with repository_named("project\n") as root:
+            with rooted_at(root):
+                # Act
+                found = repository.project_tree()
+
+        # Assert
+        self.assertEqual(found, root)
 
 
 class OpenPullRequestTests(unittest.TestCase):

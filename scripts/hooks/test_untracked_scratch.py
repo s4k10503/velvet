@@ -15,6 +15,8 @@ project's own trees is not a second such listing, so exempting a kind from the b
 Two more hold the scope the docstring claims — one tree, named in the headline — so widening the
 scan without rewriting that claim goes red.
 
+One holds the root the reading answers with, where the directory's own name ends in a space.
+
 Four more hold the listing's own spelling: that an entry carrying a line break of its own still
 occupies one line of the block, that a name spelled with git's lettered escapes comes back as the
 file's, that a byte left raw inside the quotes is the file's too, and that the marker is read off a
@@ -543,6 +545,32 @@ class UntrackedScratchTests(unittest.TestCase):
 
         # Assert
         self.assertEqual((str(rooted) in headline, str(below) in headline), (True, False))
+
+
+class WhitespaceRootTests(unittest.TestCase):
+    """Its own class because the shared setUp above names the project directory, and the
+    directory's name is what this poses."""
+
+    def test_Given_ARootWhoseNameEndsInASpace_When_TheReportIsTaken_Then_TheLeftoverIsNamed(self):
+        # Arrange — trimming the terminator's whitespace takes the space with it, and the
+        # directory named by what is left is not there. Both status reads taken from it answer
+        # nothing, so the guard prints nothing — which is what it prints for a clean tree too.
+        root = Path(tempfile.mkdtemp(prefix="velvet-untracked-scratch-"))
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        project = root / "project "
+        project.mkdir()
+        subprocess.run(["git", "init", "-q", "-b", "main", str(project)], check=True, timeout=60)
+        (project / STALE).write_text("scratch\n", encoding="utf-8")
+
+        # Act
+        done = subprocess.run(
+            [sys.executable, "-B", str(HOOK)],
+            input=json.dumps({"hook_event_name": "SubagentStop", "cwd": str(project)}),
+            capture_output=True, text=True, cwd=str(root),
+            env=dict(os.environ, CLAUDE_PROJECT_DIR=str(root)), timeout=120)
+
+        # Assert
+        self.assertIn(STALE, done.stdout)
 
 
 if __name__ == "__main__":
