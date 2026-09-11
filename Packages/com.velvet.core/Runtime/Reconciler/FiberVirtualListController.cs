@@ -35,9 +35,8 @@ namespace Velvet
         private bool _isDisposed;
 
         // The prior pass's rows, split by what the next pass may find them under: a keyed row by its key,
-        // an unkeyed one by the item index it was rendered for. A row is REMOVED from its table as the
-        // pass takes it, so what is left over is what the pass did not take — which is what the
-        // scrolled-out sweep and the failed-pass unwind dispose.
+        // an unkeyed one by the item index it was rendered for. What a pass leaves in them, whether it
+        // finishes or throws, is what DisposeUntakenRows releases.
         private readonly Dictionary<string, (VNode node, VisualElement element)> _oldNodesByKey = new();
         private readonly Dictionary<int, (VNode node, VisualElement element)> _oldNodesByItemIndex = new();
         private readonly HashSet<string> _reusedKeys = new();
@@ -126,8 +125,6 @@ namespace Velvet
             _scrollView.verticalScroller.valueChanged -= OnScrollValueChanged;
 
             ClearRenderedItems();
-            _renderedNodes = Array.Empty<VNode>();
-            _renderedElements = Array.Empty<VisualElement>();
         }
 
         private void OnGeometryChanged(GeometryChangedEvent evt)
@@ -151,12 +148,11 @@ namespace Velvet
         {
             if (_isDisposed || _node.Items.Count == 0)
             {
-                if (_firstRenderedIndex != -1)
-                {
-                    ClearRenderedItems();
-                    _firstRenderedIndex = -1;
-                    _lastRenderedIndex = -1;
-                }
+                // Not gated on the tracked range, which cannot say whether rows are held — the reason
+                // _bufferFirstItemIndex exists.
+                ClearRenderedItems();
+                _firstRenderedIndex = -1;
+                _lastRenderedIndex = -1;
                 return;
             }
 
@@ -185,12 +181,12 @@ namespace Velvet
 
             AllocateRenderBuffers(newCount, out var newNodes, out var newElements);
 
-            // The loop below runs the application's keySelector and renderer, so it can throw for the
-            // reasons application code throws, and it must not escape half-done: AllocateRenderBuffers may
-            // have aliased the live buffers, leaving the controller pointing at a part-filled array while
-            // the container still shows the rows it no longer names. Containing the item instead was
-            // rejected — V.List, the mapping site this construct follows, releases what its pass took and
-            // rethrows.
+            // The loop below can throw — from the application's keySelector and renderer, and from
+            // creating or patching the row the renderer describes — and it must not escape half-done:
+            // AllocateRenderBuffers may have aliased the live buffers, leaving the controller pointing at a
+            // part-filled array while the container still shows the rows it no longer names. Containing
+            // the item instead was rejected — V.List, the mapping site this construct follows, releases
+            // what its pass took and rethrows.
             try
             {
                 PatchOrReplaceVisibleItems(newFirst, newCount, newNodes, newElements);
@@ -201,7 +197,7 @@ namespace Velvet
                 throw;
             }
 
-            DisposeScrolledOutItems();
+            DisposeUntakenRows();
 
             RebuildVisibleContainer(newFirst, newCount, newElements);
 
@@ -211,7 +207,7 @@ namespace Velvet
             _firstRenderedIndex = newFirst;
             _lastRenderedIndex = newLast;
 
-            // After DisposeScrolledOutItems, so a recycled item's ref cleanup runs before the setup of
+            // After DisposeUntakenRows, so a recycled item's ref cleanup runs before the setup of
             // whatever took its place, and after the container rebuild, so a setup reads an item that is
             // already in the list.
             _reconciler.DrainRefAttachesForController();
@@ -322,8 +318,8 @@ namespace Velvet
                     // than before, so it could not reuse that helper's eager remove-then-create order
                     // even if the class boundary were bridged.
                     var hasExisting = key != null
-                        ? _oldNodesByKey.Remove(key, out var existing)
-                        : _oldNodesByItemIndex.Remove(itemIndex, out existing);
+                        ? _oldNodesByKey.TryGetValue(key, out var existing)
+                        : _oldNodesByItemIndex.TryGetValue(itemIndex, out existing);
                     if (hasExisting && ReconcileKeying.CanPatch(existing.node, vnode))
                     {
                         // Store the patch's RETURN: a class-driven wrap/unwrap (shadow-*/clip-path-*)
@@ -334,15 +330,25 @@ namespace Velvet
                     else
                     {
                         // A same-key type flip (CanPatch=false) is a replacement, not a patch — mirroring
-                        // the general keyed diff path's create-before-dispose ordering: a throw while
-                        // constructing the replacement element leaves the old one intact instead of the
-                        // slot holding nothing recoverable.
+                        // the general keyed diff path's create-before-dispose ordering.
                         var replacement = _reconciler.CreateElementForController(vnode);
                         if (hasExisting)
                         {
                             _reconciler.CleanupElementForController(existing.element);
                         }
                         newElements[i] = replacement;
+                    }
+
+                    // The prior row leaves its table only once the slot holds an element, the order
+                    // GeneralPathReconciler.CommitLeaf keeps for a key it marks used: a throw from the create
+                    // or the patch above leaves it there for DiscardFailedPass to release.
+                    if (key != null)
+                    {
+                        _oldNodesByKey.Remove(key);
+                    }
+                    else
+                    {
+                        _oldNodesByItemIndex.Remove(itemIndex);
                     }
 
                     // Stamp this item's newly created fibers with its own vnode so an isolated re-render can
@@ -356,9 +362,7 @@ namespace Velvet
             }
         }
 
-        // Disposes what the pass left in the two tables above: the prior render's rows it did not take,
-        // which is what scrolled out of the visible range.
-        private void DisposeScrolledOutItems()
+        private void DisposeUntakenRows()
         {
             foreach (var kvp in _oldNodesByKey)
             {
@@ -371,12 +375,11 @@ namespace Velvet
             }
         }
 
-        // Releases what a pass that threw was holding, so that what the controller names is what it
-        // holds: the rows the pass had placed, plus the prior rows it had not reached. A row already
-        // taken out of a table is in a slot or was cleaned up as it was replaced, so nothing here is
-        // disposed twice. The prior range is not recoverable — a reused row has been patched in place
-        // toward its new node, and a same-key type flip has already disposed the element it replaced —
-        // so the range is left naming nothing and the next update rebuilds it.
+        // Releases what a pass that threw was holding — the elements in its slots, and the prior rows
+        // left in the tables — and leaves the range naming nothing, so the next range update renders it
+        // from nothing. Putting the previous range back was rejected: a same-key type flip the pass
+        // completed has already disposed the element that range showed, so what came back would not
+        // always be that range.
         private void DiscardFailedPass(VisualElement[] newElements)
         {
             for (var i = 0; i < newElements.Length; i++)
@@ -387,7 +390,7 @@ namespace Velvet
                 }
             }
 
-            DisposeScrolledOutItems();
+            DisposeUntakenRows();
 
             _visibleContainer.Clear();
             _renderedNodes = Array.Empty<VNode>();
@@ -412,6 +415,8 @@ namespace Velvet
             }
         }
 
+        // The buffers go with the rows they held: IndexOldRenderedItems offers whatever they still name
+        // for reuse, so a released row left there can be patched back in by the next pass.
         private void ClearRenderedItems()
         {
             for (var i = 0; i < _renderedElements.Length; i++)
@@ -422,6 +427,8 @@ namespace Velvet
                 }
             }
             _visibleContainer.Clear();
+            _renderedNodes = Array.Empty<VNode>();
+            _renderedElements = Array.Empty<VisualElement>();
         }
 
         private void ForceRefresh()

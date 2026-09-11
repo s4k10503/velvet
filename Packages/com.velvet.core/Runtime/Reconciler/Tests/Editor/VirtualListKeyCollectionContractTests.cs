@@ -10,8 +10,8 @@ namespace Velvet.Tests
     /// Holds the two BCL collections a <see cref="V.VirtualList{T}"/> range update tracks item keys in to
     /// what each does with a null key, which is why the controller keeps one out of both.
     /// <list type="bullet">
-    /// <item>A <c>Dictionary&lt;string, …&gt;</c> lookup by a null key throws, against an empty dictionary
-    /// as much as a populated one.</item>
+    /// <item>A <c>Dictionary&lt;string, …&gt;</c> lookup or removal by a null key throws, against an empty
+    /// dictionary as much as a populated one.</item>
     /// <item>A <c>HashSet&lt;string&gt;</c> takes a null as a member, so it reports the first null it is
     /// handed as newly added rather than refusing it.</item>
     /// </list>
@@ -30,6 +30,19 @@ namespace Velvet.Tests
 
             // Act + Assert
             Assert.Throws<ArgumentNullException>(() => byKey.TryGetValue(null, out _));
+        }
+
+        // GREEN_ON_BASE(characterization): removing by a null key throws as the lookup does.
+        // A range update makes this call with the key it looked a row up with, once the row's slot holds
+        // an element.
+        [Test]
+        public void Given_AnEmptyStringKeyedDictionary_When_RemovedFromByNull_Then_ItThrows()
+        {
+            // Arrange
+            var byKey = new Dictionary<string, int>();
+
+            // Act + Assert
+            Assert.Throws<ArgumentNullException>(() => byKey.Remove(null));
         }
 
         // GREEN_ON_BASE(characterization): the set takes what the dictionary refuses.
