@@ -16,12 +16,12 @@ start point is a positional beside the path rather than the token after the flag
 """
 
 import json
-import subprocess
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 from deferrals import deferred, disowned, unusable
+from repository import git_answer
 from shell_commands import (NAME_THE_TREE, UNPLACEABLE_MOVE, UNRESOLVED_CD, command_directory,
                             command_segments, git_invocation, tokens_of, without_redirections)
 from velvet_hooks import BRANCH_BASES
@@ -157,8 +157,7 @@ def creations(command):
 
 
 # Resolving an unexpanded operand fails, and this already refuses on that failure — the right
-# direction for a guard over branch creation. What it used to print was the failure itself, as a
-# detached HEAD at an empty SHA, so the refusal named a repository state that was never true.
+# direction for a guard over branch creation.
 UNEXPANDED_POLICY = "refuse"
 UNEXPANDED_PROBE = 'git -C "$D" branch feat/x'
 
@@ -167,10 +166,7 @@ UNREADABLE_PROBE = {"command": "git branch tooling/probe"}
 
 
 def git(cwd, *args):
-    return subprocess.run(
-        ["git", "-C", cwd, *args],
-        capture_output=True, text=True, timeout=30,
-    )
+    return git_answer(list(args), cwd, timeout=30)
 
 
 def head_description(cwd):
@@ -180,6 +176,10 @@ def head_description(cwd):
         return branch
     sha = git(cwd, "rev-parse", "--short", "HEAD")
     return f"detached at {sha.stdout.strip()}"
+
+
+def what_git_said(asked, answer):
+    return "\n".join("  " + line for line in [f"git {asked}"] + answer.stderr.splitlines())
 
 
 def record_branch_base(name, sha):
@@ -220,15 +220,19 @@ def refusal(cwd, name, start_point):
 
     head_not_main = False
     if start_point is None:
-        head_ref = git(cwd, "rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
+        head = git(cwd, "rev-parse", "--abbrev-ref", "HEAD")
+        if head.code != 0:
+            return (f"Refusing to create `{name}`: git could not read HEAD.\n\n"
+                    + what_git_said("rev-parse --abbrev-ref HEAD", head))
+        head_ref = head.stdout.strip()
         if head_ref != "main":
             on_main = git(cwd, "merge-base", "--is-ancestor", "HEAD", "main")
-            if on_main.returncode != 0:
+            if on_main.code != 0:
                 head_not_main = True
 
     behind_count = None
     origin_main = git(cwd, "rev-parse", "--verify", "origin/main")
-    origin_missing = origin_main.returncode != 0
+    origin_missing = origin_main.code != 0
     main_behind = False
     if not origin_missing:
         count = git(cwd, "rev-list", "--count", "main..origin/main")
@@ -313,7 +317,12 @@ def main():
                   file=sys.stderr)
         if deferred(name):
             # Parent tip at branch creation is gone after squash-merge; rebase --onto needs it now.
-            head_sha = git(target, "rev-parse", "HEAD").stdout.strip()
+            head = git(target, "rev-parse", "HEAD")
+            if head.code != 0:
+                sys.stderr.write(f"No base was recorded for `{name}`: git could not read HEAD.\n\n"
+                                 + what_git_said("rev-parse HEAD", head) + "\n")
+                continue
+            head_sha = head.stdout.strip()
             record_branch_base(name, head_sha)
             sys.stderr.write(
                 f"Recorded base {head_sha} for `{name}`. "
