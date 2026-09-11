@@ -103,10 +103,11 @@ notes used to be, before this was automated. If a published release needs repair
 the CHANGELOG rather than writing prose into the release:
 
 ```bash
-git show vX.Y.Z:package.json > /tmp/manifest.json &&
+mkdir -p Logs && R=$(mktemp -d "$PWD/Logs/release.XXXXXX") && echo "$R" &&
+git show vX.Y.Z:package.json > "$R/manifest.json" &&
 python3 scripts/release/release_notes.py --version X.Y.Z --repo s4k10503/velvet \
   --compare-tag vX.Y.Z-main --previous-compare-tag vA.B.C-main \
-  --package-json /tmp/manifest.json --output /tmp/notes.md
+  --package-json "$R/manifest.json" --output "$R/notes.md"
 ```
 
 The manifest is the tag's, because the install sentence states the Unity floor of the release being
@@ -114,12 +115,13 @@ repaired, where the working tree's manifest states the floor of the release bein
 CHANGELOG deliberately is not: the sections closed before Highlights existed carry none, and the
 builder refuses a version without one.
 
-Read `/tmp/notes.md` against the published body before pushing it. The builder writes `--output`
-only on success, so a failed step leaves whatever that path last held; and today's builder writes
-the install section, so a requirement it has stopped stating is absent from the repair.
+Read `<dir>/notes.md`, `<dir>` being the directory the first line printed, against the published
+body before pushing it. The builder writes `--output` only on success, so a failed step leaves
+whatever that path last held; and today's builder writes the install section, so a requirement it
+has stopped stating is absent from the repair.
 
 ```bash
-gh release edit vX.Y.Z --notes-file /tmp/notes.md
+gh release edit vX.Y.Z --notes-file <dir>/notes.md
 ```
 
 Omit `--previous-compare-tag` for the first release; the footer then links the whole history instead
