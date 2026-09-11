@@ -423,6 +423,35 @@ class TrackingTests(unittest.TestCase):
         # Assert
         self.assertEqual(found, [])
 
+    # GREEN_ON_BASE(construction): the base derives the deferral file from HOME as this branch does.
+    # Deriving `DEFERRALS` from `Path(__file__).resolve().parents[2]` moves it into this repository,
+    # and this is what reddens.
+    def test_Given_TheDeferralFileAndAGitThatAnswersNothing_When_AnAppendToItIsRead_Then_ItIsNotNamed(self):
+        # Arrange — the deferral a refusal prints appends to `deferrals.DEFERRALS`. Inside a
+        # repository an untracked path passes while git can say it is untracked, and is named where
+        # git cannot, which is the state this puts the reading in.
+        home = self.root / "home"
+        home.mkdir()
+        stub = self.root / "bin"
+        stub.mkdir()
+        (stub / "git").write_text(
+            "#!/bin/sh\ncase \"$*\" in *--version*) echo 'git version 0'; exit 0;; esac\n"
+            "echo 'fatal: detected dubious ownership in repository' >&2\nexit 128\n")
+        (stub / "git").chmod(0o755)
+        program = (f"import sys; sys.path.insert(0, {str(LIBRARY.parent)!r});"
+                   " import deferrals, tracked_writes;"
+                   " print(tracked_writes.tracked_writes("
+                   f"'echo held >> ' + str(deferrals.DEFERRALS), {str(REPO_ROOT)!r}))")
+
+        # Act
+        done = subprocess.run([sys.executable, "-B", "-c", program], capture_output=True, text=True,
+                              timeout=60, env=dict(os.environ, HOME=str(home),
+                                                   PATH=str(stub) + os.pathsep
+                                                   + os.environ.get("PATH", "")))
+
+        # Assert
+        self.assertEqual(done.stdout.strip(), "[]", done.stderr)
+
     def test_Given_APathInsideTheGitDirectory_When_TheTargetIsRead_Then_ItIsNotNamed(self):
         # Arrange — git tracks nothing there, and asked about it from a `-C` inside the git directory
         # it fails rather than answering, which the unreadable reading would take for a refusal.

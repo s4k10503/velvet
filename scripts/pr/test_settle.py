@@ -1284,6 +1284,7 @@ def merge_request(**readings):
         for patch in stubbed_readings(**readings):
             stack.enter_context(patch)
         stack.enter_context(mock.patch.object(settle, "delete_merged_branch", lambda *_: []))
+        stack.enter_context(mock.patch.object(settle, "advance_local_base", lambda *_: []))
         stack.enter_context(mock.patch.object(settle, "gh",
                                               lambda *args: (sent.append(args), "")[1]))
         stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
@@ -1318,6 +1319,7 @@ class MergeRequestTests(unittest.TestCase):
             stack.enter_context(mock.patch.object(
                 settle, "delete_merged_branch", lambda project, branch: (deleted.append(branch),
                                                                          [])[1]))
+            stack.enter_context(mock.patch.object(settle, "advance_local_base", lambda *_: []))
             stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
             settle.merge(Path("."), 592, "main", dry_run=False)
 
@@ -1333,6 +1335,7 @@ class MergeRequestTests(unittest.TestCase):
                                                   lambda *_: ("A title", "A body")))
             stack.enter_context(mock.patch.object(settle, "gh", lambda *args: ""))
             stack.enter_context(mock.patch.object(settle, "delete_merged_branch", lambda *_: []))
+            stack.enter_context(mock.patch.object(settle, "advance_local_base", lambda *_: []))
             stack.enter_context(contextlib.redirect_stdout(printed))
 
             # Act
@@ -1349,6 +1352,7 @@ class MergeRequestTests(unittest.TestCase):
                 stack.enter_context(patch)
             stack.enter_context(mock.patch.object(settle, "gh", lambda *args: ""))
             stack.enter_context(mock.patch.object(settle, "delete_merged_branch", lambda *_: []))
+            stack.enter_context(mock.patch.object(settle, "advance_local_base", lambda *_: []))
             stack.enter_context(contextlib.redirect_stdout(printed))
             settle.merge(Path("."), 592, "main", dry_run=False)
 
@@ -1407,6 +1411,105 @@ class LocalBranchDeletionTests(unittest.TestCase):
 
             # Assert
             self.assertEqual(failures, ["the remote branch topic survived: HTTP 403"])
+
+
+class LocalBaseTests(unittest.TestCase):
+    """Where the local main stands once a merge has moved origin's."""
+
+    def setUp(self):
+        scratch = tempfile.TemporaryDirectory(prefix="settle-base-")
+        self.addCleanup(scratch.cleanup)
+        self.root = Path(scratch.name)
+        self.origin = self.root / "origin.git"
+        self.project = self.root / "project"
+        subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(self.origin)],
+                       capture_output=True, check=True)
+        subprocess.run(["git", "init", "-q", "-b", "main", str(self.project)],
+                       capture_output=True, check=True)
+        self.git(self.project, "remote", "add", "origin", str(self.origin))
+        (self.project / "notes.md").write_text("before\n")
+        self.git(self.project, "add", "notes.md")
+        self.git(self.project, "commit", "-q", "-m", "first")
+        self.before = self.git(self.project, "rev-parse", "HEAD")
+        (self.project / "notes.md").write_text("after\n")
+        self.git(self.project, "commit", "-q", "-am", "landed")
+        self.landed = self.git(self.project, "rev-parse", "HEAD")
+        self.git(self.project, "push", "-q", "origin", "HEAD:refs/heads/topic",
+                 f"{self.before}:refs/heads/main")
+        self.git(self.project, "reset", "-q", "--hard", self.before)
+        self.git(self.project, "fetch", "-q", "origin")
+
+    def git(self, cwd, *args):
+        return subprocess.run(["git", "-C", str(cwd), "-c", "user.email=t@example.com",
+                               "-c", "user.name=t", *args],
+                              capture_output=True, text=True, check=True).stdout.strip()
+
+    def merged(self, project):
+        """(exit code, stderr) of a merge run in `project` whose request moves origin's main on."""
+        def land(*_):
+            self.git(self.origin, "update-ref", "refs/heads/main", self.landed)
+            return ""
+
+        said = io.StringIO()
+        with contextlib.ExitStack() as stack:
+            for patch in stubbed_readings():
+                stack.enter_context(patch)
+            stack.enter_context(mock.patch.object(settle, "gh", land))
+            stack.enter_context(mock.patch.object(settle, "delete_merged_branch", lambda *_: []))
+            stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
+            stack.enter_context(contextlib.redirect_stderr(said))
+            code = settle.merge(project, 592, "main", dry_run=False)
+        return code, said.getvalue()
+
+    def test_Given_NoWorktreeHoldingMain_When_APullRequestIsMerged_Then_LocalMainIsAtTheMerge(self):
+        # Arrange
+        self.git(self.project, "switch", "-q", "-c", "parked")
+
+        # Act
+        self.merged(self.project)
+
+        # Assert
+        self.assertEqual(self.git(self.project, "rev-parse", "main"), self.landed)
+
+    def test_Given_AnotherWorktreeHoldingMain_When_APullRequestIsMerged_Then_ThatCheckoutIsAtTheMerge(self):
+        # Arrange — run from a checkout on another branch, which a fast-forward asked of the wrong
+        # checkout moves instead.
+        self.git(self.project, "switch", "-q", "-c", "parked")
+        held = self.root / "held"
+        self.git(self.project, "worktree", "add", "-q", str(held), "main")
+
+        # Act
+        self.merged(self.project)
+
+        # Assert — the holder's file rides along, since a ref moved without its checkout reads as
+        # current over a tree still at the old commit.
+        self.assertEqual((self.git(held, "rev-parse", "HEAD"), (held / "notes.md").read_text()),
+                         (self.landed, "after\n"))
+
+    def test_Given_AnEditInTheWayOfTheFastForward_When_APullRequestIsMerged_Then_ItIsReported(self):
+        # Arrange — run from the checkout holding main, with an edit to the file the merge changes.
+        (self.project / "notes.md").write_text("mine\n")
+
+        # Act
+        code, said = self.merged(self.project)
+
+        # Assert
+        self.assertEqual((code, "main was not fast-forwarded" in said, "notes.md" in said),
+                         (0, True, True))
+
+    # GREEN_ON_BASE(characterization): the base creates no local main after a merge either.
+    # Without `advance_local_base`'s presence check the refspec fetch it adds creates one, and
+    # this is the case that fails then.
+    def test_Given_NoLocalMain_When_APullRequestIsMerged_Then_NoneIsCreated(self):
+        # Arrange
+        self.git(self.project, "switch", "-q", "-c", "parked")
+        self.git(self.project, "branch", "-q", "-D", "main")
+
+        # Act
+        self.merged(self.project)
+
+        # Assert
+        self.assertEqual(local_branches(self.project), ["parked"])
 
 
 class BranchDeletionTests(unittest.TestCase):

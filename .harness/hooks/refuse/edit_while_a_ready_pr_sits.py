@@ -21,9 +21,10 @@ construction, and the refusal it never met is the one being routed around. So a 
 writes a file this repository tracks is held too — `lib/tracked_writes.py` owns which shapes are read
 and how narrow that is, and the refusal below says so rather than implying it saw the rest.
 
-The way out stays open: none of the commands these refusals name writes a tracked file. The
-`settle.py` calls and the process reading beside them carry no write operand at all, and the
-deferral line appends to `deferrals.DEFERRALS`, which is under HOME.
+The way out stays open: none of the commands these refusals name carries a write operand onto a
+tracked file. The `settle.py` calls and the process reading beside them carry none at all, and the
+deferral line appends to `deferrals.DEFERRALS`, whose placement
+`scripts/hooks/test_tracked_writes.py` pins.
 """
 
 import json

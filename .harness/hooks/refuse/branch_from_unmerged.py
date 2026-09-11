@@ -21,7 +21,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-from deferrals import deferred, disowned, unusable
+from deferrals import DEFERRALS, deferred, disowned, unusable
 from shell_commands import (NAME_THE_TREE, UNPLACEABLE_MOVE, UNRESOLVED_CD, command_directory,
                             command_segments, git_invocation, tokens_of, without_redirections)
 from velvet_hooks import BRANCH_BASES
@@ -255,7 +255,7 @@ def refusal(cwd, name, start_point):
             *from_origin_main(name),
             "",
             f"To stack on unmerged work on purpose, record intent and retry:",
-            f'  echo "{name} <why> $(date +%s) $CLAUDE_CODE_SESSION_ID" >> ~/.velvet-pr-deferrals',
+            f'  echo "{name} <why> $(date +%s) $CLAUDE_CODE_SESSION_ID" >> {DEFERRALS}',
         ]
 
     if main_behind:
