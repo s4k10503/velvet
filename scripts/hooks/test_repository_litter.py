@@ -19,9 +19,9 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 HOOK = REPO_ROOT / ".claude/hooks/report/repository_litter.py"
 
-# The merged heads gh names: `a` is a local branch here, and `bXc` is none, but it is what `b.c`
-# matches when read as a pattern.
-STUB_GH = "#!/bin/sh\nprintf 'a\\nbXc\\n'\n"
+# The merged heads gh names: `a` is a local branch here, `bXc` is none but is what `b.c` matches
+# when read as a pattern, and `keep/x` holds the local `keep` as a substring.
+STUB_GH = "#!/bin/sh\nprintf 'a\\nbXc\\nkeep/x\\n'\n"
 
 
 def git(cwd, *args):
@@ -59,7 +59,7 @@ class DeletionLoopTests(unittest.TestCase):
                 block = []
         return next((text for text in blocks if "branch -D" in text), "")
 
-    def test_Given_ABranchMatchingAMergedHeadOnlyAsAPattern_When_TheLoopIsRun_Then_OnlyTheMergedOneGoes(self):
+    def test_Given_BranchesMatchingAMergedHeadOnlyAsAPatternOrASubstring_When_TheLoopIsRun_Then_OnlyTheMergedOneGoes(self):
         # Arrange
         loop = self.printed_loop()
 

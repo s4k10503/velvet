@@ -116,8 +116,8 @@ CHANGELOG deliberately is not: the sections closed before Highlights existed car
 builder refuses a version without one.
 
 Read `<dir>/notes.md`, `<dir>` being the directory the first line printed, against the published
-body before pushing it. The builder writes `--output` only on success, so a failed step leaves
-whatever that path last held; and today's builder writes the install section, so a requirement it
+body before pushing it. The builder writes `--output` only on success, so a failed step leaves no
+`<dir>/notes.md` to push; and today's builder writes the install section, so a requirement it
 has stopped stating is absent from the repair.
 
 ```bash
