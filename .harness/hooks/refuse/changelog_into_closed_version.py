@@ -120,7 +120,7 @@ def published_copies(path, versions):
     tracked = prefix.strip() + Path(path).name
     try:
         tagged = published_check.remote_tag_shas(where)
-    except (OSError, subprocess.SubprocessError):
+    except (OSError, subprocess.SubprocessError, ValueError):
         return {}, tracked
     copies = {}
     for version in versions:
@@ -128,7 +128,7 @@ def published_copies(path, versions):
             found = drain.published_copy(
                 version, tagged,
                 lambda revision: drain.run(["git", "show", f"{revision}:{tracked}"], cwd=where))
-        except drain.UnreadableRelease:
+        except (drain.UnreadableRelease, ValueError):
             continue
         if found is not None:
             copies[version] = (found[0], tagged[found[0]], found[1])
@@ -229,7 +229,7 @@ def main():
     if not in_scope(path, event.get("cwd")):
         return 0
     try:
-        text = Path(path).read_text()
+        text = Path(path).read_text(**repository.DECODING)
     except OSError:
         return 0
 

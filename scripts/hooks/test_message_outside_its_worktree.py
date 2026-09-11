@@ -5,10 +5,16 @@ The defect is silent: `-F` succeeds, the tree is right, the diff is right, and o
 another change's — so the cases hold the refusals and, just as much, the shapes that must still go
 through, because a guard that refuses too much is one somebody turns off.
 
+`ToplevelReadingTests` holds three roots git names that a reading of its answer has to take as
+written: one holding a byte UTF-8 does not map, which a strict decode raised on so the hook exited 1
+and let the command through, and two whose names end in a space or in a carriage return, each of
+which a reading of the root has spent.
+
 Run: python3 scripts/hooks/test_message_outside_its_worktree.py
 """
 
 import json
+import os
 import shutil
 import subprocess
 import tempfile
@@ -17,6 +23,10 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 GUARD = REPO_ROOT / ".claude/hooks/refuse/message_outside_its_worktree.py"
+
+# A worktree name holding a byte UTF-8 does not map, recorded as `core.worktree`: git names it as the
+# toplevel with no directory behind it, and APFS refuses to make one, with `Illegal byte sequence`.
+UNDECODABLE_TREE = b"tree\xff"
 
 
 class Verdicts(unittest.TestCase):
@@ -147,6 +157,92 @@ class Verdicts(unittest.TestCase):
         code, said = self.judge(f"git commit -F {self.elsewhere}/msg.txt", cwd=self.elsewhere)
 
         # Act / Assert
+        self.assertEqual((code, said), (0, ""))
+
+
+class ToplevelReadingTests(unittest.TestCase):
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp(prefix="message-worktree-toplevel-")).resolve()
+        self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
+        self.elsewhere = Path(tempfile.mkdtemp(prefix="message-shared-")).resolve()
+        self.addCleanup(shutil.rmtree, self.elsewhere, ignore_errors=True)
+
+    def repository(self, name):
+        made = self.root / name
+        subprocess.run(["git", "init", "--quiet", str(made)], check=True, capture_output=True)
+        return made
+
+    def undecodable_worktree(self):
+        """A repository whose worktree git names with the byte, and that name as the guard's reading
+        spells it."""
+        made = self.repository("repository")
+        tree = bytes(made) + b"/" + UNDECODABLE_TREE
+        subprocess.run([b"git", b"-C", bytes(made), b"config", b"core.worktree", tree],
+                       check=True, capture_output=True)
+        return made, os.fsdecode(tree)
+
+    @staticmethod
+    def toplevel_is_undecodable(repository):
+        """Whether git names the toplevel with the byte, read as bytes rather than through the
+        decode under test."""
+        raw = subprocess.run(["git", "-C", str(repository), "rev-parse", "--show-toplevel"],
+                             capture_output=True, check=True).stdout
+        try:
+            raw.decode("utf-8")
+        except UnicodeDecodeError:
+            return True
+        return False
+
+    @staticmethod
+    def judge(command, cwd):
+        """The guard's verdict, as (exit code, stderr)."""
+        event = {"tool_name": "Bash", "cwd": str(cwd), "tool_input": {"command": command}}
+        done = subprocess.run(["python3", str(GUARD)], input=json.dumps(event),
+                              capture_output=True, text=True, timeout=30)
+        return done.returncode, done.stderr
+
+    def test_Given_AWorktreeGitNamesWithAByteThatIsNotUTF8_When_AMessageOutsideItIsCommitted_Then_ItIsRefused(self):
+        # Arrange — the gate rides in the comparison because a toplevel that decoded would leave
+        # nothing to fail on, and this case green having posed nothing.
+        repository, _ = self.undecodable_worktree()
+        arranged = self.toplevel_is_undecodable(repository)
+
+        # Act
+        code, said = self.judge(f"git commit -F {self.elsewhere}/msg.txt", repository)
+
+        # Assert
+        self.assertEqual((arranged, code, "the worktree it describes" in said), (True, 2, True))
+
+    def test_Given_AWorktreeGitNamesWithAByteThatIsNotUTF8_When_AMessageInsideItIsCommitted_Then_ItIsLetThrough(self):
+        # Arrange — the other side of the same worktree, so a reading that survives the byte by
+        # refusing whatever it is asked is not what makes the case above pass.
+        repository, tree = self.undecodable_worktree()
+        arranged = self.toplevel_is_undecodable(repository)
+
+        # Act
+        code, said = self.judge(f"git commit -F {tree}/msg.txt", repository)
+
+        # Assert
+        self.assertEqual((arranged, code, said), (True, 0, ""))
+
+    def test_Given_AWorktreeWhoseNameEndsInASpace_When_AMessageInsideItIsCommitted_Then_ItIsLetThrough(self):
+        # Arrange — relative, so the path is read from inside the name the space belongs to.
+        repository = self.repository("checkout ")
+
+        # Act
+        code, said = self.judge("git commit -F msg.txt", repository)
+
+        # Assert
+        self.assertEqual((code, said), (0, ""))
+
+    def test_Given_AWorktreeWhoseNameEndsInACarriageReturn_When_AMessageInsideItIsCommitted_Then_ItIsLetThrough(self):
+        # Arrange
+        repository = self.repository("checkout\r")
+
+        # Act
+        code, said = self.judge("git commit -F msg.txt", repository)
+
+        # Assert
         self.assertEqual((code, said), (0, ""))
 
 

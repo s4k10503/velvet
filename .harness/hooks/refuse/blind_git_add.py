@@ -12,11 +12,12 @@ paths are to hand rather than something to go and look up.
 """
 
 import json
-import subprocess
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+from display import displayed
+from repository import status_entries
 from shell_commands import UNPLACEABLE_MOVE, UNRESOLVED_CD, command_directory, git_invocations
 
 
@@ -61,15 +62,7 @@ def untracked_in(cwd):
     reading that failed puts "Nothing is untracked right now" in a refusal as a fact about a tree
     nothing read.
     """
-    try:
-        listing = subprocess.run(
-            ["git", "-C", cwd, "status", "--porcelain", "--untracked-files=all"],
-            capture_output=True, text=True, timeout=8)
-    except (OSError, subprocess.SubprocessError):
-        return None
-    if listing.returncode != 0:
-        return None
-    return [line[3:] for line in listing.stdout.splitlines() if line.startswith("??")]
+    return status_entries(cwd, "??", ["--untracked-files=all"], timeout=8)
 
 
 def main():
@@ -104,7 +97,7 @@ def main():
                    UNPLACEABLE_MOVE if where is UNRESOLVED_CD else "git did not answer."]
     elif untracked:
         reason += ["", f"Untracked right now ({len(untracked)}):"]
-        reason += [f"  {path}" for path in untracked[:20]]
+        reason += [f"  {displayed(path)}" for path in untracked[:20]]
         if len(untracked) > 20:
             reason.append(f"  … and {len(untracked) - 20} more")
     else:
