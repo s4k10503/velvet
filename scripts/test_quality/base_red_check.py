@@ -36,8 +36,10 @@ case the canary exists for rather than a case to disarm it in.
 reading, and no reading falls through to the same passing verdict. So the type a case is written in
 is read off the code rather than off the raw line -- `class` occurs in prose and in assertion
 messages -- a type leaves the stack when its body closes, and a case written in an abstract fixture
-is named for each concrete heir. `test_base_red_check.py` holds every C# case in this repository to
-a name the tree declares in full: every owner segment, nested as the name nests them.
+is named for each concrete heir. What the runner reports is read in the reader's spelling by
+`as_read`, and `filter_for` asks for a fixture in that spelling. `test_base_red_check.py` holds
+every C# case in this repository to a name the tree declares in full: every owner segment, nested
+as the name nests them.
 
 *A surface that exists only on the branch is evidence, not an error.* C# reports that at compile
 time. Python reports it while loading or running the case, so its spelling is accepted only when the
@@ -279,7 +281,8 @@ class Case:
 
     @property
     def fixture(self):
-        """The class, as the run names it -- the unit -testFilter takes and the control is read over."""
+        """The class, in the spelling `as_read` reads the run's names into -- the unit -testFilter
+        takes and the control is read over."""
         return self.key.rsplit(".", 1)[0]
 
     def __repr__(self):
@@ -987,6 +990,12 @@ def bases_own_reason(outside, blamed, removed):
     return said
 
 
+def filter_for(fixtures):
+    """The -testFilter value asking for these fixtures, in the spelling `as_read` reads the runner's
+    names into. `NestedFixtureNameTests` fails when it stops selecting a nested fixture."""
+    return ";".join(sorted(fixtures))
+
+
 def run_unity(unity, tree, platform, fixtures, results, log, timeout):
     """(wall clock, the most other editors seen at once) for one base run.
 
@@ -1003,7 +1012,7 @@ def run_unity(unity, tree, platform, fixtures, results, log, timeout):
     command = [
         unity, "-runTests", "-batchmode", "-projectPath", str(tree),
         "-testPlatform", platform, "-testResults", str(results), "-logFile", str(log),
-        "-testFilter", ";".join(sorted(fixtures)),
+        "-testFilter", filter_for(fixtures),
     ]
     started = time.time()
     peak = 0
@@ -1125,15 +1134,23 @@ def reading_of(case):
     return label
 
 
+def as_read(name):
+    """A reported case name with the `+` the runner writes before a nested class taken as the dot
+    `csharp_cases` writes there, as `assert_results_from_this_tree.py` reads one in a classname."""
+    head, opened, arguments = name.partition("(")
+    return head.replace("+", ".") + opened + arguments
+
+
 def unity_results(results):
-    """Reported case name -> the reading, in the one vocabulary `decide` takes for either lane."""
+    """Reported case name, as `as_read` spells it -> the reading, in the one vocabulary `decide`
+    takes for either lane."""
     if not results.exists():
         return {}
     try:
         root = ET.parse(str(results)).getroot()
     except ET.ParseError:
         return {}
-    return {case.get("fullname") or case.get("name"): reading_of(case)
+    return {as_read(case.get("fullname") or case.get("name")): reading_of(case)
             for case in root.iter("test-case")}
 
 
@@ -2040,7 +2057,7 @@ def replan(project, plan_path, results, base_tree):
     plan["rounds"] = rounds + 1
     plan_path.write_text(json.dumps(plan, indent=2))
     shutil.move(str(results), str(Path(results).with_name(Path(results).name + ".round{}".format(rounds))))
-    print("fixtures={}".format(";".join(sorted(wanted))), flush=True)
+    print("fixtures={}".format(filter_for(wanted)), flush=True)
     return 0
 
 
@@ -2457,7 +2474,7 @@ def main():
                   and (not args.platform or platform_of(case.path) in args.platform)}
         for chosen in canaries.values():
             wanted.update(chosen)
-        print("fixtures={}".format(";".join(sorted(wanted))), flush=True)
+        print("fixtures={}".format(filter_for(wanted)), flush=True)
         return 0
 
     holder = None

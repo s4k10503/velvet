@@ -3,10 +3,10 @@
 
 A value is right when the runner selects exactly the fixtures its files declare, so the cases that
 expect a value hand it to a model of how the runner matches one -- the rule the unity-tests skill
-states: each `;`-separated term, untrimmed, is an unanchored regular expression tried against a
-case's full name and the name of every suite and assembly above it. The roster the model reads is
-written out by hand in the runner's spelling, `+` before a nested fixture included, rather than
-derived from the C# reading the value comes from.
+states for a term that selects, which is every term the helper writes: untrimmed, each is an
+unanchored regular expression tried against a case's full name and the name of every suite and
+assembly above it. The roster the model reads is written out by hand in the runner's spelling, `+`
+before a nested fixture included, rather than derived from the C# reading the value comes from.
 
 Run: python3 scripts/test_quality/test_fixture_filter.py
 """
