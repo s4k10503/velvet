@@ -127,7 +127,8 @@ def main():
                 f"Local main is {count} {commits(count)} behind origin/main"
                 + (f", and {holder} has it checked out.\n\n"
                    "git fetch origin main\n"
-                   f"git -C {shlex.quote(holder)} merge --ff-only origin/main" if holder else
+                   f"git -C {shlex.quote(holder)} merge --ff-only --no-overwrite-ignore "
+                   "--no-autostash origin/main" if holder else
                    ".\n\ngit fetch origin main:main")
             )
 
@@ -146,7 +147,7 @@ def main():
             if count > 0 and branch:
                 remedy = (
                     "git fetch origin\n"
-                    f"git rebase origin/{against}\n"
+                    f"git rebase --no-autostash origin/{against}\n"
                     f"git push origin {branch} --force-with-lease"
                 ) if base else UNREAD_BASE_NOTE.strip()
                 branch_report = (

@@ -24,7 +24,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from deferrals import DEFERRALS  # noqa: E402
+from deferrals import DEFERRALS_OPERAND  # noqa: E402
 
 
 GitAnswer = collections.namedtuple("GitAnswer", "stdout stderr code")
@@ -292,7 +292,7 @@ subject that is clear.
 If the pause is deliberate, arm the deferral for what the WORK is waiting on. The failure above is
 not that, and naming it there is how a deferral comes to record something nothing was waiting on:
 
-  echo "{key} <what the work is waiting on> $(date +%s) $CLAUDE_CODE_SESSION_ID" >> {DEFERRALS}"""
+  echo "{key} <what the work is waiting on> $(date +%s) $CLAUDE_CODE_SESSION_ID" >> {DEFERRALS_OPERAND}"""
 
 
 def toplevel(cwd, timeout=15):

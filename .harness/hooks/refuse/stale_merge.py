@@ -120,7 +120,7 @@ def refuse_one(cwd, pr):
         return (preamble
                 + "This branch was created on top of unmerged work. After the parent merges, replay "
                   "only this branch's commits with:\n"
-                  "git rebase --onto origin/{} {}".format(base, parent)
+                  "git rebase --no-autostash --onto origin/{} {}".format(base, parent)
                 + coda)
     return (preamble
             + "Merge origin/{} into {}, let the checks re-run, then merge.".format(base, head)
