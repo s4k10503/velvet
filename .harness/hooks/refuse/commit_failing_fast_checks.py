@@ -11,6 +11,7 @@ file staged and then deleted was refused with a `FileNotFoundError` for a commit
 `git commit -a` and `git commit <pathspec>` record the working tree, so for those it is read too.
 """
 
+import collections
 import json
 import os
 import subprocess
@@ -19,6 +20,7 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+from display import displayed
 from shell_commands import (COMMIT_VALUE_FLAGS, NAME_THE_TREE, UNPLACEABLE_MOVE, UNRESOLVED_CD,
                             command_directory, git_invocations, unexpanded)
 import repository
@@ -41,26 +43,53 @@ UNREADABLE_POLICY = "refuse"
 UNREADABLE_PROBE = {"command": "git commit -m probe"}
 
 
-# What a reading that did not answer resolves to. Every reader below otherwise reports it as an
-# empty result, and an empty result is "this commit records nothing that could fail a check".
-UNREADABLE = object()
+# An empty listing says this commit records nothing a check could fail, and an empty index says
+# nothing in it is a submodule, so a reading that did not answer must not resolve to either.
+Unreadable = collections.namedtuple("Unreadable", "subject remedy")
+
+GitRead = collections.namedtuple("GitRead", "stdout said code asked")
 
 
 def git(cwd, *args):
-    """A finished `git`, or None when it could not be run at all.
+    """git's stdout as the bytes it wrote, alongside what was asked and how it ended.
 
-    Same reason `lib/repository.py` answers None rather than raising: a hook that raises exits 1,
-    and 1 lets the tool through.
+    Same reason `lib/repository.py` answers rather than raising: a hook that raises exits 1, and 1
+    lets the tool through.
     """
+    asked = displayed("git " + " ".join(args))
     try:
-        return subprocess.run(["git", "-C", cwd, *args], capture_output=True, text=True, timeout=30)
-    except (OSError, subprocess.SubprocessError):
-        return None
+        done = subprocess.run(["git", "-C", cwd, *args], capture_output=True, timeout=30)
+    except (OSError, subprocess.SubprocessError) as failure:
+        return GitRead(b"", str(failure), None, asked)
+    return GitRead(done.stdout, done.stderr.decode(**repository.DECODING).strip(),
+                   done.returncode, asked)
+
+
+def unread(answer):
+    """Which refusal a git reading that did not answer earns.
+
+    A git that never ran and a git that refused are different facts, and the remedy for one does
+    not reach the other: `Given_ATildeSpelledPathspec_When_Judged_Then_ItIsNotSentBackToGit` in
+    scripts/hooks/test_commit_failing_fast_checks.py is what fails when both take the retry.
+    """
+    detail = "\n".join("  " + line for line in [answer.asked] + answer.said.splitlines())
+    if answer.code is None:
+        return Unreadable("what this commit would record could not be read.\n\n" + detail,
+                          "Retry when git answers.")
+    return Unreadable("git refused to read what this commit would record.\n\n" + detail,
+                      "Correct what git named and retry.")
 
 
 def repo_root(cwd):
-    result = git(cwd, "rev-parse", "--show-toplevel")
-    return result.stdout.strip() if result and result.returncode == 0 else cwd
+    """The tree the checks run in, or an `Unreadable` when the reading did not answer.
+
+    Falling back to `cwd` was rejected: it drops this reading's account of what went wrong and
+    sends every reading below into a directory nothing has established is a tree.
+    """
+    answer = git(cwd, "rev-parse", "--show-toplevel")
+    # Same terminator-only reading as `repository.toplevel`, and for the reason given there.
+    root = answer.stdout.decode(**repository.DECODING).removesuffix("\n")
+    return root if answer.code == 0 and root else unread(answer)
 
 
 def commit_invocations(command):
@@ -105,13 +134,35 @@ def commit_invocations(command):
     return found
 
 
+def records(listing):
+    """The paths a NUL-delimited listing named."""
+    return [record.decode(**repository.DECODING)
+            for record in listing.split(b"\0") if record.strip()]
+
+
 def staged_paths(cwd):
     # R is included: a rename reports it, and dropping it left a file renamed and broken in one
     # staged change checked by nothing.
-    result = git(cwd, "diff", "--cached", "--name-only", "--diff-filter=ACMR")
-    if result is None or result.returncode != 0:
-        return UNREADABLE
-    return [line for line in result.stdout.splitlines() if line.strip()]
+    answer = git(cwd, "diff", "--cached", "-z", "--name-only", "--diff-filter=ACMR")
+    return records(answer.stdout) if answer.code == 0 else unread(answer)
+
+
+# The mode an index entry carries for a submodule.
+# `Given_ASubmoduleWhoseCommitIsStaged_When_Judged_Then_TheCommitIsAllowed` pins what a commit
+# records there, and fails when this stops being read.
+GITLINK = "160000"
+
+
+def index_modes(cwd):
+    """path -> the mode the index holds it at, or an `Unreadable` when the reading did not answer."""
+    answer = git(cwd, "ls-files", "-s", "-z")
+    if answer.code != 0:
+        return unread(answer)
+    modes = {}
+    for record in records(answer.stdout):
+        meta, _, path = record.partition("\t")
+        modes[path] = meta.partition(" ")[0]
+    return modes
 
 
 def worktree_paths(cwd, pathspecs):
@@ -123,36 +174,56 @@ def worktree_paths(cwd, pathspecs):
     absolute path outside the repository and git refuses it, which reaches the refusal above rather
     than the silence.
     """
-    args = ["diff", "--name-only", "--diff-filter=ACMR"]
+    args = ["diff", "-z", "--name-only", "--diff-filter=ACMR"]
     if pathspecs:
         args += ["--", *(os.path.expanduser(spec) for spec in pathspecs)]
-    result = git(cwd, *args)
-    if result is None or result.returncode != 0:
-        return UNREADABLE
-    return [line for line in result.stdout.splitlines() if line.strip()]
+    answer = git(cwd, *args)
+    return records(answer.stdout) if answer.code == 0 else unread(answer)
+
+
+def recorded(full):
+    """The bytes at a worktree path, or None where a commit records no blob there at all."""
+    if os.path.islink(full):
+        return os.readlink(full).encode(**repository.DECODING)
+    if os.path.isdir(full):
+        return None
+    with open(full, "rb") as handle:
+        return handle.read()
 
 
 def committed_content(cwd, commits_all, pathspecs):
-    """path -> bytes the commit would record, or UNREADABLE when git did not answer."""
+    """path -> bytes the commit would record, or an `Unreadable` when part of it did not read."""
     staged = staged_paths(cwd)
-    if staged is UNREADABLE:
-        return UNREADABLE
+    if isinstance(staged, Unreadable):
+        return staged
+    modes = index_modes(cwd) if staged else {}
+    if isinstance(modes, Unreadable):
+        return modes
     content = {}
     for path in staged:
-        blob = repository.git_bytes(["show", ":" + path], cwd)
-        if blob is None:
-            return UNREADABLE
-        content[path] = blob
+        if modes.get(path) == GITLINK:
+            continue
+        blob = git(cwd, "show", ":" + path)
+        if blob.code != 0:
+            return unread(blob)
+        content[path] = blob.stdout
     if commits_all or pathspecs:
         worktree = worktree_paths(cwd, pathspecs)
-        if worktree is UNREADABLE:
-            return UNREADABLE
+        if isinstance(worktree, Unreadable):
+            return worktree
         for path in worktree:
             try:
-                with open(os.path.join(cwd, path), "rb") as handle:
-                    content[path] = handle.read()
-            except OSError:
-                continue
+                data = recorded(os.path.join(cwd, path))
+            except OSError as error:
+                # Answered rather than skipped, so that the two halves of this function agree about
+                # a path that would not read. A skip left the refusal over the files that did read
+                # looking like a verdict over the whole commit.
+                return Unreadable(
+                    "a file this commit records could not be opened.\n\n  {}: {}".format(
+                        displayed(path), displayed(str(error))),
+                    "Make it readable, or commit without it.")
+            if data is not None:
+                content[path] = data
     return content
 
 
@@ -173,7 +244,7 @@ def cut_targets(root):
 
 def refuse(display, output, reproduce):
     sys.stderr.write(
-        f"Refusing `git commit`: {display} failed a fast check.\n\n"
+        f"Refusing `git commit`: {displayed(display)} failed a fast check.\n\n"
         f"{output.rstrip()}\n\n"
         f"Reproduce: {reproduce}\n"
     )
@@ -190,11 +261,16 @@ def run_tool(argv, display, reproduce):
 def check_content(display, data):
     """Runs whichever fast check the path's extension names, over the content itself."""
     suffix = os.path.splitext(display)[1]
+    # The reproduce line is read as a line too, and it is built here rather than in `refuse`. Two
+    # spellings, because one of the two lines below puts the path in a shell word and the other in
+    # a Python string literal, which is quoted whatever the name holds.
+    shown = displayed(display)
+    literal = json.dumps(display)
     if suffix == ".json":
         try:
             json.loads(data.decode("utf-8"))
         except (ValueError, UnicodeDecodeError) as err:
-            return refuse(display, str(err), f"python3 -c 'import json; json.load(open(\"{display}\"))'")
+            return refuse(display, str(err), f"python3 -c 'import json; json.load(open({literal}))'")
         return 0
 
     if suffix in (".yml", ".yaml"):
@@ -205,7 +281,8 @@ def check_content(display, data):
         try:
             yaml.safe_load(data.decode("utf-8"))
         except (yaml.YAMLError, UnicodeDecodeError) as err:
-            return refuse(display, str(err), f"python3 -c 'import yaml; yaml.safe_load(open(\"{display}\"))'")
+            return refuse(display, str(err),
+                          f"python3 -c 'import yaml; yaml.safe_load(open({literal}))'")
         return 0
 
     if suffix not in (".py", ".sh"):
@@ -219,8 +296,8 @@ def check_content(display, data):
             scratch_file.write(data)
         if suffix == ".py":
             return run_tool(["python3", "-B", "-m", "py_compile", scratch],
-                            display, f"python3 -m py_compile {display}")
-        code = run_tool(["bash", "-n", scratch], display, f"bash -n {display}")
+                            display, f"python3 -m py_compile {shown}")
+        code = run_tool(["bash", "-n", scratch], display, f"bash -n {shown}")
         if code:
             return code
         shellcheck = __import__("shutil").which("shellcheck")
@@ -230,7 +307,7 @@ def check_content(display, data):
         # this repository carry one — SC1091, for sourcing a sibling it was not given — so the
         # default floor refused every commit that touched them for something nobody intends to fix.
         return run_tool([shellcheck, "--severity=warning", scratch],
-                        display, f"shellcheck --severity=warning {display}")
+                        display, f"shellcheck --severity=warning {shown}")
     finally:
         try:
             os.unlink(scratch)
@@ -265,8 +342,8 @@ def check_carried_mutation(root, paths):
         proc = subprocess.run(["python3", "-B", script, "--project", root, "--carried", *paths],
                               capture_output=True, text=True, timeout=CARRIED_TIMEOUT, cwd=root)
     except (OSError, subprocess.SubprocessError) as failure:
-        # Raising here exits 1, which this file's header records as letting the tool through — and
-        # it would take every check below out with it.
+        # Raising here exits 1, which lets the tool through — and it would take every check
+        # below out with it.
         return refuse_mutation("this check could not be run at all.",
                                "{}: {}".format(script, failure))
     if proc.returncode == 0:
@@ -327,16 +404,18 @@ def carried_neuters(content, edits):
     return found
 
 
+def refuse_unreadable(state):
+    sys.stderr.write(f"Refusing `git commit`: {state.subject}\n\n{state.remedy}\n")
+    return 2
+
+
 def audit(cwd, commits_all, pathspecs):
     root = repo_root(cwd)
+    if isinstance(root, Unreadable):
+        return refuse_unreadable(root)
     content = committed_content(root, commits_all, pathspecs)
-    if content is UNREADABLE:
-        sys.stderr.write(
-            "Refusing `git commit`: what this commit would record could not be read.\n\n"
-            "Every check below reads that content, so they would all run over nothing and pass, and "
-            "the commit would be recorded with none of them having seen it.\n\n"
-            "Retry when git answers.\n")
-        return 2
+    if isinstance(content, Unreadable):
+        return refuse_unreadable(content)
     if not content:
         return 0
 
