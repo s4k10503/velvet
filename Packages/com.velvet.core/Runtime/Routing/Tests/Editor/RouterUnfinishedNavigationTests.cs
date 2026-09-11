@@ -152,6 +152,37 @@ namespace Velvet.Tests
                 "A navigation that died on an exception reports the failure and stops reporting itself as in flight");
         });
 
+        // GREEN_ON_BASE(characterization): the base maps an OperationCanceledException to Cancelled only when
+        // the navigation's own token is the cancelled one.
+        [UnityTest]
+        public IEnumerator Given_AGuardThatThrowsACancellationOfItsOwn_When_TheNavigationIsNotCancelled_Then_TheExceptionReachesTheCaller()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            var router = BuildRouter("/home",
+                Route("/", children: new[]
+                {
+                    Route("home"),
+                    Route("guarded", guard: _ => throw new OperationCanceledException("guard-cancelled")),
+                }));
+            NavigationResult? result = null;
+            Exception caught = null;
+
+            // Act
+            try
+            {
+                result = await router.NavigateAsync("/guarded");
+            }
+            catch (OperationCanceledException ex)
+            {
+                caught = ex;
+            }
+
+            // Assert
+            Assert.That($"threw={caught != null} result={result?.ToString() ?? "none"}", Is.EqualTo("threw=True result=none"),
+                "A Guard's own cancellation is its failure, not a cancellation of the navigation");
+        });
+
         [UnityTest]
         public IEnumerator Given_ARedirectTargetDeclaringBothRedirectToAndGuard_When_ItThrows_Then_TheOriginatingPathIsNotRecorded()
             => VelvetTask.ToCoroutine(async () =>

@@ -1233,6 +1233,88 @@ namespace Velvet.Tests
                 "A cancelled cached Back does not commit the previous entry");
         });
 
+        [UnityTest]
+        public IEnumerator Given_ACancellationCallbackThatNavigatesDuringATakeover_When_BothNavigationsFinish_Then_OnlyTheOneStartedLastCommits()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // The status is read while the later navigation is still loading, the window the one taking over
+            // would otherwise report into.
+            // Arrange
+            var lastLoader = new VelvetTaskCompletionSource<object>();
+            var router = BuildRouter("/home",
+                Route("home"),
+                Route("away"),
+                Route("takeover"),
+                Route("last", loader: (ctx, ct) => lastLoader.Task));
+            var parked = new VelvetTaskCompletionSource<bool>();
+            using var registration = router.RouteBlockerManager.Register((attempt, ct) =>
+            {
+                if (attempt.NextPath != "/away")
+                {
+                    return VelvetTask.FromResult(false);
+                }
+                ct.Register(() => router.NavigateAsync("/last").Forget());
+                return parked.Task;
+            }, new RouteBlockerState());
+            router.NavigateAsync("/away").Forget();
+
+            // Act
+            var takeover = await router.NavigateAsync("/takeover");
+            var whileLastLoads = $"{router.Status} {router.PendingLocation?.Path ?? "none"}";
+            lastLoader.TrySetResult("last-data");
+            await VelvetTask.Yield();
+
+            // Assert
+            Assert.That($"takeover={takeover} while={whileLastLoads} history={RouterHistoryProbe.PathsOf(router)}",
+                Is.EqualTo("takeover=Cancelled while=Loading /last history=/home,/last"),
+                "A navigation started from inside a takeover supersedes the navigation taking over");
+        });
+
+        // GREEN_ON_BASE(characterization): the base suppresses no execution-context flow, so a caller's own
+        // suppression has nothing to collide with there.
+        [Test]
+        public void Given_ACallerThatHasSuppressedExecutionContextFlow_When_ItNavigates_Then_TheNavigationCommits()
+        {
+            // Arrange
+            var router = BuildRouter("/home", _routes);
+            NavigationResult result;
+
+            // Act
+            using (ExecutionContext.SuppressFlow())
+            {
+                result = router.NavigateSync("/about");
+            }
+
+            // Assert
+            Assert.That(result, Is.EqualTo(NavigationResult.Success));
+        }
+
+        // GREEN_ON_BASE(characterization): the base unlinks a finished navigation by disposing its source.
+        [UnityTest]
+        public IEnumerator Given_ACommittedRoutesSuspendLoader_When_TheTokenItsNavigationWasGivenIsCancelled_Then_TheLoadersTokenIsNot()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // CanBeCanceled is folded in because a loader that never ran leaves a token reading not-cancelled too.
+            // Arrange
+            using var caller = new CancellationTokenSource();
+            CancellationToken loadersToken = default;
+            var router = BuildRouter("/home",
+                Route("home"),
+                Route("feed", loaderMode: LoaderMode.Suspend, loader: (ctx, ct) =>
+                {
+                    loadersToken = ct;
+                    return new VelvetTaskCompletionSource<object>().Task;
+                }));
+            await router.NavigateAsync("/feed", cancellationToken: caller.Token);
+
+            // Act
+            caller.Cancel();
+
+            // Assert
+            Assert.That($"{loadersToken.CanBeCanceled} {ReadTokenState(loadersToken)}", Is.EqualTo("True not-cancelled"),
+                "A navigation's caller token stops reaching it once the navigation has ended");
+        });
+
         #endregion
     }
 }

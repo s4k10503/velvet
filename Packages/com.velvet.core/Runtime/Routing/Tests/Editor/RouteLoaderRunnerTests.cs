@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using NUnit.Framework;
 using UnityEngine;
@@ -605,13 +606,11 @@ namespace Velvet.Tests
                 "A loader handed a retired round's token reads the round's cancellation off it");
         }
 
-        // GREEN_ON_BASE(characterization): the base releases a superseded round's source at the retirement.
-        // This branch defers that release to here, and the release itself has to survive the move.
         [Test]
-        public void Given_ALoaderThatStartsAnotherRound_When_TheRunThatItRetiredHasReturned_Then_TheSourceBehindItsTokenIsReleased()
+        public void Given_ALoaderThatStartsAnotherRound_When_TheRunThatItRetiredHasReturned_Then_ItsTokenStillReadsCancelled()
         {
-            // The other half of the rule the sibling above states. This round starts no Suspend loader, so
-            // the run returning is the last thing holding the token and the source goes there.
+            // This round starts no Suspend loader, so the run returning is the last holder of the token the
+            // runner can see. The sibling below asks the same of a Suspend loader finishing.
             // Arrange
             var runner = new RouteLoaderRunner();
             CancellationToken nextLoadersToken = default;
@@ -631,18 +630,14 @@ namespace Velvet.Tests
             runner.RunLoadersSync(matches, CancellationToken.None);
 
             // Assert
-            Assert.That(() => nextLoadersToken.WaitHandle, Throws.TypeOf<ObjectDisposedException>(),
-                "A retired round's source is released, not left open behind the token its loaders held");
+            Assert.That(ReadTokenState(nextLoadersToken), Is.EqualTo("cancelled"),
+                "Whatever still holds a retired round's token can read it, whoever the runner last saw holding it");
         }
 
-        // GREEN_ON_BASE(characterization): the base releases a superseded round's source at the retirement.
-        // This branch defers that release to here, and the release itself has to survive the move.
         [UnityTest]
-        public IEnumerator Given_ARetiredRoundsSuspendLoader_When_ItsTaskCompletes_Then_TheSourceBehindItsTokenIsReleased()
+        public IEnumerator Given_ARetiredRoundsSuspendLoader_When_ItsTaskCompletes_Then_ItsTokenStillReadsCancelled()
             => VelvetTask.ToCoroutine(async () =>
         {
-            // The release a Suspend loader's own completion reaches: its round was retired while it was
-            // still running, so the loader is what the release waits for.
             // Arrange
             var runner = new RouteLoaderRunner();
             var streaming = new VelvetTaskCompletionSource<object>();
@@ -661,18 +656,17 @@ namespace Velvet.Tests
             await VelvetTask.Yield();
 
             // Assert
-            Assert.That(() => streamingLoadersToken.WaitHandle, Throws.TypeOf<ObjectDisposedException>(),
-                "A round retired while a Suspend loader ran releases its source once that loader is done");
+            Assert.That(ReadTokenState(streamingLoadersToken), Is.EqualTo("cancelled"),
+                "A Suspend loader finishing is not the end of every read of the token it was handed");
         });
 
-        // GREEN_ON_BASE(characterization): the base releases only once Cancel() has returned.
-        // Nothing there reaches the release from inside the cancellation. This branch moves the release
-        // onto the holders of the token, where a holder that unwinds inside the cancellation does.
+        // GREEN_ON_BASE(characterization): the base holds its release across the Cancel() that Retire
+        // issues, so the loader finishing inside this callback does not release the source under it.
         [Test]
         public void Given_ASuspendLoaderCancelledByItsOwnCallback_When_ThatCallbackThenReadsTheToken_Then_ItIsCancelledRatherThanReleased()
         {
-            // Completing the loader's task from the callback resumes that loader on this thread, so the
-            // release its finally reaches would land before the callback running it is done with the token.
+            // Completing the loader's task from the callback resumes that loader on this thread, so a release
+            // keyed to the loader finishing would land before the callback running it is done with the token.
             // Arrange
             var runner = new RouteLoaderRunner();
             var streaming = new VelvetTaskCompletionSource<object>();
@@ -701,9 +695,8 @@ namespace Velvet.Tests
         [Test]
         public void Given_AnAwaitLoaderCancelledByItsOwnCallback_When_ThatCallbackThenReadsTheToken_Then_ItIsCancelledRatherThanReleased()
         {
-            // Where the sibling above defers the release onto a Suspend loader, this case defers it onto
-            // the run: nothing here is pending, so the run is what the release waits on, and the callback
-            // completing the task is what returns it.
+            // Where the sibling above has a Suspend loader finish inside the callback, this case has the run
+            // return there: nothing here is pending, and the callback completing the task is what returns it.
             // Arrange
             var runner = new RouteLoaderRunner();
             var parked = new VelvetTaskCompletionSource<object>();
@@ -726,30 +719,6 @@ namespace Velvet.Tests
             // Assert
             Assert.That(callbackSaw, Is.EqualTo("cancelled"),
                 "An Await loader unwinding inside the cancellation leaves the token answering for the round");
-        }
-
-        [Test]
-        public void Given_ACancellationCallbackThatThrows_When_TheRoundItRegisteredOnIsRetired_Then_TheSourceBehindItsTokenIsStillReleased()
-        {
-            // Arrange
-            var runner = new RouteLoaderRunner();
-            CancellationToken registeringRoundsToken = default;
-            runner.RunLoadersSync(
-                MakeMatch("registering", loader: (ctx, ct) =>
-                {
-                    registeringRoundsToken = ct;
-                    ct.Register(() => throw new InvalidOperationException("callback-threw"));
-                    return VelvetTask.FromResult<object>("registering-data");
-                }),
-                CancellationToken.None);
-            ContainedFailureLog.Expect<InvalidOperationException>(nameof(RouteLoaderRunner), "callback-threw");
-
-            // Act
-            runner.RunLoadersSync(MakeMatch("second"), CancellationToken.None);
-
-            // Assert
-            Assert.That(() => registeringRoundsToken.WaitHandle, Throws.TypeOf<ObjectDisposedException>(),
-                "A callback that throws must not leave the source behind the token it ran under open");
         }
 
         [Test]
@@ -780,15 +749,11 @@ namespace Velvet.Tests
                 "A round retired mid-installation still reaches its Loaders, under the token its own source issued");
         }
 
-        // GREEN_ON_BASE(characterization): the base nulls the round's source before it cancels.
-        // That is what turns a re-entrant Retire there into a no-op. This branch nulls it at the release
-        // instead, so the retirement flag is what has to do that work.
+        // GREEN_ON_BASE(characterization): the base's retirement flag turns the Retire this callback reaches
+        // for the round already being retired into a no-op.
         [Test]
         public void Given_ACancellationCallbackThatStartsARound_When_ItThenReadsTheRetiringRoundsToken_Then_ItIsCancelledRatherThanReleased()
         {
-            // Installing a round from the callback reaches Retire for the round already being retired. That
-            // second entry has to stop at the door: a release taken there lands inside the cancellation that
-            // is still running this callback.
             // Arrange
             var runner = new RouteLoaderRunner();
             string callbackSaw = null;
@@ -810,6 +775,136 @@ namespace Velvet.Tests
             // Assert
             Assert.That(callbackSaw, Is.EqualTo("cancelled"),
                 "A round already being retired is not retired again from inside its own cancellation");
+        }
+
+        [Test]
+        public void Given_ARoundCancelledThroughTheTokenItIsLinkedTo_When_ACallbackOnItStartsARoundAndThenReadsItsToken_Then_ItIsCancelledRatherThanReleased()
+        {
+            // Arrange
+            var runner = new RouteLoaderRunner();
+            using var navigation = new CancellationTokenSource();
+            string callbackSaw = null;
+            runner.RunLoadersSync(
+                MakeMatch("registering", loader: (ctx, ct) =>
+                {
+                    ct.Register(() =>
+                    {
+                        runner.RunLoadersSync(MakeMatch("from-callback"), CancellationToken.None);
+                        callbackSaw = ReadTokenState(ct);
+                    });
+                    return VelvetTask.FromResult<object>("registering-data");
+                }),
+                navigation.Token);
+
+            // Act
+            navigation.Cancel();
+
+            // Assert
+            Assert.That(callbackSaw, Is.EqualTo("cancelled"),
+                "A cancellation arriving through the link holds the token for as long as it runs the callback");
+        }
+
+        [Test]
+        public void Given_ACancellationCallbackThatStartsARound_When_TheRunnerIsDisposed_Then_ThatRoundsLoaderRunsUnderACancelledToken()
+        {
+            // Arrange
+            var runner = new RouteLoaderRunner();
+            CancellationToken fromCallbacksToken = default;
+            runner.RunLoadersSync(
+                MakeMatch("registering", loader: (ctx, ct) =>
+                {
+                    ct.Register(() => runner.RunLoadersSync(
+                        MakeMatch("from-callback", loader: (innerCtx, innerCt) =>
+                        {
+                            fromCallbacksToken = innerCt;
+                            return VelvetTask.FromResult<object>("from-callback-data");
+                        }),
+                        CancellationToken.None));
+                    return VelvetTask.FromResult<object>("registering-data");
+                }),
+                CancellationToken.None);
+
+            // Act
+            runner.Dispose();
+
+            // Assert
+            Assert.That(fromCallbacksToken.IsCancellationRequested, Is.True,
+                "A round started from inside the disposal is one the disposal ends too");
+        }
+
+        [UnityTest]
+        public IEnumerator Given_ACancellationCallbackThatStartsAndPromotesARound_When_TheRunnerIsDisposed_Then_ThatRoundsSuspendLoaderAnnouncesNothing()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // The launch is folded in because a loader that never ran announces nothing either.
+            // Arrange
+            var runner = new RouteLoaderRunner();
+            var streaming = new VelvetTaskCompletionSource<object>();
+            var launched = false;
+            var announced = 0;
+            runner.OnSuspendLoaderCompleted += (_, __) => announced++;
+            runner.RunLoadersSync(
+                MakeMatch("registering", loader: (ctx, ct) =>
+                {
+                    ct.Register(() => runner.Promote(runner.RunLoadersSync(
+                        MakeMatch("from-callback", loaderMode: LoaderMode.Suspend, loader: (innerCtx, innerCt) =>
+                        {
+                            launched = true;
+                            return streaming.Task;
+                        }),
+                        CancellationToken.None)));
+                    return VelvetTask.FromResult<object>("registering-data");
+                }),
+                CancellationToken.None);
+            runner.Dispose();
+
+            // Act
+            streaming.TrySetResult("from-callback-data");
+            await VelvetTask.Yield();
+
+            // Assert
+            Assert.That($"launched={launched} announced={announced}", Is.EqualTo("launched=True announced=0"),
+                "A disposed runner has no live round for a late result to be announced from");
+        });
+
+        [Test]
+        public void Given_RoundsWhoseSuspendLoadersNeverFinish_When_EachHasBeenRetired_Then_TheTokenTheyWereLinkedToKeepsNoneOfThemAlive()
+        {
+            // A round's source is reached here only through its wait handle, which the source alone refers to,
+            // and each loader's task is dropped with its round. Half is the midpoint between a link keeping
+            // every source alive and none being kept.
+            // Arrange
+            var runner = new RouteLoaderRunner();
+            using var navigation = new CancellationTokenSource();
+            var waitHandles = RetireRoundsWhoseLoadersNeverFinish(runner, navigation.Token, 32);
+
+            // Act
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+
+            // Assert
+            Assert.That(waitHandles.Count(handle => handle.IsAlive), Is.LessThan(waitHandles.Count / 2),
+                "A retired round is kept alive by whatever still holds its token, not by the token it was linked to");
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static List<WeakReference> RetireRoundsWhoseLoadersNeverFinish(
+            RouteLoaderRunner runner, CancellationToken linkedTo, int count)
+        {
+            var waitHandles = new List<WeakReference>();
+            for (var i = 0; i < count; i++)
+            {
+                runner.RunLoadersSync(
+                    MakeMatch("stuck", loaderMode: LoaderMode.Suspend, loader: (ctx, ct) =>
+                    {
+                        waitHandles.Add(new WeakReference(ct.WaitHandle));
+                        return new VelvetTaskCompletionSource<object>().Task;
+                    }),
+                    linkedTo);
+            }
+            runner.RunLoadersSync(MakeMatch("last"), linkedTo);
+            return waitHandles;
         }
 
         #endregion
