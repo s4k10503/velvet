@@ -13,6 +13,7 @@ import contextlib
 import importlib.util
 import io
 import json
+import os
 import re
 import pathlib
 import shutil
@@ -23,6 +24,7 @@ import threading
 import traceback
 import unittest
 from pathlib import Path
+from unittest import mock
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -5057,6 +5059,95 @@ class UnvouchedExcuseTests(unittest.TestCase):
         # Assert
         self.assertIn("nothing vouched for EditMode: all 2 of its case(s) were excused rather than "
                       "measured, and\nnone of CanaryTests passed there", printed)
+
+
+@contextlib.contextmanager
+def listed_processes(listing):
+    """A `ps` first on PATH that prints `listing` whatever it is asked, and marks that it ran."""
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        (root / "listing").write_bytes(listing)
+        ps = root / "ps"
+        ps.write_text('#!/bin/sh\n: > "{0}/ran"\nexec cat "{0}/listing"\n'.format(root))
+        ps.chmod(0o755)
+        saved = os.environ["PATH"]
+        os.environ["PATH"] = directory + os.pathsep + saved
+        try:
+            yield root / "ran"
+        finally:
+            os.environ["PATH"] = saved
+
+
+NOT_UTF8_NEIGHBOUR = b"/usr/bin/probe --label \xff"
+EDITOR = b"/Applications/Unity/Hub/Editor/6000.3.23f1/Unity.app/Contents/MacOS/Unity -runTests -batchmode"
+
+
+class ProcessListDecodingTests(unittest.TestCase):
+    """One neighbour's stray byte in the process list must not end the run that reads it."""
+
+    def test_Given_ANeighbourWhoseCommandLineIsNotUtf8_When_EditorsAreCounted_Then_TheEditorBesideItCounts(self):
+        # Arrange
+        listing = NOT_UTF8_NEIGHBOUR + b"\n" + EDITOR + b"\n"
+
+        # Act
+        with listed_processes(listing) as ran:
+            try:
+                counted = (base_red_check.unity_busy(), ran.exists())
+            except UnicodeDecodeError as error:
+                counted = (repr(error), ran.exists())
+
+        # Assert — the mark separates this listing's count from the machine's own.
+        self.assertEqual(counted, (1, True))
+
+
+
+@contextlib.contextmanager
+def lingering_editor():
+    """An editor that runs until something kills it, and every process the run under test starts."""
+    with tempfile.TemporaryDirectory() as directory:
+        editor = Path(directory) / "Unity"
+        editor.write_text("#!/bin/sh\nexec sleep 60\n")
+        editor.chmod(0o755)
+        started = []
+        real = subprocess.Popen
+
+        def recording(*args, **kwargs):
+            process = real(*args, **kwargs)
+            started.append(process)
+            return process
+
+        with mock.patch.object(subprocess, "Popen", recording):
+            try:
+                yield str(editor), started
+            finally:
+                for process in started:
+                    if process.poll() is None:
+                        process.kill()
+                        process.wait()
+
+
+def failing_count():
+    raise OSError(35, "Resource temporarily unavailable")
+
+
+class EditorReapedWhateverEndsTheRunTests(unittest.TestCase):
+    """An editor left running over a tree the harness has put back measures a change that is gone."""
+
+    def test_Given_ANeighbourCountThatFailsWhileTheEditorRuns_When_TheRunEnds_Then_TheEditorIsNotLeftRunning(self):
+        # Arrange
+        with lingering_editor() as (editor, started), mock.patch.object(base_red_check, "unity_busy",
+                                                                        failing_count):
+            # Act
+            try:
+                base_red_check.run_unity(editor, Path("."), "EditMode", ["X"], Path("/dev/null"),
+                                         Path("/dev/null"), 30)
+                raised = False
+            except OSError:
+                raised = True
+            left_running = [process.poll() is None for process in started]
+
+        # Assert
+        self.assertEqual((raised, left_running), (True, [False]))
 
 
 if __name__ == "__main__":

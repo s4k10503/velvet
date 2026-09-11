@@ -1091,7 +1091,8 @@ class Holder:
 
 
 def unity_busy():
-    result = subprocess.run(["ps", "-Ao", "command="], capture_output=True, text=True)
+    result = subprocess.run(["ps", "-Ao", "command="], capture_output=True, encoding="utf-8",
+                            errors="replace")
     return sum(1 for line in result.stdout.splitlines() if re.match(UNITY_RUNNING, line))
 
 
@@ -1111,7 +1112,8 @@ def campaigns_running():
     survive locally, ninety minutes apart. So each receipt records what it saw, and the question gets
     an answer built from runs rather than from a guess about them.
     """
-    result = subprocess.run(["ps", "-Ao", "command="], capture_output=True, text=True)
+    result = subprocess.run(["ps", "-Ao", "command="], capture_output=True, encoding="utf-8",
+                            errors="replace")
     return sum(1 for line in result.stdout.splitlines() if CAMPAIGN_RUNNING.match(line))
 
 
@@ -1167,6 +1169,9 @@ def run_suite(unity, project, platform, scope, results, log, timeout, holder=Non
                     return time.time() - start, True, peak
                 peak = max(peak, max(0, unity_busy() - 1))
     finally:
+        if child.poll() is None:
+            child.kill()
+            child.wait()
         if holder is not None:
             holder.child = None
 
