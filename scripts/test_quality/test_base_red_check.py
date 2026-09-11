@@ -17,10 +17,12 @@ import os
 import re
 import pathlib
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
 import threading
+import time
 import traceback
 import unittest
 from pathlib import Path
@@ -5130,8 +5132,67 @@ def failing_count():
     raise OSError(35, "Resource temporarily unavailable")
 
 
-class EditorReapedWhateverEndsTheRunTests(unittest.TestCase):
-    """An editor left running over a tree the harness has put back measures a change that is gone."""
+
+DRIVER = """
+import importlib.util
+import sys
+from pathlib import Path
+
+spec = importlib.util.spec_from_file_location("subject", sys.argv[1])
+subject = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(subject)
+
+
+def body():
+    try:
+        RUN
+    finally:
+        Path(sys.argv[3]).write_text("unwound")
+
+
+sys.exit(subject.unwinding_on_signals(body))
+"""
+
+
+def alive(pid):
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    return True
+
+
+def signalled_run(module_path, run, number):
+    """(how the harness ended, whether its `finally` ran, whether the editor it launched is alive)."""
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        editor = root / "Unity"
+        editor.write_text('#!/bin/sh\necho $$ > "{}"\nexec sleep 60\n'.format(root / "pid"))
+        editor.chmod(0o755)
+        driver = subprocess.Popen(
+            [sys.executable, "-c", DRIVER.replace("RUN", run), str(module_path), str(editor),
+             str(root / "unwound")], stderr=subprocess.DEVNULL)
+        deadline = time.time() + 20
+        pid = ""
+        while not pid and driver.poll() is None and time.time() < deadline:
+            time.sleep(0.05)
+            pid = (root / "pid").read_text().strip() if (root / "pid").exists() else ""
+        editor_pid = int(pid) if pid else None
+        try:
+            driver.send_signal(number)
+            driver.wait(timeout=20)
+            return (driver.returncode, (root / "unwound").exists(),
+                    None if editor_pid is None else alive(editor_pid))
+        finally:
+            if driver.poll() is None:
+                driver.kill()
+                driver.wait()
+            if editor_pid is not None and alive(editor_pid):
+                os.kill(editor_pid, signal.SIGKILL)
+
+
+class EditorOutlivingItsRunTests(unittest.TestCase):
+    """An editor the lane leaves running goes on in a base tree the lane then removes."""
 
     def test_Given_ANeighbourCountThatFailsWhileTheEditorRuns_When_TheRunEnds_Then_TheEditorIsNotLeftRunning(self):
         # Arrange
@@ -5148,6 +5209,26 @@ class EditorReapedWhateverEndsTheRunTests(unittest.TestCase):
 
         # Assert
         self.assertEqual((raised, left_running), (True, [False]))
+
+    def test_Given_ARunUnderWay_When_TheHarnessIsSentSigterm_Then_ItUnwindsReapsTheEditorAndDiesOfTheSignal(self):
+        # Arrange
+        subject = Path(__file__).with_name("base_red_check.py")
+
+        # Act
+        ended = signalled_run(subject, 'subject.run_unity(sys.argv[2], Path("."), "EditMode", ["X"], Path("/dev/null"), Path("/dev/null"), 60)', signal.SIGTERM)
+
+        # Assert
+        self.assertEqual(ended, (-signal.SIGTERM, True, False))
+
+    def test_Given_ARunUnderWay_When_TheHarnessIsSentSighup_Then_ItUnwindsReapsTheEditorAndDiesOfTheSignal(self):
+        # Arrange
+        subject = Path(__file__).with_name("base_red_check.py")
+
+        # Act
+        ended = signalled_run(subject, 'subject.run_unity(sys.argv[2], Path("."), "EditMode", ["X"], Path("/dev/null"), Path("/dev/null"), 60)', signal.SIGHUP)
+
+        # Assert
+        self.assertEqual(ended, (-signal.SIGHUP, True, False))
 
 
 if __name__ == "__main__":
