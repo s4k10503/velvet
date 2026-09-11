@@ -11,6 +11,7 @@ origin/main advances, and nothing pulls afterwards.
 Exit 0 always.
 """
 
+import shlex
 import shutil
 import subprocess
 import sys
@@ -19,13 +20,15 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
 from merge_target import refs_of  # noqa: E402
-from repository import git, printable, project_tree  # noqa: E402
+from repository import git, printable, project_tree, worktrees  # noqa: E402
 
 # The hook is registered for 15 s, and a report the harness kills prints nothing at all — including
-# the local-main half, which no base takes part in. So the pull-request read and both fetches sum
-# inside that, and what is left is git plumbing against refs already on disk.
+# the local-main half, which no base takes part in. So the pull-request read, both fetches and the
+# worktree listing sum inside that, and what is left is git plumbing against local state already on
+# disk.
 FETCH_TIMEOUT = 5
 BASE_TIMEOUT = 3
+LISTING_TIMEOUT = 1
 
 DEFAULT_BASE = "main"
 
@@ -71,6 +74,18 @@ def base_of(tree):
     return target.base if target else None
 
 
+def holder_of(tree, branch):
+    """The worktree that has `branch` checked out, or None when none of them has.
+
+    Which remedy the local-main half prints turns on this: the refspec fetch and the fast-forward
+    are not runnable in the same state, and where a worktree holds main the fast-forward has to be
+    asked of that checkout. scripts/hooks/test_guard_remedies.py poses both spellings to git rather
+    than arguing either here.
+    """
+    listing = worktrees(tree, timeout=LISTING_TIMEOUT)
+    return next((entry.path for entry in listing or [] if entry.branch == branch), None)
+
+
 def behind(tree, ref, base):
     counted = git(["rev-list", "--count", f"{ref}..origin/{base}"], tree)
     return int(counted.strip()) if counted and counted.strip().isdigit() else 0
@@ -101,15 +116,19 @@ def main():
     if git(["rev-parse", "--verify", "refs/remotes/origin/main"], tree) is None:
         return 0
 
+    # None of the remedies below is a `git checkout`, for the reason
+    # refuse/branch_from_unmerged.py's `from_origin_main` gives.
     main_report = ""
     if git(["rev-parse", "--verify", "refs/heads/main"], tree) is not None:
         count = behind(tree, "main", DEFAULT_BASE)
         if count > 0:
+            holder = holder_of(tree, DEFAULT_BASE)
             main_report = (
-                f"Local main is {count} {commits(count)} behind origin/main.\n\n"
-                "git fetch origin main\n"
-                "git checkout main\n"
-                "git merge --ff-only origin/main"
+                f"Local main is {count} {commits(count)} behind origin/main"
+                + (f", and {holder} has it checked out.\n\n"
+                   "git fetch origin main\n"
+                   f"git -C {shlex.quote(holder)} merge --ff-only origin/main" if holder else
+                   ".\n\ngit fetch origin main:main")
             )
 
     # A detached HEAD has no branch name, and skipping it on that basis left the one checkout shape
@@ -139,9 +158,8 @@ def main():
                 branch_report = (
                     f"HEAD is detached at {head} and is {count} {commits(count)} behind "
                     "origin/main.\n\n"
-                    "git fetch origin\n"
-                    "git checkout main\n"
-                    "git merge --ff-only origin/main"
+                    "git fetch origin main\n"
+                    "git worktree add <path> -b <name> origin/main"
                 )
 
     note = FETCH_NOTE.format(", ".join("origin/" + ref for ref in stale)) if stale else ""
