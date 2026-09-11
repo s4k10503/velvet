@@ -12,6 +12,7 @@ namespace Velvet
     public abstract class VNode
     {
         private string? _key;
+        private bool _placedByList;
 
         /// <summary>
         /// Key used by the Reconciler to track node identity across renders. Null when omitted at the call site.
@@ -44,6 +45,33 @@ namespace Velvet
         }
 
         internal static bool KeyHoldsDelimiter(string? key) => key != null && key.IndexOf('\0') >= 0;
+
+        // The first V.List mapping to place this node keys it in place; from then on it keeps that key — a
+        // committed tree may still read the node by it, and within one mapping it is an earlier item's — so a
+        // different key takes a copy instead. The copy shares this node's props bag and event array, which the
+        // pool stops owning here: FiberTreeReturn returns a retired node's parts unless that node itself is
+        // marked live, whichever other node still reads them. The children array needs nothing, since
+        // FiberTreeReturn marks arrays themselves.
+        internal VNode WithListKey(string? key)
+        {
+            if (!_placedByList)
+            {
+                Key = key;
+                _placedByList = true;
+                return this;
+            }
+
+            if (string.Equals(_key, key, StringComparison.Ordinal))
+            {
+                return this;
+            }
+
+            RequireKey(key);
+            var copy = (VNode)MemberwiseClone();
+            copy._key = key;
+            VNodePool.DisownParts(this);
+            return copy;
+        }
     }
 
     /// <summary>

@@ -103,13 +103,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `V.Provider`, `V.Suspense`, `V.AnimatePresence`, `V.Component`, `V.MemoizedWithKey`,
   `V.DragOverlay`, every element factory's `key:`, a `V.List` selector's key and a `V.VirtualList`
   selector's key all reached that delimiter and none of them refused it. The refusal now sits on
-  `VNode.Key`, which each of them assigns through, so a call passing such a key throws
-  `ArgumentException` naming `key` where it used to build a node. A factory that takes from a pool
-  before building its node refuses ahead of that rent, so a refusal strands nothing that factory
-  rented; `V.List`, whose selector key is not known until an item is mapped, gives the child array
-  it rented back instead. A `V.VirtualList` `keySelector` returning such a key is answered without
-  a throw: that item is left out of the rendered range and a warning names the key, the selector
-  being read from a range update rather than from the `V.VirtualList(...)` call.
+  `VNode.Key`, which each of them but the `V.VirtualList` selector assigns through, so a call passing
+  such a key throws `ArgumentException` naming `key` where it used to build a node. A factory that
+  takes from a pool before building its node refuses ahead of that rent, so a refusal strands nothing
+  that factory rented; `V.List`, whose selector key is not known until an item is mapped, gives the
+  child array it rented back instead. A `V.VirtualList` `keySelector` returning such a key is answered
+  without a throw: that item is left out of the rendered range and a warning names the key, the
+  selector being read from a range update rather than from the `V.VirtualList(...)` call.
 
 ### Fixed
 
@@ -156,12 +156,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   per-mount work its body does — a lazy fetch, an impression ping, a subscription a `Hooks.UseEffect`
   takes under an empty dependency array — runs again. Measured on a ten-item list with a five-row window
   scrolled by one row: all five rows ran their `refCallback` cleanup and a fresh setup, where the same
-  scroll now runs one of each. The selector's key is now the one that lands on the node — the same
-  overwrite `V.List` makes at its own mapping site — so a row still inside the range is patched in place.
+  scroll now runs one of each. The previous range's rows are now indexed by the key `keySelector` returned
+  for them, the key a range change looks them up by, so a row still inside the range is patched in place.
   A renderer that returns a freshly built node and leaves its key alone, or that sets the same string the
   selector returns, is unaffected; a renderer whose node arrives already keyed is not exotic, though — a
   shared row component that keys itself, or a child built through a helper that keys for its own reasons,
   reaches this without the author thinking about the list's key at all.
+
+- A `V.VirtualList` whose renderer returns one node for several items — a spacer, a separator, a
+  placeholder while data loads — gives each of those items a row of its own, kept or released by a range
+  change as a row built for its item alone is. The controller wrote the selector's key onto the node it
+  was handed for each item and read the next range's reuse table back off the node, so a node standing
+  for several items carried the last one's key at every slot, and all but one of the rows it filled were
+  never found again. Measured on a ten-item list with a five-row window scrolled by one row, every row
+  rendered from one node: four rows were built afresh, and four of the five before them were left
+  detached with their `refCallback` cleanups not run even when the list was disposed, where the same
+  scroll now builds one row and releases one. The controller keeps the selector's key beside the node instead, so the node
+  stays as the renderer returned it — a key the renderer set on it included.
+
+- An element whose creation fails partway — a `V.Custom<T>` child whose constructor throws, with a
+  sibling built before it — no longer leaves that sibling's ref to be set up on an element no tree holds.
+  The sibling's `refCallback` setup was queued for the end of the pass and nothing withdrew it when the
+  creation threw, so a later drain ran it; a component mounted there stayed mounted, its effects run.
+  The creation now releases what it had built before the throw leaves it. Measured on a `V.VirtualList`
+  row failing half-built — an element, a `V.Provider` or a `V.Motion` scrolling in, or an element whose
+  children hold a null and so are all built before any is placed — the child's ref was set up once and
+  not cleaned up even when the list was disposed, and outside any list it was set up once; in each it is
+  now never set up.
+
+- An error boundary above a `V.VirtualList` that catches a row's render during a range update no longer
+  leaves that update's rows mounted. The boundary's fallback takes the list out of the tree from inside
+  the update, which went on rendering the rest of the range for a list already gone: measured on the
+  first render of a five-row window whose third row throws, the other four rows stayed mounted, their
+  effects run, until the root unmounted. The update stops rendering rows once the list is
+  disposed, and releases the ones it had rendered.
 
 - A renderer throwing inside `V.List` no longer strands the node array it rented. `V.List` takes that
   array from `VNodePool` and fills it by calling the caller's `renderer` for each item, and a throw out
@@ -868,6 +896,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   shape.
 
 ### Fixed
+
+- A node the renderer of `V.List` returns that a list has placed before — returned for an earlier item
+  of the same call, or held from an earlier render — keeps the key it was placed under, and the slot of
+  an item whose selected key differs takes a copy of the node carrying that key. `V.List` wrote each
+  item's key onto whatever node the renderer returned, so one node standing for several items carried
+  the last item's key at all of them, and a node held across renders had its key changed under the tree
+  that had committed it. Measured: five items sharing one `V.Component` node rendered one row, the other
+  four skipped under a duplicate-key warning; one held `V.Component` node whose item's key moved on left
+  the row it had rendered mounted beside the new one, on every move, until the tree unmounted; and five
+  items sharing one element node in a list that takes the general walk had every row but one rebuilt on
+  each render. Items keyed apart now have a row each, and a node the renderer has only just built is
+  keyed in place, as before, rather than copied.
+  What a working application notices is an element node held across renders — a placeholder or a
+  separator kept in a field or a `Hooks.UseMemo` — whose item's key changes: that item is a different row
+  now, its element built again rather than patched, as React rebuilds an element whose key changes, so
+  its `refCallback` cleans up and sets up again. Keep the key stable where the element has to survive.
 
 - A `V.VirtualList` updated to an empty item list releases the rows it was showing. The controller drops
   its tracked range before it renders an updated list, and the branch for an empty list released rows

@@ -165,6 +165,14 @@ namespace Velvet
                 {
                     ExpandInlineRecursive(walk, newChildren, FiberKeying.WalkRoot);
                 }
+                catch
+                {
+                    // Nothing this walk created is placed before FinalizeGeneralCommit, so a throw out of it — a
+                    // failure, or a suspend no Suspense span of this walk caught — leaves those elements to no
+                    // caller: they go the way a suspended span's do.
+                    RollbackCommitTo(commit, 0, fibersBefore: null, newFibers);
+                    throw;
+                }
                 finally
                 {
                     _ctx.ContextValueChanged = prevFlag;
