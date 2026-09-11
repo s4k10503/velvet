@@ -319,7 +319,7 @@ def main():
                 f"Recorded base {head_sha} for `{name}`. "
                 f"After parent merges (assumes origin/main is current — fetch first if unsure):\n"
                 f"git fetch origin main\n"
-                f"git rebase --onto origin/main {head_sha}\n"
+                f"git rebase --no-autostash --onto origin/main {head_sha}\n"
             )
             continue
         text = refusal(target, name, start_point)

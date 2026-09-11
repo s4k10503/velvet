@@ -1502,8 +1502,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--project", default=".", help="Unity project root (default: cwd)")
     parser.add_argument("--base", default="main",
-                        help="branch to diff against, read at origin's copy where there is one "
-                             "(default: main)")
+                        help="branch to diff against, read at refs/remotes/origin/BASE where "
+                             "both that and refs/heads/BASE exist (default: main)")
     parser.add_argument("--files", nargs="*", help="mutate these files whole instead of a diff")
     parser.add_argument("--platform", default="EditMode", choices=["EditMode", "PlayMode"])
     parser.add_argument("--assemblies", help="comma-separated test assemblies; default is every one")

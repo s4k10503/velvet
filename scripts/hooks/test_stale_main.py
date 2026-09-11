@@ -92,22 +92,23 @@ class BranchBaseTests(unittest.TestCase):
     def named(self, base):
         return json.dumps({"headRefName": "release/2.1.1", "baseRefName": base})
 
+    # GREEN_ON_BASE(characterization): the base the rebase names, which adding a flag must not move.
     def test_Given_APullRequestNamingAMaintenanceBase_When_TheReportIsTaken_Then_ItRebasesOntoIt(self):
         # Arrange / Act
         printed = self.report(view=self.named("2.x"))
 
         # Assert
-        self.assertIn("git rebase origin/2.x", printed)
+        self.assertRegex(printed, r"(?m)^git rebase (?:-\S+ )*origin/2\.x$")
 
-    # GREEN_ON_BASE(characterization): the remedy this change still offers for a base it read.
+    # GREEN_ON_BASE(characterization): the rebase still offered for a base that was read.
     # Withholding one where nothing named a base is satisfiable by withholding every one, and this
-    # is the case that says an ordinary branch keeps its rebase.
+    # case says an ordinary branch keeps its rebase.
     def test_Given_APullRequestNamingMain_When_TheReportIsTaken_Then_ItStillRebasesOntoMain(self):
         # Arrange — the control: a base that was read is a base a remedy may be offered against.
         printed = self.report(view=self.named("main"))
 
         # Act / Assert
-        self.assertIn("git rebase origin/main", printed)
+        self.assertRegex(printed, r"(?m)^git rebase (?:-\S+ )*origin/main$")
 
     def test_Given_NothingNamingABaseForABaseBranch_When_TheReportIsTaken_Then_NoForcePushIsOffered(self):
         # Arrange — a branch pull requests target rather than come from, so no pull request of its

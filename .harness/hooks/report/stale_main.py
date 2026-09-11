@@ -147,7 +147,7 @@ def main():
             if count > 0 and branch:
                 remedy = (
                     "git fetch origin\n"
-                    f"git rebase origin/{against}\n"
+                    f"git rebase --no-autostash origin/{against}\n"
                     f"git push origin {branch} --force-with-lease"
                 ) if base else UNREAD_BASE_NOTE.strip()
                 branch_report = (

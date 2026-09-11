@@ -64,6 +64,9 @@ CREATED = "tooling/remedy-probe"
 # `stale_main` treats an unread base as no base rather than as main.
 STUB_GH = "#!/bin/sh\nexit 1\n"
 
+STUB_BASE_GH = ("#!/bin/sh\n"
+                "printf '%s' '{\"headRefName\": \"topic\", \"baseRefName\": \"main\"}'\n")
+
 # A remedy line, and a remedy quoted inside a sentence. Both shapes are printed by the guards here.
 COMMAND_LINE = re.compile(r"^[ \t]*((?:git|gh) .+?)[ \t]*$", re.M)
 QUOTED_COMMAND = re.compile(r"`((?:git|gh) [^`]+)`")
@@ -205,6 +208,16 @@ class RemedyTests(GuardSet, unittest.TestCase):
             subprocess.run(command, shell=True, cwd=str(self.project), capture_output=True,
                            timeout=120)
 
+    def branch_behind_its_base(self):
+        (self.stub / "gh").write_text(STUB_BASE_GH, encoding="utf-8")
+        git(self.project, "checkout", "-q", "-b", "topic")
+        landed = self.land("notes.md", "before\n")
+        self.land("notes.md", "after\n")
+        git(self.project, "reset", "-q", "--hard", landed)
+
+    def behind_base(self):
+        return int(git(self.project, "rev-list", "--count", "HEAD..origin/main").stdout.strip())
+
     def test_Given_HeadOnUnmergedWork_When_ABranchCreationIsRefused_Then_EveryCommandItPrintsIsAllowed(self):
         # Arrange — a worktree on a branch main does not contain, with local main current, so the
         # refusal carries the first arm alone and the commands under test are that arm's.
@@ -342,6 +355,33 @@ class RemedyTests(GuardSet, unittest.TestCase):
         # Assert
         self.assertEqual((any(str(held) in command for command in printed),
                           (held / "notes.md").read_text(encoding="utf-8")), (True, "mine\n"))
+
+    def test_Given_ABranchWithAnEditUnderAutostash_When_TheReportsCommandsAreRun_Then_TheEditIsKept(self):
+        # Arrange
+        self.branch_behind_its_base()
+        git(self.project, "config", "rebase.autoStash", "true")
+        (self.project / "notes.md").write_text("mine\n", encoding="utf-8")
+        printed = commands(self.report_of(self.project).stdout)
+
+        # Act
+        self.run_each(printed)
+
+        # Assert — gated on a printed rebase: without one, nothing moves this checkout and the edit
+        # is kept whatever the report printed.
+        self.assertEqual((any(command.startswith("git rebase") for command in printed),
+                          (self.project / "notes.md").read_text(encoding="utf-8")), (True, "mine\n"))
+
+    # GREEN_ON_BASE(characterization): the printed rebase brings a clean branch onto its base.
+    def test_Given_ABranchBehindItsBase_When_TheReportsCommandsAreRun_Then_ItContainsItsBase(self):
+        # Arrange
+        self.branch_behind_its_base()
+        before = self.behind_base()
+
+        # Act
+        self.run_each(commands(self.report_of(self.project).stdout))
+
+        # Assert
+        self.assertEqual((before, self.behind_base()), (1, 0))
 
     def test_Given_ADetachedHeadBehindOrigin_When_TheReportIsTaken_Then_EveryCommandItPrintsIsAllowed(self):
         # Arrange — local main current so the local-main half stays silent and the commands read
