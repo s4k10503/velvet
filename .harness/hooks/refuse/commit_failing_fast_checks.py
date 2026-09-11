@@ -14,6 +14,7 @@ file staged and then deleted was refused with a `FileNotFoundError` for a commit
 import collections
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -147,9 +148,23 @@ def commit_invocations(command):
 
 BLOB_MODES = {b"100644", b"100755", b"120000"}
 SKIP_WORKTREE = b"S "
+WHOLE_TREE = ":/"
+LITERAL_PATHSPECS = "GIT_LITERAL_PATHSPECS"
+LONG_MAGIC = re.compile(r":\(([^)]*)\)")
+MAGIC_WORD = re.compile(r"(?:\\.|[^\\,])+")
+SHORT_EXCLUSION = re.compile(r":/*[!^]")
 
 
-def recorded_blobs(cwd, selectors, root, onto_index, pathspecs):
+def excludes(spec):
+    if os.environ.get(LITERAL_PATHSPECS, "").lower() in ("1", "true", "yes", "on"):
+        return False
+    long_form = LONG_MAGIC.match(spec)
+    if long_form:
+        return "exclude" in MAGIC_WORD.findall(long_form.group(1))
+    return SHORT_EXCLUSION.match(spec) is not None
+
+
+def recorded_blobs(cwd, selectors, onto_index, pathspecs):
     """path -> blob id for each blob `git diff-index` reports between the index built here and HEAD,
     or an `Unreadable`.
 
@@ -177,17 +192,19 @@ def recorded_blobs(cwd, selectors, root, onto_index, pathspecs):
             # Not `add -u` over a copy of the index:
             # `Given_ADirectoryRemovedFromTheIndex_When_CommittedByPathspec_Then_TheCommitIsAllowed`
             # and `Given_AnAssumeUnchangedFileBrokenOnDisk_When_CommittedByPathspec_Then_ItIsChecked`
-            # fail under it.
-            listed = ask("ls-files", "-z", "-t", "--full-name", "--error-unmatch",
-                         "--with-tree=" + tree, "--", *pathspecs)
+            # fail under it. Nor the pathspecs alone where they only exclude:
+            # `Given_PathspecsThatOnlyExcludeFromASubdirectory_When_Judged_Then_AFileOutsideItIsChecked`
+            # fails without the whole tree beside them.
+            whole = [WHOLE_TREE] if all(map(excludes, pathspecs)) else []
+            listed = ask("ls-files", "-z", "-t", "--error-unmatch", "--with-tree=" + tree, "--",
+                         *pathspecs, *whole)
             if listed.code != 0:
                 return unread(listed)
-            top = root.encode(**repository.DECODING) + b"/"
-            taken = dict.fromkeys(top + record[2:] for record in listed.stdout.split(b"\0")
+            taken = dict.fromkeys(record[2:] for record in listed.stdout.split(b"\0")
                                   if record and not record.startswith(SKIP_WORKTREE))
             built = write("read-tree", tree)
             if built.code == 0:
-                built = write("update-index", "--add", "--remove", "-z", "--stdin",
+                built = write("update-index", "--add", "--remove", "--replace", "-z", "--stdin",
                               stdin=b"".join(path + b"\0" for path in taken))
         else:
             located = ask("rev-parse", "--path-format=absolute", "--git-path", "index")
@@ -452,7 +469,7 @@ def audit(cwd, selectors, onto_index, pathspecs):
     root = repo_root(cwd, selectors)
     if isinstance(root, Unreadable):
         return refuse_unreadable(root)
-    recorded = recorded_blobs(cwd, selectors, root, onto_index, pathspecs)
+    recorded = recorded_blobs(cwd, selectors, onto_index, pathspecs)
     if isinstance(recorded, Unreadable):
         return refuse_unreadable(recorded)
     if not recorded:

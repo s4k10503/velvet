@@ -59,6 +59,8 @@ RAW_TARGET = b'{"a": "\xff"}'
 CLOSED = "closed.py"
 
 STAGED = "staged.py"
+EXCLUDED = "excluded.json"
+TOP = "top.py"
 
 # Where the guard reads the cuts a neuter sweep may be holding, and what validates them.
 CUT_MAP = "scripts/test_quality/neuter_cuts.json"
@@ -130,14 +132,15 @@ class GuardTestCase(unittest.TestCase):
         return str(path)
 
     def logged_git(self):
-        """A directory whose `git` writes each command it runs to `started`, and what `cat-file` is
-        handed to `asked`, before running git."""
+        """A directory whose `git` writes each command it runs to `started`, and what `cat-file`
+        and `update-index` are handed to `asked` and `indexed`, before running git."""
         log = self.scratch("fast-checks-git-")
         (log / "git").write_text(
             "#!/bin/sh\n"
             f'printf "%s\\n" "$*" >> "{log}/started"\n'
             'case " $* " in\n'
             f'  *" cat-file "*) tee -a "{log}/asked" | "{shutil.which("git")}" "$@" ;;\n'
+            f'  *" update-index "*) tee -a "{log}/indexed" | "{shutil.which("git")}" "$@" ;;\n'
             f'  *) exec "{shutil.which("git")}" "$@" ;;\n'
             "esac\n", encoding="utf-8")
         os.chmod(log / "git", 0o755)
@@ -798,6 +801,105 @@ class PathspecCommits(GuardTestCase):
         self.assertEqual([(code, PATHS_FROM_A_FILE in said) for code, said in verdicts],
                          [(2, True)] * 2)
 
+    # GREEN_ON_BASE(characterization): the base checks the staged file in this state too.
+    def test_Given_AFileReplacedByADirectory_When_ItsFileIsCommittedByPathspec_Then_ItIsChecked(self):
+        # Arrange — a name that is a file in HEAD and a directory in the index.
+        self.committed("tool")
+        self.git("rm", "-q", "tool")
+        (self.root / "tool").mkdir()
+        (self.root / "tool" / PLAIN).write_text(BROKEN, encoding="utf-8")
+        self.git("add", "tool/" + PLAIN)
+
+        # Act
+        code, said = self.judge("git commit -m x -- tool/" + PLAIN)
+
+        # Assert — what the commit then wrote sits in the comparison, because checking the file is
+        # right only for as long as git records it.
+        self.git("commit", "-q", "-m", "recorded", "--", "tool/" + PLAIN)
+        self.assertEqual((code, "tool/" + PLAIN + FAILED_A_CHECK in said,
+                          self.git("show", "HEAD:tool/" + PLAIN)), (2, True, BROKEN))
+
+    # GREEN_ON_BASE(characterization): the base checks the staged file in this state too.
+    def test_Given_ADirectoryReplacedByAFile_When_TheFileIsCommittedByPathspec_Then_ItIsChecked(self):
+        # Arrange — a name that is a directory in HEAD and a file in the index.
+        self.committed("settings.json/" + PLAIN)
+        self.git("rm", "-q", "-r", "settings.json")
+        (self.root / "settings.json").write_text(BROKEN, encoding="utf-8")
+        self.git("add", "settings.json")
+
+        # Act
+        code, said = self.judge("git commit -m x -- settings.json")
+
+        # Assert — what the commit then wrote sits in the comparison, as above.
+        self.git("commit", "-q", "-m", "recorded", "--", "settings.json")
+        self.assertEqual((code, "settings.json" + FAILED_A_CHECK in said,
+                          self.git("show", "HEAD:settings.json")), (2, True, BROKEN))
+
+    def below_a_broken_file(self):
+        """`sub`, holding a file changed whole and one broken, below a file broken in its working
+        copy alone whose name sorts after both, so that a check reaching the broken one in `sub`
+        refuses over that first."""
+        self.committed(TOP, "sub/" + STAGED, "sub/" + EXCLUDED)
+        (self.root / TOP).write_text(BROKEN, encoding="utf-8")
+        (self.root / "sub" / STAGED).write_text(TREE_AND_WHOLE, encoding="utf-8")
+        (self.root / "sub" / EXCLUDED).write_text(BROKEN, encoding="utf-8")
+        return self.root / "sub"
+
+    def test_Given_PathspecsThatOnlyExcludeFromASubdirectory_When_Judged_Then_AFileOutsideItIsChecked(self):
+        # Arrange — the exclusion spelled five ways.
+        sub = self.below_a_broken_file()
+        spellings = [":(exclude)" + EXCLUDED, ":!" + EXCLUDED, ":^" + EXCLUDED,
+                     ":(icase,exclude)" + EXCLUDED, ":/!sub/" + EXCLUDED]
+
+        # Act
+        verdicts = [self.judge(f"git commit -m x -- '{spelling}'", cwd=sub)
+                    for spelling in spellings]
+
+        # Assert — what the commit then wrote sits in the comparison, because checking the file
+        # above is right only for as long as git takes it into the commit.
+        self.git("commit", "-q", "-m", "recorded", "--", spellings[0], root=sub)
+        self.assertEqual(([(code, TOP + FAILED_A_CHECK in said) for code, said in verdicts],
+                          self.git("show", "HEAD:" + TOP)),
+                         ([(2, True)] * len(spellings), BROKEN))
+
+    # GREEN_ON_BASE(characterization): the base leaves the file above unchecked here too.
+    def test_Given_PathspecsThatDoNotOnlyExcludeFromASubdirectory_When_Judged_Then_AFileOutsideItIsNotChecked(self):
+        # Arrange — an exclusion beside a path, magic that is not an exclusion, and an exclusion's
+        # name in an attribute's value behind an escaped comma.
+        sub = self.below_a_broken_file()
+        (sub / ".gitattributes").write_text(STAGED + " x=a,exclude\n", encoding="utf-8")
+        operands = [f"{STAGED} ':!{EXCLUDED}'", f"':/sub/{STAGED}'", f"':(top)sub/{STAGED}'",
+                    f"':(attr:x=a\\,exclude){STAGED}'"]
+
+        # Act
+        verdicts = [self.judge("git commit -m x -- " + each, cwd=sub) for each in operands]
+
+        # Assert — what the commit then wrote sits in the comparison, because leaving the file
+        # above unchecked is right only for as long as the commit leaves it out.
+        self.git("commit", "-q", "-m", "recorded", "--", STAGED, ":!" + EXCLUDED, root=sub)
+        self.assertEqual((verdicts, self.git("show", "HEAD:" + TOP)),
+                         ([(0, "")] * len(operands), WHOLE))
+
+    # GREEN_ON_BASE(characterization): the base lists this file alone here too.
+    def test_Given_PathspecsReadLiterally_When_AFileNamedAsAnExclusionIsCommitted_Then_ItIsAllowed(self):
+        # Arrange — git's documented literals for true, one of them in capitals.
+        named = ":!" + PLAIN
+        (self.root / named).write_text(WHOLE, encoding="utf-8")
+        self.git("--literal-pathspecs", "add", named)
+        self.git("commit", "-q", "-m", "arranged")
+        (self.root / named).write_text(TREE_AND_WHOLE, encoding="utf-8")
+
+        # Act
+        verdicts = [self.judge(f"git commit -m x -- '{named}'",
+                               env={"GIT_LITERAL_PATHSPECS": value})
+                    for value in ("1", "TRUE", "yes", "on")]
+
+        # Assert — what the commit then wrote sits in the comparison, because reading the pathspec as
+        # a name is right only for as long as git reads it as one.
+        self.git("--literal-pathspecs", "commit", "-q", "-m", "recorded", "--", named)
+        self.assertEqual((verdicts, self.git("show", "HEAD:" + named)),
+                         ([(0, "")] * 4, TREE_AND_WHOLE))
+
 
 class GitProcesses(GuardTestCase):
     def judge_logging(self, command):
@@ -842,6 +944,21 @@ class GitProcesses(GuardTestCase):
                         for each in (log / "started", log / "asked") if each.exists())
         self.assertEqual((code, said, changed, [blob in asked for blob in blobs]),
                          (0, "", "Unread.cs\n" + PLAIN + "\n", [False, True]))
+
+    def test_Given_APathspecCommit_When_Judged_Then_TheIndexIsHandedNoAbsolutePath(self):
+        # Arrange
+        self.committed(PLAIN)
+        (self.root / PLAIN).write_text(BROKEN, encoding="utf-8")
+
+        # Act
+        (code, said), log = self.judge_logging("git commit -m x -- " + PLAIN)
+
+        # Assert — beside the refusal, so a guard that never reached the file cannot pass.
+        indexed = log / "indexed"
+        handed = indexed.read_bytes().split(b"\0")[:-1] if indexed.exists() else []
+        self.assertEqual(
+            (code, PLAIN + FAILED_A_CHECK in said, [os.path.isabs(path) for path in handed]),
+            (2, True, [False]))
 
 
 class CampaignsAndCuts(GuardTestCase):
