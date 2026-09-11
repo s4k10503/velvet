@@ -44,7 +44,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
-from repository import DECODING, git_bytes, toplevel  # noqa: E402
+from display import displayed  # noqa: E402
+from repository import status_entries, toplevel  # noqa: E402
 
 LISTED = 20
 SOURCE_SUFFIXES = re.compile(r"\.(cs|uss|uxml|asmdef|csproj|sln|md)$")
@@ -102,47 +103,6 @@ def written_since(path, moment):
         return True
 
 
-def entries(status, marker):
-    """The files a porcelain status marked, with the marker dropped.
-
-    Read as NUL-delimited records rather than as lines, so that no character a name may hold can
-    divide one. `Given_ANameGitLeavesRaw_When_TheReportIsTaken_Then_TheBoundReachesTheFile` is what
-    fails when the split is a line break instead, and
-    `Given_ARenameWhoseOldNameHoldsAByteOutsideTheEncoding_When_TheReportIsTaken_Then_NoPhantomIsNamed`
-    when the decode below stops escaping.
-
-    A rename's or a copy's origin path follows its record as a field of its own, carrying no status
-    pair, so it is stepped over rather than read. Both status columns are asked, since porcelain
-    pairs a record with an origin from either, and a field left unread there is read as a record of
-    its own — so an origin whose path opens with the marker becomes an entry the listing never
-    marked.
-    `Given_ARenameWhoseOldNameOpensWithTheMarker_When_TheReportIsTaken_Then_NoPhantomIsNamed`,
-    `Given_AWorktreeRenameWhoseOldNameOpensWithTheMarker_When_TheListingIsRead_Then_ItHoldsTheUntrackedFileAlone`
-    and
-    `Given_AWorktreeCopyWhoseSourceNameOpensWithTheMarker_When_TheListingIsRead_Then_ItHoldsTheUntrackedFileAlone`
-    are what fail when any of that stops.
-    """
-    fields = (status or b"").decode(**DECODING).split("\0")
-    found, index = [], 0
-    while index < len(fields):
-        record, index = fields[index], index + 1
-        if len(record) < 3:
-            continue
-        if record[0] in "RC" or record[1] in "RC":
-            index += 1
-        if record.startswith(marker):
-            found.append(record[3:])
-    return found
-
-
-def displayed(path):
-    """Every line of this report is read whole — an entry, the headline, the sentence a listing
-    hangs under — and a path carrying a line break of its own divides the line it lands in. Such
-    a path is spelled quoted and escaped instead.
-    """
-    return path if path.splitlines() == [path] else json.dumps(path)
-
-
 def shown(listing, total):
     """The truncated listing, told how much it is hiding."""
     text = "\n".join(displayed(path) for path in listing)
@@ -158,15 +118,12 @@ def main():
 
     # Counted before the truncation, not after: the headline read "20 untracked" for a tree holding
     # thirty-seven, and a reader who clears the twenty believes they are done.
-    untracked = [path for path in
-                 entries(git_bytes(["status", "--porcelain", "-z", "--untracked-files=all"], tree),
-                         "??")
+    untracked = [path for path in status_entries(tree, "??", ["--untracked-files=all"]) or []
                  if not path.startswith("Library/") and written_since(tree / path, started)]
 
     # An ignored source file is the dangerous case; build output is ignored on purpose.
     ignored = [path for path in
-               entries(git_bytes(["status", "--porcelain", "-z", "--ignored=matching",
-                                  "--untracked-files=all"], tree), "!!")
+               status_entries(tree, "!!", ["--ignored=matching", "--untracked-files=all"]) or []
                if SOURCE_SUFFIXES.search(path) and not BUILD_DIRECTORIES.match(path)]
 
     if not untracked and not ignored:

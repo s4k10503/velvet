@@ -41,6 +41,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+from repository import DECODING, toplevel  # noqa: E402
 from shell_commands import (  # noqa: E402
     NAME_THE_TREE, UNPLACEABLE_MOVE, UNRESOLVED_CD, command_directory, program_invocations,
     unexpanded)
@@ -65,8 +66,8 @@ SCRIPT = os.path.join("scripts", "test_quality", "mutation_check.py")
 # status, which means it could not take the reading at all. ReceiptRefusalStatusTests pins the pair.
 RECEIPT_REFUSAL = 3
 
-# The whole hook, against the 25 s it is registered with: this budget and `repo_root`'s own have to
-# fit inside that together, or the harness kills the hook and the refusal goes with it.
+# The whole hook, against the 25 s it is registered with: this budget and the root reading's own
+# have to fit inside that together, or the harness kills the hook and the refusal goes with it.
 ROOT_TIMEOUT = 5
 TIMEOUT = 15
 
@@ -77,15 +78,6 @@ SHORT_ELSEWHERE = ("-R", "-H")
 
 OWED = "no mutation campaign covers this branch's change."
 UNREAD = "this guard could not read the state it decides from."
-
-
-def repo_root(cwd):
-    try:
-        found = subprocess.run(["git", "-C", cwd, "rev-parse", "--show-toplevel"],
-                               capture_output=True, text=True, timeout=ROOT_TIMEOUT)
-    except (OSError, subprocess.SubprocessError):
-        return None
-    return found.stdout.strip() if found.returncode == 0 else None
 
 
 def elsewhere(operands):
@@ -150,12 +142,16 @@ def main():
     cwd = command_directory(command, event.get("cwd") or ".")
     if cwd is UNRESOLVED_CD:
         return refuse(UNREAD, UNPLACEABLE_MOVE + "\n\n" + NAME_THE_TREE)
-    root = repo_root(cwd)
+    root = toplevel(cwd, timeout=ROOT_TIMEOUT)
     if root is None:
         return refuse(UNREAD,
                       "git could not say which checkout {} is in, so nothing here read a "
                       "receipt at all.\nA reading that did not happen is not a reading that "
                       "found nothing owed.".format(cwd))
+    if not os.path.isdir(root):
+        return refuse(UNREAD,
+                      "git names {} as the checkout {} is in, and no directory is found there, "
+                      "so nothing here\nread a receipt at all.".format(root, cwd))
     # A repository that carries no campaign harness is a definite reading rather than a failed one:
     # there is no receipt to owe.
     script = os.path.join(root, SCRIPT)
@@ -164,7 +160,7 @@ def main():
 
     try:
         proc = subprocess.run(["python3", "-B", script, "--project", root, "--receipt"],
-                              capture_output=True, text=True, timeout=TIMEOUT, cwd=root)
+                              capture_output=True, timeout=TIMEOUT, cwd=root, **DECODING)
     except (OSError, subprocess.SubprocessError) as failure:
         return refuse(UNREAD,
                       "{} could not be run, so nothing read the receipt: {}".format(script, failure))
