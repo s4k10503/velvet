@@ -14,6 +14,7 @@ file staged and then deleted was refused with a `FileNotFoundError` for a commit
 import collections
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -30,7 +31,9 @@ HOOK_TOOLS = {"Bash"}
 
 NEUTER_CUTS = "scripts/test_quality/neuter_cuts.json"
 
-COMMIT_ALL_FLAGS = {"-a", "--all"}
+ALL = "--all"
+INCLUDE = "--include"
+SHORTEST_INCLUDE = "--inc"
 
 
 # A pathspec the shell has not expanded names no file, so every check runs over nothing and the
@@ -43,14 +46,14 @@ UNREADABLE_POLICY = "refuse"
 UNREADABLE_PROBE = {"command": "git commit -m probe"}
 
 
-# An empty listing says this commit records nothing a check could fail, and an empty index says
-# nothing in it is a submodule, so a reading that did not answer must not resolve to either.
+# An empty listing says this commit records nothing a check could fail, so a reading that did not
+# answer must not resolve to one.
 Unreadable = collections.namedtuple("Unreadable", "subject remedy")
 
 GitRead = collections.namedtuple("GitRead", "stdout said code asked")
 
 
-def git(cwd, *args):
+def git(cwd, *args, index=None):
     """git's stdout as the bytes it wrote, alongside what was asked and how it ended.
 
     Same reason `lib/repository.py` answers rather than raising: a hook that raises exits 1, and 1
@@ -58,7 +61,8 @@ def git(cwd, *args):
     """
     asked = displayed("git " + " ".join(args))
     try:
-        done = subprocess.run(["git", "-C", cwd, *args], capture_output=True, timeout=30)
+        done = subprocess.run(["git", "-C", cwd, *args], capture_output=True, timeout=30,
+                              env=None if index is None else dict(os.environ, GIT_INDEX_FILE=index))
     except (OSError, subprocess.SubprocessError) as failure:
         return GitRead(b"", str(failure), None, asked)
     return GitRead(done.stdout, done.stderr.decode(**repository.DECODING).strip(),
@@ -80,23 +84,22 @@ def unread(answer):
                       "Correct what git named and retry.")
 
 
-def repo_root(cwd):
+def repo_root(cwd, selectors):
     """The tree the checks run in, or an `Unreadable` when the reading did not answer.
 
-    Falling back to `cwd` was rejected: it drops this reading's account of what went wrong and
-    sends every reading below into a directory nothing has established is a tree.
+    Falling back to `cwd` was rejected: it drops this reading's account of what went wrong.
     """
-    answer = git(cwd, "rev-parse", "--show-toplevel")
+    answer = git(cwd, *selectors, "rev-parse", "--show-toplevel")
     # Same terminator-only reading as `repository.toplevel`, and for the reason given there.
     root = answer.stdout.decode(**repository.DECODING).removesuffix("\n")
     return root if answer.code == 0 and root else unread(answer)
 
 
 def commit_invocations(command):
-    """(directory, commits all, pathspecs) for each `git commit` in the command."""
+    """(directory, onto the index, pathspecs) for each `git commit` in the command."""
     found = []
     for directory, _, operands in git_invocations(command, {"commit"}):
-        commits_all = False
+        onto_index = False
         pathspecs = []
         index = 0
         after_separator = False
@@ -108,8 +111,8 @@ def commit_invocations(command):
                 continue
             if not after_separator and token.startswith("--"):
                 flag = token.partition("=")[0]
-                if flag in COMMIT_ALL_FLAGS:
-                    commits_all = True
+                if flag == ALL or (flag.startswith(SHORTEST_INCLUDE) and INCLUDE.startswith(flag)):
+                    onto_index = True
                 if flag in COMMIT_VALUE_FLAGS and "=" not in token:
                     index += 2
                     continue
@@ -121,8 +124,8 @@ def commit_invocations(command):
                 # one ends the group, taking either the rest of the token or the next one.
                 takes_next = False
                 for position, letter in enumerate(token[1:]):
-                    if letter == "a":
-                        commits_all = True
+                    if letter in "ai":
+                        onto_index = True
                     if "-" + letter in COMMIT_VALUE_FLAGS:
                         takes_next = position + 2 == len(token)
                         break
@@ -130,100 +133,60 @@ def commit_invocations(command):
                 continue
             pathspecs.append(token)
             index += 1
-        found.append((directory, commits_all, pathspecs))
+        found.append((directory, onto_index, pathspecs))
     return found
 
 
-def records(listing):
-    """The paths a NUL-delimited listing named."""
-    return [record.decode(**repository.DECODING)
-            for record in listing.split(b"\0") if record.strip()]
+BLOB_MODES = {b"100644", b"100755", b"120000"}
 
 
-def staged_paths(cwd):
-    # R is included: a rename reports it, and dropping it left a file renamed and broken in one
-    # staged change checked by nothing.
-    answer = git(cwd, "diff", "--cached", "-z", "--name-only", "--diff-filter=ACMR")
-    return records(answer.stdout) if answer.code == 0 else unread(answer)
+def committed_content(cwd, selectors, onto_index, pathspecs):
+    """The blobs the commit would record where it changes HEAD, by path, or an `Unreadable`.
 
-
-# The mode an index entry carries for a submodule.
-# `Given_ASubmoduleWhoseCommitIsStaged_When_Judged_Then_TheCommitIsAllowed` pins what a commit
-# records there, and fails when this stops being read.
-GITLINK = "160000"
-
-
-def index_modes(cwd):
-    """path -> the mode the index holds it at, or an `Unreadable` when the reading did not answer."""
-    answer = git(cwd, "ls-files", "-s", "-z")
-    if answer.code != 0:
-        return unread(answer)
-    modes = {}
-    for record in records(answer.stdout):
-        meta, _, path = record.partition("\t")
-        modes[path] = meta.partition(" ")[0]
-    return modes
-
-
-def worktree_paths(cwd, pathspecs):
-    """The paths a commit would take from the worktree, narrowed by `pathspecs`.
-
-    `~` is expanded before git sees it. The shell expands one and git does not, so a pathspec spelled
-    that way reached git literally, matched nothing, and left the checks below reading no content at
-    all -- measured, `git commit -m x -- ~/velvet/a.cs` passed every one of them. Expanded, it is an
-    absolute path outside the repository and git refuses it, which reaches the refusal above rather
-    than the silence.
+    Built by git, in an index of this reading's own, rather than read off the working tree:
+    `Given_ACarriageReturnGitNormalises_When_Judged_Then_TheNormalisedBytesAreChecked` is what fails
+    when the bytes on disk stand in for the recorded ones.
     """
-    args = ["diff", "-z", "--name-only", "--diff-filter=ACMR"]
-    if pathspecs:
-        args += ["--", *(os.path.expanduser(spec) for spec in pathspecs)]
-    answer = git(cwd, *args)
-    return records(answer.stdout) if answer.code == 0 else unread(answer)
+    def ask(*args, index=None):
+        return git(cwd, *selectors, *args, index=index)
 
-
-def recorded(full):
-    """The bytes at a worktree path, or None where a commit records no blob there at all."""
-    if os.path.islink(full):
-        return os.readlink(full).encode(**repository.DECODING)
-    if os.path.isdir(full):
-        return None
-    with open(full, "rb") as handle:
-        return handle.read()
-
-
-def committed_content(cwd, commits_all, pathspecs):
-    """path -> bytes the commit would record, or an `Unreadable` when part of it did not read."""
-    staged = staged_paths(cwd)
-    if isinstance(staged, Unreadable):
-        return staged
-    modes = index_modes(cwd) if staged else {}
-    if isinstance(modes, Unreadable):
-        return modes
-    content = {}
-    for path in staged:
-        if modes.get(path) == GITLINK:
-            continue
-        blob = git(cwd, "show", ":" + path)
-        if blob.code != 0:
-            return unread(blob)
-        content[path] = blob.stdout
-    if commits_all or pathspecs:
-        worktree = worktree_paths(cwd, pathspecs)
-        if isinstance(worktree, Unreadable):
-            return worktree
-        for path in worktree:
-            try:
-                data = recorded(os.path.join(cwd, path))
-            except OSError as error:
-                # Answered rather than skipped, so that the two halves of this function agree about
-                # a path that would not read. A skip left the refusal over the files that did read
-                # looking like a verdict over the whole commit.
-                return Unreadable(
-                    "a file this commit records could not be opened.\n\n  {}: {}".format(
-                        displayed(path), displayed(str(error))),
-                    "Make it readable, or commit without it.")
-            if data is not None:
-                content[path] = data
+    head = ask("rev-parse", "--verify", "--quiet", "HEAD^{tree}")
+    if head.code == 1:
+        head = ask("hash-object", "-t", "tree", os.devnull)
+    if head.code != 0:
+        return unread(head)
+    located = ask("rev-parse", "--path-format=absolute", "--git-path", "index")
+    if located.code != 0:
+        return unread(located)
+    with tempfile.TemporaryDirectory() as scratch:
+        index = os.path.join(scratch, "index")
+        try:
+            shutil.copy2(located.stdout.decode(**repository.DECODING).removesuffix("\n"), index)
+        except FileNotFoundError:
+            pass
+        except OSError as error:
+            return Unreadable("the index could not be copied.\n\n  " + displayed(str(error)),
+                              "Correct what that names and retry.")
+        if onto_index or pathspecs:
+            added = ask("-c", "core.hooksPath=" + os.devnull, "add", "-u", "--", *pathspecs,
+                        index=index)
+            if added.code != 0:
+                return unread(added)
+        changed = ask("diff-index", "--cached", "--raw", "-z", "--no-renames",
+                      head.stdout.decode().strip(), "--", *([] if onto_index else pathspecs),
+                      index=index)
+        if changed.code != 0:
+            return unread(changed)
+        content = {}
+        fields = changed.stdout.split(b"\0")
+        for meta, path in zip(fields[::2], fields[1::2]):
+            _, mode, _, blob, _ = meta.split(b" ")
+            if mode not in BLOB_MODES:
+                continue
+            data = ask("cat-file", "blob", blob.decode())
+            if data.code != 0:
+                return unread(data)
+            content[path.decode(**repository.DECODING)] = data.stdout
     return content
 
 
@@ -252,7 +215,7 @@ def refuse(display, output, reproduce):
 
 
 def run_tool(argv, display, reproduce):
-    proc = subprocess.run(argv, capture_output=True, text=True, timeout=30)
+    proc = subprocess.run(argv, capture_output=True, timeout=30, **repository.DECODING)
     if proc.returncode != 0:
         return refuse(display, proc.stderr or proc.stdout, reproduce)
     return 0
@@ -300,7 +263,7 @@ def check_content(display, data):
         code = run_tool(["bash", "-n", scratch], display, f"bash -n {shown}")
         if code:
             return code
-        shellcheck = __import__("shutil").which("shellcheck")
+        shellcheck = shutil.which("shellcheck")
         if not shellcheck:
             return 0
         # Warning and above. shellcheck exits non-zero on info-level notes too, and three hooks in
@@ -409,11 +372,11 @@ def refuse_unreadable(state):
     return 2
 
 
-def audit(cwd, commits_all, pathspecs):
-    root = repo_root(cwd)
+def audit(cwd, selectors, onto_index, pathspecs):
+    root = repo_root(cwd, selectors)
     if isinstance(root, Unreadable):
         return refuse_unreadable(root)
-    content = committed_content(root, commits_all, pathspecs)
+    content = committed_content(cwd, selectors, onto_index, pathspecs)
     if isinstance(content, Unreadable):
         return refuse_unreadable(content)
     if not content:
@@ -469,19 +432,25 @@ def main():
                          "tree holds that\ncontent is what the move decides.\n\n"
                          f"{NAME_THE_TREE}\n")
         return 2
-    for directory, commits_all, pathspecs in commits:
+    contexts = [context for context, _, _ in
+                git_invocations(command, {"commit"}, git_directory=True)]
+    for (directory, onto_index, pathspecs), context in zip(commits, contexts):
+        selectors = [(flag, value) for flag, value in (
+            ("-C", directory), ("--git-dir", context.git_directory),
+            ("--work-tree", context.work_tree)) if value]
         # The two operand kinds are refused apart, because the remedy for one does not reach the
         # other: naming the paths leaves a `-C` unresolved, and the reader told to do it tries
         # something that cannot help. Measured on an agent's own `git -C "$SP" commit`.
-        if directory and unexpanded(directory):
+        unresolved = [value for _, value in selectors if unexpanded(value)]
+        if unresolved:
             sys.stderr.write(
                 "Refusing `git commit`: the tree it runs in is named by an operand the shell has "
                 "not\nexpanded yet.\n\n"
-                f"  -C {directory}\n\n"
-                "Every check below reads the content the commit would record, and which repository "
-                "holds\nthat content is what `-C` decides — so this cannot read the tree at all, "
-                "rather than reading\nthe wrong one.\n\n"
-                "Spell the directory out.\n")
+                + "\n".join("  " + value for value in unresolved)
+                + "\n\nEvery check below reads the content the commit would record, and the "
+                  "repository holding\nthat content is named there — so this cannot read the tree "
+                  "at all, rather than reading\nthe wrong one.\n\n"
+                  "Spell the directory out.\n")
             return 2
         unresolved = [token for token in pathspecs if unexpanded(token)]
         if unresolved:
@@ -493,7 +462,9 @@ def main():
                   "and the commit would record content none of them saw.\n\n"
                   "Name the paths, or commit the index and let the checks read that.\n")
             return 2
-        code = audit(directory or cwd, commits_all, pathspecs)
+        code = audit(cwd, [part for flag, value in selectors
+                           for part in (flag, os.path.expanduser(value))],
+                     onto_index, [os.path.expanduser(spec) for spec in pathspecs])
         if code:
             return code
     return 0

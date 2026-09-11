@@ -55,6 +55,8 @@ RAW_TARGET = b'{"a": "\xff"}'
 # A tracked file at a mode that lets nobody read it.
 CLOSED = "closed.py"
 
+STAGED = "staged.py"
+
 # Two submodule paths. Their index entries are written directly rather than cloned: what the guard
 # reads is the mode and the listing, and `git submodule add` adds a working tree and a `.gitmodules`
 # that neither reading looks at. The second ends in a suffix a fast check knows, which is what
@@ -68,14 +70,12 @@ BROKEN = "broken = (\n"
 
 # What a refusal says of a file a fast check rejected, against the sentences it carries for a path
 # that did not read at all. All are exit 2, so the code alone separates none of them, and the
-# remedy is the half that must not be shared: a reader sent back to git over a file at mode 000 has
-# been told a thing about git that refusal did not establish, and one told to correct what git
-# named where git never ran has been sent to look for a name nothing wrote.
+# remedy is the half that must not be shared: one told to correct what git named where git never
+# ran has been sent to look for a name nothing wrote.
 FAILED_A_CHECK = " failed a fast check"
-NOT_OPENED = "a file this commit records could not be opened."
-MAKE_IT_READABLE = "Make it readable, or commit without it."
 RETRY_WHEN_GIT_ANSWERS = "Retry when git answers."
 CORRECT_WHAT_GIT_NAMED = "Correct what git named and retry."
+NOT_COPIED = "the index could not be copied."
 
 # What git says of a directory with no repository at or above it.
 NOT_A_REPOSITORY = "not a git repository"
@@ -182,6 +182,15 @@ class UnexpandedOperands(GuardTestCase):
         self.assertEqual((code, RETRY_WHEN_GIT_ANSWERS in said, CORRECT_WHAT_GIT_NAMED in said),
                          (2, False, True))
 
+    def test_Given_ATildeSpelledDirectory_When_Judged_Then_TheRefusalNamesTheDirectoryGitWasGiven(self):
+        # Arrange / Act — a directory that is not there, so git's refusal quotes the one it was
+        # handed.
+        code, said = self.judge("git -C ~/velvet-no-such-tree commit -m x")
+
+        # Assert
+        missing = os.path.expanduser("~/velvet-no-such-tree")
+        self.assertEqual((code, missing in said, os.path.exists(missing)), (2, True, False))
+
     def test_Given_AnUnexpandedPathspec_When_Refused_Then_ItKeepsItsOwnRemedy(self):
         # Arrange — the reading the sentence was written for, which this must leave where it is.
         code, said = self.judge('git commit -m "x" -- "$FILES"')
@@ -191,8 +200,7 @@ class UnexpandedOperands(GuardTestCase):
 
 
 class IndexedContent(GuardTestCase):
-    # GREEN_ON_BASE(refactor): the index read this guard's collapse onto a shared reader preserves.
-    # Reading the working tree's copy where `git show :<path>` is asked is what reddens it.
+    # GREEN_ON_BASE(characterization): the base judges a commit of the index on the index too.
     def test_Given_ABlobBrokenInTheIndexAndWholeInTheTree_When_Judged_Then_TheRefusalQuotesTheIndex(self):
         # Arrange — the two halves carry different text, so the quoted line says which was read. A
         # refusal alone would not: the working tree's copy is what a commit of the index must not be
@@ -226,6 +234,17 @@ class IndexedContent(GuardTestCase):
         self.assertEqual((code, script + FAILED_A_CHECK in said, self.judge("git commit -m x")),
                          (2, True, (0, "")))
 
+    def test_Given_AStagedScriptWhoseBrokenLineHoldsAByteOutsideTheEncoding_When_Judged_Then_TheRefusalNamesIt(self):
+        # Arrange — the line `bash -n` rejects holds a byte UTF-8 does not map.
+        (self.root / "raw.sh").write_bytes(b"#!/bin/bash\nif then \xff\n")
+        self.git("add", "raw.sh")
+
+        # Act
+        code, said = self.judge("git commit -m x")
+
+        # Assert
+        self.assertEqual((code, "raw.sh" + FAILED_A_CHECK in said), (2, True))
+
     def test_Given_ANameGitQuotes_When_BrokenInTheIndex_Then_TheRefusalNamesIt(self):
         # Arrange — staged and never committed, so everything this commit records is the index's.
         (self.root / QUOTED).write_text(BROKEN, encoding="utf-8")
@@ -234,14 +253,11 @@ class IndexedContent(GuardTestCase):
         # Act
         code, said = self.judge("git commit -m x")
 
-        # Assert — the name, not merely the refusal: the base refuses this too, for having handed
-        # `git show` a spelling no path answers to, and tells the reader to retry when git answers.
+        # Assert — the name, not merely the refusal.
         self.assertEqual((code, QUOTED + FAILED_A_CHECK in said), (2, True))
 
     def test_Given_ANameHoldingAByteOutsideTheEncoding_When_BrokenInTheIndex_Then_TheRefusalNamesIt(self):
-        # Arrange — the index alone, since the byte cannot be written into a name here. A decoding
-        # that replaces the byte rather than escaping it hands `git show` a path no entry answers
-        # to, so the blob is never reached and the refusal is about the reading instead.
+        # Arrange — the index alone, since the byte cannot be written into a name here.
         self.index(b"100644 " + self.blob(BROKEN.encode("utf-8")) + b"\t" + RAW_BYTE_NAME + b"\x00")
 
         # Act
@@ -251,9 +267,9 @@ class IndexedContent(GuardTestCase):
         self.assertEqual((code, RAW_BYTE_SHOWN + FAILED_A_CHECK in said), (2, True))
 
     def test_Given_ASubmoduleWhoseCommitIsStaged_When_Judged_Then_TheCommitIsAllowed(self):
-        # Arrange — the staged listing names it and there is no blob behind it, which is the state
-        # the base refuses in. That the index really holds a gitlink is compared beside the verdict,
-        # since an entry at any other mode poses nothing.
+        # Arrange — the staged listing names it and there is no blob behind it. That the index
+        # really holds a gitlink is compared beside the verdict, since an entry at any other mode
+        # poses nothing.
         self.index(("160000 " + self.submodule() + "\t" + SUB + "\x00").encode("utf-8"))
         listed = self.git("ls-files", "-s", "--", SUB).split()[0]
 
@@ -283,8 +299,7 @@ class WorktreeContent(GuardTestCase):
 
     # GREEN_ON_BASE(characterization): a name needing no quoting is refused on the base too.
     # That is what makes the awkward names below about which spellings reach the checks, rather
-    # than about whether the working tree is read at all. Answering `[]` from `worktree_paths`
-    # reddens it.
+    # than about whether the working tree is read at all.
     def test_Given_APlainName_When_BrokenInTheWorktree_Then_TheRefusalNamesIt(self):
         # Arrange
         staged = self.broken_only_in_the_worktree(PLAIN)
@@ -302,8 +317,7 @@ class WorktreeContent(GuardTestCase):
         # Act
         code, said = self.judge("git commit -a -m x")
 
-        # Assert — on the base the listing spells this name back quoted, `open` raises for it, and
-        # the commit is allowed with nothing said.
+        # Assert
         self.assertEqual((code, QUOTED + FAILED_A_CHECK in said, staged), (2, True, ""))
 
     def test_Given_ANameHoldingACarriageReturn_When_BrokenInTheWorktree_Then_ItsContentIsChecked(self):
@@ -313,9 +327,7 @@ class WorktreeContent(GuardTestCase):
         # Act
         code, said = self.judge("git commit -a -m x")
 
-        # Assert — that a check ran and rejected the content, rather than which name it named: the
-        # return has to survive the read, and taking the same NUL-delimited listing through a text
-        # pipe leaves this naming a file nothing can open, which is a different refusal.
+        # Assert — that a check ran and rejected the content, rather than which name it named.
         self.assertEqual((code, FAILED_A_CHECK in said, staged), (2, True, ""))
 
     def test_Given_ANameHoldingALineBreak_When_Refused_Then_TheRefusalLineIsWhole(self):
@@ -410,9 +422,7 @@ class WorktreeContent(GuardTestCase):
                           self.git("show", "HEAD:" + RAW_LINK)),
                          (2, True, "", os.fsdecode(RAW_TARGET)))
 
-    # GREEN_ON_BASE(characterization): the base allows this too, by dropping every path it could
-    # not open and going on. Opening the path rather than reading what kind of entry it is reddens
-    # it, and the refusal that follows is the one neither of its halves can be acted on.
+    # GREEN_ON_BASE(characterization): the base allows this too.
     def test_Given_ASubmoduleWhoseCommitMoved_When_Judged_Then_TheCommitIsAllowed(self):
         # Arrange — committed at the first commit and moved on afterwards, so the worktree listing
         # names it and the staged one does not. Both listings are compared beside the verdict.
@@ -430,9 +440,7 @@ class WorktreeContent(GuardTestCase):
         self.assertEqual((code, said, listings, self.git("ls-tree", "HEAD", "--", SUB).split()[:2]),
                          (0, "", ("", SUB + "\n"), [GITLINK_MODE, "commit"]))
 
-    # GREEN_ON_BASE(characterization): the base allows this too, by dropping every path it could
-    # not open and going on. Carrying the answer for a path that records no blob into the checks
-    # reddens it, and what fails then is the hook itself, at the exit that lets a commit through.
+    # GREEN_ON_BASE(characterization): the base allows this too.
     def test_Given_ASubmoduleAtAPathAFastCheckKnows_When_Judged_Then_TheCommitIsAllowed(self):
         # Arrange — the case above with the suffix changed, which is the whole of what separates
         # them: a path whose suffix no fast check knows is returned on before its content is read.
@@ -454,7 +462,7 @@ class WorktreeContent(GuardTestCase):
                          (0, "", ("", SUB_CHECKED + "\n"), os.path.splitext(PROBE)[1],
                           [GITLINK_MODE, "commit"]))
 
-    def test_Given_APathTheListingNamesThatWillNotOpen_When_Judged_Then_TheRemedyIsAboutTheFile(self):
+    def test_Given_ATrackedFileThatWillNotOpen_When_Judged_Then_TheRefusalIsGitsAccountOfIt(self):
         # Arrange — a tracked file whose mode lets nobody read it.
         staged = self.broken_only_in_the_worktree(CLOSED)
         os.chmod(self.root / CLOSED, 0o000)
@@ -463,25 +471,140 @@ class WorktreeContent(GuardTestCase):
         # Act
         code, said = self.judge("git commit -a -m x")
 
-        # Assert — the name under the subject rather than anywhere in the refusal: the error this
-        # quotes carries the path itself, and that copy satisfies a bare containment on its own.
-        self.assertEqual((code, NOT_OPENED in said, "\n  " + CLOSED + ":" in said,
-                          MAKE_IT_READABLE in said, self.opens(CLOSED), staged),
-                         (2, True, True, True, False, ""))
+        # Assert
+        self.assertEqual((code, CLOSED in said, CORRECT_WHAT_GIT_NAMED in said, self.opens(CLOSED),
+                          staged), (2, True, True, False, ""))
 
-    def test_Given_ANameHoldingALineBreak_When_ItWillNotOpen_Then_TheRefusalLineIsWhole(self):
-        # Arrange — the same mode, under a name that divides the line it is printed in. This
-        # refusal spells the path in a sentence of its own, which the case above cannot reach.
-        staged = self.broken_only_in_the_worktree(BREAKING)
-        os.chmod(self.root / BREAKING, 0o000)
-        self.addCleanup(os.chmod, self.root / BREAKING, 0o644)
+    # GREEN_ON_BASE(characterization): the base runs no hook in this state either.
+    def test_Given_AHookOnEveryIndexWrite_When_Judged_Then_ItDoesNotRun(self):
+        # Arrange
+        staged = self.broken_only_in_the_worktree(PLAIN)
+        hook = self.root / ".git" / "hooks" / "post-index-change"
+        hook.write_text("#!/bin/sh\ntouch ran\n", encoding="utf-8")
+        os.chmod(hook, 0o755)
 
         # Act
         code, said = self.judge("git commit -a -m x")
 
-        # Assert — the escaped name where the sentence puts it.
-        self.assertEqual((code, json.dumps(BREAKING) + ":" in said, self.opens(BREAKING), staged),
-                         (2, True, False, ""))
+        # Assert — beside the refusal, so a guard that never reached the working tree cannot pass.
+        self.assertEqual((code, PLAIN + FAILED_A_CHECK in said, (self.root / "ran").exists(),
+                          staged), (2, True, False, ""))
+
+    def test_Given_ARelativePathspecFromASubdirectory_When_Judged_Then_TheFileItNamesIsChecked(self):
+        # Arrange
+        (self.root / "sub").mkdir()
+        staged = self.broken_only_in_the_worktree("sub/" + PLAIN)
+
+        # Act
+        code, said = self.judge("git commit -m x -- " + PLAIN, cwd=self.root / "sub")
+
+        # Assert
+        self.assertEqual((code, "sub/" + PLAIN + FAILED_A_CHECK in said, staged), (2, True, ""))
+
+    def test_Given_ASymlinkReplacedByABrokenFile_When_Judged_Then_TheFileIsChecked(self):
+        # Arrange
+        (self.root / FIRST_TARGET).write_text(WHOLE, encoding="utf-8")
+        os.symlink(FIRST_TARGET, self.root / LINK)
+        self.git("add", FIRST_TARGET, LINK)
+        self.git("commit", "-q", "-m", "arranged")
+        os.unlink(self.root / LINK)
+        (self.root / LINK).write_text(BROKEN, encoding="utf-8")
+
+        # Act
+        code, said = self.judge("git commit -a -m x")
+
+        # Assert — what the commit then wrote sits in the comparison, because this is a file's
+        # content to check only for as long as git records a file there.
+        self.git("commit", "-a", "-q", "-m", "recorded")
+        self.assertEqual((code, LINK + FAILED_A_CHECK in said,
+                          self.git("ls-tree", "HEAD", "--", LINK).split()[:2]),
+                         (2, True, ["100644", "blob"]))
+
+    def test_Given_ACarriageReturnGitNormalises_When_Judged_Then_TheNormalisedBytesAreChecked(self):
+        # Arrange — the working copy holds CRLF, which `.gitattributes` asks git to record as LF.
+        script = "normalised.sh"
+        (self.root / ".gitattributes").write_text("*.sh text eol=lf\n", encoding="utf-8")
+        (self.root / script).write_bytes(b"#!/bin/bash\necho first\n")
+        self.git("add", ".gitattributes", script)
+        self.git("commit", "-q", "-m", "arranged")
+        (self.root / script).write_bytes(b"#!/bin/bash\r\nif true; then\r\necho hi\r\nfi\r\n")
+
+        # Act
+        code, said = self.judge("git commit -a -m x")
+
+        # Assert — what the commit then wrote sits in the comparison, because checking git's copy
+        # rather than the working one is right only for as long as git's copy is the blob.
+        self.git("commit", "-a", "-q", "-m", "recorded")
+        self.assertEqual((code, said, self.git("show", "HEAD:" + script)),
+                         (0, "", "#!/bin/bash\nif true; then\necho hi\nfi\n"))
+
+    # GREEN_ON_BASE(characterization): the base checks a working copy's own bytes too.
+    def test_Given_AWorkingCopyBrokenByBareReturns_When_Judged_Then_ItsRecordedBytesAreChecked(self):
+        # Arrange — committed as another script, so its line-feed copy below is a change too.
+        script, content = "returns.sh", b"#!/bin/bash\nif true; then\recho hi\rfi\n"
+        (self.root / script).write_bytes(b"#!/bin/bash\necho first\n")
+        self.git("add", script)
+        self.git("commit", "-q", "-m", "arranged")
+        (self.root / script).write_bytes(content)
+
+        # Act
+        code, said = self.judge("git commit -a -m x")
+
+        # Assert — beside the verdict on the same script with its returns read as line feeds.
+        (self.root / script).write_bytes(content.replace(b"\r", b"\n"))
+        self.assertEqual((code, script + FAILED_A_CHECK in said, self.judge("git commit -a -m x")),
+                         (2, True, (0, "")))
+
+
+class PathspecCommits(GuardTestCase):
+    def staged_beside(self, named):
+        """`STAGED` staged broken, beside `named` changed whole in its working copy alone."""
+        for name in (named, STAGED):
+            (self.root / name).write_text(WHOLE, encoding="utf-8")
+        self.git("add", named, STAGED)
+        self.git("commit", "-q", "-m", "arranged")
+        (self.root / named).write_text(TREE_AND_WHOLE, encoding="utf-8")
+        (self.root / STAGED).write_text(BROKEN, encoding="utf-8")
+        self.git("add", STAGED)
+
+    def test_Given_AnotherFileStagedBroken_When_APathspecAloneIsCommitted_Then_ItIsNotChecked(self):
+        # Arrange
+        self.staged_beside(PLAIN)
+
+        # Act
+        code, said = self.judge("git commit -m x -- " + PLAIN)
+
+        # Assert — what the commit then wrote sits in the comparison, because leaving the staged
+        # file unchecked is right only for as long as the commit leaves it out.
+        self.git("commit", "-q", "-m", "recorded", "--", PLAIN)
+        self.assertEqual((code, said, self.git("show", "HEAD:" + STAGED)), (0, "", WHOLE))
+
+    # GREEN_ON_BASE(characterization): the base checks what is staged beside a pathspec too.
+    def test_Given_AnotherFileStagedBroken_When_CommittedWithInclude_Then_ItIsChecked(self):
+        # Arrange
+        self.staged_beside(PLAIN)
+
+        # Act
+        code, said = self.judge("git commit -m x -i -- " + PLAIN)
+
+        # Assert — what the commit then wrote sits in the comparison, because `-i` is what takes
+        # the staged file into it.
+        self.git("commit", "-q", "-m", "recorded", "-i", "--", PLAIN)
+        self.assertEqual((code, STAGED + FAILED_A_CHECK in said,
+                          self.git("show", "HEAD:" + STAGED)), (2, True, BROKEN))
+
+    # GREEN_ON_BASE(characterization): the base checks what is staged beside a pathspec too.
+    def test_Given_AnotherFileStagedBroken_When_CommittedWithIncludeAbbreviated_Then_ItIsChecked(self):
+        # Arrange
+        self.staged_beside(PLAIN)
+
+        # Act
+        code, said = self.judge("git commit -m x --inc -- " + PLAIN)
+
+        # Assert — what the commit then wrote sits in the comparison, as above.
+        self.git("commit", "-q", "-m", "recorded", "--inc", "--", PLAIN)
+        self.assertEqual((code, STAGED + FAILED_A_CHECK in said,
+                          self.git("show", "HEAD:" + STAGED)), (2, True, BROKEN))
 
 
 class TreeTheChecksRunIn(GuardTestCase):
@@ -513,6 +636,61 @@ class TreeTheChecksRunIn(GuardTestCase):
 
         # Assert
         self.assertEqual((code, NOT_A_REPOSITORY in said), (2, True))
+
+    def elsewhere(self):
+        """A second repository, holding `PLAIN` committed whole and broken in its working copy."""
+        other = self.repository(Path(tempfile.mkdtemp(prefix="fast-checks-other-")).resolve())
+        (other / PLAIN).write_text(WHOLE, encoding="utf-8")
+        self.git("add", PLAIN, root=other)
+        self.git("commit", "-q", "-m", "arranged", root=other)
+        (other / PLAIN).write_text(BROKEN, encoding="utf-8")
+        return other
+
+    def test_Given_ACommitAimedByGitDirAndWorkTreeFlags_When_Judged_Then_ThatTreeIsChecked(self):
+        # Arrange — started in a repository holding nothing to check.
+        other = self.elsewhere()
+
+        # Act
+        code, said = self.judge(f"git --git-dir={other}/.git --work-tree={other} commit -a -m x")
+
+        # Assert
+        self.assertEqual((code, PLAIN + FAILED_A_CHECK in said), (2, True))
+
+    def test_Given_ACommitAimedByGitDirAndWorkTreeVariables_When_Judged_Then_ThatTreeIsChecked(self):
+        # Arrange — started in a directory in no repository.
+        other = self.elsewhere()
+        plain = Path(tempfile.mkdtemp(prefix="fast-checks-none-")).resolve()
+        self.addCleanup(shutil.rmtree, plain, ignore_errors=True)
+
+        # Act
+        code, said = self.judge(f"GIT_DIR={other}/.git GIT_WORK_TREE={other} git commit -a -m x",
+                                cwd=plain)
+
+        # Assert
+        self.assertEqual((code, PLAIN + FAILED_A_CHECK in said), (2, True))
+
+    def test_Given_ARelativeDirectory_When_Judged_Then_ItIsReadFromWhereTheCommandRuns(self):
+        # Arrange
+        other = self.elsewhere()
+
+        # Act
+        code, said = self.judge(f"git -C {os.path.relpath(other, self.root)} commit -a -m x")
+
+        # Assert
+        self.assertEqual((code, PLAIN + FAILED_A_CHECK in said), (2, True))
+
+    def test_Given_AnIndexThatWillNotOpen_When_Judged_Then_TheRefusalSaysSo(self):
+        # Arrange
+        (self.root / PLAIN).write_text(WHOLE, encoding="utf-8")
+        self.git("add", PLAIN)
+        os.chmod(self.root / ".git" / "index", 0o000)
+        self.addCleanup(os.chmod, self.root / ".git" / "index", 0o644)
+
+        # Act
+        code, said = self.judge("git commit -m x")
+
+        # Assert
+        self.assertEqual((code, NOT_COPIED in said, self.opens(".git/index")), (2, True, False))
 
     # GREEN_ON_BASE(characterization): the base answers a git that never ran with this remedy too.
     def test_Given_NoGitOnThePath_When_Judged_Then_TheRemedyIsToRetry(self):
