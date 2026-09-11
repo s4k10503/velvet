@@ -5,15 +5,25 @@ Every check this repository owns runs either at CI, twenty minutes away, or neve
 at what is about to be committed until integration. These checks finish in well under a second and
 would have caught defects that instead reached a commit or CI.
 
-What is checked is what the commit records, not what the working tree happens to hold. Those are
-different files: a broken blob whose working copy was fixed afterwards passed every check, and a
-file staged and then deleted was refused with a `FileNotFoundError` for a commit git would accept.
-`git commit -a` and `git commit <pathspec>` record the working tree, so for those it is read too.
+What is checked is what the commit records, not what the working tree happens to hold, outside the
+limits below. Those are different files: a broken blob whose working copy was fixed afterwards
+passed every check, and a file staged and then deleted was refused with a `FileNotFoundError` for
+a commit git would accept. `git commit -a` and `git commit <pathspec>` record the working tree,
+so for those it is read too.
 
 Not replayed from the command: the global pathspec options `--glob-pathspecs`,
-`--noglob-pathspecs`, `--icase-pathspecs` and `--literal-pathspecs`, and a `GIT_*_PATHSPECS`
+`--noglob-pathspecs`, `--icase-pathspecs` and `--literal-pathspecs`, a `GIT_*_PATHSPECS`
 variable the command sets itself, since the git this runs takes those variables from this hook's
-environment. Under any of them, the paths checked can differ from the paths the commit records.
+environment, and configuration the command sets itself with `-c`, `--config-env` or a
+`GIT_CONFIG_*` assignment. Under any of them, the paths or bytes checked can differ from those
+the commit records: `git -c core.sparseCheckout=false commit -i` records a file outside the
+sparse cone this did not check, and `git -c core.autocrlf=false commit -a` a carriage return
+this read normalised away. A `GIT_CONFIG` in this hook's environment stops `git config` reading
+the probe `reads_literally` asks, so a literal pathspec is read as magic.
+
+Refused though git records the commit: one run from inside an unpopulated submodule's
+directory, and one naming a path beyond a symbolic link, where this reading's own `git add` or
+`update-index` dies and `git commit` goes on.
 """
 
 import collections
