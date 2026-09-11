@@ -39,7 +39,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 from display import displayed
 from shell_commands import (COMMIT_VALUE_FLAGS, NAME_THE_TREE, UNPLACEABLE_MOVE, UNRESOLVED_CD,
-                            command_directory, git_invocations, unexpanded)
+                            command_directory, git_invocations, tree_selectors, unexpanded)
 import repository
 
 
@@ -573,10 +573,8 @@ def main():
         return 2
     contexts = [context for context, _, _ in
                 git_invocations(command, {"commit"}, git_directory=True)]
-    for (directory, onto_index, pathspecs), context in zip(commits, contexts):
-        selectors = [(flag, value) for flag, value in (
-            ("-C", directory), ("--git-dir", context.git_directory),
-            ("--work-tree", context.work_tree)) if value]
+    for (_, onto_index, pathspecs), context in zip(commits, contexts):
+        selectors = tree_selectors(context)
         # The two operand kinds are refused apart, because the remedy for one does not reach the
         # other: naming the paths leaves a `-C` unresolved, and the reader told to do it tries
         # something that cannot help. Measured on an agent's own `git -C "$SP" commit`.
