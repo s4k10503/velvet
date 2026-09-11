@@ -108,10 +108,8 @@ import ast
 import importlib.util
 import io
 import json
-import os
 import re
 import shutil
-import signal
 import subprocess
 import sys
 import tempfile
@@ -125,36 +123,6 @@ DEFAULT_UNITY = "/Applications/Unity/Hub/Editor/6000.3.23f1/Unity.app/Contents/M
 # Anchored at the editor binary so that a shell waiting on this pattern does not match itself and
 # report a busy machine forever on an idle one.
 UNITY_RUNNING = "^/Applications/.*/MacOS/Unity -runTests"
-
-
-class Terminated(BaseException):
-    """SIGTERM or SIGHUP, raised where the run stands so every `finally` on the way out runs."""
-
-    def __init__(self, number):
-        super().__init__(number)
-        self.number = number
-
-
-def unwinding_on_signals(body):
-    """Runs `body` with SIGTERM and SIGHUP raised as `Terminated`, then dies of the one that ended it.
-
-    The `finally` blocks on the way out are what remove the base tree and reap the editor a run launched, and neither signal runs one by default,
-    which `EditorOutlivingItsRunTests` pins. A second signal is ignored while they run, so it cannot cut
-    one short.
-    """
-    def raise_terminated(number, _frame):
-        for each in (signal.SIGTERM, signal.SIGHUP):
-            signal.signal(each, signal.SIG_IGN)
-        raise Terminated(number)
-
-    for number in (signal.SIGTERM, signal.SIGHUP):
-        signal.signal(number, raise_terminated)
-    try:
-        return body()
-    except Terminated as ended:
-        signal.signal(ended.number, signal.SIG_DFL)
-        os.kill(os.getpid(), ended.number)
-        raise
 
 PASSED_ON_BASE = "passed on the base"
 RED_ON_BASE = "red on the base"
@@ -2636,4 +2604,4 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(unwinding_on_signals(main))
+    sys.exit(main())

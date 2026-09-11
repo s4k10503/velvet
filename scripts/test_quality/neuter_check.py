@@ -25,9 +25,7 @@ files, and a cut cannot answer one about a single boundary condition.
 
 import argparse
 import json
-import os
 import re
-import signal
 import subprocess
 import sys
 import time
@@ -40,36 +38,6 @@ UNITY_RUNNING = "^/Applications/.*/MacOS/Unity -runTests"
 CUTS_FILE = "scripts/test_quality/neuter_cuts.json"
 UNCOVERED_FILE = "scripts/test_quality/neuter_uncovered.txt"
 HOLES_FILE = "scripts/test_quality/neuter_holes.txt"
-
-
-class Terminated(BaseException):
-    """SIGTERM or SIGHUP, raised where the run stands so every `finally` on the way out runs."""
-
-    def __init__(self, number):
-        super().__init__(number)
-        self.number = number
-
-
-def unwinding_on_signals(body):
-    """Runs `body` with SIGTERM and SIGHUP raised as `Terminated`, then dies of the one that ended it.
-
-    The `finally` blocks on the way out are what put a cut back and reap the editor a run launched, and neither signal runs one by default,
-    which `EditorOutlivingItsRunTests` pins. A second signal is ignored while they run, so it cannot cut
-    one short.
-    """
-    def raise_terminated(number, _frame):
-        for each in (signal.SIGTERM, signal.SIGHUP):
-            signal.signal(each, signal.SIG_IGN)
-        raise Terminated(number)
-
-    for number in (signal.SIGTERM, signal.SIGHUP):
-        signal.signal(number, raise_terminated)
-    try:
-        return body()
-    except Terminated as ended:
-        signal.signal(ended.number, signal.SIG_DFL)
-        os.kill(os.getpid(), ended.number)
-        raise
 PACKAGE_ROOT = "Packages/com.velvet.core"
 
 # Two name shapes, not every class-driven mechanism. A manipulator, a build step and FiberNodePatcher
@@ -746,4 +714,4 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(unwinding_on_signals(main))
+    sys.exit(main())
