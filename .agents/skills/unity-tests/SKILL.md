@@ -23,6 +23,8 @@ python3 scripts/test_quality/assert_no_inconclusive.py "$R"
 - **`^…$` selects an ordinary fixture's cases**, and nothing at all for a fixture that declares no cases of its own — NUnit makes nested fixtures siblings of the outer one rather than children of it.
 - **Several values separate on `;` and the split does not trim**, so `"A; B"` runs A alone and reports green over the smaller set.
 
+A value built from test file names can miss fixtures — one file can declare several, or none named like it — so hand the files to `scripts/test_quality/fixture_filter.py` and take the value it prints.
+
 Read the `fullname` roster in the XML, not only the count, before trusting a filtered run: a filter that took a whole assembly reports a count that looks entirely plausible.
 
 **Write into a directory made for the run, as above — never /tmp/results.xml, and never a fixed name under Logs.** The first is one file for every worktree and every session on the machine, the second one file for every agent working in the checkout, and the compile-error paragraph below is what reading another run's file costs.
