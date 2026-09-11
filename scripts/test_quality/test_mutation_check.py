@@ -3276,7 +3276,7 @@ def failing_count():
     raise OSError(35, "Resource temporarily unavailable")
 
 
-class EditorReapedWhateverEndsTheRunTests(unittest.TestCase):
+class EditorReapedWhenAnExceptionEndsTheRunTests(unittest.TestCase):
     """An editor left running over a tree the harness has put back measures a change that is gone."""
 
     def test_Given_ANeighbourCountThatFailsWhileTheEditorRuns_When_TheRunEnds_Then_TheEditorIsNotLeftRunning(self):
