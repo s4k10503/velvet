@@ -29,9 +29,9 @@ GUIDANCE = """
 A branch whose pull request merged is litter; one with commits that never landed is not, and the
 two look identical from here. Ask the pull requests, then delete only what they name:
 
-  gh pr list --state merged --limit 400 --json headRefName --jq '.[].headRefName' | sort -u > /tmp/merged-heads
+  merged=$(gh pr list --state merged --limit 400 --json headRefName --jq '.[].headRefName')
   for b in $(git branch --format='%(refname:short)' | grep -v '^main$'); do
-    grep -qx "$b" /tmp/merged-heads && git branch -D "$b"
+    printf '%s\\n' "$merged" | grep -qxF "$b" && git branch -D "$b"
   done
 
 For each branch that survives that, `git rev-list --count origin/main..<branch>` says whether it

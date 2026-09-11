@@ -12,6 +12,11 @@ import json
 import os
 import subprocess
 import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+
+from velvet_hooks import BUILD_DIRECTORIES  # noqa: E402
 
 # Build output is excluded on purpose; only a file that wants tracking is worth interrupting for.
 TRACKABLE_SUFFIXES = (
@@ -39,6 +44,9 @@ def main():
         ["git", "-C", os.path.dirname(path) or ".", "rev-parse", "--show-toplevel"],
         stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=10,
     ).stdout.decode().strip() or payload.get("cwd") or os.environ.get("CLAUDE_PROJECT_DIR") or "."
+    relative = os.path.relpath(os.path.realpath(path), os.path.realpath(root))
+    if BUILD_DIRECTORIES.match(relative.replace(os.sep, "/")):
+        return 0
     try:
         check = subprocess.run(
             ["git", "-C", root, "check-ignore", "-v", "--", path],
