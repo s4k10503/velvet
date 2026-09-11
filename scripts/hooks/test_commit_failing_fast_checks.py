@@ -62,6 +62,8 @@ STAGED = "staged.py"
 EXCLUDED = "excluded.json"
 TOP = "top.py"
 
+LITERAL_PATHSPECS = "GIT_LITERAL_PATHSPECS"
+
 # Where the guard reads the cuts a neuter sweep may be holding, and what validates them.
 CUT_MAP = "scripts/test_quality/neuter_cuts.json"
 CUT_VALIDATOR = "scripts/test_quality/neuter_check.py"
@@ -146,11 +148,18 @@ class GuardTestCase(unittest.TestCase):
         os.chmod(log / "git", 0o755)
         return log
 
-    def git(self, *args, root=None):
+    def git(self, *args, root=None, env=None):
         done = subprocess.run(["git", "-C", str(root or self.root), "-c", "user.email=t@velvet",
                                "-c", "user.name=t", *args],
-                              check=True, capture_output=True, timeout=60)
+                              check=True, capture_output=True, timeout=60,
+                              env=None if env is None else dict(os.environ, **env))
         return done.stdout.decode("utf-8", "surrogateescape")
+
+    def exits(self, *args):
+        """What git exits with, for a command that is expected to refuse."""
+        return subprocess.run(["git", "-C", str(self.root), "-c", "user.email=t@velvet",
+                               "-c", "user.name=t", *args],
+                              capture_output=True, timeout=60).returncode
 
     def index(self, record):
         """`record` written into the index, as the raw bytes of one `--index-info` line."""
@@ -556,6 +565,23 @@ class WorktreeContent(GuardTestCase):
         self.assertEqual((code, CLOSED in said, CORRECT_WHAT_GIT_NAMED in said, self.opens(CLOSED),
                           staged), (2, True, True, False, ""))
 
+    def test_Given_AnUnreadableFileWhereAddIgnoresErrors_When_Judged_Then_TheRefusalIsGitsAccountOfIt(self):
+        # Arrange — the case above, in a repository whose `git add` passes over a file it cannot
+        # read.
+        self.git("config", "add.ignoreErrors", "true")
+        staged = self.broken_only_in_the_worktree(CLOSED)
+        os.chmod(self.root / CLOSED, 0o000)
+        self.addCleanup(os.chmod, self.root / CLOSED, 0o644)
+
+        # Act
+        code, said = self.judge("git commit -a -m x")
+
+        # Assert — beside what `git add -u` and then the commit exit with here: the setting is live
+        # for the one, and refusing is right only for as long as the other refuses.
+        self.assertEqual((code, CLOSED in said, CORRECT_WHAT_GIT_NAMED in said, self.opens(CLOSED),
+                          staged, self.exits("add", "-u"), self.exits("commit", "-a", "-m", "x")),
+                         (2, True, True, False, "", 1, 128))
+
     # GREEN_ON_BASE(characterization): the base runs no hook in this state either.
     def test_Given_AHookOnEveryIndexWrite_When_Judged_Then_ItDoesNotRun(self):
         # Arrange
@@ -712,6 +738,22 @@ class PathspecCommits(GuardTestCase):
                           self.git("show", "HEAD:" + STAGED)), (2, True, BROKEN))
 
     # GREEN_ON_BASE(characterization): the base checks what is staged beside a pathspec too.
+    def test_Given_AnotherFileStagedBroken_When_ASkipWorktreeEntryIsCommittedWithInclude_Then_ItIsChecked(self):
+        # Arrange — the case above with the named file marked skip-worktree.
+        self.staged_beside(PLAIN)
+        self.git("update-index", "--skip-worktree", PLAIN)
+        listed = self.git("ls-files", "-t", "--", PLAIN)
+
+        # Act
+        code, said = self.judge("git commit -m x -i -- " + PLAIN)
+
+        # Assert — what the commit then wrote sits in the comparison, as above; and the listing,
+        # since without its bit `git add` does not exit 1 here and this is the case above.
+        self.git("commit", "-q", "-m", "recorded", "-i", "--", PLAIN)
+        self.assertEqual((code, STAGED + FAILED_A_CHECK in said, listed,
+                          self.git("show", "HEAD:" + STAGED)), (2, True, "S " + PLAIN + "\n", BROKEN))
+
+    # GREEN_ON_BASE(characterization): the base checks what is staged beside a pathspec too.
     def test_Given_AnotherFileStagedBroken_When_CommittedWithIncludeAbbreviated_Then_ItIsChecked(self):
         # Arrange
         self.staged_beside(PLAIN)
@@ -785,6 +827,105 @@ class PathspecCommits(GuardTestCase):
         # unchecked is right only for as long as git keeps HEAD's copy of it.
         self.git("commit", "-q", "-m", "recorded", "--", PLAIN, STAGED)
         self.assertEqual((code, said, self.git("show", "HEAD:" + PLAIN)), (0, "", WHOLE))
+
+    # GREEN_ON_BASE(characterization): the base leaves this entry unchecked under `-i` too.
+    def test_Given_ASkipWorktreeEntryNamedWithInclude_When_Judged_Then_TheCommitIsAllowed(self):
+        # Arrange — broken in its working copy, beside a file staged whole so that the commit
+        # records one.
+        self.committed(PLAIN, STAGED)
+        self.git("update-index", "--skip-worktree", PLAIN)
+        (self.root / PLAIN).write_text(BROKEN, encoding="utf-8")
+        (self.root / STAGED).write_text(TREE_AND_WHOLE, encoding="utf-8")
+        self.git("add", STAGED)
+
+        # Act
+        code, said = self.judge("git commit -m x -i -- " + PLAIN)
+
+        # Assert — what the commit then wrote sits in the comparison, because leaving the entry
+        # unchecked is right only for as long as git keeps the index's copy of it; and the working
+        # copy beside it, since a whole one leaves this passing whichever copy was read.
+        self.git("commit", "-q", "-m", "recorded", "-i", "--", PLAIN)
+        self.assertEqual((code, said, (self.root / PLAIN).read_text(encoding="utf-8"),
+                          self.git("show", "HEAD:" + PLAIN)), (0, "", BROKEN, WHOLE))
+
+    # GREEN_ON_BASE(characterization): the base checks a staged blob under `-i` whatever its bit.
+    def test_Given_ASkipWorktreeEntryStagedBroken_When_NamedWithInclude_Then_ItsStagedCopyIsChecked(self):
+        # Arrange — staged broken before it was marked, and whole in its working copy.
+        self.committed(PLAIN)
+        (self.root / PLAIN).write_text(BROKEN, encoding="utf-8")
+        self.git("add", PLAIN)
+        self.git("update-index", "--skip-worktree", PLAIN)
+        (self.root / PLAIN).write_text(WHOLE, encoding="utf-8")
+
+        # Act
+        code, said = self.judge("git commit -m x -i -- " + PLAIN)
+
+        # Assert — what the commit then wrote sits in the comparison, because checking the staged
+        # copy is right only for as long as git records it; and the working copy, since a broken
+        # one leaves this refusing whether the staged copy or the working one was read.
+        self.git("commit", "-q", "-m", "recorded", "-i", "--", PLAIN)
+        self.assertEqual((code, PLAIN + FAILED_A_CHECK in said,
+                          (self.root / PLAIN).read_text(encoding="utf-8"),
+                          self.git("show", "HEAD:" + PLAIN)), (2, True, WHOLE, BROKEN))
+
+    # GREEN_ON_BASE(characterization): the base checks a named file's working copy under `-i` too.
+    def test_Given_ASkipWorktreeEntryNamedWithIncludeBesideABrokenFile_When_Judged_Then_TheBrokenFileIsChecked(self):
+        # Arrange — one pathspec for each, the file broken in its working copy alone.
+        self.committed(PLAIN, STAGED)
+        self.git("update-index", "--skip-worktree", PLAIN)
+        (self.root / STAGED).write_text(BROKEN, encoding="utf-8")
+        listed = self.git("ls-files", "-t", "--", PLAIN)
+
+        # Act
+        code, said = self.judge(f"git commit -m x -i -- {PLAIN} {STAGED}")
+
+        # Assert — what the commit then wrote sits in the comparison, because checking the file is
+        # right only for as long as git takes it from the working tree; and the entry's listing,
+        # since without its bit `git add` does not exit 1 here.
+        self.git("commit", "-q", "-m", "recorded", "-i", "--", PLAIN, STAGED)
+        self.assertEqual((code, STAGED + FAILED_A_CHECK in said, listed,
+                          self.git("show", "HEAD:" + STAGED)), (2, True, "S " + PLAIN + "\n", BROKEN))
+
+    def outside_the_cone(self):
+        """A sparse checkout of `in`, with `out/PLAIN` tracked, broken in its working copy and not
+        marked skip-worktree, beside `in/STAGED` staged whole; as that entry's listing."""
+        self.committed("in/" + STAGED, "out/" + PLAIN)
+        self.git("sparse-checkout", "set", "in")
+        (self.root / "out").mkdir(exist_ok=True)
+        (self.root / "out" / PLAIN).write_text(BROKEN, encoding="utf-8")
+        (self.root / "in" / STAGED).write_text(TREE_AND_WHOLE, encoding="utf-8")
+        self.git("add", "in/" + STAGED)
+        return self.git("ls-files", "-t", "--", "out/" + PLAIN)
+
+    def test_Given_AFileOutsideTheSparseConeNamedWithInclude_When_Judged_Then_TheCommitIsAllowed(self):
+        # Arrange
+        listed = self.outside_the_cone()
+
+        # Act
+        code, said = self.judge("git commit -m x -i -- out/" + PLAIN)
+
+        # Assert — what the commit then wrote sits in the comparison, because leaving the file
+        # unchecked is right only for as long as git keeps the index's copy of it; the listing,
+        # since an entry marked skip-worktree is what
+        # `test_Given_ASkipWorktreeEntryNamedWithInclude_When_Judged_Then_TheCommitIsAllowed`
+        # arranges; and the working copy, for the reason given there.
+        self.git("commit", "-q", "-m", "recorded", "-i", "--", "out/" + PLAIN)
+        self.assertEqual((code, said, listed, (self.root / "out" / PLAIN).read_text(encoding="utf-8"),
+                          self.git("show", "HEAD:out/" + PLAIN)),
+                         (0, "", "H out/" + PLAIN + "\n", BROKEN, WHOLE))
+
+    def test_Given_AFileOutsideTheSparseCone_When_CommittedWithAll_Then_TheCommitIsAllowed(self):
+        # Arrange
+        listed = self.outside_the_cone()
+
+        # Act
+        code, said = self.judge("git commit -a -m x")
+
+        # Assert — as in the case above.
+        self.git("commit", "-a", "-q", "-m", "recorded")
+        self.assertEqual((code, said, listed, (self.root / "out" / PLAIN).read_text(encoding="utf-8"),
+                          self.git("show", "HEAD:out/" + PLAIN)),
+                         (0, "", "H out/" + PLAIN + "\n", BROKEN, WHOLE))
 
     def test_Given_PathsReadFromAFile_When_Judged_Then_TheCommitIsRefused(self):
         # Arrange — the file names a path broken in its working copy alone, which git records. The
@@ -882,23 +1023,50 @@ class PathspecCommits(GuardTestCase):
 
     # GREEN_ON_BASE(characterization): the base lists this file alone here too.
     def test_Given_PathspecsReadLiterally_When_AFileNamedAsAnExclusionIsCommitted_Then_ItIsAllowed(self):
-        # Arrange — git's documented literals for true, one of them in capitals.
+        # Arrange — git's words for true, one of them in capitals, and non-zero integers signed, in
+        # octal and in hexadecimal, after whitespace and before a unit. The file beside it is one
+        # an exclusion would list too.
         named = ":!" + PLAIN
-        (self.root / named).write_text(WHOLE, encoding="utf-8")
-        self.git("--literal-pathspecs", "add", named)
+        for name in (named, STAGED):
+            (self.root / name).write_text(WHOLE, encoding="utf-8")
+        self.git("--literal-pathspecs", "add", named, STAGED)
         self.git("commit", "-q", "-m", "arranged")
         (self.root / named).write_text(TREE_AND_WHOLE, encoding="utf-8")
+        values = ("1", "TRUE", "yes", "on", "2", "-1", "010", "0x1", "\t1", "1k")
 
         # Act
-        verdicts = [self.judge(f"git commit -m x -- '{named}'",
-                               env={"GIT_LITERAL_PATHSPECS": value})
-                    for value in ("1", "TRUE", "yes", "on")]
+        verdicts = [self.judge(f"git commit -m x -- '{named}'", env={LITERAL_PATHSPECS: value})
+                    for value in values]
 
         # Assert — what the commit then wrote sits in the comparison, because reading the pathspec as
-        # a name is right only for as long as git reads it as one.
+        # a name is right only for as long as git reads it as one; and git's listing under each
+        # value, which names this file alone only while git reads the value as true.
+        listings = [self.git("ls-files", "--", named, env={LITERAL_PATHSPECS: value})
+                    for value in values]
         self.git("--literal-pathspecs", "commit", "-q", "-m", "recorded", "--", named)
-        self.assertEqual((verdicts, self.git("show", "HEAD:" + named)),
-                         ([(0, "")] * 4, TREE_AND_WHOLE))
+        self.assertEqual((verdicts, listings, self.git("show", "HEAD:" + named)),
+                         ([(0, "")] * len(values), [named + "\n"] * len(values), TREE_AND_WHOLE))
+
+    def test_Given_ALiteralSettingGitReadsAsFalse_When_PathspecsOnlyExcludeFromASubdirectory_Then_AFileOutsideItIsChecked(self):
+        # Arrange — git's words for false, one of them in capitals, the empty value, and zero in
+        # the forms of the case above.
+        sub = self.below_a_broken_file()
+        values = ("", "off", "NO", "0", "-0", "00", "0x0", "\t0", "0k")
+
+        # Act
+        verdicts = [self.judge(f"git commit -m x -- ':!{EXCLUDED}'", cwd=sub,
+                               env={LITERAL_PATHSPECS: value}) for value in values]
+
+        # Assert — what the commit then wrote sits in the comparison, because checking the file
+        # above is right only for as long as git takes it into the commit; and git's listing under
+        # each value, which reads the exclusion as one only while git reads the value as false.
+        listings = [self.git("ls-files", "--", ":!" + EXCLUDED, root=sub,
+                             env={LITERAL_PATHSPECS: value}) for value in values]
+        self.git("commit", "-q", "-m", "recorded", "--", ":!" + EXCLUDED, root=sub,
+                 env={LITERAL_PATHSPECS: values[-1]})
+        self.assertEqual(([(code, TOP + FAILED_A_CHECK in said) for code, said in verdicts],
+                          listings, self.git("show", "HEAD:" + TOP)),
+                         ([(2, True)] * len(values), [STAGED + "\n"] * len(values), BROKEN))
 
 
 class GitProcesses(GuardTestCase):

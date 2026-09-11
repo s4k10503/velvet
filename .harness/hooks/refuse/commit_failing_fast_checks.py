@@ -9,6 +9,11 @@ What is checked is what the commit records, not what the working tree happens to
 different files: a broken blob whose working copy was fixed afterwards passed every check, and a
 file staged and then deleted was refused with a `FileNotFoundError` for a commit git would accept.
 `git commit -a` and `git commit <pathspec>` record the working tree, so for those it is read too.
+
+Not replayed from the command: the global pathspec options `--glob-pathspecs`,
+`--noglob-pathspecs`, `--icase-pathspecs` and `--literal-pathspecs`, and a `GIT_*_PATHSPECS`
+variable the command sets itself, since the git this runs takes those variables from this hook's
+environment. Under any of them, the paths checked can differ from the paths the commit records.
 """
 
 import collections
@@ -150,18 +155,29 @@ BLOB_MODES = {b"100644", b"100755", b"120000"}
 SKIP_WORKTREE = b"S "
 WHOLE_TREE = ":/"
 LITERAL_PATHSPECS = "GIT_LITERAL_PATHSPECS"
+LITERAL_PROBE = "velvet.literalpathspecs"
 LONG_MAGIC = re.compile(r":\(([^)]*)\)")
 MAGIC_WORD = re.compile(r"(?:\\.|[^\\,])+")
 SHORT_EXCLUSION = re.compile(r":/*[!^]")
 
 
 def excludes(spec):
-    if os.environ.get(LITERAL_PATHSPECS, "").lower() in ("1", "true", "yes", "on"):
-        return False
     long_form = LONG_MAGIC.match(spec)
     if long_form:
         return "exclude" in MAGIC_WORD.findall(long_form.group(1))
     return SHORT_EXCLUSION.match(spec) is not None
+
+
+def reads_literally(ask):
+    """Whether `GIT_LITERAL_PATHSPECS` has the git this runs read every pathspec as a name.
+
+    git is asked for its reading of the variable rather than having its grammar restated:
+    `Given_PathspecsReadLiterally_When_AFileNamedAsAnExclusionIsCommitted_Then_ItIsAllowed` fails
+    where a restatement reads one of the spellings of true it holds as false.
+    """
+    value = os.environ.get(LITERAL_PATHSPECS)
+    return value is not None and ask("-c", LITERAL_PROBE + "=" + value, "config", "--type=bool",
+                                     LITERAL_PROBE).stdout == b"true\n"
 
 
 def recorded_blobs(cwd, selectors, onto_index, pathspecs):
@@ -195,7 +211,8 @@ def recorded_blobs(cwd, selectors, onto_index, pathspecs):
             # fail under it. Nor the pathspecs alone where they only exclude:
             # `Given_PathspecsThatOnlyExcludeFromASubdirectory_When_Judged_Then_AFileOutsideItIsChecked`
             # fails without the whole tree beside them.
-            whole = [WHOLE_TREE] if all(map(excludes, pathspecs)) else []
+            whole = ([WHOLE_TREE] if all(map(excludes, pathspecs)) and not reads_literally(ask)
+                     else [])
             listed = ask("ls-files", "-z", "-t", "--error-unmatch", "--with-tree=" + tree, "--",
                          *pathspecs, *whole)
             if listed.code != 0:
@@ -206,6 +223,8 @@ def recorded_blobs(cwd, selectors, onto_index, pathspecs):
             if built.code == 0:
                 built = write("update-index", "--add", "--remove", "--replace", "-z", "--stdin",
                               stdin=b"".join(path + b"\0" for path in taken))
+            if built.code != 0:
+                return unread(built)
         else:
             located = ask("rev-parse", "--path-format=absolute", "--git-path", "index")
             if located.code != 0:
@@ -217,9 +236,21 @@ def recorded_blobs(cwd, selectors, onto_index, pathspecs):
             except OSError as error:
                 return Unreadable("the index could not be copied.\n\n  " + displayed(str(error)),
                                   "Correct what that names and retry.")
-            built = write("add", "-u", "--", *pathspecs) if onto_index else None
-        if built is not None and built.code != 0:
-            return unread(built)
+            if onto_index:
+                # `git add` exits 1 when a pathspec matches only entries marked skip-worktree or
+                # outside the sparse-checkout definition, having updated the rest, where
+                # `git commit -i` goes on:
+                # `Given_ASkipWorktreeEntryNamedWithInclude_When_Judged_Then_TheCommitIsAllowed`
+                # fails when that exit is read as a refusal. Not `--sparse`, which updates entries
+                # outside the cone that `git commit` leaves:
+                # `Given_AFileOutsideTheSparseConeNamedWithInclude_When_Judged_Then_TheCommitIsAllowed`
+                # fails under it. `add.ignoreErrors`, which `git commit` does not read, gives a file
+                # git cannot read that exit too:
+                # `Given_AnUnreadableFileWhereAddIgnoresErrors_When_Judged_Then_TheRefusalIsGitsAccountOfIt`
+                # fails when it is read.
+                added = write("-c", "add.ignoreErrors=false", "add", "-u", "--", *pathspecs)
+                if added.code not in (0, 1):
+                    return unread(added)
         changed = ask("diff-index", "--cached", "--ita-invisible-in-index", "--raw", "-z",
                       "--no-renames", tree, index=index)
     if changed.code != 0:
