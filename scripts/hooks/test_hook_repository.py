@@ -8,9 +8,9 @@ asked before blindness is declared, and that the report names the guard as what 
 deferral about the work.
 
 Three more hold what a subprocess writes: that a byte which is not UTF-8 comes back off stdout and
-off stderr rather than ending the hook, and that gh's reader answers the same. Two hold the root of
-a repository whose directory name ends in whitespace — a space, which a trimmed reading spends, and
-a newline, which a reading trimming newlines alone spends as well.
+off stderr rather than ending the hook, and that gh's reader answers the same. Three hold the root of
+a repository whose directory name ends in whitespace — a space, which a trimmed reading spends, a
+newline, which a reading trimming newlines alone spends as well, and a carriage return.
 
 Run: python3 scripts/hooks/test_hook_repository.py
 """
@@ -192,6 +192,17 @@ class ProjectTreeTests(unittest.TestCase):
         # Assert
         self.assertEqual(found, root)
 
+    def test_Given_ARootWhoseNameEndsInACarriageReturn_When_TheTreeIsRooted_Then_TheRootKeepsThatCharacter(self):
+        # Arrange — the two cases above pass when the root is read through `git` rather than
+        # `git_bytes`, and this one does not.
+        with repository_named("project\r") as root:
+            with rooted_at(root):
+                # Act
+                found = repository.project_tree()
+
+        # Assert
+        self.assertEqual(found, root)
+
 
 class WorktreeListingTests(unittest.TestCase):
     """What separates the worktree a guard can offer to remove from the one no removal reaches.
@@ -240,6 +251,20 @@ class WorktreeListingTests(unittest.TestCase):
 
         # Assert
         self.assertEqual((found, "\n" in str(named)), (os.path.realpath(named), True))
+
+    def test_Given_AWorktreeAtAPathHoldingACarriageReturn_When_TheListIsRead_Then_ThePathComesBackWhole(self):
+        # Arrange — the case above passes when the listing is read through `git` rather than
+        # `git_bytes`, and this one does not.
+        named = self.root / "lin\rked"
+        subprocess.run(["git", "-C", str(self.project), "worktree", "add", "-q", "-b", "split",
+                        str(named)], check=True, timeout=60)
+
+        # Act
+        read = repository.worktrees(str(self.project))
+
+        # Assert
+        self.assertEqual(next((tree.path for tree in read or [] if tree.branch == "split"), None),
+                         os.path.realpath(named))
 
     def test_Given_AGitThatCannotRun_When_TheListIsRead_Then_ThereIsNoAnswerAtAll(self):
         # Arrange — the reading failure every caller's fail-closed branch is written against. An

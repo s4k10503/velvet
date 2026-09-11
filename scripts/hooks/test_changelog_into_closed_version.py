@@ -547,5 +547,101 @@ class AgainstTheTag(unittest.TestCase):
         self.assertEqual((code, "v2.0.0-main" in said), (2, True))
 
 
+# RELEASED with a byte UTF-8 does not map, on a line no case below edits.
+UNDECODABLE = RELEASED.encode("utf-8").replace(b"edit around.", b"edit around \xff.")
+
+
+class UndecodableChangelogTests(unittest.TestCase):
+    """A CHANGELOG holding a byte UTF-8 does not map. A strict decode of it raised, and the hook
+    exited 1, which lets the edit through unread."""
+
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp(prefix="closed-version-bytes-"))
+        self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
+        subprocess.run(["git", "-C", str(self.root), "init", "--quiet"],
+                       check=True, capture_output=True)
+        self.changelog = self.root / CHANGELOG_REL
+        self.changelog.parent.mkdir(parents=True)
+        self.changelog.write_bytes(UNDECODABLE)
+
+    def test_Given_AChangelogHoldingAByteThatIsNotUTF8_When_AnEntryIsFiledIntoAReleasedSection_Then_ItIsRefused(self):
+        # Arrange / Act
+        code, said = judged(self.root, self.changelog, "- A thing that shipped.\n",
+                            "- A thing that shipped.\n- A thing that did not.\n")
+
+        # Assert
+        self.assertEqual((code, "2.0.0" in said), (2, True))
+
+    def test_Given_AChangelogHoldingAByteThatIsNotUTF8_When_AnEntryIsFiledUnderUnreleased_Then_ItIsLetThrough(self):
+        # Arrange / Act — the other side of the same file, so a reading that survives the byte by
+        # refusing whatever it is asked is not what makes the case above pass.
+        code, said = judged(self.root, self.changelog, "- Something not yet shipped.\n",
+                            "- Something not yet shipped.\n- And another.\n")
+
+        # Assert
+        self.assertEqual((code, said), (0, ""))
+
+
+class UndecodablePublicationTests(unittest.TestCase):
+    """A published release whose tag's copy, or whose tag's own name, holds a byte UTF-8 does not
+    map. Neither may end the hook: exiting 1 lets the edit through unread."""
+
+    def shipped_the_byte(self):
+        root, changelog = published(self, RELEASED, "closed-version-shipped-bytes-")
+        changelog.write_bytes(UNDECODABLE)
+        git(root, "commit", "--quiet", "-am", "a release that shipped the byte")
+        git(root, "tag", "--force", "v2.0.0-main")
+        return root, changelog
+
+    def tagged_with_the_byte(self):
+        root, changelog = published(self, RELEASED, "closed-version-tag-name-bytes-")
+        with open(root / ".git" / "packed-refs", "ab") as packed:
+            packed.write(git(root, "rev-parse", "HEAD").encode("ascii") + b" refs/tags/v\xff\n")
+        return root, changelog
+
+    def test_Given_ATagWhoseCopyHoldsAByteThatIsNotUTF8_When_AnEntryIsFiledIntoItsSection_Then_ItIsRefused(self):
+        # Arrange
+        root, changelog = self.shipped_the_byte()
+
+        # Act
+        code, said = judged(root, changelog, "- A thing that shipped.\n",
+                            "- A thing that shipped.\n- A thing that did not.\n")
+
+        # Assert
+        self.assertEqual((code, "2.0.0" in said), (2, True))
+
+    def test_Given_ATagWhoseCopyHoldsAByteThatIsNotUTF8_When_ItsSectionLosesALine_Then_TheOneStepReadingLetsItThrough(self):
+        # Arrange — the other direction of the reading a copy that cannot be read falls back to, so
+        # a guard that refuses every edit to the section is not what makes the case above pass.
+        root, changelog = self.shipped_the_byte()
+
+        # Act
+        code, said = judged(root, changelog, "- A thing that shipped.\n", "")
+
+        # Assert
+        self.assertEqual((code, said), (0, ""))
+
+    def test_Given_ARemoteTagNamedWithAByteThatIsNotUTF8_When_AnEntryIsFiledIntoAReleasedSection_Then_ItIsRefused(self):
+        # Arrange
+        root, changelog = self.tagged_with_the_byte()
+
+        # Act
+        code, said = judged(root, changelog, "- A thing that shipped.\n",
+                            "- A thing that shipped.\n- A thing that did not.\n")
+
+        # Assert
+        self.assertEqual((code, "2.0.0" in said), (2, True))
+
+    def test_Given_ARemoteTagNamedWithAByteThatIsNotUTF8_When_AReleasedSectionLosesALine_Then_TheOneStepReadingLetsItThrough(self):
+        # Arrange
+        root, changelog = self.tagged_with_the_byte()
+
+        # Act
+        code, said = judged(root, changelog, "- A thing that shipped.\n", "")
+
+        # Assert
+        self.assertEqual((code, said), (0, ""))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
