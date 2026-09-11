@@ -360,5 +360,137 @@ namespace Velvet.Tests
             Assert.That(statusEvents, Is.EqualTo(0),
                 "Teardown leaves nothing for a resuming blocker to restore, so it must raise no transition");
         });
+
+        [Test]
+        public void Given_ABlockerParkedAcrossDisposal_When_ItReadsItsTokenAfterward_Then_ItIsCancelledRatherThanReleased()
+        {
+            // Arrange
+            var router = BuildRouter("/home", _routes);
+            var parked = new VelvetTaskCompletionSource<bool>();
+            CancellationToken blockersToken = default;
+            using var registration = router.RouteBlockerManager.Register((_, ct) =>
+            {
+                blockersToken = ct;
+                return parked.Task;
+            }, new RouteBlockerState());
+            router.NavigateAsync("/about").Forget();
+
+            // Act
+            router.Dispose();
+
+            // Assert
+            Assert.That(ReadTokenState(blockersToken), Is.EqualTo("cancelled"),
+                "A Blocker the teardown cancelled is still able to ask its token what happened");
+        }
+
+        [Test]
+        public void Given_ABlockerWhoseCancellationCallbackEndsItsWait_When_ThatCallbackThenReadsTheToken_Then_ItIsCancelledRatherThanReleased()
+        {
+            // Ending the wait resumes the superseded navigation through to its own unwind before the
+            // callback's next line runs.
+            // Arrange
+            var router = BuildRouter("/home", _routes);
+            var parked = new VelvetTaskCompletionSource<bool>();
+            string callbackSaw = null;
+            using var registration = router.RouteBlockerManager.Register((attempt, ct) =>
+            {
+                if (attempt.NextPath != "/about")
+                {
+                    return VelvetTask.FromResult(false);
+                }
+                ct.Register(() =>
+                {
+                    parked.TrySetResult(false);
+                    callbackSaw = ReadTokenState(ct);
+                });
+                return parked.Task;
+            }, new RouteBlockerState());
+            router.NavigateAsync("/about").Forget();
+
+            // Act
+            router.NavigateSync("/home");
+
+            // Assert
+            Assert.That(callbackSaw, Is.EqualTo("cancelled"),
+                "A Blocker's callback holds the token for as long as the cancellation running it does");
+        }
+
+        [Test]
+        public void Given_ABlockersCancellationCallbackThatNavigates_When_TheRouterIsDisposed_Then_ThatNavigationCommitsNothing()
+        {
+            // Arrange
+            var router = BuildRouter("/home", _routes);
+            var parked = new VelvetTaskCompletionSource<bool>();
+            NavigationResult? fromCallback = null;
+            using var registration = router.RouteBlockerManager.Register((attempt, ct) =>
+            {
+                if (attempt.NextPath != "/about")
+                {
+                    return VelvetTask.FromResult(false);
+                }
+                ct.Register(() => fromCallback = router.NavigateSync("/home"));
+                return parked.Task;
+            }, new RouteBlockerState());
+            router.NavigateAsync("/about").Forget();
+
+            // Act
+            router.Dispose();
+
+            // Assert
+            Assert.That($"result={fromCallback} history={RouterHistoryProbe.PathsOf(router)}",
+                Is.EqualTo("result=Cancelled history=/home"),
+                "A navigation started from inside the teardown is one the teardown ends too");
+        }
+
+        [Test]
+        public void Given_ABlockersCancellationCallbackThatNavigatesToAnUnmatchedPath_When_TheRouterIsDisposed_Then_ThatNavigationRaisesNoStatus()
+        {
+            // Arrange
+            var router = BuildRouter("/home", _routes);
+            var parked = new VelvetTaskCompletionSource<bool>();
+            NavigationResult? fromCallback = null;
+            using var registration = router.RouteBlockerManager.Register((attempt, ct) =>
+            {
+                ct.Register(() => fromCallback = router.NavigateSync("/nonexistent"));
+                return parked.Task;
+            }, new RouteBlockerState());
+            router.NavigateAsync("/about").Forget();
+            var statusEvents = new List<RouterStatus>();
+            router.OnStatusChanged += status => statusEvents.Add(status);
+
+            // Act
+            router.Dispose();
+
+            // Assert
+            Assert.That($"result={fromCallback} events={string.Join(",", statusEvents)}",
+                Is.EqualTo("result=Cancelled events="),
+                "A navigation started from inside the teardown raises no status on the router being torn down");
+        }
+
+        [Test]
+        public void Given_AGuardThatDisposesTheRouter_When_ItRedirects_Then_TheRedirectPublishesNoDestination()
+        {
+            // Arrange
+            Router router = null;
+            router = BuildRouter("/home",
+                Route("/", children: new[]
+                {
+                    Route("home"),
+                    Route("guarded", guard: _ =>
+                    {
+                        router.Dispose();
+                        return "/target";
+                    }),
+                    Route("target"),
+                }));
+
+            // Act
+            var result = router.NavigateSync("/guarded");
+
+            // Assert
+            Assert.That($"result={result} pending={router.PendingLocation?.Path ?? "none"}",
+                Is.EqualTo("result=Cancelled pending=none"),
+                "A redirect taken on a disposed router publishes no destination");
+        }
     }
 }

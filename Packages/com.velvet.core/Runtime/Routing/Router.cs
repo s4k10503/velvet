@@ -20,11 +20,12 @@ namespace Velvet
         private Dictionary<string?, Exception> _loaderErrors = new();
         private const int MaxRedirects = 5;
         private const int MaxHistoryEntries = 50;
-        // Cancellation token for the currently in-flight navigation (null when idle). A newer navigation
+        // Cancellation for the currently in-flight navigation (null when idle). A newer navigation
         // that matches cancels it on its way past the match, so the prior attempt unwinds
         // (NavigationResult.Cancelled) wherever it is parked and concurrent navigations resolve to the most
         // recent one that had somewhere to go.
-        private CancellationTokenSource? _activeNavigationCts;
+        private RouteCancellationSource? _activeNavigation;
+        private bool _disposed;
         // Identifies whoever currently owns Status. An attempt that has lost the claim must not put Status
         // back: cancelling its token does not force it to resume at that moment, so it can reach its rollback
         // after a newer navigation has established its own Status, and by then the value it would write
@@ -143,6 +144,7 @@ namespace Velvet
         /// <see cref="NavigationResult.NotFound"/> when no route matches,
         /// <see cref="NavigationResult.Blocked"/> when a Blocker rejects the attempt,
         /// <see cref="NavigationResult.Cancelled"/> when concurrent navigation or the cancellation token aborts it,
+        /// when it is asked of a router already disposed,
         /// or when <paramref name="mode"/> is <see cref="NavigationMode.Back"/> / <see cref="NavigationMode.Forward"/>
         /// and the history has no entry to step onto,
         /// or <see cref="NavigationResult.Error"/> on redirect overflow.
@@ -303,26 +305,26 @@ namespace Velvet
             int redirectCount,
             PendingNavigation? initiator)
         {
-            // Redirect recursion shares the initiating CTS and claim without cancelling or dispossessing the
-            // navigation it belongs to.
-            CancellationTokenSource? myCts = null;
+            // Redirect recursion shares the initiating cancellation and claim without cancelling or
+            // dispossessing the navigation it belongs to.
+            RouteCancellationSource? myCancellation = null;
             CancellationToken navToken = cancellationToken;
             if (redirectCount == 0)
             {
                 // Built here so the phases run under it, but not installed here: taking over from the
                 // in-flight navigation is NavigateCore's, on the far side of the match.
-                myCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                navToken = myCts.Token;
+                myCancellation = new RouteCancellationSource(cancellationToken);
+                navToken = myCancellation.Token;
             }
 
             try
             {
-                return await NavigateCore(path, mode, navToken, redirectCount, initiator, myCts);
+                return await NavigateCore(path, mode, navToken, redirectCount, initiator, myCancellation);
             }
-            catch (OperationCanceledException) when (myCts != null && myCts.IsCancellationRequested)
+            catch (OperationCanceledException) when (myCancellation != null && navToken.IsCancellationRequested)
             {
-                // Cancellation came either from a newer navigation taking over OR from the caller's
-                // own token (both flow through `myCts` because we linked it to the caller). Map both
+                // Cancellation came from a newer navigation taking over, from the router's disposal, or from
+                // the caller's own token, which `myCancellation` is linked to. Map each of them
                 // to NavigationResult.Cancelled to match the loader-phase behavior in NavigateCore
                 // (the early `if (cancellationToken.IsCancellationRequested) return Cancelled` check)
                 // — callers branch on `nav != Success` and don't catch OCE.
@@ -330,13 +332,15 @@ namespace Velvet
             }
             finally
             {
-                if (myCts != null)
+                if (myCancellation != null)
                 {
-                    // Only clear the active-CTS field if this navigation is the one holding it: an attempt
-                    // that matched nothing never took the field, and one a newer navigation took over from
-                    // has already had the field replaced with that navigation's own CTS.
-                    if (ReferenceEquals(_activeNavigationCts, myCts)) _activeNavigationCts = null;
-                    myCts.Dispose();
+                    // Only clear the active field if this navigation is the one holding it: an attempt that
+                    // matched nothing never took the field, and one a newer navigation took over from has
+                    // already had the field replaced with that navigation's own.
+                    if (ReferenceEquals(_activeNavigation, myCancellation)) _activeNavigation = null;
+                    // Unlinked rather than cancelled: the round this navigation committed runs on under a
+                    // token linked to this one.
+                    myCancellation.Unlink();
                 }
             }
         }
@@ -347,8 +351,13 @@ namespace Velvet
             CancellationToken cancellationToken,
             int redirectCount,
             PendingNavigation? initiator,
-            CancellationTokenSource? takeover)
+            RouteCancellationSource? takeover)
         {
+            if (_disposed)
+            {
+                return NavigationResult.Cancelled;
+            }
+
             if (redirectCount >= MaxRedirects)
             {
                 WithdrawInitiatorsDestination(initiator);
@@ -389,21 +398,26 @@ namespace Velvet
                 // one able to put Status back and the only one its destination and its token belong to.
                 if (takeover != null)
                 {
-                    // Dispose of the prior CTS is left to the prior navigation's own finally — disposing
-                    // here would double-dispose and confuse ownership, and the synchronous Cancel chain may
-                    // already run the prior finally before we proceed.
+                    // Installed before the predecessor is cancelled, as RouteLoaderRunner.BeginRound installs a
+                    // round: a navigation that a cancellation callback starts inside that cancel displaces this
+                    // one, and this one ends there.
+                    var displaced = _activeNavigation;
+                    _activeNavigation = takeover;
                     // Contained on RouteLoaderRunner.Retire's terms: a predecessor parked on an Await loader
-                    // runs its round under a token linked to this source, so that round's Loaders have their
-                    // cancellation callbacks run from here, above the install that takes the field.
+                    // runs its round under a token linked to the one cancelled here, so that round's Loaders
+                    // have their cancellation callbacks run from here.
                     try
                     {
-                        _activeNavigationCts?.Cancel();
+                        displaced?.Cancel();
                     }
                     catch (Exception cancellationFailure)
                     {
                         FiberLogger.LogException(nameof(Router), cancellationFailure);
                     }
-                    _activeNavigationCts = takeover;
+                    if (!ReferenceEquals(_activeNavigation, takeover))
+                    {
+                        return NavigationResult.Cancelled;
+                    }
                 }
                 pending = new PendingNavigation(++_navigationSequence, CommitIndexFor(mode), path, mode);
             }
@@ -965,6 +979,8 @@ namespace Velvet
 
         public void Dispose()
         {
+            // Before the Cancel: a callback it runs can start a navigation, which NavigateCore then refuses.
+            _disposed = true;
             // Retire the outstanding claim BEFORE the Cancel, which inverts the ordering a navigation uses.
             // A navigation takes its claim afterwards so that a prior attempt unwinding synchronously inside
             // the Cancel still restores its own state; here there is no such attempt worth restoring, and
@@ -974,21 +990,19 @@ namespace Velvet
             // Retiring the claim above is what stops the unwinding attempt from clearing this itself, and a
             // destination left published would outlive the navigation that was heading for it.
             PendingLocation = null;
-            // Cancel and dispose any in-flight navigation CTS so a pending Blocker await unwinds
-            // cleanly during shutdown. Contained on RouteLoaderRunner.Retire's terms: a navigation parked
-            // on an Await loader runs its round under a token linked to this source, so that round's
-            // Loaders have their cancellation callbacks run from here. The releases below it are this
-            // source, the runner's rounds and the static Current.
+            // Cancel any in-flight navigation so a pending Blocker await unwinds cleanly during shutdown.
+            // Contained on RouteLoaderRunner.Retire's terms: a navigation parked on an Await loader runs its
+            // round under a token linked to this source, so that round's Loaders have their cancellation
+            // callbacks run from here.
             try
             {
-                _activeNavigationCts?.Cancel();
+                _activeNavigation?.Cancel();
             }
             catch (Exception cancellationFailure)
             {
                 FiberLogger.LogException(nameof(Router), cancellationFailure);
             }
-            _activeNavigationCts?.Dispose();
-            _activeNavigationCts = null;
+            _activeNavigation = null;
             _loaderRunner.Dispose();
             if (Current == this)
             {
