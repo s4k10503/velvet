@@ -38,10 +38,10 @@ namespace Velvet.Tests
     /// cleanup, and one scrolled away and back returns as a remount rather than as the element that was
     /// disposed.</item>
     /// <item>Of two items sharing a key, the second renders when the first renders nothing.</item>
-    /// <item>A throw from the item renderer, or from creating or patching the row it describes, reaches
-    /// the caller, and the range update it ends releases the rows it had placed and, separately, the prior
-    /// rows it had not — the one whose create or patch threw among them — empties the visible container
-    /// and leaves the tracked range naming nothing.</item>
+    /// <item>A throw from the item renderer, or from an element's constructor while its row is created or
+    /// patched, reaches the caller, and the range update it ends releases the rows it had placed and,
+    /// separately, the prior rows it had not — the one whose create or patch threw among them — empties
+    /// the visible container and leaves the tracked range naming nothing.</item>
     /// <item>An update to no items releases the rows the list showed and empties the visible container,
     /// and a row that comes back after the list went empty — by an update or in place — renders
     /// afresh.</item>
@@ -981,9 +981,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_ARenderedRange_When_TheListIsUpdatedToNoItems_Then_EachRowsCleanupRuns()
         {
-            // Arrange — one renderer for both nodes: a second one's delegates are new to the rows, so a
-            // patch would run their cleanups by itself, and an update that kept the rows would read here
-            // as one that released them.
+            // Arrange
             var cleaned = new List<string>();
             var renderer = CleanupRecordingRenderer(cleaned, RecordedLabel);
             var scrollView = new ScrollView(ScrollViewMode.Vertical);
