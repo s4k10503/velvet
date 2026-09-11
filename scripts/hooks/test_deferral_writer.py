@@ -16,12 +16,18 @@ A reader with no such variable cannot attribute anything, and that is the one st
 back to what it did before -- reporting nothing rather than refusing everything, since a guard that
 suppressed nothing would be a guard nobody could hold anything past.
 
+`PrintedDeferralLineTests` holds the line a refusal prints for writing one, which is run as
+printed.
+
 Run: python3 scripts/hooks/test_deferral_writer.py
 """
 
+import ast
 import importlib.util
 import os
 import shutil
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -192,6 +198,46 @@ class SignedLineIsNotUnusable(unittest.TestCase):
 
         # Act / Assert
         self.assertIsNotNone(deferrals.unusable("377", NOW + 60))
+
+
+class PrintedDeferralLineTests(unittest.TestCase):
+    def test_Given_AHomeHoldingASpace_When_ThePrintedDeferralLineIsRun_Then_ItReachesTheDeferralFile(self):
+        # Arrange — the file is placed at import, so the report is taken under that HOME.
+        root = Path(tempfile.mkdtemp(prefix="deferral-home-"))
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        home = root / "a b"
+        home.mkdir()
+        environment = dict(os.environ, HOME=str(home), CLAUDE_CODE_SESSION_ID=MINE)
+        program = ("import sys; sys.path.insert(0, {!r}); import repository; print(repository"
+                   ".unreadable_report('the backlog', [('gh issue list', 'exited 1')], 'backlog',"
+                   " 'another shell'))").format(str(MODULE.parent))
+        report = subprocess.run([sys.executable, "-B", "-c", program], capture_output=True,
+                                text=True, timeout=60, env=environment).stdout
+        line = next((text.strip() for text in report.splitlines()
+                     if text.strip().startswith("echo ")), "")
+
+        # Act
+        subprocess.run(["sh", "-c", line], cwd=str(root), capture_output=True, timeout=60,
+                       env=environment)
+
+        # Assert
+        written = home / ".velvet-pr-deferrals"
+        self.assertEqual(written.read_text().split()[:1] if written.exists() else [], ["backlog"])
+
+    def test_Given_EveryHook_When_ItsSourceIsRead_Then_NoneInterpolatesTheUnquotedDeferralFile(self):
+        # Arrange
+        sources = sorted((REPO_ROOT / ".claude" / "hooks").rglob("*.py"))
+
+        # Act
+        unquoted = ["{}:{}".format(path.relative_to(REPO_ROOT), node.lineno)
+                    for path in sources
+                    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
+                    if isinstance(node, ast.FormattedValue)
+                    and getattr(node.value, "id", getattr(node.value, "attr", None)) == "DEFERRALS"]
+
+        # Assert — the source count rides along, since a walk over no file finds nothing; each one
+        # listed wants `DEFERRALS_OPERAND`.
+        self.assertEqual((len(sources) > 20, unquoted), (True, []))
 
 
 if __name__ == "__main__":

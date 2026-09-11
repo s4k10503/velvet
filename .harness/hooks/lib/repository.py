@@ -24,7 +24,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from deferrals import DEFERRALS  # noqa: E402
+from deferrals import DEFERRALS_OPERAND  # noqa: E402
 
 
 GitAnswer = collections.namedtuple("GitAnswer", "stdout stderr code")
@@ -77,6 +77,44 @@ def git_bytes(args, cwd, timeout=15):
     return result.stdout if result.returncode == 0 else None
 
 
+def status_entries(cwd, marker, options=(), timeout=15):
+    """The files `git status --porcelain` marked with `marker`, with the marker dropped, or None
+    when git did not answer.
+
+    Read as NUL-delimited records rather than as lines, so that no character a name may hold can
+    divide one. scripts/hooks/test_untracked_scratch.py's
+    `Given_ANameGitLeavesRaw_When_TheReportIsTaken_Then_TheBoundReachesTheFile` is what fails when
+    the split is a line break instead, and
+    `Given_ARenameWhoseOldNameHoldsAByteOutsideTheEncoding_When_TheReportIsTaken_Then_NoPhantomIsNamed`
+    when the decode below stops escaping.
+
+    A rename's or a copy's origin path follows its record as a field of its own, carrying no status
+    pair, so it is stepped over rather than read. Both status columns are asked, since porcelain
+    pairs a record with an origin from either, and a field left unread there is read as a record of
+    its own — so an origin whose path opens with the marker becomes an entry the listing never
+    marked.
+    `Given_ARenameWhoseOldNameOpensWithTheMarker_When_TheReportIsTaken_Then_NoPhantomIsNamed`,
+    `Given_AWorktreeRenameWhoseOldNameOpensWithTheMarker_When_TheListingIsRead_Then_ItHoldsTheUntrackedFileAlone`
+    and
+    `Given_AWorktreeCopyWhoseSourceNameOpensWithTheMarker_When_TheListingIsRead_Then_ItHoldsTheUntrackedFileAlone`
+    are what fail when any of that stops.
+    """
+    status = git_bytes(["status", "--porcelain", "-z", *options], cwd=cwd, timeout=timeout)
+    if status is None:
+        return None
+    fields = status.decode(**DECODING).split("\0")
+    found, index = [], 0
+    while index < len(fields):
+        record, index = fields[index], index + 1
+        if len(record) < 3:
+            continue
+        if record[0] in "RC" or record[1] in "RC":
+            index += 1
+        if record.startswith(marker):
+            found.append(record[3:])
+    return found
+
+
 Worktree = collections.namedtuple("Worktree", "path branch primary")
 
 
@@ -89,18 +127,20 @@ def worktrees(cwd, timeout=20):
     that marks it.
 
     Read here rather than in each caller because a second spelling of how git's bytes are decoded
-    drifts from `git` above in silence, and a guard that mis-reads this list exits 0.
+    drifts from `DECODING` in silence, and a guard that mis-reads this list exits 0.
 
     Read under `-z` so a record ends on a byte a path cannot hold, and the path is taken whole rather
     than stripped, because it is printed back as a command to run and one that lost a character at
     either end is not the path git listed. scripts/hooks/test_hook_repository.py holds a path with a
-    newline in it.
+    newline in it, and
+    `Given_AWorktreeAtAPathHoldingACarriageReturn_When_TheListIsRead_Then_ThePathComesBackWhole` is
+    what fails when this takes `git` rather than `git_bytes`.
     """
-    listing = git(["worktree", "list", "--porcelain", "-z"], cwd=cwd, timeout=timeout)
+    listing = git_bytes(["worktree", "list", "--porcelain", "-z"], cwd=cwd, timeout=timeout)
     if listing is None:
         return None
     found = []
-    for record in listing.split("\0"):
+    for record in listing.decode(**DECODING).split("\0"):
         if record.startswith("worktree "):
             found.append([record[len("worktree "):], None])
         elif record.startswith("branch ") and found:
@@ -252,16 +292,19 @@ subject that is clear.
 If the pause is deliberate, arm the deferral for what the WORK is waiting on. The failure above is
 not that, and naming it there is how a deferral comes to record something nothing was waiting on:
 
-  echo "{key} <what the work is waiting on> $(date +%s) $CLAUDE_CODE_SESSION_ID" >> {DEFERRALS}"""
+  echo "{key} <what the work is waiting on> $(date +%s) $CLAUDE_CODE_SESSION_ID" >> {DEFERRALS_OPERAND}"""
 
 
-def toplevel(cwd):
+def toplevel(cwd, timeout=15):
     """The root of the repository holding `cwd`, or None where `cwd` sits in none.
 
     A trailing space, tab or newline can belong to the root's own name, so the reading's terminator
-    comes off rather than whatever whitespace it ends in.
+    comes off rather than whatever whitespace it ends in. scripts/hooks/test_hook_repository.py's
+    `Given_ARootWhoseNameEndsInACarriageReturn_When_TheTreeIsRooted_Then_TheRootKeepsThatCharacter`
+    is what fails when this takes `git` rather than `git_bytes`.
     """
-    root = (git(["rev-parse", "--show-toplevel"], cwd=cwd) or "").removesuffix("\n")
+    listed = git_bytes(["rev-parse", "--show-toplevel"], cwd=cwd, timeout=timeout)
+    root = (listed or b"").removesuffix(b"\n").decode(**DECODING)
     return Path(root) if root else None
 
 
