@@ -888,9 +888,33 @@ namespace Velvet.Tests
                 "A retired round is kept alive by whatever still holds its token, not by the token it was linked to");
         }
 
+        [Test]
+        public void Given_RoundsWhoseLoadersRegisterACancellationCallbackThatThrows_When_EachHasBeenRetired_Then_TheTokenTheyWereLinkedToKeepsNoneOfThemAlive()
+        {
+            // Arrange
+            var runner = new RouteLoaderRunner();
+            using var navigation = new CancellationTokenSource();
+            const int rounds = 32;
+            for (var i = 0; i < rounds; i++)
+            {
+                ContainedFailureLog.Expect<InvalidOperationException>(nameof(RouteLoaderRunner), "callback-threw");
+            }
+            var waitHandles = RetireRoundsWhoseLoadersNeverFinish(runner, navigation.Token, rounds,
+                registerThrowingCallback: true);
+
+            // Act
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+
+            // Assert
+            Assert.That(waitHandles.Count(handle => handle.IsAlive), Is.LessThan(waitHandles.Count / 2),
+                "A retirement whose cancellation throws still drops the link to the token the round was made from");
+        }
+
         [MethodImpl(MethodImplOptions.NoInlining)]
         private static List<WeakReference> RetireRoundsWhoseLoadersNeverFinish(
-            RouteLoaderRunner runner, CancellationToken linkedTo, int count)
+            RouteLoaderRunner runner, CancellationToken linkedTo, int count, bool registerThrowingCallback = false)
         {
             var waitHandles = new List<WeakReference>();
             for (var i = 0; i < count; i++)
@@ -899,6 +923,10 @@ namespace Velvet.Tests
                     MakeMatch("stuck", loaderMode: LoaderMode.Suspend, loader: (ctx, ct) =>
                     {
                         waitHandles.Add(new WeakReference(ct.WaitHandle));
+                        if (registerThrowingCallback)
+                        {
+                            ct.Register(() => throw new InvalidOperationException("callback-threw"));
+                        }
                         return new VelvetTaskCompletionSource<object>().Task;
                     }),
                     linkedTo);

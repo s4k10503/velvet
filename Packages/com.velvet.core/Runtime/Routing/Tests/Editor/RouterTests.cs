@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Reflection;
 using System.Threading;
 using NUnit.Framework;
@@ -138,6 +139,40 @@ namespace Velvet.Tests
             // Assert
             Assert.That(
                 $"result={result} status={router.Status}", Is.EqualTo("result=NotFound status=NotFound"));
+        }
+
+        [Test]
+        public void Given_ADisposedRouter_When_NavigatingToAnUnmatchedPath_Then_ItIsCancelledWithoutAStatusChange()
+        {
+            // Arrange
+            var router = BuildRouter("/home", _routes);
+            router.Dispose();
+            var statusEvents = new List<RouterStatus>();
+            router.OnStatusChanged += status => statusEvents.Add(status);
+
+            // Act
+            var result = router.NavigateSync("/nonexistent");
+
+            // Assert
+            Assert.That($"result={result} events={string.Join(",", statusEvents)}", Is.EqualTo("result=Cancelled events="),
+                "A disposed router refuses the navigation rather than reporting that no route matched");
+        }
+
+        [Test]
+        public void Given_ADisposedRouter_When_NavigatingToAPathThatResolvesToNothing_Then_ItIsCancelledWithoutAStatusChange()
+        {
+            // Arrange
+            var router = BuildRouter("/home", _routes);
+            router.Dispose();
+            var statusEvents = new List<RouterStatus>();
+            router.OnStatusChanged += status => statusEvents.Add(status);
+
+            // Act
+            var result = router.NavigateSync(null);
+
+            // Assert
+            Assert.That($"result={result} events={string.Join(",", statusEvents)}", Is.EqualTo("result=Cancelled events="),
+                "A disposed router refuses the navigation rather than reporting that the path resolved to nothing");
         }
 
         #endregion

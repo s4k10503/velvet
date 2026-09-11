@@ -312,9 +312,9 @@ namespace Velvet.Tests
         [Test]
         public void Given_AParkedLoadersCancellationCallbackThatThrows_When_TheRouterIsDisposed_Then_TheTeardownStillCompletes()
         {
-            // Disposal cancels the parked navigation's source above its own releases, and the parked round
-            // runs under a token linked to it, so that round's Loaders have their cancellation callbacks run
-            // from there rather than from the runner's retire below it.
+            // Disposal cancels the parked navigation's source, and the parked round runs under a token linked
+            // to it, so that round's Loaders have their cancellation callbacks run from there rather than from
+            // the runner's retire below it.
             // Arrange
             var parking = new VelvetTaskCompletionSource<object>();
             var router = BuildRouter("/home",

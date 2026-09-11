@@ -502,7 +502,11 @@ namespace Velvet
         /// The single-argument overload exists so that omitting deps is unambiguous — see
         /// <see cref="UseCallback{T}(T)"/> for the hazard it avoids.
         /// </remarks>
-        /// <param name="shouldBlock">Async predicate; returning true blocks the departure. The CancellationToken is cancelled on unmount.</param>
+        /// <param name="shouldBlock">
+        /// Async predicate; returning true blocks the departure. The token is the navigation's, which unmounting
+        /// the component does not cancel. <c>Documentation~/routing-blockers.md</c> owns what unmounting does to a
+        /// Blocker.
+        /// </param>
         /// <returns>The shared <see cref="RouteBlockerState"/> handle for inspecting / resolving the pending departure.</returns>
         public static RouteBlockerState UseBlocker(Func<NavigationAttempt, CancellationToken, VelvetTask<bool>> shouldBlock)
         {
@@ -517,7 +521,11 @@ namespace Velvet
         /// only when a dependency changes. Use when integrating with asynchronous UI such as confirmation
         /// dialogs.
         /// </summary>
-        /// <param name="shouldBlock">Async predicate; returning true blocks the departure. The CancellationToken is cancelled on unmount.</param>
+        /// <param name="shouldBlock">
+        /// Async predicate; returning true blocks the departure. The token is the navigation's, which unmounting
+        /// the component does not cancel. <c>Documentation~/routing-blockers.md</c> owns what unmounting does to a
+        /// Blocker.
+        /// </param>
         /// <param name="deps">Dependency array. When null, re-registers on every render.</param>
         /// <returns>The shared <see cref="RouteBlockerState"/> handle for inspecting / resolving the pending departure.</returns>
         public static RouteBlockerState UseBlocker(Func<NavigationAttempt, CancellationToken, VelvetTask<bool>> shouldBlock, params object?[]? deps)

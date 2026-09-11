@@ -353,6 +353,11 @@ namespace Velvet
             PendingNavigation? initiator,
             RouteCancellationSource? takeover)
         {
+            if (_disposed)
+            {
+                return NavigationResult.Cancelled;
+            }
+
             if (redirectCount >= MaxRedirects)
             {
                 WithdrawInitiatorsDestination(initiator);
@@ -395,12 +400,9 @@ namespace Velvet
                 {
                     // Installed before the predecessor is cancelled, as RouteLoaderRunner.BeginRound installs a
                     // round: a navigation that a cancellation callback starts inside that cancel displaces this
-                    // one, and this one ends there. A disposed router installs nothing.
+                    // one, and this one ends there.
                     var displaced = _activeNavigation;
-                    if (!_disposed)
-                    {
-                        _activeNavigation = takeover;
-                    }
+                    _activeNavigation = takeover;
                     // Contained on RouteLoaderRunner.Retire's terms: a predecessor parked on an Await loader
                     // runs its round under a token linked to the one cancelled here, so that round's Loaders
                     // have their cancellation callbacks run from here.

@@ -441,5 +441,56 @@ namespace Velvet.Tests
                 Is.EqualTo("result=Cancelled history=/home"),
                 "A navigation started from inside the teardown is one the teardown ends too");
         }
+
+        [Test]
+        public void Given_ABlockersCancellationCallbackThatNavigatesToAnUnmatchedPath_When_TheRouterIsDisposed_Then_ThatNavigationRaisesNoStatus()
+        {
+            // Arrange
+            var router = BuildRouter("/home", _routes);
+            var parked = new VelvetTaskCompletionSource<bool>();
+            NavigationResult? fromCallback = null;
+            using var registration = router.RouteBlockerManager.Register((attempt, ct) =>
+            {
+                ct.Register(() => fromCallback = router.NavigateSync("/nonexistent"));
+                return parked.Task;
+            }, new RouteBlockerState());
+            router.NavigateAsync("/about").Forget();
+            var statusEvents = new List<RouterStatus>();
+            router.OnStatusChanged += status => statusEvents.Add(status);
+
+            // Act
+            router.Dispose();
+
+            // Assert
+            Assert.That($"result={fromCallback} events={string.Join(",", statusEvents)}",
+                Is.EqualTo("result=Cancelled events="),
+                "A navigation started from inside the teardown raises no status on the router being torn down");
+        }
+
+        [Test]
+        public void Given_AGuardThatDisposesTheRouter_When_ItRedirects_Then_TheRedirectPublishesNoDestination()
+        {
+            // Arrange
+            Router router = null;
+            router = BuildRouter("/home",
+                Route("/", children: new[]
+                {
+                    Route("home"),
+                    Route("guarded", guard: _ =>
+                    {
+                        router.Dispose();
+                        return "/target";
+                    }),
+                    Route("target"),
+                }));
+
+            // Act
+            var result = router.NavigateSync("/guarded");
+
+            // Assert
+            Assert.That($"result={result} pending={router.PendingLocation?.Path ?? "none"}",
+                Is.EqualTo("result=Cancelled pending=none"),
+                "A redirect taken on a disposed router publishes no destination");
+        }
     }
 }

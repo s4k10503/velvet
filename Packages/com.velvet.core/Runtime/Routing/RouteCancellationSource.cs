@@ -15,9 +15,9 @@ namespace Velvet
         private readonly CancellationTokenSource _source = new();
         private CancellationTokenRegistration _link;
 
-        // The link is registered with execution-context flow suppressed: capturing the context costs four
-        // allocation blocks a navigation, which RouterNavigationAllocationEditorTests pins. SuppressFlow throws
-        // where flow is suppressed already, which RouterTests pins for a caller that suppressed it.
+        // The link is registered with execution-context flow suppressed, which RouterNavigationAllocationEditorTests
+        // pins. SuppressFlow throws where flow is suppressed already, which RouterTests pins for a caller that
+        // suppressed it.
         internal RouteCancellationSource(CancellationToken linkedTo)
         {
             if (ExecutionContext.IsFlowSuppressed())
@@ -33,8 +33,8 @@ namespace Velvet
 
         internal CancellationToken Token => _source.Token;
 
-        // Unlinked first: the cancellation runs callbacks that can throw, and a link left behind lets the token
-        // this source was linked to keep it alive.
+        // Unlinked first, which RouteLoaderRunnerTests pins: the cancellation runs callbacks that can throw, and a
+        // link left behind lets the token this source was linked to keep it alive.
         internal void Cancel()
         {
             _link.Dispose();
