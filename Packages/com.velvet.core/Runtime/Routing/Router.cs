@@ -144,7 +144,7 @@ namespace Velvet
         /// <see cref="NavigationResult.NotFound"/> when no route matches,
         /// <see cref="NavigationResult.Blocked"/> when a Blocker rejects the attempt,
         /// <see cref="NavigationResult.Cancelled"/> when concurrent navigation or the cancellation token aborts it,
-        /// when the router has been disposed,
+        /// when it is asked of a router already disposed,
         /// or when <paramref name="mode"/> is <see cref="NavigationMode.Back"/> / <see cref="NavigationMode.Forward"/>
         /// and the history has no entry to step onto,
         /// or <see cref="NavigationResult.Error"/> on redirect overflow.

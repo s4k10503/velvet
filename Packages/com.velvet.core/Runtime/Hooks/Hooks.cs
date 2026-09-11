@@ -504,8 +504,7 @@ namespace Velvet
         /// </remarks>
         /// <param name="shouldBlock">
         /// Async predicate; returning true blocks the departure. The token is the navigation's, which unmounting
-        /// the component does not cancel. <c>Documentation~/routing-blockers.md</c> owns what unmounting does to a
-        /// Blocker.
+        /// the component does not cancel.
         /// </param>
         /// <returns>The shared <see cref="RouteBlockerState"/> handle for inspecting / resolving the pending departure.</returns>
         public static RouteBlockerState UseBlocker(Func<NavigationAttempt, CancellationToken, VelvetTask<bool>> shouldBlock)
@@ -523,8 +522,7 @@ namespace Velvet
         /// </summary>
         /// <param name="shouldBlock">
         /// Async predicate; returning true blocks the departure. The token is the navigation's, which unmounting
-        /// the component does not cancel. <c>Documentation~/routing-blockers.md</c> owns what unmounting does to a
-        /// Blocker.
+        /// the component does not cancel.
         /// </param>
         /// <param name="deps">Dependency array. When null, re-registers on every render.</param>
         /// <returns>The shared <see cref="RouteBlockerState"/> handle for inspecting / resolving the pending departure.</returns>
