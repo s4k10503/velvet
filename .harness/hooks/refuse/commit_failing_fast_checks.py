@@ -39,7 +39,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 from display import displayed
 from shell_commands import (COMMIT_VALUE_FLAGS, NAME_THE_TREE, UNPLACEABLE_MOVE, UNRESOLVED_CD,
-                            command_directory, git_invocations, unexpanded)
+                            command_directory, git_invocations, tree_selectors, unexpanded)
 import repository
 
 
@@ -116,9 +116,9 @@ def repo_root(cwd, selectors):
 
 
 def commit_invocations(command):
-    """(directory, onto the index, pathspecs or `FROM_FILE`) per `git commit` in the command."""
+    """(`GitContext`, onto the index, pathspecs or `FROM_FILE`) per `git commit` in the command."""
     found = []
-    for directory, _, operands in git_invocations(command, {"commit"}):
+    for context, _, operands in git_invocations(command, {"commit"}, git_directory=True):
         onto_index = False
         from_file = False
         pathspecs = []
@@ -157,7 +157,7 @@ def commit_invocations(command):
                 continue
             pathspecs.append(token)
             index += 1
-        found.append((directory, onto_index, FROM_FILE if from_file else pathspecs))
+        found.append((context, onto_index, FROM_FILE if from_file else pathspecs))
     return found
 
 
@@ -571,12 +571,8 @@ def main():
                          "tree holds that\ncontent is what the move decides.\n\n"
                          f"{NAME_THE_TREE}\n")
         return 2
-    contexts = [context for context, _, _ in
-                git_invocations(command, {"commit"}, git_directory=True)]
-    for (directory, onto_index, pathspecs), context in zip(commits, contexts):
-        selectors = [(flag, value) for flag, value in (
-            ("-C", directory), ("--git-dir", context.git_directory),
-            ("--work-tree", context.work_tree)) if value]
+    for context, onto_index, pathspecs in commits:
+        selectors = tree_selectors(context)
         # The two operand kinds are refused apart, because the remedy for one does not reach the
         # other: naming the paths leaves a `-C` unresolved, and the reader told to do it tries
         # something that cannot help. Measured on an agent's own `git -C "$SP" commit`.

@@ -19,6 +19,13 @@ one agent, so a fixed name even there can be another agent's; AGENTS.md's Conven
 rest of the way, into a directory of the author's own. Every one of the 163 reaches both by changing
 a path.
 
+For `git commit` that worktree is the one git makes the commit in, asked of git with the command's
+own `-C`, `--git-dir`, `--work-tree`, `GIT_DIR=` and `GIT_WORK_TREE=` replayed, as
+`commit_failing_fast_checks.py` asks it. Read off the directory the command runs in instead, a
+commit made in a worktree from the primary checkout was refused over a message inside that
+worktree, and a commit aimed at a second worktree passed with a message from the one it was run in.
+`gh` takes no option naming a tree, so for it the worktree is the one the command runs in.
+
 `pr_body_of_another_branch.py` asks whether the body says anything; this asks where it lives. Kept
 apart because the remedies differ and a guard that refuses two things names one of them first.
 
@@ -33,10 +40,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 
 from pr_body import valued as gh_valued  # noqa: E402
-from repository import toplevel  # noqa: E402
+from repository import DECODING, git_bytes  # noqa: E402
 from shell_commands import (  # noqa: E402
     NAME_THE_TREE, UNPLACEABLE_MOVE, UNRESOLVED_CD, command_directory, git_invocations,
-    program_invocations, unexpanded)
+    program_invocations, tree_selectors, unexpanded)
 
 HOOK_TOOLS = {"Bash"}
 
@@ -108,16 +115,32 @@ def valued(operands, flags):
     return found
 
 
-def worktree_of(directory):
-    """The top of the worktree `directory` sits in, or None when git will not say."""
-    top = toplevel(directory, timeout=10)
-    return top.resolve() if top else None
+def rev_parse(here, selectors, flag):
+    """None when git did not answer, which an empty prefix is not. Only the terminator comes off,
+    for the reason `repository.toplevel` gives."""
+    answer = git_bytes([*selectors, "rev-parse", flag], cwd=here, timeout=10)
+    return None if answer is None else answer.removesuffix(b"\n").decode(**DECODING)
 
 
-def inside(path, root, cwd):
-    """Whether `path` resolves under `root`. A relative path is read from `cwd`, as the shell will."""
+def placed(here, selectors):
+    """(the top of the worktree git acts on, the directory it reads a relative path from), or None
+    when git will not name a worktree.
+
+    The second is git's answer too. Derived here instead, as `here` joined to a `-C` or as the top
+    of the tree, it fails a case in scripts/hooks/test_message_outside_its_worktree.py's
+    `TreeTheCommitIsMadeIn` that commits a relative message and reads back which file git took.
+    """
+    top = rev_parse(here, selectors, "--show-toplevel")
+    prefix = rev_parse(here, selectors, "--show-prefix") if top else None
+    if prefix is None:
+        return None
+    return Path(top).resolve(), Path(top, prefix)
+
+
+def inside(path, root, base):
+    """Whether `path` resolves under `root`. A relative path is read from `base`."""
     try:
-        resolved = (Path(cwd) / path).resolve() if not os.path.isabs(path) else Path(path).resolve()
+        resolved = (Path(base) / path).resolve() if not os.path.isabs(path) else Path(path).resolve()
     except OSError:
         return False
     return resolved == root or root in resolved.parents
@@ -129,28 +152,29 @@ def refuse(what, path, root):
         "A path several agents share is one another agent can overwrite between the write and the "
         "read,\nand the failure is silent — the command succeeds, the tree is right, and only the "
         "prose is\nanother change's.\n\n"
-        f"Write it under {root}, in a directory of your own as AGENTS.md's Conventions say,\n"
-        "and pass that path.\n")
+        f"Write it in a directory of your own under {root / 'Logs'},\n"
+        "as AGENTS.md's Conventions say, and pass that path.\n")
     return 2
 
 
 def judge(command, cwd):
     """0, or 2 with the reason written to stderr."""
-    asked = [("git commit", operands, MESSAGE_FLAGS, None)
-             for _, _, operands in git_invocations(command, ("commit",))]
+    asked = [("git commit", operands, MESSAGE_FLAGS, None, tree_selectors(context))
+             for context, _, operands in git_invocations(command, ("commit",), git_directory=True)]
     for words in GH_WORDS:
         for operands in program_invocations(command, "gh", words):
-            asked.append(("gh " + " ".join(words), operands, BODY_FILE_FLAGS, words))
+            asked.append(("gh " + " ".join(words), operands, BODY_FILE_FLAGS, words, []))
 
-    named = [(what, valued(operands, flags) if words is None else gh_valued(operands, flags, words))
-             for what, operands, flags, words in asked]
-    named = [(what, path) for what, path in named if path is not None]
+    named = [(what, valued(operands, flags) if words is None else gh_valued(operands, flags, words),
+              selectors)
+             for what, operands, flags, words, selectors in asked]
+    named = [(what, path, selectors) for what, path, selectors in named if path is not None]
     if not named:
         return 0
 
     # Asked before the worktree, because a path the shell has not expanded is unreadable in any tree
     # and the worktree reading stands down where git will not answer.
-    for what, path in named:
+    for what, path, _ in named:
         if unexpanded(path):
             sys.stderr.write(
                 f"Refusing `{what}`: the message path is still unexpanded, so which worktree it\n"
@@ -160,16 +184,28 @@ def judge(command, cwd):
 
     here = command_directory(command, cwd)
     if here is UNRESOLVED_CD:
-        # The tree the command runs in cannot be read, so neither can the question.
+        # Every reading below is taken from the directory the command runs in.
         sys.stderr.write("Refusing this command: which worktree the message belongs to could not "
                          f"be read.\n\n{UNPLACEABLE_MOVE}\n\n{NAME_THE_TREE}\n")
         return 2
 
-    root = worktree_of(here)
-    if root is None:
-        return 0
-    for what, path in named:
-        if not inside(path, root, here):
+    for what, path, selectors in named:
+        # Asked before the reading, as the path is: whatever git makes of the literal, it is not the
+        # tree the command names.
+        unresolved = [value for _, value in selectors if unexpanded(value)]
+        if unresolved:
+            sys.stderr.write(
+                f"Refusing `{what}`: the tree it is made in is named by an operand the shell has not\n"
+                "expanded yet, so which worktree the message belongs to cannot be read here.\n\n"
+                + "\n".join("  " + value for value in unresolved)
+                + "\n\nSpell the directory out.\n")
+            return 2
+        tree = placed(here, [part for flag, value in selectors
+                             for part in (flag, os.path.expanduser(value))])
+        if tree is None:
+            continue
+        root, base = tree
+        if not inside(path, root, base):
             return refuse(what, path, root)
     return 0
 

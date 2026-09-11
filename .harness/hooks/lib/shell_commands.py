@@ -342,6 +342,14 @@ def git_invocation(tokens, git_directory=False):
     return context, tokens[index], tokens[index + 1:]
 
 
+def tree_selectors(context):
+    """(option, value) for each selector in `context` that decides which tree git acts on, with an
+    assignment spelled as the option it stands for."""
+    return [(flag, value) for flag, value in (
+        ("-C", context.working_directory), (GIT_DIRECTORY_FLAG, context.git_directory),
+        (WORK_TREE_FLAG, context.work_tree)) if value]
+
+
 # Where a move left the shell when nothing here places it.
 UNRESOLVED_CD = object()
 
