@@ -208,15 +208,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Debug.LogException` at the two fiber sites and through `StoreLogger.LogError` at the store — and
   the teardown runs to its end.
 
-- A Loader that still holds its round's `CancellationToken` when the round ends reads the cancellation
-  off it, rather than finding the source behind it gone. The round's source used to be disposed at the
-  moment the round ended, which lands before the run that launched the Loaders has handed that token to
-  the matches below the one that ended it, before an `Await` loader a newer navigation superseded has
-  unwound, and before a `Suspend` loader streaming into the route on screen has finished.
-  `CancellationToken.WaitHandle` read from any of those three then raised `ObjectDisposedException`,
-  which a Loader written to catch `OperationCanceledException` does not catch. The source is now not
-  released until the round has ended, the run that launched it has returned, and every `Suspend` loader
-  it started has finished.
+- A Loader or a Blocker still holding the `CancellationToken` the router handed it can go on reading it,
+  rather than finding the source behind it gone. The router used to dispose a loader round's source when
+  the round ended, and a navigation's source when the navigation ended and at `Router.Dispose` — while
+  the Loaders below one that navigated, an `Await` loader a newer navigation superseded, a `Suspend`
+  loader streaming into the route on screen, or a Blocker awaiting the navigation could still be reading
+  it. `CancellationToken.WaitHandle` then raised `ObjectDisposedException`, which code written to catch
+  `OperationCanceledException` does not catch. The router no longer disposes those sources. What it lets
+  go of instead is each one's link to the token it was made from, so a navigation or a loader round that
+  never finishes is no longer kept reachable through the token passed to `NavigateAsync` once it has been
+  cancelled. A navigation started while the router is being disposed — from a cancellation callback the
+  disposal runs — returns `NavigationResult.Cancelled`, as one started on a disposed router now does,
+  where it used to run on and could commit after the disposal. A navigation a cancellation callback
+  starts while another is taking over now supersedes it, where the one taking over used to overwrite it
+  and leave it running, so that both could commit.
 
 - A `V.VirtualList` whose item renderer returns a `V.Component` or a `V.Provider` stacks its visible
   items instead of starting every one of them at the same place. Velvet anchors such an item's fiber on
