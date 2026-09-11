@@ -2337,11 +2337,14 @@ namespace Velvet
         /// <param name="keySelector">Selector that derives a stable per-item key, held to
         /// <see cref="VNode.Key"/>'s rule on what a key may contain. Must not be null. An item whose key
         /// breaks that rule is left out of the rendered range with a warning; the selector runs from a
-        /// range update rather than from this call, which has no item's key to refuse yet.</param>
+        /// range update rather than from this call, which has no item's key to refuse yet. A null key is
+        /// no key, the answer <see cref="List{T}(IReadOnlyList{T}, Func{T, string}, Func{T, VNode})"/>
+        /// gives the same selector: the row renders, and a range change reuses it by its item index.</param>
         /// <param name="itemHeight">Fixed height (pixels) used for layout and visible-range calculation.</param>
         /// <param name="renderer">Function that produces a VNode for each visible item. Must not be null.
         /// A key it sets on the node it returns is overwritten by <paramref name="keySelector"/>'s, which is
-        /// the identity a range change reuses a row by.</param>
+        /// the identity a range change reuses a row by. A throw of its own is not contained — it reaches
+        /// the caller, and the range update it ends leaves the list showing no rows.</param>
         /// <param name="overscan">Extra items rendered above/below the visible window to smooth scroll-in.</param>
         /// <param name="key">Key used to disambiguate siblings at the same position.</param>
         /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces.</param>
