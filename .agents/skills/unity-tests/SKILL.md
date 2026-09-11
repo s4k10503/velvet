@@ -9,11 +9,11 @@ The editor must be closed — it holds the project lock.
 
 ```bash
 UNITY=/Applications/Unity/Hub/Editor/6000.3.23f1/Unity.app/Contents/MacOS/Unity
-mkdir -p Logs
+mkdir -p Logs && R=$(mktemp -d "$PWD/Logs/run.XXXXXX") && echo "$R"
 "$UNITY" -runTests -batchmode -projectPath "$PWD" -testPlatform EditMode \
-  -testResults "$PWD/Logs/results.xml" -logFile "$PWD/Logs/run.log"
-python3 scripts/test_quality/assert_results_from_this_tree.py Logs/results.xml --log Logs/run.log
-python3 scripts/test_quality/assert_no_inconclusive.py Logs/results.xml
+  -testResults "$R/results.xml" -logFile "$R/run.log"
+python3 scripts/test_quality/assert_results_from_this_tree.py "$R" --log "$R/run.log"
+python3 scripts/test_quality/assert_no_inconclusive.py "$R"
 ```
 
 `-testPlatform PlayMode` for the other suite. `-testFilter "Velvet.Tests.SomeFixture"` narrows it, and several things about the value decide what actually runs:
@@ -25,7 +25,7 @@ python3 scripts/test_quality/assert_no_inconclusive.py Logs/results.xml
 
 Read the `fullname` roster in the XML, not only the count, before trusting a filtered run: a filter that took a whole assembly reports a count that looks entirely plausible.
 
-**Write into the worktree's own Logs directory, never /tmp/results.xml.** That path is one file for every worktree and every session on the machine, and the compile-error paragraph below is what it costs.
+**Write into a directory made for the run, as above — never /tmp/results.xml, and never a fixed name under Logs.** The first is one file for every worktree and every session on the machine, the second one file for every agent working in the checkout, and the compile-error paragraph below is what reading another run's file costs.
 
 ## Traps that produce wrong answers
 

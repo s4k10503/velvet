@@ -14,8 +14,10 @@ session scratchpad: 163 total, 0 inside the worktree they describe, 163 at the s
 `msg.txt` reused 21 times and `commitmsg.txt` 14. The collision was not bad luck; it is what a
 generic path shared between concurrent agents produces.
 
-A worktree is per-agent here, so a message inside the one it describes cannot be another agent's.
-That is the whole rule, and every one of the 163 reaches it by changing a path.
+The rule is only where the file sits: inside the worktree it describes. A checkout can hold more than
+one agent, so a fixed name even there can be another agent's; AGENTS.md's Conventions take it the
+rest of the way, into a directory of the author's own. Every one of the 163 reaches both by changing
+a path.
 
 `pr_body_of_another_branch.py` asks whether the body says anything; this asks where it lives. Kept
 apart because the remedies differ and a guard that refuses two things names one of them first.
@@ -126,9 +128,9 @@ def refuse(what, path, root):
         f"Refusing `{what}`: {path}\nis outside {root}, the worktree it describes.\n\n"
         "A path several agents share is one another agent can overwrite between the write and the "
         "read,\nand the failure is silent — the command succeeds, the tree is right, and only the "
-        "prose is\nanother change's. A worktree is per-agent, so a file inside it is nobody else's "
-        "to write.\n\n"
-        f"Write it under {root} and pass that path.\n")
+        "prose is\nanother change's.\n\n"
+        f"Write it under {root}, in a directory of your own as AGENTS.md's Conventions say,\n"
+        "and pass that path.\n")
     return 2
 
 

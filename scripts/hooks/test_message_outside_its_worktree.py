@@ -97,7 +97,7 @@ class Verdicts(unittest.TestCase):
         self.assertEqual((code, "the worktree it describes" in said), (2, True))
 
     def test_Given_ACommitMessageInsideTheWorktree_When_Judged_Then_ItIsLetThrough(self):
-        # Arrange — a worktree is per-agent here, so a file inside it is nobody else's to write.
+        # Arrange — inside the worktree the change is in, which is where the refusal sends a message.
         code, said = self.judge(f"git commit -F {self.root}/msg.txt")
 
         # Act / Assert
