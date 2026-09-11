@@ -47,7 +47,6 @@ UNREADABLE_PROBE = {"command": "git commit -m probe"}
 # nothing in it is a submodule, so a reading that did not answer must not resolve to either.
 Unreadable = collections.namedtuple("Unreadable", "subject remedy")
 
-# What git wrote, what was asked of it, and the exit code — None where git did not run at all.
 GitRead = collections.namedtuple("GitRead", "stdout said code asked")
 
 
@@ -88,10 +87,9 @@ def repo_root(cwd):
     sends every reading below into a directory nothing has established is a tree.
     """
     answer = git(cwd, "rev-parse", "--show-toplevel")
-    if answer.code != 0:
-        return unread(answer)
     # Same terminator-only reading as `repository.toplevel`, and for the reason given there.
-    return answer.stdout.decode(**repository.DECODING).removesuffix("\n") or cwd
+    root = answer.stdout.decode(**repository.DECODING).removesuffix("\n")
+    return root if answer.code == 0 and root else unread(answer)
 
 
 def commit_invocations(command):

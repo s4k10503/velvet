@@ -8,6 +8,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -92,12 +93,13 @@ class GuardTestCase(unittest.TestCase):
                        capture_output=True, timeout=60)
         return root
 
-    def judge(self, command, cwd=None):
+    def judge(self, command, cwd=None, path=None):
         """The guard's verdict, as (exit code, stderr)."""
         event = {"tool_name": "Bash", "cwd": str(cwd or self.root),
                  "tool_input": {"command": command}}
-        done = subprocess.run(["python3", str(GUARD)], input=json.dumps(event).encode("utf-8"),
-                              capture_output=True, timeout=60)
+        done = subprocess.run([sys.executable, str(GUARD)], input=json.dumps(event).encode("utf-8"),
+                              capture_output=True, timeout=60,
+                              env=None if path is None else dict(os.environ, PATH=path))
         return done.returncode, done.stderr.decode("utf-8", "surrogateescape")
 
     def git(self, *args, root=None):
@@ -207,6 +209,22 @@ class IndexedContent(GuardTestCase):
         self.assertEqual((code, STAGED_AND_BROKEN.strip() in said,
                           (self.root / PROBE).read_text(encoding="utf-8")),
                          (2, True, TREE_AND_WHOLE))
+
+    # GREEN_ON_BASE(characterization): the base checks a staged blob's own bytes too.
+    def test_Given_AStagedScriptBrokenByBareReturns_When_Judged_Then_ItsRecordedBytesAreChecked(self):
+        # Arrange
+        script, content = "returns.sh", b"#!/bin/bash\nif true; then\recho hi\rfi\n"
+        (self.root / script).write_bytes(content)
+        self.git("add", script)
+
+        # Act
+        code, said = self.judge("git commit -m x")
+
+        # Assert — beside the verdict on the same script with its returns read as line feeds.
+        (self.root / script).write_bytes(content.replace(b"\r", b"\n"))
+        self.git("add", script)
+        self.assertEqual((code, script + FAILED_A_CHECK in said, self.judge("git commit -m x")),
+                         (2, True, (0, "")))
 
     def test_Given_ANameGitQuotes_When_BrokenInTheIndex_Then_TheRefusalNamesIt(self):
         # Arrange — staged and never committed, so everything this commit records is the index's.
@@ -373,8 +391,7 @@ class WorktreeContent(GuardTestCase):
 
     def test_Given_ASymlinkWhoseTargetHoldsAByteOutsideTheEncoding_When_Judged_Then_ItsRecordedBytesAreChecked(self):
         # Arrange — the target is the blob, and as bytes it is not content the check for this
-        # suffix accepts. A re-encoding that substitutes the byte hands the check a document that
-        # parses instead.
+        # suffix accepts.
         (self.root / FIRST_TARGET).write_text(WHOLE, encoding="utf-8")
         os.symlink(FIRST_TARGET, self.root / RAW_LINK)
         self.git("add", FIRST_TARGET, RAW_LINK)
@@ -438,9 +455,7 @@ class WorktreeContent(GuardTestCase):
                           [GITLINK_MODE, "commit"]))
 
     def test_Given_APathTheListingNamesThatWillNotOpen_When_Judged_Then_TheRemedyIsAboutTheFile(self):
-        # Arrange — a tracked file whose mode lets nobody read it. That the mode really closed the
-        # file is compared beside the remedy, because a process that ignores modes reads it and
-        # leaves this passing with nothing refused at all.
+        # Arrange — a tracked file whose mode lets nobody read it.
         staged = self.broken_only_in_the_worktree(CLOSED)
         os.chmod(self.root / CLOSED, 0o000)
         self.addCleanup(os.chmod, self.root / CLOSED, 0o644)
@@ -464,8 +479,7 @@ class WorktreeContent(GuardTestCase):
         # Act
         code, said = self.judge("git commit -a -m x")
 
-        # Assert — the escaped name where the sentence puts it, since the error quoted after it
-        # carries the path a second time and a bare containment is satisfied by that copy.
+        # Assert — the escaped name where the sentence puts it.
         self.assertEqual((code, json.dumps(BREAKING) + ":" in said, self.opens(BREAKING), staged),
                          (2, True, False, ""))
 
@@ -499,6 +513,18 @@ class TreeTheChecksRunIn(GuardTestCase):
 
         # Assert
         self.assertEqual((code, NOT_A_REPOSITORY in said), (2, True))
+
+    # GREEN_ON_BASE(characterization): the base answers a git that never ran with this remedy too.
+    def test_Given_NoGitOnThePath_When_Judged_Then_TheRemedyIsToRetry(self):
+        # Arrange
+        empty = self.root / "empty"
+        empty.mkdir()
+
+        # Act
+        code, said = self.judge("git commit -m x", path=str(empty))
+
+        # Assert
+        self.assertEqual((code, RETRY_WHEN_GIT_ANSWERS in said), (2, True))
 
 
 if __name__ == "__main__":
