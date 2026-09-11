@@ -3146,13 +3146,13 @@ class MaskRefusalTests(unittest.TestCase):
 class KeptVerdictTests(unittest.TestCase):
     """What a killed campaign leaves behind for the next run of the same one.
 
-    Each verdict is recorded as it is reached, and a later run answers from the ones
-    `mutation_check.KEPT` names — refusing one where the tree it measured has moved, since a verdict
-    about other bytes is not a verdict — and measures the others again.
+    Each verdict is recorded as it is reached, and a later run answers from its kills — refusing one
+    where the tree it measured has moved, since a verdict about other bytes is not a verdict — and
+    measures the others again.
 
-    The record the cases below refuse on their digest or their mutant is a kill, because a kind the
-    run measures again is refused whatever its key, and a case refusing one would pass with the key
-    unread.
+    The record the cases below refuse on their digest, their mutant or its column is a kill, because a
+    kind the run measures again is refused whatever its key, and a case refusing one would pass with
+    the key unread.
     """
 
     def setUp(self):
@@ -3204,6 +3204,16 @@ class KeptVerdictTests(unittest.TestCase):
         self.assertIsNone(
             mutation_check.read_verdict(self.output, 7, "digest-1", other, self.project))
 
+    def test_Given_ASiblingThatDescribesAlike_When_ItIsReachedAtThatIndex_Then_TheVerdictIsRefused(self):
+        # Arrange — the same edit further along the same line, which describes exactly as the recorded
+        # mutant does. `--files` takes a file whole where the diff takes its changed lines, so one
+        # list can put this mutant at the index the other recorded.
+        sibling = mutation_check.Mutant(self.project / "A.cs", 3, 5, "a", "b", "literal")
+
+        # Act / Assert
+        self.assertIsNone(
+            mutation_check.read_verdict(self.output, 7, "digest-1", sibling, self.project))
+
     def test_Given_AVerdictThatMeasuredNothing_When_TheSameMutantIsReached_Then_ItIsMeasuredAgain(self):
         # Arrange — each kind the run fails on for want of a reading, keyed so that only the kind can
         # refuse it.
@@ -3225,17 +3235,16 @@ class KeptVerdictTests(unittest.TestCase):
         # Assert
         self.assertEqual(read, [None] * len(surviving))
 
-    # GREEN_ON_BASE(characterization): the base keeps every verdict, a hang among them.
-    def test_Given_AVerdictTheSuiteHungOn_When_TheSameMutantIsReached_Then_ItIsKept(self):
-        # Arrange — the counterpart to the two above on the other verdict that counts as the suite's
-        # answer, so they are not passing for a reading that keeps only kills.
+    def test_Given_AVerdictTheSuiteHungOn_When_TheSameMutantIsReached_Then_ItIsMeasuredAgain(self):
+        # Arrange — a hang counts as answered, and what makes a timeout one is the --timeout the run
+        # took it under; keyed so that only the kind can refuse it.
         hung = [mutation_check.HUNG]
 
         # Act
         read = self.read_back(hung)
 
         # Assert
-        self.assertEqual(read, [(mutation_check.HUNG, "the first run's detail")])
+        self.assertEqual(read, [None])
 
 
 class ResumedCampaignTests(unittest.TestCase):
@@ -3249,18 +3258,19 @@ class ResumedCampaignTests(unittest.TestCase):
     NAMED = (mutation_check.TIMED_OUT, mutation_check.HUNG, mutation_check.UNCOMPILABLE,
              mutation_check.NOT_BUILT, mutation_check.SURVIVED, mutation_check.KILLED)
 
-    def second_run(self, first, second):
+    def second_run(self, first, second, first_flags=(), second_flags=()):
         """(exit status, verdicts the tally names, whether any came from the first run) of a run whose
-        editor behaves as `second`, following one whose editor behaved as `first`."""
+        editor behaves as `second`, following one whose editor behaved as `first`, each run narrowed
+        by the flags beside it."""
         campaign = StubbedCampaign()
         for field, value in first.items():
             setattr(campaign, field, value)
-        campaign.run_over_diff("--max", "40")
+        campaign.run_over_diff("--max", "40", *first_flags)
         for field in first:
             setattr(campaign, field, getattr(StubbedCampaign, field))
         for field, value in second.items():
             setattr(campaign, field, value)
-        code = campaign.run_over_diff("--max", "40")
+        code = campaign.run_over_diff("--max", "40", *second_flags)
         return (code, [verdict for verdict in self.NAMED if verdict + ":" in campaign.printed],
                 "came from a previous run of this campaign" in campaign.printed)
 
@@ -3297,6 +3307,57 @@ class ResumedCampaignTests(unittest.TestCase):
 
         # Act
         read = self.second_run(first, second)
+
+        # Assert
+        self.assertEqual(read, (0, [mutation_check.KILLED], True))
+
+    def test_Given_AKillTheWholeSuiteTook_When_ARunNarrowedByFilterFollows_Then_ItIsMeasuredAgain(self):
+        # Arrange — the fixture the second run asks about does not notice the mutant, which another
+        # test in the whole suite killed.
+        first = {"kills": True}
+        second = {}
+
+        # Act
+        read = self.second_run(first, second, second_flags=("--filter", "Suspect.Fixture"))
+
+        # Assert
+        self.assertEqual(read, (1, [mutation_check.SURVIVED], False))
+
+    def test_Given_AKillTheWholeSuiteTook_When_ARunNarrowedByAssembliesFollows_Then_ItIsMeasuredAgain(self):
+        # Arrange — the sibling narrowing, which reaches the editor as a flag of its own.
+        first = {"kills": True}
+        second = {}
+
+        # Act
+        read = self.second_run(first, second, second_flags=("--assemblies", "Suspect.Tests"))
+
+        # Assert
+        self.assertEqual(read, (1, [mutation_check.SURVIVED], False))
+
+    def test_Given_AKillANarrowedRunTook_When_TheWholeSuiteFollows_Then_ItIsMeasuredAgain(self):
+        # Arrange — narrowed by both flags, so that this turns on what the whole run reads rather than
+        # on how either flag is recorded. The second run writes the receipt, and its suite lets the
+        # mutant survive.
+        first = {"kills": True}
+        second = {}
+        narrowed = ("--assemblies", "Suspect.Tests", "--filter", "Suspect.Fixture")
+
+        # Act
+        read = self.second_run(first, second, first_flags=narrowed)
+
+        # Assert
+        self.assertEqual(read, (1, [mutation_check.SURVIVED], False))
+
+    # GREEN_ON_BASE(characterization): the base keeps every verdict, a narrowed run's kill among them.
+    def test_Given_AKillANarrowedRunTook_When_TheSameNarrowingFollows_Then_TheKillIsKept(self):
+        # Arrange — the counterpart, so the three above are not passing for a campaign that keeps
+        # nothing a narrowed run touched.
+        first = {"kills": True}
+        second = {}
+        narrowed = ("--filter", "Suspect.Fixture")
+
+        # Act
+        read = self.second_run(first, second, first_flags=narrowed, second_flags=narrowed)
 
         # Assert
         self.assertEqual(read, (0, [mutation_check.KILLED], True))

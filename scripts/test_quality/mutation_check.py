@@ -19,11 +19,8 @@ already carries rather than for this one.
 
 **Success means every mutant was measured, and every survivor answered for.** Not that nothing was
 reported: most of what goes wrong with a campaign ends in a mutant nobody asked about, and a mutant
-nobody asked about must never be a pass. So the ways a run can measure less than it looks like it
-measured each fail on their own -- a cap that left mutants unrun, an editor killed at --timeout, a
-build that rejected the mutation, an assembly the editor never rebuilt, a second editor sharing the
-machine, and a file whose comment and string mask swallowed code, which generates no mutant there and
-says nothing.
+nobody asked about must never be a pass. So a run fails or stops rather than pass over one, and
+Generators~/README.md ▸ Mutation testing says when it does which.
 
 It is not success over the whole change, and the difference is most of one: the operators reach a
 minority of the code lines a branch touches, so the reach is printed beside every verdict rather than
@@ -80,12 +77,6 @@ UNCOMPILABLE = "uncompilable"
 NOT_BUILT = "not rebuilt"
 
 SURVIVING = (SURVIVED, INCONCLUSIVE)
-
-# What a later run of the same campaign keeps rather than measures again: the verdicts that count as
-# the suite's answer. Each of the others is one the run fails on until somebody acts -- writes the
-# test a survivor asks for, raises --timeout, runs again after an editor crash -- and none of that
-# moves the digest, so a kept one would hand back the verdict that was acted on.
-KEPT = (KILLED, HUNG)
 
 CATEGORIES = ("equivalent", "unreachable")
 
@@ -1376,41 +1367,46 @@ def verdict_path(output, index):
     return output / "mutant-{:03d}.json".format(index)
 
 
-def write_verdict(output, index, digest, mutant, project, killers=()):
-    """Record one mutant's verdict beside its results, keyed on what the campaign measured.
-
-    The results XML alone cannot answer for every verdict -- HUNG reads the wall clock -- so what is
-    recorded is the verdict itself.
-    """
+def write_verdict(output, index, digest, mutant, project, killers=(), scope=()):
+    """Record one mutant's verdict beside its results, with everything `read_verdict` keys it on."""
     verdict_path(output, index).write_text(json.dumps({
-        "digest": digest, "index": index, "mutant": mutant.describe(project),
+        "digest": digest, "scope": list(scope), "index": index, "mutant": mutant.describe(project),
+        "column": mutant.column,
         "verdict": mutant.verdict, "detail": mutant.detail,
         # Every case that failed under this mutation, not the three the detail names. Which cases kill
-        # which mutant is the reading #713 wants and a receipt does not carry, and it is on disk here
-        # anyway -- the detail truncates it for a reader rather than because that is all there was.
+        # which mutant is a reading a receipt does not carry, and it is on disk here anyway -- the
+        # detail truncates it for a reader rather than because that is all there was.
         "killers": sorted(killers),
     }, indent=2))
 
 
-def read_verdict(output, index, digest, mutant, project):
-    """(verdict, detail) a previous run of this same campaign reached for this mutant, where it is one
-    `KEPT` names, or None.
+def read_verdict(output, index, digest, mutant, project, scope=()):
+    """(verdict, detail) of the kill a previous run of this same campaign recorded for this mutant, or
+    None.
 
-    Keyed on the digest AND on what the mutant is, because an index is only this mutant's while the
-    list is the same list. The digest covers the working tree rather than a commit, so an edit to a
-    mutated file since moves it and the record is refused rather than reused.
+    Keyed on the digest, which covers the working tree rather than a commit, so an edit to a mutated
+    file since moves it and the record is refused rather than reused. On the suite `scope` narrows
+    the run to, because a kill another suite took can hide a fixture that does not notice, and one
+    taken under `--filter` or `--assemblies` is not the whole-suite reading a receipt stands on. And on
+    the mutant with its column, because an index is only this mutant's while the list is the same list
+    -- `--files` takes a file whole where the diff takes its changed lines -- and two mutants on one
+    line can describe alike.
 
-    What it does not cover is a test-side change, and that is `scope_digest`'s own limit rather than
-    one this adds: removing a test can make a killed mutant survive, and the receipt stays valid
-    across it for the reason stated there. A resumed verdict inherits exactly that, no more.
+    A kill alone: each other verdict turns on something outside that key -- a survivor of either kind
+    on the tests, which the test written for it changes; a timed-out or hung mutant on `--timeout`,
+    which the timed-out verdict asks to be raised, and on anything else that kept the editor running;
+    uncompilable and not rebuilt on the editor as well as on the mutation. A kill turns on the tests
+    too, and is kept across a test removed since for the reason `scope_digest` gives for the receipt;
+    one taken while another editor was up is kept as well, and its detail says so.
     """
     try:
         held = json.loads(verdict_path(output, index).read_text())
     except (OSError, ValueError):
         return None
-    if held.get("digest") != digest or held.get("mutant") != mutant.describe(project):
+    key = (held.get("digest"), held.get("scope"), held.get("mutant"), held.get("column"))
+    if key != (digest, list(scope), mutant.describe(project), mutant.column):
         return None
-    if held.get("verdict") not in KEPT:
+    if held.get("verdict") != KILLED:
         return None
     return held.get("verdict"), held.get("detail")
 
@@ -1530,7 +1526,8 @@ def main():
                         help="print the join refusal's census over the package and exit; redirect it "
                              "over " + REFUSAL_BASELINE + " to record a deliberate change to it")
     parser.add_argument("--timeout", type=int, default=900,
-                        help="seconds before a mutant run is killed; a killed run is not measured and fails (default: 900)")
+                        help="seconds before a mutant's editor is killed; Generators~/README.md ▸ "
+                             "Mutation testing says which verdict that is (default: 900)")
     parser.add_argument("--busy-timeout", type=int, default=1800,
                         help="seconds to wait for another Unity run to finish (default: 1800)")
     parser.add_argument("--output", default="", help="directory for the per-mutant logs and XML")
@@ -1810,7 +1807,7 @@ def main():
     try:
         for index, mutant in enumerate(mutants, start=1):
             print("[{}/{}] {}".format(index, len(mutants), mutant.describe(project)), flush=True)
-            kept = read_verdict(output, index, campaign, mutant, project)
+            kept = read_verdict(output, index, campaign, mutant, project, scope)
             if kept is not None:
                 mutant.verdict, mutant.detail = kept
                 resumed += 1
@@ -1891,7 +1888,7 @@ def main():
             if neighbours:
                 mutant.detail = "{}; {} other editor(s) were up".format(
                     mutant.detail or "-", neighbours)
-            write_verdict(output, index, campaign, mutant, project, killers)
+            write_verdict(output, index, campaign, mutant, project, killers, scope)
             average = (time.time() - started) / max(1, index - resumed)
             print("      {} ({}) in {:.0f}s; {:.0f}s left at {:.0f}s each".format(
                 mutant.verdict, mutant.detail or "-", wall,

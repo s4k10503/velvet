@@ -175,10 +175,9 @@ question, and under one nearly everything survives. `--platform` is not one of t
 suite, just a different one — so it reads declarations and writes a receipt, and the platform is part
 of the receipt's key so that an EditMode question is never answered by a PlayMode run.
 
-The run also fails on the ways it can measure less than it looks like it measured: a `--max` cap that
-left mutants unrun, an editor killed at `--timeout`, a build the compiler or an analyzer stopped, an
-assembly the editor never rebuilt, a second editor sharing the machine, and a source whose
-comment-and-string mask swallows code, which generates no mutant there and reports nothing.
+The run also fails or stops rather than pass over a mutant nobody asked about, and
+[Generators~/README.md ▸ Mutation testing](Packages/com.velvet.core/Generators~/README.md#mutation-testing)
+says when it does which.
 
 **What asks whether the campaign was run is a receipt, not attentiveness.** A finished run leaves one
 under the campaign's own log directory, keyed on the merge base (taken against what
