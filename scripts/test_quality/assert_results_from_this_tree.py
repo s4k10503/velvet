@@ -18,11 +18,11 @@ in two narrow directions only -- where the tree that ran declares a fixture this
 where it declares no assembly this one names at all -- and the first of those reports a stranger,
 which is the sentence for a stale Library rather than for a call pointed at two trees.
 
-Read off the log rather than from where the files sit. Location is not the same question: the
-story-capture recipe in CONTRIBUTING.md writes its results to /tmp from a run whose project is the
-checkout, and refusing that would be refusing a correct pairing. What the log names is the project
-the run measured, which is the thing this has to agree with. What it cannot reach is a run whose
-tree is not here to compare -- `measured_elsewhere` owns which those are.
+Read off the log rather than from where the files sit. Location is not the same question: a run
+whose project is the checkout may write its results outside it, and refusing that would be refusing
+a correct pairing. What the log names is the project the run measured, which is the thing this has
+to agree with. What it cannot reach is a run whose tree is not here to compare --
+`measured_elsewhere` owns which those are.
 
 Three readings, and the run has to survive all of them:
 
@@ -301,7 +301,7 @@ def unclaimed_results(results, logs):
     Compared by name, not by path: game-ci runs the editor in a container and the log carries the
     path it had there, which is not where the check reads the file from afterwards. So two runs
     writing a results file of the same name are one reading here, and what separates them is the
-    recipe giving each worktree its own Logs directory rather than anything this function can see.
+    recipe giving each run its own directory rather than anything this function can see.
     """
     claimed = {Path(name).name
                for path in logs

@@ -77,15 +77,17 @@ Every `[VelvetPreview]` story can be rendered to a PNG, so a change to layout, s
 be inspected rather than only measured:
 
 ```bash
-/Applications/Unity/Hub/Editor/6000.3.23f1/Unity.app/Contents/MacOS/Unity -runTests -batchmode -projectPath "$PWD" -testPlatform PlayMode -testFilter "Velvet.Tests.StoryCaptureTests" -testResults /tmp/capture.xml -logFile /tmp/capture.log
+mkdir -p Logs && R=$(mktemp -d "$PWD/Logs/capture.XXXXXX") && echo "$R"
+VELVET_STORY_CAPTURE_DIR="$R" /Applications/Unity/Hub/Editor/6000.3.23f1/Unity.app/Contents/MacOS/Unity -runTests -batchmode -projectPath "$PWD" -testPlatform PlayMode -testFilter "Velvet.Tests.StoryCaptureTests" -testResults "$R/capture.xml" -logFile "$R/capture.log"
 ```
 
-The images land in `Logs/story-captures/` (git-ignored), grouped into a directory per story group, or
-under the directory named by `VELVET_STORY_CAPTURE_DIR`. Before each run, the harness deletes every
-non-empty path listed in the previous manifest; it does not verify that an entry stays under the output
-directory or was created by the harness. Use a dedicated output directory and do not seed or edit its
-manifest. The run fails if a story does not mount, if it renders a uniform frame, or — once for the
-whole run, not per story — if the bundled stylesheet's `bg-slate-700` probe does not resolve.
+The images land under the directory named by `VELVET_STORY_CAPTURE_DIR` — the run's own, above —
+grouped into a directory per story group, and in `Logs/story-captures/` (git-ignored) when it names
+none. Before each run, the harness deletes every non-empty path listed in the previous manifest; it
+does not verify that an entry stays under the output directory or was created by the harness. Use a
+dedicated output directory and do not seed or edit its manifest. The run fails if a story does not
+mount, if it renders a uniform frame, or — once for the whole run, not per story — if the bundled
+stylesheet's `bg-slate-700` probe does not resolve.
 
 **Look at the images.** Those three checks are the floor, not the ceiling: the uniform-frame one in
 particular is satisfied by a single differing pixel, so a story can render almost nothing and still
@@ -179,8 +181,9 @@ assembly the editor never rebuilt, a second editor sharing the machine, and a so
 comment-and-string mask swallows code, which generates no mutant there and reports nothing.
 
 **What asks whether the campaign was run is a receipt, not attentiveness.** A finished run leaves one
-under the campaign's own log directory, keyed on the merge base, the platform and the content of
-every file it mutated, and `gh pr create` is refused where no receipt covers the checkout it is run in. A
+under the campaign's own log directory, keyed on the merge base (taken against what
+`mutation_check.origin_copy` returns for the base), the platform and the content of every file it
+mutated, and `gh pr create` is refused where no receipt covers the checkout it is run in. A
 branch that changes no mutable package source is owed nothing and is not asked; a change no operator
 reaches records that verdict and is accepted, since such a branch cannot earn a passing run at all. The
 receipt is keyed on what the campaign measured rather than on the head commit, because the campaign
@@ -438,8 +441,8 @@ project the editor opened; if that directory is on this machine and is not `--pr
 is refused rather than taken. Pointing it at another worktree's results with `--project` left to
 default measured exit 0 where the two trees declare the same fixtures, and where they do not it
 names a fixture as a stranger — the sentence for a stale `Library`, about work that is fine. Where
-the results file *sits* is not the question: the story-capture recipe above writes to `/tmp` from a
-run whose project is the checkout.
+the results file *sits* is not the question: a run whose project is the checkout may write its
+results outside it.
 
 Two runs are stood aside for rather than compared, because their tree is not here: one inside a
 container, which names the container's path and is what CI reads, and one whose tree has since been
@@ -447,7 +450,7 @@ deleted — the base tree the base-red harness builds and removes. A results fil
 against this checkout's sources passes unremarked, and what keeps the second out of the way is the
 rule that a directory argument is not descended into. It still cannot separate two runs of the same
 project writing a results file of the same name; what answers that is the headless recipe's
-per-worktree logs directory, not the guard.
+directory per run, not the guard.
 
 Each Unity job in CI runs it after the suite, and CLAUDE.md's headless recipe runs it beside
 `assert_no_inconclusive.py`. `scripts/test_quality/test_assert_results_from_this_tree.py` holds it,

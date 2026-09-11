@@ -29,6 +29,7 @@ import textwrap
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 RUNTIME = REPO_ROOT / "Packages/com.velvet.core/Runtime"
@@ -1918,21 +1919,22 @@ class StubbedCampaign:
     """
 
     SOURCE = "Packages/com.velvet.core/Runtime/Probe.cs"
+    BODY = textwrap.dedent("""\
+        namespace Velvet
+        {
+            internal static class Probe
+            {
+                internal static bool Ready(int a, int b) => a <= b;
+            }
+        }
+        """)
 
     def __init__(self, body=None):
         self.holder = tempfile.mkdtemp(prefix="mutation-check-")
         self.project = Path(self.holder)
         self.source = self.project / self.SOURCE
         self.source.parent.mkdir(parents=True, exist_ok=True)
-        self.source.write_text(body if body is not None else textwrap.dedent("""\
-            namespace Velvet
-            {
-                internal static class Probe
-                {
-                    internal static bool Ready(int a, int b) => a <= b;
-                }
-            }
-            """))
+        self.source.write_text(body if body is not None else self.BODY)
         (self.project / "Library" / "ScriptAssemblies").mkdir(parents=True, exist_ok=True)
         self.seen = []
         self.busy = []
@@ -2611,6 +2613,97 @@ class ReceiptTests(unittest.TestCase):
         self.assertEqual(code, mutation_check.RECEIPT_REFUSAL)
 
 
+class ForkedCampaign(StubbedCampaign):
+    """A branch cut from origin's main after a merge the local main has not followed."""
+
+    def __init__(self):
+        self.root = Path(tempfile.mkdtemp(prefix="mutation-check-fork-"))
+        self.seen, self.busy = [], []
+        self.primary = self.root / "primary"
+        self.git(self.root, "init", "-q", "--bare", "-b", "main", "origin.git")
+        self.git(self.root, "init", "-q", "-b", "main", "primary")
+        self.git(self.primary, "remote", "add", "origin", str(self.root / "origin.git"))
+        source = self.primary / self.SOURCE
+        source.parent.mkdir(parents=True)
+        source.write_text(self.BODY)
+        (self.primary / ".gitignore").write_text("Library/\nout/\n")
+        self.git(self.primary, "add", ".")
+        self.git(self.primary, "commit", "-qm", "base")
+        self.git(self.primary, "push", "-q", "origin", "main")
+        # Recorded as a clone records it, so the `HEAD` case below has an origin ref of that name.
+        self.git(self.primary, "remote", "set-head", "origin", "main")
+        # Nothing holds main, so bringing it current is the refspec fetch.
+        self.git(self.primary, "switch", "-q", "-c", "parked")
+        self.land("first.md")
+        self.project = self.root / "feature"
+        self.git(self.primary, "worktree", "add", "-q", "-b", "feature", str(self.project),
+                 "origin/main")
+        self.source = self.project / self.SOURCE
+        self.source.write_text(self.BODY.replace("a <= b", "a < b"))
+        self.git(self.project, "commit", "-qam", "feature")
+        (self.project / "Library" / "ScriptAssemblies").mkdir(parents=True)
+
+    @staticmethod
+    def git(cwd, *arguments):
+        subprocess.run(["git", "-C", str(cwd), "-c", "user.email=t@t", "-c", "user.name=t",
+                        *arguments], capture_output=True, check=True)
+
+    def land(self, name):
+        """A pull request merging on origin: origin/main moves and the local main does not."""
+        self.git(self.primary, "switch", "-q", "--detach", "origin/main")
+        (self.primary / name).write_text(name + "\n")
+        self.git(self.primary, "add", name)
+        self.git(self.primary, "commit", "-qm", name)
+        self.git(self.primary, "push", "-q", "origin", "HEAD:main")
+        self.git(self.primary, "switch", "-q", "parked")
+
+
+class LaggingLocalBaseTests(unittest.TestCase):
+    """A receipt read by `gh pr create`'s gate, which names no base, while the local main lags."""
+
+    def setUp(self):
+        self.campaign = ForkedCampaign()
+        self.addCleanup(shutil.rmtree, self.campaign.root, ignore_errors=True)
+        self.campaign.kills = True
+
+    def test_Given_ACampaignAgainstALaggingMain_When_MainIsBroughtCurrentAfterAMerge_Then_ItsReceiptCovers(self):
+        # Arrange — the base spelled as CONTRIBUTING.md spells it, an unrelated merge, and then the
+        # local main brought current.
+        ran = self.campaign.drive("--base", "main", "--max", "40")
+        self.campaign.land("second.md")
+        self.campaign.git(self.campaign.primary, "fetch", "-q", "origin", "main:main")
+
+        # Act
+        code = self.campaign.drive("--receipt")
+
+        # Assert
+        self.assertEqual((ran, code), (0, 0))
+
+    def test_Given_ACampaignAgainstOriginsMain_When_TheLocalMainLagsItsForkPoint_Then_ItsReceiptCovers(self):
+        # Arrange — an unrelated merge after the campaign, with the local main left where it was.
+        ran = self.campaign.drive("--base", "origin/main", "--max", "40")
+        self.campaign.land("second.md")
+
+        # Act
+        code = self.campaign.drive("--receipt")
+
+        # Assert
+        self.assertEqual((ran, code), (0, 0))
+
+    # GREEN_ON_BASE(characterization): the base reads `HEAD` as this checkout's own commit.
+    def test_Given_AnOriginCarryingAHead_When_TheChangeIsReadAgainstHead_Then_OnlyTheUncommittedIs(self):
+        # Arrange — nothing uncommitted, and a committed change that reading origin's HEAD would take.
+        project = self.campaign.project
+
+        # Act
+        read = (sorted(mutation_check.changed_files_and_lines(project, "HEAD")),
+                sorted(mutation_check.changed_files_and_lines(project, "origin/main")))
+
+        # Assert — the reading against the fork point rides along, because one that found nothing at
+        # all would satisfy the first half.
+        self.assertEqual(read, ([], [self.campaign.source]))
+
+
 class MutationRefusalStatusTests(unittest.TestCase):
     """The two statuses the commit hook reads, held against the script that produces them.
 
@@ -3097,6 +3190,109 @@ class KeptVerdictTests(unittest.TestCase):
         # Act / Assert
         self.assertIsNone(
             mutation_check.read_verdict(self.output, 7, "digest-1", other, self.project))
+
+
+@contextlib.contextmanager
+def listed_processes(listing):
+    """A `ps` first on PATH that prints `listing` whatever it is asked, and marks that it ran."""
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        (root / "listing").write_bytes(listing)
+        ps = root / "ps"
+        ps.write_text('#!/bin/sh\n: > "{0}/ran"\nexec cat "{0}/listing"\n'.format(root))
+        ps.chmod(0o755)
+        saved = os.environ["PATH"]
+        os.environ["PATH"] = directory + os.pathsep + saved
+        try:
+            yield root / "ran"
+        finally:
+            os.environ["PATH"] = saved
+
+
+NOT_UTF8_NEIGHBOUR = b"/usr/bin/probe --label \xff"
+EDITOR = b"/Applications/Unity/Hub/Editor/6000.3.23f1/Unity.app/Contents/MacOS/Unity -runTests -batchmode"
+CAMPAIGN = b"/usr/bin/python3 /repo/scripts/test_quality/mutation_check.py --base origin/main"
+
+
+class ProcessListDecodingTests(unittest.TestCase):
+    """One neighbour's stray byte in the process list must not end the run that reads it."""
+
+    def test_Given_ANeighbourWhoseCommandLineIsNotUtf8_When_EditorsAreCounted_Then_TheEditorBesideItCounts(self):
+        # Arrange
+        listing = NOT_UTF8_NEIGHBOUR + b"\n" + EDITOR + b"\n"
+
+        # Act
+        with listed_processes(listing) as ran:
+            try:
+                counted = (mutation_check.unity_busy(), ran.exists())
+            except UnicodeDecodeError as error:
+                counted = (repr(error), ran.exists())
+
+        # Assert — the mark separates this listing's count from the machine's own.
+        self.assertEqual(counted, (1, True))
+
+    def test_Given_ANeighbourWhoseCommandLineIsNotUtf8_When_CampaignsAreCounted_Then_TheCampaignBesideItCounts(self):
+        # Arrange
+        listing = NOT_UTF8_NEIGHBOUR + b"\n" + CAMPAIGN + b"\n"
+
+        # Act
+        with listed_processes(listing) as ran:
+            try:
+                counted = (mutation_check.campaigns_running(), ran.exists())
+            except UnicodeDecodeError as error:
+                counted = (repr(error), ran.exists())
+
+        # Assert — the mark separates this listing's count from the machine's own.
+        self.assertEqual(counted, (1, True))
+
+
+
+@contextlib.contextmanager
+def lingering_editor():
+    """An editor that runs until something kills it, and every process the run under test starts."""
+    with tempfile.TemporaryDirectory() as directory:
+        editor = Path(directory) / "Unity"
+        editor.write_text("#!/bin/sh\nexec sleep 60\n")
+        editor.chmod(0o755)
+        started = []
+        real = subprocess.Popen
+
+        def recording(*args, **kwargs):
+            process = real(*args, **kwargs)
+            started.append(process)
+            return process
+
+        with mock.patch.object(subprocess, "Popen", recording):
+            try:
+                yield str(editor), started
+            finally:
+                for process in started:
+                    if process.poll() is None:
+                        process.kill()
+                        process.wait()
+
+
+def failing_count():
+    raise OSError(35, "Resource temporarily unavailable")
+
+
+class EditorReapedWhenAnExceptionEndsTheRunTests(unittest.TestCase):
+    """An editor left running over a tree the harness has put back measures a change that is gone."""
+
+    def test_Given_ANeighbourCountThatFailsWhileTheEditorRuns_When_TheRunEnds_Then_TheEditorIsNotLeftRunning(self):
+        # Arrange
+        with lingering_editor() as (editor, started), mock.patch.object(mutation_check, "unity_busy",
+                                                                        failing_count):
+            # Act
+            try:
+                mutation_check.run_suite(editor, ".", "EditMode", [], Path("/dev/null"), Path("/dev/null"), 30)
+                raised = False
+            except OSError:
+                raised = True
+            left_running = [process.poll() is None for process in started]
+
+        # Assert
+        self.assertEqual((raised, left_running), (True, [False]))
 
 
 if __name__ == "__main__":

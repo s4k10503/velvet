@@ -910,7 +910,8 @@ def remove(base_tree, relative):
 # --------------------------------------------------------------------------------------------------
 
 def unity_busy():
-    result = subprocess.run(["ps", "-Ao", "command="], capture_output=True, text=True)
+    result = subprocess.run(["ps", "-Ao", "command="], capture_output=True, encoding="utf-8",
+                            errors="replace")
     return sum(1 for line in result.stdout.splitlines() if re.match(UNITY_RUNNING, line))
 
 
@@ -1007,13 +1008,18 @@ def run_unity(unity, tree, platform, fixtures, results, log, timeout):
     started = time.time()
     peak = 0
     process = subprocess.Popen(command)
-    while process.poll() is None:
-        if time.time() - started > timeout:
+    try:
+        while process.poll() is None:
+            if time.time() - started > timeout:
+                process.kill()
+                process.wait()
+                break
+            peak = max(peak, max(0, unity_busy() - 1))
+            time.sleep(3)
+    finally:
+        if process.poll() is None:
             process.kill()
             process.wait()
-            break
-        peak = max(peak, max(0, unity_busy() - 1))
-        time.sleep(3)
     return time.time() - started, peak
 
 

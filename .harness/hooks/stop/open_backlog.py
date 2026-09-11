@@ -38,7 +38,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
-from deferrals import DEFERRALS, deferred, disowned, unusable  # noqa: E402
+from deferrals import DEFERRALS_OPERAND, deferred, disowned, unusable  # noqa: E402
 from repository import open_pull_requests, unreadable_report  # noqa: E402
 
 UNREADABLE_POLICY = "refuse"
@@ -167,7 +167,7 @@ what the stall looks like from inside — do the thing instead of announcing it 
 If the user asked something and is waiting on the answer, or the pause is deliberate, say so and
 arm the deferral. It expires after 45 minutes so the reason gets re-examined rather than forgotten:
 
-  echo "backlog <what clears it> $(date +%s) $CLAUDE_CODE_SESSION_ID" >> {DEFERRALS}
+  echo "backlog <what clears it> $(date +%s) $CLAUDE_CODE_SESSION_ID" >> {DEFERRALS_OPERAND}
 
 A single issue is deferred the same way, by its number in place of `backlog`.
 

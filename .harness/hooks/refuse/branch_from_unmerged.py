@@ -20,7 +20,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-from deferrals import deferred, disowned, unusable
+from deferrals import DEFERRALS_OPERAND, deferred, disowned, unusable
 from repository import git_answer
 from shell_commands import (NAME_THE_TREE, UNPLACEABLE_MOVE, UNRESOLVED_CD, command_directory,
                             command_segments, git_invocation, tokens_of, without_redirections)
@@ -259,7 +259,7 @@ def refusal(cwd, name, start_point):
             *from_origin_main(name),
             "",
             f"To stack on unmerged work on purpose, record intent and retry:",
-            f'  echo "{name} <why> $(date +%s) $CLAUDE_CODE_SESSION_ID" >> ~/.velvet-pr-deferrals',
+            f'  echo "{name} <why> $(date +%s) $CLAUDE_CODE_SESSION_ID" >> {DEFERRALS_OPERAND}',
         ]
 
     if main_behind:
@@ -328,7 +328,7 @@ def main():
                 f"Recorded base {head_sha} for `{name}`. "
                 f"After parent merges (assumes origin/main is current — fetch first if unsure):\n"
                 f"git fetch origin main\n"
-                f"git rebase --onto origin/main {head_sha}\n"
+                f"git rebase --no-autostash --onto origin/main {head_sha}\n"
             )
             continue
         text = refusal(target, name, start_point)

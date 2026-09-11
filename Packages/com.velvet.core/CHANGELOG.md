@@ -113,6 +113,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A `V.VirtualList` whose `keySelector` returns null for one item renders that row instead of throwing
+  out of the range update that reached it. A null key is no key, which is the answer `V.List` gives the
+  same selector: the row renders and reconciles by position, which for a virtualized list is its item
+  index, so a range change that keeps it in view patches it in place and its `Hooks.UseState` values and
+  effects survive. The controller looked a row up in a `Dictionary` keyed by string, whose lookup refuses
+  a null key even against an empty dictionary, so the range update threw from inside the item loop — and
+  the buffers it abandoned there were the live ones, since a window whose size has not changed reuses
+  them in place. A selector returning a key holding a NUL is unchanged: that item is still left out of the
+  range under a warning.
+
+- A `V.VirtualList` range update that throws — from the item renderer, or from creating or patching the
+  row it describes, as a `V.Custom<T>` element whose constructor throws does — no longer leaves the list
+  showing rows the controller has stopped naming. The throw still reaches the caller — a renderer is
+  application code and a failure in it is not the framework's to swallow — but the range update that
+  ends releases the rows it had placed and the prior rows it had not, the one whose create or patch threw
+  among them, empties the visible container and leaves the tracked range naming nothing, so the next
+  range update rebuilds from a state it can use. It previously ran to the throw and stopped: rows already
+  rendered for the new range were orphaned with their fibers, the visible container still showed the
+  previous range, and the tracked range still named it, so a further scroll threw from the same item and
+  stranded another set. Measured on a five-row window scrolled by one row, the renderer refusing the row
+  scrolling in: the container still showed the five rows of the window before it, the tracked range
+  still named that window, and the row that window was leaving had its `refCallback` cleanup run by
+  nothing, disposing the list included. The list going blank is the visible change to weigh — a working
+  program does not reach this, since reaching it means something the range update ran threw.
+
 - A `V.VirtualList` row whose renderer keys its own node is reused across a scroll rather than rebuilt.
   The controller tracks a row by the key `keySelector` returns, but indexed the previous range's rows by
   whatever key had ended up on the node — and it wrote that key with `??=`, so a node the renderer had
@@ -183,15 +208,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Debug.LogException` at the two fiber sites and through `StoreLogger.LogError` at the store — and
   the teardown runs to its end.
 
-- A Loader that still holds its round's `CancellationToken` when the round ends reads the cancellation
-  off it, rather than finding the source behind it gone. The round's source used to be disposed at the
-  moment the round ended, which lands before the run that launched the Loaders has handed that token to
-  the matches below the one that ended it, before an `Await` loader a newer navigation superseded has
-  unwound, and before a `Suspend` loader streaming into the route on screen has finished.
-  `CancellationToken.WaitHandle` read from any of those three then raised `ObjectDisposedException`,
-  which a Loader written to catch `OperationCanceledException` does not catch. The source is now not
-  released until the round has ended, the run that launched it has returned, and every `Suspend` loader
-  it started has finished.
+- A Loader or a Blocker still holding the `CancellationToken` the router handed it can go on reading it,
+  rather than finding the source behind it gone. The router used to dispose a loader round's source when
+  the round ended, and a navigation's source when the navigation ended and at `Router.Dispose` — while
+  the Loaders below one that navigated, an `Await` loader a newer navigation superseded, a `Suspend`
+  loader streaming into the route on screen, or a Blocker awaiting the navigation could still be reading
+  it. `CancellationToken.WaitHandle` then raised `ObjectDisposedException`, which code written to catch
+  `OperationCanceledException` does not catch. The router no longer disposes those sources. What it lets
+  go of instead is each one's link to the token it was made from, so a navigation or a loader round that
+  never finishes is no longer kept reachable through the token passed to `NavigateAsync` once it has been
+  cancelled. A navigation started while the router is being disposed — from a cancellation callback the
+  disposal runs — returns `NavigationResult.Cancelled`, as one started on a disposed router now does,
+  where it used to run on and could commit after the disposal. A navigation a cancellation callback
+  starts while another is taking over now supersedes it, where the one taking over used to overwrite it
+  and leave it running, so that both could commit.
 
 - A `V.VirtualList` whose item renderer returns a `V.Component` or a `V.Provider` stacks its visible
   items instead of starting every one of them at the same place. Velvet anchors such an item's fiber on
@@ -789,6 +819,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   shape.
 
 ### Fixed
+
+- A `V.VirtualList` updated to an empty item list releases the rows it was showing. The controller drops
+  its tracked range before it renders an updated list, and the branch for an empty list released rows
+  only while that range named some, so every row of the previous range stayed in the visible container
+  over a spacer now zero high, released by nothing while the list stayed empty — their `refCallback`
+  and `Hooks.UseEffect` cleanups with them. Rendering items again then reused those rows, and that is what a working
+  application notices changing: a list that passes through empty on its way to new items — cleared while
+  a reload is in flight, say — now shows no rows while it is empty, and its rows mount afresh afterwards,
+  their hook state back at its initial values and their mount effects run again, as React unmounts and
+  remounts them. State to keep across the empty render is lifted above the list, into a `Store` or a
+  `Hooks.UseState` in the component that renders it. A list the node holds, cleared in place and later
+  refilled, no longer brings a released row back either: the range update over the emptied list released
+  the rows but left the render buffers naming them, so the one after the refill patched a released
+  `V.TextField` back in with what had been typed into it.
 
 - A slot whose component changes builds the arriving component's element rather than patching the
   departing one's into it. A component's subtree is expanded away before the host leaves are matched,

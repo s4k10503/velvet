@@ -37,7 +37,7 @@ def main():
     try:
         table = subprocess.run(
             ["ps", "ax", "-o", "stat=,rss=,comm="],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True, encoding="utf-8", errors="replace", timeout=10,
         ).stdout
     except (OSError, subprocess.SubprocessError):
         return 0

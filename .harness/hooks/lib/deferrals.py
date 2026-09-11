@@ -21,10 +21,12 @@ rather than behind them.
 """
 
 import os
+import shlex
 import time
 from pathlib import Path
 
 DEFERRALS = Path.home() / ".velvet-pr-deferrals"
+DEFERRALS_OPERAND = shlex.quote(str(DEFERRALS))
 TTL = 2700
 
 

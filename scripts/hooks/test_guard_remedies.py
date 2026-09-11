@@ -13,10 +13,11 @@ change shape, and a case that compares text passes the day the text moves withou
 the new text is runnable. What the reading cannot reach is a command written into prose with neither
 backticks around it nor a line of its own; those are the two shapes the guards here use.
 
-Being let through is half of being runnable, so two cases run the commands instead and read the
-state they were supposed to reach: a command every guard here allows can still leave that state as
-it was. git declining to fetch into a branch a worktree has checked out is one way of producing
-that, and no guard here has anything to say about it.
+Being let through is half of being runnable, so some cases run the commands instead and read the
+state they leave: a command every guard here allows can still leave unchanged what it was meant to
+change, or change it over a file the checkout held. git declining to fetch into a branch a worktree
+has checked out is one way of producing the first, and no guard here has anything to say about
+either.
 
 Which guards get asked comes from .claude/settings.json rather than from the directory listing, so a
 guard registered on a Bash call is asked whether or not anyone remembered this suite, and a file
@@ -62,6 +63,9 @@ CREATED = "tooling/remedy-probe"
 # gh answers nothing: a pull-request read reaches the network, which this suite has no need of, and
 # `stale_main` treats an unread base as no base rather than as main.
 STUB_GH = "#!/bin/sh\nexit 1\n"
+
+STUB_BASE_GH = ("#!/bin/sh\n"
+                "printf '%s' '{\"headRefName\": \"topic\", \"baseRefName\": \"main\"}'\n")
 
 # A remedy line, and a remedy quoted inside a sentence. Both shapes are printed by the guards here.
 COMMAND_LINE = re.compile(r"^[ \t]*((?:git|gh) .+?)[ \t]*$", re.M)
@@ -192,6 +196,28 @@ class RemedyTests(GuardSet, unittest.TestCase):
         """How many commits local main is behind origin/main."""
         return int(git(self.project, "rev-list", "--count", "main..origin/main").stdout.strip())
 
+    def land(self, name, text):
+        (self.project / name).write_text(text, encoding="utf-8")
+        git(self.project, "add", name)
+        commit(self.project, f"land {name}")
+        git(self.project, "push", "-q", "origin", "HEAD:main")
+        return git(self.project, "rev-parse", "HEAD").stdout.strip()
+
+    def run_each(self, printed):
+        for command in printed:
+            subprocess.run(command, shell=True, cwd=str(self.project), capture_output=True,
+                           timeout=120)
+
+    def branch_behind_its_base(self):
+        (self.stub / "gh").write_text(STUB_BASE_GH, encoding="utf-8")
+        git(self.project, "checkout", "-q", "-b", "topic")
+        landed = self.land("notes.md", "before\n")
+        self.land("notes.md", "after\n")
+        git(self.project, "reset", "-q", "--hard", landed)
+
+    def behind_base(self):
+        return int(git(self.project, "rev-list", "--count", "HEAD..origin/main").stdout.strip())
+
     def test_Given_HeadOnUnmergedWork_When_ABranchCreationIsRefused_Then_EveryCommandItPrintsIsAllowed(self):
         # Arrange — a worktree on a branch main does not contain, with local main current, so the
         # refusal carries the first arm alone and the commands under test are that arm's.
@@ -270,7 +296,8 @@ class RemedyTests(GuardSet, unittest.TestCase):
 
     # GREEN_ON_BASE(characterization): the git behaviour the two local-main remedies are split by.
     # It is a fact about git rather than about this repository, so it belongs in a case that fails
-    # when git stops holding it, and `holder_of` names this one instead of restating it.
+    # when git stops holding it, and `holder_of` names this one instead of restating it. The
+    # fast-forward carries the flags the report prints, which a clean checkout does not refuse.
     def test_Given_AWorktreeHoldingMain_When_BothSpellingsAreRun_Then_OnlyTheFastForwardAnswers(self):
         # Arrange — main behind and checked out, which is where the refspec spelling stops working.
         git(self.project, "checkout", "-q", "-b", "parked")
@@ -281,12 +308,80 @@ class RemedyTests(GuardSet, unittest.TestCase):
         # Act
         refspec = subprocess.run(["git", "-C", str(self.project), "fetch", "origin", "main:main"],
                                  capture_output=True, text=True, timeout=120)
-        forward = subprocess.run(["git", "-C", str(held), "merge", "--ff-only", "origin/main"],
+        forward = subprocess.run(["git", "-C", str(held), "merge", "--ff-only",
+                                  "--no-overwrite-ignore", "--no-autostash", "origin/main"],
                                  capture_output=True, text=True, timeout=120)
 
         # Assert
         self.assertEqual((refspec.returncode == 0, forward.returncode == 0, self.distance()),
                          (False, True, 0))
+
+    def test_Given_AHeldMainIgnoringAPathOriginAdds_When_TheReportsCommandsAreRun_Then_TheFileThereIsKept(self):
+        # Arrange
+        git(self.project, "checkout", "-q", "-b", "parked")
+        git(self.project, "branch", "-f", "main", self.second)
+        self.land("local.json", "origin's\n")
+        held = self.root / "held"
+        git(self.project, "worktree", "add", "-q", str(held), "main")
+        exclude = self.project / ".git" / "info" / "exclude"
+        exclude.parent.mkdir(exist_ok=True)
+        exclude.write_text("local.json\n", encoding="utf-8")
+        (held / "local.json").write_text("mine\n", encoding="utf-8")
+        printed = commands(self.report_of(self.project).stdout)
+
+        # Act
+        self.run_each(printed)
+
+        # Assert — gated on a printed command naming the holder: without one, nothing writes into
+        # that checkout and the file is kept whatever the report printed.
+        self.assertEqual((any(str(held) in command for command in printed),
+                          (held / "local.json").read_text(encoding="utf-8")), (True, "mine\n"))
+
+    def test_Given_AHeldMainWithAnEditUnderAutostash_When_TheReportsCommandsAreRun_Then_TheEditIsKept(self):
+        # Arrange
+        git(self.project, "checkout", "-q", "-b", "parked")
+        landed = self.land("notes.md", "before\n")
+        self.land("notes.md", "after\n")
+        git(self.project, "branch", "-f", "main", landed)
+        held = self.root / "held"
+        git(self.project, "worktree", "add", "-q", str(held), "main")
+        git(self.project, "config", "merge.autostash", "true")
+        (held / "notes.md").write_text("mine\n", encoding="utf-8")
+        printed = commands(self.report_of(self.project).stdout)
+
+        # Act
+        self.run_each(printed)
+
+        # Assert
+        self.assertEqual((any(str(held) in command for command in printed),
+                          (held / "notes.md").read_text(encoding="utf-8")), (True, "mine\n"))
+
+    def test_Given_ABranchWithAnEditUnderAutostash_When_TheReportsCommandsAreRun_Then_TheEditIsKept(self):
+        # Arrange
+        self.branch_behind_its_base()
+        git(self.project, "config", "rebase.autoStash", "true")
+        (self.project / "notes.md").write_text("mine\n", encoding="utf-8")
+        printed = commands(self.report_of(self.project).stdout)
+
+        # Act
+        self.run_each(printed)
+
+        # Assert — gated on a printed rebase: without one, nothing moves this checkout and the edit
+        # is kept whatever the report printed.
+        self.assertEqual((any(command.startswith("git rebase") for command in printed),
+                          (self.project / "notes.md").read_text(encoding="utf-8")), (True, "mine\n"))
+
+    # GREEN_ON_BASE(characterization): the printed rebase brings a clean branch onto its base.
+    def test_Given_ABranchBehindItsBase_When_TheReportsCommandsAreRun_Then_ItContainsItsBase(self):
+        # Arrange
+        self.branch_behind_its_base()
+        before = self.behind_base()
+
+        # Act
+        self.run_each(commands(self.report_of(self.project).stdout))
+
+        # Assert
+        self.assertEqual((before, self.behind_base()), (1, 0))
 
     def test_Given_ADetachedHeadBehindOrigin_When_TheReportIsTaken_Then_EveryCommandItPrintsIsAllowed(self):
         # Arrange — local main current so the local-main half stays silent and the commands read
