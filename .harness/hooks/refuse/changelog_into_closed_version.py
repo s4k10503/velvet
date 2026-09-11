@@ -229,7 +229,7 @@ def main():
     if not in_scope(path, event.get("cwd")):
         return 0
     try:
-        text = Path(path).read_text()
+        text = Path(path).read_text(**repository.DECODING)
     except OSError:
         return 0
 

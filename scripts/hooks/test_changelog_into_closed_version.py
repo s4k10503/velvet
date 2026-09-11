@@ -547,5 +547,40 @@ class AgainstTheTag(unittest.TestCase):
         self.assertEqual((code, "v2.0.0-main" in said), (2, True))
 
 
+# RELEASED with a byte UTF-8 does not map, on a line neither case below edits.
+UNDECODABLE = RELEASED.encode("utf-8").replace(b"edit around.", b"edit around \xff.")
+
+
+class UndecodableChangelogTests(unittest.TestCase):
+    """A CHANGELOG holding a byte UTF-8 does not map. A strict decode of it raised, and the hook
+    exited 1, which lets the edit through unread."""
+
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp(prefix="closed-version-bytes-"))
+        self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
+        subprocess.run(["git", "-C", str(self.root), "init", "--quiet"],
+                       check=True, capture_output=True)
+        self.changelog = self.root / CHANGELOG_REL
+        self.changelog.parent.mkdir(parents=True)
+        self.changelog.write_bytes(UNDECODABLE)
+
+    def test_Given_AChangelogHoldingAByteThatIsNotUTF8_When_AnEntryIsFiledIntoAReleasedSection_Then_ItIsRefused(self):
+        # Arrange / Act
+        code, said = judged(self.root, self.changelog, "- A thing that shipped.\n",
+                            "- A thing that shipped.\n- A thing that did not.\n")
+
+        # Assert
+        self.assertEqual((code, "2.0.0" in said), (2, True))
+
+    def test_Given_AChangelogHoldingAByteThatIsNotUTF8_When_AnEntryIsFiledUnderUnreleased_Then_ItIsLetThrough(self):
+        # Arrange / Act — the other side of the same file, so a reading that survives the byte by
+        # refusing whatever it is asked is not what makes the case above pass.
+        code, said = judged(self.root, self.changelog, "- Something not yet shipped.\n",
+                            "- Something not yet shipped.\n- And another.\n")
+
+        # Assert
+        self.assertEqual((code, said), (0, ""))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

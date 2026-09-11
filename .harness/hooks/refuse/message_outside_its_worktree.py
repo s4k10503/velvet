@@ -25,13 +25,13 @@ Exit 2 refuses; exit 1 lets the tool through, so nothing here may raise.
 
 import json
 import os
-import subprocess
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 
 from pr_body import valued as gh_valued  # noqa: E402
+from repository import toplevel  # noqa: E402
 from shell_commands import (  # noqa: E402
     NAME_THE_TREE, UNPLACEABLE_MOVE, UNRESOLVED_CD, command_directory, git_invocations,
     program_invocations, unexpanded)
@@ -108,15 +108,8 @@ def valued(operands, flags):
 
 def worktree_of(directory):
     """The top of the worktree `directory` sits in, or None when git will not say."""
-    try:
-        done = subprocess.run(["git", "-C", str(directory), "rev-parse", "--show-toplevel"],
-                              capture_output=True, text=True, timeout=10)
-    except (OSError, subprocess.SubprocessError):
-        return None
-    if done.returncode != 0:
-        return None
-    top = done.stdout.strip()
-    return Path(top).resolve() if top else None
+    top = toplevel(directory, timeout=10)
+    return top.resolve() if top else None
 
 
 def inside(path, root, cwd):

@@ -77,6 +77,44 @@ def git_bytes(args, cwd, timeout=15):
     return result.stdout if result.returncode == 0 else None
 
 
+def status_entries(cwd, marker, options=(), timeout=15):
+    """The files `git status --porcelain` marked with `marker`, with the marker dropped, or None
+    when git did not answer.
+
+    Read as NUL-delimited records rather than as lines, so that no character a name may hold can
+    divide one. scripts/hooks/test_untracked_scratch.py's
+    `Given_ANameGitLeavesRaw_When_TheReportIsTaken_Then_TheBoundReachesTheFile` is what fails when
+    the split is a line break instead, and
+    `Given_ARenameWhoseOldNameHoldsAByteOutsideTheEncoding_When_TheReportIsTaken_Then_NoPhantomIsNamed`
+    when the decode below stops escaping.
+
+    A rename's or a copy's origin path follows its record as a field of its own, carrying no status
+    pair, so it is stepped over rather than read. Both status columns are asked, since porcelain
+    pairs a record with an origin from either, and a field left unread there is read as a record of
+    its own — so an origin whose path opens with the marker becomes an entry the listing never
+    marked.
+    `Given_ARenameWhoseOldNameOpensWithTheMarker_When_TheReportIsTaken_Then_NoPhantomIsNamed`,
+    `Given_AWorktreeRenameWhoseOldNameOpensWithTheMarker_When_TheListingIsRead_Then_ItHoldsTheUntrackedFileAlone`
+    and
+    `Given_AWorktreeCopyWhoseSourceNameOpensWithTheMarker_When_TheListingIsRead_Then_ItHoldsTheUntrackedFileAlone`
+    are what fail when any of that stops.
+    """
+    status = git_bytes(["status", "--porcelain", "-z", *options], cwd=cwd, timeout=timeout)
+    if status is None:
+        return None
+    fields = status.decode(**DECODING).split("\0")
+    found, index = [], 0
+    while index < len(fields):
+        record, index = fields[index], index + 1
+        if len(record) < 3:
+            continue
+        if record[0] in "RC" or record[1] in "RC":
+            index += 1
+        if record.startswith(marker):
+            found.append(record[3:])
+    return found
+
+
 Worktree = collections.namedtuple("Worktree", "path branch primary")
 
 
@@ -255,13 +293,14 @@ not that, and naming it there is how a deferral comes to record something nothin
   echo "{key} <what the work is waiting on> $(date +%s) $CLAUDE_CODE_SESSION_ID" >> {DEFERRALS}"""
 
 
-def toplevel(cwd):
+def toplevel(cwd, timeout=15):
     """The root of the repository holding `cwd`, or None where `cwd` sits in none.
 
     A trailing space, tab or newline can belong to the root's own name, so the reading's terminator
     comes off rather than whatever whitespace it ends in.
     """
-    root = (git(["rev-parse", "--show-toplevel"], cwd=cwd) or "").removesuffix("\n")
+    listed = git(["rev-parse", "--show-toplevel"], cwd=cwd, timeout=timeout)
+    root = (listed or "").removesuffix("\n")
     return Path(root) if root else None
 
 
