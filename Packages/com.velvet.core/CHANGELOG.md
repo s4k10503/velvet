@@ -113,6 +113,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A `V.VirtualList` whose `keySelector` returns null for one item renders that row instead of throwing
+  out of the scroll that reached it. A null key is no key, which is the answer `V.List` gives the same
+  selector: the row renders and reconciles by position, which for a virtualized list is its item index,
+  so a range change that keeps it in view patches it in place and its `Hooks.UseState` values and effects
+  survive. The controller looked a row up in a `Dictionary` keyed by string, whose lookup refuses a null
+  key even against an empty dictionary, so the range update threw from inside the item loop — and the
+  buffers it abandoned there were the live ones, since a window whose size has not changed reuses them in
+  place. Measured on a five-row window: after the throw the container still showed five rows while the
+  controller's element buffer named two of them, and disposing the controller then ran two of the five
+  rows' `refCallback` cleanups. The tracked range still named the old window, so a further scroll threw
+  from the same item and stranded another set. A selector returning a key holding a NUL is unchanged:
+  that item is still left out of the range under a warning.
+
+- A `V.VirtualList` item renderer that throws no longer leaves the list showing rows the controller has
+  stopped naming. The throw still reaches the caller — a renderer is application code and a failure in it
+  is not the framework's to swallow — but the range update that ends releases the rows it had placed and
+  the prior rows it had not reached, empties the visible container and leaves the tracked range naming
+  nothing, so the next range update rebuilds from a state it can use. It previously ran to the throw and
+  stopped: rows already rendered for the new range were orphaned with their fibers, the visible container
+  still showed the previous range, and the tracked range still named it, so a further scroll threw from
+  the same item and stranded another set. Measured on a five-row window scrolled by one row, the renderer
+  refusing the row scrolling in: the container still showed the five rows of the window before it, the
+  tracked range still named that window, and disposing the list afterwards ran two of the five rows'
+  `refCallback` cleanups. The list going blank is the visible change to weigh — a working program does
+  not reach this, since reaching it means the renderer threw.
+
 - A `V.VirtualList` row whose renderer keys its own node is reused across a scroll rather than rebuilt.
   The controller tracks a row by the key `keySelector` returns, but indexed the previous range's rows by
   whatever key had ended up on the node — and it wrote that key with `??=`, so a node the renderer had
