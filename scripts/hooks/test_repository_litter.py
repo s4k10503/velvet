@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Unit tests for .claude/hooks/report/repository_litter.py.
 
-The report prints a loop that deletes each local branch a merged pull request names, for a reader to
-run as printed. One case runs it in a fixture where one local branch's name matches a merged head
-only when read as a pattern.
+The report prints a loop, for a reader to run as printed, that deletes a local branch other than main
+when a merged pull request names it. One case runs it in a fixture where one local branch's name
+matches a merged head only when read as a pattern.
 
 Run: python3 scripts/hooks/test_repository_litter.py
 """
