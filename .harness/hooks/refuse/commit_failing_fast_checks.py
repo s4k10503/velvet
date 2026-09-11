@@ -116,9 +116,9 @@ def repo_root(cwd, selectors):
 
 
 def commit_invocations(command):
-    """(`GitContext`, onto the index, pathspecs or `FROM_FILE`) per `git commit` in the command."""
+    """(directory, onto the index, pathspecs or `FROM_FILE`) per `git commit` in the command."""
     found = []
-    for context, _, operands in git_invocations(command, {"commit"}, git_directory=True):
+    for directory, _, operands in git_invocations(command, {"commit"}):
         onto_index = False
         from_file = False
         pathspecs = []
@@ -157,7 +157,7 @@ def commit_invocations(command):
                 continue
             pathspecs.append(token)
             index += 1
-        found.append((context, onto_index, FROM_FILE if from_file else pathspecs))
+        found.append((directory, onto_index, FROM_FILE if from_file else pathspecs))
     return found
 
 
@@ -571,7 +571,9 @@ def main():
                          "tree holds that\ncontent is what the move decides.\n\n"
                          f"{NAME_THE_TREE}\n")
         return 2
-    for context, onto_index, pathspecs in commits:
+    contexts = [context for context, _, _ in
+                git_invocations(command, {"commit"}, git_directory=True)]
+    for (_, onto_index, pathspecs), context in zip(commits, contexts):
         selectors = tree_selectors(context)
         # The two operand kinds are refused apart, because the remedy for one does not reach the
         # other: naming the paths leaves a `-C` unresolved, and the reader told to do it tries

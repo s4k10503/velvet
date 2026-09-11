@@ -26,6 +26,10 @@ commit made in a worktree from the primary checkout was refused over a message i
 worktree, and a commit aimed at a second worktree passed with a message from the one it was run in.
 `gh` takes no option naming a tree, so for it the worktree is the one the command runs in.
 
+Not replayed: a selector the shell rewrites before git sees it — a glob, `~+`, `~-` — which this
+stands down over and `commit_failing_fast_checks.py` refuses; and one a command sets with `export`
+or `env`, which neither guard reads.
+
 `pr_body_of_another_branch.py` asks whether the body says anything; this asks where it lives. Kept
 apart because the remedies differ and a guard that refuses two things names one of them first.
 
@@ -62,9 +66,8 @@ UNEXPANDED_POLICY = "refuse"
 UNEXPANDED_PROBE = 'git commit -F "$MSG"'
 
 # A git that will not name a worktree leaves this with no question to ask rather than an unanswered
-# one, and it costs nothing: `git commit` and `gh pr create` both need a repository themselves, so a
-# command this stands down over fails on its own a moment later. The unexpanded case above is the
-# opposite, and refuses, because there the command is fine and only the reading is blind.
+# one. The unexpanded case above is the opposite, and refuses, because there the command is fine and
+# only the reading is blind.
 UNREADABLE_POLICY = "allow"
 UNREADABLE_PROBE = {"command": "git commit -F /tmp/velvet-message-probe.txt"}
 
@@ -138,7 +141,7 @@ def placed(here, selectors):
 
 
 def inside(path, root, base):
-    """Whether `path` resolves under `root`. A relative path is read from `base`."""
+    """Whether `path` resolves under `root`."""
     try:
         resolved = (Path(base) / path).resolve() if not os.path.isabs(path) else Path(path).resolve()
     except OSError:
