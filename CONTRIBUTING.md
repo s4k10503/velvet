@@ -179,8 +179,9 @@ assembly the editor never rebuilt, a second editor sharing the machine, and a so
 comment-and-string mask swallows code, which generates no mutant there and reports nothing.
 
 **What asks whether the campaign was run is a receipt, not attentiveness.** A finished run leaves one
-under the campaign's own log directory, keyed on the merge base, the platform and the content of
-every file it mutated, and `gh pr create` is refused where no receipt covers the checkout it is run in. A
+under the campaign's own log directory, keyed on the merge base (against origin's copy of the base,
+where origin has one), the platform and the content of every file it mutated, and `gh pr create` is
+refused where no receipt covers the checkout it is run in. A
 branch that changes no mutable package source is owed nothing and is not asked; a change no operator
 reaches records that verdict and is accepted, since such a branch cannot earn a passing run at all. The
 receipt is keyed on what the campaign measured rather than on the head commit, because the campaign

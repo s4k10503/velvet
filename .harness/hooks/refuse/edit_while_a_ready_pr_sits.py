@@ -21,10 +21,9 @@ construction, and the refusal it never met is the one being routed around. So a 
 writes a file this repository tracks is held too — `lib/tracked_writes.py` owns which shapes are read
 and how narrow that is, and the refusal below says so rather than implying it saw the rest.
 
-The way out stays open: none of the commands these refusals name carries a write operand onto a
-tracked file. The `settle.py` calls and the process reading beside them carry none at all, and the
-deferral line appends to `deferrals.DEFERRALS`, whose placement
-`scripts/hooks/test_tracked_writes.py` pins.
+The way out stays open: none of the commands these refusals name writes a tracked file. The
+`settle.py` calls and the process reading beside them carry no write operand at all, and the
+deferral line appends to `deferrals.DEFERRALS`, which is under HOME.
 """
 
 import json
@@ -36,7 +35,7 @@ HOOK_DIRECTORY = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(HOOK_DIRECTORY / "lib"))
 sys.path.insert(0, str(HOOK_DIRECTORY.parent.parent / "scripts" / "pr"))
 import tracked_writes
-from deferrals import DEFERRALS, deferred, disowned, unusable
+from deferrals import DEFERRALS_OPERAND, deferred, disowned, unusable
 from watcher_state import READY_STATE, STALE_AFTER, alive, unreadable_beat
 
 # A shell operand this cannot place is not a file it can say is tracked, so it drops out of the
@@ -158,7 +157,7 @@ def main():
                 "  python3 scripts/pr/settle.py watch\n\n"
                 "If the pause is deliberate, arm the deferral for what the WORK is waiting on; the "
                 "reason expires, so it gets re-read rather than forgotten:\n\n"
-                f'  echo "{WATCHER_KEY} <what the work is waiting on> {int(now)} $CLAUDE_CODE_SESSION_ID" >> {DEFERRALS}\n'
+                f'  echo "{WATCHER_KEY} <what the work is waiting on> {int(now)} $CLAUDE_CODE_SESSION_ID" >> {DEFERRALS_OPERAND}\n'
                 + coverage(written))
             return 2
         sys.stderr.write(
@@ -171,7 +170,7 @@ def main():
             "lock is named there with the command to end it. If the pause is deliberate, arm the "
             "deferral for what the WORK is waiting on rather than for the watcher being off; the "
             "reason expires, so it gets re-read rather than forgotten:\n\n"
-            f'  echo "{WATCHER_KEY} <what the work is waiting on> {int(now)} $CLAUDE_CODE_SESSION_ID" >> {DEFERRALS}\n'
+            f'  echo "{WATCHER_KEY} <what the work is waiting on> {int(now)} $CLAUDE_CODE_SESSION_ID" >> {DEFERRALS_OPERAND}\n'
             + coverage(written))
         return 2
 
@@ -189,12 +188,12 @@ def main():
         "  python3 scripts/pr/settle.py merge <pr>\n\n"
         "That reports what still blocks it, if anything does. If one is held on purpose, say what "
         f"clears it — the reason expires, so it gets re-read rather than forgotten:\n\n"
-        f'  echo "<pr> <what clears it> {int(now)} $CLAUDE_CODE_SESSION_ID" >> {DEFERRALS}\n\n'
+        f'  echo "<pr> <what clears it> {int(now)} $CLAUDE_CODE_SESSION_ID" >> {DEFERRALS_OPERAND}\n\n'
         "A deferral claims somebody read the hold and judged it deliberate, so a cause invented for a "
         "pull request you have never opened is the one shape of it that is false. Not owning it is "
         "itself a reason, and it is one you can state truthfully — with the telling done rather than "
         "intended, since that is the only part that moves the pull request:\n\n"
-        f'  echo "<pr> held by <owner>, who has been asked to settle it {int(now)} $CLAUDE_CODE_SESSION_ID" >> {DEFERRALS}\n'
+        f'  echo "<pr> held by <owner>, who has been asked to settle it {int(now)} $CLAUDE_CODE_SESSION_ID" >> {DEFERRALS_OPERAND}\n'
         + coverage(written))
     return 2
 

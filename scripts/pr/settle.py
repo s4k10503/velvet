@@ -280,14 +280,11 @@ def check_results(runs, statuses):
 
 
 def worktree_branches(project):
-    """Each branch a worktree has checked out, mapped to that worktree; a held branch cannot be
-    deleted."""
-    held, path = {}, None
-    for record in gh_git(project, "worktree", "list", "--porcelain", "-z").split("\0"):
-        if record.startswith("worktree "):
-            path = record[len("worktree "):]
-        elif record.startswith("branch "):
-            held[record[len("branch "):].removeprefix("refs/heads/")] = path
+    """Branch names currently checked out in a worktree, which cannot be deleted while they are."""
+    held = set()
+    for line in gh_git(project, "worktree", "list", "--porcelain").splitlines():
+        if line.startswith("branch "):
+            held.add(line.split(" ", 1)[1].strip().removeprefix("refs/heads/"))
     return held
 
 
@@ -707,8 +704,7 @@ def merge(project, number, base, dry_run):
     # `gh pr merge` printed its own confirmation and the API call prints nothing, so without this a
     # merge and a dry run that decided nothing look identical from the terminal.
     print(f"PR#{number} merged: {blocking.branch} squashed onto {blocking.base}")
-    for failure in (delete_merged_branch(project, blocking.branch)
-                    + advance_local_base(project, blocking.base)):
+    for failure in delete_merged_branch(project, blocking.branch):
         print(f"PR#{number} merged, but {failure}", file=sys.stderr)
     return 0
 
@@ -755,35 +751,6 @@ def delete_remote_ref(project, branch):
     if removed.returncode == 0 or reference_already_gone(removed.stderr):
         return ""
     return removed.stderr.strip()
-
-
-def advance_local_base(project, base):
-    """Fast-forwards the local `base` to origin's, and returns what stopped it.
-
-    The merge leaves the local ref behind the remote's, and what reads the local one reads a stale
-    base: `mutation_check.py --receipt`, which `gh pr create` is gated on, diffs against the local
-    `main` by default. Two spellings, for the reason `stale_main.py`'s `holder_of` gives; failures
-    come back for the one `delete_merged_branch` gives. A base with no local branch is not given one.
-    """
-    present = run_quietly(["git", "-C", str(project), "rev-parse", "--verify", "--quiet",
-                           f"refs/heads/{base}"], GIT_TIMEOUT)
-    if present.returncode != 0:
-        return []
-    try:
-        holder = worktree_branches(project).get(base)
-    except RuntimeError as failure:
-        return [f"the local {base} was not fast-forwarded: {failure}"]
-    if holder is None:
-        steps = [["git", "-C", str(project), "fetch", "--quiet", "origin", f"{base}:{base}"]]
-    else:
-        steps = [["git", "-C", str(project), "fetch", "--quiet", "origin", base],
-                 ["git", "-C", holder, "merge", "--ff-only", "--quiet", f"origin/{base}"]]
-    for step in steps:
-        done = run_quietly(step, GIT_TIMEOUT)
-        if done.returncode != 0:
-            where = f" in {holder}" if holder else ""
-            return [f"the local {base} was not fast-forwarded{where}: {done.stderr.strip()}"]
-    return []
 
 
 def pull_request_text(project, number):

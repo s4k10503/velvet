@@ -3,9 +3,8 @@
 
 Verification here reads the working copy. A checkout ten commits behind origin/main answered a guard
 question with the file absent — the guard had merged — and the near-miss was caught only because the
-same tree disagreed with a second fact already known to be true. Pull requests merge through the API
-and origin/main advances. `scripts/pr/settle.py merge` then fast-forwards the local base, or says
-why it could not; after any other merge, nothing here does.
+same tree disagreed with a second fact already known to be true. Pull requests merge through the API,
+origin/main advances, and nothing pulls afterwards.
 
 `lib/merge_target.py` owns where a branch's base comes from.
 

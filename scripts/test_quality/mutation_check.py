@@ -925,13 +925,30 @@ def assembly_of(path):
     return None
 
 
+def origin_copy(project, base):
+    """As origin's copy of a branch moves on, its merge base with a branch cut from it stays at the
+    fork point. The local branch can sit behind the fork point until somebody brings it current, and
+    keyed on it, a receipt stopped covering an unchanged tree once they did, while one written
+    against `origin/main` was not found until then. `LaggingLocalBaseTests` poses both.
+
+    Only a name that is a branch here as well is read at origin's, because origin carries a `HEAD`.
+    """
+    remote = "refs/remotes/origin/" + base
+    both = subprocess.run(
+        ["git", "-C", str(project), "show-ref", "--verify", "--quiet", "refs/heads/" + base, remote],
+        capture_output=True, text=True,
+    )
+    return remote if both.returncode == 0 else base
+
+
 def merge_base_of(project, base):
+    against = origin_copy(project, base)
     found = subprocess.run(
-        ["git", "-C", str(project), "merge-base", base, "HEAD"],
+        ["git", "-C", str(project), "merge-base", against, "HEAD"],
         capture_output=True, text=True,
     )
     if found.returncode != 0:
-        raise SystemExit("cannot resolve a merge base with {}: {}".format(base, found.stderr.strip()))
+        raise SystemExit("cannot resolve a merge base with {}: {}".format(against, found.stderr.strip()))
     return found.stdout.strip()
 
 
@@ -1484,7 +1501,9 @@ def answered(mutants, deferred, declared):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--project", default=".", help="Unity project root (default: cwd)")
-    parser.add_argument("--base", default="main", help="branch to diff against (default: main)")
+    parser.add_argument("--base", default="main",
+                        help="branch to diff against, read at origin's copy where there is one "
+                             "(default: main)")
     parser.add_argument("--files", nargs="*", help="mutate these files whole instead of a diff")
     parser.add_argument("--platform", default="EditMode", choices=["EditMode", "PlayMode"])
     parser.add_argument("--assemblies", help="comma-separated test assemblies; default is every one")

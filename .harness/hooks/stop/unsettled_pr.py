@@ -38,7 +38,7 @@ HOOK_DIRECTORY = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(HOOK_DIRECTORY / "lib"))
 sys.path.insert(0, str(HOOK_DIRECTORY.parent.parent / "scripts" / "pr"))
 
-from deferrals import DEFERRALS, deferred, disowned, unusable  # noqa: E402
+from deferrals import DEFERRALS_OPERAND, deferred, disowned, unusable  # noqa: E402
 from repository import SELF_REPORT, open_pull_requests, unreadable_report  # noqa: E402
 from watcher_state import HEARTBEAT, alive, unreadable_beat  # noqa: E402
 
@@ -262,7 +262,7 @@ def main():
 Holding one on purpose is allowed and expires after 45 minutes, so the reason gets re-examined
 rather than forgotten:
 
-  echo "<pr> <what clears it> $(date +%s) $CLAUDE_CODE_SESSION_ID" >> {DEFERRALS}
+  echo "<pr> <what clears it> $(date +%s) $CLAUDE_CODE_SESSION_ID" >> {DEFERRALS_OPERAND}
 
 Otherwise: wait for it with a Monitor that emits on both pass and fail, or keep working on
 something that is itself on the critical path. Work that is off the critical path satisfies
