@@ -37,8 +37,12 @@ GLOBAL_VALUE_FLAGS = {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--
 # hand it back to git may.
 GIT_DIRECTORY_FLAG = "--git-dir"
 GIT_DIRECTORY_VARIABLE = "GIT_DIR"
+WORK_TREE_FLAG = "--work-tree"
+WORK_TREE_VARIABLE = "GIT_WORK_TREE"
+INDEX_FILE_VARIABLE = "GIT_INDEX_FILE"
 
-GitContext = collections.namedtuple("GitContext", "working_directory git_directory")
+GitContext = collections.namedtuple("GitContext",
+                                    "working_directory git_directory work_tree index_file")
 
 # `git commit` options that swallow the token after them. Which flags a guard cares about stays its
 # own, per the note above; this is the one reading they share, and two guards taking it two ways
@@ -291,17 +295,23 @@ def git_invocation(tokens, git_directory=False):
     """(directory, subcommand, operands) when the segment runs git, else None.
 
     The directory is what the `-C` operands compose to. With `git_directory`, the first value is a
-    `GitContext` that keeps it alongside either spelling of the git directory. A caller needs both
-    to replay the repository selectors rather than replace one with the other.
+    `GitContext` that keeps it alongside either spelling of the git directory and of the working
+    tree, so that a caller can replay the repository selectors rather than replace one with another.
     """
     index = 0
     named = None
+    tree = None
+    index_file = None
     while index < len(tokens) and (
         ENV_ASSIGNMENT.match(tokens[index]) or tokens[index] in LEADING_WORDS
     ):
         variable, _, value = tokens[index].partition("=")
         if git_directory and variable == GIT_DIRECTORY_VARIABLE:
             named = value
+        if git_directory and variable == WORK_TREE_VARIABLE:
+            tree = value
+        if git_directory and variable == INDEX_FILE_VARIABLE:
+            index_file = value
         index += 1
     if index >= len(tokens) or os.path.basename(tokens[index]) != "git":
         return None
@@ -321,12 +331,14 @@ def git_invocation(tokens, git_directory=False):
                 directory = composed_directory(directory, value)
             elif git_directory and flag == GIT_DIRECTORY_FLAG:
                 named = value
+            elif git_directory and flag == WORK_TREE_FLAG:
+                tree = value
             continue
         index += 1
 
     if index >= len(tokens):
         return None
-    context = GitContext(directory, named) if git_directory else directory
+    context = GitContext(directory, named, tree, index_file) if git_directory else directory
     return context, tokens[index], tokens[index + 1:]
 
 

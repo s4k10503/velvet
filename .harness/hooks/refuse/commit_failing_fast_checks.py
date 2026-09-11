@@ -5,15 +5,32 @@ Every check this repository owns runs either at CI, twenty minutes away, or neve
 at what is about to be committed until integration. These checks finish in well under a second and
 would have caught defects that instead reached a commit or CI.
 
-What is checked is what the commit records, not what the working tree happens to hold. Those are
-different files: a broken blob whose working copy was fixed afterwards passed every check, and a
-file staged and then deleted was refused with a `FileNotFoundError` for a commit git would accept.
-`git commit -a` and `git commit <pathspec>` record the working tree, so for those it is read too.
+What is checked is what the commit records, not what the working tree happens to hold, outside the
+limits below. Those are different files: a broken blob whose working copy was fixed afterwards
+passed every check, and a file staged and then deleted was refused with a `FileNotFoundError` for
+a commit git would accept. `git commit -a` and `git commit <pathspec>` record the working tree,
+so for those it is read too.
+
+Not replayed from the command: the global pathspec options `--glob-pathspecs`,
+`--noglob-pathspecs`, `--icase-pathspecs` and `--literal-pathspecs`, a `GIT_*_PATHSPECS`
+variable the command sets itself, since the git this runs takes those variables from this hook's
+environment, and configuration the command sets itself with `-c`, `--config-env` or a
+`GIT_CONFIG_*` assignment. Under any of them, the paths or bytes checked can differ from those
+the commit records: `git -c core.sparseCheckout=false commit -i` records a file outside the
+sparse cone this did not check, and `git -c core.autocrlf=false commit -a` a carriage return
+this read normalised away. A `GIT_CONFIG` in this hook's environment stops `git config` reading
+the probe `reads_literally` asks, so a literal pathspec is read as magic.
+
+Refused though git records the commit: one run from inside an unpopulated submodule's
+directory, and one naming a path beyond a symbolic link, where this reading's own `git add` or
+`update-index` dies and `git commit` goes on.
 """
 
 import collections
 import json
 import os
+import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -30,7 +47,12 @@ HOOK_TOOLS = {"Bash"}
 
 NEUTER_CUTS = "scripts/test_quality/neuter_cuts.json"
 
-COMMIT_ALL_FLAGS = {"-a", "--all"}
+ALL = "--all"
+INCLUDE = "--include"
+SHORTEST_INCLUDE = "--inc"
+PATHSPEC_FROM_FILE = "--pathspec-from-file"
+SHORTEST_PATHSPEC_FROM_FILE = "--pathspec-fr"
+FROM_FILE = object()
 
 
 # A pathspec the shell has not expanded names no file, so every check runs over nothing and the
@@ -43,14 +65,14 @@ UNREADABLE_POLICY = "refuse"
 UNREADABLE_PROBE = {"command": "git commit -m probe"}
 
 
-# An empty listing says this commit records nothing a check could fail, and an empty index says
-# nothing in it is a submodule, so a reading that did not answer must not resolve to either.
+# An empty listing says this commit records nothing a check could fail, so a reading that did not
+# answer must not resolve to one.
 Unreadable = collections.namedtuple("Unreadable", "subject remedy")
 
 GitRead = collections.namedtuple("GitRead", "stdout said code asked")
 
 
-def git(cwd, *args):
+def git(cwd, *args, index=None, stdin=None):
     """git's stdout as the bytes it wrote, alongside what was asked and how it ended.
 
     Same reason `lib/repository.py` answers rather than raising: a hook that raises exits 1, and 1
@@ -58,7 +80,9 @@ def git(cwd, *args):
     """
     asked = displayed("git " + " ".join(args))
     try:
-        done = subprocess.run(["git", "-C", cwd, *args], capture_output=True, timeout=30)
+        done = subprocess.run(["git", "-C", cwd, *args], input=stdin, capture_output=True,
+                              timeout=30,
+                              env=None if index is None else dict(os.environ, GIT_INDEX_FILE=index))
     except (OSError, subprocess.SubprocessError) as failure:
         return GitRead(b"", str(failure), None, asked)
     return GitRead(done.stdout, done.stderr.decode(**repository.DECODING).strip(),
@@ -80,23 +104,23 @@ def unread(answer):
                       "Correct what git named and retry.")
 
 
-def repo_root(cwd):
+def repo_root(cwd, selectors):
     """The tree the checks run in, or an `Unreadable` when the reading did not answer.
 
-    Falling back to `cwd` was rejected: it drops this reading's account of what went wrong and
-    sends every reading below into a directory nothing has established is a tree.
+    Falling back to `cwd` was rejected: it drops this reading's account of what went wrong.
     """
-    answer = git(cwd, "rev-parse", "--show-toplevel")
+    answer = git(cwd, *selectors, "rev-parse", "--show-toplevel")
     # Same terminator-only reading as `repository.toplevel`, and for the reason given there.
     root = answer.stdout.decode(**repository.DECODING).removesuffix("\n")
     return root if answer.code == 0 and root else unread(answer)
 
 
 def commit_invocations(command):
-    """(directory, commits all, pathspecs) for each `git commit` in the command."""
+    """(directory, onto the index, pathspecs or `FROM_FILE`) per `git commit` in the command."""
     found = []
     for directory, _, operands in git_invocations(command, {"commit"}):
-        commits_all = False
+        onto_index = False
+        from_file = False
         pathspecs = []
         index = 0
         after_separator = False
@@ -108,8 +132,11 @@ def commit_invocations(command):
                 continue
             if not after_separator and token.startswith("--"):
                 flag = token.partition("=")[0]
-                if flag in COMMIT_ALL_FLAGS:
-                    commits_all = True
+                if flag == ALL or (flag.startswith(SHORTEST_INCLUDE) and INCLUDE.startswith(flag)):
+                    onto_index = True
+                if (flag.startswith(SHORTEST_PATHSPEC_FROM_FILE)
+                        and PATHSPEC_FROM_FILE.startswith(flag)):
+                    from_file = True
                 if flag in COMMIT_VALUE_FLAGS and "=" not in token:
                     index += 2
                     continue
@@ -121,8 +148,8 @@ def commit_invocations(command):
                 # one ends the group, taking either the rest of the token or the next one.
                 takes_next = False
                 for position, letter in enumerate(token[1:]):
-                    if letter == "a":
-                        commits_all = True
+                    if letter in "ai":
+                        onto_index = True
                     if "-" + letter in COMMIT_VALUE_FLAGS:
                         takes_next = position + 2 == len(token)
                         break
@@ -130,101 +157,146 @@ def commit_invocations(command):
                 continue
             pathspecs.append(token)
             index += 1
-        found.append((directory, commits_all, pathspecs))
+        found.append((directory, onto_index, FROM_FILE if from_file else pathspecs))
     return found
 
 
-def records(listing):
-    """The paths a NUL-delimited listing named."""
-    return [record.decode(**repository.DECODING)
-            for record in listing.split(b"\0") if record.strip()]
+BLOB_MODES = {b"100644", b"100755", b"120000"}
+SKIP_WORKTREE = b"S "
+WHOLE_TREE = ":/"
+LITERAL_PATHSPECS = "GIT_LITERAL_PATHSPECS"
+LITERAL_PROBE = "velvet.literalpathspecs"
+LONG_MAGIC = re.compile(r":\(([^)]*)\)")
+MAGIC_WORD = re.compile(r"(?:\\.|[^\\,])+")
+SHORT_EXCLUSION = re.compile(r":/*[!^]")
 
 
-def staged_paths(cwd):
-    # R is included: a rename reports it, and dropping it left a file renamed and broken in one
-    # staged change checked by nothing.
-    answer = git(cwd, "diff", "--cached", "-z", "--name-only", "--diff-filter=ACMR")
-    return records(answer.stdout) if answer.code == 0 else unread(answer)
+def excludes(spec):
+    long_form = LONG_MAGIC.match(spec)
+    if long_form:
+        return "exclude" in MAGIC_WORD.findall(long_form.group(1))
+    return SHORT_EXCLUSION.match(spec) is not None
 
 
-# The mode an index entry carries for a submodule.
-# `Given_ASubmoduleWhoseCommitIsStaged_When_Judged_Then_TheCommitIsAllowed` pins what a commit
-# records there, and fails when this stops being read.
-GITLINK = "160000"
+def reads_literally(ask):
+    """Whether `GIT_LITERAL_PATHSPECS` has the git this runs read every pathspec as a name.
+
+    git is asked for its reading of the variable rather than having its grammar restated:
+    `Given_PathspecsReadLiterally_When_AFileNamedAsAnExclusionIsCommitted_Then_ItIsAllowed` fails
+    where a restatement reads one of the spellings of true it holds as false.
+    """
+    value = os.environ.get(LITERAL_PATHSPECS)
+    return value is not None and ask("-c", LITERAL_PROBE + "=" + value, "config", "--type=bool",
+                                     LITERAL_PROBE).stdout == b"true\n"
 
 
-def index_modes(cwd):
-    """path -> the mode the index holds it at, or an `Unreadable` when the reading did not answer."""
-    answer = git(cwd, "ls-files", "-s", "-z")
+def recorded_blobs(cwd, selectors, onto_index, pathspecs):
+    """path -> blob id for each blob `git diff-index` reports between the index built here and HEAD,
+    or an `Unreadable`.
+
+    Built by git, in an index of this reading's own, rather than read off the working tree:
+    `Given_ACarriageReturnGitNormalises_When_Judged_Then_TheNormalisedBytesAreChecked` is what fails
+    when the bytes on disk stand in for the recorded ones.
+    """
+    def ask(*args, index=None, stdin=None):
+        return git(cwd, *selectors, *args, index=index, stdin=stdin)
+
+    head = ask("rev-parse", "--verify", "--quiet", "HEAD^{tree}")
+    if head.code == 1:
+        head = ask("hash-object", "-t", "tree", os.devnull)
+    if head.code != 0:
+        return unread(head)
+    tree = head.stdout.decode().strip()
+    with tempfile.TemporaryDirectory() as scratch:
+        index = os.path.join(scratch, "index")
+
+        def write(*args, stdin=None):
+            return ask("-c", "core.hooksPath=" + os.devnull, "-c", "core.splitIndex=false", *args,
+                       index=index, stdin=stdin)
+
+        if pathspecs and not onto_index:
+            # Not `add -u` over a copy of the index:
+            # `Given_ADirectoryRemovedFromTheIndex_When_CommittedByPathspec_Then_TheCommitIsAllowed`
+            # and `Given_AnAssumeUnchangedFileBrokenOnDisk_When_CommittedByPathspec_Then_ItIsChecked`
+            # fail under it. Nor the pathspecs alone where they only exclude:
+            # `Given_PathspecsThatOnlyExcludeFromASubdirectory_When_Judged_Then_AFileOutsideItIsChecked`
+            # fails without the whole tree beside them.
+            whole = ([WHOLE_TREE] if all(map(excludes, pathspecs)) and not reads_literally(ask)
+                     else [])
+            listed = ask("ls-files", "-z", "-t", "--error-unmatch", "--with-tree=" + tree, "--",
+                         *pathspecs, *whole)
+            if listed.code != 0:
+                return unread(listed)
+            taken = dict.fromkeys(record[2:] for record in listed.stdout.split(b"\0")
+                                  if record and not record.startswith(SKIP_WORKTREE))
+            built = write("read-tree", tree)
+            if built.code == 0:
+                built = write("update-index", "--add", "--remove", "--replace", "-z", "--stdin",
+                              stdin=b"".join(path + b"\0" for path in taken))
+            if built.code != 0:
+                return unread(built)
+        else:
+            located = ask("rev-parse", "--path-format=absolute", "--git-path", "index")
+            if located.code != 0:
+                return unread(located)
+            try:
+                shutil.copy2(located.stdout.decode(**repository.DECODING).removesuffix("\n"), index)
+            except FileNotFoundError:
+                pass
+            except OSError as error:
+                return Unreadable("the index could not be copied.\n\n  " + displayed(str(error)),
+                                  "Correct what that names and retry.")
+            if onto_index:
+                # `git add` exits 1 when a pathspec matches only entries marked skip-worktree or
+                # outside the sparse-checkout definition, having updated the rest, where
+                # `git commit -i` goes on:
+                # `Given_ASkipWorktreeEntryNamedWithInclude_When_Judged_Then_TheCommitIsAllowed`
+                # fails when that exit is read as a refusal. Not `--sparse`, which updates entries
+                # outside the cone that `git commit` leaves:
+                # `Given_AFileOutsideTheSparseConeNamedWithInclude_When_Judged_Then_TheCommitIsAllowed`
+                # fails under it. `add.ignoreErrors`, which `git commit` does not read, gives a file
+                # git cannot read that exit too:
+                # `Given_AnUnreadableFileWhereAddIgnoresErrors_When_Judged_Then_TheRefusalIsGitsAccountOfIt`
+                # fails when it is read.
+                added = write("-c", "add.ignoreErrors=false", "add", "-u", "--", *pathspecs)
+                if added.code not in (0, 1):
+                    return unread(added)
+        changed = ask("diff-index", "--cached", "--ita-invisible-in-index", "--raw", "-z",
+                      "--no-renames", tree, index=index)
+    if changed.code != 0:
+        return unread(changed)
+    recorded = {}
+    fields = changed.stdout.split(b"\0")
+    for meta, path in zip(fields[::2], fields[1::2]):
+        _, mode, _, blob, _ = meta.split(b" ")
+        if mode in BLOB_MODES:
+            recorded[path.decode(**repository.DECODING)] = blob.decode()
+    return recorded
+
+
+def blob_contents(cwd, selectors, blobs):
+    """path -> the bytes of the blob `blobs` names for it, read by one git, or an `Unreadable`."""
+    wanted = list(dict.fromkeys(blobs.values()))
+    if not wanted:
+        return {}
+    answer = git(cwd, *selectors, "cat-file", "--batch",
+                 stdin="".join(blob + "\n" for blob in wanted).encode())
     if answer.code != 0:
         return unread(answer)
-    modes = {}
-    for record in records(answer.stdout):
-        meta, _, path = record.partition("\t")
-        modes[path] = meta.partition(" ")[0]
-    return modes
+    read, out, at = {}, answer.stdout, 0
+    for blob in wanted:
+        end = out.find(b"\n", at)
+        line = out[at:] if end < 0 else out[at:end]
+        header = line.split(b" ")
+        if end < 0 or len(header) != 3 or header[1] != b"blob":
+            return unread(answer._replace(said=line.decode(**repository.DECODING)))
+        at = end + 1 + int(header[2])
+        read[blob] = out[end + 1:at]
+        at += 1
+    return {path: read[blob] for path, blob in blobs.items()}
 
 
-def worktree_paths(cwd, pathspecs):
-    """The paths a commit would take from the worktree, narrowed by `pathspecs`.
-
-    `~` is expanded before git sees it. The shell expands one and git does not, so a pathspec spelled
-    that way reached git literally, matched nothing, and left the checks below reading no content at
-    all -- measured, `git commit -m x -- ~/velvet/a.cs` passed every one of them. Expanded, it is an
-    absolute path outside the repository and git refuses it, which reaches the refusal above rather
-    than the silence.
-    """
-    args = ["diff", "-z", "--name-only", "--diff-filter=ACMR"]
-    if pathspecs:
-        args += ["--", *(os.path.expanduser(spec) for spec in pathspecs)]
-    answer = git(cwd, *args)
-    return records(answer.stdout) if answer.code == 0 else unread(answer)
-
-
-def recorded(full):
-    """The bytes at a worktree path, or None where a commit records no blob there at all."""
-    if os.path.islink(full):
-        return os.readlink(full).encode(**repository.DECODING)
-    if os.path.isdir(full):
-        return None
-    with open(full, "rb") as handle:
-        return handle.read()
-
-
-def committed_content(cwd, commits_all, pathspecs):
-    """path -> bytes the commit would record, or an `Unreadable` when part of it did not read."""
-    staged = staged_paths(cwd)
-    if isinstance(staged, Unreadable):
-        return staged
-    modes = index_modes(cwd) if staged else {}
-    if isinstance(modes, Unreadable):
-        return modes
-    content = {}
-    for path in staged:
-        if modes.get(path) == GITLINK:
-            continue
-        blob = git(cwd, "show", ":" + path)
-        if blob.code != 0:
-            return unread(blob)
-        content[path] = blob.stdout
-    if commits_all or pathspecs:
-        worktree = worktree_paths(cwd, pathspecs)
-        if isinstance(worktree, Unreadable):
-            return worktree
-        for path in worktree:
-            try:
-                data = recorded(os.path.join(cwd, path))
-            except OSError as error:
-                # Answered rather than skipped, so that the two halves of this function agree about
-                # a path that would not read. A skip left the refusal over the files that did read
-                # looking like a verdict over the whole commit.
-                return Unreadable(
-                    "a file this commit records could not be opened.\n\n  {}: {}".format(
-                        displayed(path), displayed(str(error))),
-                    "Make it readable, or commit without it.")
-            if data is not None:
-                content[path] = data
-    return content
+Cut = collections.namedtuple("Cut", "file anchor neuter")
 
 
 def cut_targets(root):
@@ -236,10 +308,11 @@ def cut_targets(root):
     try:
         with open(cuts_path, encoding="utf-8") as cuts_file:
             raw = json.load(cuts_file)
-    except (OSError, ValueError):
+        edits = [Cut(edit["file"], edit["anchor"], edit["neuter"])
+                 for cut in raw.get("cuts", []) for edit in cut.get("edits", [])]
+        return {edit.file for edit in edits}, edits
+    except (OSError, ValueError, AttributeError, KeyError, TypeError):
         return set(), []
-    edits = [edit for cut in raw.get("cuts", []) for edit in cut.get("edits", [])]
-    return {edit["file"] for edit in edits}, edits
 
 
 def refuse(display, output, reproduce):
@@ -252,10 +325,24 @@ def refuse(display, output, reproduce):
 
 
 def run_tool(argv, display, reproduce):
-    proc = subprocess.run(argv, capture_output=True, text=True, timeout=30)
+    try:
+        proc = subprocess.run(argv, capture_output=True, timeout=30, **repository.DECODING)
+    except (OSError, subprocess.SubprocessError) as failure:
+        return refuse_unreadable(Unreadable(
+            "the fast check of {} could not be run.\n\n  {}".format(displayed(display),
+                                                                  displayed(str(failure))),
+            "Reproduce: " + reproduce))
     if proc.returncode != 0:
         return refuse(display, proc.stderr or proc.stdout, reproduce)
     return 0
+
+
+JSON_SUFFIX = ".json"
+YAML_SUFFIXES = (".yml", ".yaml")
+FILE_SUFFIXES = (".py", ".sh")
+# No blob at another suffix is fetched unless a cut names its path, so a check for another suffix
+# joins this set.
+READ_SUFFIXES = {JSON_SUFFIX, *YAML_SUFFIXES, *FILE_SUFFIXES}
 
 
 def check_content(display, data):
@@ -266,14 +353,14 @@ def check_content(display, data):
     # a Python string literal, which is quoted whatever the name holds.
     shown = displayed(display)
     literal = json.dumps(display)
-    if suffix == ".json":
+    if suffix == JSON_SUFFIX:
         try:
             json.loads(data.decode("utf-8"))
         except (ValueError, UnicodeDecodeError) as err:
             return refuse(display, str(err), f"python3 -c 'import json; json.load(open({literal}))'")
         return 0
 
-    if suffix in (".yml", ".yaml"):
+    if suffix in YAML_SUFFIXES:
         try:
             import yaml
         except ImportError:
@@ -285,7 +372,7 @@ def check_content(display, data):
                           f"python3 -c 'import yaml; yaml.safe_load(open({literal}))'")
         return 0
 
-    if suffix not in (".py", ".sh"):
+    if suffix not in FILE_SUFFIXES:
         return 0
 
     # py_compile and shellcheck both want a file, and the content under test is the index's rather
@@ -300,7 +387,7 @@ def check_content(display, data):
         code = run_tool(["bash", "-n", scratch], display, f"bash -n {shown}")
         if code:
             return code
-        shellcheck = __import__("shutil").which("shellcheck")
+        shellcheck = shutil.which("shellcheck")
         if not shellcheck:
             return 0
         # Warning and above. shellcheck exits non-zero on info-level notes too, and three hooks in
@@ -339,8 +426,13 @@ def check_carried_mutation(root, paths):
     if not os.path.exists(script):
         return 0
     try:
+        # Its refusal prints back the path it matched, as the bytes git wrote:
+        # `Given_ACampaignHoldingANameOutsideTheEncoding_When_Judged_Then_TheRefusalSaysSo` fails
+        # when either end of the pipe takes them strictly.
         proc = subprocess.run(["python3", "-B", script, "--project", root, "--carried", *paths],
-                              capture_output=True, text=True, timeout=CARRIED_TIMEOUT, cwd=root)
+                              capture_output=True, timeout=CARRIED_TIMEOUT, cwd=root,
+                              env=dict(os.environ, PYTHONIOENCODING="utf-8:surrogateescape"),
+                              **repository.DECODING)
     except (OSError, subprocess.SubprocessError) as failure:
         # Raising here exits 1, which lets the tool through — and it would take every check
         # below out with it.
@@ -368,8 +460,13 @@ def check_neuter(root):
     script = os.path.join(root, "scripts", "test_quality", "neuter_check.py")
     if not os.path.exists(script):
         return 0
-    proc = subprocess.run(["python3", "-B", script, "--validate", "--project", root],
-                          capture_output=True, text=True, timeout=30, cwd=root)
+    try:
+        proc = subprocess.run(["python3", "-B", script, "--validate", "--project", root],
+                              capture_output=True, timeout=30, cwd=root, **repository.DECODING)
+    except (OSError, subprocess.SubprocessError) as failure:
+        return refuse_unreadable(Unreadable(
+            "the cut map could not be validated.\n\n  " + displayed("{}: {}".format(script, failure)),
+            "Reproduce: python3 scripts/test_quality/neuter_check.py --validate"))
     if proc.returncode != 0:
         return refuse(NEUTER_CUTS, proc.stderr or proc.stdout,
                       "python3 scripts/test_quality/neuter_check.py --validate")
@@ -386,7 +483,7 @@ def carried_neuters(content, edits):
     """
     found = []
     for edit in edits:
-        data = content.get(edit["file"])
+        data = content.get(edit.file)
         if data is None:
             continue
         try:
@@ -394,13 +491,13 @@ def carried_neuters(content, edits):
         except UnicodeDecodeError:
             continue
         for index, line in enumerate(lines):
-            if line.strip() != edit["anchor"]:
+            if line.strip() != edit.anchor:
                 continue
             body = next((i for i in range(index + 1, len(lines)) if lines[i].strip()), None)
             after = next((lines[i].strip() for i in range(body + 1, len(lines))
                           if lines[i].strip()), "") if body is not None else ""
-            if after == edit["neuter"]:
-                found.append(f"{edit['file']}: {edit['anchor']}")
+            if after == edit.neuter:
+                found.append(f"{edit.file}: {edit.anchor}")
     return found
 
 
@@ -409,17 +506,22 @@ def refuse_unreadable(state):
     return 2
 
 
-def audit(cwd, commits_all, pathspecs):
-    root = repo_root(cwd)
+def audit(cwd, selectors, onto_index, pathspecs):
+    root = repo_root(cwd, selectors)
     if isinstance(root, Unreadable):
         return refuse_unreadable(root)
-    content = committed_content(root, commits_all, pathspecs)
-    if isinstance(content, Unreadable):
-        return refuse_unreadable(content)
-    if not content:
+    recorded = recorded_blobs(cwd, selectors, onto_index, pathspecs)
+    if isinstance(recorded, Unreadable):
+        return refuse_unreadable(recorded)
+    if not recorded:
         return 0
 
     targets, edits = cut_targets(root)
+    content = blob_contents(cwd, selectors, {
+        path: blob for path, blob in recorded.items()
+        if os.path.splitext(path)[1] in READ_SUFFIXES or path in targets})
+    if isinstance(content, Unreadable):
+        return refuse_unreadable(content)
     neutered = carried_neuters(content, edits)
     if neutered:
         sys.stderr.write(
@@ -439,11 +541,11 @@ def audit(cwd, commits_all, pathspecs):
 
     # After the content checks rather than before them: this one runs the working tree's copy of a
     # script, so a mid-edit one refusing here would hide the py_compile failure that explains it.
-    code = check_carried_mutation(root, sorted(content))
+    code = check_carried_mutation(root, sorted(recorded))
     if code:
         return code
 
-    if NEUTER_CUTS in content or any(path in targets for path in content):
+    if NEUTER_CUTS in recorded or any(path in targets for path in recorded):
         return check_neuter(root)
     return 0
 
@@ -469,19 +571,29 @@ def main():
                          "tree holds that\ncontent is what the move decides.\n\n"
                          f"{NAME_THE_TREE}\n")
         return 2
-    for directory, commits_all, pathspecs in commits:
+    contexts = [context for context, _, _ in
+                git_invocations(command, {"commit"}, git_directory=True)]
+    for (directory, onto_index, pathspecs), context in zip(commits, contexts):
+        selectors = [(flag, value) for flag, value in (
+            ("-C", directory), ("--git-dir", context.git_directory),
+            ("--work-tree", context.work_tree)) if value]
         # The two operand kinds are refused apart, because the remedy for one does not reach the
         # other: naming the paths leaves a `-C` unresolved, and the reader told to do it tries
         # something that cannot help. Measured on an agent's own `git -C "$SP" commit`.
-        if directory and unexpanded(directory):
+        unresolved = [value for _, value in selectors if unexpanded(value)]
+        if unresolved:
             sys.stderr.write(
                 "Refusing `git commit`: the tree it runs in is named by an operand the shell has "
                 "not\nexpanded yet.\n\n"
-                f"  -C {directory}\n\n"
-                "Every check below reads the content the commit would record, and which repository "
-                "holds\nthat content is what `-C` decides — so this cannot read the tree at all, "
-                "rather than reading\nthe wrong one.\n\n"
-                "Spell the directory out.\n")
+                + "\n".join("  " + value for value in unresolved)
+                + "\n\nEvery check below reads the content the commit would record, and the "
+                  "repository holding\nthat content is named there — so this cannot read the tree "
+                  "at all, rather than reading\nthe wrong one.\n\n"
+                  "Spell the directory out.\n")
+            return 2
+        if pathspecs is FROM_FILE:
+            sys.stderr.write(f"Refusing `git commit`: its paths come from `{PATHSPEC_FROM_FILE}`, "
+                             "which this check does not read.\n\nName them on the command line.\n")
             return 2
         unresolved = [token for token in pathspecs if unexpanded(token)]
         if unresolved:
@@ -493,7 +605,13 @@ def main():
                   "and the commit would record content none of them saw.\n\n"
                   "Name the paths, or commit the index and let the checks read that.\n")
             return 2
-        code = audit(directory or cwd, commits_all, pathspecs)
+        if context.index_file is not None:
+            sys.stderr.write("Refusing `git commit`: it records the index `GIT_INDEX_FILE` names, "
+                             "which this check does not read.\n\nCommit without the assignment.\n")
+            return 2
+        code = audit(cwd, [part for flag, value in selectors
+                           for part in (flag, os.path.expanduser(value))],
+                     onto_index, [os.path.expanduser(spec) for spec in pathspecs])
         if code:
             return code
     return 0
