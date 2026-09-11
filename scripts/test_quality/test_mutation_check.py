@@ -3146,9 +3146,13 @@ class MaskRefusalTests(unittest.TestCase):
 class KeptVerdictTests(unittest.TestCase):
     """What a killed campaign leaves behind for the next run of the same one.
 
-    A campaign is all-or-nothing: killed at mutant 24 of 32 it leaves 24 sound verdicts on disk and
-    the next run starts at 1. Each is recorded as it is reached so a later run answers from it — and
-    refused where the tree it measured has moved, since a verdict about other bytes is not a verdict.
+    Each verdict is recorded as it is reached, and a later run answers from the ones
+    `mutation_check.KEPT` names — refusing one where the tree it measured has moved, since a verdict
+    about other bytes is not a verdict — and measures the others again.
+
+    The record the cases below refuse on their digest or their mutant is a kill, because a kind the
+    run measures again is refused whatever its key, and a case refusing one would pass with the key
+    unread.
     """
 
     def setUp(self):
@@ -3157,9 +3161,17 @@ class KeptVerdictTests(unittest.TestCase):
         self.project = Path(tempfile.mkdtemp(prefix="mutation-kept-project-"))
         self.addCleanup(shutil.rmtree, self.project, ignore_errors=True)
         self.mutant = mutation_check.Mutant(self.project / "A.cs", 3, 0, "a", "b", "literal")
-        self.mutant.verdict = "survived"
-        self.mutant.detail = "0 failed"
+        self.mutant.verdict = mutation_check.KILLED
+        self.mutant.detail = "1 failed: Kills"
         mutation_check.write_verdict(self.output, 7, "digest-1", self.mutant, self.project)
+
+    def read_back(self, verdicts):
+        """What a later run reads of one record per verdict, each under this campaign and this mutant."""
+        for index, verdict in enumerate(verdicts, start=1):
+            self.mutant.verdict, self.mutant.detail = verdict, "the first run's detail"
+            mutation_check.write_verdict(self.output, index, "digest-1", self.mutant, self.project)
+        return [mutation_check.read_verdict(self.output, index, "digest-1", self.mutant, self.project)
+                for index in range(1, len(verdicts) + 1)]
 
     def test_Given_ACampaignThatKilledAMutant_When_TheRecordIsRead_Then_ItNamesEveryKiller(self):
         # Arrange — the detail names three for a reader. Which cases kill which mutant is a reading
@@ -3171,11 +3183,12 @@ class KeptVerdictTests(unittest.TestCase):
         self.assertEqual(json.loads((self.output / "mutant-008.json").read_text())["killers"],
                          ["N.C.a", "N.C.b", "N.C.c", "N.C.d"])
 
+    # GREEN_ON_BASE(characterization): the base keeps every verdict, a kill among them.
     def test_Given_AVerdictThisCampaignWrote_When_TheSameMutantIsReached_Then_ItIsAnswered(self):
         # Act / Assert
         self.assertEqual(
             mutation_check.read_verdict(self.output, 7, "digest-1", self.mutant, self.project),
-            ("survived", "0 failed"))
+            (mutation_check.KILLED, "1 failed: Kills"))
 
     def test_Given_TheTreeHasMovedSince_When_TheSameMutantIsReached_Then_TheVerdictIsRefused(self):
         # Arrange — the digest covers the working tree, so an edit to a mutated file moves it.
@@ -3190,6 +3203,103 @@ class KeptVerdictTests(unittest.TestCase):
         # Act / Assert
         self.assertIsNone(
             mutation_check.read_verdict(self.output, 7, "digest-1", other, self.project))
+
+    def test_Given_AVerdictThatMeasuredNothing_When_TheSameMutantIsReached_Then_ItIsMeasuredAgain(self):
+        # Arrange — each kind the run fails on for want of a reading, keyed so that only the kind can
+        # refuse it.
+        unmeasured = [mutation_check.TIMED_OUT, mutation_check.UNCOMPILABLE, mutation_check.NOT_BUILT]
+
+        # Act
+        read = self.read_back(unmeasured)
+
+        # Assert
+        self.assertEqual(read, [None] * len(unmeasured))
+
+    def test_Given_ASurvivorsVerdict_When_TheSameMutantIsReached_Then_ItIsMeasuredAgain(self):
+        # Arrange — both kinds a survivor comes back as, keyed so that only the kind can refuse them.
+        surviving = [mutation_check.SURVIVED, mutation_check.INCONCLUSIVE]
+
+        # Act
+        read = self.read_back(surviving)
+
+        # Assert
+        self.assertEqual(read, [None] * len(surviving))
+
+    # GREEN_ON_BASE(characterization): the base keeps every verdict, a hang among them.
+    def test_Given_AVerdictTheSuiteHungOn_When_TheSameMutantIsReached_Then_ItIsKept(self):
+        # Arrange — the counterpart to the two above on the other verdict that counts as the suite's
+        # answer, so they are not passing for a reading that keeps only kills.
+        hung = [mutation_check.HUNG]
+
+        # Act
+        read = self.read_back(hung)
+
+        # Assert
+        self.assertEqual(read, [(mutation_check.HUNG, "the first run's detail")])
+
+
+class ResumedCampaignTests(unittest.TestCase):
+    """The second of two runs over one output directory, read by the verdicts its tally names and by
+    whether it says any came from the first.
+
+    `KeptVerdictTests` reads the record directly, so a campaign that never consulted it would pass
+    every case there; these drive `main` twice.
+    """
+
+    NAMED = (mutation_check.TIMED_OUT, mutation_check.HUNG, mutation_check.UNCOMPILABLE,
+             mutation_check.NOT_BUILT, mutation_check.SURVIVED, mutation_check.KILLED)
+
+    def second_run(self, first, second):
+        """(exit status, verdicts the tally names, whether any came from the first run) of a run whose
+        editor behaves as `second`, following one whose editor behaved as `first`."""
+        campaign = StubbedCampaign()
+        for field, value in first.items():
+            setattr(campaign, field, value)
+        campaign.run_over_diff("--max", "40")
+        for field in first:
+            setattr(campaign, field, getattr(StubbedCampaign, field))
+        for field, value in second.items():
+            setattr(campaign, field, value)
+        code = campaign.run_over_diff("--max", "40")
+        return (code, [verdict for verdict in self.NAMED if verdict + ":" in campaign.printed],
+                "came from a previous run of this campaign" in campaign.printed)
+
+    def test_Given_AMutantTheFirstRunTimedOut_When_TheCampaignRunsAgain_Then_ItIsMeasuredAgain(self):
+        # Arrange — the first baseline sat near the bound, so the mutant reaching it went unmeasured;
+        # this time the editor finishes, whether for a raised --timeout or a quieter machine.
+        first = {"times_out": True, "baseline_seconds": 500.0}
+        second = {"kills": True}
+
+        # Act
+        read = self.second_run(first, second)
+
+        # Assert
+        self.assertEqual(read, (0, [mutation_check.KILLED], False))
+
+    def test_Given_ASurvivorATestWasWrittenFor_When_TheCampaignRunsAgain_Then_ItIsMeasuredAgain(self):
+        # Arrange — the first run's survivor, and a suite that kills it by the second, which is what a
+        # test written in between does.
+        first = {}
+        second = {"kills": True}
+
+        # Act
+        read = self.second_run(first, second)
+
+        # Assert
+        self.assertEqual(read, (0, [mutation_check.KILLED], False))
+
+    # GREEN_ON_BASE(characterization): the base keeps every verdict, so it keeps this kill too.
+    def test_Given_AMutantTheFirstRunKilled_When_TheCampaignRunsAgain_Then_TheKillIsKept(self):
+        # Arrange — the second run's suite lets the mutant survive, so a kill can only be the first
+        # run's. The counterpart, so the two above are not passing for a campaign that keeps nothing.
+        first = {"kills": True}
+        second = {}
+
+        # Act
+        read = self.second_run(first, second)
+
+        # Assert
+        self.assertEqual(read, (0, [mutation_check.KILLED], True))
 
 
 @contextlib.contextmanager

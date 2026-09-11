@@ -81,6 +81,12 @@ NOT_BUILT = "not rebuilt"
 
 SURVIVING = (SURVIVED, INCONCLUSIVE)
 
+# What a later run of the same campaign keeps rather than measures again: the verdicts that count as
+# the suite's answer. Each of the others is one the run fails on until somebody acts -- writes the
+# test a survivor asks for, raises --timeout, runs again after an editor crash -- and none of that
+# moves the digest, so a kept one would hand back the verdict that was acted on.
+KEPT = (KILLED, HUNG)
+
 CATEGORIES = ("equivalent", "unreachable")
 
 # Four words, for the reason base_red_check.py's own floor gives.
@@ -1373,10 +1379,8 @@ def verdict_path(output, index):
 def write_verdict(output, index, digest, mutant, project, killers=()):
     """Record one mutant's verdict beside its results, keyed on what the campaign measured.
 
-    A campaign is all-or-nothing today: killed at mutant 24 of 32, it leaves 24 sound verdicts on disk
-    that mean nothing to the next run, which starts at 1. The results XML alone cannot answer for them
-    -- HUNG reads the wall clock, NOT_BUILT reads an assembly hash the restart has already restored --
-    so what is kept is the verdict itself.
+    The results XML alone cannot answer for every verdict -- HUNG reads the wall clock -- so what is
+    recorded is the verdict itself.
     """
     verdict_path(output, index).write_text(json.dumps({
         "digest": digest, "index": index, "mutant": mutant.describe(project),
@@ -1389,7 +1393,8 @@ def write_verdict(output, index, digest, mutant, project, killers=()):
 
 
 def read_verdict(output, index, digest, mutant, project):
-    """(verdict, detail) a previous run of this same campaign reached for this mutant, or None.
+    """(verdict, detail) a previous run of this same campaign reached for this mutant, where it is one
+    `KEPT` names, or None.
 
     Keyed on the digest AND on what the mutant is, because an index is only this mutant's while the
     list is the same list. The digest covers the working tree rather than a commit, so an edit to a
@@ -1404,6 +1409,8 @@ def read_verdict(output, index, digest, mutant, project):
     except (OSError, ValueError):
         return None
     if held.get("digest") != digest or held.get("mutant") != mutant.describe(project):
+        return None
+    if held.get("verdict") not in KEPT:
         return None
     return held.get("verdict"), held.get("detail")
 
