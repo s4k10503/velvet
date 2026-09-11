@@ -34,6 +34,9 @@ NEUTER_CUTS = "scripts/test_quality/neuter_cuts.json"
 ALL = "--all"
 INCLUDE = "--include"
 SHORTEST_INCLUDE = "--inc"
+PATHSPEC_FROM_FILE = "--pathspec-from-file"
+SHORTEST_PATHSPEC_FROM_FILE = "--pathspec-fr"
+FROM_FILE = object()
 
 
 # A pathspec the shell has not expanded names no file, so every check runs over nothing and the
@@ -53,7 +56,7 @@ Unreadable = collections.namedtuple("Unreadable", "subject remedy")
 GitRead = collections.namedtuple("GitRead", "stdout said code asked")
 
 
-def git(cwd, *args, index=None):
+def git(cwd, *args, index=None, stdin=None):
     """git's stdout as the bytes it wrote, alongside what was asked and how it ended.
 
     Same reason `lib/repository.py` answers rather than raising: a hook that raises exits 1, and 1
@@ -61,7 +64,8 @@ def git(cwd, *args, index=None):
     """
     asked = displayed("git " + " ".join(args))
     try:
-        done = subprocess.run(["git", "-C", cwd, *args], capture_output=True, timeout=30,
+        done = subprocess.run(["git", "-C", cwd, *args], input=stdin, capture_output=True,
+                              timeout=30,
                               env=None if index is None else dict(os.environ, GIT_INDEX_FILE=index))
     except (OSError, subprocess.SubprocessError) as failure:
         return GitRead(b"", str(failure), None, asked)
@@ -96,10 +100,11 @@ def repo_root(cwd, selectors):
 
 
 def commit_invocations(command):
-    """(directory, onto the index, pathspecs) for each `git commit` in the command."""
+    """(directory, onto the index, pathspecs or `FROM_FILE`) per `git commit` in the command."""
     found = []
     for directory, _, operands in git_invocations(command, {"commit"}):
         onto_index = False
+        from_file = False
         pathspecs = []
         index = 0
         after_separator = False
@@ -113,6 +118,9 @@ def commit_invocations(command):
                 flag = token.partition("=")[0]
                 if flag == ALL or (flag.startswith(SHORTEST_INCLUDE) and INCLUDE.startswith(flag)):
                     onto_index = True
+                if (flag.startswith(SHORTEST_PATHSPEC_FROM_FILE)
+                        and PATHSPEC_FROM_FILE.startswith(flag)):
+                    from_file = True
                 if flag in COMMIT_VALUE_FLAGS and "=" not in token:
                     index += 2
                     continue
@@ -133,61 +141,104 @@ def commit_invocations(command):
                 continue
             pathspecs.append(token)
             index += 1
-        found.append((directory, onto_index, pathspecs))
+        found.append((directory, onto_index, FROM_FILE if from_file else pathspecs))
     return found
 
 
 BLOB_MODES = {b"100644", b"100755", b"120000"}
+SKIP_WORKTREE = b"S "
 
 
-def committed_content(cwd, selectors, onto_index, pathspecs):
-    """The blobs the commit would record where it changes HEAD, by path, or an `Unreadable`.
+def recorded_blobs(cwd, selectors, root, onto_index, pathspecs):
+    """path -> blob id for each blob `git diff-index` reports between the index built here and HEAD,
+    or an `Unreadable`.
 
     Built by git, in an index of this reading's own, rather than read off the working tree:
     `Given_ACarriageReturnGitNormalises_When_Judged_Then_TheNormalisedBytesAreChecked` is what fails
     when the bytes on disk stand in for the recorded ones.
     """
-    def ask(*args, index=None):
-        return git(cwd, *selectors, *args, index=index)
+    def ask(*args, index=None, stdin=None):
+        return git(cwd, *selectors, *args, index=index, stdin=stdin)
 
     head = ask("rev-parse", "--verify", "--quiet", "HEAD^{tree}")
     if head.code == 1:
         head = ask("hash-object", "-t", "tree", os.devnull)
     if head.code != 0:
         return unread(head)
-    located = ask("rev-parse", "--path-format=absolute", "--git-path", "index")
-    if located.code != 0:
-        return unread(located)
+    tree = head.stdout.decode().strip()
     with tempfile.TemporaryDirectory() as scratch:
         index = os.path.join(scratch, "index")
-        try:
-            shutil.copy2(located.stdout.decode(**repository.DECODING).removesuffix("\n"), index)
-        except FileNotFoundError:
-            pass
-        except OSError as error:
-            return Unreadable("the index could not be copied.\n\n  " + displayed(str(error)),
-                              "Correct what that names and retry.")
-        if onto_index or pathspecs:
-            added = ask("-c", "core.hooksPath=" + os.devnull, "add", "-u", "--", *pathspecs,
-                        index=index)
-            if added.code != 0:
-                return unread(added)
-        changed = ask("diff-index", "--cached", "--raw", "-z", "--no-renames",
-                      head.stdout.decode().strip(), "--", *([] if onto_index else pathspecs),
-                      index=index)
-        if changed.code != 0:
-            return unread(changed)
-        content = {}
-        fields = changed.stdout.split(b"\0")
-        for meta, path in zip(fields[::2], fields[1::2]):
-            _, mode, _, blob, _ = meta.split(b" ")
-            if mode not in BLOB_MODES:
-                continue
-            data = ask("cat-file", "blob", blob.decode())
-            if data.code != 0:
-                return unread(data)
-            content[path.decode(**repository.DECODING)] = data.stdout
-    return content
+
+        def write(*args, stdin=None):
+            return ask("-c", "core.hooksPath=" + os.devnull, "-c", "core.splitIndex=false", *args,
+                       index=index, stdin=stdin)
+
+        if pathspecs and not onto_index:
+            # Not `add -u` over a copy of the index:
+            # `Given_ADirectoryRemovedFromTheIndex_When_CommittedByPathspec_Then_TheCommitIsAllowed`
+            # and `Given_AnAssumeUnchangedFileBrokenOnDisk_When_CommittedByPathspec_Then_ItIsChecked`
+            # fail under it.
+            listed = ask("ls-files", "-z", "-t", "--full-name", "--error-unmatch",
+                         "--with-tree=" + tree, "--", *pathspecs)
+            if listed.code != 0:
+                return unread(listed)
+            top = root.encode(**repository.DECODING) + b"/"
+            taken = dict.fromkeys(top + record[2:] for record in listed.stdout.split(b"\0")
+                                  if record and not record.startswith(SKIP_WORKTREE))
+            built = write("read-tree", tree)
+            if built.code == 0:
+                built = write("update-index", "--add", "--remove", "-z", "--stdin",
+                              stdin=b"".join(path + b"\0" for path in taken))
+        else:
+            located = ask("rev-parse", "--path-format=absolute", "--git-path", "index")
+            if located.code != 0:
+                return unread(located)
+            try:
+                shutil.copy2(located.stdout.decode(**repository.DECODING).removesuffix("\n"), index)
+            except FileNotFoundError:
+                pass
+            except OSError as error:
+                return Unreadable("the index could not be copied.\n\n  " + displayed(str(error)),
+                                  "Correct what that names and retry.")
+            built = write("add", "-u", "--", *pathspecs) if onto_index else None
+        if built is not None and built.code != 0:
+            return unread(built)
+        changed = ask("diff-index", "--cached", "--ita-invisible-in-index", "--raw", "-z",
+                      "--no-renames", tree, index=index)
+    if changed.code != 0:
+        return unread(changed)
+    recorded = {}
+    fields = changed.stdout.split(b"\0")
+    for meta, path in zip(fields[::2], fields[1::2]):
+        _, mode, _, blob, _ = meta.split(b" ")
+        if mode in BLOB_MODES:
+            recorded[path.decode(**repository.DECODING)] = blob.decode()
+    return recorded
+
+
+def blob_contents(cwd, selectors, blobs):
+    """path -> the bytes of the blob `blobs` names for it, read by one git, or an `Unreadable`."""
+    wanted = list(dict.fromkeys(blobs.values()))
+    if not wanted:
+        return {}
+    answer = git(cwd, *selectors, "cat-file", "--batch",
+                 stdin="".join(blob + "\n" for blob in wanted).encode())
+    if answer.code != 0:
+        return unread(answer)
+    read, out, at = {}, answer.stdout, 0
+    for blob in wanted:
+        end = out.find(b"\n", at)
+        line = out[at:] if end < 0 else out[at:end]
+        header = line.split(b" ")
+        if end < 0 or len(header) != 3 or header[1] != b"blob":
+            return unread(answer._replace(said=line.decode(**repository.DECODING)))
+        at = end + 1 + int(header[2])
+        read[blob] = out[end + 1:at]
+        at += 1
+    return {path: read[blob] for path, blob in blobs.items()}
+
+
+Cut = collections.namedtuple("Cut", "file anchor neuter")
 
 
 def cut_targets(root):
@@ -199,10 +250,11 @@ def cut_targets(root):
     try:
         with open(cuts_path, encoding="utf-8") as cuts_file:
             raw = json.load(cuts_file)
-    except (OSError, ValueError):
+        edits = [Cut(edit["file"], edit["anchor"], edit["neuter"])
+                 for cut in raw.get("cuts", []) for edit in cut.get("edits", [])]
+        return {edit.file for edit in edits}, edits
+    except (OSError, ValueError, AttributeError, KeyError, TypeError):
         return set(), []
-    edits = [edit for cut in raw.get("cuts", []) for edit in cut.get("edits", [])]
-    return {edit["file"] for edit in edits}, edits
 
 
 def refuse(display, output, reproduce):
@@ -215,10 +267,24 @@ def refuse(display, output, reproduce):
 
 
 def run_tool(argv, display, reproduce):
-    proc = subprocess.run(argv, capture_output=True, timeout=30, **repository.DECODING)
+    try:
+        proc = subprocess.run(argv, capture_output=True, timeout=30, **repository.DECODING)
+    except (OSError, subprocess.SubprocessError) as failure:
+        return refuse_unreadable(Unreadable(
+            "the fast check of {} could not be run.\n\n  {}".format(displayed(display),
+                                                                  displayed(str(failure))),
+            "Reproduce: " + reproduce))
     if proc.returncode != 0:
         return refuse(display, proc.stderr or proc.stdout, reproduce)
     return 0
+
+
+JSON_SUFFIX = ".json"
+YAML_SUFFIXES = (".yml", ".yaml")
+FILE_SUFFIXES = (".py", ".sh")
+# No blob at another suffix is fetched unless a cut names its path, so a check for another suffix
+# joins this set.
+READ_SUFFIXES = {JSON_SUFFIX, *YAML_SUFFIXES, *FILE_SUFFIXES}
 
 
 def check_content(display, data):
@@ -229,14 +295,14 @@ def check_content(display, data):
     # a Python string literal, which is quoted whatever the name holds.
     shown = displayed(display)
     literal = json.dumps(display)
-    if suffix == ".json":
+    if suffix == JSON_SUFFIX:
         try:
             json.loads(data.decode("utf-8"))
         except (ValueError, UnicodeDecodeError) as err:
             return refuse(display, str(err), f"python3 -c 'import json; json.load(open({literal}))'")
         return 0
 
-    if suffix in (".yml", ".yaml"):
+    if suffix in YAML_SUFFIXES:
         try:
             import yaml
         except ImportError:
@@ -248,7 +314,7 @@ def check_content(display, data):
                           f"python3 -c 'import yaml; yaml.safe_load(open({literal}))'")
         return 0
 
-    if suffix not in (".py", ".sh"):
+    if suffix not in FILE_SUFFIXES:
         return 0
 
     # py_compile and shellcheck both want a file, and the content under test is the index's rather
@@ -302,8 +368,13 @@ def check_carried_mutation(root, paths):
     if not os.path.exists(script):
         return 0
     try:
+        # Its refusal prints back the path it matched, as the bytes git wrote:
+        # `Given_ACampaignHoldingANameOutsideTheEncoding_When_Judged_Then_TheRefusalSaysSo` fails
+        # when either end of the pipe takes them strictly.
         proc = subprocess.run(["python3", "-B", script, "--project", root, "--carried", *paths],
-                              capture_output=True, text=True, timeout=CARRIED_TIMEOUT, cwd=root)
+                              capture_output=True, timeout=CARRIED_TIMEOUT, cwd=root,
+                              env=dict(os.environ, PYTHONIOENCODING="utf-8:surrogateescape"),
+                              **repository.DECODING)
     except (OSError, subprocess.SubprocessError) as failure:
         # Raising here exits 1, which lets the tool through — and it would take every check
         # below out with it.
@@ -331,8 +402,13 @@ def check_neuter(root):
     script = os.path.join(root, "scripts", "test_quality", "neuter_check.py")
     if not os.path.exists(script):
         return 0
-    proc = subprocess.run(["python3", "-B", script, "--validate", "--project", root],
-                          capture_output=True, text=True, timeout=30, cwd=root)
+    try:
+        proc = subprocess.run(["python3", "-B", script, "--validate", "--project", root],
+                              capture_output=True, timeout=30, cwd=root, **repository.DECODING)
+    except (OSError, subprocess.SubprocessError) as failure:
+        return refuse_unreadable(Unreadable(
+            "the cut map could not be validated.\n\n  " + displayed("{}: {}".format(script, failure)),
+            "Reproduce: python3 scripts/test_quality/neuter_check.py --validate"))
     if proc.returncode != 0:
         return refuse(NEUTER_CUTS, proc.stderr or proc.stdout,
                       "python3 scripts/test_quality/neuter_check.py --validate")
@@ -349,7 +425,7 @@ def carried_neuters(content, edits):
     """
     found = []
     for edit in edits:
-        data = content.get(edit["file"])
+        data = content.get(edit.file)
         if data is None:
             continue
         try:
@@ -357,13 +433,13 @@ def carried_neuters(content, edits):
         except UnicodeDecodeError:
             continue
         for index, line in enumerate(lines):
-            if line.strip() != edit["anchor"]:
+            if line.strip() != edit.anchor:
                 continue
             body = next((i for i in range(index + 1, len(lines)) if lines[i].strip()), None)
             after = next((lines[i].strip() for i in range(body + 1, len(lines))
                           if lines[i].strip()), "") if body is not None else ""
-            if after == edit["neuter"]:
-                found.append(f"{edit['file']}: {edit['anchor']}")
+            if after == edit.neuter:
+                found.append(f"{edit.file}: {edit.anchor}")
     return found
 
 
@@ -376,13 +452,18 @@ def audit(cwd, selectors, onto_index, pathspecs):
     root = repo_root(cwd, selectors)
     if isinstance(root, Unreadable):
         return refuse_unreadable(root)
-    content = committed_content(cwd, selectors, onto_index, pathspecs)
-    if isinstance(content, Unreadable):
-        return refuse_unreadable(content)
-    if not content:
+    recorded = recorded_blobs(cwd, selectors, root, onto_index, pathspecs)
+    if isinstance(recorded, Unreadable):
+        return refuse_unreadable(recorded)
+    if not recorded:
         return 0
 
     targets, edits = cut_targets(root)
+    content = blob_contents(cwd, selectors, {
+        path: blob for path, blob in recorded.items()
+        if os.path.splitext(path)[1] in READ_SUFFIXES or path in targets})
+    if isinstance(content, Unreadable):
+        return refuse_unreadable(content)
     neutered = carried_neuters(content, edits)
     if neutered:
         sys.stderr.write(
@@ -402,11 +483,11 @@ def audit(cwd, selectors, onto_index, pathspecs):
 
     # After the content checks rather than before them: this one runs the working tree's copy of a
     # script, so a mid-edit one refusing here would hide the py_compile failure that explains it.
-    code = check_carried_mutation(root, sorted(content))
+    code = check_carried_mutation(root, sorted(recorded))
     if code:
         return code
 
-    if NEUTER_CUTS in content or any(path in targets for path in content):
+    if NEUTER_CUTS in recorded or any(path in targets for path in recorded):
         return check_neuter(root)
     return 0
 
@@ -452,6 +533,10 @@ def main():
                   "at all, rather than reading\nthe wrong one.\n\n"
                   "Spell the directory out.\n")
             return 2
+        if pathspecs is FROM_FILE:
+            sys.stderr.write(f"Refusing `git commit`: its paths come from `{PATHSPEC_FROM_FILE}`, "
+                             "which this check does not read.\n\nName them on the command line.\n")
+            return 2
         unresolved = [token for token in pathspecs if unexpanded(token)]
         if unresolved:
             sys.stderr.write(
@@ -461,6 +546,10 @@ def main():
                   "is still a variable names no file — so they would all run over nothing and pass, "
                   "and the commit would record content none of them saw.\n\n"
                   "Name the paths, or commit the index and let the checks read that.\n")
+            return 2
+        if context.index_file is not None:
+            sys.stderr.write("Refusing `git commit`: it records the index `GIT_INDEX_FILE` names, "
+                             "which this check does not read.\n\nCommit without the assignment.\n")
             return 2
         code = audit(cwd, [part for flag, value in selectors
                            for part in (flag, os.path.expanduser(value))],
