@@ -414,6 +414,92 @@ namespace Velvet.Tests
                 "A discarded hook result is not captured in the deps array and must be left unwoven");
         }
 
+        // --- CompilerWeaver gate placement on a body with no hook, which the weaver gates at method entry ---
+
+        [Test]
+        public void Given_AHooklessBodyWhoseTryOpensAtItsFirstInstruction_When_CompilerWeaverRuns_Then_TheGatePrecedesTheTry()
+        {
+            // Arrange — `try { result = null; } catch { result = null; } return result;` behind one parameter
+            using var module = BuildHookShapeProbeModule("TryAtEntryProbe", out var method, out _, out _, out _);
+            method.Parameters.Add(new ParameterDefinition("p", Mono.Cecil.ParameterAttributes.None,
+                module.TypeSystem.Object));
+            method.Body.Variables.Add(new VariableDefinition(method.ReturnType));
+            var il = method.Body.GetILProcessor();
+            var tryStart = Instruction.Create(OpCodes.Ldnull);
+            var handlerStart = Instruction.Create(OpCodes.Pop);
+            var exit = Instruction.Create(OpCodes.Ldloc_0);
+            il.Append(tryStart);
+            il.Append(Instruction.Create(OpCodes.Stloc_0));
+            il.Append(Instruction.Create(OpCodes.Leave_S, exit));
+            il.Append(handlerStart);
+            il.Append(Instruction.Create(OpCodes.Ldnull));
+            il.Append(Instruction.Create(OpCodes.Stloc_0));
+            il.Append(Instruction.Create(OpCodes.Leave_S, exit));
+            il.Append(exit);
+            il.Append(Instruction.Create(OpCodes.Ret));
+            method.Body.ExceptionHandlers.Add(new ExceptionHandler(ExceptionHandlerType.Catch)
+            {
+                TryStart = tryStart,
+                TryEnd = handlerStart,
+                HandlerStart = handlerStart,
+                HandlerEnd = exit,
+                CatchType = module.TypeSystem.Object,
+            });
+            AssignSequentialOffsets(method);
+
+            // Act
+            InvokeWeave("Velvet.CodeGen.CompilerWeaver", module);
+
+            // Assert
+            var gate = IndexOfCallTo(method, "TryGetMemoizedVNode");
+            var regionStart = method.Body.Instructions.IndexOf(method.Body.ExceptionHandlers[0].TryStart);
+            Assert.That((woven: gate >= 0, gateFirst: gate < regionStart), Is.EqualTo((true, true)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base weaves no body without a hook, so it leaves this one alone too.
+        // What this pins is the safety gate running ahead of the entry gate. An unresolvable callee is read as
+        // no hook by the hook scan and as unverifiable by the safety gate, so moving the hookless branch of
+        // `TryAnalyze` above its `ReachesAnyNonSafeHook` call reddens this case.
+        [Test]
+        public void Given_AHooklessBodyCallingAnUnresolvableMethod_When_CompilerWeaverRuns_Then_MethodIsLeftUnwoven()
+        {
+            // Arrange — one parameter, and a call into an assembly no resolver can find
+            using var module = BuildHookShapeProbeModule("UnresolvableCalleeProbe",
+                out var method, out _, out _, out _);
+            method.Parameters.Add(new ParameterDefinition("p", Mono.Cecil.ParameterAttributes.None,
+                module.TypeSystem.Object));
+            var missingScope = new AssemblyNameReference("Velvet.WeaverProbe.Missing", new Version(1, 0, 0, 0));
+            module.AssemblyReferences.Add(missingScope);
+            var missingType = new TypeReference("Probe.Missing", "Service", module, missingScope);
+            var missingMethod = new MethodReference("Run", module.TypeSystem.Void, missingType);
+            var il = method.Body.GetILProcessor();
+            il.Append(Instruction.Create(OpCodes.Call, missingMethod));
+            il.Append(Instruction.Create(OpCodes.Ldnull));
+            il.Append(Instruction.Create(OpCodes.Ret));
+            AssignSequentialOffsets(method);
+
+            // Act
+            InvokeWeave("Velvet.CodeGen.CompilerWeaver", module);
+
+            // Assert
+            Assert.That(BodyCallsTryGetMemoizedVNode(method), Is.False,
+                "A callee the weaver cannot inspect bails a body with no hook as it bails one with a hook");
+        }
+
+        private static int IndexOfCallTo(MethodDefinition method, string name)
+        {
+            var instructions = method.Body.Instructions;
+            for (var i = 0; i < instructions.Count; i++)
+            {
+                if ((instructions[i].OpCode == OpCodes.Call || instructions[i].OpCode == OpCodes.Callvirt)
+                    && instructions[i].Operand is MethodReference mr && mr.Name == name)
+                {
+                    return i;
+                }
+            }
+            return -1;
+        }
+
         // --- Metadata-registration weaver E2E: <Module>.cctor of THIS assembly, woven for real ---
 
         private const string RegistryFullName = "Velvet.ComponentMethodRegistry";

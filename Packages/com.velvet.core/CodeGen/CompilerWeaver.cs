@@ -9,8 +9,8 @@ namespace Velvet.CodeGen
 {
     // Build-time transform that weaves inner auto-memoization into every [Component] method,
     // default-on with no opt-in attribute. Hooks still run on every render; only the VNode construction
-    // is cached, keyed on the values that flow out of hook calls: the component body is rebuilt only
-    // when a hook-derived input changes.
+    // is cached, keyed on the component's parameters and the values that flow out of its hook calls, so the
+    // component body is rebuilt when one of those inputs changes.
     // The weaver only transforms a method when its body matches an analyzable shape it can prove correct:
     //   Static, returns Velvet.VNode, and carries [Component]. Parameters (props) are
     //   allowed: each is prepended to the deps array so a prop change is detected like any other input.
@@ -20,8 +20,10 @@ namespace Velvet.CodeGen
     //   The allow-list is the safety contract: a hook is admitted only when its re-render trigger is soundly
     //   represented by an Object.is comparison of a value captured into the deps array, or when it
     //   returns nothing reactive at all.
-    //   At least one hook call, with every return placed after the last hook call, every hook reached
-    //   unconditionally, and no hook inside a loop (Rules of Hooks).
+    //   At least one parameter or value-returning hook call, so the deps array is not empty. A body that
+    //   calls a hook has every return placed after the last hook call, every hook reached unconditionally,
+    //   and no hook inside a loop (Rules of Hooks); a body that calls none is gated at method entry unless
+    //   it sets Memoize = true.
     //   Each value-returning hook result captured via var x = Hooks.UseXxx(...) (IL
     //   call → stloc) or a single-element deconstruction var (x, _, _) = Hooks.UseXxx(...)
     //   (IL call → ldfld → stloc). A void hook (UseEffect and friends) captures no dep but still
@@ -52,6 +54,7 @@ namespace Velvet.CodeGen
         // turning the weaver into a silent no-op.
         private static readonly string ComponentAttrFullName = typeof(Velvet.ComponentAttribute).FullName;
         private const string CompilerPropertyName = nameof(Velvet.ComponentAttribute.Compiler);
+        private const string MemoizePropertyName = nameof(Velvet.ComponentAttribute.Memoize);
         private static readonly string HooksTypeFullName = typeof(Velvet.Hooks).FullName;
         private static readonly string VNodeFullName = typeof(Velvet.VNode).FullName;
         private static readonly string SystemVoidFullName = typeof(void).FullName;
@@ -205,15 +208,36 @@ namespace Velvet.CodeGen
         // absent named argument means weave. A component opts out of memoization by
         // setting Compiler = false, read here as a named-argument false that leaves the body unwoven.
         private static bool CompilerEnabled(CustomAttribute attr)
+            => NamedFlag(attr, CompilerPropertyName, fallback: true);
+
+        // Memoize = true is the props bail, which lets a parent render through only on props it judges changed.
+        // A gate keyed on nothing but those props could hit behind it only where the dependency comparison calls
+        // equal what the bail called changed — a value-type prop whose own Equals ignores a difference in a
+        // float field's bits, such as a zero's sign, which the bail compares bit for bit — and that hit is a
+        // stale tree.
+        private static bool RequestsPropsBail(MethodDefinition method)
+        {
+            foreach (var attr in method.CustomAttributes)
+            {
+                if (attr.AttributeType.FullName == ComponentAttrFullName)
+                {
+                    return NamedFlag(attr, MemoizePropertyName, fallback: false);
+                }
+            }
+            // MUTANT_SURVIVES(unreachable): only TryAnalyze calls this, on a method IsCandidate admitted for its [Component].
+            return false;
+        }
+
+        private static bool NamedFlag(CustomAttribute attr, string propertyName, bool fallback)
         {
             foreach (var named in attr.Properties)
             {
-                if (named.Name == CompilerPropertyName && named.Argument.Value is bool enabled)
+                if (named.Name == propertyName && named.Argument.Value is bool value)
                 {
-                    return enabled;
+                    return value;
                 }
             }
-            return true;
+            return fallback;
         }
 
         // Returns true when the body already calls Velvet.Hooks.TryGetMemoizedVNode — a hand-written
@@ -270,18 +294,21 @@ namespace Velvet.CodeGen
                 return false;
             }
 
-            if (lastHookBoundary == null)
-            {
-                // No hook calls: nothing to key a cache on, so there is no inner memo to weave.
-                return false;
-            }
-
             if (hookPipedLocals.Count == 0 && method.Parameters.Count == 0)
             {
-                // Only void hooks and no parameters: the deps array would be empty, so TryGetMemoizedVNode would
+                // No parameter and no value hook: the deps array would be empty, so TryGetMemoizedVNode would
                 // be an unconditional hit and freeze the body after the first render. A component with no reactive
                 // input (no props, no value hook) is constant, so leave it unwoven rather than always-hit.
                 return false;
+            }
+
+            if (lastHookBoundary is null)
+            {
+                // No hook call: the gate keys on the parameters alone and goes ahead of the first instruction, so
+                // it precedes every return and every protected region, and a hit's early return skips no hook
+                // call. The checks below have nothing to find.
+                analysis = new HookAnalysis(hookPipedLocals, null, returns);
+                return !RequestsPropsBail(method);
             }
 
             // Every return path must come after the hook section. A return placed
@@ -980,11 +1007,22 @@ namespace Velvet.CodeGen
             injected.Add(Instruction.Create(OpCodes.Ret));
             injected.Add(afterHitBranch);
 
-            var current = insertAfter;
-            foreach (var ins in injected)
+            if (insertAfter is { } boundary)
             {
-                il.InsertAfter(current, ins);
-                current = ins;
+                var current = boundary;
+                foreach (var ins in injected)
+                {
+                    il.InsertAfter(current, ins);
+                    current = ins;
+                }
+            }
+            else
+            {
+                var entry = body.Instructions[0];
+                foreach (var ins in injected)
+                {
+                    il.InsertBefore(entry, ins);
+                }
             }
 
             // Inject Store + reload at every return path so all `Ret` instructions
@@ -1005,15 +1043,33 @@ namespace Velvet.CodeGen
                 {
                     il.InsertBefore(returnInstr, ins);
                 }
+                // A branch that targets the ret itself would jump past the commit above it and return a tree
+                // the slot never stages.
+                RetargetBranches(body, returnInstr, preReturn[0]);
             }
 
             body.OptimizeMacros();
         }
 
+        private static void RetargetBranches(MethodBody body, Instruction from, Instruction to)
+        {
+            foreach (var instr in body.Instructions)
+            {
+                if (ReferenceEquals(instr.Operand, from))
+                {
+                    instr.Operand = to;
+                }
+                else if (instr.Operand is Instruction[] targets)
+                {
+                    instr.Operand = System.Array.ConvertAll(targets, t => ReferenceEquals(t, from) ? to : t);
+                }
+            }
+        }
+
         private readonly struct HookAnalysis
         {
             public HookAnalysis(IReadOnlyList<VariableDefinition> hookPipedLocals,
-                Instruction lastHookBoundary,
+                Instruction? lastHookBoundary,
                 IReadOnlyList<Instruction> returns)
             {
                 HookPipedLocals = hookPipedLocals;
@@ -1021,7 +1077,7 @@ namespace Velvet.CodeGen
                 Returns = returns;
             }
             public IReadOnlyList<VariableDefinition> HookPipedLocals { get; }
-            public Instruction LastHookBoundary { get; }
+            public Instruction? LastHookBoundary { get; }
             public IReadOnlyList<Instruction> Returns { get; }
         }
     }

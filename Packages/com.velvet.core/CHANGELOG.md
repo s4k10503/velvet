@@ -771,6 +771,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `IRouteScopeFactory.CreateScope` runs inside the Outlet's render where it used to run in the commit
   that built or patched that container.
 
+- A `[Component]` that takes props and calls no hook is woven by the compiler transform now, keyed on
+  its parameters alone: a render handing it parameters equal under the rule `MemoNode.Dependencies`
+  states returns the tree its body last built instead of running the body. The weaver used to decline
+  any body without a hook call, so such a component — the presentational leaf that only formats its
+  props — ran in full, and was diffed again, each time its parent's render reached it. What a working
+  application can notice: a body whose output depends on anything other than its parameters — a static
+  field, a store read directly rather than through `Hooks.UseStore`, a service locator, `Time` — shows
+  what it read when its parameters last changed, and anything else it does, such as counting its own
+  renders or logging, is skipped on a render that returns the cached tree. `[Component(Compiler = false)]`
+  restores the previous behaviour for one component. Called as a plain method outside a render, such a
+  component now throws `InvalidOperationException`, as a hook called there does. Its parameters are
+  compared as a dependency list is, so a record class instance is compared by instance: a parent building
+  a fresh one on every render gets a rebuild on every render, one allocation dearer than before — the
+  deps array — and a value-type parameter adds its box to that. One with `Memoize = true` is left
+  unwoven: its props bail already decides which parent renders reach it, and past that bail the gate could
+  hit only where a value type's own `Equals` calls equal what the bail reads as changed — a `float` field
+  going from `0f` to `-0f`, which the bail re-renders and `Equals` calls unchanged. Separately, a return
+  the compiler reaches by a branch jumping straight to it, which a returned `??` or conditional expression
+  can compile to, now stages the tree it returns, in a component with hooks as in one without: that path
+  used to skip the commit, so a render repeating its inputs rebuilt the body there instead of reusing the
+  tree. The migration guide's note on the two memoization axes states what the cache is keyed on.
+
 ### Removed
 
 - The `V.Outlet` node kind, and the reconciler paths that existed for it alone — its element factory

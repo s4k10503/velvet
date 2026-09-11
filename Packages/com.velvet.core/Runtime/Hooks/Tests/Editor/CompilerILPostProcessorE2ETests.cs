@@ -19,8 +19,11 @@ namespace Velvet.Tests
     /// <c>UseMemo</c> value, a safe void effect hook alongside a value hook, and the stable references from
     /// <c>UseRef</c> / <c>UseService</c> are all analyzable shapes. The cache gate is injected after the whole
     /// hook section, so no hook call is skipped on a cache hit.</item>
-    /// <item>A body the weaver cannot prove correct is left unwoven (graceful bailout): no hook to key a cache
-    /// on, a props-only body, a discarded hook value, a whole-tuple capture (compared structurally, not by
+    /// <item>A props-only body — parameters and no hook — is woven too, keyed on its parameters alone with the
+    /// gate at method entry, unless it sets <c>Memoize = true</c>.</item>
+    /// <item>A body the weaver cannot prove correct is left unwoven (graceful bailout): neither a parameter nor a
+    /// hook to key a cache on, a props-only body left to its props bail, a discarded hook value, a whole-tuple
+    /// capture (compared structurally, not by
     /// reference, so a fresh-but-equal record would be a stale hit), a void-only body (empty deps would freeze
     /// it on an unconditional hit), a body that reaches the suspend-unsafe <c>Use</c> hook or
     /// <c>UseMutation</c> — directly or transitively through a custom hook — a hook inside a loop (head-tested
@@ -94,7 +97,8 @@ namespace Velvet.Tests
             return V.Label(text: state.Item1.Value.ToString());
         }
 
-        // No hook call: nothing to key a cache on, so the weaver has no inner memo to inject -> bailout.
+        // Neither a hook call nor a parameter: nothing to key a cache on, so the weaver has no inner memo to
+        // inject -> bailout.
         [Component]
         public static VNode NoHookComponent()
         {
@@ -103,12 +107,50 @@ namespace Velvet.Tests
 
         public sealed record GreetProps(string Name);
 
-        // Props-receiving component with no hook. A prop is a reactive input the deps array would capture, but
-        // there is no hook to establish a cache boundary, so the weaver has no inner memo to inject -> bailout.
+        // Props-receiving component with no hook: the prop is the whole deps array, and the gate goes at
+        // method entry.
         [Component]
         public static VNode PropsComponent(GreetProps p)
         {
             return V.Label(text: p.Name);
+        }
+
+        // The same body with Memoize = true. The props bail already decides when a parent render reaches it,
+        // so the weaver leaves it to that bail.
+        [Component(Memoize = true)]
+        public static VNode MemoizedPropsComponent(GreetProps p)
+        {
+            return V.Label(text: p.Name);
+        }
+
+        // A hook body keeps its gate whatever Memoize says: its hook values can change while its props do not.
+        [Component(Memoize = true)]
+        public static VNode MemoizedPropsWithHookComponent(GreetProps p)
+        {
+            var (suffix, _) = Hooks.UseState("!");
+            return V.Label(text: p.Name + suffix);
+        }
+
+        // Compiler = false behind another flag on the same attribute: the opt-out is read by its name.
+        [Component(Memoize = true, Compiler = false)]
+        public static VNode MemoizedOptOutComponent()
+        {
+            var (count, _) = Hooks.UseState(0);
+            return V.Label(text: count.ToString());
+        }
+
+        public interface IPropsFormatter
+        {
+            string Format(string name);
+        }
+
+        private static readonly IPropsFormatter? s_propsFormatter = null;
+
+        // A props-only body making an open interface dispatch.
+        [Component]
+        public static VNode PropsInterfaceDispatchComponent(GreetProps p)
+        {
+            return V.Label(text: s_propsFormatter?.Format(p.Name) ?? p.Name);
         }
 
         // Props-receiving component with a hook. The prop is prepended to the deps array alongside the
@@ -399,6 +441,25 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_PropsOnlyComponent_When_Woven_Then_InjectsBothMemoCalls()
+        {
+            // Act + Assert
+            Assert.That(IsWoven(LoadMethod(nameof(PropsComponent))), Is.True,
+                "A props-only body keys the cache on its parameter alone, gated at method entry");
+        }
+
+        // GREEN_ON_BASE(characterization): the base weaves a hook body whatever Memoize says, and so does this change.
+        // Only a body with no hook is left to its props bail; applying `RequestsPropsBail` to every body is what
+        // reddens this.
+        [Test]
+        public void Given_MemoizedPropsComponentWithHook_When_Woven_Then_InjectsBothMemoCalls()
+        {
+            // Act + Assert
+            Assert.That(IsWoven(LoadMethod(nameof(MemoizedPropsWithHookComponent))), Is.True,
+                "A hook body with Memoize = true keeps its gate: its hook values change while its props hold");
+        }
+
+        [Test]
         public void Given_UseContextComponent_When_Woven_Then_InjectsBothMemoCalls()
         {
             // Act + Assert
@@ -486,20 +547,49 @@ namespace Velvet.Tests
                 "[Component(Compiler = false)] opts out ahead of analysis; the analyzable body is left unwoven");
         }
 
+        // GREEN_ON_BASE(characterization): the base reads Compiler by name as well. Cutting the
+        // `named.Name == propertyName` clause from `NamedFlag` reads the first flag instead, and reddens this.
+        [Test]
+        public void Given_CompilerFalseBehindAnotherFlag_When_Analyzed_Then_IsLeftUnwoven()
+        {
+            // Act + Assert
+            Assert.That(IsWoven(LoadMethod(nameof(MemoizedOptOutComponent))), Is.False,
+                "Compiler = false is read by its name, whatever flag precedes it on the attribute");
+        }
+
+        // GREEN_ON_BASE(characterization): the base weaves no body without a hook. What this pins is the
+        // props-bail skip on the new path: the hookless branch's `return !RequestsPropsBail(method)` turned
+        // into `return true` reddens it.
+        [Test]
+        public void Given_MemoizedPropsOnlyComponent_When_Analyzed_Then_IsLeftUnwoven()
+        {
+            // Act + Assert
+            Assert.That(IsWoven(LoadMethod(nameof(MemoizedPropsComponent))), Is.False,
+                "A props-only body with Memoize = true is left to the props bail");
+        }
+
+        // GREEN_ON_BASE(characterization): the base weaves no body without a hook, so it leaves this one alone too.
+        // Two readings bail it: the safety gate, and the hook scan taking the dispatch for a hook call whose
+        // value nothing captures. Measured, cutting either leaves it green and cutting both reddens it: the
+        // `ReachesAnyNonSafeHook` call disabled, and the open-dispatch arm of `CallsHookTransitively` answering false.
+        [Test]
+        public void Given_PropsOnlyComponentWithInterfaceDispatch_When_Analyzed_Then_IsLeftUnwoven()
+        {
+            // Act + Assert
+            Assert.That(IsWoven(LoadMethod(nameof(PropsInterfaceDispatchComponent))), Is.False,
+                "An open interface dispatch bails a body with no hook as it bails one with a hook");
+        }
+
+        // GREEN_ON_BASE(characterization): the base leaves this body unwoven too, and this change keeps it so.
+        // What changed is the message, which gave the missing hook as the reason where a body with a parameter
+        // and no hook is woven now. Removing the guard in `TryAnalyze` that refuses an empty deps array reddens it.
         [Test]
         public void Given_NoHookComponent_When_Analyzed_Then_IsLeftUnwoven()
         {
             // Act + Assert
             Assert.That(IsWoven(LoadMethod(nameof(NoHookComponent))), Is.False,
-                "A hook-less body has no deps to key a cache on; the weaver leaves it untouched");
-        }
-
-        [Test]
-        public void Given_PropsOnlyComponent_When_Analyzed_Then_IsLeftUnwoven()
-        {
-            // Act + Assert
-            Assert.That(IsWoven(LoadMethod(nameof(PropsComponent))), Is.False,
-                "A props-only body has no hook to key a cache on; the weaver leaves it untouched");
+                "A body with neither a hook nor a parameter has no deps to key a cache on; the weaver leaves it"
+                + " untouched");
         }
 
         [Test]
@@ -638,15 +728,19 @@ namespace Velvet.Tests
             Assert.That(_root.Q<Label>()?.text, Is.EqualTo("7"), "The initial state value takes the second return path");
         }
 
+        // GREEN_ON_BASE(characterization): the base renders the same body unwoven. Weaving it moves the first
+        // render onto the gate's miss path, which is what this reads: dropping the entry insertion
+        // `il.InsertBefore(entry, ins)` leaves the commit a null deps array to store, and reddens it.
         [Test]
-        public void Given_BailedPropsComponent_When_FirstRender_Then_ProducesVisibleOutput()
+        public void Given_WovenPropsComponent_When_FirstRender_Then_ProducesVisibleOutput()
         {
             // Act
             using var mounted = V.Mount(_root,
                 V.Component(PropsComponent, new GreetProps("hello"), key: "props"));
 
             // Assert
-            Assert.That(_root.Q<Label>()?.text, Is.EqualTo("hello"), "A bailed props component still renders normally");
+            Assert.That(_root.Q<Label>()?.text, Is.EqualTo("hello"),
+                "The first render misses the freshly allocated slot and runs the body");
         }
 
         [Test]

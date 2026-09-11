@@ -59,15 +59,17 @@ namespace Velvet
         /// component. Default is <c>true</c>: the transform caches the component's VNode construction keyed on the
         /// values flowing out of its hook calls (and its props), rebuilding only when one of those inputs changes
         /// — <see cref="MemoNode.Dependencies"/> states the branch each type takes, since the weaver keys on
-        /// the same dependency comparison. Auto-memoization needs no opt-in: set this to <c>false</c> to opt
+        /// the same dependency comparison. A component that calls no hook is keyed on its props alone, and
+        /// left unwoven where it also sets <see cref="Memoize"/>, whose props bail then decides its renders.
+        /// Auto-memoization needs no opt-in: set this to <c>false</c> to opt
         /// out. The weaver also declines a component silently, with no diagnostic, where it finds a hook it
         /// cannot memoize safely, and <c>VelvetCompilerILPostProcessor.WillProcess</c> decides which
         /// assemblies it reaches at all.
         /// <para>
         /// Set to <c>false</c> to opt this component out of the transform, so its body then runs in full on
         /// every render. This is an escape hatch for
-        /// the rare component whose render must not be cached; it is orthogonal to <see cref="Memoize"/>, which
-        /// governs the props-bail axis at the reconcile boundary.
+        /// the rare component whose render must not be cached. <see cref="Memoize"/> governs the separate
+        /// props-bail axis at the reconcile boundary.
         /// </para>
         /// </summary>
         public bool Compiler { get; init; } = true;
