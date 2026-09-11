@@ -148,6 +148,10 @@ def main():
                       "git could not say which checkout {} is in, so nothing here read a "
                       "receipt at all.\nA reading that did not happen is not a reading that "
                       "found nothing owed.".format(cwd))
+    if not os.path.isdir(root):
+        return refuse(UNREAD,
+                      "git names {} as the checkout {} is in, and no directory is found there, "
+                      "so nothing here\nread a receipt at all.".format(root, cwd))
     # A repository that carries no campaign harness is a definite reading rather than a failed one:
     # there is no receipt to owe.
     script = os.path.join(root, SCRIPT)

@@ -127,18 +127,20 @@ def worktrees(cwd, timeout=20):
     that marks it.
 
     Read here rather than in each caller because a second spelling of how git's bytes are decoded
-    drifts from `git` above in silence, and a guard that mis-reads this list exits 0.
+    drifts from `DECODING` in silence, and a guard that mis-reads this list exits 0.
 
     Read under `-z` so a record ends on a byte a path cannot hold, and the path is taken whole rather
     than stripped, because it is printed back as a command to run and one that lost a character at
     either end is not the path git listed. scripts/hooks/test_hook_repository.py holds a path with a
-    newline in it.
+    newline in it, and
+    `Given_AWorktreeAtAPathHoldingACarriageReturn_When_TheListIsRead_Then_ThePathComesBackWhole` is
+    what fails when this takes `git` rather than `git_bytes`.
     """
-    listing = git(["worktree", "list", "--porcelain", "-z"], cwd=cwd, timeout=timeout)
+    listing = git_bytes(["worktree", "list", "--porcelain", "-z"], cwd=cwd, timeout=timeout)
     if listing is None:
         return None
     found = []
-    for record in listing.split("\0"):
+    for record in listing.decode(**DECODING).split("\0"):
         if record.startswith("worktree "):
             found.append([record[len("worktree "):], None])
         elif record.startswith("branch ") and found:
@@ -297,10 +299,12 @@ def toplevel(cwd, timeout=15):
     """The root of the repository holding `cwd`, or None where `cwd` sits in none.
 
     A trailing space, tab or newline can belong to the root's own name, so the reading's terminator
-    comes off rather than whatever whitespace it ends in.
+    comes off rather than whatever whitespace it ends in. scripts/hooks/test_hook_repository.py's
+    `Given_ARootWhoseNameEndsInACarriageReturn_When_TheTreeIsRooted_Then_TheRootKeepsThatCharacter`
+    is what fails when this takes `git` rather than `git_bytes`.
     """
-    listed = git(["rev-parse", "--show-toplevel"], cwd=cwd, timeout=timeout)
-    root = (listed or "").removesuffix("\n")
+    listed = git_bytes(["rev-parse", "--show-toplevel"], cwd=cwd, timeout=timeout)
+    root = (listed or b"").removesuffix(b"\n").decode(**DECODING)
     return Path(root) if root else None
 
 

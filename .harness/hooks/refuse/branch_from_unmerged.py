@@ -178,6 +178,10 @@ def head_description(cwd):
     return f"detached at {sha.stdout.strip()}"
 
 
+def what_git_said(asked, answer):
+    return "\n".join("  " + line for line in [f"git {asked}"] + answer.stderr.splitlines())
+
+
 def record_branch_base(name, sha):
     try:
         with open(BRANCH_BASES, "a", encoding="utf-8") as bases:
@@ -216,7 +220,11 @@ def refusal(cwd, name, start_point):
 
     head_not_main = False
     if start_point is None:
-        head_ref = git(cwd, "rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
+        head = git(cwd, "rev-parse", "--abbrev-ref", "HEAD")
+        if head.code != 0:
+            return (f"Refusing to create `{name}`: git could not read HEAD.\n\n"
+                    + what_git_said("rev-parse --abbrev-ref HEAD", head))
+        head_ref = head.stdout.strip()
         if head_ref != "main":
             on_main = git(cwd, "merge-base", "--is-ancestor", "HEAD", "main")
             if on_main.code != 0:
@@ -309,7 +317,12 @@ def main():
                   file=sys.stderr)
         if deferred(name):
             # Parent tip at branch creation is gone after squash-merge; rebase --onto needs it now.
-            head_sha = git(target, "rev-parse", "HEAD").stdout.strip()
+            head = git(target, "rev-parse", "HEAD")
+            if head.code != 0:
+                sys.stderr.write(f"No base was recorded for `{name}`: git could not read HEAD.\n\n"
+                                 + what_git_said("rev-parse HEAD", head) + "\n")
+                continue
+            head_sha = head.stdout.strip()
             record_branch_base(name, head_sha)
             sys.stderr.write(
                 f"Recorded base {head_sha} for `{name}`. "

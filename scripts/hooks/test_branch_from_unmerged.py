@@ -15,6 +15,9 @@ asks the whole guard, since a reading nothing acts on refuses nothing.
 `UndecodableHeadTests` holds the guard over a HEAD git names with a byte UTF-8 does not map. A strict
 decode raised there, and the hook exited 1, which lets the creation through.
 
+`UnreadHeadTests` holds it where git reads no HEAD at all: the refusal named a detached HEAD at an
+empty SHA there, and a deferred creation recorded a base with no commit in it.
+
 Run: python3 scripts/hooks/test_branch_from_unmerged.py
 """
 
@@ -25,6 +28,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -232,6 +236,48 @@ class UndecodableHeadTests(unittest.TestCase):
 
         # Assert
         self.assertEqual((arranged, result.returncode), (True, ALLOWED))
+
+
+UNREAD_BRANCH = "tooling/unread-head-probe"
+SESSION = "probe-0001"
+
+
+class UnreadHeadTests(unittest.TestCase):
+    """A directory that is not a repository, so git reads no HEAD in it."""
+
+    def setUp(self):
+        self.home = Path(tempfile.mkdtemp(prefix="velvet-branch-unread-"))
+        self.addCleanup(shutil.rmtree, self.home, ignore_errors=True)
+        self.tree = self.home / "tree"
+        self.tree.mkdir()
+
+    def ask(self, command):
+        event = {"tool_name": "Bash", "cwd": str(self.tree), "tool_input": {"command": command}}
+        environment = dict(os.environ, HOME=str(self.home), CLAUDE_CODE_SESSION_ID=SESSION)
+        return subprocess.run([sys.executable, "-B", str(HOOK)], input=json.dumps(event),
+                              capture_output=True, text=True, env=environment, timeout=120)
+
+    def test_Given_NoHeadGitCanRead_When_ABranchIsCreated_Then_TheRefusalNamesTheReadingRatherThanAHead(self):
+        # Arrange / Act
+        result = self.ask(f"git branch {UNREAD_BRANCH}")
+
+        # Assert
+        self.assertEqual((result.returncode, "detached at" in result.stderr,
+                          "git rev-parse --abbrev-ref HEAD" in result.stderr),
+                         (REFUSED, False, True))
+
+    def test_Given_NoHeadGitCanRead_When_ADeferredBranchIsCreated_Then_NoBaseIsRecorded(self):
+        # Arrange
+        (self.home / ".velvet-pr-deferrals").write_text(
+            f"{UNREAD_BRANCH} stacking on purpose {int(time.time())} {SESSION}\n", encoding="utf-8")
+        bases = self.home / ".velvet-branch-bases"
+
+        # Act
+        result = self.ask(f"git branch {UNREAD_BRANCH}")
+
+        # Assert
+        self.assertEqual((result.returncode, bases.read_text() if bases.exists() else None),
+                         (ALLOWED, None))
 
 
 if __name__ == "__main__":

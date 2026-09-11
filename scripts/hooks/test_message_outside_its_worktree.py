@@ -5,9 +5,10 @@ The defect is silent: `-F` succeeds, the tree is right, the diff is right, and o
 another change's — so the cases hold the refusals and, just as much, the shapes that must still go
 through, because a guard that refuses too much is one somebody turns off.
 
-`ToplevelReadingTests` holds two roots git names that a reading of its answer has to take as written:
-one holding a byte UTF-8 does not map, which a strict decode raised on so the hook exited 1 and let
-the command through, and one whose name ends in a space, which a trimmed reading spent.
+`ToplevelReadingTests` holds three roots git names that a reading of its answer has to take as
+written: one holding a byte UTF-8 does not map, which a strict decode raised on so the hook exited 1
+and let the command through, and two whose names end in a space or in a carriage return, each of
+which a reading of the root has spent.
 
 Run: python3 scripts/hooks/test_message_outside_its_worktree.py
 """
@@ -227,6 +228,16 @@ class ToplevelReadingTests(unittest.TestCase):
     def test_Given_AWorktreeWhoseNameEndsInASpace_When_AMessageInsideItIsCommitted_Then_ItIsLetThrough(self):
         # Arrange — relative, so the path is read from inside the name the space belongs to.
         repository = self.repository("checkout ")
+
+        # Act
+        code, said = self.judge("git commit -F msg.txt", repository)
+
+        # Assert
+        self.assertEqual((code, said), (0, ""))
+
+    def test_Given_AWorktreeWhoseNameEndsInACarriageReturn_When_AMessageInsideItIsCommitted_Then_ItIsLetThrough(self):
+        # Arrange
+        repository = self.repository("checkout\r")
 
         # Act
         code, said = self.judge("git commit -F msg.txt", repository)

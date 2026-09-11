@@ -4,8 +4,9 @@
 The verdict is decided from git's name for the checkout and from what the checkout's campaign
 harness answers. A strict decode of either raised where a byte was not UTF-8, and the hook exited 1,
 which opens the pull request unasked. Two cases hold the harness's answer, one on each side of the
-verdict; one holds git's name; one holds a checkout whose name ends in a space, which a trimmed
-reading spent — and with it the harness, so nothing was owed.
+verdict; one holds a name git gives with no directory behind it, which is refused as unread; two
+hold a checkout whose name ends in a space or in a carriage return, each of which a reading of the
+root has spent — and with it the harness, so nothing was owed.
 
 Run: python3 scripts/hooks/test_pr_without_mutation_receipt.py
 """
@@ -29,6 +30,7 @@ ALLOWED = 0
 # this number, so a stub exiting it is a checkout that owes one.
 RECEIPT_REFUSAL = 3
 OWED = "no mutation campaign covers this branch's change."
+UNREAD = "this guard could not read the state it decides from."
 
 # A harness naming a file whose name holds a byte UTF-8 does not map, then exiting as told.
 STRAY_BYTE_HARNESS = "import sys\nsys.stdout.buffer.write(b'lat\\xedn1.cs\\n')\nsys.exit({})\n"
@@ -83,7 +85,7 @@ class ReadingTests(unittest.TestCase):
         self.assertEqual((result.returncode, "Mutation receipt: " in result.stderr),
                          (ALLOWED, True))
 
-    def test_Given_ACheckoutGitNamesWithAByteThatIsNotUTF8_When_APullRequestIsOpened_Then_ItIsReadAsHoldingNoHarness(self):
+    def test_Given_ACheckoutGitNamesWithAByteThatIsNotUTF8_When_APullRequestIsOpened_Then_TheOpeningIsRefusedAsUnread(self):
         # Arrange — the harness stays under the directory that does exist, so a guard that found
         # it there would be reading some checkout other than the one git named. The gate rides in
         # the comparison because a name that decoded would leave nothing to fail on, and this case
@@ -99,11 +101,22 @@ class ReadingTests(unittest.TestCase):
         result = self.judge(made)
 
         # Assert
-        self.assertEqual((arranged, result.returncode, result.stderr), (True, ALLOWED, ""))
+        self.assertEqual((arranged, result.returncode, UNREAD in result.stderr),
+                         (True, REFUSED, True))
 
     def test_Given_ACheckoutWhoseNameEndsInASpace_When_ItOwesAReceipt_Then_TheOpeningIsRefused(self):
         # Arrange
         made = self.checkout("checkout ", f"import sys\nsys.exit({RECEIPT_REFUSAL})\n")
+
+        # Act
+        result = self.judge(made)
+
+        # Assert
+        self.assertEqual((result.returncode, OWED in result.stderr), (REFUSED, True))
+
+    def test_Given_ACheckoutWhoseNameEndsInACarriageReturn_When_ItOwesAReceipt_Then_TheOpeningIsRefused(self):
+        # Arrange
+        made = self.checkout("checkout\r", f"import sys\nsys.exit({RECEIPT_REFUSAL})\n")
 
         # Act
         result = self.judge(made)
