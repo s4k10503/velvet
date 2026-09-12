@@ -267,6 +267,76 @@ class FixtureFilterTests(unittest.TestCase):
         # Assert
         self.assertEqual((code, value), (fixture_filter.CANNOT_ANSWER, ""))
 
+    def test_Given_ACaselessAbstractBaseBesideAFixture_When_AValueIsTaken_Then_ThePartialSelectionIsRefused(self):
+        # Arrange
+        base = source("    internal abstract class InputBase { }\n")
+        project = self.project({
+            EDITOR + "InputBase.cs": base,
+            EDITOR + "KeyboardTests.cs": source(fixture("KeyboardTests", CASE, "InputBase")),
+            EDITOR + "PointerTests.cs": source(fixture("PointerTests", CASE))})
+
+        # Act
+        code, value, _ = project.value(EDITOR + "InputBase.cs", EDITOR + "PointerTests.cs")
+
+        # Assert
+        self.assertEqual((code, value), (fixture_filter.CANNOT_ANSWER, ""))
+
+    def test_Given_AFixtureArgumentOnAGrandparent_When_ALeafValueIsTaken_Then_NoValueIsPrinted(self):
+        # Arrange
+        project = self.project({
+            EDITOR + "KeyboardTests.cs": source(fixture(
+                "KeyboardTests", CASE, attributes='[TestFixture("dark")]\n    ')),
+            EDITOR + "GamepadTests.cs": source(fixture("GamepadTests", "", "KeyboardTests")),
+            EDITOR + "WirelessGamepadTests.cs": source(fixture(
+                "WirelessGamepadTests", CASE, "GamepadTests"))})
+
+        # Act
+        code, value, _ = project.value(EDITOR + "WirelessGamepadTests.cs")
+
+        # Assert
+        self.assertEqual((code, value), (fixture_filter.CANNOT_ANSWER, ""))
+
+    def test_Given_FixtureArgumentsInTestUtilities_When_ADerivedFixtureIsSelected_Then_NoValueIsPrinted(self):
+        # Arrange
+        project = self.project({
+            "Packages/com.velvet.core/TestUtilities/InputBase.cs": source(
+                '    [TestFixture("dark")]\n    internal abstract class InputBase { }\n'),
+            EDITOR + "KeyboardTests.cs": source(fixture("KeyboardTests", CASE, "InputBase"))})
+
+        # Act
+        code, value, _ = project.value(EDITOR + "KeyboardTests.cs")
+
+        # Assert
+        self.assertEqual((code, value), (fixture_filter.CANNOT_ANSWER, ""))
+
+    def test_Given_ACaselessBaseInTestUtilities_When_ItsValueIsTaken_Then_ItRequiresAnExplicitRoster(self):
+        # Arrange
+        relative = "Packages/com.velvet.core/TestUtilities/InputBase.cs"
+        project = self.project({
+            relative: source("    internal abstract class InputBase { }\n"),
+            EDITOR + "KeyboardTests.cs": source(fixture("KeyboardTests", CASE, "InputBase")),
+            EDITOR + "PointerTests.cs": source(fixture("PointerTests", CASE))})
+
+        # Act
+        code, value, _ = project.value(relative, EDITOR + "PointerTests.cs")
+
+        # Assert
+        self.assertEqual((code, value), (fixture_filter.CANNOT_ANSWER, ""))
+
+    def test_Given_ACaselessLeafAndParent_When_TheLeafValueIsMatched_Then_ItIncludesTheInheritedCases(self):
+        # Arrange
+        project = self.project({
+            EDITOR + "KeyboardTests.cs": source(fixture("KeyboardTests", CASE)),
+            EDITOR + "GamepadTests.cs": source(fixture("GamepadTests", "", "KeyboardTests")),
+            EDITOR + "WirelessGamepadTests.cs": source(fixture(
+                "WirelessGamepadTests", "", "GamepadTests"))})
+
+        # Act
+        code, value, _ = project.value(EDITOR + "WirelessGamepadTests.cs")
+
+        # Assert
+        self.assertEqual((code, selected(value)), (0, ["Velvet.Tests.WirelessGamepadTests"]))
+
     def test_Given_AFixtureWhoseNameBeginsAnothers_When_ItsValueIsMatched_Then_TheOtherIsNotSelected(self):
         # Arrange -- the roster holds `Velvet.Tests.FocusTestsForPortals`.
         project = self.project({EDITOR + "FocusTests.cs": source(fixture("FocusTests", CASE))})
