@@ -340,10 +340,15 @@ namespace Velvet
             in SpineWalk walk)
         {
             var innerPosition = FiberKeying.MemoInner(position, nodeIndex);
-            var cacheKey = FiberKeying.MemoCacheKey(memo.Key, innerPosition.Scope!);
-            if (!walk.MemoCache.TryPeek(cacheKey, out var inner) || inner == null) return false;
-
-            return PushEnclosingProviders(new[] { inner }, innerPosition, in walk);
+            // A memo this walk has to find encloses the spine child at the spine child's own level, so it was
+            // written with Ancestor current and under the spine child's PortalScope. One position can hold an
+            // entry for each of several containers, and nothing here says which container this is.
+            var memoPosition = FiberKeying.MemoAt(walk.Ancestor, walk.PortalScope, memo.Key, position, innerPosition);
+            for (var candidate = 0; walk.MemoCache.PeekInner(memoPosition, memo, candidate) is { } inner; candidate++)
+            {
+                if (PushEnclosingProviders(new[] { inner }, innerPosition, in walk)) return true;
+            }
+            return false;
         }
 
         // Follow whichever subtree (children vs fallback) was committed last render so the

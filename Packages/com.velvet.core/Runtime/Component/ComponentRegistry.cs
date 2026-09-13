@@ -348,6 +348,7 @@ namespace Velvet
             // Same rationale for DOM-less AnimatePresence: the rendering fiber is the boundary that keys
             // its presence state, so prune it when the fiber unmounts (e.g. while a child is exiting).
             _ctx.PrunePresenceBoundaryState(fiber);
+            _ctx.FiberMemoCache.Forget(fiber);
 
             if (_inlineFiberToKey.TryGetValue(fiber, out var key))
             {

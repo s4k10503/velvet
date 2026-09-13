@@ -17,14 +17,14 @@ namespace Velvet.Tests
     /// replaces the element.</item>
     /// <item>Dependency equality compares a <c>record class</c> element by instance, so a fresh-but-content-equal
     /// one is a cache miss and recomputes.</item>
-    /// <item>An explicit key supplied via <c>V.MemoizedWithKey</c> becomes the cache key, so a re-render
-    /// with the same key and the same dependencies is a cache hit.</item>
+    /// <item>An explicit key supplied via <c>V.MemoizedWithKey</c> stands in for the memo's index in the
+    /// cache key, so a re-render with the same key and the same dependencies is a cache hit.</item>
     /// <item>Sibling Memos cache independently — changing one's dependencies never re-runs the other.</item>
-    /// <item>A nested unkeyed Memo resolves under its enclosing Memo's position scope, so it never
+    /// <item>A nested unkeyed Memo resolves under its enclosing Memo's position, so it never
     /// cache-hits on the outer Memo's cached inner.</item>
     /// <item>Omitting the dependency list rebuilds the subtree for every newly built node, while an
-    /// explicitly empty one caches for the node's whole life — the two spellings of "no dependencies" mean
-    /// opposite things on purpose.</item>
+    /// explicitly empty one caches while the memo keeps its position — the two spellings of "no
+    /// dependencies" mean opposite things on purpose.</item>
     /// </list>
     /// </summary>
     [TestFixture]

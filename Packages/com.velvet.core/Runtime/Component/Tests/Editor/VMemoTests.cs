@@ -69,6 +69,8 @@ namespace Velvet.Tests
             Assert.That(counter, Is.EqualTo(2), "A changed dependency misses the cache, so the factory runs again");
         }
 
+        // GREEN_ON_BASE(characterization): two distinct explicit keys already cache apart on the base.
+        // Dropping the key from the cache key is what reddens this, once the mount counts are asserted.
         [Test]
         public void Given_KeyedSiblingMemos_When_OneNodeDepsChange_Then_OnlyThatNodeFactoryRuns()
         {
@@ -81,7 +83,7 @@ namespace Velvet.Tests
                 V.MemoizedWithKey("comp-b", () => { counterB++; return V.Component(StubRender); }, 1),
             };
             Reconciler.Reconcile(Root, System.Array.Empty<VNode>(), tree1);
-            Assume.That((counterA, counterB), Is.EqualTo((1, 1)), "Precondition: both factories ran once on mount");
+            var mounted = (counterA, counterB);
 
             // Act — change only node A's deps
             var tree2 = new VNode[]
@@ -91,8 +93,10 @@ namespace Velvet.Tests
             };
             Reconciler.Reconcile(Root, tree1, tree2);
 
-            // Assert — A re-ran (deps changed), B stayed cached (deps unchanged)
-            Assert.That((counterA, counterB), Is.EqualTo((2, 1)),
+            // Assert — A re-ran (deps changed), B stayed cached (deps unchanged). The mount counts ride along
+            // because two keys sharing one entry run B's factory on this re-render instead of on the mount,
+            // and end at the same counts.
+            Assert.That((mounted.counterA, mounted.counterB, counterA, counterB), Is.EqualTo((1, 1, 2, 1)),
                 "Keyed memo nodes own independent caches");
         }
 
