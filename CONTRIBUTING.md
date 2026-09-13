@@ -135,7 +135,7 @@ the comment-and-string mask, and which changed code lines an operator reaches �
 those would, which is the point of running it first rather than a reason to distrust it. The readings
 that need a run, the declarations and the cap among them, it does not take.
 
-[Generators~/README.md ▸ Mutation testing](Packages/com.velvet.core/Generators~/README.md#mutation-testing)
+[Generators~/README.md ▸ The Unity assemblies](Packages/com.velvet.core/Generators~/README.md#the-unity-assemblies)
 covers this and the generator solution's own run, and owns what the verdicts mean, how to read a
 survivor, and which line shapes the operators reach — which is 31% of the changed code lines measured
 over the twenty commits ending at `48057c8` with the generator as this branch leaves it, so **a survivor count is a statement about the lines an
@@ -176,7 +176,7 @@ suite, just a different one — so it reads declarations and writes a receipt, a
 of the receipt's key so that an EditMode question is never answered by a PlayMode run.
 
 The run also fails or stops rather than pass over a mutant nobody asked about, and
-[Generators~/README.md ▸ Mutation testing](Packages/com.velvet.core/Generators~/README.md#mutation-testing)
+[Generators~/README.md ▸ The Unity assemblies](Packages/com.velvet.core/Generators~/README.md#the-unity-assemblies)
 says when it does which.
 
 **What asks whether the campaign was run is a receipt, not attentiveness.** A finished run leaves one

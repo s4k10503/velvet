@@ -2988,12 +2988,19 @@ class VerdictNamingTests(unittest.TestCase):
                  if verdict + ":" in campaign.printed]
         return code, named
 
-    def test_Given_ABaselineWithRoomToSpare_When_AMutantReachesTheBound_Then_ItIsAnswered(self):
-        # Arrange — the baseline finished with the whole bound to spare and this did not, so what ran
-        # past it is the mutation. A suite that never finishes is not a suite that still passes, which
-        # is the whole of what a campaign asks, so the run does not refuse.
-        # Act / Assert
-        self.assertEqual(self.tally_of(times_out=True), (0, [mutation_check.HUNG]))
+    def test_Given_ABaselineWithRoomToSpare_When_AMutantTimesOut_Then_NoReceiptSignsItOff(self):
+        # Arrange
+        campaign = StubbedCampaign()
+        campaign.times_out = True
+
+        # Act
+        run = campaign.run_over_diff("--max", "40")
+        named = mutation_check.HUNG + ":" in campaign.printed
+        receipt = campaign.run_over_diff("--receipt")
+
+        # Assert
+        self.assertEqual((run, receipt, named),
+                         (1, mutation_check.RECEIPT_REFUSAL, True))
 
     def test_Given_ABaselineAlreadyNearTheBound_When_AMutantReachesIt_Then_ItIsNotMeasured(self):
         # Arrange — a bound the suite was always going to outrun says nothing about the mutation, and
@@ -3236,8 +3243,7 @@ class KeptVerdictTests(unittest.TestCase):
         self.assertEqual(read, [None] * len(surviving))
 
     def test_Given_AVerdictTheSuiteHungOn_When_TheSameMutantIsReached_Then_ItIsMeasuredAgain(self):
-        # Arrange — a hang counts as answered, and what makes a timeout one is the --timeout the run
-        # took it under; keyed so that only the kind can refuse it.
+        # Arrange — keyed so that only the verdict kind can refuse it.
         hung = [mutation_check.HUNG]
 
         # Act

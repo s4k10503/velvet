@@ -20,7 +20,7 @@ already carries rather than for this one.
 **Success means every mutant was measured, and every survivor answered for.** Not that nothing was
 reported: most of what goes wrong with a campaign ends in a mutant nobody asked about, and a mutant
 nobody asked about must never be a pass. So a run fails or stops rather than pass over one, and
-Generators~/README.md ▸ Mutation testing says when it does which.
+Generators~/README.md ▸ The Unity assemblies says when it does which.
 
 It is not success over the whole change, and the difference is most of one: the operators reach a
 minority of the code lines a branch touches, so the reach is printed beside every verdict rather than
@@ -64,7 +64,7 @@ REFUSAL_BASELINE = "scripts/test_quality/logic_refusal_baseline.txt"
 
 KILLED = "killed"
 TIMED_OUT = "not measured (timed out)"
-HUNG = "killed (the suite did not finish)"
+HUNG = "not measured (the suite did not finish)"
 
 # How far under --timeout the baseline has to land before a mutant reaching it is read as the
 # mutation's doing rather than as a bound the suite was always going to outrun. Three is the smallest
@@ -1526,8 +1526,8 @@ def main():
                         help="print the join refusal's census over the package and exit; redirect it "
                              "over " + REFUSAL_BASELINE + " to record a deliberate change to it")
     parser.add_argument("--timeout", type=int, default=900,
-                        help="seconds before a mutant's editor is killed; Generators~/README.md ▸ "
-                             "Mutation testing says which verdict that is (default: 900)")
+                        help="seconds before a baseline or mutant editor is killed; Generators~/README.md ▸ "
+                             "The Unity assemblies says which verdict that is (default: 900)")
     parser.add_argument("--busy-timeout", type=int, default=1800,
                         help="seconds to wait for another Unity run to finish (default: 1800)")
     parser.add_argument("--output", default="", help="directory for the per-mutant logs and XML")
@@ -1839,12 +1839,6 @@ def main():
             dll = assemblies_dir / "{}.dll".format(assembly_of(mutant.path))
             blamed = build_error(log)
             if timed_out and baseline_wall * HANG_MARGIN <= args.timeout:
-                # The baseline finished with room to spare and this did not, so the bound is not what
-                # the suite was always going to outrun -- the mutation is. A suite that never finishes
-                # is not a suite that still passes, which is the whole of what a campaign asks, so
-                # this counts as answered rather than as a mutant nobody asked about. Named apart from
-                # a test failure because no test reported: an await whose completion the mutation
-                # removed never returns, and nothing writes a verdict for it.
                 mutant.verdict = HUNG
                 mutant.detail = ("the suite ran past --timeout {}s where the baseline finished in "
                                  "{:.0f}s".format(args.timeout, baseline_wall))
@@ -1913,7 +1907,7 @@ def main():
     if not survivors:
         print("(none)")
 
-    unmeasured = [m for m in mutants if m.verdict in (NOT_BUILT, TIMED_OUT, UNCOMPILABLE)]
+    unmeasured = [m for m in mutants if m.verdict in (NOT_BUILT, TIMED_OUT, HUNG, UNCOMPILABLE)]
     if unmeasured:
         print("\n--- mutants nothing was asked of the suite about ---")
         for mutant in unmeasured:
