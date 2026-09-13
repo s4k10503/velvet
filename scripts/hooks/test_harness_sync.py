@@ -143,6 +143,34 @@ class HarnessSyncTests(unittest.TestCase):
         # Assert
         self.assertEqual(config["permissions"], {"deny": ["Read(secret)"]})
 
+    def test_Given_WholeSecondFloatTimeout_When_GeneratedForCodex_Then_TimeoutIsAnInteger(self):
+        # Arrange
+        manifest = self.root / ".harness/hooks.json"
+        entries = json.loads(manifest.read_text())
+        entries[0]["timeout"] = 15.0
+        manifest.write_text(json.dumps(entries))
+        # Act
+        config = json.loads(sync.outputs(self.root)[".codex/hooks.json"])
+        timeout = config["hooks"]["PreToolUse"][0]["hooks"][0]["timeout"]
+        # Assert
+        self.assertEqual((type(timeout), timeout), (int, 15))
+
+    def test_Given_FractionalTimeout_When_Generated_Then_OnlyCodexRoundsUpToWholeSeconds(self):
+        # Arrange
+        manifest = self.root / ".harness/hooks.json"
+        entries = json.loads(manifest.read_text())
+        entries[0]["timeout"] = 1.5
+        manifest.write_text(json.dumps(entries))
+        # Act
+        generated = sync.outputs(self.root)
+        codex = json.loads(generated[".codex/hooks.json"])
+        claude = json.loads(generated[".claude/settings.json"])
+        cursor = json.loads(generated[".cursor/hooks.json"])
+        # Assert
+        self.assertEqual((codex["hooks"]["PreToolUse"][0]["hooks"][0]["timeout"],
+                          claude["hooks"]["PreToolUse"][0]["hooks"][0]["timeout"],
+                          cursor["hooks"]["preToolUse"][0]["timeout"]), (2, 1.5, 1.5))
+
     def test_Given_ShellRegistration_When_GeneratedForCursor_Then_NativeMatcherIsUsed(self):
         # Arrange
         # Act
