@@ -22,6 +22,10 @@ python3 scripts/test_quality/assert_no_inconclusive.py "$R"
 - **Metacharacters are live, so a value pasted out of the XML's `fullname` is a pattern rather than a name.** Some names carry `(`, `)` and `[` from arguments rendered into them; a nested fixture's node carries `+`. Such a paste selects nothing and the run exits 0.
 - **`^…$` selects an ordinary fixture's cases**, and nothing at all for a fixture that declares no cases of its own — NUnit makes nested fixtures siblings of the outer one rather than children of it.
 - **Several values separate on `;` and the split does not trim**, so `"A; B"` runs A alone and reports green over the smaller set.
+- **An empty value is no filter at all**, nor is one of nothing but `;` — the whole suite runs, so `-testFilter "$filter"` over a `$filter` that came back empty is a full run.
+- **A term beginning with `!` excludes**: a case runs only where neither its full name nor any suite's above it matches the rest of the term. Beside terms that select, it takes cases out of what they select; where every term begins with `!`, it takes them out of the whole suite.
+
+A value built from test file names can miss fixtures — one file can declare several, or none named like it — so hand the files to `scripts/test_quality/fixture_filter.py` and take the value it prints.
 
 Read the `fullname` roster in the XML, not only the count, before trusting a filtered run: a filter that took a whole assembly reports a count that looks entirely plausible.
 
