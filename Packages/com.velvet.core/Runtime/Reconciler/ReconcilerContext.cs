@@ -1256,60 +1256,108 @@ namespace Velvet
         // well: an abort raised through one of those is not this loop's to consume.
         private void ConsumeAbortRaisedByASetup() => IsAborted = false;
 
-        // Wrapper-less Suspense fallback state: per boundary fiber, the scoped position keys of the
-        // Suspense nodes that are currently showing their fallback subtree instead of their children. The
-        // new-side walk records the decision after attempting the children expansion (suspended ⇒ the key
-        // is present); the old-side structural walk reads it to reproduce whichever subtree (children vs
-        // fallback) was committed last render, so the diff's old leaves match the DOM.
-        //
-        // Only keys showing the fallback are stored, and a boundary with none holds no entry, so both
-        // readings FlushState needs — "this boundary has a fallback up" and "any boundary does" — are
-        // derived from this table rather than tracked beside it. One component fiber can render several
-        // Suspense nodes and each is keyed by its own position, so a boundary-level flag cannot express
-        // them: whichever node expanded last would decide for all of them, and a resolved one expanded
-        // after a suspended one would clear the guard that keeps the suspended one's offscreen primary
-        // from committing into the slot its fallback occupies.
-        //
-        // A Suspense rendered with no enclosing component fiber has no boundary to key on and is held
-        // separately, so the dictionary's emptiness stays equivalent to "no boundary has a fallback up".
-        private readonly Dictionary<ComponentFiber, HashSet<string>> _suspenseFallbackKeys = new();
-        private readonly HashSet<string> _rootlessSuspenseFallbackKeys = new();
+        // Only shown fallbacks are stored, so boundary-level deferral reads this table's presence.
+        // The node identifies the branch when a context-spine walk reaches it through a nested host.
+        private readonly Dictionary<ComponentFiber, Dictionary<(VisualElement? Container, VisualElement? PortalScope, string Position), SuspenseNode>>
+            _suspenseFallbackKeys = new();
+        private readonly Dictionary<(VisualElement? Container, VisualElement? PortalScope, string Position), SuspenseNode>
+            _rootlessSuspenseFallbackKeys = new();
 
-        // A dirty fiber whose nearest Suspense boundary has a fallback up is a candidate for the offscreen
-        // deferral in FiberWorkLoop.FlushState; this is the cheap pre-check that skips the ancestor walk.
         internal bool AnyBoundaryShowingFallback => _suspenseFallbackKeys.Count > 0;
 
         internal bool IsBoundaryShowingFallback(ComponentFiber boundary)
             => _suspenseFallbackKeys.ContainsKey(boundary);
 
-        internal bool IsSuspenseFallbackShown(ComponentFiber? boundary, string positionKey)
+        internal bool IsSuspenseFallbackShown(ComponentFiber? boundary, VisualElement? container, VisualElement? portalScope, string positionKey)
             => boundary == null
-                ? _rootlessSuspenseFallbackKeys.Contains(positionKey)
-                : _suspenseFallbackKeys.TryGetValue(boundary, out var keys) && keys.Contains(positionKey);
+                ? _rootlessSuspenseFallbackKeys.ContainsKey((container, portalScope, positionKey))
+                : _suspenseFallbackKeys.TryGetValue(boundary, out var keys) && keys.ContainsKey((container, portalScope, positionKey));
 
-        internal void SetSuspenseFallbackShown(ComponentFiber? boundary, string positionKey, bool shown)
+        internal bool IsSuspenseFallbackShownOnSpine(ComponentFiber boundary, VisualElement? container, VisualElement? portalScope,
+            string positionKey, SuspenseNode node)
         {
+            if (!_suspenseFallbackKeys.TryGetValue(boundary, out var entries)) return false;
+            foreach (var entry in entries)
+            {
+                if (entry.Key.Position != positionKey || !ReferenceEquals(entry.Key.PortalScope, portalScope)
+                    || !ReferenceEquals(entry.Value, node)) continue;
+                for (var current = container; current != null; current = current.parent)
+                    if (ReferenceEquals(current, entry.Key.Container)) return true;
+            }
+            return false;
+        }
+
+        internal void SetSuspenseFallbackShown(ComponentFiber? boundary, VisualElement? container, VisualElement? portalScope,
+            string positionKey, SuspenseNode node, bool shown)
+        {
+            var position = (container, portalScope, positionKey);
             if (boundary == null)
             {
-                if (shown) _rootlessSuspenseFallbackKeys.Add(positionKey);
-                else _rootlessSuspenseFallbackKeys.Remove(positionKey);
+                if (shown) _rootlessSuspenseFallbackKeys[position] = node;
+                else _rootlessSuspenseFallbackKeys.Remove(position);
                 return;
             }
             if (shown)
             {
                 if (!_suspenseFallbackKeys.TryGetValue(boundary, out var keys))
                 {
-                    keys = new HashSet<string>();
+                    keys = new Dictionary<(VisualElement? Container, VisualElement? PortalScope, string Position), SuspenseNode>();
                     _suspenseFallbackKeys[boundary] = keys;
                 }
-                keys.Add(positionKey);
+                keys[position] = node;
+                return;
+            }
+            RemoveSuspenseFallback(boundary, position);
+        }
+
+        private void RemoveSuspenseFallback(ComponentFiber? boundary,
+            (VisualElement? Container, VisualElement? PortalScope, string Position) position)
+        {
+            if (boundary == null)
+            {
+                _rootlessSuspenseFallbackKeys.Remove(position);
                 return;
             }
             if (_suspenseFallbackKeys.TryGetValue(boundary, out var existing)
-                && existing.Remove(positionKey) && existing.Count == 0)
+                && existing.Remove(position) && existing.Count == 0)
             {
                 _suspenseFallbackKeys.Remove(boundary);
             }
+        }
+
+        internal void ClearSuspenseState()
+        {
+            _suspenseFallbackKeys.Clear();
+            _rootlessSuspenseFallbackKeys.Clear();
+        }
+
+        internal void PruneSuspenseContainerState(VisualElement container)
+        {
+            var emptyBoundaries = BufferPool.RentFiberList();
+            try
+            {
+                RemoveSuspenseContainer(_rootlessSuspenseFallbackKeys, container);
+                foreach (var entry in _suspenseFallbackKeys)
+                {
+                    RemoveSuspenseContainer(entry.Value, container);
+                    if (entry.Value.Count == 0) emptyBoundaries.Add(entry.Key);
+                }
+                foreach (var boundary in emptyBoundaries) _suspenseFallbackKeys.Remove(boundary);
+            }
+            finally
+            {
+                BufferPool.ReturnFiberList(emptyBoundaries);
+            }
+        }
+
+        private static void RemoveSuspenseContainer(
+            Dictionary<(VisualElement? Container, VisualElement? PortalScope, string Position), SuspenseNode> entries, VisualElement container)
+        {
+            List<(VisualElement? Container, VisualElement? PortalScope, string Position)>? removed = null;
+            foreach (var position in entries.Keys)
+                if (ReferenceEquals(position.Container, container) || ReferenceEquals(position.PortalScope, container)) (removed ??= new()).Add(position);
+            if (removed != null)
+                foreach (var position in removed) entries.Remove(position);
         }
 
         // Removes all wrapper-less Suspense boundary state keyed by boundary.
@@ -1325,7 +1373,7 @@ namespace Velvet
         // this state records, per AnimatePresence, the leaf composition currently committed to the DOM so
         // the old-side structural walk can reproduce it for the diff, plus which keys are mid-exit (kept
         // mounted as ghosts) and which have finished exiting (dropped on the next render). PresenceStateOwner
-        // enumerates what it is pruned with; RetirePresenceStatesNotReRendered and the whole-table clear in
+        // enumerates what it is pruned with; RetireBoundaryStatesNotReRendered and the whole-table clear in
         // Reconciler.ReleaseHostsAndScopes are the other two ways it ends.
         internal sealed class PresenceBoundaryState
         {
@@ -1400,7 +1448,7 @@ namespace Velvet
         internal VisualElement? PresenceAnchorMotionElement;
 
         // The three subjects a prune retires a DOM-less AnimatePresence entry for. A presence whose node
-        // stops being rendered outlives all three, which is what RetirePresenceStatesNotReRendered
+        // stops being rendered outlives all three, which is what RetireBoundaryStatesNotReRendered
         // answers for.
         private enum PresenceStateOwner
         {
@@ -1457,32 +1505,40 @@ namespace Velvet
         internal void PrunePresencePortalState(VisualElement placeholder)
             => PrunePresenceStates(PresenceStateOwner.PortalPlaceholder, placeholder);
 
-        // The presence entries one top-level pass reproduced on its old side, and the ones its new side
-        // rendered again. The case this exists for is the one no prune above can see: an AnimatePresence
-        // node stops being rendered while its boundary fiber, its parent element and any Portal it sits
-        // under all go on living, and the difference between the two readings is what says so.
-        private readonly List<(ComponentFiber? boundary, VisualElement? parent, string presenceKey)> _presenceReproduced = new();
-        private readonly List<(ComponentFiber? boundary, VisualElement? parent, string presenceKey)> _presenceRetirable = new();
-        private readonly HashSet<(ComponentFiber? boundary, VisualElement? parent, string presenceKey)> _presenceReRendered = new();
+        // Retire absent wrappers after their container's removals, including removals owed by a parked diff.
+        private readonly List<BoundaryReproductionKey> _boundaryReproduced = new();
+        private readonly List<BoundaryReproductionKey> _boundaryRetirable = new();
+        private readonly HashSet<BoundaryReproductionKey> _boundaryReRendered = new();
+
+        internal readonly record struct BoundaryReproductionKey(
+            ComponentFiber? Boundary, VisualElement? Parent, VisualElement? PortalScope, string Position, bool IsSuspense);
 
         internal void MarkPresenceReproduced((ComponentFiber? boundary, VisualElement? parent, string presenceKey) key)
-            => _presenceReproduced.Add(key);
+            => _boundaryReproduced.Add(new(key.boundary, key.parent, null, key.presenceKey, false));
 
         internal void MarkPresenceReRendered((ComponentFiber? boundary, VisualElement? parent, string presenceKey) key)
-            => _presenceReRendered.Add(key);
+            => _boundaryReRendered.Add(new(key.boundary, key.parent, null, key.presenceKey, false));
+
+        internal void MarkSuspenseReproduced(ComponentFiber? boundary, VisualElement? parent,
+            VisualElement? portalScope, string position)
+            => _boundaryReproduced.Add(new(boundary, parent, portalScope, position, true));
+
+        internal void MarkSuspenseReRendered(ComponentFiber? boundary, VisualElement? parent,
+            VisualElement? portalScope, string position)
+            => _boundaryReRendered.Add(new(boundary, parent, portalScope, position, true));
 
         // Opens the span of reproductions one container's reconcile takes, closed by
-        // EndPresenceReproductionScope. Nested containers reconcile inside that span and close their own
+        // EndBoundaryReproductionScope. Nested containers reconcile inside that span and close their own
         // first, so the tail this returns is exactly the enclosing container's own.
-        internal int BeginPresenceReproductionScope() => _presenceReproduced.Count;
+        internal int BeginBoundaryReproductionScope() => _boundaryReproduced.Count;
 
         // What a container's removal pass — GeneralPathReconciler's FinalizeGeneralCommit, or the
-        // time-sliced diff's own removal phase — did about the slots an absent presence held. Until it has
+        // time-sliced diff's own removal phase — did about the slots an absent wrapper held. Until it has
         // run, the reproduced leaves are still in the DOM and the entry is what the next old side names
         // them from, so the entry must not retire. The reading is per container rather than per pass: an
         // abort holds for the rest of the pass, while every container that finalized before it emptied its
         // slots for real.
-        internal enum PresenceRemovalOutcome
+        internal enum BoundaryRemovalOutcome
         {
             // Emptied, so the span may retire.
             Ran,
@@ -1491,38 +1547,38 @@ namespace Velvet
             Skipped,
 
             // Parked mid-diff. ContinueIndexed / ContinueKeyed resume from the old side this pass already
-            // expanded, so no walk names these presences a second time — dropping the span would leave the
+            // expanded, so no walk names these wrappers a second time — dropping the span would leave the
             // entry to outlive the leaves it names rather than defer its retirement.
             OwedByAContinuation,
         }
 
         // Where a span an outcome describes belongs: the pass's own retirable list, the parked
         // container's carry list, or nowhere.
-        private List<(ComponentFiber? boundary, VisualElement? parent, string presenceKey)>? DestinationFor(
-            PresenceRemovalOutcome outcome,
-            List<(ComponentFiber? boundary, VisualElement? parent, string presenceKey)> owedByThisPark)
+        private List<BoundaryReproductionKey>? DestinationFor(
+            BoundaryRemovalOutcome outcome,
+            List<BoundaryReproductionKey> owedByThisPark)
         {
 #pragma warning disable CS8524 // no discard arm, so a fourth outcome fails the build rather than being dropped
             return outcome switch
             {
-                PresenceRemovalOutcome.Ran => _presenceRetirable,
-                PresenceRemovalOutcome.OwedByAContinuation => owedByThisPark,
-                PresenceRemovalOutcome.Skipped => null,
+                BoundaryRemovalOutcome.Ran => _boundaryRetirable,
+                BoundaryRemovalOutcome.OwedByAContinuation => owedByThisPark,
+                BoundaryRemovalOutcome.Skipped => null,
             };
 #pragma warning restore CS8524
         }
 
-        internal void EndPresenceReproductionScope(
+        internal void EndBoundaryReproductionScope(
             int scope,
-            PresenceRemovalOutcome outcome,
-            List<(ComponentFiber? boundary, VisualElement? parent, string presenceKey)> owedByThisPark)
+            BoundaryRemovalOutcome outcome,
+            List<BoundaryReproductionKey> owedByThisPark)
         {
             var destination = DestinationFor(outcome, owedByThisPark);
             if (destination != null)
             {
-                for (var i = scope; i < _presenceReproduced.Count; i++)
+                for (var i = scope; i < _boundaryReproduced.Count; i++)
                 {
-                    destination.Add(_presenceReproduced[i]);
+                    destination.Add(_boundaryReproduced[i]);
                 }
             }
             // MUTANT_SURVIVES(equivalent): the tail this drops is already answered for by the enclosing scope.
@@ -1530,36 +1586,40 @@ namespace Velvet
             // rest of the pass, a nested container is entered at budget 0 so only the top-level one can park,
             // and a throw unwinds the enclosing container too. What it buys is a bounded list and no duplicate
             // entries; measured, the full EditMode suite is green with it cut.
-            _presenceReproduced.RemoveRange(scope, _presenceReproduced.Count - scope);
+            _boundaryReproduced.RemoveRange(scope, _boundaryReproduced.Count - scope);
         }
 
         // Closes what a park left owed, once the slice that resumed it has run. Its outcome is read the
         // same way the container's own was, so a slice that parked again leaves the span where it is.
         // Dropping it is a discarded park's reading — the diff that owed those removals is the one nobody
-        // finishes, so the entry must stay live (see PresenceRemovalOutcome.Skipped).
-        internal void SettlePresenceReproductionsOwedByAPark(
-            PresenceRemovalOutcome outcome,
-            List<(ComponentFiber? boundary, VisualElement? parent, string presenceKey)> owed)
+        // finishes, so the entry must stay live (see BoundaryRemovalOutcome.Skipped).
+        internal void SettleBoundaryReproductionsOwedByAPark(
+            BoundaryRemovalOutcome outcome,
+            List<BoundaryReproductionKey> owed)
         {
-            if (outcome == PresenceRemovalOutcome.OwedByAContinuation) return;
+            if (outcome == BoundaryRemovalOutcome.OwedByAContinuation) return;
             DestinationFor(outcome, owed)?.AddRange(owed);
             owed.Clear();
         }
 
         // Retires every retirable entry the pass did not render again, then drops the pass's marks.
-        internal void RetirePresenceStatesNotReRendered()
+        internal void RetireBoundaryStatesNotReRendered()
         {
-            foreach (var key in _presenceRetirable)
+            foreach (var key in _boundaryRetirable)
             {
-                if (!_presenceReRendered.Contains(key)) PresenceStates.Remove(key);
+                if (_boundaryReRendered.Contains(key)) continue;
+                if (key.IsSuspense)
+                    RemoveSuspenseFallback(key.Boundary, (key.Parent, key.PortalScope, key.Position));
+                else
+                    PresenceStates.Remove((key.Boundary, key.Parent, key.Position));
             }
             // MUTANT_SURVIVES(equivalent): this list is already empty here, so the clear removes nothing.
-            // BeginPresenceReproductionScope and EndPresenceReproductionScope are one call site each, paired
+            // BeginBoundaryReproductionScope and EndBoundaryReproductionScope are one call site each, paired
             // across a finally, and the End truncates its own span unconditionally — so the outermost
             // container leaves the list at the length it entered with, which at a top-level pass is zero.
-            _presenceReproduced.Clear();
-            _presenceRetirable.Clear();
-            _presenceReRendered.Clear();
+            _boundaryReproduced.Clear();
+            _boundaryRetirable.Clear();
+            _boundaryReRendered.Clear();
         }
 
         // Tree-wide auto-batching scheduler. Coalesces setState across every fiber that shares this

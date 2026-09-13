@@ -993,8 +993,8 @@ namespace Velvet
         // descendant suspends during the new-side render, the partial primary output is discarded (the
         // partially-mounted fibers stay registered so a later resolve re-render reuses them with their
         // state) and the fallback subtree is expanded instead. The children-vs-fallback decision is
-        // recorded via ReconcilerContext.SetSuspenseFallbackShown keyed by (boundary,
-        // position) so the old-side structural walk reproduces the committed subtree for the diff.
+        // recorded via ReconcilerContext.SetSuspenseFallbackShown so the old-side structural walk
+        // reproduces the committed subtree for the diff.
         // Primary and fallback children use distinct fragment scopes so their fibers never collide.
         private void ExpandSuspenseInline(
             InlineWalk walk,
@@ -1075,11 +1075,14 @@ namespace Velvet
                 // Records this Suspense's decision under its own position key. FlushState's offscreen guard
                 // reads the boundary-level answer derived from those keys, so a sibling Suspense expanded
                 // later in this same walk cannot clear it.
-                _ctx.SetSuspenseFallbackShown(boundaryFiber, suspenseKey, suspended);
+                _ctx.MarkSuspenseReRendered(boundaryFiber, walk.Parent, _ctx.PortalChildKeyScopeHere, suspenseKey);
+                _ctx.SetSuspenseFallbackShown(boundaryFiber, walk.Parent, _ctx.PortalChildKeyScopeHere, suspenseKey, suspense, suspended);
             }
             else
             {
-                var wasFallback = _ctx.IsSuspenseFallbackShown(boundaryFiber, suspenseKey);
+                var wasFallback = _ctx.IsSuspenseFallbackShown(boundaryFiber, walk.Parent, _ctx.PortalChildKeyScopeHere, suspenseKey);
+                if (wasFallback)
+                    _ctx.MarkSuspenseReproduced(boundaryFiber, walk.Parent, _ctx.PortalChildKeyScopeHere, suspenseKey);
                 var nodesToExpand = wasFallback
                     ? (suspense.Fallback != null ? new[] { suspense.Fallback } : Array.Empty<VNode>())
                     : (suspense.Children ?? Array.Empty<VNode>());

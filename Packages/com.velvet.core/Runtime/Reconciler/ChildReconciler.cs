@@ -52,10 +52,10 @@ namespace Velvet
         // Pool while suspended).
         internal KeyedReconcileState? PendingKeyedState { get; private set; }
 
-        // The presence reproductions the state above still owes a removal pass, carried until the slice
+        // The boundary reproductions the state above still owes a removal pass, carried until the slice
         // that resumes it runs them. Instance state rather than context state like the lists it feeds,
         // because the park it answers for is this instance's own while the context is shared.
-        private readonly List<(ComponentFiber? boundary, VisualElement? parent, string presenceKey)> _presenceOwedByThisPark = new();
+        private readonly List<ReconcilerContext.BoundaryReproductionKey> _boundaryOwedByThisPark = new();
 
         public ChildReconciler(ReconcilerContext ctx, FiberNodePatcher patcher, FiberNodeFactory factory, FiberElementCleaner cleaner)
         {
@@ -173,13 +173,13 @@ namespace Velvet
             // directly and bypasses this path, so discarding here does not break a Continue run.
             // Nested calls entered via PatchNode during ContinueXxx also pass through here, but at
             // that point ContinueXxx has already taken ownership of pending (= null), so this is a no-op.
-            // The presence reproductions that state owed go with it, since no slice will run its removals
+            // The boundary reproductions that state owed go with it, since no slice will run its removals
             // now — gated on the state so that stays a no-op too: the owed span is still in flight during
             // a ContinueXxx, and dropping it there would strand the entry.
             if (PendingIndexedState != null || PendingKeyedState != null)
             {
-                _ctx.SettlePresenceReproductionsOwedByAPark(
-                    ReconcilerContext.PresenceRemovalOutcome.Skipped, _presenceOwedByThisPark);
+                _ctx.SettleBoundaryReproductionsOwedByAPark(
+                    ReconcilerContext.BoundaryRemovalOutcome.Skipped, _boundaryOwedByThisPark);
             }
             PendingIndexedState = null;
             DiscardPendingKeyedState();
@@ -212,11 +212,11 @@ namespace Velvet
                 OldOwners = oldOwners,
             };
             VNode?[] oldNodes;
-            // The presence reproductions this container's own walk takes, retirable only once the removal
-            // pass below has run — see ReconcilerContext.EndPresenceReproductionScope.
-            var presenceScope = _ctx.BeginPresenceReproductionScope();
+            // The boundary reproductions this container's own walk takes, retirable only once the removal
+            // pass below has run — see ReconcilerContext.EndBoundaryReproductionScope.
+            var boundaryScope = _ctx.BeginBoundaryReproductionScope();
             // Only an exception unwinding out of the try below reads this, since both branches assign first.
-            var removals = ReconcilerContext.PresenceRemovalOutcome.Skipped;
+            var removals = ReconcilerContext.BoundaryRemovalOutcome.Skipped;
             try
             {
                 // Old side is always expanded structurally into the flat leaf array used for matching.
@@ -235,8 +235,8 @@ namespace Velvet
                     // element descendants render in-scope without a pre-captured snapshot. Orphan
                     // effect-cleanup + sweep and the LIS reorder are performed inside.
                     removals = _general.ReconcileGeneral(parent, oldNodes, newChildren, slotStart, in pairing)
-                        ? ReconcilerContext.PresenceRemovalOutcome.Ran
-                        : ReconcilerContext.PresenceRemovalOutcome.Skipped;
+                        ? ReconcilerContext.BoundaryRemovalOutcome.Ran
+                        : ReconcilerContext.BoundaryRemovalOutcome.Skipped;
                 }
                 else
                 {
@@ -260,7 +260,7 @@ namespace Velvet
             }
             finally
             {
-                _ctx.EndPresenceReproductionScope(presenceScope, removals, _presenceOwedByThisPark);
+                _ctx.EndBoundaryReproductionScope(boundaryScope, removals, _boundaryOwedByThisPark);
                 _ctx.BufferPool.ReturnProviderTable(oldProviders);
                 _ctx.BufferPool.ReturnFiberList(oldFibers);
                 _ctx.BufferPool.ReturnFiberSet(newFibers);
@@ -545,12 +545,12 @@ namespace Velvet
         // leaf rendered stops the state machine between phases, and an exhausted frame budget parks it. The
         // two differ in who pays the debt — the abort's next pass expands both sides again, while a park is
         // resumed from the old side this one already expanded — which is why the outcome is three-valued.
-        private ReconcilerContext.PresenceRemovalOutcome FastPathRemovalOutcome()
+        private ReconcilerContext.BoundaryRemovalOutcome FastPathRemovalOutcome()
             => PendingIndexedState != null || PendingKeyedState != null
-                ? ReconcilerContext.PresenceRemovalOutcome.OwedByAContinuation
+                ? ReconcilerContext.BoundaryRemovalOutcome.OwedByAContinuation
                 : _ctx.IsAborted
-                    ? ReconcilerContext.PresenceRemovalOutcome.Skipped
-                    : ReconcilerContext.PresenceRemovalOutcome.Ran;
+                    ? ReconcilerContext.BoundaryRemovalOutcome.Skipped
+                    : ReconcilerContext.BoundaryRemovalOutcome.Ran;
 
         // Resumes a suspended IndexedReconcile.
         // Does nothing when PendingIndexedState is null.
@@ -563,7 +563,7 @@ namespace Velvet
             // Read only when the resume unwinds, for the reason Reconcile's own initialiser carries.
             // Deriving the outcome inside the finally instead is what this shape rejects: measured, the
             // unwound resume then retires an entry whose slots the unfinished diff never emptied.
-            var removals = ReconcilerContext.PresenceRemovalOutcome.Skipped;
+            var removals = ReconcilerContext.BoundaryRemovalOutcome.Skipped;
             try
             {
                 ReconcileIndexedFrom(state.Parent, state.OldNodes, state.NewNodes,
@@ -572,7 +572,7 @@ namespace Velvet
             }
             finally
             {
-                _ctx.SettlePresenceReproductionsOwedByAPark(removals, _presenceOwedByThisPark);
+                _ctx.SettleBoundaryReproductionsOwedByAPark(removals, _boundaryOwedByThisPark);
             }
         }
 
@@ -585,7 +585,7 @@ namespace Velvet
             var state = PendingKeyedState;
             PendingKeyedState = null;
             // Same initialiser discipline as ContinueIndexed.
-            var removals = ReconcilerContext.PresenceRemovalOutcome.Skipped;
+            var removals = ReconcilerContext.BoundaryRemovalOutcome.Skipped;
             try
             {
                 ReconcileKeyedFrom(state, frameBudgetMs);
@@ -593,7 +593,7 @@ namespace Velvet
             }
             finally
             {
-                _ctx.SettlePresenceReproductionsOwedByAPark(removals, _presenceOwedByThisPark);
+                _ctx.SettleBoundaryReproductionsOwedByAPark(removals, _boundaryOwedByThisPark);
             }
         }
 

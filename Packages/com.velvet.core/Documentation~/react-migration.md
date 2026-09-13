@@ -305,6 +305,10 @@ the flag off mid-edit receives the pending text rather than stranding it on scre
 | Class Component + `getDerivedStateFromError` | The `V.ErrorBoundary(fallback, children)` helper, or `[Component(IsErrorBoundary = true)]` + `Hooks.UseFallback(fn)` | Explicit opt-in. The helper suits a use directly under Mount; the functional pattern suits cases where you want fallback/children values to update dynamically on parent re-render |
 | Class Component + `componentDidCatch` | `Hooks.UseEffect` + try-catch, or logging via an error-notification Store | When you want to log side effects from a functional component, do it inside an effect |
 
+Suspense boundaries in separate host elements or Portals keep independent pending state, including
+Portals sharing one target. Updating a suspended primary keeps its fallback visible until its resource
+resolves. Removing the boundary releases that pending state when its displayed children are removed.
+
 > **Note — Error Boundary mapping**  
 > Velvet uses the same explicit opt-in model as React. The `V.ErrorBoundary(fallback, children)` helper is ideal for a root boundary directly under mount. For cases where the fallback / children values change dynamically, use a static method annotated with `[Component(IsErrorBoundary = true)]` combined with `Hooks.UseFallback(ex => ...)`.<br/>
 > Velvet's `UseFallback` is equivalent to React's `getDerivedStateFromError` (a pure function that simply returns a fallback VNode). Handle side effects separately inside a `UseEffect`.

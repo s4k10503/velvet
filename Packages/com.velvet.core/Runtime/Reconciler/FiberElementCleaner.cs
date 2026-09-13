@@ -170,6 +170,7 @@ namespace Velvet
             CleanupDndResources(element);
             CleanupControllerResources(element);
             _ctx.PrunePresenceParentElementState(element);
+            _ctx.PruneSuspenseContainerState(element);
             _ctx.FiberMemoCache.Forget(element);
         }
 
@@ -501,6 +502,7 @@ namespace Velvet
             // the placeholder rather than by the range being torn out).
             _ctx.ComponentRegistry.DisposeInlineFibersOwnedByPortal(element);
             _ctx.PrunePresencePortalState(element);
+            _ctx.PruneSuspenseContainerState(element);
             // The retarget release reaches the placeholder through here alone.
             _ctx.FiberMemoCache.Forget(element);
 
