@@ -113,6 +113,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The Starter App remounts when its UIDocument root is replaced or reenabled, retaining the router's
+  location while the host remains enabled. The previous host kept rendering into the departed root.
+
 - A `V.VirtualList` whose `keySelector` returns null for one item renders that row instead of throwing
   out of the range update that reached it. A null key is no key, which is the answer `V.List` gives the
   same selector: the row renders and reconciles by position, which for a virtualized list is its item
