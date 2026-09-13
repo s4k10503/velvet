@@ -66,10 +66,6 @@ KILLED = "killed"
 TIMED_OUT = "not measured (timed out)"
 HUNG = "not measured (the suite did not finish)"
 
-# How far under --timeout the baseline has to land before a mutant reaching it is read as the
-# mutation's doing rather than as a bound the suite was always going to outrun. Three is the smallest
-# ratio that is not a judgement call about a slow machine: a run that took a third of the bound and
-# then took all of it did not get three times slower by chance.
 HANG_MARGIN = 3
 SURVIVED = "survived"
 INCONCLUSIVE = "survived (inconclusive)"
