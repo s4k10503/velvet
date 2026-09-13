@@ -19,10 +19,6 @@ namespace Velvet.Tests
     /// the utility-sheet case below also answers whether the sheet survived the build.
     /// </para>
     /// <para>
-    /// Each case settles on a condition rather than a frame count. Several suites share this machine, so a
-    /// budget large enough to be reliable under load would be most of the wall time when it is idle.
-    /// </para>
-    /// <para>
     /// One case reads geometry rather than presence: where the route's first row sits relative to the
     /// chrome's header. It compares the two measured rects against each other rather than against a pixel
     /// budget, so the font metrics and panel scale of whichever machine runs it do not decide the outcome.
@@ -172,6 +168,63 @@ namespace Velvet.Tests
                  chromeHeader.worldBound.yMax <= routeField.worldBound.y),
                 Is.EqualTo((true, true, true)),
                 $"header {chromeHeader.worldBound}, route field {routeField.worldBound}");
+        }
+
+        [UnityTest]
+        public IEnumerator Given_TheStarterSampleScene_When_TheDocumentRecreatesItsRoot_Then_TheAppReturnsToTheLivePanel()
+        {
+            // Arrange
+            yield return PlaySampleScene();
+            var document = UnityEngine.Object.FindFirstObjectByType<UIDocument>();
+            var oldRoot = document.rootVisualElement;
+            var mountedBefore = Find(DraftFieldName) != null;
+
+            // Act
+            document.visualTreeAsset = document.visualTreeAsset;
+            yield return null;
+            yield return null;
+
+            // Assert
+            Assert.That((mountedBefore, ReferenceEquals(oldRoot, document.rootVisualElement),
+                Find(DraftFieldName) != null), Is.EqualTo((true, false, true)));
+        }
+
+        [UnityTest]
+        public IEnumerator Given_TheStarterSampleOnAbout_When_TheDocumentIsReenabled_Then_TheRouteAndStylesReturn()
+        {
+            // Arrange
+            yield return PlaySampleScene();
+            PanelRoot().Q<Button>(AboutLinkName).SimulateClick();
+            yield return WaitUntil(() => PanelRoot()?.Q<Button>(BackLinkName) != null,
+                $"a Button named {BackLinkName}");
+            var document = UnityEngine.Object.FindFirstObjectByType<UIDocument>();
+
+            // Act
+            document.enabled = false;
+            yield return null;
+            document.enabled = true;
+            yield return null;
+            yield return null;
+
+            // Assert
+            Assert.That((Find(BackLinkName) != null, Find(DraftFieldName) == null,
+                Find(HeaderName)?.resolvedStyle.flexDirection),
+                Is.EqualTo((true, true, (FlexDirection?)FlexDirection.Row)));
+        }
+
+        // GREEN_ON_BASE(characterization): pins the existing root padding alongside the root-lifetime regression.
+        [UnityTest]
+        public IEnumerator Given_TheStarterSampleScene_When_Played_Then_TheRootRetainsItsDeclaredPadding()
+        {
+            // Arrange
+            yield return PlaySampleScene();
+
+            // Act
+            var style = Find(RootName).resolvedStyle;
+
+            // Assert
+            Assert.That(new[] { style.paddingTop, style.paddingRight, style.paddingBottom, style.paddingLeft },
+                Is.EqualTo(new[] { 24f, 24f, 24f, 24f }).Within(0.01f));
         }
 
         [UnityTest]

@@ -94,3 +94,10 @@ scene route does not bring with it is the theme binding `AttachTo` performs — 
 
 Editor-time preview stories get the utilities from the preview window, so a story needs no call of its
 own — see [preview-tooling.md](preview-tooling.md).
+
+## Starter App document lifetime
+
+The Starter App host checks the document root each frame. If the root changes, it disposes the old
+mount, attaches the stylesheet to the new root and mounts the router there. Disabling the document
+removes the mount; enabling it mounts again. The router keeps its location while the host remains
+enabled, but component-local state starts fresh when the tree remounts.
