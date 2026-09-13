@@ -3085,6 +3085,7 @@ class SignalledCampaignTests(unittest.TestCase):
     a restored tree gives.
     """
 
+    # GREEN_ON_BASE(characterization): pins existing restoration with a signal delivered while a mutation is held.
     def test_Given_ARunningCampaign_When_ItIsSignalled_Then_TheSourceIsPutBack(self):
         # Arrange — a campaign whose editor never returns, so the signal lands while it holds.
         campaign = StubbedCampaign()
@@ -3106,7 +3107,7 @@ class SignalledCampaignTests(unittest.TestCase):
             def green(_u, _p, _pl, _s, results, log, _t, _h=None):
                 open(results, "w").write(results_text)
                 open(log, "w").write("")
-                return 0.0, False
+                return 0.0, False, 0
 
             calls = {"n": 0}
 
@@ -3130,11 +3131,14 @@ class SignalledCampaignTests(unittest.TestCase):
             said = running.stdout.readline()
             if not said or said.strip() == "holding":
                 break
-        os.kill(running.pid, signal.SIGTERM)
+        held = said.strip() == "holding" and campaign.source.read_text() != original
+        if running.poll() is None:
+            os.kill(running.pid, signal.SIGTERM)
         running.wait(timeout=60)
+        running.stdout.close()
 
         # Assert
-        self.assertEqual(campaign.source.read_text(), original)
+        self.assertEqual((held, campaign.source.read_text()), (True, original))
 
 
 class MaskRefusalTests(unittest.TestCase):
