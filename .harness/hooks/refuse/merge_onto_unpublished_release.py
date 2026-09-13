@@ -44,6 +44,11 @@ UNREADABLE_PROBE = {"command": "gh pr merge 1 --squash --delete-branch"}
 # Repository state any session can move — the scope rule shared_git_state.py states.
 HOOK_SCOPE = "session"
 
+# The release state this decides from is `published_check.unpublished_reason`'s answer, and the
+# suite over that module has no reason to spell the caller. scripts/hooks/test_hook_coverage.py
+# reads this where it would otherwise look for the name.
+DECISION_TESTS = ("scripts/release/test_published_check.py",)
+
 
 
 

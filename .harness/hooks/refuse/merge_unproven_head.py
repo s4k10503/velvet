@@ -61,7 +61,23 @@ def gh_json(cwd, args):
 
 def head_sha(cwd, number):
     payload = gh_json(cwd, ["pr", "view", *( [number] if number else [] ), "--json", "headRefOid"])
-    return payload["headRefOid"] if payload else None
+    head = payload.get("headRefOid") if isinstance(payload, dict) else None
+    return head if isinstance(head, str) and head else None
+
+
+def checks_of(cwd, number):
+    """Keep a valid check list even when gh exits nonzero for pending or failed checks."""
+    answer = repository.gh_answer(["pr", "checks", *([number] if number else []),
+                                   "--json", "name,bucket"], cwd=cwd)
+    try:
+        listed = json.loads(answer.stdout)
+    except ValueError:
+        return None
+    if not isinstance(listed, list) or not all(
+            isinstance(entry, dict) and isinstance(entry.get("name"), str)
+            and isinstance(entry.get("bucket"), str) for entry in listed):
+        return None
+    return listed
 
 
 def merges(command):
@@ -87,15 +103,24 @@ def unproven(asked, cwd):
             # one declines to invent an answer.
             continue
 
-        results = gh_json(cwd, ["pr", "checks", *([number] if number else []), "--json", "name,bucket"])
+        listed = checks_of(cwd, number)
         after = head_sha(cwd, number)
 
-        if after != before:
+        # Past the first reading a reading that failed is refused, where the arm above lets one
+        # through: the first answer is what says this is a pull request gh can reach, and once it
+        # has, a reading that comes back empty is this head going unchecked rather than a guard with
+        # nothing to say. So the None arm has to sit ahead of the comparison that formats `after`.
+        if after is None:
+            found.append((label, f"the head could not be read again after its checks, so nothing "
+                                 f"ties them to {before[:7]}"))
+        elif after != before:
             found.append((label, f"head moved from {before[:7]} to {after[:7]} while its checks were read"))
-        elif not results:
+        elif listed is None:
+            found.append((label, f"the check list for {before[:7]} could not be read"))
+        elif not listed:
             found.append((label, f"no check ran for {before[:7]}: a workflow was never triggered for it"))
         else:
-            unfinished = sorted(entry["name"] for entry in results
+            unfinished = sorted(entry["name"] for entry in listed
                                 if entry["bucket"] not in TERMINAL_PASS)
             if unfinished:
                 found.append((label, "not passing at {}: {}".format(before[:7], ", ".join(unfinished))))
