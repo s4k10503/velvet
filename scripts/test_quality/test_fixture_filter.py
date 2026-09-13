@@ -256,6 +256,21 @@ class FixtureFilterTests(unittest.TestCase):
         # Assert
         self.assertEqual(selected(value), ["Velvet.Tests.GamepadTests"])
 
+    def test_Given_ANestedConcreteHeirWithoutOwnCases_When_ItsValueIsMatched_Then_TheRunnerSelectsItsQualifiedName(self):
+        # Arrange
+        relative = EDITOR + "NestedTests.cs"
+        project = self.project({relative: source(
+            "    internal abstract class Base\n    {\n" + CASE + "    }\n",
+            fixture("Outer", fixture("Inner", base="Base")))})
+        roster = [(name, chain(EDITOR_ASSEMBLY, name))
+                  for name in ("Velvet.Tests.Outer+Inner", "Velvet.Tests.Inner")]
+
+        # Act
+        code, value, _ = project.value(relative)
+
+        # Assert
+        self.assertEqual((code, selected(value, roster)), (0, ["Velvet.Tests.Outer+Inner"]))
+
     def test_Given_AnAbstractClassWithCasesAndNoConcreteHeir_When_ItsValueIsTaken_Then_NoValueIsPrinted(self):
         # Arrange -- a class deriving from it through another abstract one is not read, so the value
         # could be missing the fixture that runs these cases.

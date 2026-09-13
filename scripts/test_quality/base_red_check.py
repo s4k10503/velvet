@@ -601,17 +601,26 @@ def concrete_heirs(corpus):
     heirs = {}
     for relative, text in corpus.items():
         namespace = None
-        for line in code_lines(text):
+        types = []
+        for line, (entering, peak, leaving) in zip(code_lines(text), brace_profile(text)):
+            while types and types[-1][2] and entering <= types[-1][1]:
+                types.pop()
             found = CSHARP_NAMESPACE.search(line)
             if found:
                 namespace = found.group(1)
             declared = CSHARP_TYPE.search(line)
-            bases = CSHARP_BASES.search(line)
-            if not declared or not bases or CSHARP_ABSTRACT.search(line):
-                continue
-            qualified = ".".join(part for part in (namespace, declared.group(1)) if part)
-            for base in {match.group(0) for match in CSHARP_IDENTIFIER.finditer(bases.group(1))}:
-                heirs.setdefault(base, set()).add(qualified)
+            if declared and not (peak == entering and line.rstrip().endswith(";")):
+                types.append([declared.group(1), entering, False])
+                bases = CSHARP_BASES.search(line)
+                if bases and not CSHARP_ABSTRACT.search(line):
+                    owner = ".".join(name for name, _, _ in types)
+                    qualified = ".".join(part for part in (namespace, owner) if part)
+                    for base in set(CSHARP_IDENTIFIER.findall(bases.group(1))):
+                        heirs.setdefault(base, set()).add(qualified)
+            if types and not types[-1][2] and peak > types[-1][1]:
+                types[-1][2] = True
+                if leaving <= types[-1][1]:
+                    types.pop()
     return heirs
 
 
