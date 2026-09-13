@@ -160,6 +160,188 @@ class Verdicts(unittest.TestCase):
         self.assertEqual((code, said), (0, ""))
 
 
+class TreeTheCommitIsMadeIn(unittest.TestCase):
+    def setUp(self):
+        self.checkouts = Path(tempfile.mkdtemp(prefix="message-commit-tree-")).resolve()
+        self.addCleanup(shutil.rmtree, self.checkouts, ignore_errors=True)
+        self.primary = self.checkouts / "primary"
+        self.worktree = self.checkouts / "worktree"
+        for args in (["init", "--quiet", "-b", "main", str(self.primary)],
+                     ["-C", str(self.primary), "config", "user.email", "t@velvet"],
+                     ["-C", str(self.primary), "config", "user.name", "t"],
+                     ["-C", str(self.primary), "commit", "--quiet", "--allow-empty", "-m", "root"],
+                     ["-C", str(self.primary), "worktree", "add", "--quiet", "-b", "work",
+                      str(self.worktree)]):
+            subprocess.run(["git", *args], check=True, capture_output=True, timeout=30)
+        self.outside = Path(tempfile.mkdtemp(prefix="message-no-repository-")).resolve()
+        self.addCleanup(shutil.rmtree, self.outside, ignore_errors=True)
+
+    @staticmethod
+    def judge(command, cwd, home=None):
+        """The guard's verdict, as (exit code, stderr)."""
+        event = {"tool_name": "Bash", "cwd": str(cwd), "tool_input": {"command": command}}
+        environment = dict(os.environ, **({} if home is None else {"HOME": str(home)}))
+        done = subprocess.run(["python3", str(GUARD)], input=json.dumps(event),
+                              capture_output=True, text=True, timeout=30, env=environment)
+        return done.returncode, done.stderr
+
+    def committed(self, command):
+        """The subject at the head of the worktree's branch once `command` has run from the primary
+        checkout, run by a shell so that the text the guard was handed is what runs."""
+        subprocess.run(command, shell=True, cwd=self.primary, capture_output=True, timeout=30)
+        return subprocess.run(["git", "-C", str(self.worktree), "log", "-1", "--format=%s"],
+                              check=True, capture_output=True, text=True, timeout=30).stdout.strip()
+
+    def test_Given_ACommitMadeInAWorktreeFromThePrimary_When_ItsMessageIsInsideThatWorktree_Then_ItIsLetThrough(self):
+        # Arrange — under the Logs of the worktree the change is in, where AGENTS.md sends it.
+        command = f"git -C {self.worktree} commit -F {self.worktree}/Logs/run/msg.txt"
+
+        # Act
+        code, said = self.judge(command, self.primary)
+
+        # Assert
+        self.assertEqual((code, said), (0, ""))
+
+    def test_Given_ACommitMadeInAWorktreeFromThePrimary_When_ItsMessageIsInsideThePrimary_Then_ItIsRefusedNamingTheWorktree(self):
+        # Arrange — inside the tree the command starts in, and outside the one the commit is made in.
+        command = f"git -C {self.worktree} commit -F {self.primary}/Logs/run/msg.txt"
+
+        # Act
+        code, said = self.judge(command, self.primary)
+
+        # Assert — the tree named, since the refusal sends the message there.
+        self.assertEqual((code, f"is outside {self.worktree}, the worktree it describes" in said),
+                         (2, True))
+
+    def test_Given_ACommitAimedByGitDirAndWorkTreeFlags_When_ItsMessageIsInsideThatTree_Then_ItIsLetThrough(self):
+        # Arrange
+        command = (f"git --git-dir={self.worktree}/.git --work-tree={self.worktree} commit "
+                   f"-F {self.worktree}/Logs/run/msg.txt")
+
+        # Act
+        code, said = self.judge(command, self.primary)
+
+        # Assert
+        self.assertEqual((code, said), (0, ""))
+
+    def test_Given_ACommitAimedByGitDirAndWorkTreeFlagsFromNoRepository_When_ItsMessageIsOutsideThatTree_Then_ItIsRefused(self):
+        # Arrange — started in no repository, so without the git directory the flags name git finds
+        # none and the guard stands down; and the message outside that directory as well as the
+        # worktree, so the work tree they name is not what this turns on.
+        command = (f"git --git-dir={self.worktree}/.git --work-tree={self.worktree} commit "
+                   f"-F {self.checkouts}/msg.txt")
+
+        # Act
+        code, said = self.judge(command, self.outside)
+
+        # Assert
+        self.assertEqual((code, "the worktree it describes" in said), (2, True))
+
+    def test_Given_ACommitAimedByGitDirAndWorkTreeVariables_When_ItsMessageIsInsideThatTree_Then_ItIsLetThrough(self):
+        # Arrange
+        command = (f"GIT_DIR={self.worktree}/.git GIT_WORK_TREE={self.worktree} git commit "
+                   f"-F {self.worktree}/Logs/run/msg.txt")
+
+        # Act
+        code, said = self.judge(command, self.primary)
+
+        # Assert
+        self.assertEqual((code, said), (0, ""))
+
+    def test_Given_ACommitAimedByGitDirAndWorkTreeVariablesFromNoRepository_When_ItsMessageIsOutsideThatTree_Then_ItIsRefused(self):
+        # Arrange — as with the flags above.
+        command = (f"GIT_DIR={self.worktree}/.git GIT_WORK_TREE={self.worktree} git commit "
+                   f"-F {self.checkouts}/msg.txt")
+
+        # Act
+        code, said = self.judge(command, self.outside)
+
+        # Assert
+        self.assertEqual((code, "the worktree it describes" in said), (2, True))
+
+    def test_Given_ACommitMadeInASubdirectoryOfAWorktree_When_ARelativeMessageIsCommitted_Then_ItIsReadFromThatSubdirectory(self):
+        # Arrange — `../msg.txt` is the worktree's own file from its `sub`, and the one beside the
+        # checkouts from the primary; git is what says which it reads.
+        (self.worktree / "sub").mkdir()
+        (self.worktree / "msg.txt").write_text("the worktree's message\n", encoding="utf-8")
+        (self.checkouts / "msg.txt").write_text("a message beside the checkouts\n", encoding="utf-8")
+        command = f"git -C {self.worktree}/sub commit --quiet --allow-empty -F ../msg.txt"
+
+        # Act
+        code, said = self.judge(command, self.primary)
+        recorded = self.committed(command)
+
+        # Assert — what git recorded rides along, so the verdict is about the file git read.
+        self.assertEqual((code, said, recorded), (0, "", "the worktree's message"))
+
+    # GREEN_ON_BASE(characterization): the base lets this through as well, having judged the primary's file.
+    # What reddens it is reading a relative path from the directory the command starts in, or from
+    # that directory joined to a `-C`, while judging it against the tree the commit is made in.
+    def test_Given_AWorkTreeTheCommandStartsOutside_When_ARelativeMessageIsCommitted_Then_ItIsReadFromThatTree(self):
+        # Arrange — `msg.txt` sits in both trees, and the one git reads is the worktree's.
+        (self.worktree / "msg.txt").write_text("the worktree's message\n", encoding="utf-8")
+        (self.primary / "msg.txt").write_text("the primary's message\n", encoding="utf-8")
+        command = (f"git --git-dir={self.worktree}/.git --work-tree={self.worktree} commit "
+                   "--quiet --allow-empty -F msg.txt")
+
+        # Act
+        code, said = self.judge(command, self.primary)
+        recorded = self.committed(command)
+
+        # Assert — as in the case above.
+        self.assertEqual((code, said, recorded), (0, "", "the worktree's message"))
+
+    def test_Given_ACommitAimedByAnUnexpandedDirectory_When_ItsMessageIsSpelledOut_Then_ItIsRefused(self):
+        # Arrange — the message sits in the tree the command starts in, so the tree the commit is
+        # made in is the only thing left to refuse over.
+        command = f'git -C "$WORKTREE" commit -F {self.primary}/Logs/run/msg.txt'
+
+        # Act
+        code, said = self.judge(command, self.primary)
+
+        # Assert
+        self.assertEqual((code, "Spell the directory out" in said), (2, True))
+
+    def test_Given_ACommitAimedByATildeSpelledDirectory_When_ItsMessageIsOutsideThatTree_Then_ItIsRefused(self):
+        # Arrange — HOME is where the checkouts sit, so once the shell has expanded it `~/worktree`
+        # is the worktree.
+        command = f"git -C ~/{self.worktree.name} commit -F {self.primary}/Logs/run/msg.txt"
+
+        # Act
+        code, said = self.judge(command, self.primary, home=self.checkouts)
+
+        # Assert
+        self.assertEqual((code, f"is outside {self.worktree}, the worktree it describes" in said),
+                         (2, True))
+
+    # GREEN_ON_BASE(characterization): the base reads one tree for every invocation and refuses this message too.
+    # What reddens it is standing the whole command down when git names no tree for one of them.
+    def test_Given_ACommitWhoseTreeGitWillNotName_When_ACommitAfterItCarriesAMessageFromOutside_Then_ThatOneIsRefused(self):
+        # Arrange
+        command = (f"git -C {self.checkouts}/missing commit -F {self.primary}/msg.txt; "
+                   f"git commit -F {self.checkouts}/msg.txt")
+
+        # Act
+        code, said = self.judge(command, self.primary)
+
+        # Assert
+        self.assertEqual((code, f"{self.checkouts}/msg.txt\nis outside {self.primary}," in said),
+                         (2, True))
+
+    # GREEN_ON_BASE(characterization): the base judges the body against the tree the command runs in.
+    # What reddens it is judging gh against a tree read off the `git -C` beside it.
+    def test_Given_AGitDashCBesideAPullRequestBody_When_TheBodyIsInsideTheTreeTheCommandRunsIn_Then_ItIsLetThrough(self):
+        # Arrange — gh takes no `-C`, so the one beside it moves nothing gh reads.
+        command = (f"git -C {self.worktree} commit -m x && "
+                   f"gh pr create --title t --body-file {self.primary}/Logs/run/body.md")
+
+        # Act
+        code, said = self.judge(command, self.primary)
+
+        # Assert
+        self.assertEqual((code, said), (0, ""))
+
+
 class ToplevelReadingTests(unittest.TestCase):
     def setUp(self):
         self.root = Path(tempfile.mkdtemp(prefix="message-worktree-toplevel-")).resolve()
