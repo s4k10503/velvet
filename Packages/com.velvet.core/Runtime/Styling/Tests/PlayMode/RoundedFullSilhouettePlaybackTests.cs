@@ -74,18 +74,44 @@ namespace Velvet.Tests
 
         private static bool IsBlue(Color32 p) => p.b > 140 && p.r < 90 && p.g < 90;
 
-        private int CountBlue()
+        private bool[] CaptureBlueMask()
         {
             var pixels = ReadFrame();
-            var n = 0;
-            foreach (var p in pixels)
+            var mask = new bool[pixels.Length];
+            for (var i = 0; i < pixels.Length; i++)
             {
-                if (IsBlue(p))
+                mask[i] = IsBlue(pixels[i]);
+            }
+            return mask;
+        }
+
+        private static int CountSet(bool[] mask)
+        {
+            var count = 0;
+            foreach (var value in mask)
+            {
+                if (value)
                 {
-                    n++;
+                    count++;
                 }
             }
-            return n;
+            return count;
+        }
+
+        private static bool MasksEqual(bool[] left, bool[] right)
+        {
+            if (left.Length != right.Length)
+            {
+                return false;
+            }
+            for (var i = 0; i < left.Length; i++)
+            {
+                if (left[i] != right[i])
+                {
+                    return false;
+                }
+            }
+            return true;
         }
 
         private IEnumerator MountBox(string name, string className, Action<VisualElement> configure = null)
@@ -104,14 +130,13 @@ namespace Velvet.Tests
         // This branch does not change the renderer-owned path, so the case pins the fact a comment in
         // _tokens.uss asserted the opposite of.
         [UnityTest]
-        public IEnumerator Given_ARoundedFullBox_When_Painted_Then_ItsSilhouetteMatchesAPerAxisHalfPercentRadius()
+        public IEnumerator Given_ARoundedFullBox_When_Painted_Then_ItsBluePixelMaskMatchesAPerAxisHalfPercentRadius()
         {
             // Arrange — the same box three ways: the token, an explicit 50% on all four corners, and square
-            // corners. 50% is per-axis by construction, so a renderer scaling every radius by one factor (what
-            // CSS does, and what leaves a pill) separates the first two; one clamping each component against
-            // its own axis collapses them onto the same silhouette.
+            // corners. Comparing the whole thresholded frame distinguishes masks that happen to contain the
+            // same number of blue pixels but put them in different places.
             yield return MountBox("Full", $"{BoxGeometry} bg-[#0000ff] rounded-full");
-            var full = CountBlue();
+            var full = CaptureBlueMask();
 
             yield return MountBox("HalfPercent", $"{BoxGeometry} bg-[#0000ff]", box =>
             {
@@ -120,15 +145,16 @@ namespace Velvet.Tests
                 box.style.borderBottomRightRadius = new StyleLength(Length.Percent(50));
                 box.style.borderBottomLeftRadius = new StyleLength(Length.Percent(50));
             });
-            var halfPercent = CountBlue();
+            var halfPercent = CaptureBlueMask();
 
             // Act — square corners, the control: it is the only term here that says the boxes rendered at all
             // and that the rounding removed anything.
             yield return MountBox("Square", $"{BoxGeometry} bg-[#0000ff]");
-            var square = CountBlue();
+            var square = CaptureBlueMask();
 
             // Assert
-            Assert.That((full == halfPercent, square > full), Is.EqualTo((true, true)));
+            Assert.That((MasksEqual(full, halfPercent), CountSet(square) > CountSet(full)),
+                Is.EqualTo((true, true)));
         }
 
         // GREEN_ON_BASE(characterization): the base leaves this strip of the top edge unpainted too.

@@ -378,9 +378,10 @@ only an element's own class pass records.
 
 **Where `rounded-full` deviates from CSS.** `--radius-full` is deliberately oversized, so
 what reaches the screen is decided by how the renderer resolves a radius the box cannot carry. CSS scales
-the corners together and produces a pill. In Unity 6.3, the saturating pixel radius paints the same
-silhouette as `border-radius: 50%`: a full ellipse on a 330 × 34 field. The two agree on a square box. For
-a pill on a box that is not square, name the radius: `rounded-[17px]` on a 34 px-tall field.
+the corners together and produces a pill. In Unity 6.3 pixel readback on a 330 × 34 field, the saturating
+pixel radius and an explicit 50% radius produced the same blue-pixel mask, with no flat run in the sampled
+top-edge strip. For a pill on a box that is not square, name the radius: `rounded-[17px]` on a 34 px-tall
+field.
 
 Velvet's own face painting does not follow the renderer here. The layers that take over an element's face
 — `skew-*`, and `shadow-*` / `drop-shadow-*` on an upright caster — clamp a corner to half the box's
