@@ -275,8 +275,8 @@ namespace Velvet
 
     /// <summary>
     /// Node that skips rebuilding its child tree when the dependency array is unchanged.
-    /// When omitting key, do not change the order of MemoNodes within the same component, since identity
-    /// is resolved by call order.
+    /// When omitting key, do not change the order of MemoNodes within the same component, since the node is
+    /// identified by its position in the element it is written into.
     /// </summary>
     public sealed class MemoNode : VNode
     {
@@ -291,8 +291,8 @@ namespace Velvet
         /// of equal content is a change. Where the two branches part is how far the comparison reads: the
         /// reference branch reads the instance and stops, while the value branch is the element's own
         /// <c>Equals</c>, which answers for its fields in turn — a nested <c>record class</c> field by that
-        /// record's content. An empty array declares no dependencies and caches for the node's whole life; null
-        /// declares no dependency array, which no newly built node's comparison can satisfy.
+        /// record's content. An empty array declares no dependencies and caches while the memo keeps its
+        /// position; null declares no dependency array, which no newly built node's comparison can satisfy.
         /// </summary>
         public object?[]? Dependencies { get; init; }
     }

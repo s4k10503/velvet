@@ -98,6 +98,12 @@ namespace Velvet
             ReleaseProps(props);
         }
 
+        // FiberTreeReturn.Release owns when a part is let go this way rather than returned.
+        internal static void DisownProps(FiberElementProps? props)
+        {
+            if (props != null) s_ownedProps.Remove(props);
+        }
+
         private static void ReleaseProps(FiberElementProps props)
         {
             if (s_propsPool.Count >= MaxPoolSize)
@@ -165,6 +171,11 @@ namespace Velvet
             ReleaseEventArray(array);
         }
 
+        internal static void DisownEventArray(FiberEventBinding[]? array)
+        {
+            if (array != null) s_ownedSingleEventArrays.Remove(array);
+        }
+
         private static void ReleaseEventArray(FiberEventBinding[] array)
         {
             if (s_singleEventPool.Count >= MaxPoolSize)
@@ -210,6 +221,11 @@ namespace Velvet
                 return;
             }
             ReleaseNodeArray(array);
+        }
+
+        internal static void DisownNodeArray(VNode?[]? array)
+        {
+            if (array != null) s_ownedNodeArrays.Remove(array);
         }
 
         private static void ReleaseNodeArray(VNode?[] array)

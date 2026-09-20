@@ -52,6 +52,7 @@ namespace Velvet.Tests
 
         private static CounterStore s_store;
         private static VNode s_capturedMemoNode;
+        private static StateUpdater<bool> s_setSharedEmitterShown;
 
         private VisualElement _root;
         private VisualElement _portalTarget;
@@ -65,6 +66,7 @@ namespace Velvet.Tests
             FiberPortalRegistry.Register("props-recycle-probe", _portalTarget);
             s_store = null;
             s_capturedMemoNode = null;
+            s_setSharedEmitterShown = default;
         }
 
         [TearDown]
@@ -224,6 +226,43 @@ namespace Velvet.Tests
             // Assert — the shared bag was never recycled out from under the committed tree.
             Assert.That(OwnedPropsContains(sharedBag), Is.True,
                 "A memo-shared node's props bag must stay rented out while the committed tree still holds it");
+        }
+
+        [Component(Compiler = false)]
+        private static VNode MemoCacheOwner()
+            => V.Memoized(() => s_capturedMemoNode, System.Array.Empty<object>());
+
+        [Component(Compiler = false)]
+        private static VNode SharedNodeEmitter() => s_capturedMemoNode;
+
+        [Component(Compiler = false)]
+        private static VNode MemoCacheSharingHost()
+        {
+            var (shown, setShown) = Hooks.UseState(true);
+            s_setSharedEmitterShown = setShown;
+            s_capturedMemoNode ??= V.Button(text: "shared");
+            return V.Div(children: new VNode?[]
+            {
+                V.Component(MemoCacheOwner, key: "cache-owner"),
+                shown ? V.Component(SharedNodeEmitter, key: "emitter") : null,
+            });
+        }
+
+        [Test]
+        public void Given_AMemoCacheAndASiblingFiberSharingANode_When_TheSiblingRetires_Then_TheCachedNodesBagStaysOutOfThePool()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(MemoCacheSharingHost, key: "host"));
+            var sharedBag = ((ElementNode)s_capturedMemoNode).Props;
+
+            // Act
+            s_setSharedEmitterShown.Invoke(false);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(
+                (sharedBag != null, sharedBag != null && OwnedPropsContains(sharedBag), _root.Query<Button>().ToList().Count),
+                Is.EqualTo((true, true, 1)));
         }
 
         // A deps-stable Hooks.UseMemo subtree that leaves the output on odd counts: the render that
