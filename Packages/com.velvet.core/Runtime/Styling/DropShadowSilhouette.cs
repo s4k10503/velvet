@@ -272,24 +272,31 @@ namespace Velvet
         public static DropShadowBinding? TryGet(VisualElement element)
             => s_byElement.TryGetValue(element, out var binding) ? binding : null;
 
-        // Radius prefers the laid-out resolvedStyle.borderTopLeftRadius (handles %, arbitrary, and inline
-        // radii) once on a panel, and falls back to the rounded-* class scale off-panel / pre-layout so a
-        // value is always set.
+        // The shadow shader loses the silhouette when a declared radius exceeds the box. Clamp either radius
+        // source to the face painter's bound; RoundedFullSilhouettePlaybackTests pins the lost-halo regression.
         private static void ResolveCornerRadius(VisualElement element, DropShadowBinding binding)
         {
             var resolved = element.resolvedStyle.borderTopLeftRadius;
             if (element.panel != null && !float.IsNaN(resolved))
             {
-                binding.CornerRadius = resolved;
+                binding.CornerRadius = ClampToFace(element, resolved);
             }
             else if (StyleShadowClass.TryResolveCornerRadius(binding.ClassNames, out var classRadius))
             {
-                binding.CornerRadius = classRadius;
+                binding.CornerRadius = ClampToFace(element, classRadius);
             }
             else
             {
                 binding.CornerRadius = 0f;
             }
+        }
+
+        // Before layout there is no box to clamp against; the geometry callback resolves it again after layout.
+        private static float ClampToFace(VisualElement element, float radius)
+        {
+            var w = element.layout.width;
+            var h = element.layout.height;
+            return w > 0f && h > 0f ? Mathf.Min(radius, SilhouetteFace.MaxRadius(w, h)) : radius;
         }
 
         // Paints the drop shadow (and, for an upright caster, the repainted fill + border) in the caster's own

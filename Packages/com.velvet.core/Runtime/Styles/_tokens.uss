@@ -107,8 +107,8 @@
     --radius-xl: 12px;
     --radius-2xl: 16px;
     --radius-3xl: 24px;
-    /* A large length (not 50%) so a non-square box rounds to a stadium/pill, not an ellipse;
-       UI Toolkit clamps each corner to half the shorter side, matching Tailwind's rounded-full. */
+    /* Not the CSS silhouette on a box that is not square. RoundedFullSilhouettePlaybackTests pins what
+       this paints and Documentation~/styling-variants.md states the deviation. */
     --radius-full: 9999px;
 
     /* === Transition === */

@@ -376,6 +376,17 @@ transform on its first frame declares it itself, or declares a variant of its ow
 the paints take. The paints reach a `V.Text` child at no render at all: they run behind a verdict
 only an element's own class pass records.
 
+**Where `rounded-full` deviates from CSS.** `--radius-full` is a length far larger than any element, so
+what reaches the screen is decided by how the renderer resolves a radius the box cannot carry. CSS scales
+the corners together and produces a pill. In Unity 6.3, the saturating pixel radius paints the same
+silhouette as `border-radius: 50%`: a full ellipse on a 330 × 34 field. The two agree on a square box. For
+a pill on a box that is not square, name the radius: `rounded-[17px]` on a 34 px-tall field.
+
+Velvet's own face painting does not follow the renderer here. The layers that take over an element's face
+— `skew-*`, and `shadow-*` / `drop-shadow-*` on an upright caster — clamp a corner to half the box's
+shorter side, producing the CSS pill. One `rounded-full` box is therefore an ellipse on its own and a pill
+while one of those paints owns its face.
+
 ## Container queries — `@container`
 
 By default every responsive breakpoint (`sm:`/`md:`/…) is measured against the **panel root**

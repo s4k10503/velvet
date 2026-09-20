@@ -106,6 +106,9 @@ namespace Velvet
             EmitShearedRoundedRectPath(new PolylineSink(points, bezierSamples), in box);
         }
 
+        // Shared with the shadow bake so both layers round the same face.
+        internal static float MaxRadius(float width, float height) => Mathf.Min(width, height) * 0.5f;
+
         // Emits the rounded-rect outline (inset on all sides) into a sink, shearing every point — a shear is
         // affine, so transforming the bezier control points transforms the curve exactly. tanX = tanY = 0
         // yields an upright rounded rect. The generic constraint keeps a struct sink (Painter2DSink)
@@ -125,7 +128,7 @@ namespace Velvet
             var y0 = inset;
             var x1 = w - inset;
             var y1 = h - inset;
-            var maxR = Mathf.Min(x1 - x0, y1 - y0) * 0.5f;
+            var maxR = MaxRadius(x1 - x0, y1 - y0);
             var tl = Mathf.Clamp(box.RadiusTopLeft - inset, 0f, maxR);
             var tr = Mathf.Clamp(box.RadiusTopRight - inset, 0f, maxR);
             var br = Mathf.Clamp(box.RadiusBottomRight - inset, 0f, maxR);
