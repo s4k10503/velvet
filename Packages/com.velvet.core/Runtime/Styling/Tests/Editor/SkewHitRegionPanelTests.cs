@@ -6,18 +6,16 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Pins the asymmetry a <c>skew-*</c> caster leaves between what it paints and what answers a pointer:
-    /// a direct child is moved by a real transform and its hit region goes with it, while the caster's own
-    /// face is a paint and its hit region stays on the layout box.
+    /// Pins picking at two coordinates derived from a <c>skew-*</c> caster: a direct child's translated seat
+    /// and a point beyond the caster's axis-aligned layout box.
     /// </summary>
     /// <remarks>
-    /// The two readings are taken in one arrangement because the caster's alone is satisfiable with no skew
-    /// at all — the caster goes unpicked outside its box whether or not it is skewed — so it is an absence,
-    /// and the child's is the canary that says the shear's displacement is real, reaches the picker, and was
-    /// applied in this frame. Both sample points come off the measured pre-transform layout through
-    /// <see cref="SilhouetteFace"/>'s own shear map: the caster's from where that map carries its bottom
-    /// edge, the child's from the seat the same map gives the child's centroid. Reading the child's
-    /// <c>worldBound</c> instead would fold the seat into the coordinate and leave the canary true without it.
+    /// The outside-box reading is satisfiable with no skew, so the child reading is its control: the child's
+    /// translated seat must reach the picker in the same frame. Both sample points come off the measured
+    /// pre-transform layout through <see cref="SilhouetteFace"/>'s shear map: the outside point uses the
+    /// direction toward the mapped bottom-edge x-coordinate, and the child point uses the seat given to its
+    /// centroid. Reading the child's <c>worldBound</c> instead would fold the seat into the coordinate and leave
+    /// the canary true without it.
     /// </remarks>
     internal sealed class SkewHitRegionPanelTests : PanelTestBase
     {
@@ -27,7 +25,7 @@ namespace Velvet.Tests
         // Velvet's skew writes no transform on the caster and this branch changes neither half; the case is
         // what the styling guide's new skew paragraph rests on.
         [Test]
-        public void Given_ASkewedCaster_When_PickedAcrossItsLeanedFace_Then_OnlyTheChildsRegionFollowed()
+        public void Given_ASkewedCaster_When_PickedAtASeatedChildAndBeyondItsLayoutBox_Then_ChildIsPickedAndOutsidePointIsNot()
         {
             // Arrange — a wide short caster carrying one child low enough in the box that the shear seats it
             // measurably sideways. Sizes are arbitrary values, which resolve to inline style, so this panel
@@ -44,17 +42,17 @@ namespace Velvet.Tests
             var tab = child.layout;
             var tan = Mathf.Tan(SkewDegrees * Mathf.Deg2Rad);
 
-            // Act — a point one pixel past the child's UNSEATED right edge, which only a seated child covers;
-            // and a point halfway into the lean the caster's own bottom edge is painted at, which its layout
-            // box never covers.
+            // Act — a point one pixel past the child's unseated right edge, which its translated seat covers,
+            // and a point beyond the caster's layout box, halfway toward the mapped bottom-edge x-coordinate.
             var onSeatedChild = new Vector2(box.xMin + tab.xMax + 1f, box.yMin + tab.center.y);
             var nearBottom = box.height - 2f;
-            var onLeanedFace = new Vector2(
+            var beyondLayoutTowardShearedBottom = new Vector2(
                 box.xMax + (((nearBottom - (box.height * 0.5f)) * tan) * 0.5f), box.yMin + nearBottom);
 
             // Assert
             Assert.That(
-                (caster.panel.Pick(onSeatedChild) == child, caster.panel.Pick(onLeanedFace) == caster),
+                (caster.panel.Pick(onSeatedChild) == child,
+                    caster.panel.Pick(beyondLayoutTowardShearedBottom) == caster),
                 Is.EqualTo((true, false)));
         }
     }

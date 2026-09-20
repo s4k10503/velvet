@@ -304,8 +304,13 @@ the shear would carry it. Four things follow that a CSS `skewX()` does not do.
 - **Descendants are seated, not sheared.** The seat is exact at each direct child's centroid and constant
   across that child, so a child large relative to the caster reads off at its far corners, and a
   grandchild moves only because its parent did.
-- **The seat owns each direct child's `translate` slot.** A child's own `translate-x-*`, a `V.Motion`
-  spring driving translation, or a drag offset is overwritten for as long as the parent is skewed.
+- **The seat shares each direct child's inline `translate` slot.** The seat and a child's own
+  `translate-x-*`, a `V.Motion` translation, or a drag offset follow last-writer-wins behavior. Velvet runs
+  a seat pass when the caster attaches, when its geometry changes, and from caster reconciliation. Attachment
+  resets the pass guard; subsequent passes write only when their signature of caster size, skew angles, and
+  direct-child identity, order, flow state or layout changed. A translate-only write does not change that
+  signature, so it can remain visible until a later seat pass has another reason to write. Use an inner wrapper
+  when both effects must compose.
 
 `origin-*` does not move the skew pivot either: the shear is always taken about the box centre, while
 `rotate-*` and `scale-*` are real USS transforms and do honour it. Velvet therefore exposes the painted
