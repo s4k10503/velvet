@@ -64,6 +64,7 @@ namespace Velvet.Tests
             s_conditionalBuilds = 0;
             s_conditionalSetTick = null;
             s_conditionalProps = null;
+            s_ratioSetTick = null;
         }
 
         private static int s_renderCount;
@@ -464,5 +465,39 @@ namespace Velvet.Tests
             // Assert
             Assert.That(s_conditionalBuilds, Is.EqualTo(1));
         }
+
+        private readonly record struct RatioProps(float Value);
+
+        private static Action<int> s_ratioSetTick;
+
+        [Component(Memoize = true)]
+        private static VNode MemoizedRatioChild(RatioProps p)
+        {
+            var (suffix, _) = Hooks.UseState("");
+            return V.Label(name: "ratio", text: (float.IsNegative(p.Value) ? "negative" : "positive") + suffix);
+        }
+
+        [Component]
+        private static VNode RatioParent()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_ratioSetTick = setTick;
+            return V.Component(MemoizedRatioChild, new RatioProps(tick == 0 ? 0f : -0f), key: "ratio");
+        }
+
+        [Test]
+        public void Given_AMemoizedHookComponentWhoseFloatFieldChangesOnlyItsSign_When_TheParentReRenders_Then_TheNewSignIsShown()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(RatioParent, key: "parent"));
+
+            // Act
+            s_ratioSetTick(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(_root.Q<Label>(name: "ratio")?.text, Is.EqualTo("negative"));
+        }
+
     }
 }

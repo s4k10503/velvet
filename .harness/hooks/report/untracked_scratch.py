@@ -46,10 +46,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
 from display import displayed  # noqa: E402
 from repository import status_entries, toplevel  # noqa: E402
+from velvet_hooks import BUILD_DIRECTORIES  # noqa: E402
 
 LISTED = 20
 SOURCE_SUFFIXES = re.compile(r"\.(cs|uss|uxml|asmdef|csproj|sln|md)$")
-BUILD_DIRECTORIES = re.compile(r"^(Library|Temp|obj|Logs)/")
 
 
 def payload():

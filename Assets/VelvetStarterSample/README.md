@@ -28,7 +28,7 @@ scales in and out. The package's `Documentation~/routing.md` owns what the provi
 
 ## The stylesheet call
 
-`VelvetStyleUtilities.AttachTo(root)` in `StarterAppHost.OnEnable` is what makes the utility classes
+`VelvetStyleUtilities.AttachTo(root)` in `StarterAppHost.RefreshMount` is what makes the utility classes
 resolve on a runtime panel. Removing it raises no error: the screen still mounts and the links still
 navigate, it just renders wrong, which is why a missing call reads as a styling bug. The package's
 `Documentation~/setup.md` owns which families stop working without the sheet and which are unaffected,

@@ -19,11 +19,11 @@ Unity test runs require the editor to be **closed** (it holds the project lock).
 
 ```bash
 UNITY=/Applications/Unity/Hub/Editor/6000.3.23f1/Unity.app/Contents/MacOS/Unity
-mkdir -p Logs   # gitignored, and one per worktree: /tmp/results.xml is one file for all of them
+mkdir -p Logs && R=$(mktemp -d "$PWD/Logs/run.XXXXXX") && echo "$R"   # a directory per run: Conventions says why
 "$UNITY" -runTests -batchmode -projectPath "$PWD" -testPlatform EditMode \
-  -testResults "$PWD/Logs/results.xml" -logFile "$PWD/Logs/run.log"
-python3 scripts/test_quality/assert_results_from_this_tree.py Logs/results.xml --log Logs/run.log
-python3 scripts/test_quality/assert_no_inconclusive.py Logs/results.xml
+  -testResults "$R/results.xml" -logFile "$R/run.log"
+python3 scripts/test_quality/assert_results_from_this_tree.py "$R" --log "$R/run.log"
+python3 scripts/test_quality/assert_no_inconclusive.py "$R"
 ```
 
 - **Run a subset / single fixture:** add `-testFilter "Velvet.Tests.SomeFixture"`. The value is a regex, matched against a case's full name and every suite and assembly name above it, and the `;` split does not trim — so a filter can select a far larger or far smaller set than it reads as, and the run still reports green. `.agents/skills/unity-tests/SKILL.md` owns what a spelling costs.
@@ -57,7 +57,7 @@ The render pipeline, in dependency order under `Runtime/`:
 5. **`Styling/`** — utility-first className resolution (no per-component USS). `StyleRecipe`/`StyleSlotRecipe` are the cva/tailwind-variants equivalent; `StyleArbitraryValueResolver` handles `w-[120px]`-style JIT values; variant **manipulators** (`StyleVariantManipulator` = `hover:`/`focus:`/`active:`, `StyleConditionalVariantManipulator` = `dark:`/`sm:`…, `StyleRelationalVariantManipulator` = `group-`/`peer-`, `StyleGapManipulator`) attach as UI Toolkit `Manipulator`s and are tracked in `ReconcilerContext` so cleanup can remove them.
 6. **`Routing/`** — React-Router-style routing: the router, the route matcher and the navigation hooks. The `V.Outlet` factory itself sits with every other factory in `Component/V.cs`.
 
-**Two memoization axes, both `[Component]` knobs in `Component/ComponentAttribute.cs`:**
+**Two memoization axes (independent), both `[Component]` knobs in `Component/ComponentAttribute.cs`:**
 - `Compiler` (default `true`) = the **React Compiler equivalent**: the ILPP under `CodeGen/` (`CompilerWeaver`, driven by `VelvetCompilerILPostProcessor`) weaves auto-memoization of a component's VNode construction keyed on its hook inputs + props — on its props alone for a body that calls no hook, which it leaves unwoven where `Memoize = true` already bails on those props. It processes the `Velvet` assembly and **every assembly that references it**, skipping only the `*.CodeGen.Tests` assemblies and anything handed to it without PE or PDB data, and bails gracefully (no diagnostic) on memo-unsafe hooks. Opt a component out with `[Component(Compiler = false)]`.
 - `Memoize` (default `false`) = the **`React.memo` equivalent**: a props-bail at the reconcile boundary (skip a parent-driven re-render when props are shallow-equal). The component's own store/state updates still re-render it. Note auto-memo is keyed on props too, so an unstable callback prop (fresh delegate each render) defeats both axes — stabilize with `UseCallback`.
 
@@ -85,6 +85,7 @@ Four ways a green test has lied here:
 ## Conventions
 
 - Commits use Conventional Commits with the `velvet` scope (e.g. `fix(velvet): …`, `feat(velvet): …`, `refactor(velvet): …`).
+- A file you write for yourself — a script to run, its input, its output, a message you hand to git or `gh` — goes in a directory `mktemp -d` makes under the Logs directory of the worktree it is for, which git ignores, the way the headless recipe above makes one per run; for a commit message or a pull request body, that is the worktree the change is in. Make it from inside that worktree or with the worktree's path spelled out, since a shell need not start there, and name it afterwards by the path `mktemp` printed. Logs itself is not yours alone, since more than one agent can work in one checkout; the session scratchpad a Claude Code system prompt names is one directory for the whole session, and `/tmp` one for the whole machine. Under a name another agent also picks, what you run or read back is whichever of you wrote it last.
 - Everything in this repo is written in English: code, comments, commit messages, and PR titles/bodies. PR descriptions state what changed and why — never the local workflow that produced the change (audit/review process, agent tooling, session details).
 - A PR that adds, changes, or removes a feature updates the corresponding `Documentation~` guide (and the `Documentation~/README.md` index table) in the same PR. If the change has no doc impact, say so explicitly in the PR body. `DocumentationDriftTests` (EditMode) and the Generators~ diagnostic-table tests catch API references, file paths and diagnostic IDs that no longer exist — across the repository's markdown, including the type, member and file names this file itself carries — but only as far as the token no longer occurring in any source: a deleted name a rename left behind in a sibling's declaration still resolves, and comments are stripped from every scanned format that has them, and C# and Python lose their strings besides, C# its `#region` labels too (so a name whose only source is a Python string resolves nowhere) — a string in USS, YAML, JSON or an asmdef is the content rather than a label for it and stays. And they cannot verify that a behavior description is still accurate — that stays the PR author's responsibility.
 - A fact the bundled stylesheets own — the longhands a utility writes, where it sits in the cascade — is derived from them rather than restated in C#: `Generators~/src/Velvet.StyleTable` reads `Runtime/Styles/*.uss` and emits `Runtime/Styling/StyleUtilityProperties.g.cs`. Where a mirror is genuinely unavoidable it is pinned by a test that fails when the stylesheet moves, because an unpinned one drifts silently — a guard that unioned property sets where the cascade takes only the last declaration suspended the transitions it existed to protect.

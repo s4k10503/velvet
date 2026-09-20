@@ -265,6 +265,9 @@ the flag off mid-edit receives the pending text rather than stranding it on scre
 > **Note — Two memoization axes**  
 > `[Component(Memoize = true)]` is equivalent to **React.memo**, bailing out of parent-driven re-render when props are shallow-equal to the previous ones (opt-in).  
 > **Inner automatic memoization** (equivalent to React Compiler) is **default-on** for all `[Component]`; the ILPP caches VNode construction keyed on the component's props and hook-derived inputs, compared per [§1-4](#1-4-what-a-dependency-list-means). No annotation needed. `ComponentAttribute.Compiler` states what a render whose inputs compare equal shows, and which components are left unwoven. To exclude a specific Component, use `[Component(Compiler = false)]` (equivalent to React's `"use no memo"`).
+>
+> A props change accepted by the component comparison invalidates its inner VNode cache. A float member changing from `0f` to `-0f` therefore rebuilds the output even when the enclosing record struct considers those props equal.
+>
 > `Hooks.UseMemo(factory, deps)` is the value-memoization hook (React's `useMemo`). `V.Memoized(factory, deps)` is a node-level escape hatch that explicitly memoizes a **VNode subtree** (callable outside a render, e.g. what `[MemoizeMethod]` expands to); the reconciler reuses the cached subtree while the deps are unchanged. Both read `deps` per [§1-4](#1-4-what-a-dependency-list-means).
 
 <a id="what-a-position-is"></a>

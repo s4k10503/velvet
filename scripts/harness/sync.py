@@ -3,6 +3,7 @@
 
 import argparse
 import json
+import math
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -43,7 +44,8 @@ def outputs(root):
             else:
                 command = ('python3 "$(git rev-parse --show-toplevel)/scripts/harness/adapter.py" '
                            + f'{client} {event} {entry["script"]}')
-            definition = {"command": command, "timeout": entry["timeout"]}
+            timeout = math.ceil(entry["timeout"]) if client == "codex" else entry["timeout"]
+            definition = {"command": command, "timeout": timeout}
             if client == "cursor":
                 if names:
                     definition["matcher"] = "|".join("Shell" if n == "Bash" else n for n in names)

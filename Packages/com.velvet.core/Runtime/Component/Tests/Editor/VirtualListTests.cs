@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using NUnit.Framework;
 using Velvet;
 using UnityEngine.UIElements;
@@ -31,6 +32,19 @@ namespace Velvet.Tests
     /// <item>The DSL rejects a null items / keySelector / renderer with <see cref="ArgumentNullException"/>, and a
     /// non-positive itemHeight with <see cref="ArgumentOutOfRangeException"/>.</item>
     /// <item>The type-erased item list admits a null element, since the source element type may itself.</item>
+    /// <item>A null key is no key, as it is for <see cref="V.List{T}(IReadOnlyList{T}, Func{T, string},
+    /// Func{T, VNode})"/>: the row renders alongside the rest, a range change or an update that keeps it
+    /// in range reuses it by its item index so its fiber survives, one that scrolls it out runs its
+    /// cleanup, and one scrolled away and back returns as a remount rather than as the element that was
+    /// disposed.</item>
+    /// <item>Of two items sharing a key, the second renders when the first renders nothing.</item>
+    /// <item>A throw from the item renderer, or from an element's constructor while its row is created or
+    /// patched, reaches the caller, and the range update it ends releases the rows it had placed and,
+    /// separately, the prior rows it had not — the one whose create or patch threw among them — empties
+    /// the visible container and leaves the tracked range naming nothing.</item>
+    /// <item>An update to no items releases the rows the list showed and empties the visible container,
+    /// and a row that comes back after the list went empty — by an update or in place — renders
+    /// afresh.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -460,6 +474,605 @@ namespace Velvet.Tests
                     + " under " + visibleContainer.Q<Label>()?.name
                     + " via a " + (markSetterCaptured ? "captured" : "default") + " setter",
                 Is.EqualTo("b under row-item-1 via a captured setter"));
+        }
+
+        #endregion
+
+        #region A key the selector left null
+
+        [Component]
+        private static VNode NullKeyedRowsHostRender() => NullKeyedRowsList();
+
+        private static VirtualListNode NullKeyedRowsList()
+            => V.VirtualList(
+                items: CreateItems(10),
+                keySelector: item => item.Id == "item-2" ? null : "sel-" + item.Id,
+                itemHeight: 50f,
+                renderer: item => V.Component(MarkedRowRender, item.Id, key: "ren-" + item.Id),
+                overscan: 0);
+
+        [Test]
+        public void Given_AKeySelectorReturningNullForOneItem_When_TheRangeIsRendered_Then_ThatRowRendersWithTheRest()
+        {
+            // Arrange
+            var node = V.VirtualList(
+                items: CreateItems(10),
+                keySelector: item => item.Id == "item-3" ? null : item.Id,
+                itemHeight: 50f,
+                renderer: item => V.Label(text: item.Name),
+                overscan: 0);
+            var scrollView = new ScrollView(ScrollViewMode.Vertical);
+            using var controller = new FiberVirtualListController(scrollView, node, Reconciler);
+            var visibleContainer = scrollView.contentContainer.ElementAt(1);
+
+            // Act
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+
+            // Assert — the texts in window order rather than a count, so a row dropped the way the NUL
+            // path drops one names itself.
+            Assert.That(
+                string.Join(",", visibleContainer.Children().Cast<Label>().Select(label => label.text)),
+                Is.EqualTo("Item 0,Item 1,Item 2,Item 3,Item 4"));
+        }
+
+        [Test]
+        public void Given_AKeySelectorReturningNullForOneItem_When_ARangeChangeKeepsThatRowInRange_Then_TheRowKeepsItsState()
+        {
+            // Arrange — the row-identity cases above, with item-2's selector key taken to null; it is
+            // their mark-writing component that answers, for the reason stated above it. Two things
+            // diverge from them. Where they pin which of two keys wins, this pins that a row with no key
+            // is reused at all, and by which position: an index one row out finds no row, item-2 being
+            // the only unkeyed one, and remounts it with its mark unwritten. And where the renderer-keying
+            // one of the two arranges a renderer's key against a selector's string, this arranges it
+            // against the selector's null — which has to land on the node and displace it, or the next
+            // range indexes the row under the renderer's string and no item index finds it.
+            s_keptRowMark = default;
+            var root = new VisualElement();
+            using var mounted = V.Mount(root, V.Component(NullKeyedRowsHostRender, key: "host"));
+            var scrollView = root.Q<ScrollView>();
+            var visibleContainer = scrollView.contentContainer.ElementAt(1);
+            var controller = mounted.Root.Reconciler.Context.VirtualListControllers[scrollView];
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+            var markSetterCaptured = !s_keptRowMark.Equals(default(StateUpdater<string>));
+            s_keptRowMark.Invoke("b");
+            mounted.FlushStateForTest();
+
+            // Act — the window becomes items 1..5.
+            controller.UpdateVisibleRange(scrollY: 50f, viewportHeight: 200f);
+
+            // Assert — the three terms for the reason the cases above give.
+            Assert.That(
+                scrollView.Q<Label>("row-item-2")?.text
+                    + " under " + visibleContainer.Q<Label>()?.name
+                    + " via a " + (markSetterCaptured ? "captured" : "default") + " setter",
+                Is.EqualTo("b under row-item-1 via a captured setter"));
+        }
+
+        [Test]
+        public void Given_AKeySelectorReturningNullForOneItem_When_TheListIsUpdatedOverTheSameWindow_Then_TheRowKeepsItsState()
+        {
+            // Arrange — the scrolling case above, with the range left where it is. What differs is the
+            // pass that follows Update: Update drops the tracked range to force a render while the render
+            // buffers still hold every row, so this pass is where an unkeyed row's item index is read from
+            // somewhere other than the tracked range.
+            s_keptRowMark = default;
+            var root = new VisualElement();
+            using var mounted = V.Mount(root, V.Component(NullKeyedRowsHostRender, key: "host"));
+            var scrollView = root.Q<ScrollView>();
+            var controller = mounted.Root.Reconciler.Context.VirtualListControllers[scrollView];
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+            var markSetterCaptured = !s_keptRowMark.Equals(default(StateUpdater<string>));
+            s_keptRowMark.Invoke("b");
+            mounted.FlushStateForTest();
+
+            // Act — Update renders nothing while no viewport height is known, so the range is re-supplied
+            // as the type-flip case in the visible-range region does.
+            controller.Update(NullKeyedRowsList());
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+
+            // Assert — the setter's capture rides along for the reason the scrolling case gives.
+            Assert.That(
+                scrollView.Q<Label>("row-item-2")?.text
+                    + " via a " + (markSetterCaptured ? "captured" : "default") + " setter",
+                Is.EqualTo("b via a captured setter"));
+        }
+
+        [Test]
+        public void Given_EveryRowUnkeyed_When_ARangeChangeScrollsThemAllOutOfRange_Then_EachOnesCleanupRuns()
+        {
+            // Arrange
+            var cleaned = new List<string>();
+            var node = V.VirtualList(
+                items: CreateItems(20),
+                keySelector: item => (string)null,
+                itemHeight: 50f,
+                renderer: CleanupRecordingRenderer(cleaned, RecordedLabel),
+                overscan: 0);
+            var scrollView = new ScrollView(ScrollViewMode.Vertical);
+            using var controller = new FiberVirtualListController(scrollView, node, Reconciler);
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+
+            // Act — the window becomes items 10..14, sharing no item index with items 0..4.
+            controller.UpdateVisibleRange(scrollY: 500f, viewportHeight: 200f);
+
+            // Assert
+            Assert.That(string.Join(",", cleaned.OrderBy(id => id, StringComparer.Ordinal)),
+                Is.EqualTo("item-0,item-1,item-2,item-3,item-4"));
+        }
+
+        [Test]
+        public void Given_AnUnkeyedRowScrolledAwayAndBack_When_ItReturns_Then_WhatWasTypedIntoItIsGone()
+        {
+            // Arrange — items 0..4, then 10..14, then 0..4 again. The sweep that takes item-2 out of range
+            // disposes its row, so the one that comes back is a remount and starts from what its node
+            // declares. The field is uncontrolled so that nothing but the element itself carries what was
+            // typed: a disposed field put back on screen shows it, and a freshly created one — or one the
+            // pool resets on its way back — does not.
+            var node = V.VirtualList(
+                items: CreateItems(20),
+                keySelector: item => (string)null,
+                itemHeight: 50f,
+                renderer: item => V.TextField(name: "field-" + item.Id),
+                overscan: 0);
+            var scrollView = new ScrollView(ScrollViewMode.Vertical);
+            using var controller = new FiberVirtualListController(scrollView, node, Reconciler);
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+            var typedInto = scrollView.Q<TextField>("field-item-2");
+            typedInto.value = "typed";
+            var typed = typedInto.value;
+            controller.UpdateVisibleRange(scrollY: 500f, viewportHeight: 200f);
+
+            // Act
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+
+            // Assert — what the first field took rides along: text that never landed in it would leave the
+            // returning field empty whether or not it is the same one. A field that did not return at all
+            // reads as absent rather than as empty.
+            Assert.That(
+                "[" + typed + "] typed, ["
+                    + (scrollView.Q<TextField>("field-item-2")?.value ?? "no field") + "] shown on return",
+                Is.EqualTo("[typed] typed, [] shown on return"));
+        }
+
+        // GREEN_ON_BASE(characterization): a key whose first item renders nothing is free for the next.
+        // The pass claims a key before the renderer runs and gives it back when the renderer returns
+        // null, and this is the one thing that giving-back still decides now that the scrolled-out sweep
+        // no longer reads the claim.
+        [Test]
+        public void Given_TwoItemsSharingAKeyWhoseFirstRendersNothing_When_TheRangeIsRendered_Then_TheSecondRenders()
+        {
+            // Arrange — item-2 takes item-1's key, and item-1's renderer returns null.
+            var node = V.VirtualList(
+                items: CreateItems(5),
+                keySelector: item => item.Id == "item-2" ? "item-1" : item.Id,
+                itemHeight: 50f,
+                renderer: item => item.Id == "item-1" ? null : V.Label(text: item.Name),
+                overscan: 0);
+            var scrollView = new ScrollView(ScrollViewMode.Vertical);
+            using var controller = new FiberVirtualListController(scrollView, node, Reconciler);
+            var visibleContainer = scrollView.contentContainer.ElementAt(1);
+
+            // Act
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+
+            // Assert
+            Assert.That(
+                string.Join(",", visibleContainer.Children().Cast<Label>().Select(label => label.text)),
+                Is.EqualTo("Item 0,Item 2,Item 3,Item 4"));
+        }
+
+        // The refCallback delegate is held per item across renders rather than rebuilt inside the
+        // renderer. A patch handed a fresh delegate runs the cleanup the previous one returned, which would
+        // put a row on the list with nothing having released it — and a failed pass never reaches the drain
+        // that would install the replacement, so the release that followed would then record nothing and
+        // the two errors would cancel.
+        private static Func<TestItem, VNode> CleanupRecordingRenderer(
+            List<string> cleaned, Func<TestItem, Func<VisualElement, Action>, VNode> row)
+        {
+            var attaches = new Dictionary<string, Func<VisualElement, Action>>();
+            return item =>
+            {
+                if (!attaches.TryGetValue(item.Id, out var attach))
+                {
+                    var id = item.Id;
+                    attach = _ => () => cleaned.Add(id);
+                    attaches[id] = attach;
+                }
+
+                return row(item, attach);
+            };
+        }
+
+        private static VNode RecordedLabel(TestItem item, Func<VisualElement, Action> attach)
+            => V.Label(text: item.Name, refCallback: attach);
+
+        #endregion
+
+        #region A range update that throws
+
+        private static VirtualListNode ThrowingRendererList(Func<TestItem, bool> poisoned, List<string> cleaned)
+            => V.VirtualList(
+                items: CreateItems(20),
+                keySelector: item => item.Id,
+                itemHeight: 50f,
+                renderer: CleanupRecordingRenderer(cleaned, (item, attach) => poisoned(item)
+                    ? throw new InvalidOperationException("item renderer refused " + item.Id)
+                    : RecordedLabel(item, attach)),
+                overscan: 0);
+
+        // Div rows, so what a poisoned item returns can be an element that refuses construction or a Div
+        // handed a child that does. refusingRow is given the item's own delegate so that a patch can find
+        // it unchanged, for the reason CleanupRecordingRenderer gives.
+        private static VirtualListNode RowRefusingList(
+            Func<TestItem, string> keySelector,
+            Func<TestItem, bool> poisoned,
+            List<string> cleaned,
+            Func<Func<VisualElement, Action>, VNode> refusingRow)
+            => V.VirtualList(
+                items: CreateItems(20),
+                keySelector: keySelector,
+                itemHeight: 50f,
+                renderer: CleanupRecordingRenderer(cleaned, (item, attach) => poisoned(item)
+                    ? refusingRow(attach)
+                    : V.Div(refCallback: attach)),
+                overscan: 0);
+
+        private sealed class ConstructionRefusingElement : VisualElement
+        {
+            public ConstructionRefusingElement()
+            {
+                throw new InvalidOperationException("constructor refused");
+            }
+        }
+
+        // GREEN_ON_BASE(characterization): the base already lets an item renderer's throw out of the update.
+        // The unwind the cases below pin must not turn it into a silent skip, and the last two of them
+        // share this arrangement exactly, so it is also what says their Act reached the renderer at all.
+        [Test]
+        public void Given_ARendererThrowingOnOneItem_When_ARangeChangeReachesIt_Then_TheThrowReachesTheCaller()
+        {
+            // Arrange
+            var poisoned = false;
+            var node = ThrowingRendererList(item => poisoned && item.Id == "item-5", new List<string>());
+            var scrollView = new ScrollView(ScrollViewMode.Vertical);
+            using var controller = new FiberVirtualListController(scrollView, node, Reconciler);
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+            poisoned = true;
+
+            // Act + Assert — the window becomes items 1..5, whose last item the renderer refuses.
+            Assert.Throws<InvalidOperationException>(
+                () => controller.UpdateVisibleRange(scrollY: 50f, viewportHeight: 200f));
+        }
+
+        [Test]
+        public void Given_ARendererThrowingOnTheRowScrollingIn_When_ThatRangeUpdateFails_Then_TheRowsThePassHadPlacedAreReleased()
+        {
+            // Arrange — the window grows from items 0..4 to items 0..5, so the failed pass has taken every
+            // prior row into a slot of its own and left none behind: what it holds when the renderer
+            // refuses item-5 is the five it placed, and nothing else. A window that changes size is also
+            // the arm of the buffer allocation that does not alias, which the case below takes the other of.
+            var poisoned = false;
+            var cleaned = new List<string>();
+            var node = ThrowingRendererList(item => poisoned && item.Id == "item-5", cleaned);
+            var scrollView = new ScrollView(ScrollViewMode.Vertical);
+            using var controller = new FiberVirtualListController(scrollView, node, Reconciler);
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+            poisoned = true;
+
+            // Act — the throw is the characterization case's to pin; here it is only how the pass ends.
+            try
+            {
+                controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 250f);
+            }
+            catch (InvalidOperationException)
+            {
+            }
+
+            // Assert
+            Assert.That(string.Join(",", cleaned.OrderBy(id => id, StringComparer.Ordinal)),
+                Is.EqualTo("item-0,item-1,item-2,item-3,item-4"));
+        }
+
+        [Test]
+        public void Given_ARendererThrowingOnTheFirstRowOfTheNewRange_When_ThatRangeUpdateFails_Then_TheRowsThePassNeverReachedAreReleased()
+        {
+            // Arrange — the renderer refuses the first item of the new window, so the pass fills no slot at
+            // all and everything it holds is the five prior rows it had not got to. That splits this from
+            // the case above, whose five are the placed ones: between them the two halves of the unwind
+            // are asked for separately rather than in a sum either half alone could satisfy.
+            var poisoned = false;
+            var cleaned = new List<string>();
+            var node = ThrowingRendererList(item => poisoned && item.Id == "item-1", cleaned);
+            var scrollView = new ScrollView(ScrollViewMode.Vertical);
+            using var controller = new FiberVirtualListController(scrollView, node, Reconciler);
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+            poisoned = true;
+
+            // Act — the window becomes items 1..5, whose first item the renderer refuses.
+            try
+            {
+                controller.UpdateVisibleRange(scrollY: 50f, viewportHeight: 200f);
+            }
+            catch (InvalidOperationException)
+            {
+            }
+
+            // Assert
+            Assert.That(string.Join(",", cleaned.OrderBy(id => id, StringComparer.Ordinal)),
+                Is.EqualTo("item-0,item-1,item-2,item-3,item-4"));
+        }
+
+        [Test]
+        public void Given_ARowWhoseReplacementRefusesConstruction_When_ThatRangeUpdateFails_Then_ThePriorRowIsReleased()
+        {
+            // Arrange — item-2's row turns from a Div into an element whose constructor throws, a type
+            // flip, so the pass has looked up item-2's prior row and is creating its replacement when the
+            // throw comes. The window becomes items 1..5, whose second row that is.
+            var poisoned = false;
+            var cleaned = new List<string>();
+            var node = RowRefusingList(item => item.Id, item => poisoned && item.Id == "item-2", cleaned,
+                _ => V.Custom<ConstructionRefusingElement>());
+            var scrollView = new ScrollView(ScrollViewMode.Vertical);
+            using var controller = new FiberVirtualListController(scrollView, node, Reconciler);
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+            poisoned = true;
+            var thrown = "nothing";
+
+            // Act
+            try
+            {
+                controller.UpdateVisibleRange(scrollY: 50f, viewportHeight: 200f);
+            }
+            catch (Exception exception)
+            {
+                thrown = exception.GetBaseException().Message;
+            }
+
+            // Assert — what reached the caller rides along: a replacement that constructs completes the
+            // flip, and a completed flip releases the prior row by itself.
+            Assert.That(
+                "[" + thrown + "] thrown, item-2 released " + cleaned.Count(id => id == "item-2") + " time(s)",
+                Is.EqualTo("[constructor refused] thrown, item-2 released 1 time(s)"));
+        }
+
+        [Test]
+        public void Given_AReusedRowWhosePatchThrows_When_ThatRangeUpdateFails_Then_ThatRowIsReleased()
+        {
+            // Arrange — the case above, with item-2 kept a Div, so the pass reuses its prior row and
+            // patches it: the patch hands it a child whose constructor throws.
+            var poisoned = false;
+            var cleaned = new List<string>();
+            var node = RowRefusingList(item => item.Id, item => poisoned && item.Id == "item-2", cleaned,
+                attach => V.Div(
+                    refCallback: attach, children: new VNode[] { V.Custom<ConstructionRefusingElement>() }));
+            var scrollView = new ScrollView(ScrollViewMode.Vertical);
+            using var controller = new FiberVirtualListController(scrollView, node, Reconciler);
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+            poisoned = true;
+            var thrown = "nothing";
+
+            // Act
+            try
+            {
+                controller.UpdateVisibleRange(scrollY: 50f, viewportHeight: 200f);
+            }
+            catch (Exception exception)
+            {
+                thrown = exception.GetBaseException().Message;
+            }
+
+            // Assert — what reached the caller rides along: a child that constructs completes the patch,
+            // and a completed patch keeps the row.
+            Assert.That(
+                "[" + thrown + "] thrown, item-2 released " + cleaned.Count(id => id == "item-2") + " time(s)",
+                Is.EqualTo("[constructor refused] thrown, item-2 released 1 time(s)"));
+        }
+
+        [Test]
+        public void Given_AnUnkeyedReusedRowWhosePatchThrows_When_ThatRangeUpdateFails_Then_ThatRowIsReleased()
+        {
+            // Arrange — the case above with every row unkeyed, so the prior row whose patch fails is one
+            // the pass found by its item index rather than by a key.
+            var poisoned = false;
+            var cleaned = new List<string>();
+            var node = RowRefusingList(item => (string)null, item => poisoned && item.Id == "item-2", cleaned,
+                attach => V.Div(
+                    refCallback: attach, children: new VNode[] { V.Custom<ConstructionRefusingElement>() }));
+            var scrollView = new ScrollView(ScrollViewMode.Vertical);
+            using var controller = new FiberVirtualListController(scrollView, node, Reconciler);
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+            poisoned = true;
+            var thrown = "nothing";
+
+            // Act
+            try
+            {
+                controller.UpdateVisibleRange(scrollY: 50f, viewportHeight: 200f);
+            }
+            catch (Exception exception)
+            {
+                thrown = exception.GetBaseException().Message;
+            }
+
+            // Assert — both terms for the reason the case above gives.
+            Assert.That(
+                "[" + thrown + "] thrown, item-2 released " + cleaned.Count(id => id == "item-2") + " time(s)",
+                Is.EqualTo("[constructor refused] thrown, item-2 released 1 time(s)"));
+        }
+
+        [Test]
+        public void Given_ARendererThrowingOnOneItem_When_ThatRangeUpdateFails_Then_TheControllerNamesNoRenderedRange()
+        {
+            // Arrange
+            var poisoned = false;
+            var node = ThrowingRendererList(item => poisoned && item.Id == "item-5", new List<string>());
+            var scrollView = new ScrollView(ScrollViewMode.Vertical);
+            using var controller = new FiberVirtualListController(scrollView, node, Reconciler);
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+            poisoned = true;
+
+            // Act — the throw is the characterization case's to pin; here it is only how the pass ends.
+            try
+            {
+                controller.UpdateVisibleRange(scrollY: 50f, viewportHeight: 200f);
+            }
+            catch (InvalidOperationException)
+            {
+            }
+
+            // Assert
+            Assert.That(
+                RenderedIndexForTest(controller, "_firstRenderedIndex")
+                    + ".." + RenderedIndexForTest(controller, "_lastRenderedIndex"),
+                Is.EqualTo("-1..-1"));
+        }
+
+        [Test]
+        public void Given_ARendererThrowingOnOneItem_When_ThatRangeUpdateFails_Then_TheVisibleContainerShowsNoRows()
+        {
+            // Arrange
+            var poisoned = false;
+            var node = ThrowingRendererList(item => poisoned && item.Id == "item-5", new List<string>());
+            var scrollView = new ScrollView(ScrollViewMode.Vertical);
+            using var controller = new FiberVirtualListController(scrollView, node, Reconciler);
+            var visibleContainer = scrollView.contentContainer.ElementAt(1);
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+            poisoned = true;
+
+            // Act — the throw is the characterization case's to pin; here it is only how the pass ends.
+            try
+            {
+                controller.UpdateVisibleRange(scrollY: 50f, viewportHeight: 200f);
+            }
+            catch (InvalidOperationException)
+            {
+            }
+
+            // Assert — the rows are gone from the DOM, not merely released: a disposed element left in the
+            // container is what the user goes on scrolling past.
+            Assert.That(visibleContainer.childCount, Is.EqualTo(0));
+        }
+
+        private static int RenderedIndexForTest(FiberVirtualListController controller, string field)
+            => (int)typeof(FiberVirtualListController)
+                .GetField(field, BindingFlags.NonPublic | BindingFlags.Instance)
+                .GetValue(controller);
+
+        #endregion
+
+        #region A list that goes empty
+
+        private static VirtualListNode LabelRowsList(int count, Func<TestItem, VNode> renderer)
+            => V.VirtualList(
+                items: CreateItems(count),
+                keySelector: item => item.Id,
+                itemHeight: 50f,
+                renderer: renderer,
+                overscan: 0);
+
+        private static VirtualListNode TextFieldRowsList(int count)
+            => V.VirtualList(
+                items: CreateItems(count),
+                keySelector: item => item.Id,
+                itemHeight: 50f,
+                renderer: item => V.TextField(name: "field-" + item.Id),
+                overscan: 0);
+
+        [Test]
+        public void Given_ARenderedRange_When_TheListIsUpdatedToNoItems_Then_EachRowsCleanupRuns()
+        {
+            // Arrange
+            var cleaned = new List<string>();
+            var renderer = CleanupRecordingRenderer(cleaned, RecordedLabel);
+            var scrollView = new ScrollView(ScrollViewMode.Vertical);
+            using var controller = new FiberVirtualListController(scrollView, LabelRowsList(10, renderer), Reconciler);
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+
+            // Act — Update renders nothing while no viewport height is known, so the range is re-supplied
+            // as the type-flip case in the visible-range region does.
+            controller.Update(LabelRowsList(0, renderer));
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+
+            // Assert
+            Assert.That(string.Join(",", cleaned.OrderBy(id => id, StringComparer.Ordinal)),
+                Is.EqualTo("item-0,item-1,item-2,item-3,item-4"));
+        }
+
+        [Test]
+        public void Given_ARenderedRange_When_TheListIsUpdatedToNoItems_Then_TheVisibleContainerShowsNoRows()
+        {
+            // Arrange
+            var renderer = CleanupRecordingRenderer(new List<string>(), RecordedLabel);
+            var scrollView = new ScrollView(ScrollViewMode.Vertical);
+            using var controller = new FiberVirtualListController(scrollView, LabelRowsList(10, renderer), Reconciler);
+            var visibleContainer = scrollView.contentContainer.ElementAt(1);
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+
+            // Act — the range re-supplied for the reason the case above gives.
+            controller.Update(LabelRowsList(0, renderer));
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+
+            // Assert
+            Assert.That(visibleContainer.childCount, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void Given_AListUpdatedToNoItemsAndBack_When_ARowReturns_Then_WhatWasTypedIntoItIsGone()
+        {
+            // Arrange — keyed rows, so a prior row left indexed would be found again by its key; the field
+            // is uncontrolled for the reason the unkeyed scrolled-away-and-back case gives.
+            var scrollView = new ScrollView(ScrollViewMode.Vertical);
+            using var controller = new FiberVirtualListController(scrollView, TextFieldRowsList(10), Reconciler);
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+            var typedInto = scrollView.Q<TextField>("field-item-2");
+            typedInto.value = "typed";
+            var typed = typedInto.value;
+            controller.Update(TextFieldRowsList(0));
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+
+            // Act — the items come back, the range re-supplied as above.
+            controller.Update(TextFieldRowsList(10));
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+
+            // Assert — what the first field took rides along, and an absent field reads as absent, for the
+            // reasons that case gives.
+            Assert.That(
+                "[" + typed + "] typed, ["
+                    + (scrollView.Q<TextField>("field-item-2")?.value ?? "no field") + "] shown on return",
+                Is.EqualTo("[typed] typed, [] shown on return"));
+        }
+
+        [Test]
+        public void Given_TheItemListEmptiedInPlace_When_ItIsRefilled_Then_WhatWasTypedIntoARowIsGone()
+        {
+            // Arrange — the case above through the other way into an empty list: the list the node holds is
+            // cleared in place and the range re-supplied, which reaches the same branch with the tracked
+            // range still naming the rows rather than dropped by an Update.
+            var items = new List<TestItem>(CreateItems(10));
+            var node = V.VirtualList(
+                items: items,
+                keySelector: item => item.Id,
+                itemHeight: 50f,
+                renderer: item => V.TextField(name: "field-" + item.Id),
+                overscan: 0);
+            var scrollView = new ScrollView(ScrollViewMode.Vertical);
+            using var controller = new FiberVirtualListController(scrollView, node, Reconciler);
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+            var typedInto = scrollView.Q<TextField>("field-item-2");
+            typedInto.value = "typed";
+            var typed = typedInto.value;
+            items.Clear();
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+
+            // Act
+            items.AddRange(CreateItems(10));
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+
+            // Assert — both terms for the reasons the unkeyed scrolled-away-and-back case gives.
+            Assert.That(
+                "[" + typed + "] typed, ["
+                    + (scrollView.Q<TextField>("field-item-2")?.value ?? "no field") + "] shown on return",
+                Is.EqualTo("[typed] typed, [] shown on return"));
         }
 
         #endregion

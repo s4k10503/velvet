@@ -77,15 +77,17 @@ Every `[VelvetPreview]` story can be rendered to a PNG, so a change to layout, s
 be inspected rather than only measured:
 
 ```bash
-/Applications/Unity/Hub/Editor/6000.3.23f1/Unity.app/Contents/MacOS/Unity -runTests -batchmode -projectPath "$PWD" -testPlatform PlayMode -testFilter "Velvet.Tests.StoryCaptureTests" -testResults /tmp/capture.xml -logFile /tmp/capture.log
+mkdir -p Logs && R=$(mktemp -d "$PWD/Logs/capture.XXXXXX") && echo "$R"
+VELVET_STORY_CAPTURE_DIR="$R" /Applications/Unity/Hub/Editor/6000.3.23f1/Unity.app/Contents/MacOS/Unity -runTests -batchmode -projectPath "$PWD" -testPlatform PlayMode -testFilter "Velvet.Tests.StoryCaptureTests" -testResults "$R/capture.xml" -logFile "$R/capture.log"
 ```
 
-The images land in `Logs/story-captures/` (git-ignored), grouped into a directory per story group, or
-under the directory named by `VELVET_STORY_CAPTURE_DIR`. Before each run, the harness deletes every
-non-empty path listed in the previous manifest; it does not verify that an entry stays under the output
-directory or was created by the harness. Use a dedicated output directory and do not seed or edit its
-manifest. The run fails if a story does not mount, if it renders a uniform frame, or — once for the
-whole run, not per story — if the bundled stylesheet's `bg-slate-700` probe does not resolve.
+The images land under the directory named by `VELVET_STORY_CAPTURE_DIR` — the run's own, above —
+grouped into a directory per story group, and in `Logs/story-captures/` (git-ignored) when it names
+none. Before each run, the harness deletes every non-empty path listed in the previous manifest; it
+does not verify that an entry stays under the output directory or was created by the harness. Use a
+dedicated output directory and do not seed or edit its manifest. The run fails if a story does not
+mount, if it renders a uniform frame, or — once for the whole run, not per story — if the bundled
+stylesheet's `bg-slate-700` probe does not resolve.
 
 **Look at the images.** Those three checks are the floor, not the ceiling: the uniform-frame one in
 particular is satisfied by a single differing pixel, so a story can render almost nothing and still
@@ -133,7 +135,7 @@ the comment-and-string mask, and which changed code lines an operator reaches �
 those would, which is the point of running it first rather than a reason to distrust it. The readings
 that need a run, the declarations and the cap among them, it does not take.
 
-[Generators~/README.md ▸ Mutation testing](Packages/com.velvet.core/Generators~/README.md#mutation-testing)
+[Generators~/README.md ▸ The Unity assemblies](Packages/com.velvet.core/Generators~/README.md#the-unity-assemblies)
 covers this and the generator solution's own run, and owns what the verdicts mean, how to read a
 survivor, and which line shapes the operators reach — which is 31% of the changed code lines measured
 over the twenty commits ending at `48057c8` with the generator as this branch leaves it, so **a survivor count is a statement about the lines an
@@ -173,10 +175,9 @@ question, and under one nearly everything survives. `--platform` is not one of t
 suite, just a different one — so it reads declarations and writes a receipt, and the platform is part
 of the receipt's key so that an EditMode question is never answered by a PlayMode run.
 
-The run also fails on the ways it can measure less than it looks like it measured: a `--max` cap that
-left mutants unrun, an editor killed at `--timeout`, a build the compiler or an analyzer stopped, an
-assembly the editor never rebuilt, a second editor sharing the machine, and a source whose
-comment-and-string mask swallows code, which generates no mutant there and reports nothing.
+The run also fails or stops rather than pass over a mutant nobody asked about, and
+[Generators~/README.md ▸ The Unity assemblies](Packages/com.velvet.core/Generators~/README.md#the-unity-assemblies)
+says when it does which.
 
 **What asks whether the campaign was run is a receipt, not attentiveness.** A finished run leaves one
 under the campaign's own log directory, keyed on the merge base (taken against what
@@ -439,8 +440,8 @@ project the editor opened; if that directory is on this machine and is not `--pr
 is refused rather than taken. Pointing it at another worktree's results with `--project` left to
 default measured exit 0 where the two trees declare the same fixtures, and where they do not it
 names a fixture as a stranger — the sentence for a stale `Library`, about work that is fine. Where
-the results file *sits* is not the question: the story-capture recipe above writes to `/tmp` from a
-run whose project is the checkout.
+the results file *sits* is not the question: a run whose project is the checkout may write its
+results outside it.
 
 Two runs are stood aside for rather than compared, because their tree is not here: one inside a
 container, which names the container's path and is what CI reads, and one whose tree has since been
@@ -448,7 +449,7 @@ deleted — the base tree the base-red harness builds and removes. A results fil
 against this checkout's sources passes unremarked, and what keeps the second out of the way is the
 rule that a directory argument is not descended into. It still cannot separate two runs of the same
 project writing a results file of the same name; what answers that is the headless recipe's
-per-worktree logs directory, not the guard.
+directory per run, not the guard.
 
 Each Unity job in CI runs it after the suite, and CLAUDE.md's headless recipe runs it beside
 `assert_no_inconclusive.py`. `scripts/test_quality/test_assert_results_from_this_tree.py` holds it,
@@ -771,6 +772,18 @@ pull request it learned nothing about. An empty answer is posed as neither, bein
 `open_backlog.py` acts on. A guard whose own question is answered in a mode that broke somebody
 else's reading declares `UNREADABLE_ALLOWS`, with a comment and with a sibling that refuses there,
 so an exemption no other guard stands behind is reported rather than taken.
+
+A fifth way is a guard nothing poses at all. The checks above each ask one dimension — an
+unreadable reading, a wiring, a base, a tree — and `merge_unproven_head.py` agreed with every one of
+them on `main` while exiting 1 on a `gh` that failed after answering, and reading a check list `gh`
+reported under a non-zero exit as no list at all. `scripts/hooks/test_hook_coverage.py` is the floor
+under that: every script under `refuse/`, `report/` and `stop/` has to be named in the **code** of a
+tracked test source, comments and docstrings taken out first, so that a summary naming a guard does
+not count as a case posing one. A guard whose subject is decided in a module of its own names that module's suite in a
+`DECISION_TESTS` tuple instead — `merge_onto_unpublished_release.py` does, the release state it
+refuses on being `scripts/release/published_check.py`'s answer — and the floor fails a name it
+cannot resolve to a source it reads. Named is weaker than posed, deliberately: what a name match
+says is that some case exists, not that the case asks anything.
 
 ### Source generators
 

@@ -66,7 +66,8 @@ HOLE_RESULTS = ("Passed", "Inconclusive", "Skipped")
 
 
 def unity_processes():
-    result = subprocess.run(["ps", "-Ao", "command="], capture_output=True, text=True)
+    result = subprocess.run(["ps", "-Ao", "command="], capture_output=True, encoding="utf-8",
+                            errors="replace")
     return sum(1 for line in result.stdout.splitlines() if re.match(UNITY_RUNNING, line))
 
 
@@ -431,13 +432,18 @@ def run_suite(unity, project, platform, fixture, results, log, timeout):
     start = time.time()
     peak = 0
     process = subprocess.Popen(command)
-    while process.poll() is None:
-        if time.time() - start > timeout:
+    try:
+        while process.poll() is None:
+            if time.time() - start > timeout:
+                process.kill()
+                process.wait()
+                return time.time() - start, True, peak
+            peak = max(peak, max(0, unity_processes() - 1))
+            time.sleep(3)
+    finally:
+        if process.poll() is None:
             process.kill()
             process.wait()
-            return time.time() - start, True, peak
-        peak = max(peak, max(0, unity_processes() - 1))
-        time.sleep(3)
     return time.time() - start, False, peak
 
 

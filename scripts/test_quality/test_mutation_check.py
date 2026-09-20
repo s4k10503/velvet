@@ -29,6 +29,7 @@ import textwrap
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 RUNTIME = REPO_ROOT / "Packages/com.velvet.core/Runtime"
@@ -2987,12 +2988,19 @@ class VerdictNamingTests(unittest.TestCase):
                  if verdict + ":" in campaign.printed]
         return code, named
 
-    def test_Given_ABaselineWithRoomToSpare_When_AMutantReachesTheBound_Then_ItIsAnswered(self):
-        # Arrange — the baseline finished with the whole bound to spare and this did not, so what ran
-        # past it is the mutation. A suite that never finishes is not a suite that still passes, which
-        # is the whole of what a campaign asks, so the run does not refuse.
-        # Act / Assert
-        self.assertEqual(self.tally_of(times_out=True), (0, [mutation_check.HUNG]))
+    def test_Given_ABaselineWithRoomToSpare_When_AMutantTimesOut_Then_NoReceiptSignsItOff(self):
+        # Arrange
+        campaign = StubbedCampaign()
+        campaign.times_out = True
+
+        # Act
+        run = campaign.run_over_diff("--max", "40")
+        named = mutation_check.HUNG + ":" in campaign.printed
+        receipt = campaign.run_over_diff("--receipt")
+
+        # Assert
+        self.assertEqual((run, receipt, named),
+                         (1, mutation_check.RECEIPT_REFUSAL, True))
 
     def test_Given_ABaselineAlreadyNearTheBound_When_AMutantReachesIt_Then_ItIsNotMeasured(self):
         # Arrange — a bound the suite was always going to outrun says nothing about the mutation, and
@@ -3077,6 +3085,7 @@ class SignalledCampaignTests(unittest.TestCase):
     a restored tree gives.
     """
 
+    # GREEN_ON_BASE(characterization): pins existing restoration with a signal delivered while a mutation is held.
     def test_Given_ARunningCampaign_When_ItIsSignalled_Then_TheSourceIsPutBack(self):
         # Arrange — a campaign whose editor never returns, so the signal lands while it holds.
         campaign = StubbedCampaign()
@@ -3098,7 +3107,7 @@ class SignalledCampaignTests(unittest.TestCase):
             def green(_u, _p, _pl, _s, results, log, _t, _h=None):
                 open(results, "w").write(results_text)
                 open(log, "w").write("")
-                return 0.0, False
+                return 0.0, False, 0
 
             calls = {"n": 0}
 
@@ -3122,11 +3131,14 @@ class SignalledCampaignTests(unittest.TestCase):
             said = running.stdout.readline()
             if not said or said.strip() == "holding":
                 break
-        os.kill(running.pid, signal.SIGTERM)
+        held = said.strip() == "holding" and campaign.source.read_text() != original
+        if running.poll() is None:
+            os.kill(running.pid, signal.SIGTERM)
         running.wait(timeout=60)
+        running.stdout.close()
 
         # Assert
-        self.assertEqual(campaign.source.read_text(), original)
+        self.assertEqual((held, campaign.source.read_text()), (True, original))
 
 
 class MaskRefusalTests(unittest.TestCase):
@@ -3145,9 +3157,13 @@ class MaskRefusalTests(unittest.TestCase):
 class KeptVerdictTests(unittest.TestCase):
     """What a killed campaign leaves behind for the next run of the same one.
 
-    A campaign is all-or-nothing: killed at mutant 24 of 32 it leaves 24 sound verdicts on disk and
-    the next run starts at 1. Each is recorded as it is reached so a later run answers from it — and
-    refused where the tree it measured has moved, since a verdict about other bytes is not a verdict.
+    Each verdict is recorded as it is reached, and a later run answers from its kills — refusing one
+    where the tree it measured has moved, since a verdict about other bytes is not a verdict — and
+    measures the others again.
+
+    The record the cases below refuse on their digest, their mutant or its column is a kill, because a
+    kind the run measures again is refused whatever its key, and a case refusing one would pass with
+    the key unread.
     """
 
     def setUp(self):
@@ -3156,9 +3172,17 @@ class KeptVerdictTests(unittest.TestCase):
         self.project = Path(tempfile.mkdtemp(prefix="mutation-kept-project-"))
         self.addCleanup(shutil.rmtree, self.project, ignore_errors=True)
         self.mutant = mutation_check.Mutant(self.project / "A.cs", 3, 0, "a", "b", "literal")
-        self.mutant.verdict = "survived"
-        self.mutant.detail = "0 failed"
+        self.mutant.verdict = mutation_check.KILLED
+        self.mutant.detail = "1 failed: Kills"
         mutation_check.write_verdict(self.output, 7, "digest-1", self.mutant, self.project)
+
+    def read_back(self, verdicts):
+        """What a later run reads of one record per verdict, each under this campaign and this mutant."""
+        for index, verdict in enumerate(verdicts, start=1):
+            self.mutant.verdict, self.mutant.detail = verdict, "the first run's detail"
+            mutation_check.write_verdict(self.output, index, "digest-1", self.mutant, self.project)
+        return [mutation_check.read_verdict(self.output, index, "digest-1", self.mutant, self.project)
+                for index in range(1, len(verdicts) + 1)]
 
     def test_Given_ACampaignThatKilledAMutant_When_TheRecordIsRead_Then_ItNamesEveryKiller(self):
         # Arrange — the detail names three for a reader. Which cases kill which mutant is a reading
@@ -3170,11 +3194,12 @@ class KeptVerdictTests(unittest.TestCase):
         self.assertEqual(json.loads((self.output / "mutant-008.json").read_text())["killers"],
                          ["N.C.a", "N.C.b", "N.C.c", "N.C.d"])
 
+    # GREEN_ON_BASE(characterization): the base keeps every verdict, a kill among them.
     def test_Given_AVerdictThisCampaignWrote_When_TheSameMutantIsReached_Then_ItIsAnswered(self):
         # Act / Assert
         self.assertEqual(
             mutation_check.read_verdict(self.output, 7, "digest-1", self.mutant, self.project),
-            ("survived", "0 failed"))
+            (mutation_check.KILLED, "1 failed: Kills"))
 
     def test_Given_TheTreeHasMovedSince_When_TheSameMutantIsReached_Then_TheVerdictIsRefused(self):
         # Arrange — the digest covers the working tree, so an edit to a mutated file moves it.
@@ -3189,6 +3214,266 @@ class KeptVerdictTests(unittest.TestCase):
         # Act / Assert
         self.assertIsNone(
             mutation_check.read_verdict(self.output, 7, "digest-1", other, self.project))
+
+    def test_Given_ASiblingThatDescribesAlike_When_ItIsReachedAtThatIndex_Then_TheVerdictIsRefused(self):
+        # Arrange — the same edit further along the same line, which describes exactly as the recorded
+        # mutant does. `--files` takes a file whole where the diff takes its changed lines, so one
+        # list can put this mutant at the index the other recorded.
+        sibling = mutation_check.Mutant(self.project / "A.cs", 3, 5, "a", "b", "literal")
+
+        # Act / Assert
+        self.assertIsNone(
+            mutation_check.read_verdict(self.output, 7, "digest-1", sibling, self.project))
+
+    def test_Given_AVerdictThatMeasuredNothing_When_TheSameMutantIsReached_Then_ItIsMeasuredAgain(self):
+        # Arrange — each kind the run fails on for want of a reading, keyed so that only the kind can
+        # refuse it.
+        unmeasured = [mutation_check.TIMED_OUT, mutation_check.UNCOMPILABLE, mutation_check.NOT_BUILT]
+
+        # Act
+        read = self.read_back(unmeasured)
+
+        # Assert
+        self.assertEqual(read, [None] * len(unmeasured))
+
+    def test_Given_ASurvivorsVerdict_When_TheSameMutantIsReached_Then_ItIsMeasuredAgain(self):
+        # Arrange — both kinds a survivor comes back as, keyed so that only the kind can refuse them.
+        surviving = [mutation_check.SURVIVED, mutation_check.INCONCLUSIVE]
+
+        # Act
+        read = self.read_back(surviving)
+
+        # Assert
+        self.assertEqual(read, [None] * len(surviving))
+
+    def test_Given_AVerdictTheSuiteHungOn_When_TheSameMutantIsReached_Then_ItIsMeasuredAgain(self):
+        # Arrange — keyed so that only the verdict kind can refuse it.
+        hung = [mutation_check.HUNG]
+
+        # Act
+        read = self.read_back(hung)
+
+        # Assert
+        self.assertEqual(read, [None])
+
+
+class ResumedCampaignTests(unittest.TestCase):
+    """The second of two runs over one output directory, read by the verdicts its tally names and by
+    whether it says any came from the first.
+
+    `KeptVerdictTests` reads the record directly, so a campaign that never consulted it would pass
+    every case there; these drive `main` twice.
+    """
+
+    NAMED = (mutation_check.TIMED_OUT, mutation_check.HUNG, mutation_check.UNCOMPILABLE,
+             mutation_check.NOT_BUILT, mutation_check.SURVIVED, mutation_check.KILLED)
+
+    def second_run(self, first, second, first_flags=(), second_flags=()):
+        """(exit status, verdicts the tally names, whether any came from the first run) of a run whose
+        editor behaves as `second`, following one whose editor behaved as `first`, each run narrowed
+        by the flags beside it."""
+        campaign = StubbedCampaign()
+        for field, value in first.items():
+            setattr(campaign, field, value)
+        campaign.run_over_diff("--max", "40", *first_flags)
+        for field in first:
+            setattr(campaign, field, getattr(StubbedCampaign, field))
+        for field, value in second.items():
+            setattr(campaign, field, value)
+        code = campaign.run_over_diff("--max", "40", *second_flags)
+        return (code, [verdict for verdict in self.NAMED if verdict + ":" in campaign.printed],
+                "came from a previous run of this campaign" in campaign.printed)
+
+    def test_Given_AMutantTheFirstRunTimedOut_When_TheCampaignRunsAgain_Then_ItIsMeasuredAgain(self):
+        # Arrange — the first baseline sat near the bound, so the mutant reaching it went unmeasured;
+        # this time the editor finishes, whether for a raised --timeout or a quieter machine.
+        first = {"times_out": True, "baseline_seconds": 500.0}
+        second = {"kills": True}
+
+        # Act
+        read = self.second_run(first, second)
+
+        # Assert
+        self.assertEqual(read, (0, [mutation_check.KILLED], False))
+
+    def test_Given_ASurvivorATestWasWrittenFor_When_TheCampaignRunsAgain_Then_ItIsMeasuredAgain(self):
+        # Arrange — the first run's survivor, and a suite that kills it by the second, which is what a
+        # test written in between does.
+        first = {}
+        second = {"kills": True}
+
+        # Act
+        read = self.second_run(first, second)
+
+        # Assert
+        self.assertEqual(read, (0, [mutation_check.KILLED], False))
+
+    # GREEN_ON_BASE(characterization): the base keeps every verdict, so it keeps this kill too.
+    def test_Given_AMutantTheFirstRunKilled_When_TheCampaignRunsAgain_Then_TheKillIsKept(self):
+        # Arrange — the second run's suite lets the mutant survive, so a kill can only be the first
+        # run's. The counterpart, so the two above are not passing for a campaign that keeps nothing.
+        first = {"kills": True}
+        second = {}
+
+        # Act
+        read = self.second_run(first, second)
+
+        # Assert
+        self.assertEqual(read, (0, [mutation_check.KILLED], True))
+
+    def test_Given_AKillTheWholeSuiteTook_When_ARunNarrowedByFilterFollows_Then_ItIsMeasuredAgain(self):
+        # Arrange — the fixture the second run asks about does not notice the mutant, which another
+        # test in the whole suite killed.
+        first = {"kills": True}
+        second = {}
+
+        # Act
+        read = self.second_run(first, second, second_flags=("--filter", "Suspect.Fixture"))
+
+        # Assert
+        self.assertEqual(read, (1, [mutation_check.SURVIVED], False))
+
+    def test_Given_AKillTheWholeSuiteTook_When_ARunNarrowedByAssembliesFollows_Then_ItIsMeasuredAgain(self):
+        # Arrange — the sibling narrowing, which reaches the editor as a flag of its own.
+        first = {"kills": True}
+        second = {}
+
+        # Act
+        read = self.second_run(first, second, second_flags=("--assemblies", "Suspect.Tests"))
+
+        # Assert
+        self.assertEqual(read, (1, [mutation_check.SURVIVED], False))
+
+    def test_Given_AKillANarrowedRunTook_When_TheWholeSuiteFollows_Then_ItIsMeasuredAgain(self):
+        # Arrange — narrowed by both flags, so that this turns on what the whole run reads rather than
+        # on how either flag is recorded. The second run writes the receipt, and its suite lets the
+        # mutant survive.
+        first = {"kills": True}
+        second = {}
+        narrowed = ("--assemblies", "Suspect.Tests", "--filter", "Suspect.Fixture")
+
+        # Act
+        read = self.second_run(first, second, first_flags=narrowed)
+
+        # Assert
+        self.assertEqual(read, (1, [mutation_check.SURVIVED], False))
+
+    # GREEN_ON_BASE(characterization): the base keeps every verdict, a narrowed run's kill among them.
+    def test_Given_AKillANarrowedRunTook_When_TheSameNarrowingFollows_Then_TheKillIsKept(self):
+        # Arrange — the counterpart, so the three above are not passing for a campaign that keeps
+        # nothing a narrowed run touched.
+        first = {"kills": True}
+        second = {}
+        narrowed = ("--filter", "Suspect.Fixture")
+
+        # Act
+        read = self.second_run(first, second, first_flags=narrowed, second_flags=narrowed)
+
+        # Assert
+        self.assertEqual(read, (0, [mutation_check.KILLED], True))
+
+
+@contextlib.contextmanager
+def listed_processes(listing):
+    """A `ps` first on PATH that prints `listing` whatever it is asked, and marks that it ran."""
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        (root / "listing").write_bytes(listing)
+        ps = root / "ps"
+        ps.write_text('#!/bin/sh\n: > "{0}/ran"\nexec cat "{0}/listing"\n'.format(root))
+        ps.chmod(0o755)
+        saved = os.environ["PATH"]
+        os.environ["PATH"] = directory + os.pathsep + saved
+        try:
+            yield root / "ran"
+        finally:
+            os.environ["PATH"] = saved
+
+
+NOT_UTF8_NEIGHBOUR = b"/usr/bin/probe --label \xff"
+EDITOR = b"/Applications/Unity/Hub/Editor/6000.3.23f1/Unity.app/Contents/MacOS/Unity -runTests -batchmode"
+CAMPAIGN = b"/usr/bin/python3 /repo/scripts/test_quality/mutation_check.py --base origin/main"
+
+
+class ProcessListDecodingTests(unittest.TestCase):
+    """One neighbour's stray byte in the process list must not end the run that reads it."""
+
+    def test_Given_ANeighbourWhoseCommandLineIsNotUtf8_When_EditorsAreCounted_Then_TheEditorBesideItCounts(self):
+        # Arrange
+        listing = NOT_UTF8_NEIGHBOUR + b"\n" + EDITOR + b"\n"
+
+        # Act
+        with listed_processes(listing) as ran:
+            try:
+                counted = (mutation_check.unity_busy(), ran.exists())
+            except UnicodeDecodeError as error:
+                counted = (repr(error), ran.exists())
+
+        # Assert — the mark separates this listing's count from the machine's own.
+        self.assertEqual(counted, (1, True))
+
+    def test_Given_ANeighbourWhoseCommandLineIsNotUtf8_When_CampaignsAreCounted_Then_TheCampaignBesideItCounts(self):
+        # Arrange
+        listing = NOT_UTF8_NEIGHBOUR + b"\n" + CAMPAIGN + b"\n"
+
+        # Act
+        with listed_processes(listing) as ran:
+            try:
+                counted = (mutation_check.campaigns_running(), ran.exists())
+            except UnicodeDecodeError as error:
+                counted = (repr(error), ran.exists())
+
+        # Assert — the mark separates this listing's count from the machine's own.
+        self.assertEqual(counted, (1, True))
+
+
+
+@contextlib.contextmanager
+def lingering_editor():
+    """An editor that runs until something kills it, and every process the run under test starts."""
+    with tempfile.TemporaryDirectory() as directory:
+        editor = Path(directory) / "Unity"
+        editor.write_text("#!/bin/sh\nexec sleep 60\n")
+        editor.chmod(0o755)
+        started = []
+        real = subprocess.Popen
+
+        def recording(*args, **kwargs):
+            process = real(*args, **kwargs)
+            started.append(process)
+            return process
+
+        with mock.patch.object(subprocess, "Popen", recording):
+            try:
+                yield str(editor), started
+            finally:
+                for process in started:
+                    if process.poll() is None:
+                        process.kill()
+                        process.wait()
+
+
+def failing_count():
+    raise OSError(35, "Resource temporarily unavailable")
+
+
+class EditorReapedWhenAnExceptionEndsTheRunTests(unittest.TestCase):
+    """An editor left running over a tree the harness has put back measures a change that is gone."""
+
+    def test_Given_ANeighbourCountThatFailsWhileTheEditorRuns_When_TheRunEnds_Then_TheEditorIsNotLeftRunning(self):
+        # Arrange
+        with lingering_editor() as (editor, started), mock.patch.object(mutation_check, "unity_busy",
+                                                                        failing_count):
+            # Act
+            try:
+                mutation_check.run_suite(editor, ".", "EditMode", [], Path("/dev/null"), Path("/dev/null"), 30)
+                raised = False
+            except OSError:
+                raised = True
+            left_running = [process.poll() is None for process in started]
+
+        # Assert
+        self.assertEqual((raised, left_running), (True, [False]))
 
 
 if __name__ == "__main__":

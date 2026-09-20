@@ -17,7 +17,7 @@ namespace Velvet
     /// </list>
     /// <para>
     /// <see cref="Memoize"/> (props-bail) and <see cref="Compiler"/> (build-time auto-memo) are its two
-    /// memoization axes; see each member.
+    /// independent memoization axes; see each member.
     /// </para>
     /// </remarks>
     [AttributeUsage(AttributeTargets.Method, Inherited = false)]
@@ -72,8 +72,8 @@ namespace Velvet
         /// <para>
         /// Set to <c>false</c> to opt this component out of the transform, so its body then runs in full on
         /// every render. This is an escape hatch for
-        /// the rare component whose render must not be cached. <see cref="Memoize"/> governs the separate
-        /// props-bail axis at the reconcile boundary.
+        /// the rare component whose render must not be cached; it is orthogonal to <see cref="Memoize"/>, which
+        /// governs the props-bail axis at the reconcile boundary.
         /// </para>
         /// </summary>
         public bool Compiler { get; init; } = true;

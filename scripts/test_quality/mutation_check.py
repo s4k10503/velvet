@@ -19,11 +19,8 @@ already carries rather than for this one.
 
 **Success means every mutant was measured, and every survivor answered for.** Not that nothing was
 reported: most of what goes wrong with a campaign ends in a mutant nobody asked about, and a mutant
-nobody asked about must never be a pass. So the ways a run can measure less than it looks like it
-measured each fail on their own -- a cap that left mutants unrun, an editor killed at --timeout, a
-build that rejected the mutation, an assembly the editor never rebuilt, a second editor sharing the
-machine, and a file whose comment and string mask swallowed code, which generates no mutant there and
-says nothing.
+nobody asked about must never be a pass. So a run fails or stops rather than pass over one, and
+Generators~/README.md ▸ The Unity assemblies says when it does which.
 
 It is not success over the whole change, and the difference is most of one: the operators reach a
 minority of the code lines a branch touches, so the reach is printed beside every verdict rather than
@@ -67,12 +64,8 @@ REFUSAL_BASELINE = "scripts/test_quality/logic_refusal_baseline.txt"
 
 KILLED = "killed"
 TIMED_OUT = "not measured (timed out)"
-HUNG = "killed (the suite did not finish)"
+HUNG = "not measured (the suite did not finish)"
 
-# How far under --timeout the baseline has to land before a mutant reaching it is read as the
-# mutation's doing rather than as a bound the suite was always going to outrun. Three is the smallest
-# ratio that is not a judgement call about a slow machine: a run that took a third of the bound and
-# then took all of it did not get three times slower by chance.
 HANG_MARGIN = 3
 SURVIVED = "survived"
 INCONCLUSIVE = "survived (inconclusive)"
@@ -1091,7 +1084,8 @@ class Holder:
 
 
 def unity_busy():
-    result = subprocess.run(["ps", "-Ao", "command="], capture_output=True, text=True)
+    result = subprocess.run(["ps", "-Ao", "command="], capture_output=True, encoding="utf-8",
+                            errors="replace")
     return sum(1 for line in result.stdout.splitlines() if re.match(UNITY_RUNNING, line))
 
 
@@ -1111,7 +1105,8 @@ def campaigns_running():
     survive locally, ninety minutes apart. So each receipt records what it saw, and the question gets
     an answer built from runs rather than from a guess about them.
     """
-    result = subprocess.run(["ps", "-Ao", "command="], capture_output=True, text=True)
+    result = subprocess.run(["ps", "-Ao", "command="], capture_output=True, encoding="utf-8",
+                            errors="replace")
     return sum(1 for line in result.stdout.splitlines() if CAMPAIGN_RUNNING.match(line))
 
 
@@ -1167,6 +1162,9 @@ def run_suite(unity, project, platform, scope, results, log, timeout, holder=Non
                     return time.time() - start, True, peak
                 peak = max(peak, max(0, unity_busy() - 1))
     finally:
+        if child.poll() is None:
+            child.kill()
+            child.wait()
         if holder is not None:
             holder.child = None
 
@@ -1365,40 +1363,46 @@ def verdict_path(output, index):
     return output / "mutant-{:03d}.json".format(index)
 
 
-def write_verdict(output, index, digest, mutant, project, killers=()):
-    """Record one mutant's verdict beside its results, keyed on what the campaign measured.
-
-    A campaign is all-or-nothing today: killed at mutant 24 of 32, it leaves 24 sound verdicts on disk
-    that mean nothing to the next run, which starts at 1. The results XML alone cannot answer for them
-    -- HUNG reads the wall clock, NOT_BUILT reads an assembly hash the restart has already restored --
-    so what is kept is the verdict itself.
-    """
+def write_verdict(output, index, digest, mutant, project, killers=(), scope=()):
+    """Record one mutant's verdict beside its results, with everything `read_verdict` keys it on."""
     verdict_path(output, index).write_text(json.dumps({
-        "digest": digest, "index": index, "mutant": mutant.describe(project),
+        "digest": digest, "scope": list(scope), "index": index, "mutant": mutant.describe(project),
+        "column": mutant.column,
         "verdict": mutant.verdict, "detail": mutant.detail,
         # Every case that failed under this mutation, not the three the detail names. Which cases kill
-        # which mutant is the reading #713 wants and a receipt does not carry, and it is on disk here
-        # anyway -- the detail truncates it for a reader rather than because that is all there was.
+        # which mutant is a reading a receipt does not carry, and it is on disk here anyway -- the
+        # detail truncates it for a reader rather than because that is all there was.
         "killers": sorted(killers),
     }, indent=2))
 
 
-def read_verdict(output, index, digest, mutant, project):
-    """(verdict, detail) a previous run of this same campaign reached for this mutant, or None.
+def read_verdict(output, index, digest, mutant, project, scope=()):
+    """(verdict, detail) of the kill a previous run of this same campaign recorded for this mutant, or
+    None.
 
-    Keyed on the digest AND on what the mutant is, because an index is only this mutant's while the
-    list is the same list. The digest covers the working tree rather than a commit, so an edit to a
-    mutated file since moves it and the record is refused rather than reused.
+    Keyed on the digest, which covers the working tree rather than a commit, so an edit to a mutated
+    file since moves it and the record is refused rather than reused. On the suite `scope` narrows
+    the run to, because a kill another suite took can hide a fixture that does not notice, and one
+    taken under `--filter` or `--assemblies` is not the whole-suite reading a receipt stands on. And on
+    the mutant with its column, because an index is only this mutant's while the list is the same list
+    -- `--files` takes a file whole where the diff takes its changed lines -- and two mutants on one
+    line can describe alike.
 
-    What it does not cover is a test-side change, and that is `scope_digest`'s own limit rather than
-    one this adds: removing a test can make a killed mutant survive, and the receipt stays valid
-    across it for the reason stated there. A resumed verdict inherits exactly that, no more.
+    A kill alone: each other verdict turns on something outside that key -- a survivor of either kind
+    on the tests, which the test written for it changes; a timed-out or hung mutant on `--timeout`,
+    which the timed-out verdict asks to be raised, and on anything else that kept the editor running;
+    uncompilable and not rebuilt on the editor as well as on the mutation. A kill turns on the tests
+    too, and is kept across a test removed since for the reason `scope_digest` gives for the receipt;
+    one taken while another editor was up is kept as well, and its detail says so.
     """
     try:
         held = json.loads(verdict_path(output, index).read_text())
     except (OSError, ValueError):
         return None
-    if held.get("digest") != digest or held.get("mutant") != mutant.describe(project):
+    key = (held.get("digest"), held.get("scope"), held.get("mutant"), held.get("column"))
+    if key != (digest, list(scope), mutant.describe(project), mutant.column):
+        return None
+    if held.get("verdict") != KILLED:
         return None
     return held.get("verdict"), held.get("detail")
 
@@ -1518,7 +1522,8 @@ def main():
                         help="print the join refusal's census over the package and exit; redirect it "
                              "over " + REFUSAL_BASELINE + " to record a deliberate change to it")
     parser.add_argument("--timeout", type=int, default=900,
-                        help="seconds before a mutant run is killed; a killed run is not measured and fails (default: 900)")
+                        help="seconds before a baseline or mutant editor is killed; Generators~/README.md ▸ "
+                             "The Unity assemblies says which verdict that is (default: 900)")
     parser.add_argument("--busy-timeout", type=int, default=1800,
                         help="seconds to wait for another Unity run to finish (default: 1800)")
     parser.add_argument("--output", default="", help="directory for the per-mutant logs and XML")
@@ -1798,7 +1803,7 @@ def main():
     try:
         for index, mutant in enumerate(mutants, start=1):
             print("[{}/{}] {}".format(index, len(mutants), mutant.describe(project)), flush=True)
-            kept = read_verdict(output, index, campaign, mutant, project)
+            kept = read_verdict(output, index, campaign, mutant, project, scope)
             if kept is not None:
                 mutant.verdict, mutant.detail = kept
                 resumed += 1
@@ -1830,12 +1835,6 @@ def main():
             dll = assemblies_dir / "{}.dll".format(assembly_of(mutant.path))
             blamed = build_error(log)
             if timed_out and baseline_wall * HANG_MARGIN <= args.timeout:
-                # The baseline finished with room to spare and this did not, so the bound is not what
-                # the suite was always going to outrun -- the mutation is. A suite that never finishes
-                # is not a suite that still passes, which is the whole of what a campaign asks, so
-                # this counts as answered rather than as a mutant nobody asked about. Named apart from
-                # a test failure because no test reported: an await whose completion the mutation
-                # removed never returns, and nothing writes a verdict for it.
                 mutant.verdict = HUNG
                 mutant.detail = ("the suite ran past --timeout {}s where the baseline finished in "
                                  "{:.0f}s".format(args.timeout, baseline_wall))
@@ -1879,7 +1878,7 @@ def main():
             if neighbours:
                 mutant.detail = "{}; {} other editor(s) were up".format(
                     mutant.detail or "-", neighbours)
-            write_verdict(output, index, campaign, mutant, project, killers)
+            write_verdict(output, index, campaign, mutant, project, killers, scope)
             average = (time.time() - started) / max(1, index - resumed)
             print("      {} ({}) in {:.0f}s; {:.0f}s left at {:.0f}s each".format(
                 mutant.verdict, mutant.detail or "-", wall,
@@ -1904,7 +1903,7 @@ def main():
     if not survivors:
         print("(none)")
 
-    unmeasured = [m for m in mutants if m.verdict in (NOT_BUILT, TIMED_OUT, UNCOMPILABLE)]
+    unmeasured = [m for m in mutants if m.verdict in (NOT_BUILT, TIMED_OUT, HUNG, UNCOMPILABLE)]
     if unmeasured:
         print("\n--- mutants nothing was asked of the suite about ---")
         for mutant in unmeasured:

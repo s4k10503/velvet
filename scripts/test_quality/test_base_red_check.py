@@ -13,6 +13,7 @@ import contextlib
 import importlib.util
 import io
 import json
+import os
 import re
 import pathlib
 import shutil
@@ -23,6 +24,7 @@ import threading
 import traceback
 import unittest
 from pathlib import Path
+from unittest import mock
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -2641,6 +2643,124 @@ class ResultsFileTests(unittest.TestCase):
                          ({"N.C.Given_A_When_B_Then_C": "Passed"}, True))
 
 
+class NestedFixtureNameTests(unittest.TestCase):
+    """A fixture nested in another class, which the runner names after a `+` and the reader after a
+    dot.
+
+    The results are written by hand in the runner's spelling rather than derived from the reader's,
+    since names built from one reading agree with each other whatever that reading says.
+    """
+
+    PATH = "Packages/p/Runtime/A/Tests/Editor/OuterTests.cs"
+    CANARY = "Packages/p/Runtime/A/Tests/Editor/CanaryTests.cs"
+
+    def nested(self, *bodies):
+        """A fixture `Inner` nested in `Outer`, holding one case per body in the order given."""
+        names = ("Given_A_When_B_Then_C", "Given_D_When_E_Then_F")
+        members = "\n".join(
+            "            [Test]\n            public void {}() => {};\n".format(name, body)
+            for name, body in zip(names, bodies))
+        return ("namespace N\n{\n    internal static class Outer\n    {\n"
+                "        internal sealed class Inner\n        {\n" + members +
+                "        }\n    }\n}\n")
+
+    def verdicts(self, results):
+        """Each case's verdict, in the order the reader finds them, over a results file holding
+        `results` and nothing else."""
+        holder = tempfile.mkdtemp(prefix="base-red-nested-")
+        self.addCleanup(shutil.rmtree, holder, ignore_errors=True)
+        Path(holder, "r.xml").write_text("<test-run>" + results + "</test-run>")
+        reported, wrote = base_red_check.results_from(holder)
+        cases = base_red_check.csharp_cases(
+            self.nested("Assert.Pass()", "Assert.Pass()"), self.PATH)
+        with contextlib.redirect_stdout(io.StringIO()):
+            base_red_check.report(cases, [], reported, {}, wrote)
+        return tuple(case.verdict for case in cases)
+
+    def test_Given_ANestedFixturesCasesTheBaseRan_When_TheyAreDecided_Then_EachIsReadAsItsResultSays(self):
+        # Arrange -- one disagreed and one passed; misread, both come back as a fixture the base
+        # built none of, which fails nothing.
+        results = ('<test-case fullname="N.Outer+Inner.Given_A_When_B_Then_C" result="Failed" />'
+                   '<test-case fullname="N.Outer+Inner.Given_D_When_E_Then_F" result="Passed" />')
+
+        # Act
+        verdicts = self.verdicts(results)
+
+        # Assert
+        self.assertEqual(verdicts, (base_red_check.RED_ON_BASE, base_red_check.PASSED_ON_BASE))
+
+    def test_Given_ANestedFixtureThatReportedOnlyItsOtherCase_When_TheMissingOneIsDecided_Then_NothingAnsweredToIt(self):
+        # Arrange -- the fixture ran, so its missing case is a name nothing answered to rather than
+        # a fixture the base could not build.
+        results = '<test-case fullname="N.Outer+Inner.Given_D_When_E_Then_F" result="Passed" />'
+
+        # Act
+        verdict = self.verdicts(results)[0]
+
+        # Assert
+        self.assertEqual(verdict, base_red_check.NOT_REPORTED)
+
+    # GREEN_ON_BASE(characterization): the base's filter already selects a nested fixture.
+    def test_Given_ANestedFixture_When_TheLaneAsksTheEditorForIt_Then_ItsCaseIsSelected(self):
+        # Arrange -- a term selects a case whose name, or any suite's above it, it matches as a
+        # regular expression: the unity-tests skill's rule. A nested fixture's suite sits beside its
+        # outer class, under the namespace.
+        fixture = base_red_check.csharp_cases(self.nested("Assert.Pass()"), self.PATH)[0].fixture
+        names = ["", "Velvet.Tests.A.Editor.dll", "N", "N.Outer+Inner",
+                 "N.Outer+Inner.Given_A_When_B_Then_C"]
+        commands = []
+
+        class Finished:
+            def __init__(self, command):
+                commands.append(command)
+
+            def poll(self):
+                return 0
+
+        # Act
+        with mock.patch.object(base_red_check.subprocess, "Popen", Finished):
+            base_red_check.run_unity("unity", Path("."), "EditMode", [fixture], Path("/dev/null"),
+                                     Path("/dev/null"), 30)
+        value = commands[0][commands[0].index("-testFilter") + 1]
+
+        # Assert
+        self.assertTrue(any(re.search(term, name) for term in value.split(";") for name in names))
+
+    def test_Given_ANestedFixtureTheFirstRoundReported_When_TheLoopReadsIt_Then_NoSecondRoundIsAsked(self):
+        # Arrange -- a fixture missing from a round the log blames nothing for is what the loop
+        # withdraws a file over and asks again. The editor answers in the runner's spelling.
+        base = {self.CANARY: ("namespace N\n{\n    class CanaryTests\n    {\n        [Test]\n"
+                              "        public void Given_A_When_B_Then_C() => Assert.Pass();\n    }\n}\n"),
+                self.PATH: self.nested("Assert.Pass()")}
+        root, since = two_commit_repo(self, base, dict(base, **{
+            self.PATH: self.nested("Assert.That(1, Is.EqualTo(1))")}))
+        runner = {"N.Outer.Inner": "N.Outer+Inner"}
+        rounds = []
+
+        def fake_run_unity(unity, tree, platform, fixtures, results, log, timeout):
+            rounds.append(sorted(fixtures))
+            Path(log).write_text("")
+            Path(results).write_text('<test-run>' + "".join(
+                '<test-case fullname="{}.Given_A_When_B_Then_C" result="Passed" />'.format(
+                    runner.get(name, name)) for name in fixtures) + '</test-run>')
+            return 1.0, 0
+
+        argv, run_unity, wait = sys.argv, base_red_check.run_unity, base_red_check.wait_for_quiet
+        sys.argv = ["base_red_check.py", "--project", str(root), "--base", since, "--lane", "csharp",
+                    "--platform", "EditMode", "--output", str(root / "out"), "--max-rounds", "4"]
+        base_red_check.run_unity, base_red_check.wait_for_quiet = fake_run_unity, lambda seconds: True
+
+        # Act
+        try:
+            with contextlib.redirect_stdout(io.StringIO()):
+                base_red_check.main()
+        finally:
+            sys.argv, base_red_check.run_unity, base_red_check.wait_for_quiet = argv, run_unity, wait
+
+        # Assert
+        self.assertEqual(rounds, [["N.CanaryTests", "N.Outer.Inner"]])
+
+
 class ResultLabelTests(unittest.TestCase):
     """What the base said about a case that stopped on an exception, and which of those disagreed.
 
@@ -5057,6 +5177,95 @@ class UnvouchedExcuseTests(unittest.TestCase):
         # Assert
         self.assertIn("nothing vouched for EditMode: all 2 of its case(s) were excused rather than "
                       "measured, and\nnone of CanaryTests passed there", printed)
+
+
+@contextlib.contextmanager
+def listed_processes(listing):
+    """A `ps` first on PATH that prints `listing` whatever it is asked, and marks that it ran."""
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        (root / "listing").write_bytes(listing)
+        ps = root / "ps"
+        ps.write_text('#!/bin/sh\n: > "{0}/ran"\nexec cat "{0}/listing"\n'.format(root))
+        ps.chmod(0o755)
+        saved = os.environ["PATH"]
+        os.environ["PATH"] = directory + os.pathsep + saved
+        try:
+            yield root / "ran"
+        finally:
+            os.environ["PATH"] = saved
+
+
+NOT_UTF8_NEIGHBOUR = b"/usr/bin/probe --label \xff"
+EDITOR = b"/Applications/Unity/Hub/Editor/6000.3.23f1/Unity.app/Contents/MacOS/Unity -runTests -batchmode"
+
+
+class ProcessListDecodingTests(unittest.TestCase):
+    """One neighbour's stray byte in the process list must not end the run that reads it."""
+
+    def test_Given_ANeighbourWhoseCommandLineIsNotUtf8_When_EditorsAreCounted_Then_TheEditorBesideItCounts(self):
+        # Arrange
+        listing = NOT_UTF8_NEIGHBOUR + b"\n" + EDITOR + b"\n"
+
+        # Act
+        with listed_processes(listing) as ran:
+            try:
+                counted = (base_red_check.unity_busy(), ran.exists())
+            except UnicodeDecodeError as error:
+                counted = (repr(error), ran.exists())
+
+        # Assert — the mark separates this listing's count from the machine's own.
+        self.assertEqual(counted, (1, True))
+
+
+
+@contextlib.contextmanager
+def lingering_editor():
+    """An editor that runs until something kills it, and every process the run under test starts."""
+    with tempfile.TemporaryDirectory() as directory:
+        editor = Path(directory) / "Unity"
+        editor.write_text("#!/bin/sh\nexec sleep 60\n")
+        editor.chmod(0o755)
+        started = []
+        real = subprocess.Popen
+
+        def recording(*args, **kwargs):
+            process = real(*args, **kwargs)
+            started.append(process)
+            return process
+
+        with mock.patch.object(subprocess, "Popen", recording):
+            try:
+                yield str(editor), started
+            finally:
+                for process in started:
+                    if process.poll() is None:
+                        process.kill()
+                        process.wait()
+
+
+def failing_count():
+    raise OSError(35, "Resource temporarily unavailable")
+
+
+class EditorReapedWhenAnExceptionEndsTheRunTests(unittest.TestCase):
+    """An editor the lane leaves running goes on in a base tree the lane then removes."""
+
+    def test_Given_ANeighbourCountThatFailsWhileTheEditorRuns_When_TheRunEnds_Then_TheEditorIsNotLeftRunning(self):
+        # Arrange
+        with lingering_editor() as (editor, started), mock.patch.object(base_red_check, "unity_busy",
+                                                                        failing_count):
+            # Act
+            try:
+                base_red_check.run_unity(editor, Path("."), "EditMode", ["X"], Path("/dev/null"),
+                                         Path("/dev/null"), 30)
+                raised = False
+            except OSError:
+                raised = True
+            left_running = [process.poll() is None for process in started]
+
+        # Assert
+        self.assertEqual((raised, left_running), (True, [False]))
 
 
 if __name__ == "__main__":

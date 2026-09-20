@@ -386,8 +386,8 @@ class UnreadableTests(unittest.TestCase):
     # for it: replacing `measured_elsewhere` with a reading of whether each named file sits under
     # `project` fails it, along with 23 others that keep their output beside the project too.
     def test_Given_ARunOfThisProjectWritingItsResultsElsewhere_When_ItIsRead_Then_ItIsNotRefused(self):
-        # Arrange -- CONTRIBUTING's story-capture recipe: -projectPath the checkout, -testResults
-        # /tmp. Where the files sit says nothing; what the run opened is the question.
+        # Arrange -- -projectPath the checkout, -testResults outside it. Where the files sit says
+        # nothing; what the run opened is the question.
         with workspace() as tree:
             outside = tree.root / "elsewhere"
             outside.mkdir()

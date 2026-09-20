@@ -82,10 +82,9 @@ A `Suspend` loader keeps running while an `Await` loader holds the next commit, 
 belongs to is still the one on screen: it keeps its cancellation token and its result still reaches
 `Hooks.UseLoaderData`. The commit that leaves the route is what cancels it.
 
-A loader still running when its round is cancelled can go on reading its token. The source behind the
-token is not released until the round has ended, the run that launched the loaders has returned, and
-every `Suspend` loader it started has finished — so a loader unwinding on the cancellation reads its
-token as cancelled.
+A loader still running when its round is cancelled can go on reading its token, and so can a Blocker
+still awaiting when its navigation is cancelled: the router never disposes the source behind a token it
+hands out, so a cancelled token reads as cancelled for as long as anything holds it.
 
 A cancellation callback a loader registers on its token runs when that cancellation happens. One that
 throws is reported through `Debug.LogException` rather than raised at the navigation or the disposal

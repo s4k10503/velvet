@@ -9,11 +9,11 @@ The editor must be closed — it holds the project lock.
 
 ```bash
 UNITY=/Applications/Unity/Hub/Editor/6000.3.23f1/Unity.app/Contents/MacOS/Unity
-mkdir -p Logs
+mkdir -p Logs && R=$(mktemp -d "$PWD/Logs/run.XXXXXX") && echo "$R"
 "$UNITY" -runTests -batchmode -projectPath "$PWD" -testPlatform EditMode \
-  -testResults "$PWD/Logs/results.xml" -logFile "$PWD/Logs/run.log"
-python3 scripts/test_quality/assert_results_from_this_tree.py Logs/results.xml --log Logs/run.log
-python3 scripts/test_quality/assert_no_inconclusive.py Logs/results.xml
+  -testResults "$R/results.xml" -logFile "$R/run.log"
+python3 scripts/test_quality/assert_results_from_this_tree.py "$R" --log "$R/run.log"
+python3 scripts/test_quality/assert_no_inconclusive.py "$R"
 ```
 
 `-testPlatform PlayMode` for the other suite. `-testFilter "Velvet.Tests.SomeFixture"` narrows it, and several things about the value decide what actually runs:
@@ -22,10 +22,14 @@ python3 scripts/test_quality/assert_no_inconclusive.py Logs/results.xml
 - **Metacharacters are live, so a value pasted out of the XML's `fullname` is a pattern rather than a name.** Some names carry `(`, `)` and `[` from arguments rendered into them; a nested fixture's node carries `+`. Such a paste selects nothing and the run exits 0.
 - **`^…$` selects an ordinary fixture's cases**, and nothing at all for a fixture that declares no cases of its own — NUnit makes nested fixtures siblings of the outer one rather than children of it.
 - **Several values separate on `;` and the split does not trim**, so `"A; B"` runs A alone and reports green over the smaller set.
+- **An empty value is no filter at all**, nor is one of nothing but `;` — the whole suite runs, so `-testFilter "$filter"` over a `$filter` that came back empty is a full run.
+- **A term beginning with `!` excludes**: a case runs only where neither its full name nor any suite's above it matches the rest of the term. Beside terms that select, it takes cases out of what they select; where every term begins with `!`, it takes them out of the whole suite.
+
+A value built from test file names can miss fixtures — one file can declare several, or none named like it — so hand the files to `scripts/test_quality/fixture_filter.py` and take the value it prints.
 
 Read the `fullname` roster in the XML, not only the count, before trusting a filtered run: a filter that took a whole assembly reports a count that looks entirely plausible.
 
-**Write into the worktree's own Logs directory, never /tmp/results.xml.** That path is one file for every worktree and every session on the machine, and the compile-error paragraph below is what it costs.
+**Write into a directory made for the run, as above — never /tmp/results.xml, and never a fixed name under Logs.** The first is one file for every worktree and every session on the machine, the second one file for every agent working in the checkout, and the compile-error paragraph below is what reading another run's file costs.
 
 ## Traps that produce wrong answers
 
@@ -59,7 +63,7 @@ Concurrent instances cost wall clock. Measured on one tree, one EditMode suite, 
 
 Each of the three charges it differently. A campaign is built on every failure in its run being the mutation's — `wait_for_quiet` in `mutation_check.py` says so where it waits — and a case your load reddens reads there as `KILLED`, a survivor recorded as covered, with nothing in the receipt to tell it from a mutant a test really killed. In the base-red lane, which takes up to `--max-rounds` editors per platform on that single wait, the same failure is reported as red on the base — the verdict that harness exists to produce. The sweep's is the quiet one: `report_pair` scores a hole as a scoped case that passed the baseline and did **not** fail under the cut, so a case your load reddens is not one — it reads there as the cut being caught. The sweep then reports coverage it never measured, and a `--report` run over `neuter_holes.txt` records the absence.
 
-The 1800 s abort is the other cost, and it takes more than a single neighbour: the wait expires only after 1800 s in which no sample found the count at zero, against the 122.7 s the loaded arm above took. Several agents each taking a run, back to back, is what closes that gap. What it costs then is the campaign rather than its measurements: a receipt is written after the mutant loop and nowhere inside it, so the run earns none, while each verdict is written inside that loop and a later run over the same `--output` adopts it. Re-running is how a stopped campaign finishes. **Do not start a suite run while one of the three is in flight**, and read that off the second recipe above rather than off the editor count.
+The 1800 s abort is the other cost, and it takes more than a single neighbour: the wait expires only after 1800 s in which no sample found the count at zero, against the 122.7 s the loaded arm above took. Several agents each taking a run, back to back, is what closes that gap. What it costs then is the campaign rather than its kills: a receipt is written after the mutant loop and nowhere inside it, so the run earns none, while each verdict is written inside that loop and a later run over the same `--output` keeps what `mutation_check.read_verdict` returns and measures the rest again. Re-running is how a stopped campaign finishes. **Do not start a suite run while one of the three is in flight**, and read that off the second recipe above rather than off the editor count.
 
 Sample **for the run's whole life and subtract the run itself**, not once at launch: the loaded arm above moved between two and three neighbours while it ran, so one reading names the arm wrong. `neuter_check.run_suite` already carries that loop.
 
