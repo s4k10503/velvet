@@ -113,6 +113,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Memoized components rebuild their compiled VNode cache when their props comparison detects a
+  change, including a record struct float member changing from positive zero to negative zero.
+
 - The Starter App remounts when its UIDocument root is replaced or reenabled, retaining the router's
   location while the host remains enabled. The previous host kept rendering into the departed root.
 

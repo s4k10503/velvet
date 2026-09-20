@@ -198,7 +198,11 @@ namespace Velvet
                 // so the props bail never applies. Props are still synced below for the next render.
                 propsChanged = true;
             }
-            if (propsChanged) existingFiber.Props = node.Props;
+            if (propsChanged)
+            {
+                existingFiber.Props = node.Props;
+                if (isMemoized) existingFiber.InvalidateMemoCache();
+            }
 
             if (site.IsInline)
             {
