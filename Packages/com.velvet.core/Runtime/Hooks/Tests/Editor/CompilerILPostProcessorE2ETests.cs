@@ -23,9 +23,9 @@ namespace Velvet.Tests
     /// gate at method entry, unless it sets <c>Memoize = true</c>.</item>
     /// <item>A body the weaver cannot prove correct is left unwoven (graceful bailout): neither a parameter nor a
     /// hook to key a cache on, a props-only body left to its props bail, a discarded hook value, a whole-tuple
-    /// capture (compared structurally, not by
-    /// reference, so a fresh-but-equal record would be a stale hit), a void-only body (empty deps would freeze
-    /// it on an unconditional hit), a body that reaches the suspend-unsafe <c>Use</c> hook or
+    /// capture (compared structurally, not by reference, so a fresh-but-equal record would be a stale hit), a
+    /// body with void hooks alone and no parameter (empty deps would freeze it on an unconditional hit), a body
+    /// that reaches the suspend-unsafe <c>Use</c> hook or
     /// <c>UseMutation</c> — directly or transitively through a custom hook — a hook inside a loop (head-tested
     /// or do-while), a hook section overlapping a try/catch region, and an open virtual / interface dispatch
     /// outside the BCL / Unity carve-out (the runtime override could compose a hook the static
@@ -207,8 +207,8 @@ namespace Velvet.Tests
             return V.Label(text: value.ToString());
         }
 
-        // A void-only body (only a void effect hook, no value hook, no props) has an empty deps array. Weaving it
-        // would make TryGetMemoizedVNode an unconditional hit that freezes the body after the first render, so the
+        // A void effect hook alone — no value hook, no parameter — leaves the deps array empty. Weaving it would
+        // make TryGetMemoizedVNode an unconditional hit that freezes the body after the first render, so the
         // weaver must leave it unwoven.
         [Component]
         public static VNode VoidOnlyComponent()
@@ -613,7 +613,8 @@ namespace Velvet.Tests
         {
             // Act + Assert
             Assert.That(IsWoven(LoadMethod(nameof(VoidOnlyComponent))), Is.False,
-                "A void-only body has an empty deps array; weaving would freeze it on an unconditional hit, so the weaver bails");
+                "A body with void hooks alone and no parameter has an empty deps array; weaving would freeze it on an"
+                + " unconditional hit, so the weaver bails");
         }
 
         [Test]

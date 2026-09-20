@@ -3,19 +3,21 @@ using System;
 namespace Velvet
 {
     /// <summary>
-    /// Registers a functional component (`static VNode XxxComp()`) as a Velvet component.
+    /// Registers a static method returning <see cref="VNode"/> as a Velvet function component.
     /// </summary>
     /// <remarks>
-    /// A static method annotated with <c>[Component]</c> must:
+    /// A static method annotated with <c>[Component]</c>:
     /// <list type="bullet">
-    ///   <item>Return VNode and take no arguments (Render is parameterless)</item>
-    ///   <item>Access external state only through <see cref="Hooks"/> (UseStore / UseContext / UseState, etc.)</item>
-    ///   <item>Follow the Rules of Hooks — call hooks unconditionally, in a stable order, only inside Render. These are enforced at runtime (a violation throws <see cref="InvalidOperationException"/>), not by a compile-time analyzer</item>
-    ///   <item>Be referenced from a parent VNode tree as <c>V.Component(MyComp.Render)</c></item>
+    ///   <item>takes no parameter, mounted with <c>V.Component(MyComp.Render)</c>, or one props parameter,
+    ///   mounted with <c>V.Component(MyComp.Render, props)</c> or <c>V.Memo</c>;</item>
+    ///   <item>reads what it renders from its props and its hooks — <see cref="Compiler"/> states what the
+    ///   build-time transform caches on;</item>
+    ///   <item>follows the Rules of Hooks: hooks are called unconditionally, in a stable order, and only while
+    ///   it renders.</item>
     /// </list>
     /// <para>
-    /// Two independent memoization axes — <see cref="Memoize"/> (props-bail) and <see cref="Compiler"/>
-    /// (build-time auto-memo); see each member.
+    /// <see cref="Memoize"/> (props-bail) and <see cref="Compiler"/> (build-time auto-memo) are its two
+    /// memoization axes; see each member.
     /// </para>
     /// </remarks>
     [AttributeUsage(AttributeTargets.Method, Inherited = false)]
@@ -41,10 +43,9 @@ namespace Velvet
         /// props answer stops holding, and <c>ObjectIsTests</c> if the dependency answer starts taking it.
         /// Default is <c>false</c>.
         /// <para>
-        /// This is a true opt-in gate: only a component with <c>Memoize = true</c> (or one created via
-        /// <c>V.Memo</c> with a custom comparator) bails on shallow-equal props. A component without it
-        /// re-renders whenever its parent re-renders; only an opted-in component
-        /// skips a re-render on equal props.
+        /// Only a component with <c>Memoize = true</c>, or one mounted with <c>V.Memo</c> and its comparer, skips a
+        /// parent-driven render on props judged equal. Whether a component's body runs on a render that reaches it
+        /// is <see cref="Compiler"/>'s to say.
         /// </para>
         /// <para>
         /// Unrelated to <see cref="MemoizeMethodAttribute"/>: that attribute drives per-method wrapping by the Source
@@ -56,13 +57,15 @@ namespace Velvet
 
         /// <summary>
         /// Whether the build-time compiler transform — inner auto-memoization — is woven into this
-        /// component. Default is <c>true</c>: the transform caches the component's VNode construction keyed on the
-        /// values flowing out of its hook calls (and its props), rebuilding only when one of those inputs changes
-        /// — <see cref="MemoNode.Dependencies"/> states the branch each type takes, since the weaver keys on
-        /// the same dependency comparison. A component that takes props and calls no hook is keyed on its props
-        /// alone, and left unwoven where it also sets <see cref="Memoize"/>, whose props bail then decides its
-        /// renders; one with neither props nor a hook has nothing to key on and is left unwoven.
-        /// Auto-memoization needs no opt-in: set this to <c>false</c> to opt
+        /// component. Default is <c>true</c>: the transform keys the component's VNode construction on its props
+        /// and the values flowing out of its hook calls, compared as <see cref="MemoNode.Dependencies"/> states,
+        /// and a render whose inputs all compare equal returns the cached tree instead of running the body. On
+        /// such a render a difference that comparison does not see — a list mutated in place, a field a value
+        /// type's own <c>Equals</c> ignores — does not reach the tree, nor does anything else the body reads. The
+        /// cache serves the component's own render; called as a plain method, the body runs uncached.
+        /// A component that takes props and calls no hook is keyed on its props alone, and left unwoven where it
+        /// also sets <see cref="Memoize"/>; one with neither props nor a hook has nothing to key on and is left
+        /// unwoven. Auto-memoization needs no opt-in: set this to <c>false</c> to opt
         /// out. The weaver also declines a component silently, with no diagnostic, where it finds a hook it
         /// cannot memoize safely, and <c>VelvetCompilerILPostProcessor.WillProcess</c> decides which
         /// assemblies it reaches at all.

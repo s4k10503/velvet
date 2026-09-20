@@ -210,11 +210,8 @@ namespace Velvet.CodeGen
         private static bool CompilerEnabled(CustomAttribute attr)
             => NamedFlag(attr, CompilerPropertyName, fallback: true);
 
-        // Memoize = true is the props bail, which lets a parent render through only on props it judges changed.
-        // A gate keyed on nothing but those props could hit behind it only where the dependency comparison calls
-        // equal what the bail called changed — a value-type prop whose own Equals ignores a difference in a
-        // float field's bits, such as a zero's sign, which the bail compares bit for bit — and that hit is a
-        // stale tree.
+        // Memoize = true already suppresses the hookless body's equal-props parent renders. A second props gate
+        // inside that body would add a deps array without serving the path the outer gate suppressed.
         private static bool RequestsPropsBail(MethodDefinition method)
         {
             foreach (var attr in method.CustomAttributes)
@@ -996,6 +993,7 @@ namespace Velvet.CodeGen
             }
             injected.Add(Instruction.Create(OpCodes.Stloc, depsLocal));
 
+            injected.Add(Instruction.Create(OpCodes.Ldtoken, SelfReference(method)));
             injected.Add(Instruction.Create(OpCodes.Ldloc, depsLocal));
             injected.Add(Instruction.Create(OpCodes.Ldloca, slotLocal));
             injected.Add(Instruction.Create(OpCodes.Ldloca, cachedLocal));
@@ -1049,6 +1047,47 @@ namespace Velvet.CodeGen
             }
 
             body.OptimizeMacros();
+        }
+
+        // The handle the gate matches against the method the rendering fiber renders, which for a generic method or
+        // a method of a generic type is one instantiation: so the token names the method over its own generic
+        // parameters, which the runtime resolves to the instantiation running.
+        private static MethodReference SelfReference(MethodDefinition method)
+        {
+            MethodReference self = method;
+            var declaringType = method.DeclaringType;
+            if (declaringType.HasGenericParameters)
+            {
+                var instance = new GenericInstanceType(declaringType);
+                foreach (var parameter in declaringType.GenericParameters)
+                {
+                    instance.GenericArguments.Add(parameter);
+                }
+                self = new MethodReference(method.Name, method.ReturnType, instance)
+                {
+                    HasThis = method.HasThis,
+                    ExplicitThis = method.ExplicitThis,
+                    CallingConvention = method.CallingConvention,
+                };
+                foreach (var parameter in method.Parameters)
+                {
+                    self.Parameters.Add(new ParameterDefinition(parameter.ParameterType));
+                }
+                foreach (var parameter in method.GenericParameters)
+                {
+                    self.GenericParameters.Add(new GenericParameter(parameter.Name, self));
+                }
+            }
+            if (method.HasGenericParameters)
+            {
+                var instance = new GenericInstanceMethod(self);
+                foreach (var parameter in method.GenericParameters)
+                {
+                    instance.GenericArguments.Add(parameter);
+                }
+                self = instance;
+            }
+            return self;
         }
 
         private static void RetargetBranches(MethodBody body, Instruction from, Instruction to)
@@ -1113,8 +1152,8 @@ namespace Velvet.CodeGen
                 return null;
             }
 
-            var tryGet = ResolveHookMethod(hooksType, nameof(Velvet.Hooks.TryGetMemoizedVNode));
-            var store = ResolveHookMethod(hooksType, nameof(Velvet.Hooks.StoreMemoizedVNode));
+            var tryGet = ResolveHookMethod(hooksType, nameof(Velvet.Hooks.TryGetMemoizedVNode), 4);
+            var store = ResolveHookMethod(hooksType, nameof(Velvet.Hooks.StoreMemoizedVNode), 3);
             if (tryGet == null || store == null)
             {
                 failure = $"the memoization methods '{hooksTypeName}.{nameof(Velvet.Hooks.TryGetMemoizedVNode)}' /"
@@ -1131,13 +1170,12 @@ namespace Velvet.CodeGen
             };
         }
 
-        private static MethodDefinition? ResolveHookMethod(TypeDefinition hooks, string name)
+        // The arity is asserted so that a future overload is not picked up silently.
+        private static MethodDefinition? ResolveHookMethod(TypeDefinition hooks, string name, int arity)
         {
-            // Both TryGetMemoizedVNode and StoreMemoizedVNode take 3 parameters.
-            // Asserting the arity guards against silently picking up a future overload.
             foreach (var m in hooks.Methods)
             {
-                if (m.Name == name && m.Parameters.Count == 3) return m;
+                if (m.Name == name && m.Parameters.Count == arity) return m;
             }
             return null;
         }

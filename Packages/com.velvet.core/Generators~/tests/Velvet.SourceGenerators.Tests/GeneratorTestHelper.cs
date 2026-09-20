@@ -96,16 +96,6 @@ namespace Velvet
 
     public static class Hooks
     {
-        // Memoization API stub invoked by the [Component(Memoize=true)] generator. No-op is fine
-        // (these tests only assert on generated source text; runtime behavior is verified on the Unity side via RunEditModeTests).
-        public static bool TryGetMemoizedVNode(object[] deps, out int slotIndex, out VNode cached)
-        {
-            slotIndex = 0;
-            cached = null;
-            return false;
-        }
-        public static void StoreMemoizedVNode(int slotIndex, object[] deps, VNode result) { }
-
         // Static API stubs for the positional hooks a functional-component test fixture may call. Every
         // overload the runtime declares of a name appearing here is modelled, so a fixture cannot pick a
         // shape that only exists because the narrower overloads are missing.

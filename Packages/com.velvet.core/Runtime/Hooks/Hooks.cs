@@ -2087,24 +2087,31 @@ namespace Velvet
         #region Memoization (component-level)
 
         /// <summary>
-        /// Memoization slot accessor woven in by the build-time compiler transform for
-        /// <c>[Component(Compiler = true)]</c> (the default).
-        /// On each Render, advances <see cref="HookIndexTable.MemoHookIndex"/> to allocate a slot in
-        /// Fiber.MemoSlots; returns the cached VNode when the previous deps are equal.
-        /// Do not call by hand (the slot index convention is a position-based API fixed by the weaver).
+        /// Memoization gate woven in by the build-time compiler transform for
+        /// <c>[Component(Compiler = true)]</c> (the default). Grants the rendering fiber's one slot in
+        /// Fiber.MemoSlots to the first call its own <c>[Component]</c> method makes during a render, and returns
+        /// the cached VNode when that slot's previous deps are equal. Any other call is granted no slot and reports
+        /// a miss, so the body making it runs uncached — a woven component called as a plain method from another
+        /// component's render or from a <c>V.Memoized</c> factory, or outside any render.
+        /// Do not call by hand.
         /// When the return value is <c>false</c>, <paramref name="cached"/> is undefined.
         /// </summary>
+        /// <param name="component">Handle of the method making the call.</param>
         /// <param name="deps">Dependency values for this slot. Must not be null.</param>
-        /// <param name="slotIndex">Outputs the allocated slot index; must be passed back to <see cref="StoreMemoizedVNode"/>.</param>
+        /// <param name="slotIndex">Outputs the granted slot index, or <c>-1</c> where none was granted; must be passed back to <see cref="StoreMemoizedVNode"/>.</param>
         /// <param name="cached">Outputs the cached VNode on a hit; undefined on a miss.</param>
         /// <returns>True when the previous deps are equal and the cached VNode was returned.</returns>
         [EditorBrowsable(EditorBrowsableState.Never)]
-        public static bool TryGetMemoizedVNode(object?[]? deps, out int slotIndex, out VNode? cached)
+        public static bool TryGetMemoizedVNode(RuntimeMethodHandle component, object?[]? deps, out int slotIndex, out VNode? cached)
         {
             if (deps == null) throw new ArgumentNullException(nameof(deps));
-            var fiber = Resolve("TryGetMemoizedVNode");
-            // The weaver is contracted to call this exactly once per render, so Count is at most
-            // slotIndex or slotIndex+1.
+            var fiber = FiberAmbientStack.Current;
+            if (fiber == null || fiber.Indices.MemoHookIndex != 0 || !fiber.RendersComponent(component))
+            {
+                slotIndex = -1;
+                cached = null;
+                return false;
+            }
             slotIndex = fiber.Indices.MemoHookIndex++;
             fiber.MemoSlots ??= new List<HookMemoSlot>();
             if (fiber.MemoSlots.Count <= slotIndex)
@@ -2132,7 +2139,8 @@ namespace Velvet
         /// <summary>
         /// Slot writer API woven in on the miss path of <see cref="TryGetMemoizedVNode"/>.
         /// The <paramref name="slotIndex"/> argument must be the value returned by the immediately
-        /// preceding <see cref="TryGetMemoizedVNode"/> call.
+        /// preceding <see cref="TryGetMemoizedVNode"/> call; <c>-1</c>, the index of a call granted no slot,
+        /// stages nothing.
         /// </summary>
         /// <param name="slotIndex">Slot index obtained from the immediately preceding <see cref="TryGetMemoizedVNode"/> call.</param>
         /// <param name="deps">Dependency values to record for this slot. Must not be null.</param>
@@ -2140,6 +2148,7 @@ namespace Velvet
         [EditorBrowsable(EditorBrowsableState.Never)]
         public static void StoreMemoizedVNode(int slotIndex, object?[]? deps, VNode result)
         {
+            if (slotIndex < 0) return;
             if (deps == null) throw new ArgumentNullException(nameof(deps));
             var fiber = Resolve("StoreMemoizedVNode");
 #if UNITY_EDITOR
@@ -2150,7 +2159,7 @@ namespace Velvet
             // externally-visible hook writes the diagnostic pass no-ops.
             if (fiber.IsStrictDiagnosticPass) return;
 #endif
-            if (fiber.MemoSlots == null || slotIndex < 0 || slotIndex >= fiber.MemoSlots.Count)
+            if (fiber.MemoSlots == null || slotIndex >= fiber.MemoSlots.Count)
             {
                 throw new InvalidOperationException(
                     $"{ComponentName(fiber)}: StoreMemoizedVNode slotIndex ({slotIndex}) is invalid."

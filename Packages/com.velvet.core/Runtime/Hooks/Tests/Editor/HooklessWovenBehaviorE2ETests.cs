@@ -20,7 +20,9 @@ namespace Velvet.Tests
     /// <item>A body making a call the weaver cannot see through, one opting out with
     /// <c>[Component(Compiler = false)]</c>, and one setting <c>Memoize = true</c> are left unwoven, so each
     /// runs whenever a parent render reaches it.</item>
-    /// <item>Invoked as a plain method outside any render, a woven body throws.</item>
+    /// <item>A generic body, and one of a generic class, reuse their tree on an equal parameter.</item>
+    /// <item>A woven body called as a plain method — from another component's render, from its own, from a
+    /// <c>V.Memoized</c> factory, or outside any render — runs uncached, as an unwoven one does.</item>
     /// </list>
     /// </summary>
     /// <remarks>
@@ -45,6 +47,9 @@ namespace Velvet.Tests
             s_builds = 0;
             s_child = null!;
             s_setTick = null!;
+            s_rows = null!;
+            s_attaches = 0;
+            s_detaches = 0;
         }
 
         // Opted out so that the host's own gate plays no part in what a case reads.
@@ -59,8 +64,6 @@ namespace Velvet.Tests
         private sealed record LeafProps(string Text);
 
         private readonly record struct PointProps(int X, int Y);
-
-        private readonly record struct RatioProps(float Value);
 
         [Component]
         private static VNode Leaf(LeafProps p)
@@ -104,8 +107,6 @@ namespace Velvet.Tests
             return V.Label(name: "leaf", text: text);
         }
 
-        // Expression-bodied so the conditional is the return value itself: one arm reaches the return by a
-        // branch rather than by falling into it.
         [Component]
         private static VNode ConditionalLeaf(LeafProps p)
             => p.Text.Length > 3 ? CountedLabel("long") : CountedLabel("short");
@@ -116,8 +117,6 @@ namespace Velvet.Tests
             return p.Text.Length == 0 ? null : V.Label(name: "leaf", text: p.Text);
         }
 
-        // The coalescing operator's left operand, when it is not null, is the return value carried straight to
-        // the return by a branch.
         [Component]
         private static VNode CoalescingLeaf(LeafProps p)
             => CountedLabelUnlessEmpty(p) ?? V.Label(name: "leaf", text: "empty");
@@ -173,12 +172,65 @@ namespace Velvet.Tests
             return V.Label(name: "leaf", text: p.Text);
         }
 
-        [Component(Memoize = true)]
-        private static VNode MemoizedRatioLeaf(RatioProps p)
+        [Component]
+        private static VNode GenericLeaf<T>(T value)
         {
             s_builds++;
-            return V.Label(name: "leaf", text: float.IsNegative(p.Value) ? "negative" : "positive");
+            return V.Label(name: "leaf", text: value.ToString());
         }
+
+        private static class GenericHolder<T>
+        {
+            [Component]
+            internal static VNode Leaf(T value)
+            {
+                s_builds++;
+                return V.Label(name: "leaf", text: value.ToString());
+            }
+        }
+
+        [Component]
+        private static VNode RedLeaf(string text)
+        {
+            s_builds++;
+            return V.Label(name: "leaf", text: "red:" + text);
+        }
+
+        [Component]
+        private static VNode BlueLeaf(string text)
+        {
+            s_builds++;
+            return V.Label(name: "leaf", text: "blue:" + text);
+        }
+
+        private sealed class Row
+        {
+            public Row(string id, string text)
+            {
+                Id = id;
+                Text = text;
+            }
+
+            public string Id { get; }
+
+            public string Text { get; }
+        }
+
+        private static Row[] s_rows = null!;
+        private static int s_attaches;
+        private static int s_detaches;
+
+        private static readonly Func<VisualElement, Action> s_countingRef = _ =>
+        {
+            s_attaches++;
+            return () => s_detaches++;
+        };
+
+        [Component]
+        private static VNode Outline(string text)
+            => text.Length > 1
+                ? V.Div(children: V.List(s_rows, r => r.Id, r => Outline(r.Text)))
+                : V.Label(name: "leaf", text: text, refCallback: s_countingRef);
 
         private MountedTree MountHost() => V.Mount(_root, V.Component(Host, key: "host"));
 
@@ -247,6 +299,34 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(s_builds, Is.EqualTo(1), "A record struct parameter compares by its content");
+        }
+
+        [Test]
+        public void Given_AGenericComponent_When_TheHostReRendersWithAnEqualValue_Then_TheBodyDoesNotRun()
+        {
+            // Arrange
+            s_child = _ => V.Component<string>(GenericLeaf, "a", key: "leaf");
+            using var mounted = MountHost();
+
+            // Act
+            ReRenderHost(mounted);
+
+            // Assert
+            Assert.That(s_builds, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_AComponentOfAGenericClass_When_TheHostReRendersWithAnEqualValue_Then_TheBodyDoesNotRun()
+        {
+            // Arrange
+            s_child = _ => V.Component<string>(GenericHolder<string>.Leaf, "a", key: "leaf");
+            using var mounted = MountHost();
+
+            // Act
+            ReRenderHost(mounted);
+
+            // Assert
+            Assert.That(s_builds, Is.EqualTo(1));
         }
 
         #endregion
@@ -469,31 +549,86 @@ namespace Velvet.Tests
             Assert.That(s_builds, Is.EqualTo(2));
         }
 
-        // GREEN_ON_BASE(characterization): the base leaves this body unwoven, and so does this change.
-        // It pins why a Memoize = true body stays unwoven: the props bail calls the zero's sign a change, the
-        // dependency comparison does not, and a woven gate would hand back the positive zero's tree. The
-        // hookless branch's `return !RequestsPropsBail(method)` turned into `return true` reddens it.
+        #endregion
+
+        #region Called as a plain method
+
+        // GREEN_ON_BASE(characterization): the base weaves no body without a hook, so each call runs its body.
+        // What this pins is the gate granting its slot only to the method the rendering fiber renders: with
+        // `!fiber.RendersComponent(component)` cut from its refusal, the host's slot goes to the leaf called
+        // first, and the other leaf's equal text hands back that leaf's tree.
         [Test]
-        public void Given_AMemoizedBodyWhoseFloatFieldChangesOnlyItsSign_When_TheHostReRenders_Then_TheNewSignIsShown()
+        public void Given_TheHostCallingOneOfTwoWovenComponentsAsAMethod_When_ItsChoiceFlips_Then_TheNewComponentsTreeIsShown()
         {
             // Arrange
-            s_child = tick => V.Component(MemoizedRatioLeaf, new RatioProps(tick == 0 ? 0f : -0f), key: "leaf");
+            s_child = tick => tick == 0 ? RedLeaf("x") : BlueLeaf("x");
             using var mounted = MountHost();
 
             // Act
             ReRenderHost(mounted);
 
             // Assert
-            Assert.That(LeafText(), Is.EqualTo("negative"));
+            Assert.That(LeafText(), Is.EqualTo("blue:x"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base weaves no body without a hook, so each call runs its body.
+        // What this pins is the gate granting one slot a render: the rows call the method the fiber renders, so
+        // only the slot granted already keeps them uncached. With `fiber.Indices.MemoHookIndex != 0 ||` cut from
+        // the refusal, the row's equal text hands back the label the previous render committed, `V.List` writes
+        // the new key onto that label, and the element is patched where it should be replaced.
+        [Test]
+        public void Given_AWovenComponentListingRowsByCallingItself_When_ARowsKeyChangesAndItsTextDoesNot_Then_TheRowsElementIsReplaced()
+        {
+            // Arrange
+            var first = new[] { new Row("1", "x") };
+            var second = new[] { new Row("3", "x") };
+            s_child = tick =>
+            {
+                s_rows = tick == 0 ? first : second;
+                return V.Component(Outline, tick == 0 ? "rows0" : "rows1", key: "outline");
+            };
+            using var mounted = MountHost();
+
+            // Act
+            ReRenderHost(mounted);
+
+            // Assert
+            Assert.That((s_attaches, s_detaches), Is.EqualTo((2, 1)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base weaves no body without a hook, so each call runs its body.
+        // What this pins is a factory the reconciler runs, while no body renders, reaching no slot: with
+        // `!fiber.RendersComponent(component)` cut from the gate's refusal, the call takes the slot of the fiber
+        // the reconciler holds current, the store after its body throws for want of a render, and the memoized
+        // subtree is not rendered.
+        [Test]
+        public void Given_AWovenComponentCalledInsideAMemoizedFactory_When_TheHostReRenders_Then_ItsTreeIsShown()
+        {
+            // Arrange
+            s_child = tick => V.Div(children: new VNode[] { V.Memoized(() => CountLeaf(tick), new object[] { tick }) });
+            using var mounted = MountHost();
+
+            // Act
+            ReRenderHost(mounted);
+
+            // Assert
+            Assert.That(LeafText(), Is.EqualTo("1"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base weaves no body without a hook, so each call runs its body.
+        // What this pins is a call made while no fiber renders reaching no slot: `fiber == null ||` cut from the
+        // gate's refusal throws before the tree is built.
+        [Test]
+        public void Given_AWovenBodyCalledBeforeAnyRender_When_ItsTreeIsMounted_Then_ItsTextIsShown()
+        {
+            // Act
+            using var mounted = V.Mount(_root, CountLeaf(7));
+
+            // Assert
+            Assert.That(LeafText(), Is.EqualTo("7"));
         }
 
         #endregion
 
-        [Test]
-        public void Given_AWovenBody_When_InvokedOutsideAnyRender_Then_ItThrows()
-        {
-            // Act + Assert
-            Assert.Throws<InvalidOperationException>(() => Leaf(new LeafProps("a")));
-        }
     }
 }

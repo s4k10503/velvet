@@ -260,6 +260,8 @@ namespace Velvet.Tests
             var tryGetMethod = new MethodDefinition("TryGetMemoizedVNode",
                 Mono.Cecil.MethodAttributes.Public | Mono.Cecil.MethodAttributes.Static, module.TypeSystem.Boolean);
             tryGetMethod.Parameters.Add(new ParameterDefinition(
+                "component", Mono.Cecil.ParameterAttributes.None, module.ImportReference(typeof(RuntimeMethodHandle))));
+            tryGetMethod.Parameters.Add(new ParameterDefinition(
                 "deps", Mono.Cecil.ParameterAttributes.None, objectArrayType));
             tryGetMethod.Parameters.Add(new ParameterDefinition(
                 "slotIndex", Mono.Cecil.ParameterAttributes.Out, new ByReferenceType(module.TypeSystem.Int32)));

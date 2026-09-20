@@ -64,9 +64,9 @@ namespace Velvet.SourceGenerators.Tests
             ["Velvet.Hooks.UseAnimationSequence"] =
                 "takes no delegate — its deps gate a declarative step list, so there are no closure captures to compare",
             ["Velvet.Hooks.TryGetMemoizedVNode"] =
-                "auto-memoization plumbing whose deps array the ILPP weaver emits; never a hand-written call site",
+                "auto-memoization plumbing whose deps array the ILPP weaver emits",
             ["Velvet.Hooks.StoreMemoizedVNode"] =
-                "auto-memoization plumbing whose deps array the ILPP weaver emits; never a hand-written call site",
+                "auto-memoization plumbing whose deps array the ILPP weaver emits",
         };
 
         /// <summary>
