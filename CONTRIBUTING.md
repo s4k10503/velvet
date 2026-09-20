@@ -773,6 +773,18 @@ pull request it learned nothing about. An empty answer is posed as neither, bein
 else's reading declares `UNREADABLE_ALLOWS`, with a comment and with a sibling that refuses there,
 so an exemption no other guard stands behind is reported rather than taken.
 
+A fifth way is a guard nothing poses at all. The checks above each ask one dimension — an
+unreadable reading, a wiring, a base, a tree — and `merge_unproven_head.py` agreed with every one of
+them on `main` while exiting 1 on a `gh` that failed after answering, and reading a check list `gh`
+reported under a non-zero exit as no list at all. `scripts/hooks/test_hook_coverage.py` is the floor
+under that: every script under `refuse/`, `report/` and `stop/` has to be named in the **code** of a
+tracked test source, comments and docstrings taken out first, so that a summary naming a guard does
+not count as a case posing one. A guard whose subject is decided in a module of its own names that module's suite in a
+`DECISION_TESTS` tuple instead — `merge_onto_unpublished_release.py` does, the release state it
+refuses on being `scripts/release/published_check.py`'s answer — and the floor fails a name it
+cannot resolve to a source it reads. Named is weaker than posed, deliberately: what a name match
+says is that some case exists, not that the case asks anything.
+
 ### Source generators
 
 The Roslyn source generators live under `Packages/com.velvet.core/Generators~/` and target a
