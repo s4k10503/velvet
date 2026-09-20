@@ -350,6 +350,15 @@ the first paragraph above versus everything else, not as whole categories: `gap-
 `skew-x-6` is a transform, yet both are in that list and neither works here. A `V.Motion`'s resting
 `variants` classes go through the reconciler and are unaffected.
 
+**`[&>*]:` on a UI Toolkit composite lands on the control's own parts.** The walk is over whatever the
+container redirects its children into. A `V.ScrollView` redirects, so the payload reaches the children
+reconciled into it. Controls that redirect nothing answer with themselves, so the walk finds the parts the
+control built for itself. On `V.TextField`, for example, the input box (`#unity-text-input`) is a direct
+child and is reached. How far the payload gets differs per control because `& > *` stops after one level.
+
+A declared `label:` seats the label element ahead of the input, and it takes the payload as well, so
+`[&>*]:text-red-500` on a labelled field colours both.
+
 **`[&>*]:` reaches the paints late, and inconsistently.** It is the only family whose payload is
 spelled on the *container* rather than on the element it lands on, and a child is fully built before
 the container applies it. The layout utilities still re-derive at mount, so `[&>*]:gap-2` spaces
