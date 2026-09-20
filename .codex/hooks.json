@@ -5,7 +5,7 @@
         "hooks": [
           {
             "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" codex SessionStart report/stale_main.py",
-            "timeout": 15.0,
+            "timeout": 15,
             "type": "command"
           }
         ]
@@ -14,7 +14,7 @@
         "hooks": [
           {
             "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" codex SessionStart report/wedged_processes.py",
-            "timeout": 10.0,
+            "timeout": 10,
             "type": "command"
           }
         ]
@@ -23,7 +23,7 @@
         "hooks": [
           {
             "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" codex SessionStart report/repository_litter.py",
-            "timeout": 10.0,
+            "timeout": 10,
             "type": "command"
           }
         ]
@@ -32,7 +32,7 @@
         "hooks": [
           {
             "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" codex SessionStart report/unreleased_maintenance_line.py",
-            "timeout": 10.0,
+            "timeout": 10,
             "type": "command"
           }
         ]
@@ -43,7 +43,7 @@
         "hooks": [
           {
             "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" codex SubagentStop report/untracked_scratch.py",
-            "timeout": 15.0,
+            "timeout": 15,
             "type": "command"
           }
         ]
@@ -54,7 +54,7 @@
         "hooks": [
           {
             "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" codex PostToolUse report/gitignored_write.py",
-            "timeout": 10.0,
+            "timeout": 10,
             "type": "command"
           }
         ],
@@ -66,7 +66,7 @@
         "hooks": [
           {
             "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" codex Stop stop/unsettled_pr.py",
-            "timeout": 20.0,
+            "timeout": 20,
             "type": "command"
           }
         ]
@@ -75,7 +75,7 @@
         "hooks": [
           {
             "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" codex Stop stop/open_backlog.py",
-            "timeout": 20.0,
+            "timeout": 20,
             "type": "command"
           }
         ]
@@ -86,7 +86,7 @@
         "hooks": [
           {
             "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" codex PreToolUse refuse/stale_merge.py",
-            "timeout": 25.0,
+            "timeout": 25,
             "type": "command"
           }
         ],
@@ -96,7 +96,7 @@
         "hooks": [
           {
             "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" codex PreToolUse refuse/branch_from_unmerged.py",
-            "timeout": 15.0,
+            "timeout": 15,
             "type": "command"
           }
         ],
@@ -106,7 +106,7 @@
         "hooks": [
           {
             "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" codex PreToolUse refuse/blind_git_add.py",
-            "timeout": 10.0,
+            "timeout": 10,
             "type": "command"
           }
         ],
@@ -116,7 +116,7 @@
         "hooks": [
           {
             "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" codex PreToolUse refuse/metadata_less_create.py",
-            "timeout": 15.0,
+            "timeout": 15,
             "type": "command"
           }
         ],
@@ -126,7 +126,7 @@
         "hooks": [
           {
             "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" codex PreToolUse refuse/commit_failing_fast_checks.py",
-            "timeout": 15.0,
+            "timeout": 15,
             "type": "command"
           }
         ],
@@ -136,7 +136,7 @@
         "hooks": [
           {
             "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" codex PreToolUse refuse/amend_of_published_commit.py",
-            "timeout": 15.0,
+            "timeout": 15,
             "type": "command"
           }
         ],
@@ -146,7 +146,7 @@
         "hooks": [
           {
             "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" codex PreToolUse refuse/merge_unproven_head.py",
-            "timeout": 25.0,
+            "timeout": 25,
             "type": "command"
           }
         ],
@@ -156,7 +156,7 @@
         "hooks": [
           {
             "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" codex PreToolUse refuse/merge_branch_held_by_worktree.py",
-            "timeout": 20.0,
+            "timeout": 20,
             "type": "command"
           }
         ],
@@ -166,7 +166,7 @@
         "hooks": [
           {
             "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" codex PreToolUse refuse/merge_without_branch_deletion.py",
-            "timeout": 10.0,
+            "timeout": 10,
             "type": "command"
           }
         ],
@@ -176,7 +176,7 @@
         "hooks": [
           {
             "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" codex PreToolUse refuse/shared_git_state.py",
-            "timeout": 10.0,
+            "timeout": 10,
             "type": "command"
           }
         ],
@@ -186,7 +186,7 @@
         "hooks": [
           {
             "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" codex PreToolUse refuse/merge_onto_unpublished_release.py",
-            "timeout": 25.0,
+            "timeout": 25,
             "type": "command"
           }
         ],
@@ -196,7 +196,7 @@
         "hooks": [
           {
             "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" codex PreToolUse refuse/pr_body_of_another_branch.py",
-            "timeout": 15.0,
+            "timeout": 15,
             "type": "command"
           }
         ],
@@ -206,7 +206,7 @@
         "hooks": [
           {
             "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" codex PreToolUse refuse/message_outside_its_worktree.py",
-            "timeout": 15.0,
+            "timeout": 15,
             "type": "command"
           }
         ],
@@ -216,7 +216,7 @@
         "hooks": [
           {
             "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" codex PreToolUse refuse/library_seed_without_room.py",
-            "timeout": 20.0,
+            "timeout": 20,
             "type": "command"
           }
         ],
@@ -226,7 +226,7 @@
         "hooks": [
           {
             "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" codex PreToolUse refuse/pr_without_mutation_receipt.py",
-            "timeout": 25.0,
+            "timeout": 25,
             "type": "command"
           }
         ],
@@ -236,7 +236,7 @@
         "hooks": [
           {
             "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" codex PreToolUse refuse/edit_while_a_ready_pr_sits.py",
-            "timeout": 15.0,
+            "timeout": 15,
             "type": "command"
           }
         ],
@@ -246,7 +246,7 @@
         "hooks": [
           {
             "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" codex PreToolUse refuse/changelog_into_closed_version.py",
-            "timeout": 15.0,
+            "timeout": 15,
             "type": "command"
           }
         ],
@@ -256,7 +256,7 @@
         "hooks": [
           {
             "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" codex PreToolUse refuse/declaration_first_line_fragment.py",
-            "timeout": 10.0,
+            "timeout": 10,
             "type": "command"
           }
         ],
@@ -266,7 +266,7 @@
         "hooks": [
           {
             "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" codex PreToolUse refuse/background_relative_path.py",
-            "timeout": 10.0,
+            "timeout": 10,
             "type": "command"
           }
         ],
@@ -276,7 +276,7 @@
         "hooks": [
           {
             "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" codex PreToolUse refuse/hand_rolled_pr_poller.py",
-            "timeout": 10.0,
+            "timeout": 10,
             "type": "command"
           }
         ],
