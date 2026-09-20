@@ -385,8 +385,8 @@ field.
 
 Velvet's own face painting does not follow the renderer here. The layers that take over an element's face
 — `skew-*`, and `shadow-*` / `drop-shadow-*` on an upright caster — clamp a corner to half the box's
-shorter side, producing the CSS pill. One `rounded-full` box is therefore an ellipse on its own and a pill
-while one of those paints owns its face.
+shorter side, producing the CSS pill. On the measured 330 × 34 field, the renderer-owned face therefore has
+the same blue-pixel mask as explicit 50% radii, while a Velvet-painted face uses the clamped pill radius.
 
 ## Container queries — `@container`
 
