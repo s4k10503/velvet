@@ -14,12 +14,12 @@ namespace Velvet.Tests
     /// square, and the shadow that rounding leaves behind it.
     /// </summary>
     /// <remarks>
-    /// <c>--radius-full</c> is a length far larger than any element, so what reaches the screen is decided by
+    /// <c>--radius-full</c> is deliberately oversized, so what reaches the screen is decided by
     /// whatever the renderer does with a radius it cannot honour. UI Toolkit's answer and CSS's part company
-    /// on any box whose sides are unequal — a pill button, a badge, a search field. A comment in
+    /// on a non-square box — a pill button, a badge, a search field. A comment in
     /// <c>_tokens.uss</c> asserted the CSS outcome with nothing measuring it; these cases are what a future
     /// reader gets instead of that sentence. The token's magnitude is free to change as long as it stays
-    /// saturating: every case here mounts <c>rounded-full</c> rather than a literal.
+    /// saturating: these cases mount <c>rounded-full</c> rather than a literal.
     /// <para>
     /// Each case carries a control arrangement rendered through the same instrument — a square-cornered box
     /// for the silhouette, a shadow-free box for the halo — because a panel that renders nothing, and a class

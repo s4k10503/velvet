@@ -376,7 +376,7 @@ transform on its first frame declares it itself, or declares a variant of its ow
 the paints take. The paints reach a `V.Text` child at no render at all: they run behind a verdict
 only an element's own class pass records.
 
-**Where `rounded-full` deviates from CSS.** `--radius-full` is a length far larger than any element, so
+**Where `rounded-full` deviates from CSS.** `--radius-full` is deliberately oversized, so
 what reaches the screen is decided by how the renderer resolves a radius the box cannot carry. CSS scales
 the corners together and produces a pill. In Unity 6.3, the saturating pixel radius paints the same
 silhouette as `border-radius: 50%`: a full ellipse on a 330 × 34 field. The two agree on a square box. For
