@@ -17,9 +17,10 @@ namespace Velvet.Tests
     /// <item>A body with early returns, one whose conditional or coalescing expression is the return value,
     /// one opening with a loop and one opening with a try/catch each reuse their tree on an equal
     /// parameter.</item>
-    /// <item>A body making a call the weaver cannot see through, one opting out with
-    /// <c>[Component(Compiler = false)]</c>, and one setting <c>Memoize = true</c> are left unwoven, so each
-    /// runs whenever a parent render reaches it.</item>
+    /// <item>A body making a call the weaver cannot see through and one opting out with
+    /// <c>[Component(Compiler = false)]</c> are left unwoven, so each runs whenever a parent render reaches it.
+    /// A body setting <c>Memoize = true</c> is also left unwoven, while its independent reconcile-boundary
+    /// props bail can stop equal props before the body runs.</item>
     /// <item>A generic body, and one of a generic class, reuse their tree on an equal parameter.</item>
     /// <item>A woven body called as a plain method — from another component's render, from its own, from a
     /// <c>V.Memoized</c> factory, or outside any render — runs uncached, as an unwoven one does.</item>
