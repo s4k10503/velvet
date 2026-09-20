@@ -135,7 +135,7 @@ the comment-and-string mask, and which changed code lines an operator reaches �
 those would, which is the point of running it first rather than a reason to distrust it. The readings
 that need a run, the declarations and the cap among them, it does not take.
 
-[Generators~/README.md ▸ Mutation testing](Packages/com.velvet.core/Generators~/README.md#mutation-testing)
+[Generators~/README.md ▸ The Unity assemblies](Packages/com.velvet.core/Generators~/README.md#the-unity-assemblies)
 covers this and the generator solution's own run, and owns what the verdicts mean, how to read a
 survivor, and which line shapes the operators reach — which is 31% of the changed code lines measured
 over the twenty commits ending at `48057c8` with the generator as this branch leaves it, so **a survivor count is a statement about the lines an
@@ -175,10 +175,9 @@ question, and under one nearly everything survives. `--platform` is not one of t
 suite, just a different one — so it reads declarations and writes a receipt, and the platform is part
 of the receipt's key so that an EditMode question is never answered by a PlayMode run.
 
-The run also fails on the ways it can measure less than it looks like it measured: a `--max` cap that
-left mutants unrun, an editor killed at `--timeout`, a build the compiler or an analyzer stopped, an
-assembly the editor never rebuilt, a second editor sharing the machine, and a source whose
-comment-and-string mask swallows code, which generates no mutant there and reports nothing.
+The run also fails or stops rather than pass over a mutant nobody asked about, and
+[Generators~/README.md ▸ The Unity assemblies](Packages/com.velvet.core/Generators~/README.md#the-unity-assemblies)
+says when it does which.
 
 **What asks whether the campaign was run is a receipt, not attentiveness.** A finished run leaves one
 under the campaign's own log directory, keyed on the merge base (taken against what
