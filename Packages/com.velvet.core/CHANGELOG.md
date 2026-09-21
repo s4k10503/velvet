@@ -828,6 +828,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `IRouteScopeFactory.CreateScope` runs inside the Outlet's render where it used to run in the commit
   that built or patched that container.
 
+- A `[Component]` that takes props and calls no hook is woven by the compiler transform now, keyed on
+  its parameters alone. The weaver used to decline any body without a hook call, so such a component —
+  the presentational leaf that only formats its props — ran in full, and was diffed again, each time its
+  parent's render reached it. A render whose parameters each compare equal, under the rule
+  `MemoNode.Dependencies` states, to those the cached tree was built from returns that tree instead of
+  running the body. What a working application can notice is what that rule does not compare, which
+  reaches the tree on no such render: a change made inside a parameter it compares by instance, a
+  difference it leaves to a parameter's own `Equals` and that `Equals` ignores, and anything else the body
+  reads — a static field, a store read directly rather than through `Hooks.UseStore`, `Time`. Anything
+  else the body does, such as counting its own renders or logging, is skipped on such a render.
+  `ComponentAttribute.Compiler` states the rule, and `[Component(Compiler = false)]` restores the
+  previous behaviour for one component. A parent building a fresh record class instance on every render
+  gets a rebuild on every render, one allocation dearer than before — the deps array — and a value-type
+  parameter adds its box to that. One with `Memoize = true` is left unwoven because its props bail already
+  suppresses equal-prop parent renders. Separately, a return the compiler reaches by a branch jumping
+  straight to it, which a returned `??` or conditional expression can compile to, now stages the tree it
+  returns, in a component with hooks as in one without: that path used to skip the commit, so a render
+  repeating its inputs rebuilt the body there instead of reusing the tree. `Hooks.TryGetMemoizedVNode`,
+  the gate the transform emits, takes the calling method's handle as its first argument. A woven component
+  called as a plain method runs uncached; its gate reports a miss with slot `-1`, which
+  `Hooks.StoreMemoizedVNode` takes as nothing to stage.
+
 ### Removed
 
 - The `V.Outlet` node kind, and the reconciler paths that existed for it alone — its element factory

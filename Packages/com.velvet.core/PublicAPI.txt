@@ -292,7 +292,7 @@
 [Velvet] method Velvet.FiberPortalRegistry.Unregister(System.String): System.Void
 [Velvet] method Velvet.Hooks.ForwardedRef`1(): Velvet.Ref`1[T]?
 [Velvet] method Velvet.Hooks.StoreMemoizedVNode(System.Int32, System.Object?[]?, Velvet.VNode): System.Void
-[Velvet] method Velvet.Hooks.TryGetMemoizedVNode(System.Object?[]?, System.Int32&, Velvet.VNode?&): System.Boolean
+[Velvet] method Velvet.Hooks.TryGetMemoizedVNode(System.RuntimeMethodHandle, System.Object?[]?, System.Int32&, Velvet.VNode?&): System.Boolean
 [Velvet] method Velvet.Hooks.UseAnimationSequence(System.Collections.Generic.IReadOnlyList`1[Velvet.AnimationSequenceStep], System.Boolean, System.Boolean, System.Object?[]?): System.ValueTuple`2[Velvet.AnimationSequenceState, Velvet.AnimationSequenceControls]
 [Velvet] method Velvet.Hooks.UseBlocker(System.Func`2[Velvet.NavigationAttempt, System.Boolean]): Velvet.RouteBlockerState
 [Velvet] method Velvet.Hooks.UseBlocker(System.Func`2[Velvet.NavigationAttempt, System.Boolean], System.Object?[]?): Velvet.RouteBlockerState

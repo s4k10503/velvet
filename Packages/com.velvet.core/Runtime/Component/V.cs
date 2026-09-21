@@ -1286,9 +1286,9 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Embeds a function-style component (`[Component] static VNode Foo()`) into the VNode tree
-        /// as a child node. Props are read from Stores / Context via hooks,
-        /// so passing state/props through method arguments is not the supported pattern.
+        /// Embeds a function-style component that takes no parameter (`[Component] static VNode Foo()`) into the
+        /// VNode tree as a child node; <see cref="Component{TProps}(Func{TProps, VNode}, TProps, string)"/> embeds
+        /// one that takes props.
         /// </summary>
         /// <param name="body">Delegate of a static method annotated with <c>[Component]</c> (e.g. <c>FooComp.Render</c>).</param>
         /// <param name="key">Key used to disambiguate siblings at the same position.</param>

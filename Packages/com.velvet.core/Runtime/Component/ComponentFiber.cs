@@ -699,6 +699,11 @@ namespace Velvet
         /// </summary>
         internal ComponentNode? SourceNode { get; set; }
 
+        /// <summary>Whether <paramref name="method"/> is the method this fiber's node names as its identity.</summary>
+        internal bool RendersComponent(RuntimeMethodHandle method)
+            => SourceNode?.ResolvedIdentity is System.Reflection.MethodInfo identity
+                && identity.MethodHandle.Equals(method);
+
         /// <summary>
         /// The node array <see cref="SourceNode"/> was read from — the output of the render that was expanding
         /// when this fiber was last reached. It is <see cref="PreviousTree"/> of the fiber above only where

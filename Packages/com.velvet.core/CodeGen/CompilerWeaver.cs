@@ -9,8 +9,8 @@ namespace Velvet.CodeGen
 {
     // Build-time transform that weaves inner auto-memoization into every [Component] method,
     // default-on with no opt-in attribute. Hooks still run on every render; only the VNode construction
-    // is cached, keyed on the values that flow out of hook calls: the component body is rebuilt only
-    // when a hook-derived input changes.
+    // is cached, keyed on the component's parameters and the values that flow out of its hook calls, so the
+    // component body is rebuilt when one of those inputs changes.
     // The weaver only transforms a method when its body matches an analyzable shape it can prove correct:
     //   Static, returns Velvet.VNode, and carries [Component]. Parameters (props) are
     //   allowed: each is prepended to the deps array so a prop change is detected like any other input.
@@ -20,8 +20,10 @@ namespace Velvet.CodeGen
     //   The allow-list is the safety contract: a hook is admitted only when its re-render trigger is soundly
     //   represented by an Object.is comparison of a value captured into the deps array, or when it
     //   returns nothing reactive at all.
-    //   At least one hook call, with every return placed after the last hook call, every hook reached
-    //   unconditionally, and no hook inside a loop (Rules of Hooks).
+    //   At least one parameter or value-returning hook call, so the deps array is not empty. A body that
+    //   calls a hook has every return placed after the last hook call, every hook reached unconditionally,
+    //   and no hook inside a loop (Rules of Hooks); a body that calls none is gated at method entry unless
+    //   it sets Memoize = true.
     //   Each value-returning hook result captured via var x = Hooks.UseXxx(...) (IL
     //   call → stloc) or a single-element deconstruction var (x, _, _) = Hooks.UseXxx(...)
     //   (IL call → ldfld → stloc). A void hook (UseEffect and friends) captures no dep but still
@@ -52,6 +54,7 @@ namespace Velvet.CodeGen
         // turning the weaver into a silent no-op.
         private static readonly string ComponentAttrFullName = typeof(Velvet.ComponentAttribute).FullName;
         private const string CompilerPropertyName = nameof(Velvet.ComponentAttribute.Compiler);
+        private const string MemoizePropertyName = nameof(Velvet.ComponentAttribute.Memoize);
         private static readonly string HooksTypeFullName = typeof(Velvet.Hooks).FullName;
         private static readonly string VNodeFullName = typeof(Velvet.VNode).FullName;
         private static readonly string SystemVoidFullName = typeof(void).FullName;
@@ -205,15 +208,33 @@ namespace Velvet.CodeGen
         // absent named argument means weave. A component opts out of memoization by
         // setting Compiler = false, read here as a named-argument false that leaves the body unwoven.
         private static bool CompilerEnabled(CustomAttribute attr)
+            => NamedFlag(attr, CompilerPropertyName, fallback: true);
+
+        // Memoize = true already suppresses the hookless body's equal-props parent renders. A second props gate
+        // inside that body would add a deps array without serving the path the outer gate suppressed.
+        private static bool RequestsPropsBail(MethodDefinition method)
+        {
+            foreach (var attr in method.CustomAttributes)
+            {
+                if (attr.AttributeType.FullName == ComponentAttrFullName)
+                {
+                    return NamedFlag(attr, MemoizePropertyName, fallback: false);
+                }
+            }
+            // MUTANT_SURVIVES(unreachable): only TryAnalyze calls this, on a method IsCandidate admitted for its [Component].
+            return false;
+        }
+
+        private static bool NamedFlag(CustomAttribute attr, string propertyName, bool fallback)
         {
             foreach (var named in attr.Properties)
             {
-                if (named.Name == CompilerPropertyName && named.Argument.Value is bool enabled)
+                if (named.Name == propertyName && named.Argument.Value is bool value)
                 {
-                    return enabled;
+                    return value;
                 }
             }
-            return true;
+            return fallback;
         }
 
         // Returns true when the body already calls Velvet.Hooks.TryGetMemoizedVNode — a hand-written
@@ -270,18 +291,21 @@ namespace Velvet.CodeGen
                 return false;
             }
 
-            if (lastHookBoundary == null)
-            {
-                // No hook calls: nothing to key a cache on, so there is no inner memo to weave.
-                return false;
-            }
-
             if (hookPipedLocals.Count == 0 && method.Parameters.Count == 0)
             {
-                // Only void hooks and no parameters: the deps array would be empty, so TryGetMemoizedVNode would
+                // No parameter and no value hook: the deps array would be empty, so TryGetMemoizedVNode would
                 // be an unconditional hit and freeze the body after the first render. A component with no reactive
                 // input (no props, no value hook) is constant, so leave it unwoven rather than always-hit.
                 return false;
+            }
+
+            if (lastHookBoundary is null)
+            {
+                // No hook call: the gate keys on the parameters alone and goes ahead of the first instruction, so
+                // it precedes every return and every protected region, and a hit's early return skips no hook
+                // call. The checks below have nothing to find.
+                analysis = new HookAnalysis(hookPipedLocals, null, returns);
+                return !RequestsPropsBail(method);
             }
 
             // Every return path must come after the hook section. A return placed
@@ -969,6 +993,7 @@ namespace Velvet.CodeGen
             }
             injected.Add(Instruction.Create(OpCodes.Stloc, depsLocal));
 
+            injected.Add(Instruction.Create(OpCodes.Ldtoken, SelfReference(method)));
             injected.Add(Instruction.Create(OpCodes.Ldloc, depsLocal));
             injected.Add(Instruction.Create(OpCodes.Ldloca, slotLocal));
             injected.Add(Instruction.Create(OpCodes.Ldloca, cachedLocal));
@@ -980,11 +1005,22 @@ namespace Velvet.CodeGen
             injected.Add(Instruction.Create(OpCodes.Ret));
             injected.Add(afterHitBranch);
 
-            var current = insertAfter;
-            foreach (var ins in injected)
+            if (insertAfter is { } boundary)
             {
-                il.InsertAfter(current, ins);
-                current = ins;
+                var current = boundary;
+                foreach (var ins in injected)
+                {
+                    il.InsertAfter(current, ins);
+                    current = ins;
+                }
+            }
+            else
+            {
+                var entry = body.Instructions[0];
+                foreach (var ins in injected)
+                {
+                    il.InsertBefore(entry, ins);
+                }
             }
 
             // Inject Store + reload at every return path so all `Ret` instructions
@@ -1005,15 +1041,72 @@ namespace Velvet.CodeGen
                 {
                     il.InsertBefore(returnInstr, ins);
                 }
+                // A branch that targets the ret itself would jump past the commit above it and return a tree
+                // the slot never stages.
+                RetargetBranches(body, returnInstr, preReturn[0]);
             }
 
             body.OptimizeMacros();
         }
 
+        // The handle the gate matches against the method the rendering fiber renders, which for a generic method or
+        // a method of a generic type is one instantiation: so the token names the method over its own generic
+        // parameters, which the runtime resolves to the instantiation running.
+        private static MethodReference SelfReference(MethodDefinition method)
+        {
+            MethodReference self = method;
+            var declaringType = method.DeclaringType;
+            if (declaringType.HasGenericParameters)
+            {
+                var instance = new GenericInstanceType(declaringType);
+                foreach (var parameter in declaringType.GenericParameters)
+                    instance.GenericArguments.Add(parameter);
+                self = new MethodReference(method.Name, method.ReturnType, instance)
+                {
+                    HasThis = method.HasThis,
+                    ExplicitThis = method.ExplicitThis,
+                    CallingConvention = method.CallingConvention,
+                };
+                foreach (var parameter in method.Parameters)
+                {
+                    self.Parameters.Add(new ParameterDefinition(parameter.ParameterType));
+                }
+                foreach (var parameter in method.GenericParameters)
+                {
+                    self.GenericParameters.Add(new GenericParameter(parameter.Name, self));
+                }
+            }
+            if (method.HasGenericParameters)
+            {
+                var instance = new GenericInstanceMethod(self);
+                foreach (var parameter in method.GenericParameters)
+                {
+                    instance.GenericArguments.Add(parameter);
+                }
+                self = instance;
+            }
+            return self;
+        }
+
+        private static void RetargetBranches(MethodBody body, Instruction from, Instruction to)
+        {
+            foreach (var instr in body.Instructions)
+            {
+                if (ReferenceEquals(instr.Operand, from))
+                {
+                    instr.Operand = to;
+                }
+                else if (instr.Operand is Instruction[] targets)
+                {
+                    instr.Operand = System.Array.ConvertAll(targets, t => ReferenceEquals(t, from) ? to : t);
+                }
+            }
+        }
+
         private readonly struct HookAnalysis
         {
             public HookAnalysis(IReadOnlyList<VariableDefinition> hookPipedLocals,
-                Instruction lastHookBoundary,
+                Instruction? lastHookBoundary,
                 IReadOnlyList<Instruction> returns)
             {
                 HookPipedLocals = hookPipedLocals;
@@ -1021,7 +1114,7 @@ namespace Velvet.CodeGen
                 Returns = returns;
             }
             public IReadOnlyList<VariableDefinition> HookPipedLocals { get; }
-            public Instruction LastHookBoundary { get; }
+            public Instruction? LastHookBoundary { get; }
             public IReadOnlyList<Instruction> Returns { get; }
         }
     }
@@ -1057,8 +1150,8 @@ namespace Velvet.CodeGen
                 return null;
             }
 
-            var tryGet = ResolveHookMethod(hooksType, nameof(Velvet.Hooks.TryGetMemoizedVNode));
-            var store = ResolveHookMethod(hooksType, nameof(Velvet.Hooks.StoreMemoizedVNode));
+            var tryGet = ResolveHookMethod(hooksType, nameof(Velvet.Hooks.TryGetMemoizedVNode), 4);
+            var store = ResolveHookMethod(hooksType, nameof(Velvet.Hooks.StoreMemoizedVNode), 3);
             if (tryGet == null || store == null)
             {
                 failure = $"the memoization methods '{hooksTypeName}.{nameof(Velvet.Hooks.TryGetMemoizedVNode)}' /"
@@ -1075,13 +1168,12 @@ namespace Velvet.CodeGen
             };
         }
 
-        private static MethodDefinition? ResolveHookMethod(TypeDefinition hooks, string name)
+        // The arity is asserted so that a future overload is not picked up silently.
+        private static MethodDefinition? ResolveHookMethod(TypeDefinition hooks, string name, int arity)
         {
-            // Both TryGetMemoizedVNode and StoreMemoizedVNode take 3 parameters.
-            // Asserting the arity guards against silently picking up a future overload.
             foreach (var m in hooks.Methods)
             {
-                if (m.Name == name && m.Parameters.Count == 3) return m;
+                if (m.Name == name && m.Parameters.Count == arity) return m;
             }
             return null;
         }

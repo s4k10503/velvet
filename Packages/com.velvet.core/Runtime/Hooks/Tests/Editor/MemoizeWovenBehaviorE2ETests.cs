@@ -1,4 +1,5 @@
 using System;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
@@ -16,14 +17,17 @@ namespace Velvet.Tests
     /// the pure-build + store path.</item>
     /// <item>A discarded render-phase attempt that stores a transient memo does not poison the committed
     /// baseline: when a render-phase setState normalizes the value back to the committed one, that settled
-    /// attempt is a cache hit and does not rebuild. Both slot APIs are render-scoped: calling either outside of
-    /// Render raises an <see cref="InvalidOperationException"/>.</item>
+    /// attempt is a cache hit and does not rebuild. Outside a render the gate grants no slot, and a store for a
+    /// slot raises an <see cref="InvalidOperationException"/>.</item>
     /// <item>A captured <c>record class</c> prop is held by instance: re-rendering with the same instance is a
     /// cache hit; a changed prop value or a fresh-but-equal instance is a miss, because <c>ObjectIs</c> compares
     /// such an input by instance, not by content. A captured context value is keyed the same way.</item>
     /// <item>The idiomatic two-element <c>var (value, setValue) = Hooks.UseState(...)</c> binding is captured the
     /// same way as the value-only discard form: Item1 (the value) is a dependency and Item2 (the
     /// reference-stable setter) is not, so the component is woven and memoizes its VNode build.</item>
+    /// <item>A woven component called as a plain method from another component's render builds its tree
+    /// uncached, so a parent switching between two such components at one place shows the one it called.</item>
+    /// <item>A body whose return value is a conditional reuses its tree on unchanged inputs.</item>
     /// </list>
     /// </summary>
     /// <remarks>
@@ -56,7 +60,12 @@ namespace Velvet.Tests
             s_tupleParentSetTick = null;
             s_childSetSuffix = null;
             s_stableProps = null;
+            s_switchSetTick = null;
+            s_conditionalBuilds = 0;
+            s_conditionalSetTick = null;
+            s_conditionalProps = null;
             s_ratioSetTick = null;
+            s_invalidSlotResult = default;
         }
 
         private static int s_renderCount;
@@ -71,7 +80,7 @@ namespace Velvet.Tests
             // deps array, check for a hit, and on a miss build the VNode purely and write it back.
             var (value, _) = Hooks.UseState(0);
             var deps = new object[] { value };
-            if (Hooks.TryGetMemoizedVNode(deps, out var slotIdx, out var cached))
+            if (Hooks.TryGetMemoizedVNode(MethodBase.GetCurrentMethod().MethodHandle, deps, out var slotIdx, out var cached))
             {
                 return cached;
             }
@@ -95,7 +104,7 @@ namespace Velvet.Tests
             }
             var dep = phase % 2 == 1 ? "transient" : "settled";
             var deps = new object[] { dep };
-            if (Hooks.TryGetMemoizedVNode(deps, out var slotIdx, out var cached))
+            if (Hooks.TryGetMemoizedVNode(MethodBase.GetCurrentMethod().MethodHandle, deps, out var slotIdx, out var cached))
             {
                 return cached;
             }
@@ -144,11 +153,42 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_OutsideOfRender_When_TryGetMemoizedVNodeCalled_Then_Throws()
+        public void Given_OutsideOfRender_When_TryGetMemoizedVNodeCalled_Then_GrantsNoSlot()
         {
-            // Act + Assert
-            Assert.Throws<InvalidOperationException>(() =>
-                Hooks.TryGetMemoizedVNode(Array.Empty<object>(), out _, out _));
+            // Act
+            var hit = Hooks.TryGetMemoizedVNode(MethodBase.GetCurrentMethod().MethodHandle, Array.Empty<object>(),
+                out var slotIndex, out _);
+
+            // Assert
+            Assert.That((hit, slotIndex), Is.EqualTo((false, -1)));
+        }
+
+        private static (int SlotIndex, Type ErrorType) s_invalidSlotResult;
+
+        [Component(Compiler = false)]
+        private static VNode StorePastLastSlot()
+        {
+            var deps = Array.Empty<object>();
+            Hooks.TryGetMemoizedVNode(MethodBase.GetCurrentMethod().MethodHandle, deps, out var slotIndex, out _);
+            try
+            {
+                Hooks.StoreMemoizedVNode(slotIndex + 1, deps, null);
+            }
+            catch (Exception error)
+            {
+                s_invalidSlotResult = (slotIndex, error.GetType());
+            }
+            return V.Label(text: "rendered");
+        }
+
+        [Test]
+        public void Given_AStoreIndexAtTheSlotCount_When_Rendered_Then_ReportsAnInvalidSlot()
+        {
+            // Act
+            using var mounted = V.Mount(_root, V.Component(StorePastLastSlot, key: "invalid-slot"));
+
+            // Assert
+            Assert.That(s_invalidSlotResult, Is.EqualTo((0, typeof(InvalidOperationException))));
         }
 
         private static int s_propsChildRebuildCount;
@@ -375,6 +415,84 @@ namespace Velvet.Tests
             // the discard form, so the unchanged-input re-render is a cache hit and the body does not rebuild.
             Assert.That(s_tupleChildRebuildCount, Is.EqualTo(1),
                 "Two-element UseState binding must be auto-memoized: unchanged inputs -> cache hit -> no rebuild");
+        }
+
+        private static Action<int> s_switchSetTick;
+
+        [Component]
+        private static VNode RedHookLeaf(string text)
+        {
+            var (suffix, _) = Hooks.UseState("");
+            return V.Label(name: "switched", text: "red:" + text + suffix);
+        }
+
+        [Component]
+        private static VNode BlueHookLeaf(string text)
+        {
+            var (suffix, _) = Hooks.UseState("");
+            return V.Label(name: "switched", text: "blue:" + text + suffix);
+        }
+
+        // Opted out so that its own gate plays no part in what the case reads.
+        [Component(Compiler = false)]
+        private static VNode SwitchingParent()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_switchSetTick = setTick;
+            return tick == 0 ? RedHookLeaf("x") : BlueHookLeaf("x");
+        }
+
+        [Test]
+        public void Given_AParentCallingOneOfTwoHookComponentsAsAMethod_When_ItsChoiceFlips_Then_TheNewComponentsTreeIsShown()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(SwitchingParent, key: "parent"));
+
+            // Act
+            s_switchSetTick(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(_root.Q<Label>(name: "switched")?.text, Is.EqualTo("blue:x"));
+        }
+
+        private static int s_conditionalBuilds;
+        private static Action<int> s_conditionalSetTick;
+        private static ChildProps s_conditionalProps;
+
+        private static VNode CountedConditionalLabel(string text)
+        {
+            s_conditionalBuilds++;
+            return V.Label(name: "conditional", text: text);
+        }
+
+        [Component]
+        private static VNode ConditionalHookChild(ChildProps p)
+            => Hooks.UseId() is var id && p.Label.Length > 3
+                ? CountedConditionalLabel(id)
+                : CountedConditionalLabel("short");
+
+        [Component]
+        private static VNode ConditionalParent()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_conditionalSetTick = setTick;
+            return V.Component(ConditionalHookChild, s_conditionalProps, key: "child");
+        }
+
+        [Test]
+        public void Given_AHookBodyReturningAConditionalsSecondArm_When_TheParentReRendersWithTheSameInputs_Then_TheBodyDoesNotRun()
+        {
+            // Arrange
+            s_conditionalProps = new ChildProps("abc");
+            using var mounted = V.Mount(_root, V.Component(ConditionalParent, key: "parent"));
+
+            // Act
+            s_conditionalSetTick(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_conditionalBuilds, Is.EqualTo(1));
         }
 
         private readonly record struct RatioProps(float Value);
