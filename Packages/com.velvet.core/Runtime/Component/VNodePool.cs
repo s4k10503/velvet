@@ -140,6 +140,15 @@ namespace Velvet
 
         #endregion
 
+        // For the parts a node shares with its copy (VNode.WithListKey): returned through either node's
+        // retirement, they would be cleared and handed on while the other still reads them.
+        internal static void DisownParts(VNode node)
+        {
+            if (node is not BaseElementNode element) return;
+            if (element.Props != null) s_ownedProps.Remove(element.Props);
+            if (element.Events is { Length: 1 }) s_ownedSingleEventArrays.Remove(element.Events);
+        }
+
         #region FiberEventBinding[]
 
         private static readonly Stack<FiberEventBinding[]> s_singleEventPool = new();

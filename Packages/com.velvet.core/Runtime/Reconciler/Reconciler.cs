@@ -67,7 +67,7 @@ namespace Velvet
             _ownsContext = ownsContext;
             _cleaner = new FiberElementCleaner(_ctx);
             _patcher = new FiberNodePatcher(_ctx);
-            _factory = new FiberNodeFactory(_ctx, _patcher);
+            _factory = new FiberNodeFactory(_ctx, _patcher, _cleaner);
             _childReconciler = new ChildReconciler(_ctx, _patcher, _factory, _cleaner);
 
             _factory.SetHost(this);

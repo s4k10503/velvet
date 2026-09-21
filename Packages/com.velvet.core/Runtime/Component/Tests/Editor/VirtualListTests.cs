@@ -45,6 +45,14 @@ namespace Velvet.Tests
     /// <item>An update to no items releases the rows the list showed and empties the visible container,
     /// and a row that comes back after the list went empty — by an update or in place — renders
     /// afresh.</item>
+    /// <item>One node the renderer returns for several items gives each of them a row of its own, which a
+    /// range change keeps or releases as it would a row built for its item alone, and the node keeps the
+    /// key the renderer gave it.</item>
+    /// <item>A row that fails half-built — an element, a Provider or a Motion scrolling in, or one building
+    /// its children through the general walk — leaves the child it built before the failure with no ref
+    /// set up, and a component it mounted there not left mounted.</item>
+    /// <item>An error boundary above the list that catches a row's render during a range update ends the
+    /// rendering of rows there, and leaves none of the rows that update built mounted.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -524,8 +532,8 @@ namespace Velvet.Tests
             // is reused at all, and by which position: an index one row out finds no row, item-2 being
             // the only unkeyed one, and remounts it with its mark unwritten. And where the renderer-keying
             // one of the two arranges a renderer's key against a selector's string, this arranges it
-            // against the selector's null — which has to land on the node and displace it, or the next
-            // range indexes the row under the renderer's string and no item index finds it.
+            // against the selector's null — which has to be what the next range reads the row back by,
+            // since a row read back by the renderer's string is found by no item index.
             s_keptRowMark = default;
             var root = new VisualElement();
             using var mounted = V.Mount(root, V.Component(NullKeyedRowsHostRender, key: "host"));
@@ -1073,6 +1081,353 @@ namespace Velvet.Tests
                 "[" + typed + "] typed, ["
                     + (scrollView.Q<TextField>("field-item-2")?.value ?? "no field") + "] shown on return",
                 Is.EqualTo("[typed] typed, [] shown on return"));
+        }
+
+        #endregion
+
+        #region One node returned for several items
+
+        // Div rows, which nothing pools: a row reused across a range change and one rebuilt in its place are
+        // then two instances whatever a pool holds.
+        private static VirtualListNode OneNodeForEveryItemList(VNode shared)
+            => V.VirtualList(
+                items: CreateItems(10),
+                keySelector: item => "sel-" + item.Id,
+                itemHeight: 50f,
+                renderer: _ => shared,
+                overscan: 0);
+
+        [Test]
+        public void Given_ARendererReturningOneNodeForEveryItem_When_ARangeChangeKeepsARowInRange_Then_ThatRowKeepsItsElement()
+        {
+            // Arrange — items 0..4, item-2's row the third of them.
+            var scrollView = new ScrollView(ScrollViewMode.Vertical);
+            using var controller = new FiberVirtualListController(scrollView, OneNodeForEveryItemList(V.Div()), Reconciler);
+            var visibleContainer = scrollView.contentContainer.ElementAt(1);
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+            var itemTwoRow = visibleContainer.ElementAt(2);
+
+            // Act — the window becomes items 1..5, item-2's row the second of them.
+            controller.UpdateVisibleRange(scrollY: 50f, viewportHeight: 200f);
+
+            // Assert
+            Assert.That(visibleContainer.ElementAt(1), Is.SameAs(itemTwoRow));
+        }
+
+        [Test]
+        public void Given_ARendererReturningOneNodeForEveryItem_When_ARangeChangeScrollsOneRowOut_Then_OnlyThatRowIsReleased()
+        {
+            // Arrange — one node, so one ref callback: what it counts is elements, each row's getting a setup
+            // of its own and, when it leaves, a cleanup of its own.
+            var setUp = 0;
+            var cleanedUp = 0;
+            var shared = V.Div(refCallback: _ =>
+            {
+                setUp++;
+                return () => cleanedUp++;
+            });
+            var scrollView = new ScrollView(ScrollViewMode.Vertical);
+            using var controller = new FiberVirtualListController(scrollView, OneNodeForEveryItemList(shared), Reconciler);
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+
+            // Act — the window becomes items 1..5: item-0's row leaves and item-5's arrives.
+            controller.UpdateVisibleRange(scrollY: 50f, viewportHeight: 200f);
+
+            // Assert
+            Assert.That(setUp + " set up, " + cleanedUp + " cleaned up", Is.EqualTo("6 set up, 1 cleaned up"));
+        }
+
+        [Test]
+        public void Given_ARendererReturningANodeItKeyedItself_When_TheRangeIsRendered_Then_TheNodeStillCarriesThatKey()
+        {
+            // Arrange
+            var shared = V.Div(key: "mine");
+            var scrollView = new ScrollView(ScrollViewMode.Vertical);
+            using var controller = new FiberVirtualListController(scrollView, OneNodeForEveryItemList(shared), Reconciler);
+
+            // Act
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+
+            // Assert
+            Assert.That(shared.Key, Is.EqualTo("mine"));
+        }
+
+        #endregion
+
+        #region A row that fails half-built
+
+        // A row whose first child is built, carrying a ref, before its second child's constructor refuses.
+        // What the cases built on it ask is what became of that first child's ref. A null among the
+        // children sends them through the general walk (GeneralPathReconciler.NeedsExpansion) rather than
+        // the indexed diff.
+        private static VNode HalfBuiltRow(Func<VisualElement, Action> childRef, bool throughTheGeneralWalk)
+            => V.Div(children: throughTheGeneralWalk
+                ? new VNode[] { V.Label(refCallback: childRef), null, V.Custom<ConstructionRefusingElement>() }
+                : new VNode[] { V.Label(refCallback: childRef), V.Custom<ConstructionRefusingElement>() });
+
+        // Renders the window at firstScrollY, poisons the list, takes the update to failScrollY — which must
+        // throw — then a further update that succeeds and runs the queued ref setups, then disposes the
+        // controller. Returns what reached the caller beside what the child ref counted.
+        private string HalfBuiltRowOutcome(
+            Func<TestItem, bool> poisoned, Func<Func<VisualElement, Action>, VNode> halfBuiltRow,
+            Func<TestItem, VNode> healthyRow, float firstScrollY, float failScrollY)
+        {
+            var isPoisoned = false;
+            var setUp = 0;
+            var cleanedUp = 0;
+            Func<VisualElement, Action> childRef = _ =>
+            {
+                setUp++;
+                return () => cleanedUp++;
+            };
+            var node = V.VirtualList(
+                items: CreateItems(20),
+                keySelector: item => item.Id,
+                itemHeight: 50f,
+                renderer: item => isPoisoned && poisoned(item) ? halfBuiltRow(childRef) : healthyRow(item),
+                overscan: 0);
+            var scrollView = new ScrollView(ScrollViewMode.Vertical);
+            var controller = new FiberVirtualListController(scrollView, node, Reconciler);
+            controller.UpdateVisibleRange(scrollY: firstScrollY, viewportHeight: 200f);
+            isPoisoned = true;
+            var thrown = "nothing";
+            try
+            {
+                controller.UpdateVisibleRange(scrollY: failScrollY, viewportHeight: 200f);
+            }
+            catch (Exception exception)
+            {
+                thrown = exception.GetBaseException().Message;
+            }
+
+            isPoisoned = false;
+            controller.UpdateVisibleRange(scrollY: 500f, viewportHeight: 200f);
+            controller.Dispose();
+            return "[" + thrown + "] thrown, child ref " + setUp + " set up, " + cleanedUp + " cleaned up";
+        }
+
+        [Test]
+        public void Given_ARowScrollingInThatFailsHalfBuilt_When_TheListRendersOnAndIsDisposed_Then_TheChildItBuiltGetsNoRef()
+        {
+            // Arrange — items 0..4, then 1..5: item-5's row is new to the pass that builds it.
+            // Act — inside the helper, which renders on past the failure and disposes the list.
+            var outcome = HalfBuiltRowOutcome(
+                poisoned: item => item.Id == "item-5",
+                halfBuiltRow: childRef => HalfBuiltRow(childRef, throughTheGeneralWalk: false),
+                healthyRow: _ => V.Div(),
+                firstScrollY: 0f,
+                failScrollY: 50f);
+
+            // Assert — what reached the caller rides along: a row that builds completely is released with the
+            // list, and the ref of a child it holds is cleaned up with it rather than never set up.
+            Assert.That(outcome, Is.EqualTo("[constructor refused] thrown, child ref 0 set up, 0 cleaned up"));
+        }
+
+        [Test]
+        public void Given_ARowThatFailsHalfBuiltInTheGeneralWalk_When_TheListRendersOnAndIsDisposed_Then_TheChildItBuiltGetsNoRef()
+        {
+            // Arrange — the scrolling-in case with the row's children taken through the general walk, which
+            // places the child it built only once every sibling is built: the child is in no element when the
+            // refusal comes.
+            // Act — inside the helper.
+            var outcome = HalfBuiltRowOutcome(
+                poisoned: item => item.Id == "item-5",
+                halfBuiltRow: childRef => HalfBuiltRow(childRef, throughTheGeneralWalk: true),
+                healthyRow: _ => V.Div(),
+                firstScrollY: 0f,
+                failScrollY: 50f);
+
+            // Assert — both terms for the reason the scrolling-in case gives.
+            Assert.That(outcome, Is.EqualTo("[constructor refused] thrown, child ref 0 set up, 0 cleaned up"));
+        }
+
+        private static readonly ComponentContext<string> HalfBuiltRowContext = ComponentContext<string>.Create("default");
+
+        [Test]
+        public void Given_AProviderRowThatFailsHalfBuilt_When_TheListRendersOnAndIsDisposed_Then_TheChildItBuiltGetsNoRef()
+        {
+            // Arrange — the scrolling-in case with the row a Provider, whose anchor the factory builds on a
+            // path of its own.
+            // Act — inside the helper.
+            var outcome = HalfBuiltRowOutcome(
+                poisoned: item => item.Id == "item-5",
+                halfBuiltRow: childRef => V.Provider(HalfBuiltRowContext, "row", new VNode[]
+                {
+                    V.Label(refCallback: childRef),
+                    V.Custom<ConstructionRefusingElement>(),
+                }),
+                healthyRow: _ => V.Div(),
+                firstScrollY: 0f,
+                failScrollY: 50f);
+
+            // Assert — both terms for the reason the scrolling-in case gives.
+            Assert.That(outcome, Is.EqualTo("[constructor refused] thrown, child ref 0 set up, 0 cleaned up"));
+        }
+
+        [Test]
+        public void Given_AMotionRowThatFailsHalfBuilt_When_TheListRendersOnAndIsDisposed_Then_TheChildItBuiltGetsNoRef()
+        {
+            // Arrange — the scrolling-in case with the row a Motion whose label reaches its children, the
+            // factory's path for a Motion that pushes one around them.
+            // Act — inside the helper.
+            var outcome = HalfBuiltRowOutcome(
+                poisoned: item => item.Id == "item-5",
+                halfBuiltRow: childRef => V.Motion(animate: "shown", children: new VNode[]
+                {
+                    V.Label(refCallback: childRef),
+                    V.Custom<ConstructionRefusingElement>(),
+                }),
+                healthyRow: _ => V.Div(),
+                firstScrollY: 0f,
+                failScrollY: 50f);
+
+            // Assert — both terms for the reason the scrolling-in case gives.
+            Assert.That(outcome, Is.EqualTo("[constructor refused] thrown, child ref 0 set up, 0 cleaned up"));
+        }
+
+        private static readonly Dictionary<string, int> s_rowMounts = new();
+        private static readonly Dictionary<string, int> s_rowUnmounts = new();
+        private static readonly List<string> s_rowRenders = new();
+        private static string s_refusingRowId;
+
+        private static void ResetRowRecords()
+        {
+            s_rowMounts.Clear();
+            s_rowUnmounts.Clear();
+            s_rowRenders.Clear();
+            s_refusingRowId = null;
+        }
+
+        private static void Count(Dictionary<string, int> counts, string id)
+            => counts[id] = counts.TryGetValue(id, out var count) ? count + 1 : 1;
+
+        // The rows whose mount effect has run more times than its cleanup, in item order.
+        private static string LiveRows()
+        {
+            var live = s_rowMounts.Keys
+                .Where(id => s_rowMounts[id] > (s_rowUnmounts.TryGetValue(id, out var unmounts) ? unmounts : 0))
+                .OrderBy(id => id, StringComparer.Ordinal)
+                .ToArray();
+            return live.Length == 0 ? "none" : string.Join(",", live);
+        }
+
+        [Component(Compiler = false)]
+        private static VNode RecordedRowRender(string id)
+        {
+            s_rowRenders.Add(id);
+            Hooks.UseEffect(() =>
+            {
+                Count(s_rowMounts, id);
+                return () => Count(s_rowUnmounts, id);
+            }, Array.Empty<object>());
+            if (id == s_refusingRowId)
+            {
+                throw new InvalidOperationException("row refused " + id);
+            }
+
+            return V.Label(text: id);
+        }
+
+        [Component]
+        private static VNode HalfBuiltComponentChildHostRender()
+            => V.VirtualList(
+                items: CreateItems(20),
+                keySelector: item => item.Id,
+                itemHeight: 50f,
+                renderer: item => s_refusingRowId == item.Id
+                    ? V.Div(children: new VNode[]
+                    {
+                        V.Component(RecordedRowRender, "child"),
+                        V.Custom<ConstructionRefusingElement>(),
+                    })
+                    : V.Div(),
+                overscan: 0);
+
+        [Test]
+        public void Given_ARowThatFailsHalfBuiltAfterMountingAComponent_When_ItsEffectsFlush_Then_ThatComponentIsNotLeftMounted()
+        {
+            // Arrange — the scrolling-in case with the child the row builds first being a component, which
+            // mounts a fiber under the row rather than queueing a ref.
+            ResetRowRecords();
+            var root = new VisualElement();
+            using var mounted = V.Mount(root, V.Component(HalfBuiltComponentChildHostRender, key: "host"));
+            var controller = mounted.Root.Reconciler.Context.VirtualListControllers[root.Q<ScrollView>()];
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+            s_refusingRowId = "item-5";
+            var thrown = "nothing";
+            try
+            {
+                controller.UpdateVisibleRange(scrollY: 50f, viewportHeight: 200f);
+            }
+            catch (Exception exception)
+            {
+                thrown = exception.GetBaseException().Message;
+            }
+
+            // Act
+            mounted.FlushEffectsForTest();
+
+            // Assert — the child's render rides along: a component that never rendered leaves nothing mounted
+            // either way.
+            Assert.That(
+                "[" + thrown + "] thrown, child rendered " + s_rowRenders.Count(id => id == "child")
+                    + " time(s), live: " + LiveRows(),
+                Is.EqualTo("[constructor refused] thrown, child rendered 1 time(s), live: none"));
+        }
+
+        #endregion
+
+        #region A list its own range update disposes
+
+        [Component]
+        private static VNode BoundaryOverListRender()
+            => V.ErrorBoundary(_ => V.Label(name: "fallback", text: "fallback"), new VNode[]
+            {
+                V.VirtualList(
+                    items: CreateItems(20),
+                    keySelector: item => item.Id,
+                    itemHeight: 50f,
+                    renderer: item => V.Component(RecordedRowRender, item.Id),
+                    overscan: 0),
+            });
+
+        [Test]
+        public void Given_AnErrorBoundaryAboveTheList_When_ARowsRenderThrowsIntoItDuringARangeUpdate_Then_NoRowIsLeftMounted()
+        {
+            // Arrange — the first window's third row throws from its render, which the boundary above the list
+            // catches: its fallback takes the list out of the tree while the range update is still running.
+            ResetRowRecords();
+            var root = new VisualElement();
+            using var mounted = V.Mount(root, V.Component(BoundaryOverListRender, key: "host"));
+            var controller = mounted.Root.Reconciler.Context.VirtualListControllers[root.Q<ScrollView>()];
+            s_refusingRowId = "item-2";
+
+            // Act
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+            mounted.FlushEffectsForTest();
+
+            // Assert — the fallback rides along: a boundary that did not take the list out leaves its rows
+            // mounted rightly.
+            Assert.That(
+                (root.Q<Label>("fallback") != null ? "fallback shown" : "no fallback") + ", live: " + LiveRows(),
+                Is.EqualTo("fallback shown, live: none"));
+        }
+
+        [Test]
+        public void Given_AnErrorBoundaryAboveTheList_When_ARowsRenderThrowsIntoItDuringARangeUpdate_Then_NoLaterRowRenders()
+        {
+            // Arrange — the case above.
+            ResetRowRecords();
+            var root = new VisualElement();
+            using var mounted = V.Mount(root, V.Component(BoundaryOverListRender, key: "host"));
+            var controller = mounted.Root.Reconciler.Context.VirtualListControllers[root.Q<ScrollView>()];
+            s_refusingRowId = "item-2";
+
+            // Act
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+
+            // Assert
+            Assert.That(string.Join(",", s_rowRenders), Is.EqualTo("item-0,item-1,item-2"));
         }
 
         #endregion
