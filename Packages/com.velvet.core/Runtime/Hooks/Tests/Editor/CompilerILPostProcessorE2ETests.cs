@@ -613,8 +613,7 @@ namespace Velvet.Tests
         {
             // Act + Assert
             Assert.That(IsWoven(LoadMethod(nameof(VoidOnlyComponent))), Is.False,
-                "A body with void hooks alone and no parameter has an empty deps array; weaving would freeze it on an"
-                + " unconditional hit, so the weaver bails");
+                "A void-only body has an empty deps array; weaving would freeze it on an unconditional hit, so the weaver bails");
         }
 
         [Test]
