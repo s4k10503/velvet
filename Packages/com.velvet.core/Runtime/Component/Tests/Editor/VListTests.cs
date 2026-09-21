@@ -15,8 +15,8 @@ namespace Velvet.Tests
     /// <list type="bullet">
     /// <item>A null or empty source yields an empty array.</item>
     /// <item>A non-empty source yields one slot per item, in source order.</item>
-    /// <item>Each produced node carries the key returned by the selector. The selector key is authoritative
-    /// and overrides any key the renderer set on the node — the list-mapping site owns the identity.</item>
+    /// <item>Each produced node carries the key returned by the selector. A node the renderer has just built
+    /// is keyed in place; a node a list has placed before takes a copy when a later item's key differs.</item>
     /// <item>A node a list has placed before keeps the key it was placed under, and the slot of an item
     /// whose key differs takes a copy carrying that key — so one node returned for several items, or held
     /// across renders, gives each item keyed apart a row of its own. A node the renderer has just built is
