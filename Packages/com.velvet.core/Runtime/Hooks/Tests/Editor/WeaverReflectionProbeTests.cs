@@ -419,6 +419,38 @@ namespace Velvet.Tests
         // --- CompilerWeaver gate placement on a body with no hook, which the weaver gates at method entry ---
 
         [Test]
+        public void Given_AnOlderGateOverload_When_CompilerWeaverRuns_Then_ItCallsTheFourParameterGate()
+        {
+            // Arrange
+            using var module = BuildHookShapeProbeModule("MemoGateOverloadProbe", out var method,
+                out _, out _, out _);
+            var hooksType = module.Types.Single(type => type.FullName == "Velvet.Hooks");
+            var olderGate = new MethodDefinition("TryGetMemoizedVNode",
+                Mono.Cecil.MethodAttributes.Public | Mono.Cecil.MethodAttributes.Static, module.TypeSystem.Boolean);
+            olderGate.Parameters.Add(new ParameterDefinition("deps", Mono.Cecil.ParameterAttributes.None,
+                new ArrayType(module.TypeSystem.Object)));
+            olderGate.Parameters.Add(new ParameterDefinition("slotIndex", Mono.Cecil.ParameterAttributes.Out,
+                new ByReferenceType(module.TypeSystem.Int32)));
+            olderGate.Parameters.Add(new ParameterDefinition("cached", Mono.Cecil.ParameterAttributes.Out,
+                new ByReferenceType(method.ReturnType)));
+            hooksType.Methods.Insert(0, olderGate);
+            method.Parameters.Add(new ParameterDefinition("value", Mono.Cecil.ParameterAttributes.None,
+                module.TypeSystem.Object));
+            var il = method.Body.GetILProcessor();
+            il.Append(Instruction.Create(OpCodes.Ldnull));
+            il.Append(Instruction.Create(OpCodes.Ret));
+            AssignSequentialOffsets(method);
+
+            // Act
+            InvokeWeave("Velvet.CodeGen.CompilerWeaver", module);
+
+            // Assert
+            var gate = IndexOfCallTo(method, "TryGetMemoizedVNode");
+            var arity = gate < 0 ? -1 : ((MethodReference)method.Body.Instructions[gate].Operand).Parameters.Count;
+            Assert.That(arity, Is.EqualTo(4));
+        }
+
+        [Test]
         public void Given_AHooklessBodyWhoseTryOpensAtItsFirstInstruction_When_CompilerWeaverRuns_Then_TheGatePrecedesTheTry()
         {
             // Arrange — `try { result = null; } catch { result = null; } return result;` behind one parameter

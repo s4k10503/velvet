@@ -65,6 +65,7 @@ namespace Velvet.Tests
             s_conditionalSetTick = null;
             s_conditionalProps = null;
             s_ratioSetTick = null;
+            s_invalidSlotResult = default;
         }
 
         private static int s_renderCount;
@@ -160,6 +161,34 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((hit, slotIndex), Is.EqualTo((false, -1)));
+        }
+
+        private static (int SlotIndex, Type ErrorType) s_invalidSlotResult;
+
+        [Component(Compiler = false)]
+        private static VNode StorePastLastSlot()
+        {
+            var deps = Array.Empty<object>();
+            Hooks.TryGetMemoizedVNode(MethodBase.GetCurrentMethod().MethodHandle, deps, out var slotIndex, out _);
+            try
+            {
+                Hooks.StoreMemoizedVNode(slotIndex + 1, deps, null);
+            }
+            catch (Exception error)
+            {
+                s_invalidSlotResult = (slotIndex, error.GetType());
+            }
+            return V.Label(text: "rendered");
+        }
+
+        [Test]
+        public void Given_AStoreIndexAtTheSlotCount_When_Rendered_Then_ReportsAnInvalidSlot()
+        {
+            // Act
+            using var mounted = V.Mount(_root, V.Component(StorePastLastSlot, key: "invalid-slot"));
+
+            // Assert
+            Assert.That(s_invalidSlotResult, Is.EqualTo((0, typeof(InvalidOperationException))));
         }
 
         private static int s_propsChildRebuildCount;
