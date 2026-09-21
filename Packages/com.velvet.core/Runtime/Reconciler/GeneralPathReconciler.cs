@@ -889,8 +889,8 @@ namespace Velvet
         }
 
         // Inline-expands a MemoNode. A memo component emits no DOM — it resolves to
-        // an inner element that is reconciled like any other child. The dep cache is keyed by a
-        // stable position scope (fragment scope + node index) — not a per-pass visitation counter —
+        // an inner element that is reconciled like any other child. The dep cache is keyed by where the
+        // memo is written — not a per-pass visitation counter —
         // so the old-side and new-side expansion passes resolve to aligned cache entries: the old
         // side runs first (ExpandInlineForReconcile expands old before new) and reads
         // the previously cached inner, while the new side recomputes only when the dependency array
@@ -903,22 +903,18 @@ namespace Velvet
             int nodeIndex)
         {
             var innerPosition = FiberKeying.MemoInner(position, nodeIndex);
-            var cacheKey = FiberKeying.MemoCacheKey(memo.Key, innerPosition.Scope!);
-            var (inner, previousCached) = _ctx.FiberMemoCache.GetOrCompute(cacheKey, memo);
+            var memoPosition = FiberKeying.MemoAt(
+                _ctx.FiberStack.Current, _ctx.PortalChildKeyScopeHere, memo.Key, position, innerPosition);
+            var (inner, previousCached) = _ctx.FiberMemoCache.GetOrCompute(memoPosition, walk.Parent, memo);
             if (previousCached != null)
             {
-                // A deps change just replaced the cached inner tree. The memo wrapper is opaque to the
-                // recycle walk (a fiber's retired tree never descends into it), so this is the only
-                // point that can retire the replaced subtree's rented objects; the sweep's owner mark
-                // spares whatever the replacement or the owner's committed state still shares with it,
-                // and the pass-scoped release staging keeps the rest un-rentable until the pass ends.
                 FiberTreeReturn.ReturnRetiredTree(
-                    FiberTreeReturn.NormalizeToArray(previousCached), _ctx.FiberStack.Current);
+                    FiberTreeReturn.NormalizeToArray(previousCached), _ctx.FiberStack.Current, _ctx.FiberMemoCache);
             }
             if (inner == null) return;
-            // Recurse under this memo's own scope so a nested Memo's position key (or an inner
-            // Component's slot key) cannot collide with this memo's scope — e.g. an outer and an
-            // inner unkeyed Memo both at node index 0 would otherwise share cacheKey "{scope}/m0".
+            // Recurse under this memo's own position, not the parent's: an inner Component's slot key
+            // and a nested Memo's own position both extend it, and MemoScope and WalkPathKind own what
+            // then keeps either off an unkeyed Component's at the same node index.
             ExpandInlineRecursive(walk, new[] { inner }, innerPosition);
         }
 

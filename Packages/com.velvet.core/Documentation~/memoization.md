@@ -21,13 +21,13 @@ public static partial class HomePage
 }
 ```
 
-The generator emits a wrapper that calls `V.Memoized` with the parameters as the deps array, so the result is cached unless any of the parameter values change between renders. An arity-0 method has no parameters to key on, so its wrapper passes an explicitly empty deps array and the result is computed once and kept — see [react-migration.md §1-4](react-migration.md#1-4-what-a-dependency-list-means) for what each spelling of a dependency list means.
+The generator emits a wrapper that calls `V.Memoized` with the parameters as the deps array, so a render reuses the result cached at the method's position only while those values are unchanged — [react-migration.md](react-migration.md#what-a-position-is) states what a position is. An arity-0 method has no parameters to key on, so its wrapper passes an explicitly empty deps array — see [react-migration.md §1-4](react-migration.md#1-4-what-a-dependency-list-means) for what each spelling of a dependency list means.
 
 ## Constraints
 
 - The partial method declaration must carry an accessibility modifier (C# 9.0 extended partial methods spec)
 - The containing class must be declared `partial`
-- Arity 0 still generates but warns (VEL001) unless the `_Impl` method is provably pure, because its result is then cached for the element's whole life; arity 9+ is rejected outright (VEL002)
+- Arity 0 still generates but warns (VEL001) unless the `_Impl` method is provably pure, because its result is then kept where it is rendered until that place is torn down; arity 9+ is rejected outright (VEL002)
 - The return type must derive from `Velvet.VNode` (VEL008)
 - Generic methods, `async`, and `ref`/`out` parameters are unsupported (VEL003/004/005)
 - The implementation lives in `<MethodName>_Impl` (writing the body directly on the partial declaration emits VEL009)

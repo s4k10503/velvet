@@ -119,6 +119,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The Starter App remounts when its UIDocument root is replaced or reenabled, retaining the router's
   location while the host remains enabled. The previous host kept rendering into the departed root.
 
+- Recomputing `V.Memoized` no longer recycles properties or children still referenced by the current cache result.
+
 - A `V.VirtualList` whose `keySelector` returns null for one item renders that row instead of throwing
   out of the range update that reached it. A null key is no key, which is the answer `V.List` gives the
   same selector: the row renders and reconciles by position, which for a virtualized list is its item
@@ -689,10 +691,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   containers, because it separates siblings of one container rather than one container from another.
   The consequence to read before upgrading is the other direction: writing a component into a
   **different** container than the previous render did is now a fresh mount there and an unmount of
-  the one it left, so its state, refs and effects do not travel. The entry below states the same of a
-  portal's boundary, which holds even where the two sides share a container, so neither rule subsumes
-  the other. Keeping state across such a move means lifting it above both containers, to a `Store` or
-  to a `UseState` in the component that declares them. The migration guide states what a position is.
+  the one it left, so its state, refs and effects do not travel. The entry on moving a component across
+  a `V.Portal`'s boundary states the same of that boundary, which holds even where the two sides share a
+  container, so neither rule subsumes the other. Keeping state across such a move means lifting it above
+  both containers, to a `Store` or to a `UseState` in the component that declares them. The migration
+  guide states what a position is.
+
+- A `V.Memoized`'s dependency-cache entry belongs to where the memo is written: the component whose
+  output holds it, the element its output lands in, a `V.Portal` it sits under within that output, and
+  its slot there — its index among the siblings it is written beside, or its `key:`, which stands in for
+  that index and nothing above it, under the chain of `V.Fragment`s, `V.Provider`s and other wrappers
+  that enclose it inside that element and that output. The entry used to be keyed by a position string,
+  which the first child of any two containers spelled alike, or by the memo's `key:` alone, wherever in
+  the tree the key was written. So a sidebar and a main panel that each memoized their first section
+  shared one entry, and so did two `V.ListFragment`s whose ids overlap: where the dependency arrays
+  agreed, the memo reached second never ran its factory and rendered the first one's subtree, with
+  nothing logged; where they differed, it handed the first one's subtree back to the pool while that
+  subtree was still on screen. An entry is now dropped when Velvet tears down its component, its element
+  or its `V.Portal`, where it used to stay for the reconciler's life.
+  The consequence to read before upgrading: a memo's factory runs again wherever that slot is new,
+  including places the old key reused the cached subtree from — another element, whether or not the
+  memo carries a `key:`, a `V.Fragment` newly wrapped around it, or a sibling inserted ahead of an
+  unkeyed wrapper that encloses it. A factory with side effects runs them again there, and the nodes it
+  builds replace the cached ones. The migration guide states what a position is.
 
 - A `UseTransition` transition now covers what its callback runs before that callback first suspends,
   rather than being inferred from the action still being in flight on the calling component. An update

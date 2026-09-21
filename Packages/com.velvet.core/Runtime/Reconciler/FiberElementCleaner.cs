@@ -170,6 +170,7 @@ namespace Velvet
             CleanupDndResources(element);
             CleanupControllerResources(element);
             _ctx.PrunePresenceParentElementState(element);
+            _ctx.FiberMemoCache.Forget(element);
         }
 
         // Refs, animation/layout scheduling, the event + component registries, and every
@@ -500,6 +501,8 @@ namespace Velvet
             // the placeholder rather than by the range being torn out).
             _ctx.ComponentRegistry.DisposeInlineFibersOwnedByPortal(element);
             _ctx.PrunePresencePortalState(element);
+            // The retarget release reaches the placeholder through here alone.
+            _ctx.FiberMemoCache.Forget(element);
 
             // Both ends of the range are LOGICAL, so BOTH are converted. Adding the logical length to the
             // already-converted start mixes the two bases, and tears out one element too many the moment an
