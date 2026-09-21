@@ -173,6 +173,7 @@ namespace Velvet.Tests
 
         private static VisualElement s_sharedTarget;
         private static StateUpdater<bool> s_setShow;
+        private static StateUpdater<bool> s_setShowWaiting;
 
         private static VNode WaitingBoundary()
             => V.Suspense(V.Label(text: "loading"), new VNode[] { V.Component(Counter), V.Component(Reader) });
@@ -203,6 +204,46 @@ namespace Velvet.Tests
             // Assert
             Assert.That((before, string.Join("|", s_sharedTarget.Query<Label>().ToList().Select(label => label.text))),
                 Is.EqualTo(("loading|ready", "loading|ready")));
+        }
+
+        [Component(Compiler = false)]
+        private static VNode SplitHost()
+        {
+            var (showWaiting, setShowWaiting) = Hooks.UseState(true);
+            s_setShowWaiting = setShowWaiting;
+            return V.Div(children: new VNode[]
+            {
+                showWaiting
+                    ? V.Div(name: "waiting", children: new VNode[]
+                    {
+                        V.Suspense(V.Label(text: "loading"), new VNode[]
+                        {
+                            V.Component(Counter), V.Component(Reader),
+                        }),
+                    })
+                    : V.Label(text: "no-wait"),
+                V.Div(name: "ready", children: new VNode[]
+                {
+                    V.Suspense(V.Label(text: "unused"), new VNode[] { V.Label(text: "ready") }),
+                }),
+            });
+        }
+
+        [Test]
+        public void Given_ASuspendedBoundaryInARemovedWaitingContainer_When_TheHostUpdates_Then_ThatContainersFallbackStateIsPruned()
+        {
+            // Arrange
+            _mounted = V.Mount(_root, V.Component(SplitHost));
+            var context = _mounted.Root.Reconciler.Context;
+            Assume.That(context.AnyBoundaryShowingFallback, Is.True);
+            Assume.That(Texts("ready"), Is.EqualTo("ready"));
+
+            // Act
+            s_setShowWaiting.Invoke(false);
+            _mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That((Texts("ready"), context.AnyBoundaryShowingFallback), Is.EqualTo(("ready", false)));
         }
 
         [Component(Compiler = false)]
