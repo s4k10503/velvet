@@ -102,6 +102,9 @@ UNREADABLE = object()
 CARRIED_REFUSAL = 3
 RECEIPT_REFUSAL = 3
 
+# Include generation semantics in verdict and receipt identity.
+MUTATION_MODEL_VERSION = 7
+
 
 class Mutant:
     def __init__(self, path, line, column, before, after, operator):
@@ -342,10 +345,10 @@ def mask_spans(text):
     return spans
 
 
-def code_mask(text):
+def code_mask(text, spans=None):
     """True at each offset `mask_spans` did not read as a comment, a literal or a directive."""
     mask = [True] * len(text)
-    for start, end, _ in mask_spans(text):
+    for start, end, _ in mask_spans(text) if spans is None else spans:
         for offset in range(start, end):
             mask[offset] = False
     return mask
@@ -385,13 +388,416 @@ OPERATORS = [
 
 WORD_OPERATORS = [("true", "false", "literal"), ("false", "true", "literal")]
 
-def joins_a_string(line, index):
+def comment_edges(spans):
+    """Comment starts and ends, kept separate from the literal spans in the same mask."""
+    comments = [(start, end) for start, end, kind in spans
+                if kind in (LINE_COMMENT, BLOCK_COMMENT)]
+    return ({start: end for start, end in comments}, {end: start for start, end in comments})
+
+
+def skip_trivia_right(text, index, comments):
+    """The next operand offset after whitespace and comments."""
+    starts, _ = comments
+    while index < len(text):
+        while index < len(text) and text[index].isspace():
+            index += 1
+        end = starts.get(index)
+        if end is None:
+            break
+        index = end
+    return index
+
+
+def skip_trivia_left(text, index, comments):
+    """The exclusive end of the prior operand before whitespace and comments."""
+    _, ends = comments
+    while index > 0:
+        while index > 0 and text[index - 1].isspace():
+            index -= 1
+        start = ends.get(index)
+        if start is None:
+            break
+        index = start
+    return index
+
+
+def skip_null_forgiving_left(text, index, comments):
+    """The prior operand's end before any null-forgiving postfixes."""
+    index = skip_trivia_left(text, index, comments)
+    while index > 0 and text[index - 1] == "!":
+        index = skip_trivia_left(text, index - 1, comments)
+    return index
+
+
+def character_literal_end(text, index):
+    """The exclusive end of a character token at `index`, or None when it is incomplete."""
+    cursor = index + 1
+    while cursor < len(text) and text[cursor] != "\n":
+        if text[cursor] == "\\":
+            cursor += 2
+            continue
+        if text[cursor] == "'":
+            return cursor + 1
+        cursor += 1
+    return None
+
+
+def starts_string_literal(text, index):
+    """Whether `index` has one of the string prefixes this bounded reader supports."""
+    if text.startswith(('"', '$"', '@"', '$@"', '@$"'), index):
+        return True
+    dollars = index
+    while dollars < len(text) and text[dollars] == "$":
+        dollars += 1
+    return dollars > index and text.startswith('"""', dollars)
+
+
+def interpolation_hole_end(text, index, closing_width=1):
+    """The offset after a hole's closing brace, skipping nested lexical constructs."""
+    depth = 0
+    cursor = index
+    while cursor < len(text):
+        if text.startswith("//", cursor):
+            newline = text.find("\n", cursor + 2)
+            if newline < 0:
+                return None
+            cursor = newline + 1
+            continue
+        if text.startswith("/*", cursor):
+            closed = text.find("*/", cursor + 2)
+            if closed < 0:
+                return None
+            cursor = closed + 2
+            continue
+        if starts_string_literal(text, cursor):
+            closed = string_literal_end(text, cursor)
+            if closed is None:
+                return None
+            cursor = closed
+            continue
+        if text[cursor] == "'":
+            closed = character_literal_end(text, cursor)
+            if closed is None:
+                return None
+            cursor = closed
+            continue
+        if text[cursor] == "{":
+            depth += 1
+        elif text[cursor] == "}":
+            if depth == 0:
+                run_end = cursor + 1
+                while run_end < len(text) and text[run_end] == "}":
+                    run_end += 1
+                run_width = run_end - cursor
+                if closing_width <= run_width < 2 * closing_width:
+                    return cursor + closing_width
+                return None
+            depth -= 1
+        cursor += 1
+    return None
+
+
+def raw_string_literal_end(text, index, delimiter, interpolation_width):
+    """The exclusive outer delimiter end, with interpolation holes skipped."""
+    cursor = index
+    while cursor < len(text):
+        if interpolation_width > 0 and text[cursor] == "{":
+            run_end = cursor + 1
+            while run_end < len(text) and text[run_end] == "{":
+                run_end += 1
+            run_width = run_end - cursor
+            if run_width < interpolation_width:
+                cursor = run_end
+                continue
+            if run_width >= 2 * interpolation_width:
+                return None
+            closed = interpolation_hole_end(
+                text, run_end, interpolation_width)
+            if closed is None:
+                return None
+            cursor = closed
+            continue
+        if text.startswith('"' * delimiter, cursor):
+            return cursor + delimiter
+        cursor += 1
+    return None
+
+
+def string_literal_end(text, index):
+    """The exclusive end of a string token whose spelling fixes its type, or None."""
+    dollars = index
+    while dollars < len(text) and text[dollars] == "$":
+        dollars += 1
+    quotes = dollars
+    while quotes < len(text) and text[quotes] == '"':
+        quotes += 1
+    delimiter = quotes - dollars
+    if delimiter >= 3:
+        return raw_string_literal_end(text, quotes, delimiter, dollars - index)
+
+    if text.startswith(("$@\"", "@$\""), index):
+        verbatim = True
+        interpolated = True
+        cursor = index + 3
+    elif text.startswith('@"', index):
+        verbatim = True
+        interpolated = False
+        cursor = index + 2
+    elif text.startswith('$"', index):
+        verbatim = False
+        interpolated = True
+        cursor = index + 2
+    elif text.startswith('"', index):
+        verbatim = False
+        interpolated = False
+        cursor = index + 1
+    else:
+        return None
+
+    while cursor < len(text):
+        if not verbatim and text[cursor] == "\\":
+            cursor += 2
+            continue
+        if text[cursor] == '"':
+            if verbatim and text[cursor + 1:cursor + 2] == '"':
+                cursor += 2
+                continue
+            return cursor + 1
+        if interpolated and text[cursor] == "{":
+            if text[cursor + 1:cursor + 2] == "{":
+                cursor += 2
+                continue
+            closed = interpolation_hole_end(text, cursor + 1)
+            if closed is None:
+                return None
+            cursor = closed
+            continue
+        if interpolated and text[cursor] == "}":
+            if text[cursor + 1:cursor + 2] != "}":
+                return None
+            cursor += 2
+            continue
+        cursor += 1
+    return None
+
+
+def matching_open_parenthesis(text, mask, close):
+    depth = 0
+    for offset in range(close, -1, -1):
+        if not mask[offset]:
+            continue
+        if text[offset] == ")":
+            depth += 1
+        elif text[offset] == "(":
+            depth -= 1
+            if depth == 0:
+                return offset
+    return None
+
+
+def matching_close_parenthesis(text, mask, opened, limit):
+    depth = 0
+    for offset in range(opened, limit):
+        if not mask[offset]:
+            continue
+        if text[offset] == "(":
+            depth += 1
+        elif text[offset] == ")":
+            depth -= 1
+            if depth == 0:
+                return offset
+    return None
+
+
+def is_grouping_parenthesis(text, opened, comments):
+    """Whether an opening parenthesis groups an operand rather than calling the token before it."""
+    before = skip_trivia_left(text, opened, comments)
+    if before == 0:
+        return True
+    previous = text[before - 1]
+    if previous.isalnum() or previous == "_":
+        start = before - 1
+        while start > 0 and (text[start - 1].isalnum() or text[start - 1] == "_"):
+            start -= 1
+        return text[start:before] in ("return", "throw", "yield")
+    if previous == ">":
+        return before >= 2 and text[before - 2:before] == "=>"
+    return previous not in ").]"
+
+
+def top_level_addition(text, mask, start, end):
+    """The last ` + ` outside a nested group in the bounded expression."""
+    round_depth = square_depth = brace_depth = 0
+    found = None
+    offset = start
+    while offset < end:
+        if not mask[offset]:
+            offset += 1
+            continue
+        character = text[offset]
+        if character == "(":
+            round_depth += 1
+        elif character == ")":
+            round_depth -= 1
+        elif character == "[":
+            square_depth += 1
+        elif character == "]":
+            square_depth -= 1
+        elif character == "{":
+            brace_depth += 1
+        elif character == "}":
+            brace_depth -= 1
+        elif (round_depth == square_depth == brace_depth == 0
+              and text.startswith(" + ", offset)
+              and offset + 3 <= end
+              and all(mask[offset:offset + 3])):
+            found = offset
+            offset += 2
+        offset += 1
+    return found
+
+
+def top_level_conditional(text, mask, start, end):
+    """The question and matching colon of the bounded expression's outer conditional."""
+    round_depth = square_depth = brace_depth = 0
+    question = None
+    nested = 0
+    for offset in range(start, end):
+        if not mask[offset]:
+            continue
+        character = text[offset]
+        if character == "(":
+            round_depth += 1
+        elif character == ")":
+            round_depth -= 1
+        elif character == "[":
+            square_depth += 1
+        elif character == "]":
+            square_depth -= 1
+        elif character == "{":
+            brace_depth += 1
+        elif character == "}":
+            brace_depth -= 1
+        elif round_depth == square_depth == brace_depth == 0 and character == "?":
+            following = text[offset + 1:offset + 2]
+            if following in ("?", ".", "[") or text[offset - 1:offset] == "?":
+                continue
+            if question is None:
+                question = offset
+            else:
+                nested += 1
+        elif (round_depth == square_depth == brace_depth == 0
+              and character == ":" and question is not None):
+            if nested:
+                nested -= 1
+            else:
+                return question, offset
+    return None
+
+
+def preceding_addition(text, mask, index):
+    """The prior ` + ` in this additive chain, or None at the expression boundary."""
+    round_depth = square_depth = brace_depth = 0
+    offset = index - 1
+    while offset >= 0:
+        if not mask[offset]:
+            offset -= 1
+            continue
+        character = text[offset]
+        if character == ")":
+            round_depth += 1
+        elif character == "]":
+            square_depth += 1
+        elif character == "}":
+            brace_depth += 1
+        elif character == "(":
+            if round_depth == 0:
+                return None
+            round_depth -= 1
+        elif character == "[":
+            if square_depth == 0:
+                return None
+            square_depth -= 1
+        elif character == "{":
+            if brace_depth == 0:
+                return None
+            brace_depth -= 1
+
+        if round_depth == square_depth == brace_depth == 0:
+            candidate = offset - 2
+            if (candidate >= 0 and text[candidate:candidate + 3] == " + "
+                    and all(mask[candidate:candidate + 3])):
+                return candidate
+            if character in ";,=?:&|":
+                return None
+        offset -= 1
+    return None
+
+
+def bounded_expression_is_string(text, mask, start, end, comments):
+    """Whether the bounded expression's text alone establishes a string result."""
+    start = skip_trivia_right(text, start, comments)
+    end = skip_trivia_left(text, end, comments)
+    if start >= end:
+        return False
+    if string_literal_end(text, start) == end:
+        return True
+    if text[start] == "(":
+        nested = matching_close_parenthesis(text, mask, start, end)
+        if nested == end - 1:
+            return bounded_expression_is_string(
+                text, mask, start + 1, nested, comments)
+    conditional = top_level_conditional(text, mask, start, end)
+    if conditional is not None:
+        question, colon = conditional
+        return (bounded_expression_is_string(
+                    text, mask, question + 1, colon, comments)
+                and bounded_expression_is_string(
+                    text, mask, colon + 1, end, comments))
+    addition = top_level_addition(text, mask, start, end)
+    return addition is not None and joins_a_string(
+        text, mask, addition, comments)
+
+
+def continues_with_postfix(text, end, comments):
+    """Whether postfix syntax keeps computing the operand after the known string result."""
+    following = skip_trivia_right(text, end, comments)
+    while (text.startswith("!", following)
+           and not text.startswith("!=", following)):
+        following = skip_trivia_right(text, following + 1, comments)
+    return text.startswith((".", "[", "("), following) or text.startswith(
+        ("?.", "?["), following)
+
+
+def joins_a_string(text, mask, index, comments):
     """Whether the ` + ` at `index` has a string literal for one of its operands.
 
-    Read on either side of that one operator rather than over the line, which holds both kinds at
-    once: `Log("x" + name)` beside `total = a + b` is one line and one of the two is arithmetic.
+    A prior addition in the same chain is an operand too: once one addition produced a string, every
+    addition after it is string concatenation. Expression boundaries keep a string in another
+    argument or statement from suppressing numeric arithmetic.
     """
-    return line[:index].rstrip().endswith('"') or line[index + 3:].lstrip().startswith('"')
+    left = skip_null_forgiving_left(text, index, comments)
+    right = skip_trivia_right(text, index + 3, comments)
+    if left > 0 and text[left - 1] == '"':
+        return True
+    literal_end = string_literal_end(text, right)
+    if literal_end is not None and not continues_with_postfix(text, literal_end, comments):
+        return True
+    if left > 0 and text[left - 1] == ")":
+        opened = matching_open_parenthesis(text, mask, left - 1)
+        if (opened is not None and is_grouping_parenthesis(text, opened, comments)
+                and bounded_expression_is_string(
+                    text, mask, opened + 1, left - 1, comments)):
+            return True
+    if right < len(text) and text[right] == "(":
+        closed = matching_close_parenthesis(text, mask, right, len(text))
+        if (closed is not None and not continues_with_postfix(text, closed + 1, comments)
+                and bounded_expression_is_string(
+                    text, mask, right + 1, closed, comments)):
+            return True
+    previous = preceding_addition(text, mask, index)
+    return previous is not None and joins_a_string(
+        text, mask, previous, comments)
 
 # `while (true)`, which is how a method with no other returning path returns at all.
 FOREVER_LOOP = re.compile(r"\bwhile\s*\(\s*true\s*$")
@@ -799,7 +1205,9 @@ def line_spans(text):
 
 
 def mutations_for(path, text, target_lines):
-    mask = code_mask(text)
+    constructs = mask_spans(text)
+    mask = code_mask(text, constructs)
+    comments = comment_edges(constructs)
     spans = line_spans(text)
     found = []
     for number in sorted(target_lines):
@@ -818,7 +1226,8 @@ def mutations_for(path, text, target_lines):
                 # could notice. Read per occurrence -- a line can hold one of each, and skipping
                 # the line took 650 arithmetic mutants where the mechanism is 93.
                 if (all(mask[start + index:start + index + len(before)])
-                        and not (before == " + " and joins_a_string(line, index))):
+                        and not (before == " + " and joins_a_string(
+                            text, mask, start + index, comments))):
                     found.append(Mutant(path, number, index, before.strip(), after.strip(), operator))
                 index = line.find(before, index + 1)
         for before, after, operator in WORD_OPERATORS:
@@ -1325,7 +1734,7 @@ def scope_digest(base, targets, project, platform):
     checked for what it stops voiding on, and this stops on exactly the spans the generator already
     refuses to mutate.
     """
-    parts = [base, platform]
+    parts = ["mutation-model:{}".format(MUTATION_MODEL_VERSION), base, platform]
     for path in sorted(targets, key=str):
         # Repository-relative, so a receipt does not depend on where the checkout sits: a resolved
         # path and an unresolved one reach the same file and digest differently.

@@ -180,9 +180,9 @@ The run also fails or stops rather than pass over a mutant nobody asked about, a
 says when it does which.
 
 **What asks whether the campaign was run is a receipt, not attentiveness.** A finished run leaves one
-under the campaign's own log directory, keyed on the merge base (taken against what
-`mutation_check.origin_copy` returns for the base), the platform and the content of every file it
-mutated, and `gh pr create` is refused where no receipt covers the checkout it is run in. A
+under the campaign's own log directory, keyed as
+[Generators~/README.md ▸ The Unity assemblies](Packages/com.velvet.core/Generators~/README.md#the-unity-assemblies)
+defines, and `gh pr create` is refused where no receipt covers the checkout it is run in. A
 branch that changes no mutable package source is owed nothing and is not asked; a change no operator
 reaches records that verdict and is accepted, since such a branch cannot earn a passing run at all. The
 receipt is keyed on what the campaign measured rather than on the head commit, because the campaign

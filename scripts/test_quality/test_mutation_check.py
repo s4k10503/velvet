@@ -263,6 +263,212 @@ class RewritesThatCannotCompile(unittest.TestCase):
         # Act / Assert
         self.assertEqual(len(self.operators('Log("a" + name, x + y);\n', "arithmetic")), 1)
 
+    def test_Given_PrefixedStringLiteralsOnTheRight_When_TheMutantsAreRead_Then_NoneIsOffered(self):
+        # Arrange -- each spelling is a string operand even though the quote does not open the token.
+        sources = ('name + $" value={value}";', 'name + @" value";',
+                   'name + $@" value={value}";', 'name + @$" value={value}";')
+
+        # Act / Assert
+        self.assertEqual([len(self.operators(source, "arithmetic")) for source in sources],
+                         [0, 0, 0, 0])
+
+    def test_Given_AStringLiteralOnThePriorLine_When_TheMutantsAreRead_Then_NoneIsOffered(self):
+        # Arrange -- the newline continues the expression rather than ending the left operand.
+        source = 'return $"prefix {value}"\n    + suffix;\n'
+
+        # Act / Assert
+        self.assertEqual(self.operators(source, "arithmetic"), [])
+
+    def test_Given_AStringLiteralEarlierInTheAdditionChain_When_TheMutantsAreRead_Then_NoneIsOffered(self):
+        # Arrange -- the first addition produces a string, so each later addition does too.
+        source = 'return "<tag>" + amount + unit + ">";\n'
+
+        # Act / Assert
+        self.assertEqual(self.operators(source, "arithmetic"), [])
+
+    def test_Given_CommentsBetweenAStringAndThePlus_When_TheMutantsAreRead_Then_NoneIsOffered(self):
+        # Arrange -- comments are trivia between an operand and its operator.
+        sources = ('return "left" /* block */ + value;\n',
+                   'return "left" // line\n    + value;\n')
+
+        # Act / Assert
+        self.assertEqual([len(self.operators(source, "arithmetic")) for source in sources], [0, 0])
+
+    def test_Given_CommentsBetweenThePlusAndAString_When_TheMutantsAreRead_Then_NoneIsOffered(self):
+        # Arrange -- the literal remains the right operand across either comment form.
+        sources = ('return value + /* block */ "right";\n',
+                   'return value + // line\n    "right";\n')
+
+        # Act / Assert
+        self.assertEqual([len(self.operators(source, "arithmetic")) for source in sources], [0, 0])
+
+    # GREEN_ON_BASE(characterization): identifier operands remain within the arithmetic operator's scope.
+    def test_Given_ACommentBetweenNumericOperands_When_TheMutantsAreRead_Then_ItIsStillOffered(self):
+        # Arrange -- skipping trivia must not classify an identifier as a string.
+        # Act / Assert
+        self.assertEqual(len(self.operators('return left + /* block */ right;\n', "arithmetic")), 1)
+
+    def test_Given_AParenthesizedStringAddition_When_TheOuterPlusIsRead_Then_NoneIsOffered(self):
+        # Arrange -- either operand can be the grouped string result.
+        sources = ('return ("left" + value) + suffix;\n',
+                   'return prefix + ("right" + value);\n')
+
+        # Act / Assert
+        self.assertEqual([len(self.operators(source, "arithmetic")) for source in sources], [0, 0])
+
+    # GREEN_ON_BASE(characterization): groups with no known string result remain within arithmetic scope.
+    def test_Given_ParenthesesThatDoNotProduceAString_When_TheMutantsAreRead_Then_NumericPlusesRemain(self):
+        # Arrange -- member access, invocation and an identifier group establish no string result.
+        sources = ('return F("left" + value).Length + 1;\n',
+                   'return F("left" + value) + 1;\n',
+                   'return (left + right) + tail;\n')
+
+        # Act / Assert
+        self.assertEqual([len(self.operators(source, "arithmetic")) for source in sources], [1, 1, 2])
+
+    def test_Given_MultipleDollarRawStringPrefixes_When_TheMutantsAreRead_Then_NoneIsOffered(self):
+        # Arrange -- the dollar count sets interpolation-brace depth, not the operand type.
+        sources = ('return value + $$"""raw {{name}}""";\n',
+                   'return value + $$$"""raw {{{name}}}""";\n')
+
+        # Act / Assert
+        self.assertEqual([len(self.operators(source, "arithmetic")) for source in sources], [0, 0])
+
+    # GREEN_ON_BASE(characterization): postfix results remain within the arithmetic operator's scope.
+    def test_Given_AGroupedStringWithAPostfix_When_TheOuterPlusIsRead_Then_ItRemainsArithmetic(self):
+        # Arrange -- each postfix changes the grouped string into a value whose type is not string.
+        sources = ('return value + ("x" + suffix).Length;\n',
+                   'return value + ("x" + suffix).GetHashCode();\n',
+                   'return value + ("x" + suffix)[0];\n')
+
+        # Act / Assert
+        self.assertEqual([len(self.operators(source, "arithmetic")) for source in sources], [1, 1, 1])
+
+    def test_Given_AParenthesizedKnownString_When_TheOuterPlusIsRead_Then_NoneIsOffered(self):
+        # Arrange -- literals, nested groups and a conditional with two literal outcomes are known text.
+        sources = ('return ("x") + value;\n',
+                   'return (("x")) + value;\n',
+                   'return (flag ? "x" : "y") + value;\n',
+                   'return value + (("x"));\n')
+
+        # Act / Assert
+        self.assertEqual([len(self.operators(source, "arithmetic")) for source in sources], [0, 0, 0, 0])
+
+    # GREEN_ON_BASE(characterization): unknown grouped results remain within arithmetic scope.
+    def test_Given_AParenthesizedUnknownOrNumericResult_When_TheOuterPlusIsRead_Then_ItRemainsArithmetic(self):
+        # Arrange -- neither an identifier nor numeric conditional outcomes establish a string type.
+        sources = ('return (value) + suffix;\n',
+                   'return (flag ? left : right) + suffix;\n',
+                   'return (flag ? 1 : 2) + suffix;\n')
+
+        # Act / Assert
+        self.assertEqual([len(self.operators(source, "arithmetic")) for source in sources], [1, 1, 1])
+
+    def test_Given_AParenthesizedRawOrAtDollarLiteral_When_TheOuterPlusIsRead_Then_NoneIsOffered(self):
+        # Arrange -- token spelling establishes each result even when the general mask splits it.
+        sources = ('return ("""x""") + value;\n',
+                   'return ($$"""{{value}}""") + value;\n',
+                   'return (@$"x{value}") + value;\n')
+
+        # Act / Assert
+        self.assertEqual([len(self.operators(source, "arithmetic")) for source in sources], [0, 0, 0])
+
+    def test_Given_ALiteralWithAPostfix_When_TheOuterPlusIsRead_Then_ItRemainsArithmetic(self):
+        # Arrange -- the member result, rather than the literal, is the operand of the plus.
+        sources = ('return value + "x".Length;\n',
+                   'return value + """x""".Length;\n',
+                   'return value + @$"x{value}".Length;\n',
+                   'return value + ("""x""").Length;\n')
+
+        # Act / Assert
+        self.assertEqual([len(self.operators(source, "arithmetic")) for source in sources],
+                         [1, 1, 1, 1])
+
+    # GREEN_ON_BASE(characterization): interpolated postfix results remain within arithmetic scope.
+    def test_Given_AnInterpolatedLiteralWhoseHoleContainsQuotes_When_Postfixed_Then_ItIsArithmetic(self):
+        # Arrange -- the outer quote follows the hole, so its member result is the plus operand.
+        sources = ('return value + $"{F("x")}".Length;\n',
+                   'return value + $@"{F("x")}".Length;\n',
+                   'return value + $"{{prefix}} {F(new[] { "x" })}".Length;\n',
+                   'return value + $@"{{prefix}} {F(new[] { "x" })}".Length;\n')
+
+        # Act / Assert
+        self.assertEqual([len(self.operators(source, "arithmetic")) for source in sources],
+                         [1, 1, 1, 1])
+
+    def test_Given_AnInterpolatedLiteralWhoseHoleContainsQuotes_When_Joined_Then_NoneIsOffered(self):
+        # Arrange -- nested braces and quotes belong to the hole, while the expression remains text.
+        sources = ('return value + $"{F("x")}";\n',
+                   'return value + $@"{F("x")}";\n',
+                   'return value + $"{{prefix}} {F(new[] { "x" })}";\n',
+                   'return value + $@"{{prefix}} {F(new[] { "x" })}";\n')
+
+        # Act / Assert
+        self.assertEqual([len(self.operators(source, "arithmetic")) for source in sources],
+                         [0, 0, 0, 0])
+
+    # GREEN_ON_BASE(characterization): raw-string postfix results remain within arithmetic scope.
+    def test_Given_ARawInterpolationHoleWithQuotes_When_Postfixed_Then_ItIsArithmetic(self):
+        # Arrange -- nested strings and comments contain the same quotes as the outer delimiter.
+        sources = ('return value + $$"""{{ F("""inner""") }}""".Length;\n',
+                   'return value + $$"""{{ F(/* """ */ value) }}""".Length;\n')
+
+        # Act / Assert
+        self.assertEqual([len(self.operators(source, "arithmetic")) for source in sources], [1, 1])
+
+    def test_Given_ARawInterpolationHoleWithQuotes_When_Joined_Then_NoneIsOffered(self):
+        # Arrange -- skipping a false delimiter must still reach the literal's real outer end.
+        sources = ('return value + $$"""{{ F("""inner""") }}""";\n',
+                   'return value + $$"""{{ F(/* """ */ value) }}""";\n')
+
+        # Act / Assert
+        self.assertEqual([len(self.operators(source, "arithmetic")) for source in sources], [0, 0])
+
+    def test_Given_ARawInterpolationRunWithLiteralBraces_When_Joined_Then_NoneIsOffered(self):
+        # Arrange -- excess braces outside the innermost delimiter remain literal content.
+        sources = ('return value + $$"""{{{42}}""";\n',
+                   'return value + $$"""{{42}}}""";\n',
+                   'return value + $$"""{{{42}}}""";\n',
+                   'return value + $$$"""{{{{42}}}""";\n',
+                   'return value + $$$"""{{{42}}}}""";\n',
+                   'return value + $$$"""{{{{42}}}}""";\n')
+
+        # Act / Assert
+        self.assertEqual([len(self.operators(source, "arithmetic")) for source in sources], [0] * 6)
+
+    # GREEN_ON_BASE(characterization): raw-brace postfix results remain within arithmetic scope.
+    def test_Given_ARawInterpolationRunWithLiteralBraces_When_Postfixed_Then_ItIsArithmetic(self):
+        # Arrange -- literal braces around the hole do not hide the later member result.
+        sources = ('return value + $$"""{{{42}}""".Length;\n',
+                   'return value + $$"""{{42}}}""".Length;\n',
+                   'return value + $$"""{{{42}}}""".Length;\n',
+                   'return value + $$$"""{{{{42}}}""".Length;\n',
+                   'return value + $$$"""{{{42}}}}""".Length;\n',
+                   'return value + $$$"""{{{{42}}}}""".Length;\n')
+
+        # Act / Assert
+        self.assertEqual([len(self.operators(source, "arithmetic")) for source in sources], [1] * 6)
+
+    def test_Given_ANullForgivingString_When_Joined_Then_NoneIsOffered(self):
+        # Arrange -- null-forgiving preserves the string result on either side of the plus.
+        sources = ('return "x"! + value;\n',
+                   'return value + "x"!;\n',
+                   'return ($"x{value}")! + suffix;\n',
+                   'return prefix + ($"x{value}")!;\n')
+
+        # Act / Assert
+        self.assertEqual([len(self.operators(source, "arithmetic")) for source in sources],
+                         [0, 0, 0, 0])
+
+    def test_Given_ANullForgivingStringWithAMember_When_Joined_Then_ItRemainsArithmetic(self):
+        # Arrange -- member access after null-forgiving changes the result used by the plus.
+        sources = ('return value + "x"!.Length;\n',
+                   'return value + ($"x{value}")!.Length;\n',
+                   'return "x"!.Length + value;\n')
+
+        # Act / Assert
+        self.assertEqual([len(self.operators(source, "arithmetic")) for source in sources], [1, 1, 1])
+
     def test_Given_AForeverLoop_When_TheMutantsAreRead_Then_ItsTrueIsNotFlipped(self):
         # Arrange -- `while (false)` leaves a method with no returning path.
         # Act / Assert
@@ -2857,6 +3063,29 @@ class CampaignVerdictTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(len(keys), 2)
+
+    def test_Given_AnOlderOperatorModel_When_ItsArtifactsAreRead_Then_NeitherIsReused(self):
+        # Arrange -- the source, base and platform stay fixed while the generation rules change.
+        campaign = StubbedCampaign()
+        targets = {campaign.source: None}
+        old_digest = mutation_check.scope_digest(
+            "aaaaaaa", targets, campaign.project, "EditMode")
+        output = campaign.project / "out"
+        mutation_check.write_receipt(output, old_digest, "HEAD", "pass", "stub")
+        mutant = mutation_check.Mutant(campaign.source, 5, 0, "<=", "<", "boundary")
+        mutant.verdict = mutation_check.KILLED
+        mutation_check.write_verdict(output, 1, old_digest, mutant, campaign.project)
+
+        # Act
+        with mock.patch.object(mutation_check, "MUTATION_MODEL_VERSION", "next", create=True):
+            new_digest = mutation_check.scope_digest(
+                "aaaaaaa", targets, campaign.project, "EditMode")
+            reading = (mutation_check.read_receipt(output, new_digest),
+                       mutation_check.read_verdict(
+                           output, 1, new_digest, mutant, campaign.project))
+
+        # Assert
+        self.assertEqual((new_digest != old_digest, reading), (True, (None, None)))
 
 
 class UncompilableMutantTests(unittest.TestCase):
