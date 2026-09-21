@@ -1060,9 +1060,7 @@ namespace Velvet.CodeGen
             {
                 var instance = new GenericInstanceType(declaringType);
                 foreach (var parameter in declaringType.GenericParameters)
-                {
                     instance.GenericArguments.Add(parameter);
-                }
                 self = new MethodReference(method.Name, method.ReturnType, instance)
                 {
                     HasThis = method.HasThis,

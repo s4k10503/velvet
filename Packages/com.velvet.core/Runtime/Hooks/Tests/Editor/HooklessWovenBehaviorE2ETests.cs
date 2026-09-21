@@ -188,6 +188,13 @@ namespace Velvet.Tests
                 s_builds++;
                 return V.Label(name: "leaf", text: value.ToString());
             }
+
+            [Component]
+            internal static VNode GenericLeaf<U>(U value)
+            {
+                s_builds++;
+                return V.Label(name: "leaf", text: $"{typeof(T).Name}:{value}");
+            }
         }
 
         [Component]
@@ -321,6 +328,20 @@ namespace Velvet.Tests
         {
             // Arrange
             s_child = _ => V.Component<string>(GenericHolder<string>.Leaf, "a", key: "leaf");
+            using var mounted = MountHost();
+
+            // Act
+            ReRenderHost(mounted);
+
+            // Assert
+            Assert.That(s_builds, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_AGenericMethodOfAGenericClass_When_TheHostReRendersWithAnEqualValue_Then_TheBodyDoesNotRun()
+        {
+            // Arrange
+            s_child = _ => V.Component<string>(GenericHolder<int>.GenericLeaf<string>, "x", key: "leaf");
             using var mounted = MountHost();
 
             // Act
