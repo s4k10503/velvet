@@ -1346,6 +1346,7 @@ namespace Velvet
             }
             finally
             {
+                // MUTANT_SURVIVES(equivalent): the rented list is empty here, so omitting the return leaks nothing observable.
                 BufferPool.ReturnFiberList(emptyBoundaries);
             }
         }
@@ -1581,11 +1582,8 @@ namespace Velvet
                     destination.Add(_boundaryReproduced[i]);
                 }
             }
-            // MUTANT_SURVIVES(equivalent): the tail this drops is already answered for by the enclosing scope.
-            // No enclosing scope reports removals run over a span an inner one did not: an abort holds for the
-            // rest of the pass, a nested container is entered at budget 0 so only the top-level one can park,
-            // and a throw unwinds the enclosing container too. What it buys is a bounded list and no duplicate
-            // entries; measured, the full EditMode suite is green with it cut.
+            // MUTANT_SURVIVES(equivalent): _boundaryReproduced's tail is already folded into the enclosing scope's
+            // destination before this runs, so nothing later reads what RemoveRange drops here.
             _boundaryReproduced.RemoveRange(scope, _boundaryReproduced.Count - scope);
         }
 

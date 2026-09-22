@@ -1,7 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using NUnit.Framework;
+using UnityEngine;
+using UnityEngine.TestTools;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
 
@@ -36,6 +39,45 @@ namespace Velvet.Tests
         {
             _mounted?.Dispose();
             _mounted = null;
+            RuntimeStateProbe.ClearPortalRegistry();
+        }
+
+        private const string SuspenseRetargetId = "suspense-retarget-target";
+
+        private static int SuspenseFallbackEntriesForContainer(ReconcilerContext ctx, VisualElement container)
+        {
+            var map = (Dictionary<ComponentFiber,
+                    Dictionary<(VisualElement? Container, VisualElement? PortalScope, string Position), SuspenseNode>>)
+                typeof(ReconcilerContext)
+                    .GetField("_suspenseFallbackKeys", BindingFlags.Instance | BindingFlags.NonPublic)
+                    .GetValue(ctx);
+            var count = 0;
+            foreach (var entry in map.Values)
+            {
+                foreach (var key in entry.Keys)
+                {
+                    if (ReferenceEquals(key.Container, container)) count++;
+                }
+            }
+            return count;
+        }
+
+        private static (ComponentFiber Boundary, VisualElement? Container, VisualElement? PortalScope, string Position)
+            FirstBoundedFallbackKey(ReconcilerContext ctx)
+        {
+            var map = (Dictionary<ComponentFiber,
+                    Dictionary<(VisualElement? Container, VisualElement? PortalScope, string Position), SuspenseNode>>)
+                typeof(ReconcilerContext)
+                    .GetField("_suspenseFallbackKeys", BindingFlags.Instance | BindingFlags.NonPublic)
+                    .GetValue(ctx);
+            foreach (var boundary in map)
+            {
+                foreach (var key in boundary.Value.Keys)
+                {
+                    return (boundary.Key, key.Container, key.PortalScope, key.Position);
+                }
+            }
+            throw new InvalidOperationException("No bounded suspense fallback entry was recorded.");
         }
 
         [Component(Compiler = false)]
@@ -234,6 +276,38 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ABoundedSuspenseFallbackEntry_When_ClearSuspenseStateRuns_Then_TheTableIsEmpty()
+        {
+            // Arrange
+            _mounted = V.Mount(_root, V.Component(Host));
+            var context = _mounted.Root.Reconciler.Context;
+            var before = context.AnyBoundaryShowingFallback;
+
+            // Act
+            context.ClearSuspenseState();
+
+            // Assert
+            Assert.That((before, context.AnyBoundaryShowingFallback), Is.EqualTo((true, false)));
+        }
+
+        [Test]
+        public void Given_OneBoundaryWithFallbackInOneContainer_When_IsSuspenseFallbackShownQueriesAnotherContainerAtTheSameKey_Then_ItReturnsFalse()
+        {
+            // Arrange
+            _mounted = V.Mount(_root, V.Component(Host));
+            var context = _mounted.Root.Reconciler.Context;
+            var sample = FirstBoundedFallbackKey(context);
+            var ready = _root.Q<VisualElement>("ready");
+
+            // Act
+            var shownOnReady = context.IsSuspenseFallbackShown(
+                sample.Boundary, ready, sample.PortalScope, sample.Position);
+
+            // Assert
+            Assert.That((Texts("waiting"), shownOnReady), Is.EqualTo(("loading", false)));
+        }
+
+        [Test]
         public void Given_OneSuspendedAndOneReadyBoundary_When_TheHostReRenders_Then_TheReadyContainerStaysResolved()
         {
             // Arrange
@@ -409,6 +483,102 @@ namespace Velvet.Tests
             // Assert
             Assert.That((before, _root.Q<Label>()?.text, context.AnyBoundaryShowingFallback),
                 Is.EqualTo((true, "empty", false)));
+        }
+
+        [Test]
+        public void Given_ASuspenseThatWasRemovedAndRestored_When_ItSuspendsAgain_Then_ItsFallbackRenders()
+        {
+            // Arrange
+            _mounted = V.Mount(_root, V.Component(ConditionalHost));
+            var before = _root.Q<Label>()?.text;
+            s_setShow.Invoke(false);
+            _mounted.FlushStateForTest();
+            s_resource = new VelvetTaskCompletionSource<string>();
+
+            // Act
+            s_setShow.Invoke(true);
+            _mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That((before, _root.Q<Label>()?.text), Is.EqualTo(("loading", "loading")));
+        }
+
+        [Component(Compiler = false)]
+        private static VNode RegistryPortalSuspenseHost()
+            => V.Portal(SuspenseRetargetId, new VNode[] { WaitingBoundary() });
+
+        [Test]
+        public void Given_ASuspendedBoundaryInARetargetedRegistryPortal_When_TheIdNamesADifferentElement_Then_ItsPriorContainerFallbackEntryIsReleased()
+        {
+            // Arrange
+            var overlay = new VisualElement();
+            var other = new VisualElement();
+            FiberPortalRegistry.Register(SuspenseRetargetId, overlay);
+            _mounted = V.Mount(_root, V.Component(RegistryPortalSuspenseHost));
+            var context = _mounted.Root.Reconciler.Context;
+            var before = SuspenseFallbackEntriesForContainer(context, overlay);
+
+            // Act
+            s_resource = new VelvetTaskCompletionSource<string>();
+            LogAssert.Expect(LogType.Warning,
+                $"[FiberPortalRegistry] Id \"{SuspenseRetargetId}\" is already registered. Overwriting.");
+            FiberPortalRegistry.Register(SuspenseRetargetId, other);
+            _mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That((before, SuspenseFallbackEntriesForContainer(context, overlay)),
+                Is.EqualTo((1, 0)));
+        }
+
+        private static StateUpdater<int> s_setReadyTintCount;
+
+        [Component(Compiler = false)]
+        private static VNode ReadyTintCounter()
+        {
+            var tint = Hooks.UseContext(Tint);
+            var (count, setCount) = Hooks.UseState(0);
+            s_setReadyTintCount = setCount;
+            return V.Label(name: "ready-counter", text: tint + ":" + count);
+        }
+
+        [Component(Compiler = false)]
+        private static VNode OppositeBranchContextHost()
+            => V.Div(children: new VNode[]
+            {
+                V.Div(name: "waiting", children: new VNode[]
+                {
+                    V.Suspense(
+                        V.Provider(Tint, "waiting-fallback", new VNode[] { V.Component(FallbackCounter) }),
+                        new VNode[] { V.Component(Reader) }),
+                }),
+                V.Div(name: "ready", children: new VNode[]
+                {
+                    V.Suspense(
+                        V.Provider(Tint, "ignored", new VNode[] { V.Label(text: "loading") }),
+                        new VNode[]
+                        {
+                            V.Provider(Tint, "ready-primary", new VNode[] { V.Component(ReadyTintCounter) }),
+                        }),
+                }),
+            });
+
+        [Test]
+        public void Given_OppositeSuspenseBranchesInTwoContainers_When_TheReadyPrimaryConsumerUpdates_Then_ItKeepsItsPrimaryProvider()
+        {
+            // Arrange
+            _mounted = V.Mount(_root, V.Component(OppositeBranchContextHost));
+            var readyCounter = _root.Q<VisualElement>("ready").Q<Label>(name: "ready-counter");
+            var atMount = readyCounter?.text;
+            var waitingBefore = Texts("waiting");
+
+            // Act
+            s_setReadyTintCount.Invoke(1);
+            _mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(
+                (waitingBefore, atMount, readyCounter?.text),
+                Is.EqualTo(("waiting-fallback:0", "ready-primary:0", "ready-primary:1")));
         }
 
         private static StateUpdater<int> s_setAbortTick;
