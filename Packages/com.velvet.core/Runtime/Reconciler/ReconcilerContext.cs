@@ -1613,10 +1613,6 @@ namespace Velvet
                 else
                     PresenceStates.Remove((key.Boundary, key.Parent, key.Position));
             }
-            // MUTANT_SURVIVES(equivalent): this list is already empty here, so the clear removes nothing.
-            // BeginBoundaryReproductionScope and EndBoundaryReproductionScope are one call site each, paired
-            // across a finally, and the End truncates its own span unconditionally — so the outermost
-            // container leaves the list at the length it entered with, which at a top-level pass is zero.
             _boundaryReproduced.Clear();
             _boundaryRetirable.Clear();
             _boundaryReRendered.Clear();

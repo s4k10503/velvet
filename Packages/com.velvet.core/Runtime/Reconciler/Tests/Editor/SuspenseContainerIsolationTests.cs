@@ -68,6 +68,16 @@ namespace Velvet.Tests
                 }),
             });
 
+        private static StateUpdater<int> s_setHostTick;
+
+        [Component(Compiler = false)]
+        private static VNode StatefulHost()
+        {
+            var (_, setTick) = Hooks.UseState(0);
+            s_setHostTick = setTick;
+            return V.Component(Host);
+        }
+
         private string Texts(string name)
             => string.Join("|", _root.Q<VisualElement>(name).Query<Label>().ToList().Select(label => label.text));
 
@@ -171,6 +181,97 @@ namespace Velvet.Tests
             Assert.That((before, RootlessFallbackCount(scope.Reconciler)), Is.EqualTo((1, 0)));
         }
 
+        [Test]
+        public void Given_ARootlessSuspenseShowingFallback_When_TheResourceResolves_Then_ItsContainerStateIsReleased()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[]
+            {
+                V.Suspense(V.Label(text: "loading"), new VNode[] { V.Component(Reader) }),
+            };
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), tree);
+            var before = RootlessFallbackCount(scope.Reconciler);
+
+            // Act
+            s_resource.TrySetResult("loaded");
+            scope.Reconciler.Reconcile(scope.Root, tree, tree);
+
+            // Assert
+            Assert.That((before, RootlessFallbackCount(scope.Reconciler)), Is.EqualTo((1, 0)));
+        }
+
+        [Test]
+        public void Given_ABoundedSuspenseShowingFallback_When_TheTreeIsDisposed_Then_ItsBoundaryStateIsReleased()
+        {
+            // Arrange
+            _mounted = V.Mount(_root, V.Component(Host));
+            var reconciler = _mounted.Root.Reconciler;
+            var before = reconciler.Context.AnyBoundaryShowingFallback;
+
+            // Act
+            _mounted.Dispose();
+            _mounted = null;
+
+            // Assert
+            Assert.That((before, reconciler.Context.AnyBoundaryShowingFallback), Is.EqualTo((true, false)));
+        }
+
+        [Test]
+        public void Given_ASuspendedBoundary_When_TheResourceResolves_Then_AnyBoundaryShowingFallbackIsFalse()
+        {
+            // Arrange
+            _mounted = V.Mount(_root, V.Component(Host));
+            var context = _mounted.Root.Reconciler.Context;
+            Assume.That(context.AnyBoundaryShowingFallback, Is.True);
+
+            // Act
+            s_resource.TrySetResult("loaded");
+            _mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(context.AnyBoundaryShowingFallback, Is.False);
+        }
+
+        [Test]
+        public void Given_OneSuspendedAndOneReadyBoundary_When_TheHostReRenders_Then_TheReadyContainerStaysResolved()
+        {
+            // Arrange
+            _mounted = V.Mount(_root, V.Component(StatefulHost));
+            Assume.That((Texts("waiting"), Texts("ready")), Is.EqualTo(("loading", "ready")));
+
+            // Act
+            s_setHostTick.Invoke(1);
+            _mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That((Texts("waiting"), Texts("ready")), Is.EqualTo(("loading", "ready")));
+        }
+
+        [Component(Compiler = false)]
+        private static VNode ResolvedPrimaryContextHost()
+            => V.Suspense(
+                V.Provider(Tint, "fallback", new VNode[] { V.Label(text: "loading") }),
+                new VNode[]
+                {
+                    V.Provider(Tint, "primary", new VNode[] { V.Component(FallbackCounter) }),
+                });
+
+        [Test]
+        public void Given_AResolvedPrimarySubtree_When_ItsConsumerUpdates_Then_ThePrimaryProviderIsRestored()
+        {
+            // Arrange
+            _mounted = V.Mount(_root, V.Component(ResolvedPrimaryContextHost));
+            var before = _root.Q<Label>()?.text;
+
+            // Act
+            s_setFallbackCount.Invoke(1);
+            _mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That((before, _root.Q<Label>()?.text), Is.EqualTo(("primary:0", "primary:1")));
+        }
+
         private static VisualElement s_sharedTarget;
         private static StateUpdater<bool> s_setShow;
         private static StateUpdater<bool> s_setShowWaiting;
@@ -188,6 +289,45 @@ namespace Velvet.Tests
                     V.Suspense(V.Label(text: "unused"), new VNode[] { V.Label(text: "ready") }),
                 }),
             });
+
+        private static StateUpdater<bool> s_setShowWaitingPortal;
+
+        [Component(Compiler = false)]
+        private static VNode ConditionalPortalHost()
+        {
+            var (showWaitingPortal, setShowWaitingPortal) = Hooks.UseState(true);
+            s_setShowWaitingPortal = setShowWaitingPortal;
+            return V.Div(children: new VNode[]
+            {
+                showWaitingPortal
+                    ? V.Portal(s_sharedTarget, new VNode[] { WaitingBoundary() })
+                    : V.Label(text: "gone"),
+                V.Portal(s_sharedTarget, new VNode[]
+                {
+                    V.Suspense(V.Label(text: "unused"), new VNode[] { V.Label(text: "ready") }),
+                }),
+            });
+        }
+
+        [Test]
+        public void Given_ASuspendedBoundaryInARemovedPortal_When_TheHostUpdates_Then_ThatPortalsFallbackStateIsPruned()
+        {
+            // Arrange
+            s_sharedTarget = new VisualElement();
+            _mounted = V.Mount(_root, V.Component(ConditionalPortalHost));
+            var context = _mounted.Root.Reconciler.Context;
+            Assume.That(context.AnyBoundaryShowingFallback, Is.True);
+            var ready = string.Join("|", s_sharedTarget.Query<Label>().ToList().Select(label => label.text));
+
+            // Act
+            s_setShowWaitingPortal.Invoke(false);
+            _mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That((ready, context.AnyBoundaryShowingFallback,
+                    string.Join("|", s_sharedTarget.Query<Label>().ToList().Select(label => label.text))),
+                Is.EqualTo(("loading|ready", false, "ready")));
+        }
 
         [Test]
         public void Given_TwoPortalsSharingATarget_When_AnOffscreenCounterUpdates_Then_TheOtherPortalDoesNotClearItsFallback()
