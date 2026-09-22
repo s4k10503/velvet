@@ -14,6 +14,8 @@ namespace Velvet.Tests
     internal sealed class SuspenseContainerIsolationTests
     {
         private static VelvetTaskCompletionSource<string> s_resource;
+        private static VelvetTaskCompletionSource<string> s_portalResourceA;
+        private static VelvetTaskCompletionSource<string> s_portalResourceB;
         private static StateUpdater<int> s_setCount;
         private static ComponentFiber s_counterFiber;
         private static bool s_abortThrows;
@@ -26,6 +28,8 @@ namespace Velvet.Tests
         public void SetUp()
         {
             s_resource = new VelvetTaskCompletionSource<string>();
+            s_portalResourceA = new VelvetTaskCompletionSource<string>();
+            s_portalResourceB = new VelvetTaskCompletionSource<string>();
             s_setCount = default;
             s_counterFiber = null;
             s_abortThrows = false;
@@ -92,6 +96,14 @@ namespace Velvet.Tests
         [Component(Compiler = false)]
         private static VNode Reader()
             => V.Label(text: Hooks.Use(_ => s_resource.Task));
+
+        [Component(Compiler = false)]
+        private static VNode PortalAReader()
+            => V.Label(text: Hooks.Use(_ => s_portalResourceA.Task));
+
+        [Component(Compiler = false)]
+        private static VNode PortalBReader()
+            => V.Label(text: Hooks.Use(_ => s_portalResourceB.Task));
 
         [Component(Compiler = false)]
         private static VNode Host()
@@ -312,14 +324,18 @@ namespace Velvet.Tests
         {
             // Arrange
             _mounted = V.Mount(_root, V.Component(StatefulHost));
+            var context = _mounted.Root.Reconciler.Context;
             Assume.That((Texts("waiting"), Texts("ready")), Is.EqualTo(("loading", "ready")));
+            Assume.That(context.AnyBoundaryShowingFallback, Is.True);
 
             // Act
             s_setHostTick.Invoke(1);
             _mounted.FlushStateForTest();
 
             // Assert
-            Assert.That((Texts("waiting"), Texts("ready")), Is.EqualTo(("loading", "ready")));
+            Assert.That(
+                (Texts("waiting"), Texts("ready"), context.AnyBoundaryShowingFallback),
+                Is.EqualTo(("loading", "ready", true)));
         }
 
         [Component(Compiler = false)]
@@ -418,6 +434,57 @@ namespace Velvet.Tests
             // Assert
             Assert.That((before, string.Join("|", s_sharedTarget.Query<Label>().ToList().Select(label => label.text))),
                 Is.EqualTo(("loading|ready", "loading|ready")));
+        }
+
+        private static StateUpdater<int> s_setPortalAFallbackCount;
+        private static StateUpdater<int> s_setPortalBFallbackCount;
+
+        [Component(Compiler = false)]
+        private static VNode PortalAFallbackCounter()
+        {
+            var tint = Hooks.UseContext(Tint);
+            var (count, setCount) = Hooks.UseState(0);
+            s_setPortalAFallbackCount = setCount;
+            return V.Label(text: tint + ":" + count);
+        }
+
+        [Component(Compiler = false)]
+        private static VNode PortalBFallbackCounter()
+        {
+            var tint = Hooks.UseContext(Tint);
+            var (count, setCount) = Hooks.UseState(0);
+            s_setPortalBFallbackCount = setCount;
+            return V.Label(text: tint + ":" + count);
+        }
+
+        private static VNode PortalContextWaitingBoundary(string tint, Func<VNode> counter, Func<VNode> reader)
+            => V.Suspense(
+                V.Provider(Tint, tint, new VNode[] { V.Component(counter) }),
+                new VNode[] { V.Component(reader) });
+
+        [Component(Compiler = false)]
+        private static VNode DualPortalContextHost()
+            => V.Div(children: new VNode[]
+            {
+                V.Portal(s_sharedTarget, new VNode[] { PortalContextWaitingBoundary("portal-a", PortalAFallbackCounter, PortalAReader) }),
+                V.Portal(s_sharedTarget, new VNode[] { PortalContextWaitingBoundary("portal-b", PortalBFallbackCounter, PortalBReader) }),
+            });
+
+        [Test]
+        public void Given_TwoPortalsWithFallbackConsumers_When_OneFallbackUpdates_Then_TheOtherKeepsItsProvider()
+        {
+            // Arrange
+            s_sharedTarget = new VisualElement();
+            _mounted = V.Mount(_root, V.Component(DualPortalContextHost));
+            var before = string.Join("|", s_sharedTarget.Query<Label>().ToList().Select(label => label.text));
+
+            // Act
+            s_setPortalAFallbackCount.Invoke(1);
+            _mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That((before, string.Join("|", s_sharedTarget.Query<Label>().ToList().Select(label => label.text))),
+                Is.EqualTo(("portal-a:0|portal-b:0", "portal-a:1|portal-b:0")));
         }
 
         [Component(Compiler = false)]

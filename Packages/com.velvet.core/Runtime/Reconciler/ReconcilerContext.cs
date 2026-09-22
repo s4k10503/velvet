@@ -1315,6 +1315,7 @@ namespace Velvet
         {
             if (boundary == null)
             {
+                // MUTANT_SURVIVES(unreachable): rootless fallback retirement goes through SetSuspenseFallbackShown's shown=false arm instead.
                 _rootlessSuspenseFallbackKeys.Remove(position);
                 return;
             }
@@ -1611,9 +1612,6 @@ namespace Velvet
                 else
                     PresenceStates.Remove((key.Boundary, key.Parent, key.Position));
             }
-            // MUTANT_SURVIVES(equivalent): EndBoundaryReproductionScope already emptied the list before this clear runs.
-            // BeginBoundaryReproductionScope and EndBoundaryReproductionScope pair across a finally, and the End
-            // truncates its own span unconditionally — so the outermost container leaves the list at zero.
             _boundaryReproduced.Clear();
             _boundaryRetirable.Clear();
             _boundaryReRendered.Clear();
