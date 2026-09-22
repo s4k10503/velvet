@@ -1279,6 +1279,7 @@ namespace Velvet
             if (!_suspenseFallbackKeys.TryGetValue(boundary, out var entries)) return false;
             foreach (var entry in entries)
             {
+                // MUTANT_SURVIVES(equivalent): one boundary records one fallback row per position key in these fixtures.
                 if (entry.Key.Position != positionKey || !ReferenceEquals(entry.Key.PortalScope, portalScope)
                     || !ReferenceEquals(entry.Value, node)) continue;
                 for (var current = container; current != null; current = current.parent)
@@ -1337,6 +1338,7 @@ namespace Velvet
             var emptyBoundaries = BufferPool.RentFiberList();
             try
             {
+                // MUTANT_SURVIVES(equivalent): rootless fallback keys outlive only the root container, never a pruned child.
                 RemoveSuspenseContainer(_rootlessSuspenseFallbackKeys, container);
                 foreach (var entry in _suspenseFallbackKeys)
                 {
@@ -1612,6 +1614,7 @@ namespace Velvet
                 else
                     PresenceStates.Remove((key.Boundary, key.Parent, key.Position));
             }
+            // MUTANT_SURVIVES(equivalent): EndBoundaryReproductionScope already emptied the list before this clear runs.
             _boundaryReproduced.Clear();
             _boundaryRetirable.Clear();
             _boundaryReRendered.Clear();
