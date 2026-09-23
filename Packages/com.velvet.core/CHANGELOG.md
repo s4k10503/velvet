@@ -119,6 +119,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The Starter App remounts when its UIDocument root is replaced or reenabled, retaining the router's
   location while the host remains enabled. The previous host kept rendering into the departed root.
 
+- Suspense boundaries in separate containers or Portals no longer overwrite each other's pending
+  state. Offscreen updates retain the waiting boundary's fallback, and removing a boundary releases
+  its pending state even when its component and container remain mounted.
+
 - Recomputing `V.Memoized` no longer recycles properties or children still referenced by the current cache result.
 
 - A `V.VirtualList` whose `keySelector` returns null for one item renders that row instead of throwing
