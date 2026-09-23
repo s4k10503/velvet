@@ -1585,8 +1585,6 @@ namespace Velvet
                     destination.Add(_boundaryReproduced[i]);
                 }
             }
-            // MUTANT_SURVIVES(equivalent): _boundaryReproduced's tail is already folded into the enclosing scope's
-            // destination before this runs, so nothing later reads what RemoveRange drops here.
             _boundaryReproduced.RemoveRange(scope, _boundaryReproduced.Count - scope);
         }
 
@@ -1614,7 +1612,6 @@ namespace Velvet
                 else
                     PresenceStates.Remove((key.Boundary, key.Parent, key.Position));
             }
-            // MUTANT_SURVIVES(equivalent): EndBoundaryReproductionScope already emptied the list before this clear runs.
             _boundaryReproduced.Clear();
             _boundaryRetirable.Clear();
             _boundaryReRendered.Clear();
