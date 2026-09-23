@@ -1585,6 +1585,7 @@ namespace Velvet
                     destination.Add(_boundaryReproduced[i]);
                 }
             }
+            // MUTANT_SURVIVES(equivalent): RetireBoundaryStatesNotReRendered clears the list at pass end, so scope-local RemoveRange changes nothing observable here.
             _boundaryReproduced.RemoveRange(scope, _boundaryReproduced.Count - scope);
         }
 
@@ -1612,6 +1613,7 @@ namespace Velvet
                 else
                     PresenceStates.Remove((key.Boundary, key.Parent, key.Position));
             }
+            // MUTANT_SURVIVES(equivalent): EndBoundaryReproductionScope truncates each scope in a finally, so the list is already empty before this clear runs.
             _boundaryReproduced.Clear();
             _boundaryRetirable.Clear();
             _boundaryReRendered.Clear();
