@@ -38,18 +38,6 @@
     "timeout": 10.0
   },
   {
-    "event": "Stop",
-    "tools": [],
-    "script": "stop/unsettled_pr.py",
-    "timeout": 20.0
-  },
-  {
-    "event": "Stop",
-    "tools": [],
-    "script": "stop/open_backlog.py",
-    "timeout": 20.0
-  },
-  {
     "event": "PreToolUse",
     "tools": [
       "Bash"

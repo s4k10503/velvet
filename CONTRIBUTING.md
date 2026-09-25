@@ -597,6 +597,13 @@ path. The adapter reconstructs exact-context add/update/delete/move patches with
 files. Missing or ambiguous context is refused before editing; retry with more exact context.
 The shell guards retain their existing command-parser limits.
 
+Repository-wide backlog and pull-request state do not establish the scope or completion
+criteria of the current task. The clients therefore register neither `open_backlog.py` nor
+`unsettled_pr.py` on Stop. Assigned issues do not authorize starting another task, and passing
+PR checks do not authorize merging. Their scripts remain available for explicit diagnostics;
+completion is judged against the user's request. A future blocking Stop policy must identify
+work accepted by the current task and its agreed completion condition.
+
 Hook session identifiers are passed to the deferral reader, and non-Claude refusal messages
 contain the literal session identifier needed to write a deferral. No cross-session identifier
 is inferred when the event lacks one. Cursor stop refusals become follow-up messages and are
