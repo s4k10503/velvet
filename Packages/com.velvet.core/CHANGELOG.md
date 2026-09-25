@@ -119,7 +119,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   container, such as two keyed Providers, now mounts one instance per wrapper instead of rendering only the
   first; moving it from one wrapper to another remounts it, as in React. A component rendered by a keyed memo
   keeps its state when the memo moves among its keyed siblings, while one rendered by an unkeyed `V.Memoized`
-  is placed by that memo's slot, so reordering unkeyed memos remounts it.
+  is placed by that memo's slot: after a reorder, a keyed component there remounts and an unkeyed one takes
+  over the state of whatever held that slot.
 
 - Memoized components rebuild their compiled VNode cache when their props comparison detects a
   change, including a record struct float member changing from positive zero to negative zero.
