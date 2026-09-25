@@ -16,6 +16,11 @@ namespace Velvet.Tests
     /// <item>Two sibling containers of one declaring component, each holding the same component, mount two
     /// instances with their own state — whether the two occurrences are unkeyed or share one explicit
     /// <c>key:</c>, since a key separates siblings of one container rather than containers.</item>
+    /// <item>Within one container, the wrappers enclosing an explicitly keyed component are part of its
+    /// position, so one component key under a sibling Fragment and Provider, or under two keyed Providers,
+    /// mounts two instances.</item>
+    /// <item>A component boundary restarts that position, so a keyed child resolves identically during its
+    /// parent's outer-driven and isolated renders.</item>
     /// <item>Each instance's own updates reach the container it was written into, so neither container
     /// becomes output that no later render repairs.</item>
     /// <item>Reordering keyed containers moves each instance with its container, without remounting it.
@@ -68,6 +73,7 @@ namespace Velvet.Tests
         private static readonly List<StateUpdater<string>> s_marks = new();
         private static StateUpdater<bool> s_setSwapped;
         private static StateUpdater<int> s_setPhase;
+        private static StateUpdater<int> s_setScopedParentTick;
         private static StateUpdater<bool> s_setShown;
         private static readonly ComponentContext<string> Theme = ComponentContext<string>.Create("default");
         // A second context, so the two containers can hold Providers at one position while only one of
@@ -160,6 +166,106 @@ namespace Velvet.Tests
             // Assert — the mount-effect count is folded in so this reads two instances rather than one
             // instance whose single re-render happened to reach the first container.
             Assert.That((s_setups, TextIn(left), TextIn(right)), Is.EqualTo((2, "1", "0")));
+        }
+
+        [Component]
+        private static VNode SameComponentKeyAcrossWrapperScopesHost()
+            => V.Fragment(key: "outer", children: new VNode?[]
+            {
+                V.Fragment(key: "b", children: new VNode?[]
+                {
+                    V.Component(Counter, key: "child"),
+                }),
+                V.Provider(Theme, "inside", key: "b", children: new VNode?[]
+                {
+                    V.Component(Counter, key: "child"),
+                }),
+            });
+
+        [Test]
+        public void Given_SameKeyedComponentUnderSameKeyedFragmentAndProvider_When_FirstComponentUpdates_Then_BothKeepSeparateState()
+        {
+            // Arrange
+            var container = new VisualElement();
+            _mounted = V.Mount(container, V.Component(SameComponentKeyAcrossWrapperScopesHost, key: "host"));
+            _mounted.FlushEffectsForTest();
+            var buttons = container.Query<Button>(name: "inc").ToList();
+
+            // Act
+            buttons[0].SimulateClick();
+
+            // Assert
+            var outputs = string.Join(",", container.Query<Label>(name: "out").ToList().Select(label => label.text));
+            Assert.That((s_setups, buttons.Count, outputs), Is.EqualTo((2, 2, "1,0")));
+        }
+
+        [Component]
+        private static VNode SameComponentKeyAcrossRootProvidersHost()
+            => V.Fragment(children: new VNode?[]
+            {
+                V.Provider(Theme, "a", key: "a", children: new VNode?[]
+                {
+                    V.Component(Counter, key: "child"),
+                }),
+                V.Provider(Theme, "b", key: "b", children: new VNode?[]
+                {
+                    V.Component(Counter, key: "child"),
+                }),
+            });
+
+        [Test]
+        public void Given_SameKeyedComponentUnderDistinctRootKeyedProviders_When_FirstComponentUpdates_Then_BothKeepSeparateState()
+        {
+            // Arrange
+            var container = new VisualElement();
+            _mounted = V.Mount(container, V.Component(SameComponentKeyAcrossRootProvidersHost, key: "host"));
+            _mounted.FlushEffectsForTest();
+            var buttons = container.Query<Button>(name: "inc").ToList();
+
+            // Act
+            buttons[0].SimulateClick();
+
+            // Assert
+            var outputs = string.Join(",", container.Query<Label>(name: "out").ToList().Select(label => label.text));
+            Assert.That((s_setups, buttons.Count, outputs), Is.EqualTo((2, 2, "1,0")));
+        }
+
+        [Component]
+        private static VNode ScopedParent()
+        {
+            var (_, setTick) = Hooks.UseState(0);
+            s_setScopedParentTick = setTick;
+            return V.Component(Counter, key: "child");
+        }
+
+        [Component]
+        private static VNode ScopedParentHost()
+            => V.Fragment(key: "outer", children: new VNode?[]
+            {
+                V.Component(ScopedParent, key: "parent"),
+            });
+
+        // GREEN_ON_BASE(characterization): the base places an explicit child by its raw key from both walks.
+        // A registry position carrying wrapper structure has to spell the parent's walk and the child's
+        // isolated re-render alike to keep this passing.
+        [Test]
+        public void Given_KeyedParentUnderKeyedWrapperWithStatefulKeyedChild_When_ParentRerendersAlone_Then_ChildKeepsInstanceAndState()
+        {
+            // Arrange
+            var container = new VisualElement();
+            _mounted = V.Mount(container, V.Component(ScopedParentHost, key: "host"));
+            _mounted.FlushEffectsForTest();
+            container.Q<Button>("inc").SimulateClick();
+
+            // Act
+            s_setScopedParentTick.Invoke(1);
+            _mounted.FlushStateForTest();
+            _mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That(
+                (s_setups, s_cleanups, container.Q<Label>("out")?.text),
+                Is.EqualTo((1, 0, "1")));
         }
 
         [Component]
