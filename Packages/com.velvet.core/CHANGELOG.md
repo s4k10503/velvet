@@ -200,8 +200,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   render (UseState / UseReducer: 1 before, 2 now)`, or `Rendered fewer hooks than expected` — where it
   named no component. The call past the previous render's count throws from itself instead of after the
   body returns, so when that call is made inside a plain helper method, the helper is on the
-  exception's stack. The error the editor alone logs for the same mistake with `Hooks.UseEffect`,
-  `Hooks.UseCallback` and eight more hooks takes the same wording.
+  exception's stack.
 
 - A component mounted through `V.Component(body, props)` or `V.Memo` is named by its method, or by its
   `DisplayName`, in `ErrorInfo.ComponentStack`, in the hook-type error, in the StrictMode double-render
@@ -820,6 +819,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   portals guide states which containers a portal of either form may target.
 
 ### Changed
+
+- A render that calls `Hooks.UseEffect`, `Hooks.UseLayoutEffect`, `Hooks.UseInsertionEffect`,
+  `Hooks.UseCallback`, `Hooks.UseMemo`, `Hooks.UseRef`, `Hooks.UseMutableRef`,
+  `Hooks.UseImperativeHandle`, `Hooks.UseId`, `Hooks.UseDeferredValue`, `Hooks.UseOptimistic`,
+  `Hooks.UseMutation`, `Hooks.UseTransition` or `Hooks.UseBlocker` a different number of times from
+  the previous render now throws the hook-count `InvalidOperationException` `Hooks.UseState` throws, in
+  every build, and reaches an enclosing error boundary. It logged an error in the editor alone and
+  committed the render, or, for `Hooks.UseMemo`, `Hooks.UseRef`, `Hooks.UseMutableRef` and
+  `Hooks.UseTransition`, was not checked.
 
 - `LoaderMode.Await`, which is the default, awaits the loader. The route already on screen stays there,
   `Hooks.UseNavigation().State` reports `NavigationLifecycle.Loading`, and the location commits with the

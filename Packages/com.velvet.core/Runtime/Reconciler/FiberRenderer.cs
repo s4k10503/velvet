@@ -11,8 +11,9 @@ namespace Velvet
     // Public entry points: CreateRoot (V.Mount path), CreateChild (ComponentRegistry path),
     // Mount, Unmount, Dispose.
     // RenderAndReconcile orchestrates the per-render work-state machine but delegates the two phases:
-    // the render phase (body invocation, render-phase loop, hook-count validation) lives in
-    // FiberBeginWork, and the commit phase (host-tree application + inline-slot geometry) in FiberCommitWork.
+    // the render phase (body invocation, render-phase loop) lives in FiberBeginWork, with the hook-count
+    // check in HookCountSentinel, and the commit phase (host-tree application + inline-slot geometry) in
+    // FiberCommitWork.
     // Re-render-request intake and lane scheduling (the work-loop driver) live in FiberWorkLoop;
     // context value changes route through RequestRenderForContext here, and async resolves through
     // NotifyAsyncResourceCompleted.
@@ -346,9 +347,6 @@ namespace Velvet
             // is cleared on unmount and re-established on the next mount.
             // The ComponentRegistry path idempotently re-invokes SetExternalRef, so this is safe.
             fiber.ExternalRef = null;
-#if UNITY_EDITOR
-            fiber.ResetEditorHookCountBaselines();
-#endif
             fiber.HasCommittedHookCounts = false;
 
             // Scrub the detached-mount marker so a fiber re-mounted (pooled) for a normal position does not
@@ -425,7 +423,6 @@ namespace Velvet
             fiber.IsRendering = true;
             FiberAmbientStack.Push(fiber);
 #if UNITY_EDITOR
-            var renderSucceeded = false;
             // Body output committed by this render, captured for the post-commit double-invoke diagnostic pass.
             // Set only on the success path where the reconciler retained the tree, so the diagnostic never
             // runs against an aborted / discarded output.
@@ -467,10 +464,6 @@ namespace Velvet
 
                 HookCountSentinel.ValidateAndCommit(fiber);
 
-#if UNITY_EDITOR
-                FiberBeginWork.ValidateEditorHookCounts(fiber);
-                renderSucceeded = true;
-#endif
                 var newTree = FiberTreeReturn.NormalizeToArray(rendered);
                 oldTree = fiber.PreviousTree ?? Array.Empty<VNode>();
 
@@ -569,12 +562,6 @@ namespace Velvet
             }
             finally
             {
-#if UNITY_EDITOR
-                if (!renderSucceeded)
-                {
-                    fiber.ResetEditorHookCountBaselines();
-                }
-#endif
                 // Pop the spine Providers re-pushed for this isolated render, restoring the cursor.
                 // Runs after Render + Reconcile (descendants re-rendered during the expansion needed the
                 // spine as their base) and is a no-op for nested / root renders (default handle).
