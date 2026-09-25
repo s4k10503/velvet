@@ -88,6 +88,7 @@ namespace Velvet
             var fiber = Resolve(hookName);
             fiber.StateSlots ??= new List<HookStateSlot>();
             var index = fiber.Indices.StateHookIndex++;
+            HookCountSentinel.ThrowIfPastCommittedCount(fiber);
 
             if (index >= fiber.StateSlots.Count)
             {
@@ -154,6 +155,7 @@ namespace Velvet
             var fiber = Resolve("UseStore");
             fiber.StoreSlots ??= new List<HookStoreSlot>();
             var index = fiber.Indices.StoreHookIndex++;
+            HookCountSentinel.ThrowIfPastCommittedCount(fiber);
             var cmp = comparer ?? ObjectIsEqualityComparer<TSel>.Instance;
 
             // Cross-tier tearing guard: read the snapshot pinned for this store within the current batch
@@ -1493,6 +1495,7 @@ namespace Velvet
             var fiber = Resolve("UseReducer");
             fiber.StateSlots ??= new List<HookStateSlot>();
             var index = fiber.Indices.StateHookIndex++;
+            HookCountSentinel.ThrowIfPastCommittedCount(fiber);
 
             if (index >= fiber.StateSlots.Count)
             {
@@ -1507,6 +1510,7 @@ namespace Velvet
             var fiber = Resolve("UseReducer");
             fiber.StateSlots ??= new List<HookStateSlot>();
             var index = fiber.Indices.StateHookIndex++;
+            HookCountSentinel.ThrowIfPastCommittedCount(fiber);
 
             if (index >= fiber.StateSlots.Count)
             {
@@ -1591,6 +1595,7 @@ namespace Velvet
             var fiber = Resolve(hookName);
             var slots = fiber.AsyncSlots;
             var index = fiber.NextAsyncSlotIndex();
+            HookCountSentinel.ThrowIfPastCommittedCount(fiber);
             // Cache on the Fiber to avoid allocating a closure on every render.
             var onCompleted = fiber.AsyncResourceCompletedCallback ??= () =>
             {

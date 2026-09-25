@@ -574,8 +574,8 @@ namespace Velvet
 
         // Per-hook-kind counts from the previous render, compared against this render's counts to enforce a
         // stable hook count (rules of hooks). -1 means no prior render, so the check is skipped on mount (the
-        // dispose/recycle path resets these to -1). The *Runtime trio below is validated in player builds too;
-        // the editor-only set above it drives the editor-only stable-hook-count diagnostics.
+        // dispose/recycle path resets these to -1). They drive the editor-only stable-hook-count diagnostics;
+        // the kinds HookCountSentinel checks in player builds too read CommittedHookCounts below instead.
 #if UNITY_EDITOR
         internal int PrevHookCount = -1;
         internal int PrevLayoutEffectHookCount = -1;
@@ -605,9 +605,12 @@ namespace Velvet
             PrevMutationHookCount = -1;
         }
 #endif
-        internal int PrevStateHookCountRuntime = -1;
-        internal int PrevStoreHookCountRuntime = -1;
-        internal int PrevAsyncHookCountRuntime = -1;
+
+        // The cursors (and AsyncSlotCursor) as the last render whose body settled left them, which
+        // HookCountSentinel holds the next render to. Unmounting clears HasCommittedHookCounts, so a remount is not compared.
+        internal HookIndexTable CommittedHookCounts;
+        internal int CommittedAsyncSlotCount;
+        internal bool HasCommittedHookCounts;
 
         /// <summary>Cumulative count of successful renders. Used for debugging / profiling.</summary>
         public int RenderCount;
