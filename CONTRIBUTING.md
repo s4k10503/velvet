@@ -783,7 +783,7 @@ A fifth way is a guard nothing poses at all. The checks above each ask one dimen
 unreadable reading, a wiring, a base, a tree — and `merge_unproven_head.py` agreed with every one of
 them on `main` while exiting 1 on a `gh` that failed after answering, and reading a check list `gh`
 reported under a non-zero exit as no list at all. `scripts/hooks/test_hook_coverage.py` is the floor
-under that: every script under `refuse/`, `report/` and `stop/` has to be named in the **code** of a
+under that: every script under `refuse/` and `report/` has to be named in the **code** of a
 tracked test source, comments and docstrings taken out first, so that a summary naming a guard does
 not count as a case posing one. A guard whose subject is decided in a module of its own names that module's suite in a
 `DECISION_TESTS` tuple instead — `merge_onto_unpublished_release.py` does, the release state it
