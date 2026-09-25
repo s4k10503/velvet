@@ -1,6 +1,6 @@
+using System.Collections.Generic;
 using NUnit.Framework;
 using UnityEngine;
-using UnityEngine.TestTools;
 using Velvet.TestUtilities;
 
 namespace Velvet.Tests
@@ -12,8 +12,10 @@ namespace Velvet.Tests
     /// <item>Parsing different strings returns distinct array instances.</item>
     /// <item>A null or empty string returns the shared empty array.</item>
     /// <item>A cached array holds the space-split tokens of its key.</item>
-    /// <item>When the cache reaches its size bound the next distinct key logs a warning and clears the cache,
-    /// then caches the triggering key, so previously cached keys re-parse to fresh instances afterward.</item>
+    /// <item>A thousand-odd constant strings parsed on every pass keep their arrays.</item>
+    /// <item>A string parsed on every render keeps its array while a moving arbitrary value is parsed beside
+    /// it, and the moving value's earlier strings are released.</item>
+    /// <item>Parsing a moving value for thousands of renders logs nothing.</item>
     /// <item>Draining the cache makes an already-parsed string parse to a fresh array instance.</item>
     /// </list>
     /// Also specifies the contract of the <see cref="StyleClassNames"/> class-name builder
@@ -28,8 +30,8 @@ namespace Velvet.Tests
     /// </summary>
     /// <remarks>
     /// The cache is process-wide static, so <see cref="SetUp"/> drains it via
-    /// <see cref="ClassNameCacheTestAccess.ClearForTest"/> to keep other fixtures' entries from pushing past
-    /// the bound.
+    /// <see cref="ClassNameCacheTestAccess.ClearForTest"/>: another fixture's entries, and the generation
+    /// size its strings grew the cache to, would otherwise decide what these cases measure.
     /// </remarks>
     [TestFixture]
     internal sealed class ParseClassNamesCacheTests
@@ -116,41 +118,104 @@ namespace Velvet.Tests
         #region Cache bound
 
         [Test]
-        public void Given_CacheAtSizeBound_When_DistinctKeyParsed_Then_TriggeringKeyStillSplitsCorrectly()
+        public void Given_OverAThousandConstantClassStrings_When_ParsedOnEveryPass_Then_EachKeepsItsArray()
         {
-            // Arrange — fill the cache to its bound, one entry per Parse call
-            for (var i = 0; i < V.MaxClassNameCacheSize; i++)
+            // Arrange
+            const int count = 1024;
+            var classNames = new string[count];
+            for (var i = 0; i < count; i++)
             {
-                _ = V.ParseClassNames($"fill-class-{i}");
+                classNames[i] = $"grid-cell-{i} p-2";
             }
-            LogAssert.Expect(LogType.Warning,
-                new System.Text.RegularExpressions.Regex("ParseClassNames cache exceeded limit"));
+            var previousPass = new string[count][];
+            var lastPass = new string[count][];
+            for (var pass = 0; pass < 4; pass++)
+            {
+                for (var i = 0; i < count; i++)
+                {
+                    previousPass[i] = V.ParseClassNames(classNames[i]);
+                }
+            }
 
-            // Act — this distinct key overflows the cache
-            var triggering = V.ParseClassNames("overflow-trigger");
+            // Act
+            for (var i = 0; i < count; i++)
+            {
+                lastPass[i] = V.ParseClassNames(classNames[i]);
+            }
 
             // Assert
-            Assert.That(triggering, Is.EqualTo(new[] { "overflow-trigger" }));
+            var reParsed = 0;
+            for (var i = 0; i < count; i++)
+            {
+                if (!ReferenceEquals(previousPass[i], lastPass[i])) reParsed++;
+            }
+            Assert.That(reParsed, Is.Zero);
         }
 
         [Test]
-        public void Given_CacheAtSizeBound_When_DistinctKeyParsed_Then_PreviouslyCachedKeyReParsesFresh()
+        public void Given_AMovingArbitraryValue_When_AStableStringIsParsedEveryRender_Then_TheStableStringKeepsItsArray()
         {
-            // Arrange — fill the cache to its bound and capture an existing key's cached instance
-            for (var i = 0; i < V.MaxClassNameCacheSize; i++)
-            {
-                _ = V.ParseClassNames($"fill-class-{i}");
-            }
-            var firstBeforeOverflow = V.ParseClassNames("fill-class-0");
-            LogAssert.Expect(LogType.Warning,
-                new System.Text.RegularExpressions.Regex("ParseClassNames cache exceeded limit"));
+            // Arrange
+            var first = V.ParseClassNames("flex flex-row p-4");
 
-            // Act — overflow clears the cache, then re-parse the previously cached key
-            _ = V.ParseClassNames("overflow-trigger");
-            var firstAfterOverflow = V.ParseClassNames("fill-class-0");
+            // Act
+            for (var x = 0; x < 5000; x++)
+            {
+                _ = V.ParseClassNames($"absolute left-[{x}px] top-[4px]");
+                _ = V.ParseClassNames("flex flex-row p-4");
+            }
 
             // Assert
-            Assert.That(firstAfterOverflow, Is.Not.SameAs(firstBeforeOverflow));
+            Assert.That(V.ParseClassNames("flex flex-row p-4"), Is.SameAs(first));
+        }
+
+        // GREEN_ON_BASE(characterization): a moving value's old strings were released before this change too.
+        [Test]
+        public void Given_AMovingArbitraryValue_When_AThousandMoreValuesHavePassed_Then_AnEarlierValueIsReleased()
+        {
+            // Arrange
+            for (var x = 0; x < 4000; x++)
+            {
+                _ = V.ParseClassNames($"absolute left-[{x}px] top-[4px]");
+                _ = V.ParseClassNames("flex flex-row p-4");
+            }
+            var probe = V.ParseClassNames("absolute left-[4000px] top-[4px]");
+
+            // Act
+            for (var x = 4001; x <= 5000; x++)
+            {
+                _ = V.ParseClassNames($"absolute left-[{x}px] top-[4px]");
+                _ = V.ParseClassNames("flex flex-row p-4");
+            }
+
+            // Assert
+            Assert.That(V.ParseClassNames("absolute left-[4000px] top-[4px]"), Is.Not.SameAs(probe));
+        }
+
+        [Test]
+        public void Given_AMovingArbitraryValue_When_ParsedForThousandsOfRenders_Then_NothingIsLogged()
+        {
+            // Arrange
+            var logged = new List<string>();
+            void OnLog(string message, string stackTrace, LogType type) => logged.Add(message);
+            Application.logMessageReceived += OnLog;
+
+            // Act
+            try
+            {
+                for (var x = 0; x < 5000; x++)
+                {
+                    _ = V.ParseClassNames($"absolute left-[{x}px] top-[4px]");
+                    _ = V.ParseClassNames("flex flex-row p-4");
+                }
+            }
+            finally
+            {
+                Application.logMessageReceived -= OnLog;
+            }
+
+            // Assert
+            Assert.That(logged, Is.Empty);
         }
 
         #endregion
