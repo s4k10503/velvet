@@ -441,11 +441,13 @@ jobs:
           BASE: ${{ github.event.pull_request.base.sha }}
           MUTANTS: ${{ needs.mutation-plan.outputs.mutants }}
           SHARDS: ${{ needs.mutation-plan.outputs.shards }}
+        # safe.directory names the workspace alone: DocumentationDriftTests arranges checkouts elsewhere
+        # that git has to refuse, and a wider value lifts that refusal inside the suite.
         run: |
           docker run --rm --init --workdir /github/workspace \
             --volume "$GITHUB_WORKSPACE:/github/workspace" \
             --env UNITY_LICENSE --env UNITY_EMAIL --env UNITY_PASSWORD \
-            --env GIT_CONFIG_COUNT=1 --env GIT_CONFIG_KEY_0=safe.directory --env GIT_CONFIG_VALUE_0='*' \
+            --env GIT_CONFIG_COUNT=1 --env GIT_CONFIG_KEY_0=safe.directory --env GIT_CONFIG_VALUE_0=/github/workspace \
             --env PYTHONDONTWRITEBYTECODE=1 \
             unityci/editor:ubuntu-6000.3.23f1-linux-il2cpp-3 \
             python3 -u scripts/test_quality/ci_mutation_shard.py -- \

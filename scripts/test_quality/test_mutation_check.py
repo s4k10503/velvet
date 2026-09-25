@@ -14,6 +14,7 @@ to ask what the tree holds at a moment the campaign is inside.
 Run: python3 scripts/test_quality/test_mutation_check.py
 """
 
+import argparse
 import contextlib
 import importlib.util
 import io
@@ -3736,8 +3737,10 @@ class ParityKilledCampaign(StubbedCampaign):
 
 
 def decision(printed):
-    """What a run decided: everything from its survivor list on, less the line naming its log directory."""
-    tail = printed[printed.index("--- mutants no test killed ---"):]
+    """What a run decided: everything from its survivor list on, less the line naming its log directory.
+    A run that decided nothing yields everything it printed, so the comparison fails rather than raises."""
+    start = printed.find("--- mutants no test killed ---")
+    tail = printed[max(start, 0):]
     return "\n".join(line for line in tail.splitlines() if not line.startswith(("logs:", "receipt:")))
 
 
@@ -3811,6 +3814,28 @@ class ShardedCampaignTests(unittest.TestCase):
         self.assertEqual(code, 0)
 
 
+class EditorArgumentTests(unittest.TestCase):
+    def test_Given_AnEditorArgument_When_TheCampaignRuns_Then_ItReachesTheLaunchAndNotTheVerdictsKey(self):
+        # Arrange
+        campaign = ParityKilledCampaign()
+        launched = []
+        stub = campaign.run_suite
+
+        def recording(unity, project, platform, scope, *rest):
+            launched.append(list(scope))
+            return stub(unity, project, platform, scope, *rest)
+
+        campaign.run_suite = recording
+
+        # Act
+        campaign.run_over_diff("--editor-arg=-debugCodeOptimization")
+
+        # Assert
+        record = campaign.project / "out" / "mutant-001.json"
+        keyed = json.loads(record.read_text())["scope"] if record.exists() else None
+        self.assertEqual((launched[:1], keyed), ([["-debugCodeOptimization"]], []))
+
+
 class CampaignPlanTests(unittest.TestCase):
     def test_Given_ADiffWithMutants_When_Planned_Then_ItNamesTheirCountAndTheShards(self):
         # Arrange
@@ -3849,7 +3874,7 @@ class CampaignPlanTests(unittest.TestCase):
 
     def test_Given_AShardOutsideItsCount_When_Parsed_Then_ItIsRefused(self):
         # Act / Assert
-        with self.assertRaises(Exception):
+        with self.assertRaises(argparse.ArgumentTypeError):
             mutation_check.parse_shard("2/2")
 
 

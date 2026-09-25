@@ -33,6 +33,10 @@ FIRST_BACKOFF = 15
 # never exits holds the job to its own timeout with nothing measured.
 LICENCE_TIMEOUT = 600
 
+# What game-ci's run_tests.sh passes to every launch of the unity-tests jobs besides coverage, and the
+# campaign's baseline has to be the suite those jobs run.
+EDITOR_ARGS = ["--editor-arg=-debugCodeOptimization"]
+
 
 def serial_from_license(license_text):
     """The serial a `.ulf` carries, which is what an activation is asked with.
@@ -144,7 +148,8 @@ def main(argv, environ=os.environ, run=subprocess.call, sleep=time.sleep,
                 return 1
             try:
                 say("running the campaign")
-                return launch([sys.executable, "-u", str(CAMPAIGN), *passthrough, "--unity", UNITY])
+                return launch([sys.executable, "-u", str(CAMPAIGN), *passthrough, "--unity", UNITY,
+                               *EDITOR_ARGS])
             finally:
                 say("returning the licence")
                 bounded(launch, licence_command(UNITY, blank, "-returnlicense", "-username", email,

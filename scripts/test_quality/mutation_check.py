@@ -1967,7 +1967,9 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
     # the baseline's editor outliving a killed campaign holds the project lock against the next one.
     holder.guard()
     baseline_results = output / "baseline.xml"
-    baseline_wall, baseline_timed_out, _ = run_suite(args.unity, project, args.platform, scope,
+    # The launch carries the editor arguments as well; `scope` alone is what a verdict is keyed on.
+    launched = scope + args.editor_arg
+    baseline_wall, baseline_timed_out, _ = run_suite(args.unity, project, args.platform, launched,
                                                   baseline_results, output / "baseline.log",
                                                   args.timeout, holder)
     if baseline_timed_out:
@@ -2020,7 +2022,7 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
             mutated = apply_mutation(originals[mutant.path], mutant)
             holder.hold(mutant.path, originals[mutant.path], mutated, mutant.describe(project))
             mutant.path.write_text(mutated)
-            wall, timed_out, neighbours = run_suite(args.unity, project, args.platform, scope, results, log,
+            wall, timed_out, neighbours = run_suite(args.unity, project, args.platform, launched, results, log,
                                         args.timeout, holder)
             if holder.release() is None:
                 # The record is still there naming a file still mutated. Going on would apply the
@@ -2132,6 +2134,9 @@ def main():
                         help="seconds to wait for another Unity run to finish (default: 1800)")
     parser.add_argument("--output", default="", help="directory for the per-mutant logs and XML")
     parser.add_argument("--unity", default=DEFAULT_UNITY, help="editor binary (default: the pinned macOS one)")
+    parser.add_argument("--editor-arg", action="append", default=[], metavar="ARG",
+                        help="an argument added to every editor launch, spelt --editor-arg=-flag; "
+                             "repeatable")
     parser.add_argument("--restore", action="store_true",
                         help="put back the mutation an interrupted campaign left, and stop")
     parser.add_argument("--carried", nargs="*",

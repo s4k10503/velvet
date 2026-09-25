@@ -129,7 +129,7 @@ class LicenceTests(unittest.TestCase):
         campaign = next(command for command in recorder.commands
                         if any(str(part).endswith("mutation_check.py") for part in command))
         self.assertEqual(campaign[3:], ["--base", "abc", "--shard", "0/2", "--unity",
-                                        ci_mutation_shard.UNITY])
+                                        ci_mutation_shard.UNITY, *ci_mutation_shard.EDITOR_ARGS])
 
 
 if __name__ == "__main__":
