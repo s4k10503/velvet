@@ -56,8 +56,8 @@ namespace Velvet.Tests
                 MutationFn: (value, _) => VelvetTask.FromResult(value))),
         };
 
-        // Hooks whose extra call would start something observable if it went on to append its slot: each
-        // counts in s_slotStarts what only a new slot runs.
+        // Each counts in s_slotStarts every call of its lazy initializer, reducer init, store selector or Use
+        // factory, which the refused call past the count makes only if it goes on to its slot.
         private static readonly Dictionary<string, Action> s_countingSheetHooks = new()
         {
             ["UseState"] = () => Hooks.UseState(() => ++s_slotStarts),
