@@ -150,7 +150,8 @@ namespace Velvet
                             WalksCommittedTree = false,
                         };
                         PushEnclosingProviders(
-                            detached.DescendantNodes, FiberKeying.WalkRoot, in detachedWalk);
+                            detached.DescendantNodes, FiberKeying.WalkRoot, in detachedWalk,
+                            detached.RootProviderChildrenStartAtWalkRoot);
                     }
                     continue;
                 }
@@ -213,11 +214,14 @@ namespace Velvet
         private static bool PushEnclosingProviders(
             VNode?[] nodes,
             WalkPosition position,
-            in SpineWalk walk)
+            in SpineWalk walk,
+            bool rootProviderChildrenStartAtWalkRoot = false)
         {
             for (var nodeIndex = 0; nodeIndex < nodes.Length; nodeIndex++)
             {
-                if (PushEnclosingProvidersForNode(nodes[nodeIndex], nodeIndex, position, in walk))
+                if (PushEnclosingProvidersForNode(
+                        nodes[nodeIndex], nodeIndex, position, in walk,
+                        rootProviderChildrenStartAtWalkRoot))
                 {
                     return true;
                 }
@@ -232,7 +236,8 @@ namespace Velvet
             VNode? node,
             int nodeIndex,
             WalkPosition position,
-            in SpineWalk walk)
+            in SpineWalk walk,
+            bool rootProviderChildrenStartAtWalkRoot)
         {
             switch (node)
             {
@@ -247,7 +252,9 @@ namespace Velvet
                 }
 
                 case ContextProviderNode provider:
-                    return PushProviderSubtree(provider, nodeIndex, position, in walk);
+                    return PushProviderSubtree(
+                        provider, nodeIndex, position, in walk,
+                        rootProviderChildrenStartAtWalkRoot);
 
                 case ComponentNode component when walk.IsInlineSpineChild:
                     return MatchesInlineSpineChild(component, position, nodeIndex, in walk);
@@ -289,13 +296,16 @@ namespace Velvet
             ContextProviderNode provider,
             int nodeIndex,
             WalkPosition position,
-            in SpineWalk walk)
+            in SpineWalk walk,
+            bool childrenStartAtWalkRoot)
         {
             provider.PushContext(walk.Stack);
             walk.Pushed.Add(provider);
             if (provider.Children != null)
             {
-                var providerPosition = FiberKeying.ProviderChild(position, provider.Key, nodeIndex);
+                var providerPosition = childrenStartAtWalkRoot
+                    ? FiberKeying.WalkRoot
+                    : FiberKeying.ProviderChild(position, provider.Key, nodeIndex);
                 if (PushEnclosingProviders(provider.Children, providerPosition, in walk))
                 {
                     return true;
@@ -326,8 +336,10 @@ namespace Velvet
             }
             var registry = walk.Registry;
             var identity = component.ResolvedIdentity;
-            var slotKey = component.Key ?? FiberKeying.ResolveInlinePositionKey(
-                position, nodeIndex, registry.InlinePositionKeyBoxes);
+            var slotKey = FiberKeying.ResolveInlineRegistryPositionKey(
+                position, component.Key, nodeIndex,
+                registry.InlinePositionKeyBoxes,
+                registry.InlineExplicitPositionKeyBoxes);
             var resolved = registry.TryGetFiberForInlineKey(
                 walk.Ancestor, slotKey, identity, walk.PortalScope, walk.Container);
             return ReferenceEquals(resolved, walk.SpineChild);
@@ -339,7 +351,7 @@ namespace Velvet
             WalkPosition position,
             in SpineWalk walk)
         {
-            var innerPosition = FiberKeying.MemoInner(position, nodeIndex);
+            var innerPosition = FiberKeying.MemoInner(position, memo.Key, nodeIndex);
             // A memo this walk has to find encloses the spine child at the spine child's own level, so it was
             // written with Ancestor current and under the spine child's PortalScope. One position can hold an
             // entry for each of several containers, and nothing here says which container this is.
