@@ -106,7 +106,6 @@ namespace Velvet
             EmitShearedRoundedRectPath(new PolylineSink(points, bezierSamples), in box);
         }
 
-        // Shared with the shadow bake so both layers round the same face.
         internal static float MaxRadius(float width, float height) => Mathf.Min(width, height) * 0.5f;
 
         // Emits the rounded-rect outline (inset on all sides) into a sink, shearing every point — a shear is

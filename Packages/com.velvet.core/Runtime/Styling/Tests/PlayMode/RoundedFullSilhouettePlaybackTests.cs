@@ -10,23 +10,15 @@ using static Velvet.TestUtilities.PlayModeRealtimeTestHelpers;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Pins, by real GPU pixel readback, the silhouette <c>rounded-full</c> paints on a box that is not
-    /// square, and the shadow that rounding leaves behind it.
+    /// Pins, by real GPU pixel readback, what <c>rounded-full</c> paints where UI Toolkit paints the face, and
+    /// that a shadow behind it keeps its halo.
     /// </summary>
     /// <remarks>
-    /// <c>--radius-full</c> is deliberately oversized, so what reaches the screen is decided by
-    /// whatever the renderer does with a radius it cannot honour. UI Toolkit's answer and CSS's part company
-    /// on a non-square box — a pill button, a badge, a search field. A comment in
-    /// <c>_tokens.uss</c> asserted the CSS outcome with nothing measuring it; these cases are what a future
-    /// reader gets instead of that sentence. The token's magnitude is free to change as long as it stays
-    /// saturating: these cases mount <c>rounded-full</c> rather than a literal.
-    /// <para>
-    /// Each case carries a control arrangement rendered through the same instrument — a square-cornered box
-    /// for the silhouette, a shadow-free box for the halo — because a panel that renders nothing, and a class
-    /// the panel resolves nowhere, both read as the outcome under test. <see cref="VelvetStyleUtilities"/> is
-    /// attached for that second reason: <c>rounded-full</c> is a plain USS rule and is inert without the
-    /// sheet, which would leave the box wearing it square-cornered and read as the control's own count.
-    /// </para>
+    /// <c>--radius-full</c> is larger than the boxes these cases mount, so each layer that reads it decides for
+    /// itself what a radius the box cannot carry becomes. <c>Documentation~/styling-variants.md</c> states the
+    /// deviation the first case pins. <see cref="VelvetStyleUtilities"/> is attached because
+    /// <c>rounded-full</c> is a plain USS rule: without the sheet the box stays square-cornered and each case
+    /// reads its control's outcome.
     /// </remarks>
     [Timeout(600000)]
     internal sealed class RoundedFullSilhouettePlaybackTests
@@ -34,9 +26,10 @@ namespace Velvet.Tests
         private const int Width = 360;
         private const int Height = 80;
 
-        // Wider than it is tall by roughly ten to one, which is what separates the two roundings: on a square
-        // box they agree.
-        private const string BoxGeometry = "w-[330px] h-[34px] mt-[20px] ml-[15px]";
+        // Wider than it is tall by roughly ten to one: on a square box a 50% radius and a pill agree.
+        private const string WideGeometry = "w-[330px] h-[34px] mt-[20px] ml-[15px]";
+
+        private const string CasterGeometry = "w-[160px] h-[40px] mt-[20px] ml-[40px] bg-[#ffffff]";
 
         private RenderTexturePanelHost _host;
         private MountedTree _mounted;
@@ -120,25 +113,25 @@ namespace Velvet.Tests
             _host = new RenderTexturePanelHost(name, Width, Height);
             VelvetStyleUtilities.AttachTo(_host.Root);
             _mounted = V.Mount(_host.Root, V.Div(name: "box", className: className));
-            configure?.Invoke(_host.Root.Q<VisualElement>("box"));
+            configure?.Invoke(Box);
             return WaitRealtimeDraining(0.8, _host.TargetTexture);
         }
 
         private VisualElement Box => _host.Root.Q<VisualElement>("box");
 
-        // GREEN_ON_BASE(characterization): the base paints both of these silhouettes the same way.
-        // This branch does not change the renderer-owned path, so the case pins the fact a comment in
-        // _tokens.uss asserted the opposite of.
+        // GREEN_ON_BASE(characterization): UI Toolkit paints this face and this change leaves it alone.
+        // The case holds the deviation styling-variants.md states, so a change that makes rounded-full
+        // a pill here reddens it and the guide has to move with it.
         [UnityTest]
-        public IEnumerator Given_ARoundedFullBox_When_Painted_Then_ItsBluePixelMaskMatchesAPerAxisHalfPercentRadius()
+        public IEnumerator Given_AWideRoundedFullBox_When_UIToolkitPaintsTheFace_Then_ItsBluePixelMaskMatchesAHalfPercentRadius()
         {
-            // Arrange — the same box three ways: the token, an explicit 50% on all four corners, and square
-            // corners. Comparing the whole thresholded frame distinguishes masks that happen to contain the
-            // same number of blue pixels but put them in different places.
-            yield return MountBox("Full", $"{BoxGeometry} bg-[#0000ff] rounded-full");
-            var full = CaptureBlueMask();
+            // Arrange — square corners, the control: it is the only term that says the box rendered at all
+            // and that the rounding removed anything. Comparing whole thresholded frames distinguishes masks
+            // that hold the same number of blue pixels in different places.
+            yield return MountBox("Square", $"{WideGeometry} bg-[#0000ff]");
+            var square = CaptureBlueMask();
 
-            yield return MountBox("HalfPercent", $"{BoxGeometry} bg-[#0000ff]", box =>
+            yield return MountBox("HalfPercent", $"{WideGeometry} bg-[#0000ff]", box =>
             {
                 box.style.borderTopLeftRadius = new StyleLength(Length.Percent(50));
                 box.style.borderTopRightRadius = new StyleLength(Length.Percent(50));
@@ -147,85 +140,37 @@ namespace Velvet.Tests
             });
             var halfPercent = CaptureBlueMask();
 
-            // Act — square corners, the control: it is the only term here that says the boxes rendered at all
-            // and that the rounding removed anything.
-            yield return MountBox("Square", $"{BoxGeometry} bg-[#0000ff]");
-            var square = CaptureBlueMask();
+            // Act
+            yield return MountBox("Full", $"{WideGeometry} bg-[#0000ff] rounded-full");
+            var full = CaptureBlueMask();
 
             // Assert
             Assert.That((MasksEqual(full, halfPercent), CountSet(square) > CountSet(full)),
                 Is.EqualTo((true, true)));
         }
 
-        // GREEN_ON_BASE(characterization): the base leaves this strip of the top edge unpainted too.
-        // The branch moves the shadow's copy of the radius and nothing on the path that paints the box, so
-        // the outcome here is the base's.
         [UnityTest]
-        public IEnumerator Given_ARoundedFullBox_When_Painted_Then_ItsTopEdgeCarriesNoFlatRun()
+        public IEnumerator Given_ARoundedFullBoxWearingAShadow_When_Painted_Then_ItsHaloReachesTheScreen()
         {
-            // Arrange — a strip on the top edge, four fifths of the way along, two rows deep. A pill's flat run
-            // covers it; a full ellipse's boundary has already fallen below it there. Both the
-            // column span and the rows come off the measured box, so a layout that did not land reads as a
-            // failure rather than as the verdict.
-            yield return MountBox("FullEdge", $"{BoxGeometry} bg-[#0000ff] rounded-full");
-            var fullBox = Box.worldBound;
-            var fullStrip = CountStrip(fullBox);
-
-            // Act — square corners through the same strip: the control that says the strip is inside the box
-            // and that the instrument reads paint there.
-            yield return MountBox("SquareEdge", $"{BoxGeometry} bg-[#0000ff]");
-            var squareStrip = CountStrip(Box.worldBound);
-
-            // Assert
-            Assert.That((fullStrip, squareStrip > 0), Is.EqualTo((0, true)));
-        }
-
-        private int CountStrip(Rect box)
-        {
-            var pixels = ReadFrame();
-            var left = Mathf.RoundToInt(box.xMin + (box.width * 0.8f));
-            var top = Mathf.RoundToInt(box.yMin);
-            var n = 0;
-            for (var row = top; row < top + 2; row++)
-            {
-                for (var col = left; col < left + 8; col++)
-                {
-                    if (IsBlue(At(pixels, col, row)))
-                    {
-                        n++;
-                    }
-                }
-            }
-            return n;
-        }
-
-        [UnityTest]
-        public IEnumerator Given_ARoundedFullBoxWearingAShadow_When_LaidOut_Then_ItsHaloStillReachesTheScreen()
-        {
-            // Arrange — the shadow reads the laid-out corner radius back off the element, and the caster's own
-            // face is repainted rounded by the shared face kernel. A radius the box cannot carry has to round
-            // the same way in both or the halo and the face disagree; a background reading through a
-            // shadow-free mount is what says how much red is there with no shadow at all.
-            yield return MountBox("NoShadow", "w-[160px] h-[40px] mt-[20px] ml-[40px] bg-[#ffffff] rounded-full");
+            // Arrange — a shadow-free mount says how much red sits beside the box with no shadow at all, and
+            // the same shadow behind a radius the box can carry says the shadow layer paints on this panel.
+            yield return MountBox("NoShadow", $"{CasterGeometry} rounded-full");
             var bare = HaloRed(Box.worldBound);
 
-            yield return MountBox("ShadowFull",
-                "w-[160px] h-[40px] mt-[20px] ml-[40px] bg-[#ffffff] rounded-full shadow-[0px_0px_24px_#ff0000]");
+            yield return MountBox("ShadowLg", $"{CasterGeometry} rounded-lg shadow-[0px_0px_24px_#ff0000]");
+            var lg = HaloRed(Box.worldBound);
+
+            // Act
+            yield return MountBox("ShadowFull", $"{CasterGeometry} rounded-full shadow-[0px_0px_24px_#ff0000]");
             var radiusExceededTheBox = Box.resolvedStyle.borderTopLeftRadius > Box.layout.height;
             var full = HaloRed(Box.worldBound);
-
-            // Act — the same shadow behind a radius the box can carry, which is what says the shadow layer
-            // paints anything at all on this panel.
-            yield return MountBox("ShadowLg",
-                "w-[160px] h-[40px] mt-[20px] ml-[40px] bg-[#ffffff] rounded-lg shadow-[0px_0px_24px_#ff0000]");
-            var lg = HaloRed(Box.worldBound);
 
             // Assert
             Assert.That((radiusExceededTheBox, full > bare, lg > bare), Is.EqualTo((true, true, true)));
         }
 
         // Mean red of a strip just outside the caster's LEFT edge at its vertical centre, where only the
-        // shadow paints and where both roundings put the silhouette boundary in the same place.
+        // shadow paints and where a pill's boundary and an 8px-rounded box's lie within a pixel of the edge.
         private float HaloRed(Rect box)
         {
             var pixels = ReadFrame();

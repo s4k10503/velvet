@@ -316,6 +316,14 @@ the shear would carry it. Four things follow that a CSS `skewX()` does not do.
 `rotate-*` and `scale-*` are real USS transforms and do honour it. Velvet therefore exposes the painted
 approximation described here rather than a true shear transform.
 
+**Where `rounded-full` deviates from CSS.** CSS scales radii that overlap until they fit, so
+`rounded-full` is a pill. Where UI Toolkit paints the face, `rounded-full` on a 330 × 34 box paints
+the same silhouette as a `50%` radius on every corner — an ellipse spanning the box. Where Velvet paints
+it — the fill and border under `skew-*` or on the caster of a `shadow-*` / `drop-shadow-*`, and a
+`border-dashed` / `border-dotted` stroke — each corner is clamped to half the box's shorter side, which
+gives the pill, and a shadow's silhouette takes the same clamp. For a pill UI Toolkit paints, name the
+radius: `rounded-[17px]` on a 34 px-tall box.
+
 **Where the other wrapper-less paints deviate from CSS under a hidden overflow.** UI Toolkit applies an
 element's own overflow clip to the element's own painted content, and cuts it at the **padding** box.
 CSS clips neither a box-shadow nor a border that way, so a painted utility silently loses whatever falls
@@ -413,18 +421,6 @@ an element that declares none, mount is what neither reaches — one that must c
 transform on its first frame declares it itself, or declares a variant of its own, the same escape
 the paints take. The paints reach a `V.Text` child at no render at all: they run behind a verdict
 only an element's own class pass records.
-
-**Where `rounded-full` deviates from CSS.** `--radius-full` is deliberately oversized, so
-what reaches the screen is decided by how the renderer resolves a radius the box cannot carry. CSS scales
-the corners together and produces a pill. In Unity 6.3 pixel readback on a 330 × 34 field, the saturating
-pixel radius and an explicit 50% radius produced the same blue-pixel mask, with no flat run in the sampled
-top-edge strip. For a pill on a box that is not square, name the radius: `rounded-[17px]` on a 34 px-tall
-field.
-
-Velvet's own face painting does not follow the renderer here. The layers that take over an element's face
-— `skew-*`, and `shadow-*` / `drop-shadow-*` on an upright caster — clamp a corner to half the box's
-shorter side, producing the CSS pill. On the measured 330 × 34 field, the renderer-owned face therefore has
-the same blue-pixel mask as explicit 50% radii, while a Velvet-painted face uses the clamped pill radius.
 
 ## Container queries — `@container`
 

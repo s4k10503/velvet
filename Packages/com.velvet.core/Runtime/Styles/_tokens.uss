@@ -107,8 +107,9 @@
     --radius-xl: 12px;
     --radius-2xl: 16px;
     --radius-3xl: 24px;
-    /* Not the CSS silhouette on a box that is not square. RoundedFullSilhouettePlaybackTests pins what
-       this paints and Documentation~/styling-variants.md states the deviation. */
+    /* Where UI Toolkit paints the face, not the CSS pill on a box that is not square:
+       RoundedFullSilhouettePlaybackTests pins what it paints there, and
+       Documentation~/styling-variants.md states the deviation. */
     --radius-full: 9999px;
 
     /* === Transition === */
