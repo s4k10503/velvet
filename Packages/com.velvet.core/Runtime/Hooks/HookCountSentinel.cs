@@ -8,13 +8,33 @@ namespace Velvet
     // finishRenderingHooks does. A mount (no committed render yet) is not compared.
     internal static class HookCountSentinel
     {
-        private static readonly string[] s_kindNames = { "UseState / UseReducer", "UseStore", "Use" };
+        // MemoHookIndex is left out: it counts the woven auto-memo gate, which TryGetMemoizedVNode grants
+        // at most once per render, not a hook the component's author calls.
+        private static readonly string[] s_kindNames =
+        {
+            "UseCallback", "UseBlocker", "UseLayoutEffect", "UseInsertionEffect", "UseEffect",
+            "UseState / UseReducer", "UseStore", "UseImperativeHandle", "UseRef / UseMutableRef", "UseMemo",
+            "UseId", "UseDeferredValue", "UseOptimistic", "UseMutation", "UseTransition", "Use",
+        };
 
         private static int CountOf(in HookIndexTable cursors, int asyncCount, int kind) => kind switch
         {
-            0 => cursors.StateHookIndex,
-            1 => cursors.StoreHookIndex,
-            2 => asyncCount,
+            0 => cursors.HookIndex,
+            1 => cursors.BlockerHookIndex,
+            2 => cursors.LayoutEffectHookIndex,
+            3 => cursors.InsertionEffectHookIndex,
+            4 => cursors.EffectHookIndex,
+            5 => cursors.StateHookIndex,
+            6 => cursors.StoreHookIndex,
+            7 => cursors.ImperativeHandleHookIndex,
+            8 => cursors.RefHookIndex,
+            9 => cursors.MemoValueHookIndex,
+            10 => cursors.IdHookIndex,
+            11 => cursors.DeferredValueHookIndex,
+            12 => cursors.OptimisticHookIndex,
+            13 => cursors.MutationHookIndex,
+            14 => cursors.TransitionHookIndex,
+            15 => asyncCount,
             _ => throw new ArgumentOutOfRangeException(nameof(kind)),
         };
 

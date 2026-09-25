@@ -142,7 +142,7 @@ Velvet state is organized into two layers — **"component-local state" and "sha
 | `const [s, dispatch] = useReducer(reducer, initial)` | `var (s, dispatch) = Hooks.UseReducer(reducer, initial)` |
 
 - `Hooks.UseState` / `Hooks.UseReducer` use a positional slot scheme. They must be called in **the same order every time** within the same component function (same as React's Rules of Hooks)
-- Order violations throw an `InvalidOperationException` at runtime for fail-fast detection
+- A render that calls a slot-keeping hook (`Hooks.UseState`, `Hooks.UseEffect`, `Hooks.UseMemo`, …) more or fewer times than the previous render throws an `InvalidOperationException` that names the component and continues in React's words: `Rendered more hooks than during the previous render` from the extra call, or `Rendered fewer hooks than expected` once the body returns. It is a render error, so an enclosing error boundary catches it. A hook inside a plain helper method belongs to the component calling the helper, so calling the helper on some renders only is the same violation
 - `setValue` / `dispatch` are stable references tied to a slot and remain the same reference across re-renders (no additional memoization equivalent to `useCallback` is needed)
 
 #### Shared State (Zustand-inspired Store)

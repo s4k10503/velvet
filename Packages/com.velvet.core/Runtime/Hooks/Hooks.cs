@@ -309,6 +309,7 @@ namespace Velvet
             var fiber = Resolve(nameof(UseCallback));
             fiber.CallbackSlots ??= new List<HookCallbackSlot>();
             var index = fiber.Indices.HookIndex++;
+            HookCountSentinel.ThrowIfPastCommittedCount(fiber);
 
             // Stages into Next* like the deps overload, so the render-phase settle commit treats every
             // callback slot uniformly even though this overload never memoizes.
@@ -341,6 +342,7 @@ namespace Velvet
             var fiber = Resolve("UseCallback");
             fiber.CallbackSlots ??= new List<HookCallbackSlot>();
             var index = fiber.Indices.HookIndex++;
+            HookCountSentinel.ThrowIfPastCommittedCount(fiber);
 
             if (index >= fiber.CallbackSlots.Count)
             {
@@ -396,6 +398,7 @@ namespace Velvet
             var fiber = Resolve(nameof(UseMemo));
             fiber.MemoValueSlots ??= new List<HookMemoValueSlot>();
             var index = fiber.Indices.MemoValueHookIndex++;
+            HookCountSentinel.ThrowIfPastCommittedCount(fiber);
 
             // Stages into Next* like the deps overload, so the render-phase settle commit treats every memo
             // slot uniformly even though this overload never memoizes.
@@ -427,6 +430,7 @@ namespace Velvet
             var fiber = Resolve("UseMemo");
             fiber.MemoValueSlots ??= new List<HookMemoValueSlot>();
             var index = fiber.Indices.MemoValueHookIndex++;
+            HookCountSentinel.ThrowIfPastCommittedCount(fiber);
 
             if (index >= fiber.MemoValueSlots.Count)
             {
@@ -549,6 +553,7 @@ namespace Velvet
 
             fiber.BlockerSlots ??= new List<HookBlockerSlot>();
             var index = fiber.Indices.BlockerHookIndex++;
+            HookCountSentinel.ThrowIfPastCommittedCount(fiber);
 
             if (index < fiber.BlockerSlots.Count)
             {
@@ -849,6 +854,7 @@ namespace Velvet
             if (factory == null) throw new ArgumentNullException(nameof(factory));
             var fiber = Resolve("UseLayoutEffect");
             HookSlotRegistrar.RegisterLayoutEffect(
+                fiber,
                 ref fiber.LayoutEffects,
                 ref fiber.PendingLayoutEffects,
                 ref fiber.Indices.LayoutEffectHookIndex,
@@ -884,6 +890,7 @@ namespace Velvet
             if (factory == null) throw new ArgumentNullException(nameof(factory));
             var fiber = Resolve("UseInsertionEffect");
             HookSlotRegistrar.RegisterLayoutEffect(
+                fiber,
                 ref fiber.InsertionEffects,
                 ref fiber.PendingInsertionEffects,
                 ref fiber.Indices.InsertionEffectHookIndex,
@@ -915,6 +922,7 @@ namespace Velvet
             if (factory == null) throw new ArgumentNullException(nameof(factory));
             var fiber = Resolve("UseEffect");
             HookSlotRegistrar.RegisterEffect(
+                fiber,
                 ref fiber.Effects,
                 ref fiber.PendingEffects,
                 ref fiber.Indices.EffectHookIndex,
@@ -1229,6 +1237,7 @@ namespace Velvet
             var fiber = Resolve("UseRef");
             fiber.RefSlots ??= new List<HookRefSlot>();
             var index = fiber.Indices.RefHookIndex++;
+            HookCountSentinel.ThrowIfPastCommittedCount(fiber);
 
             if (index >= fiber.RefSlots.Count)
             {
@@ -1281,6 +1290,7 @@ namespace Velvet
             var fiber = Resolve("UseMutableRef");
             fiber.RefSlots ??= new List<HookRefSlot>();
             var index = fiber.Indices.RefHookIndex++;
+            HookCountSentinel.ThrowIfPastCommittedCount(fiber);
 
             if (index >= fiber.RefSlots.Count)
             {
@@ -1333,6 +1343,7 @@ namespace Velvet
             var fiber = Resolve("UseId");
             fiber.IdSlots ??= new List<HookIdSlot>();
             var index = fiber.Indices.IdHookIndex++;
+            HookCountSentinel.ThrowIfPastCommittedCount(fiber);
 
             if (index >= fiber.IdSlots.Count)
             {
@@ -1374,6 +1385,7 @@ namespace Velvet
             var fiber = Resolve(nameof(UseImperativeHandle));
             fiber.ImperativeHandleSlots ??= new List<HookImperativeHandleSlot>();
             var index = fiber.Indices.ImperativeHandleHookIndex++;
+            HookCountSentinel.ThrowIfPastCommittedCount(fiber);
 
             // The StrictMode diagnostic render must not write into the parent-supplied ref (an externally
             // visible side effect) nor re-run the handle factory; the cursor is advanced above for the purity
@@ -1419,6 +1431,7 @@ namespace Velvet
             var fiber = Resolve("UseImperativeHandle");
             fiber.ImperativeHandleSlots ??= new List<HookImperativeHandleSlot>();
             var index = fiber.Indices.ImperativeHandleHookIndex++;
+            HookCountSentinel.ThrowIfPastCommittedCount(fiber);
 
             // See the no-deps overload: the diagnostic render skips the ref write and factory invocation.
             if (IsStrictDiagnosticPass(fiber)) return;
@@ -1718,6 +1731,7 @@ namespace Velvet
             var fiber = Resolve("UseTransition");
             fiber.TransitionSlots ??= new List<HookTransitionSlot>();
             var index = fiber.Indices.TransitionHookIndex++;
+            HookCountSentinel.ThrowIfPastCommittedCount(fiber);
 
             if (index >= fiber.TransitionSlots.Count)
             {
@@ -1758,6 +1772,7 @@ namespace Velvet
             var fiber = Resolve("UseMutation");
             fiber.MutationSlots ??= new List<HookMutationSlot>();
             var index = fiber.Indices.MutationHookIndex++;
+            HookCountSentinel.ThrowIfPastCommittedCount(fiber);
 
             if (index >= fiber.MutationSlots.Count)
             {
@@ -1954,6 +1969,7 @@ namespace Velvet
             var fiber = Resolve("UseDeferredValue");
             fiber.DeferredValueSlots ??= new List<HookDeferredValueSlot>();
             var index = fiber.Indices.DeferredValueHookIndex++;
+            HookCountSentinel.ThrowIfPastCommittedCount(fiber);
 
             if (index >= fiber.DeferredValueSlots.Count)
             {
@@ -2043,6 +2059,7 @@ namespace Velvet
             var fiber = Resolve("UseOptimistic");
             fiber.OptimisticSlots ??= new List<HookOptimisticSlot>();
             var index = fiber.Indices.OptimisticHookIndex++;
+            HookCountSentinel.ThrowIfPastCommittedCount(fiber);
 
             if (index >= fiber.OptimisticSlots.Count)
             {

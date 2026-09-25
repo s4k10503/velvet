@@ -18,6 +18,7 @@ namespace Velvet
         // render-phase state-update re-run (it is cleared once per RenderAndReconcile, not per re-run), so a
         // slot whose deps change between attempts could otherwise be added twice.
         internal static void RegisterEffect(
+            ComponentFiber fiber,
             ref List<HookEffectSlot>? effects,
             ref List<HookEffectSlot>? pendingEffects,
             ref int hookIndex,
@@ -32,6 +33,7 @@ namespace Velvet
             // The hook cursor must still advance so the StrictMode purity check observes a consistent hook
             // count and later slots resolve to the right index.
             var index = hookIndex++;
+            HookCountSentinel.ThrowIfPastCommittedCount(fiber);
 
             // The StrictMode diagnostic render re-invokes the effect hooks only to advance the cursor for the
             // purity check. It must not overwrite the committed effect factory with the diagnostic closure, nor
@@ -64,13 +66,14 @@ namespace Velvet
         }
 
         internal static void RegisterLayoutEffect(
+            ComponentFiber fiber,
             ref List<HookEffectSlot>? effects,
             ref List<HookEffectSlot>? pendingEffects,
             ref int hookIndex,
             Func<Action?> factory,
             object?[]? deps,
             bool diagnosticPass = false)
-            => RegisterEffect(ref effects, ref pendingEffects, ref hookIndex, factory, deps,
+            => RegisterEffect(fiber, ref effects, ref pendingEffects, ref hookIndex, factory, deps,
                 deduplicatePending: true, diagnosticPass: diagnosticPass);
     }
 }

@@ -119,8 +119,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   render (UseState / UseReducer: 1 before, 2 now)`, or `Rendered fewer hooks than expected` — where it
   said only that a `FiberRenderer` call count differed. A call past the previous render's count throws from that call instead of after
   the body returns, so a hook inside a plain helper method that the component calls on some renders
-  only puts the helper on the exception's stack. The editor-only log for the other hooks takes the same
-  wording.
+  only puts the helper on the exception's stack.
 
 - Memoized components rebuild their compiled VNode cache when their props comparison detects a
   change, including a record struct float member changing from positive zero to negative zero.
@@ -686,6 +685,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   portals guide states which containers a portal of either form may target.
 
 ### Changed
+
+- Every slot-keeping hook now holds a render to the hook count of the previous one, as React holds its
+  hooks. Calling `Hooks.UseEffect`, `Hooks.UseLayoutEffect`, `Hooks.UseInsertionEffect`,
+  `Hooks.UseCallback`, `Hooks.UseImperativeHandle`, `Hooks.UseId`, `Hooks.UseDeferredValue`,
+  `Hooks.UseOptimistic`, `Hooks.UseMutation` or `Hooks.UseBlocker` a different number of times from the
+  previous render only logged an error, and in the editor alone, and let the render commit; calling
+  `Hooks.UseMemo`, `Hooks.UseRef`, `Hooks.UseMutableRef` or `Hooks.UseTransition` a different number of
+  times was not checked at all. Each now throws the `InvalidOperationException` that `Hooks.UseState`
+  already threw, in every build, so a component calling one of them conditionally — directly, or through
+  a helper method it calls on some renders only — no longer renders but fails the way any render error
+  does: an enclosing error boundary catches it, and without one it is logged.
 
 - `LoaderMode.Await`, which is the default, awaits the loader. The route already on screen stays there,
   `Hooks.UseNavigation().State` reports `NavigationLifecycle.Loading`, and the location commits with the

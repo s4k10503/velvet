@@ -601,23 +601,21 @@ namespace Velvet.Tests
                 "The effect does not re-run when the render-closure dep is unchanged");
         }
 
-#if UNITY_EDITOR
         [Test]
-        public void Given_ConditionalEffectCall_When_CallCountDiffersBetweenRenders_Then_LogsError()
+        public void Given_ConditionalEffectCall_When_CallCountDiffersBetweenRenders_Then_LogsTheThrownRenderError()
         {
-            // Arrange — call-count validation is enabled only under UNITY_EDITOR
+            // Arrange
             s_conditionalEffectFactory = () => null;
             using var mounted = V.Mount(_root, V.Component(ConditionalEffectRender, key: "conditional"));
-            LogAssert.Expect(LogType.Error,
-                new Regex(@"Rendered more hooks than during the previous render \(UseLayoutEffect: 0 before, 1 now\)"));
+            LogAssert.Expect(LogType.Exception,
+                new Regex(@"InvalidOperationException: .*Rendered more hooks than during the previous render \(UseLayoutEffect: 0 before, 1 now\)"));
 
             // Act
             s_conditionalEffectSetState.Invoke(EffectTestState.Initial with { Count = 1 });
             mounted.FlushStateForTest();
 
-            // Assert — LogAssert.Expect verifies the call-count violation was logged
+            // Assert — LogAssert.Expect verifies the call-count violation was thrown and logged
         }
-#endif
 
         [Test]
         public void Given_CalledOutsideRender_When_Invoked_Then_ThrowsInvalidOperationException()

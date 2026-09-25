@@ -572,42 +572,9 @@ namespace Velvet
             set => EnsureLanes().HasPromotedTransition = value;
         }
 
-        // Per-hook-kind counts from the previous render, compared against this render's counts to enforce a
-        // stable hook count (rules of hooks). -1 means no prior render, so the check is skipped on mount (the
-        // dispose/recycle path resets these to -1). They drive the editor-only stable-hook-count diagnostics;
-        // the kinds HookCountSentinel checks in player builds too read CommittedHookCounts below instead.
-#if UNITY_EDITOR
-        internal int PrevHookCount = -1;
-        internal int PrevLayoutEffectHookCount = -1;
-        internal int PrevInsertionEffectHookCount = -1;
-        internal int PrevEffectHookCount = -1;
-        internal int PrevImperativeHandleHookCount = -1;
-        internal int PrevBlockerHookCount = -1;
-        internal int PrevIdHookCount = -1;
-        internal int PrevDeferredValueHookCount = -1;
-        internal int PrevOptimisticHookCount = -1;
-        internal int PrevMutationHookCount = -1;
-
-        // Resets every editor-only per-hook-kind baseline to -1 (no prior render), so a re-mount or a
-        // discarded render does not compare against stale counts and trip a false stable-hook-count diagnostic.
-        // One site to update when a new hook category is added.
-        internal void ResetEditorHookCountBaselines()
-        {
-            PrevHookCount = -1;
-            PrevBlockerHookCount = -1;
-            PrevLayoutEffectHookCount = -1;
-            PrevInsertionEffectHookCount = -1;
-            PrevEffectHookCount = -1;
-            PrevImperativeHandleHookCount = -1;
-            PrevIdHookCount = -1;
-            PrevDeferredValueHookCount = -1;
-            PrevOptimisticHookCount = -1;
-            PrevMutationHookCount = -1;
-        }
-#endif
-
         // The cursors (and AsyncSlotCursor) as the last render whose body settled left them, which
-        // HookCountSentinel holds the next render to. Unmounting clears HasCommittedHookCounts, so a remount is not compared.
+        // HookCountSentinel holds the next render to. Unmounting clears HasCommittedHookCounts, so a
+        // remount is not compared.
         internal HookIndexTable CommittedHookCounts;
         internal int CommittedAsyncSlotCount;
         internal bool HasCommittedHookCounts;

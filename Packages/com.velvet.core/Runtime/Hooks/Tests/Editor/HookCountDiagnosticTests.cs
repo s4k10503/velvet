@@ -8,9 +8,9 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// A render that calls <c>UseState</c> / <c>UseReducer</c>, <c>UseStore</c> or <c>Use</c> more or fewer times than
-    /// the previous render did fails with an <see cref="InvalidOperationException"/> naming the component, React's
-    /// wording and the kind's two counts.
+    /// A render that calls a slot-keeping hook kind more or fewer times than the previous render did fails
+    /// with an <see cref="InvalidOperationException"/> naming the component, React's wording and the kind's
+    /// two counts.
     /// <list type="bullet">
     /// <item>A call past the committed count throws from that call, so the helper method making it is on the
     /// stack.</item>
@@ -28,15 +28,34 @@ namespace Velvet.Tests
         }
 
         private static readonly IntStore s_store = new(0);
+        private static readonly Ref<object> s_handle = new();
 
         // Each hook named here is called by the helper that only a render with the sheet open reaches. Keyed
         // by name so a case's name stays plain text rather than a rendered delegate.
         private static readonly Dictionary<string, Action> s_sheetHooks = new()
         {
+            ["UseCallback"] = () => Hooks.UseCallback((Action)(() => { })),
+            ["UseCallback with deps"] = () => Hooks.UseCallback((Action)(() => { }), 1),
+            ["UseBlocker"] = () => Hooks.UseBlocker(_ => false),
+            ["UseLayoutEffect"] = () => Hooks.UseLayoutEffect((Func<Action>)(() => null)),
+            ["UseInsertionEffect"] = () => Hooks.UseInsertionEffect((Func<Action>)(() => null)),
+            ["UseEffect"] = () => Hooks.UseEffect((Func<Action>)(() => null)),
             ["UseState"] = () => Hooks.UseState(0),
             ["UseReducer"] = () => Hooks.UseReducer<int, int>((state, action) => state + action, 0),
             ["UseReducer with init"] = () => Hooks.UseReducer<int, int, int>((state, action) => state + action, 0, arg => arg),
             ["UseStore"] = () => Hooks.UseStore(s_store, value => value),
+            ["UseImperativeHandle"] = () => Hooks.UseImperativeHandle(s_handle, () => new object()),
+            ["UseImperativeHandle with deps"] = () => Hooks.UseImperativeHandle(s_handle, () => new object(), 1),
+            ["UseRef"] = () => Hooks.UseRef<object>(),
+            ["UseMutableRef"] = () => Hooks.UseMutableRef(0),
+            ["UseMemo"] = () => Hooks.UseMemo(() => 1),
+            ["UseMemo with deps"] = () => Hooks.UseMemo(() => 1, 1),
+            ["UseId"] = () => Hooks.UseId(),
+            ["UseDeferredValue"] = () => Hooks.UseDeferredValue(1),
+            ["UseOptimistic"] = () => Hooks.UseOptimistic<int, int>(0, (state, action) => state + action),
+            ["UseMutation"] = () => Hooks.UseMutation(new MutationOptions<int, int>(
+                MutationFn: (value, _) => VelvetTask.FromResult(value))),
+            ["UseTransition"] = () => Hooks.UseTransition(),
             ["Use"] = () => Hooks.Use(() => VelvetTask.FromResult(1), resourceKey: "sheet"),
         };
 
@@ -139,10 +158,27 @@ namespace Velvet.Tests
             return $"{head} | thrown inside {nameof(HookedSheet)}: {exception.StackTrace?.Contains(nameof(HookedSheet)) == true}";
         }
 
+        [TestCase("UseCallback", "UseCallback", 0, 1)]
+        [TestCase("UseCallback with deps", "UseCallback", 0, 1)]
+        [TestCase("UseBlocker", "UseBlocker", 0, 1)]
+        [TestCase("UseLayoutEffect", "UseLayoutEffect", 0, 1)]
+        [TestCase("UseInsertionEffect", "UseInsertionEffect", 0, 1)]
+        [TestCase("UseEffect", "UseEffect", 0, 1)]
         [TestCase("UseState", "UseState / UseReducer", 1, 2)]
         [TestCase("UseReducer", "UseState / UseReducer", 1, 2)]
         [TestCase("UseReducer with init", "UseState / UseReducer", 1, 2)]
         [TestCase("UseStore", "UseStore", 0, 1)]
+        [TestCase("UseImperativeHandle", "UseImperativeHandle", 0, 1)]
+        [TestCase("UseImperativeHandle with deps", "UseImperativeHandle", 0, 1)]
+        [TestCase("UseRef", "UseRef / UseMutableRef", 0, 1)]
+        [TestCase("UseMutableRef", "UseRef / UseMutableRef", 0, 1)]
+        [TestCase("UseMemo", "UseMemo", 0, 1)]
+        [TestCase("UseMemo with deps", "UseMemo", 0, 1)]
+        [TestCase("UseId", "UseId", 0, 1)]
+        [TestCase("UseDeferredValue", "UseDeferredValue", 0, 1)]
+        [TestCase("UseOptimistic", "UseOptimistic", 0, 1)]
+        [TestCase("UseMutation", "UseMutation", 0, 1)]
+        [TestCase("UseTransition", "UseTransition", 0, 1)]
         [TestCase("Use", "Use", 0, 1)]
         public void Given_AHookOnlyAnOpenRenderCalls_When_Opened_Then_ItThrowsMoreHooksFromThatCall(
             string hook, string kind, int before, int now)
@@ -161,8 +197,21 @@ namespace Velvet.Tests
                 $" ({kind}: {before} before, {now} now) | thrown inside {nameof(HookedSheet)}: True"));
         }
 
+        [TestCase("UseCallback", "UseCallback", 1, 0)]
+        [TestCase("UseBlocker", "UseBlocker", 1, 0)]
+        [TestCase("UseLayoutEffect", "UseLayoutEffect", 1, 0)]
+        [TestCase("UseInsertionEffect", "UseInsertionEffect", 1, 0)]
+        [TestCase("UseEffect", "UseEffect", 1, 0)]
         [TestCase("UseState", "UseState / UseReducer", 2, 1)]
         [TestCase("UseStore", "UseStore", 1, 0)]
+        [TestCase("UseImperativeHandle", "UseImperativeHandle", 1, 0)]
+        [TestCase("UseRef", "UseRef / UseMutableRef", 1, 0)]
+        [TestCase("UseMemo", "UseMemo", 1, 0)]
+        [TestCase("UseId", "UseId", 1, 0)]
+        [TestCase("UseDeferredValue", "UseDeferredValue", 1, 0)]
+        [TestCase("UseOptimistic", "UseOptimistic", 1, 0)]
+        [TestCase("UseMutation", "UseMutation", 1, 0)]
+        [TestCase("UseTransition", "UseTransition", 1, 0)]
         [TestCase("Use", "Use", 1, 0)]
         public void Given_AHookOnlyAnOpenRenderCalls_When_Closed_Then_ItThrowsFewerHooks(
             string hook, string kind, int before, int now)

@@ -5,7 +5,7 @@ namespace Velvet
     // The render phase for a function-component fiber.
     // Invokes the component body with a fresh hook cursor, runs the render-phase setState loop until the
     // output settles, then finishes the render by promoting the settled attempt's staged hook deps to the
-    // committed baseline and validating the hook-call counts. Pure functions of the fiber; the orchestrator
+    // committed baseline. Pure functions of the fiber; the orchestrator
     // (FiberRenderer.RenderAndReconcile) owns the try/catch/finally and calls these in order. The produced
     // tree is handed to FiberCommitWork for host-tree application.
     internal static class FiberBeginWork
@@ -127,53 +127,5 @@ namespace Velvet
             // already-committed and silently skip its factory.
             FiberHookCommit.CommitBlockerSlots(fiber.BlockerSlots);
         }
-
-#if UNITY_EDITOR
-        // Editor-only hook-count sentinel for the deps-comparing / effect / id / value hooks, run alongside
-        // HookCountSentinel.ValidateAndCommit. Advances each hook's committed call-count baseline after validating.
-        internal static void ValidateEditorHookCounts(ComponentFiber fiber)
-        {
-            var hookCount = fiber.Indices.HookIndex;
-            var blockerCount = fiber.Indices.BlockerHookIndex;
-            var layoutEffectCount = fiber.Indices.LayoutEffectHookIndex;
-            var insertionEffectCount = fiber.Indices.InsertionEffectHookIndex;
-            var effectCount = fiber.Indices.EffectHookIndex;
-            var imperativeHandleCount = fiber.Indices.ImperativeHandleHookIndex;
-            var idCount = fiber.Indices.IdHookIndex;
-            var deferredCount = fiber.Indices.DeferredValueHookIndex;
-            var optimisticCount = fiber.Indices.OptimisticHookIndex;
-            var mutationCount = fiber.Indices.MutationHookIndex;
-            ValidateHookCallCount(fiber, "UseCallback", fiber.PrevHookCount, hookCount);
-            ValidateHookCallCount(fiber, "UseBlocker", fiber.PrevBlockerHookCount, blockerCount);
-            ValidateHookCallCount(fiber, "UseLayoutEffect", fiber.PrevLayoutEffectHookCount, layoutEffectCount);
-            ValidateHookCallCount(fiber, "UseInsertionEffect", fiber.PrevInsertionEffectHookCount, insertionEffectCount);
-            ValidateHookCallCount(fiber, "UseEffect", fiber.PrevEffectHookCount, effectCount);
-            ValidateHookCallCount(fiber, "UseImperativeHandle", fiber.PrevImperativeHandleHookCount, imperativeHandleCount);
-            ValidateHookCallCount(fiber, "UseId", fiber.PrevIdHookCount, idCount);
-            ValidateHookCallCount(fiber, "UseDeferredValue", fiber.PrevDeferredValueHookCount, deferredCount);
-            ValidateHookCallCount(fiber, "UseOptimistic", fiber.PrevOptimisticHookCount, optimisticCount);
-            ValidateHookCallCount(fiber, "UseMutation", fiber.PrevMutationHookCount, mutationCount);
-            fiber.PrevHookCount = hookCount;
-            fiber.PrevBlockerHookCount = blockerCount;
-            fiber.PrevLayoutEffectHookCount = layoutEffectCount;
-            fiber.PrevInsertionEffectHookCount = insertionEffectCount;
-            fiber.PrevEffectHookCount = effectCount;
-            fiber.PrevImperativeHandleHookCount = imperativeHandleCount;
-            fiber.PrevIdHookCount = idCount;
-            fiber.PrevDeferredValueHookCount = deferredCount;
-            fiber.PrevOptimisticHookCount = optimisticCount;
-            fiber.PrevMutationHookCount = mutationCount;
-        }
-#endif
-
-#if UNITY_EDITOR
-        private static void ValidateHookCallCount(ComponentFiber fiber, string hookName, int prevCount, int currentCount)
-        {
-            if (prevCount != -1 && currentCount != prevCount)
-            {
-                FiberLogger.LogError("Hooks", HookCountSentinel.FormatMismatch(fiber, hookName, prevCount, currentCount));
-            }
-        }
-#endif
     }
 }
