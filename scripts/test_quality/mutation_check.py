@@ -76,7 +76,9 @@ UNRECORDED = "not measured (no shard recorded it)"
 SURVIVING = (SURVIVED, INCONCLUSIVE)
 UNMEASURED = (NOT_BUILT, TIMED_OUT, HUNG, UNCOMPILABLE, UNRECORDED)
 
-# How `--plan` splits a campaign across CI jobs.
+# How `--plan` splits a campaign across CI jobs. Each shard pays an image pull, a licence activation
+# and a baseline before its first mutant; CONTRIBUTING.md ▸ Checking that the tests can fail has the
+# measured cost of each.
 MUTANTS_PER_SHARD = 3
 MAX_SHARDS = 10
 

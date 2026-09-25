@@ -203,8 +203,15 @@ commit git placed and found unpushed is the ordinary case, and is what the predi
 **What the split costs.** A mutant is one editor launch. Over the twenty commits ending at `48057c8`,
 ten generated no mutant at all and the other ten ranged 3 to 51 with a median of 22. A mutant's
 launch-compile-run measured 100–118 s on a developer machine against a 94 s baseline, so a median
-branch run locally is around 41 minutes. `Test ▸ test-quality` holds the half that needs no editor: that the mutants can be generated at all, and that every declaration in the package is one
-the script would accept rather than one it silently refuses.
+branch run locally is around 41 minutes. `--plan` gives a shard three mutants and stops adding shards
+at ten, because each shard pays for an image pull, a licence activation and a baseline before its
+first mutant. Measured on the pull request that moved the campaign here, over two campaigns — seven
+mutants in three shards, and forty-nine in ten — the pull took 79–146 s, the activation 31–52 s and
+the baseline 153–225 s, each mutant 119–190 s, and plan to verdict took 12m54s and 22m12s, against
+8–10 minutes for the rest of the run. The ten shards ran beside the three other licensed jobs, and all
+thirteen activated. `Test ▸ test-quality` holds the half that needs no editor: that the mutants can
+be generated at all, and that every declaration in the package is one the script would accept rather
+than one it silently refuses.
 
 A campaign holds a mutation in the working tree while the suite runs, and records what it holds in
 MUTATION_IN_PROGRESS.json at the repository root — untracked, and deliberately not in `.gitignore`, so
