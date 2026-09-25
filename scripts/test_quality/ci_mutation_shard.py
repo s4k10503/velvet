@@ -27,6 +27,9 @@ VERSION_FILE = Path("ProjectSettings/ProjectVersion.txt")
 
 ACTIVATION_ATTEMPTS = 5
 FIRST_BACKOFF = 15
+# Seconds before an editor launch that only activates or returns is killed. Without a bound, one that
+# never exits holds the job to its own timeout with nothing measured.
+LICENCE_TIMEOUT = 600
 
 
 def serial_from_license(license_text):
@@ -57,12 +60,21 @@ def licence_command(unity, blank, *arguments):
             "-projectPath", str(blank)]
 
 
+def bounded(run, command, what):
+    """The launch's exit status, or None where it outran `LICENCE_TIMEOUT` and was killed."""
+    try:
+        return run(command, timeout=LICENCE_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        print("::warning::the {} ran past {}s and was killed".format(what, LICENCE_TIMEOUT), flush=True)
+        return None
+
+
 def activate(unity, blank, serial, email, password, run=subprocess.call, sleep=time.sleep):
     """Whether the editor took the licence, retrying with a doubling wait as the action does."""
     delay = FIRST_BACKOFF
     for attempt in range(1, ACTIVATION_ATTEMPTS + 1):
-        if run(licence_command(unity, blank, "-serial", serial, "-username", email,
-                               "-password", password)) == 0:
+        if bounded(run, licence_command(unity, blank, "-serial", serial, "-username", email,
+                                        "-password", password), "licence activation") == 0:
             return True
         if attempt < ACTIVATION_ATTEMPTS:
             print("::warning::licence activation failed, attempt {} of {}; retrying in {}s".format(
@@ -103,8 +115,8 @@ def main(argv, environ=os.environ, run=subprocess.call, sleep=time.sleep,
         try:
             return run([sys.executable, str(CAMPAIGN), *passthrough, "--unity", UNITY])
         finally:
-            run(licence_command(UNITY, blank, "-returnlicense", "-username", email,
-                                "-password", password))
+            bounded(run, licence_command(UNITY, blank, "-returnlicense", "-username", email,
+                                         "-password", password), "licence return")
 
 
 if __name__ == "__main__":

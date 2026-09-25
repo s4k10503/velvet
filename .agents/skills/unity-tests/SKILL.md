@@ -5,6 +5,8 @@ description: Run Velvet's EditMode or PlayMode suites headlessly and read the re
 
 # Running the Unity suites
 
+Where a Unity licence is configured, a pull request's CI already runs both suites, runs the cases the branch wrote on the merge base, and runs the mutation campaign over its change; [CONTRIBUTING.md ▸ Continuous integration](../../../CONTRIBUTING.md#continuous-integration) lists the jobs. What follows is for a local run, which is optional: take one for a failure text before pushing, or to ask a question CI does not.
+
 The editor must be closed — it holds the project lock.
 
 ```bash

@@ -380,7 +380,7 @@ jobs:
   #
   # Three jobs, because the campaign is one editor launch per mutant. The plan needs no licence and
   # counts the mutants; each shard measures every Nth of them and records their verdicts; the verdict
-  # job reads every shard's record and decides. The decision cannot be a shard's own, since a
+  # job reads the shards' records and decides. The decision cannot be a shard's own, since a
   # declaration above one line answers for survivors another shard may have measured.
   #
   # A shard cannot run through game-ci/unity-test-runner, which launches one editor per step. It runs
@@ -410,7 +410,9 @@ jobs:
   mutation-shard:
     name: Mutation campaign (shard ${{ matrix.shard }})
     needs: [license-check, mutation-plan]
-    if: needs.license-check.outputs.has_license == 'true' && needs.mutation-plan.outputs.shards != '[]'
+    if: >-
+      github.event_name == 'pull_request' && needs.license-check.outputs.has_license == 'true'
+      && needs.mutation-plan.outputs.shards != '[]'
     runs-on: ubuntu-latest
     timeout-minutes: 180
     strategy:
@@ -461,7 +463,7 @@ jobs:
     name: Mutation campaign
     needs: [license-check, mutation-plan, mutation-shard]
     if: >-
-      !cancelled() && needs.license-check.outputs.has_license == 'true'
+      !cancelled() && github.event_name == 'pull_request' && needs.license-check.outputs.has_license == 'true'
       && needs.mutation-plan.result == 'success' && needs.mutation-plan.outputs.shards != '[]'
     runs-on: ubuntu-latest
     steps:
@@ -510,6 +512,8 @@ jobs:
           fetch-depth: 0
 
       - run: python3 scripts/test_quality/run_suite.py scripts/test_quality/test_mutation_check.py
+
+      - run: python3 scripts/test_quality/run_suite.py scripts/test_quality/test_ci_mutation_shard.py
 
       - run: python3 scripts/test_quality/run_suite.py scripts/test_quality/test_neuter_check.py
 

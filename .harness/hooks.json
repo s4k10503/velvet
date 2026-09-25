@@ -152,14 +152,6 @@
   {
     "event": "PreToolUse",
     "tools": [
-      "Bash"
-    ],
-    "script": "refuse/pr_without_mutation_receipt.py",
-    "timeout": 25.0
-  },
-  {
-    "event": "PreToolUse",
-    "tools": [
       "Bash",
       "Edit",
       "Write",

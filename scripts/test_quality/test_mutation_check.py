@@ -3705,5 +3705,153 @@ class EditorReapedWhenAnExceptionEndsTheRunTests(unittest.TestCase):
         self.assertEqual((raised, left_running), (True, [False]))
 
 
+class ParityKilledCampaign(StubbedCampaign):
+    """Two mutants on two lines, the first killed and the second surviving, so a decision that took a
+    verdict from the wrong mutant or dropped one reads differently from the whole run's."""
+
+    BODY = textwrap.dedent("""\
+        namespace Velvet
+        {
+            internal static class Probe
+            {
+                internal static bool Ready(int a, int b) => a <= b;
+                internal static bool Other(int a, int b) => a >= b;
+            }
+        }
+        """)
+
+    def __init__(self, body=None):
+        super().__init__(body)
+        self.measured = []
+
+    def run_suite(self, _unity, _project, _platform, _scope, results, log, _timeout, _holder=None):
+        name = Path(results).name
+        self.measured.append(name)
+        Path(log).write_text("")
+        Path(results).write_text(FAILING_RESULTS if name == "mutant-001.xml" else GREEN_RESULTS)
+        return 0.0, False, 0
+
+    def shard(self, spec, directory):
+        return self.run_over_diff("--shard", spec, "--output", str(self.project / directory))
+
+
+def decision(printed):
+    """What a run decided: everything from its survivor list on, less the line naming its log directory."""
+    tail = printed[printed.index("--- mutants no test killed ---"):]
+    return "\n".join(line for line in tail.splitlines() if not line.startswith(("logs:", "receipt:")))
+
+
+class ShardedCampaignTests(unittest.TestCase):
+    """A campaign split across jobs: each `--shard` measures a slice, `--collect` decides over them all.
+
+    The decision is only as good as its agreement with the unsplit run, so the cases below compare
+    against one.
+    """
+
+    def test_Given_ADiffSplitInTwo_When_TheShardsAreCollected_Then_TheDecisionIsTheWholeRunsDecision(self):
+        # Arrange
+        split, whole = ParityKilledCampaign(), ParityKilledCampaign()
+        split.shard("0/2", "out0")
+        split.shard("1/2", "out1")
+        whole_code = whole.run_over_diff()
+        whole_decision = decision(whole.printed)
+
+        # Act
+        code = split.run_over_diff("--collect", str(split.project / "out0"), str(split.project / "out1"))
+
+        # Assert
+        self.assertEqual((code, decision(split.printed)), (whole_code, whole_decision))
+
+    def test_Given_AShard_When_ItRuns_Then_OnlyItsMutantsReachTheEditor(self):
+        # Arrange
+        campaign = ParityKilledCampaign()
+
+        # Act
+        campaign.shard("1/2", "out1")
+
+        # Assert
+        self.assertEqual(campaign.measured, ["baseline.xml", "mutant-002.xml"])
+
+    def test_Given_AShardWhoseSliceHoldsAnUnansweredSurvivor_When_ItEnds_Then_ItLeavesTheDecision(self):
+        # Arrange — the survivor is the second mutant's, and a declaration anywhere else in the diff
+        # could be what answers it, which the shard does not hold.
+        campaign = ParityKilledCampaign()
+
+        # Act
+        code = campaign.shard("1/2", "out1")
+
+        # Assert
+        self.assertEqual((code, list((campaign.project / "out1").glob("receipts/*"))), (0, []))
+
+    def test_Given_AMutantNoShardRecorded_When_Collected_Then_ItIsUnmeasuredAndTheRunFails(self):
+        # Arrange — the second shard's output is missing, as it is when that job never uploaded.
+        campaign = ParityKilledCampaign()
+        campaign.shard("0/2", "out0")
+
+        # Act
+        code = campaign.run_over_diff("--collect", str(campaign.project / "out0"))
+
+        # Assert
+        self.assertEqual((code, mutation_check.UNRECORDED in campaign.printed), (1, True))
+
+    def test_Given_ADeclarationAboveAMutantAnotherShardMeasured_When_Collected_Then_ItAnswersForIt(self):
+        # Arrange — the survivor is on the line the second shard measured.
+        campaign = ParityKilledCampaign(ParityKilledCampaign.BODY.replace(
+            "        internal static bool Other",
+            "        // MUTANT_SURVIVES(equivalent): no caller reaches the bound, so both agree.\n"
+            "        internal static bool Other"))
+        campaign.shard("0/2", "out0")
+        campaign.shard("1/2", "out1")
+
+        # Act
+        code = campaign.run_over_diff("--collect", str(campaign.project / "out0"),
+                                      str(campaign.project / "out1"))
+
+        # Assert
+        self.assertEqual(code, 0)
+
+
+class CampaignPlanTests(unittest.TestCase):
+    def test_Given_ADiffWithMutants_When_Planned_Then_ItNamesTheirCountAndTheShards(self):
+        # Arrange
+        campaign = ParityKilledCampaign()
+
+        # Act
+        code = campaign.run_over_diff("--plan")
+
+        # Assert
+        self.assertEqual((code, re.findall(r"^(?:mutants|shards)=.*$", campaign.printed, re.MULTILINE)),
+                         (0, ["mutants=2", "shards=[0]"]))
+
+    def test_Given_NoMutableChange_When_Planned_Then_NoShardIsPlanned(self):
+        # Arrange — a tree whose one change is outside the package.
+        campaign = StubbedCampaign()
+        campaign.source.unlink()
+        (campaign.project / "README.md").write_text("prose\n")
+
+        # Act
+        code = campaign.run_over_diff("--plan")
+
+        # Assert
+        self.assertEqual((code, re.findall(r"^(?:mutants|shards)=.*$", campaign.printed, re.MULTILINE)),
+                         (0, ["mutants=0", "shards=[]"]))
+
+    def test_Given_MutantCounts_When_Sharded_Then_EachShardHoldsAtMostItsShareUpToTheCap(self):
+        # Arrange
+        per, cap = mutation_check.MUTANTS_PER_SHARD, mutation_check.MAX_SHARDS
+        counts = [0, 1, per, per + 1, per * cap * 4]
+
+        # Act
+        shards = [mutation_check.shard_count(count) for count in counts]
+
+        # Assert
+        self.assertEqual(shards, [0, 1, 1, 2, cap])
+
+    def test_Given_AShardOutsideItsCount_When_Parsed_Then_ItIsRefused(self):
+        # Act / Assert
+        with self.assertRaises(Exception):
+            mutation_check.parse_shard("2/2")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

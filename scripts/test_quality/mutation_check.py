@@ -1832,8 +1832,9 @@ def recorded(output, index, digest, mutant, project, scope=()):
 def collected(directories, index, digest, mutant, project, scope=()):
     """(verdict, detail) a shard recorded for this mutant in one of `directories`.
 
-    Any verdict, where `read_verdict` keeps only a kill: that keeps a reading across runs of one
-    campaign, and the shards collected here are one run, split, over the tree this reads.
+    Any verdict, where `read_verdict` keeps only a kill: a survivor or an unmeasured verdict turns on
+    the tests and the bounds, which the key does not hold, and a resumed run can come after either
+    moved. The workflow hands this the shards of one run, over one commit.
     """
     for directory in directories:
         held = recorded(Path(directory), index, digest, mutant, project, scope)
@@ -2382,7 +2383,8 @@ def main():
     truncated = len(mutants) - args.max
     mutants = mutants[:args.max]
 
-    # What the receipt is keyed on, computed before any verdict so each one written can carry it.
+    # What the receipt and each verdict record are keyed on, which is how `--collect` knows a shard's
+    # record is about this tree.
     campaign = scope_digest(merge_base_of(project, args.base), targets, project, args.platform)
     if args.collect is not None:
         print(coverage)

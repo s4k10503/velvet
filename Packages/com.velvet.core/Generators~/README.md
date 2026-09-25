@@ -73,6 +73,8 @@ python3 scripts/test_quality/mutation_check.py --files Packages/com.velvet.core/
 python3 scripts/test_quality/mutation_check.py --files <source> --filter Velvet.Tests.SomeFixture
 ```
 
+A pull request's CI runs the diff form, split across jobs by `--plan`, `--shard` and `--collect`; [CONTRIBUTING.md ▸ Checking that the tests can fail](../../../CONTRIBUTING.md#checking-that-the-tests-can-fail) owns that run, so a local one is for asking before the branch is pushed.
+
 Every mutant is one batchmode launch, since the mutated source has to be compiled before the runner starts and there is no coverage pass to attribute it to fewer fixtures. Launching the editor, not running the tests, is the larger half of that: the whole EditMode suite is under half of a mutant's wall clock, so narrowing the run buys little and would let a mutant read as surviving because the fixture that would have killed it was out of scope. A branch touching a few methods is minutes; the package is not, which is why the diff is the unit.
 
 The last form narrows anyway, because it asks a different question — the one to reach for when a fixture is under suspicion rather than a change. A whole-suite run answers whether anything notices, so a fixture that asks nothing stays invisible behind every other test that does; narrowed to one fixture, a surviving mutant is that fixture not noticing.
