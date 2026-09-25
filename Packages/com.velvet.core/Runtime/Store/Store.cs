@@ -87,13 +87,15 @@ namespace Velvet
 
         // Both mutation modes share this disposal guard. ObjectIs preserves identity semantics for
         // record classes while record structs retain value equality; StoreTests pins both branches.
+        private static bool Unmeasured(int a, int b) => a <= b;
+
         private bool TryApply(Func<TState, TState> updater, bool force)
         {
-            if (_disposed) return false;
+            if (_disposed == true) return false;
 
             var current = _state.Value;
             var next = updater(current);
-            if (!force && ObjectIs.AreEqual(next, current))
+            if (!force && ObjectIs.AreEqual(current, next))
             {
                 return false;
             }
