@@ -175,7 +175,7 @@ namespace Velvet
             WrapperInfrastructure.RemoveWrapperRestoreInner(element, wrapper);
         }
 
-        // Keeps the mask tracking its target: forwards the inner's flex to the wrapper and (re)bakes
+        // Keeps the mask tracking its target: forwards the inner's position and flex to the wrapper and (re)bakes
         // the vector shape at the inner's resolved box. The baked
         // VectorImage stores TIGHT bounds, so the background is explicitly positioned and sized by
         // the analytic path bounds, anchored at the inner's layout origin within the wrapper.
@@ -185,6 +185,7 @@ namespace Velvet
         private static void SyncClipPathGeometry(VisualElement element, ClipPathBinding binding,
             bool innerAtWrapperOrigin = false)
         {
+            WrapperInfrastructure.ForwardInnerPositionToWrapper(element, binding.Wrapper);
             WrapperInfrastructure.ForwardInnerFlexToWrapper(element, binding.Wrapper);
 
             // No active clip (a variant-only clip at rest, e.g. an element carrying only hover:clip-path-[…]

@@ -43,25 +43,13 @@ namespace Velvet
         internal bool IsAlreadyWrapped(VisualElement element)
             => !ReferenceEquals(ResolveOuter(element), element);
 
-        // A layout-passthrough wrapper: a positioning context whose centered inner stays on-origin
-        // when a forwarded flex-grow enlarges the wrapper. KNOWN LIMITATION (CSS clip-path/shadow
-        // are paint-only; this wrapper is not): only flexGrow/flexShrink are forwarded — an inner
-        // with a percentage width in a row parent, or one relying on the parent's default
-        // cross-axis stretch, sizes against the wrapper instead of the real parent and can
-        // shrink-wrap. Both wrapper layers share this limitation, so fixing it for one must fix both.
+        // A layout-passthrough wrapper, laid out by ForwardInnerPositionToWrapper. KNOWN LIMITATION (CSS
+        // clip-path is paint-only; this wrapper is not): flexGrow/flexShrink are the only sizing an in-flow
+        // inner forwards — one with a percentage width in a row parent, or one relying on the parent's
+        // default cross-axis stretch, sizes against the wrapper instead of the real parent and can shrink-wrap.
         internal static VisualElement CreatePassthroughWrapper(string ussClass)
         {
-            var wrapper = new VisualElement
-            {
-                pickingMode = PickingMode.Ignore,
-                style =
-                {
-                    position = Position.Relative,
-                    flexDirection = FlexDirection.Row,
-                    justifyContent = Justify.Center,
-                    alignItems = Align.Center,
-                }
-            };
+            var wrapper = new VisualElement { pickingMode = PickingMode.Ignore };
             wrapper.AddToClassList(ussClass);
             return wrapper;
         }
@@ -86,7 +74,7 @@ namespace Velvet
 
         // Forwards the inner's resolved flex participation onto its passthrough wrapper so a
         // flex-grow/shrink declared on the inner acts on the wrapper (the element the parent
-        // actually lays out). Shared by both wrapper layers' geometry syncs.
+        // actually lays out).
         internal static void ForwardInnerFlexToWrapper(VisualElement element, VisualElement wrapper)
         {
             var flexGrow = element.resolvedStyle.flexGrow;
@@ -99,6 +87,35 @@ namespace Velvet
             {
                 wrapper.style.flexShrink = flexShrink;
             }
+        }
+
+        // An out-of-flow inner resolves its edge offsets against the wrapper, so the wrapper then leaves the
+        // flow and spans the real parent (inset 0) with the default flex alignment, as FiberZLayerCoordinator's
+        // layer container does. Run on every geometry sync rather than once at the wrap, because a patch can
+        // change the inner's position after it.
+        internal static void ForwardInnerPositionToWrapper(VisualElement element, VisualElement wrapper)
+        {
+            var ws = wrapper.style;
+            if (StyleOutOfFlowChild.IsOutOfFlow(element))
+            {
+                ws.position = Position.Absolute;
+                ws.left = 0f;
+                ws.top = 0f;
+                ws.right = 0f;
+                ws.bottom = 0f;
+                ws.flexDirection = StyleKeyword.Null;
+                ws.justifyContent = StyleKeyword.Null;
+                ws.alignItems = StyleKeyword.Null;
+                return;
+            }
+            ws.position = Position.Relative;
+            ws.left = StyleKeyword.Null;
+            ws.top = StyleKeyword.Null;
+            ws.right = StyleKeyword.Null;
+            ws.bottom = StyleKeyword.Null;
+            ws.flexDirection = FlexDirection.Row;
+            ws.justifyContent = Justify.Center;
+            ws.alignItems = Align.Center;
         }
 
         // True when the class list carries an inline filter — a static filter-* utility or the animate-hue

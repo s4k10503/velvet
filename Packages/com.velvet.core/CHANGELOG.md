@@ -113,6 +113,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- An absolutely positioned element carrying a `clip-path-*` utility keeps the box its edge offsets
+  declare, and an `absolute inset-0` child fills it, as without the clip. The wrapper that hosts the
+  clip stayed in its parent's flow as a relative flex item, and the element's offsets resolved against
+  it rather than against the parent: in a column parent the wrapper took the parent's width and no
+  height, so an element offset from all four edges came out with no height and its `inset-0` child
+  with it. The wrapper around an absolute element now leaves the flow and spans the parent, and
+  returns to the flow when a later render drops `absolute`. An absolute clipped element with no
+  offsets is placed as in a parent that declares no alignment, where it previously sat centred on the
+  wrapper; a parent that aligns its children, as `justify-end items-end` does, still does not move it,
+  because the wrapper does not take the parent's alignment.
+
 - Memoized components rebuild their compiled VNode cache when their props comparison detects a
   change, including a record struct float member changing from positive zero to negative zero.
 
