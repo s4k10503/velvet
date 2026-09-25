@@ -71,8 +71,14 @@ SURVIVED = "survived"
 INCONCLUSIVE = "survived (inconclusive)"
 UNCOMPILABLE = "uncompilable"
 NOT_BUILT = "not rebuilt"
+UNRECORDED = "not measured (no shard recorded it)"
 
 SURVIVING = (SURVIVED, INCONCLUSIVE)
+UNMEASURED = (NOT_BUILT, TIMED_OUT, HUNG, UNCOMPILABLE, UNRECORDED)
+
+# How `--plan` splits a campaign across CI jobs.
+MUTANTS_PER_SHARD = 3
+MAX_SHARDS = 10
 
 CATEGORIES = ("equivalent", "unreachable")
 
@@ -1804,6 +1810,15 @@ def read_verdict(output, index, digest, mutant, project, scope=()):
     too, and is kept across a test removed since for the reason `scope_digest` gives for the receipt;
     one taken while another editor was up is kept as well, and its detail says so.
     """
+    held = recorded(output, index, digest, mutant, project, scope)
+    if held is None or held.get("verdict") != KILLED:
+        return None
+    return held.get("verdict"), held.get("detail")
+
+
+def recorded(output, index, digest, mutant, project, scope=()):
+    """The record `write_verdict` left for this mutant under `output`, whatever its verdict, or None
+    where there is none or it was written for another mutant, tree or scope."""
     try:
         held = json.loads(verdict_path(output, index).read_text())
     except (OSError, ValueError):
@@ -1811,9 +1826,37 @@ def read_verdict(output, index, digest, mutant, project, scope=()):
     key = (held.get("digest"), held.get("scope"), held.get("mutant"), held.get("column"))
     if key != (digest, list(scope), mutant.describe(project), mutant.column):
         return None
-    if held.get("verdict") != KILLED:
-        return None
-    return held.get("verdict"), held.get("detail")
+    return held
+
+
+def collected(directories, index, digest, mutant, project, scope=()):
+    """(verdict, detail) a shard recorded for this mutant in one of `directories`.
+
+    Any verdict, where `read_verdict` keeps only a kill: that keeps a reading across runs of one
+    campaign, and the shards collected here are one run, split, over the tree this reads.
+    """
+    for directory in directories:
+        held = recorded(Path(directory), index, digest, mutant, project, scope)
+        if held is not None:
+            return held.get("verdict"), held.get("detail") or ""
+    return UNRECORDED, "no shard's output holds a verdict for it"
+
+
+def parse_shard(text):
+    """(K, N) from `K/N`: the zero-based shard K of N."""
+    match = re.fullmatch(r"(\d+)/(\d+)", text)
+    if not match or int(match.group(1)) >= int(match.group(2)):
+        raise argparse.ArgumentTypeError("expected K/N with 0 <= K < N, got {!r}".format(text))
+    return int(match.group(1)), int(match.group(2))
+
+
+def in_shard(index, shard):
+    """Whether the 1-based mutant `index` is this shard's to run."""
+    return shard is None or (index - 1) % shard[1] == shard[0]
+
+
+def shard_count(mutants):
+    return min(MAX_SHARDS, -(-mutants // MUTANTS_PER_SHARD))
 
 
 def read_receipt(output, digest):
@@ -1911,6 +1954,157 @@ def answered(mutants, deferred, declared):
     return unanswered, stale
 
 
+def measure(args, project, holder, output, targets, mutants, scope, campaign, coverage):
+    """Waits for the machine, takes the baseline and gives each mutant `args.shard` selects its
+    verdict, recording each one under `output` as it is reached."""
+    if not wait_for_quiet(args.busy_timeout):
+        raise SystemExit("another Unity test run is still in flight after {}s".format(args.busy_timeout))
+
+    print(coverage)
+
+    # Before the baseline, not before the loop: the guard reaps the editor as well as restoring, and
+    # the baseline's editor outliving a killed campaign holds the project lock against the next one.
+    holder.guard()
+    baseline_results = output / "baseline.xml"
+    baseline_wall, baseline_timed_out, _ = run_suite(args.unity, project, args.platform, scope,
+                                                  baseline_results, output / "baseline.log",
+                                                  args.timeout, holder)
+    if baseline_timed_out:
+        raise SystemExit("the baseline run did not finish within --timeout, so no mutant can be timed")
+    baseline = read_counts(baseline_results)
+    if baseline is None:
+        raise SystemExit("the baseline run wrote no result; read {}".format(output / "baseline.log"))
+    if baseline["failed"] or baseline["inconclusive"]:
+        raise SystemExit("baseline is not green, so a mutant would read as killed by {}".format(
+            ", ".join(failing_names(baseline_results)) or "an inconclusive case"))
+    print("baseline: {} passed in {:.0f}s".format(baseline["passed"], baseline_wall))
+
+    # A mutant whose assembly comes out byte-identical to this ran the unmutated code, and a run
+    # over the pristine binary is green for the same reason a surviving mutant is. Writing the
+    # file is not evidence that the editor compiled it.
+    # Reading the editor log for a compile line was tried instead and does not answer it — the
+    # line appears for an artifact the build cache served without compiling anything.
+    # This detects an edit that never reached the compiler, and only that. A mutation the
+    # compiler read and discarded, inside a preprocessor branch the editor does not define,
+    # still produces a different assembly here and so reads as survived.
+    assemblies_dir = project / "Library" / "ScriptAssemblies"
+    baseline_hashes = {path.name: sha(path) for path in assemblies_dir.glob("*.dll")}
+
+    originals = {path: path.read_text() for path in targets}
+    # Derived once: which fixtures redden on the edit rather than on what it does.
+    text_readers = text_reading_fixtures(project)
+    started = time.time()
+    resumed = measured = 0
+    try:
+        for index, mutant in enumerate(mutants, start=1):
+            if not in_shard(index, args.shard):
+                continue
+            print("[{}/{}] {}".format(index, len(mutants), mutant.describe(project)), flush=True)
+            kept = read_verdict(output, index, campaign, mutant, project, scope)
+            if kept is not None:
+                mutant.verdict, mutant.detail = kept
+                resumed += 1
+                print("      {} ({}) from a previous run of this campaign".format(
+                    mutant.verdict, mutant.detail or "-"))
+                continue
+            results = output / "mutant-{:03d}.xml".format(index)
+            log = output / "mutant-{:03d}.log".format(index)
+            if results.exists():
+                results.unlink()
+            # Queue first, mutate second. The wait runs to --busy-timeout, half an hour by default,
+            # and there is nothing the campaign needs on disk across it.
+            if not wait_for_quiet(args.busy_timeout):
+                raise SystemExit("another Unity test run is still in flight after {}s, so this "
+                                 "mutant's failures would not all be its own".format(args.busy_timeout))
+            mutated = apply_mutation(originals[mutant.path], mutant)
+            holder.hold(mutant.path, originals[mutant.path], mutated, mutant.describe(project))
+            mutant.path.write_text(mutated)
+            wall, timed_out, neighbours = run_suite(args.unity, project, args.platform, scope, results, log,
+                                        args.timeout, holder)
+            if holder.release() is None:
+                # The record is still there naming a file still mutated. Going on would apply the
+                # next mutation over this one and end by restoring the wrong text.
+                raise SystemExit("could not put {} back, so the campaign cannot continue; the record "
+                                 "at {} names what is outstanding".format(mutant.path, holder.sentinel))
+
+            counts = read_counts(results)
+            killers = ()
+            dll = assemblies_dir / "{}.dll".format(assembly_of(mutant.path))
+            blamed = build_error(log)
+            if timed_out and baseline_wall * HANG_MARGIN <= args.timeout:
+                mutant.verdict = HUNG
+                mutant.detail = ("the suite ran past --timeout {}s where the baseline finished in "
+                                 "{:.0f}s".format(args.timeout, baseline_wall))
+            elif timed_out:
+                # The baseline was already close to the bound, so a mutant reaching it says nothing
+                # about the mutation. One of the two readings is a mutant nobody asked about, so the
+                # run refuses and says which to take.
+                mutant.verdict = TIMED_OUT
+                mutant.detail = ("the editor was killed at --timeout {}s and the baseline took {:.0f}s; "
+                                 "raise it, or read the log for a mutation that does not terminate"
+                                 .format(args.timeout, baseline_wall))
+            elif blamed:
+                mutant.verdict = UNCOMPILABLE
+                mutant.detail = "the build stopped in {}".format(blamed)
+            elif counts is None:
+                mutant.verdict = UNCOMPILABLE
+                mutant.detail = "the runner wrote no result"
+            elif sha(dll) == baseline_hashes.get(dll.name):
+                mutant.verdict = NOT_BUILT
+                mutant.detail = "{} is byte-identical to the baseline build".format(dll.name)
+            elif counts["failed"]:
+                # Naming the killers, because a mutant killed only by a test that also fails on an
+                # unmutated tree was not killed by anything.
+                names = failing_names(results)
+                killers = names
+                behavioural = killed_by_behaviour(names, text_readers)
+                if behavioural:
+                    mutant.verdict = KILLED
+                    mutant.detail = "{} failed: {}".format(
+                        len(behavioural),
+                        ", ".join(name.split(".")[-1] for name in behavioural[:3]))
+                else:
+                    mutant.verdict = SURVIVED
+                    mutant.detail = "{} failed, every one a fixture reading this tree's text: {}".format(
+                        counts["failed"], ", ".join(name.split(".")[-1] for name in names[:3]))
+            elif counts["inconclusive"]:
+                mutant.verdict = INCONCLUSIVE
+                mutant.detail = "{} inconclusive, 0 failed".format(counts["inconclusive"])
+            else:
+                mutant.verdict = SURVIVED
+            if neighbours:
+                mutant.detail = "{}; {} other editor(s) were up".format(
+                    mutant.detail or "-", neighbours)
+            write_verdict(output, index, campaign, mutant, project, killers, scope)
+            measured += 1
+            average = (time.time() - started) / measured
+            left = sum(1 for later in range(index + 1, len(mutants) + 1) if in_shard(later, args.shard))
+            print("      {} ({}) in {:.0f}s; {:.0f}s left at {:.0f}s each".format(
+                mutant.verdict, mutant.detail or "-", wall, average * left, average))
+    finally:
+        holder.release()
+        for path, text in originals.items():
+            path.write_text(text)
+
+    if resumed:
+        print("\n{} of {} verdict(s) came from a previous run of this campaign, which is why the "
+              "wall\nclock below is shorter than the work it reports".format(resumed, len(mutants)),
+              flush=True)
+
+
+def report_shard(mutants, shard):
+    """What one shard measured, and no decision over it. Which survivors a declaration answers for and
+    which declarations are stale are both readings over every mutant of the diff, and a shard holds a
+    slice of them: `--collect` takes the decision once the slices are together."""
+    ran = [mutant for index, mutant in enumerate(mutants, start=1) if in_shard(index, shard)]
+    tally = {}
+    for mutant in ran:
+        tally[mutant.verdict] = tally.get(mutant.verdict, 0) + 1
+    print("\nshard {} of {}: {}".format(shard[0], shard[1], ", ".join(
+        "{}: {}".format(key, value) for key, value in sorted(tally.items())) or "no mutant"))
+    return 0
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--project", default=".", help="Unity project root (default: cwd)")
@@ -1949,7 +2143,18 @@ def main():
     parser.add_argument("--receipt", action="store_true",
                         help="ask whether a finished campaign covers this tree's mutable change, and "
                              "stop. Refuses when one is owed and none was run")
+    parser.add_argument("--plan", action="store_true",
+                        help="print how many mutants the diff generates and the shards a split run "
+                             "would use, as mutants=N and shards=[...] lines, and stop")
+    parser.add_argument("--shard", type=parse_shard, metavar="K/N",
+                        help="measure only every Nth mutant from the (K+1)th and record their "
+                             "verdicts, leaving the decision to --collect")
+    parser.add_argument("--collect", nargs="+", metavar="DIR",
+                        help="decide the campaign from the verdicts --shard runs recorded in these "
+                             "directories, without an editor")
     args = parser.parse_args()
+    if args.shard is not None and args.collect is not None:
+        parser.error("--shard measures and --collect decides; a run does one of them")
 
     project = Path(args.project).resolve()
     holder = Holder(project / SENTINEL)
@@ -2136,6 +2341,14 @@ def main():
             unreached[path] = left
     coverage = reach(mutants, unreached, project)
 
+    if args.plan:
+        # A change whose lines no operator reaches plans no shard and passes, which is the reading
+        # `PASSING_RECEIPTS` gives it; the lines are named above the count so the pass says so.
+        print(coverage if (mutants or unreached) else "no mutable change; no campaign is owed")
+        print("mutants={}".format(len(mutants)))
+        print("shards={}".format(json.dumps(list(range(shard_count(len(mutants)))))))
+        return 0
+
     if not mutants:
         # Which of the two happens is decided by the lines, not by the kind of change: a change that
         # touched no code line at all has nothing to ask and passes, and one that touched code lines
@@ -2169,138 +2382,17 @@ def main():
     truncated = len(mutants) - args.max
     mutants = mutants[:args.max]
 
-    if not wait_for_quiet(args.busy_timeout):
-        raise SystemExit("another Unity test run is still in flight after {}s".format(args.busy_timeout))
-
-    print(coverage)
-
-    # Before the baseline, not before the loop: the guard reaps the editor as well as restoring, and
-    # the baseline's editor outliving a killed campaign holds the project lock against the next one.
-    holder.guard()
-    baseline_results = output / "baseline.xml"
-    baseline_wall, baseline_timed_out, _ = run_suite(args.unity, project, args.platform, scope,
-                                                  baseline_results, output / "baseline.log",
-                                                  args.timeout, holder)
-    if baseline_timed_out:
-        raise SystemExit("the baseline run did not finish within --timeout, so no mutant can be timed")
-    baseline = read_counts(baseline_results)
-    if baseline is None:
-        raise SystemExit("the baseline run wrote no result; read {}".format(output / "baseline.log"))
-    if baseline["failed"] or baseline["inconclusive"]:
-        raise SystemExit("baseline is not green, so a mutant would read as killed by {}".format(
-            ", ".join(failing_names(baseline_results)) or "an inconclusive case"))
-    print("baseline: {} passed in {:.0f}s".format(baseline["passed"], baseline_wall))
-
-    # A mutant whose assembly comes out byte-identical to this ran the unmutated code, and a run
-    # over the pristine binary is green for the same reason a surviving mutant is. Writing the
-    # file is not evidence that the editor compiled it.
-    # Reading the editor log for a compile line was tried instead and does not answer it — the
-    # line appears for an artifact the build cache served without compiling anything.
-    # This detects an edit that never reached the compiler, and only that. A mutation the
-    # compiler read and discarded, inside a preprocessor branch the editor does not define,
-    # still produces a different assembly here and so reads as survived.
-    assemblies_dir = project / "Library" / "ScriptAssemblies"
-    baseline_hashes = {path.name: sha(path) for path in assemblies_dir.glob("*.dll")}
-
-    originals = {path: path.read_text() for path in targets}
-    # Derived once: which fixtures redden on the edit rather than on what it does.
-    text_readers = text_reading_fixtures(project)
-    started = time.time()
-    # What the receipt is keyed on, computed here so a verdict written mid-campaign can carry it.
+    # What the receipt is keyed on, computed before any verdict so each one written can carry it.
     campaign = scope_digest(merge_base_of(project, args.base), targets, project, args.platform)
-    resumed = 0
-    try:
+    if args.collect is not None:
+        print(coverage)
         for index, mutant in enumerate(mutants, start=1):
-            print("[{}/{}] {}".format(index, len(mutants), mutant.describe(project)), flush=True)
-            kept = read_verdict(output, index, campaign, mutant, project, scope)
-            if kept is not None:
-                mutant.verdict, mutant.detail = kept
-                resumed += 1
-                print("      {} ({}) from a previous run of this campaign".format(
-                    mutant.verdict, mutant.detail or "-"))
-                continue
-            results = output / "mutant-{:03d}.xml".format(index)
-            log = output / "mutant-{:03d}.log".format(index)
-            if results.exists():
-                results.unlink()
-            # Queue first, mutate second. The wait runs to --busy-timeout, half an hour by default,
-            # and there is nothing the campaign needs on disk across it.
-            if not wait_for_quiet(args.busy_timeout):
-                raise SystemExit("another Unity test run is still in flight after {}s, so this "
-                                 "mutant's failures would not all be its own".format(args.busy_timeout))
-            mutated = apply_mutation(originals[mutant.path], mutant)
-            holder.hold(mutant.path, originals[mutant.path], mutated, mutant.describe(project))
-            mutant.path.write_text(mutated)
-            wall, timed_out, neighbours = run_suite(args.unity, project, args.platform, scope, results, log,
-                                        args.timeout, holder)
-            if holder.release() is None:
-                # The record is still there naming a file still mutated. Going on would apply the
-                # next mutation over this one and end by restoring the wrong text.
-                raise SystemExit("could not put {} back, so the campaign cannot continue; the record "
-                                 "at {} names what is outstanding".format(mutant.path, holder.sentinel))
-
-            counts = read_counts(results)
-            killers = ()
-            dll = assemblies_dir / "{}.dll".format(assembly_of(mutant.path))
-            blamed = build_error(log)
-            if timed_out and baseline_wall * HANG_MARGIN <= args.timeout:
-                mutant.verdict = HUNG
-                mutant.detail = ("the suite ran past --timeout {}s where the baseline finished in "
-                                 "{:.0f}s".format(args.timeout, baseline_wall))
-            elif timed_out:
-                # The baseline was already close to the bound, so a mutant reaching it says nothing
-                # about the mutation. One of the two readings is a mutant nobody asked about, so the
-                # run refuses and says which to take.
-                mutant.verdict = TIMED_OUT
-                mutant.detail = ("the editor was killed at --timeout {}s and the baseline took {:.0f}s; "
-                                 "raise it, or read the log for a mutation that does not terminate"
-                                 .format(args.timeout, baseline_wall))
-            elif blamed:
-                mutant.verdict = UNCOMPILABLE
-                mutant.detail = "the build stopped in {}".format(blamed)
-            elif counts is None:
-                mutant.verdict = UNCOMPILABLE
-                mutant.detail = "the runner wrote no result"
-            elif sha(dll) == baseline_hashes.get(dll.name):
-                mutant.verdict = NOT_BUILT
-                mutant.detail = "{} is byte-identical to the baseline build".format(dll.name)
-            elif counts["failed"]:
-                # Naming the killers, because a mutant killed only by a test that also fails on an
-                # unmutated tree was not killed by anything.
-                names = failing_names(results)
-                killers = names
-                behavioural = killed_by_behaviour(names, text_readers)
-                if behavioural:
-                    mutant.verdict = KILLED
-                    mutant.detail = "{} failed: {}".format(
-                        len(behavioural),
-                        ", ".join(name.split(".")[-1] for name in behavioural[:3]))
-                else:
-                    mutant.verdict = SURVIVED
-                    mutant.detail = "{} failed, every one a fixture reading this tree's text: {}".format(
-                        counts["failed"], ", ".join(name.split(".")[-1] for name in names[:3]))
-            elif counts["inconclusive"]:
-                mutant.verdict = INCONCLUSIVE
-                mutant.detail = "{} inconclusive, 0 failed".format(counts["inconclusive"])
-            else:
-                mutant.verdict = SURVIVED
-            if neighbours:
-                mutant.detail = "{}; {} other editor(s) were up".format(
-                    mutant.detail or "-", neighbours)
-            write_verdict(output, index, campaign, mutant, project, killers, scope)
-            average = (time.time() - started) / max(1, index - resumed)
-            print("      {} ({}) in {:.0f}s; {:.0f}s left at {:.0f}s each".format(
-                mutant.verdict, mutant.detail or "-", wall,
-                average * (len(mutants) - index), average))
-    finally:
-        holder.release()
-        for path, text in originals.items():
-            path.write_text(text)
-
-    if resumed:
-        print("\n{} of {} verdict(s) came from a previous run of this campaign, which is why the "
-              "wall\nclock below is shorter than the work it reports".format(resumed, len(mutants)),
-              flush=True)
+            mutant.verdict, mutant.detail = collected(args.collect, index, campaign, mutant, project,
+                                                      scope)
+    else:
+        measure(args, project, holder, output, targets, mutants, scope, campaign, coverage)
+        if args.shard is not None:
+            return report_shard(mutants, args.shard)
 
     declared = declarations_for(targets, changed) if whole else {}
     unanswered, stale = answered(mutants, deferred, declared)
@@ -2312,7 +2404,7 @@ def main():
     if not survivors:
         print("(none)")
 
-    unmeasured = [m for m in mutants if m.verdict in (NOT_BUILT, TIMED_OUT, HUNG, UNCOMPILABLE)]
+    unmeasured = [m for m in mutants if m.verdict in UNMEASURED]
     if unmeasured:
         print("\n--- mutants nothing was asked of the suite about ---")
         for mutant in unmeasured:

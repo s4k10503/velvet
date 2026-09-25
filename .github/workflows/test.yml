@@ -375,6 +375,118 @@ jobs:
             --verdict plan.json --results base-results
 
   # ---------------------------------------------------------------------------
+  # The mutation campaign over the pull request's change, deciding what the local campaign decides.
+  # CONTRIBUTING.md owns what it asks and what fails it.
+  #
+  # Three jobs, because the campaign is one editor launch per mutant. The plan needs no licence and
+  # counts the mutants; each shard measures every Nth of them and records their verdicts; the verdict
+  # job reads every shard's record and decides. The decision cannot be a shard's own, since a
+  # declaration above one line answers for survivors another shard may have measured.
+  #
+  # A shard cannot run through game-ci/unity-test-runner, which launches one editor per step. It runs
+  # mutation_check.py inside the image that action pulls for unity-tests above, and
+  # ci_mutation_shard.py activates and returns the licence around it.
+  # ---------------------------------------------------------------------------
+  mutation-plan:
+    name: Mutation campaign (plan)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    outputs:
+      mutants: ${{ steps.plan.outputs.mutants }}
+      shards: ${{ steps.plan.outputs.shards }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - id: plan
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          python3 scripts/test_quality/mutation_check.py --base "$BASE" --plan | tee plan.txt
+          grep -E '^(mutants|shards)=' plan.txt >> "$GITHUB_OUTPUT"
+          { echo '### Mutation campaign plan'; echo '```'; cat plan.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+  mutation-shard:
+    name: Mutation campaign (shard ${{ matrix.shard }})
+    needs: [license-check, mutation-plan]
+    if: needs.license-check.outputs.has_license == 'true' && needs.mutation-plan.outputs.shards != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.mutation-plan.outputs.shards) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          lfs: true
+
+      # Restore only: a campaign leaves Library compiled from its last mutant, which is not the tree
+      # the key names.
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: Library
+          key: Library-EditMode-${{ hashFiles('Packages/**', 'ProjectSettings/**') }}
+          restore-keys: |
+            Library-EditMode-
+
+      - env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          MUTANTS: ${{ needs.mutation-plan.outputs.mutants }}
+          SHARDS: ${{ needs.mutation-plan.outputs.shards }}
+        run: |
+          docker run --rm --workdir /github/workspace \
+            --volume "$GITHUB_WORKSPACE:/github/workspace" \
+            --env UNITY_LICENSE --env UNITY_EMAIL --env UNITY_PASSWORD \
+            --env GIT_CONFIG_COUNT=1 --env GIT_CONFIG_KEY_0=safe.directory --env GIT_CONFIG_VALUE_0='*' \
+            --env PYTHONDONTWRITEBYTECODE=1 \
+            unityci/editor:ubuntu-6000.3.23f1-linux-il2cpp-3 \
+            xvfb-run -a python3 scripts/test_quality/ci_mutation_shard.py -- \
+              --base "$BASE" --max "$MUTANTS" \
+              --shard "${{ matrix.shard }}/$(echo "$SHARDS" | jq length)" \
+              --output Logs/mutation-shard
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: Mutation shard ${{ matrix.shard }}
+          path: Logs/mutation-shard
+
+  mutation-verdict:
+    name: Mutation campaign
+    needs: [license-check, mutation-plan, mutation-shard]
+    if: >-
+      !cancelled() && needs.license-check.outputs.has_license == 'true'
+      && needs.mutation-plan.result == 'success' && needs.mutation-plan.outputs.shards != '[]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: Mutation shard *
+          path: Logs/mutation-shards
+          merge-multiple: true
+
+      - env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          MUTANTS: ${{ needs.mutation-plan.outputs.mutants }}
+        run: |
+          set +e
+          python3 scripts/test_quality/mutation_check.py --base "$BASE" --max "$MUTANTS" \
+            --collect Logs/mutation-shards --output Logs/mutation-verdict | tee verdict.txt
+          status=${PIPESTATUS[0]}
+          { echo '### Mutation campaign'; echo '```'; cat verdict.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+
+  # ---------------------------------------------------------------------------
   # mutation_check.py needs a licence to kill a mutant, but not to build one, and the building is
   # the half everything else rests on: an operator that emits uncompilable C# reports that mutant as
   # noise rather than as a survivor, so a real hole hides behind it. That half runs here, and
@@ -475,11 +587,11 @@ jobs:
   required-checks:
     name: Required checks (Unity)
     if: always()
-    needs: [license-check, unity-tests, player-compile, release-notes, publication, test-quality, base-red-python, base-red]
+    needs: [license-check, unity-tests, player-compile, release-notes, publication, test-quality, base-red-python, base-red, mutation-plan, mutation-shard, mutation-verdict]
     runs-on: ubuntu-latest
     steps:
       - env:
-          RESULTS: ${{ needs.license-check.result }} ${{ needs.unity-tests.result }} ${{ needs.player-compile.result }} ${{ needs.release-notes.result }} ${{ needs.publication.result }} ${{ needs.test-quality.result }} ${{ needs.base-red-python.result }} ${{ needs.base-red.result }}
+          RESULTS: ${{ needs.license-check.result }} ${{ needs.unity-tests.result }} ${{ needs.player-compile.result }} ${{ needs.release-notes.result }} ${{ needs.publication.result }} ${{ needs.test-quality.result }} ${{ needs.base-red-python.result }} ${{ needs.base-red.result }} ${{ needs.mutation-plan.result }} ${{ needs.mutation-shard.result }} ${{ needs.mutation-verdict.result }}
         run: |
           failed=0
           for result in $RESULTS; do
