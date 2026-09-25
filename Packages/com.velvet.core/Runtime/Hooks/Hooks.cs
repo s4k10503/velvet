@@ -3,6 +3,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Reflection;
 using System.Threading;
 using UnityEngine.UIElements;
 
@@ -2200,7 +2201,9 @@ namespace Velvet
 
         internal static string ComponentName(ComponentFiber? fiber)
         {
-            var method = fiber!.Body?.Method;
+            // The node's identity before the body: a props overload's body is a closure over the
+            // [Component] method, and the identity is that method.
+            var method = fiber!.SourceNode?.ResolvedIdentity as MethodInfo ?? fiber.Body?.Method;
             if (method == null) return "[Component]";
             var displayName = ComponentMethodRegistry.TryGetDisplayName(method);
             if (displayName != null) return displayName;

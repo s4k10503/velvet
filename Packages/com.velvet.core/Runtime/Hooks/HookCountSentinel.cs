@@ -56,6 +56,9 @@ namespace Velvet
         }
 
         internal static string FormatMismatch(ComponentFiber fiber, string kindName, int committed, int current)
+            // MUTANT_SURVIVES(equivalent): every caller passes two counts that differ — ThrowIfPastCommittedCount
+            // only when current > committed, ValidateAndCommit and FiberBeginWork.ValidateHookCallCount only
+            // when they are unequal — so >= picks the same branch as >.
             => current > committed
                 ? $"{Hooks.ComponentName(fiber)}: Rendered more hooks than during the previous render" +
                   $" ({kindName}: {committed} before, {current} now). Hooks must be called in the same order on" +

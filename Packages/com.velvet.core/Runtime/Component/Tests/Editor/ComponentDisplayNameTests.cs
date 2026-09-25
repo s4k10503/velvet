@@ -69,6 +69,22 @@ namespace Velvet.Tests
 
             // Assert — LogAssert.Expect verifies the message falls back to DeclaringType.MethodName
         }
+
+        [Test]
+        public void Given_PropsComponentWithDisplayName_When_HookTypeChanges_Then_MessageUsesDisplayName()
+        {
+            // Arrange — the props overload renders through a closure over Render, so the name has to come
+            // from the node's identity rather than the fiber's body
+            using var mounted = V.Mount(_root, V.Component(CustomNamedPropsComponent.Render, "named-props", key: "named-props"));
+            DisplayNameProbeState.UseIntSlot = false;
+            LogAssert.Expect(LogType.Exception, new Regex(@"MyFancyPropsName: UseState type changed"));
+
+            // Act
+            DisplayNameProbeState.SetMode.Invoke(true);
+            mounted.FlushStateForTest();
+
+            // Assert — LogAssert.Expect verifies the message names the component by its DisplayName
+        }
     }
 
     internal static class DisplayNameProbeState
@@ -101,6 +117,12 @@ namespace Velvet.Tests
     {
         [Component(DisplayName = "MyFancyName")]
         public static VNode Render() => DisplayNameProbeShared.ProbeBody("named");
+    }
+
+    internal static class CustomNamedPropsComponent
+    {
+        [Component(DisplayName = "MyFancyPropsName")]
+        public static VNode Render(string label) => DisplayNameProbeShared.ProbeBody(label);
     }
 
     internal static class EmptyDisplayNameComponent

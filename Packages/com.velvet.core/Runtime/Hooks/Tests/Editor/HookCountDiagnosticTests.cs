@@ -1,7 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using System.Text.RegularExpressions;
 using NUnit.Framework;
+using UnityEngine;
+using UnityEngine.TestTools;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
 
@@ -12,11 +15,13 @@ namespace Velvet.Tests
     /// the previous render did fails with an <see cref="InvalidOperationException"/> naming the component, React's
     /// wording and the kind's two counts.
     /// <list type="bullet">
-    /// <item>A call past the committed count throws from that call, so the helper method making it is on the
-    /// stack.</item>
+    /// <item>The call past the committed count throws from itself, before it starts a slot, so a helper method
+    /// making that call is on the stack.</item>
     /// <item>A body that returns having made fewer calls throws once it settles.</item>
+    /// <item>The kinds the editor-only <c>FiberBeginWork.ValidateEditorHookCounts</c> counts log the same wording and
+    /// let the render commit.</item>
+    /// <item>A fiber unmounted and mounted again is not compared with its render before the unmount.</item>
     /// </list>
-    /// Each case reads the error from an enclosing error boundary's fallback.
     /// </summary>
     [TestFixture]
     internal sealed class HookCountDiagnosticTests
@@ -28,6 +33,7 @@ namespace Velvet.Tests
         }
 
         private static readonly IntStore s_store = new(0);
+        private static readonly Ref<object> s_handle = new();
 
         // Each hook named here is called by the helper that only a render with the sheet open reaches. Keyed
         // by name so a case's name stays plain text rather than a rendered delegate.
@@ -38,10 +44,32 @@ namespace Velvet.Tests
             ["UseReducer with init"] = () => Hooks.UseReducer<int, int, int>((state, action) => state + action, 0, arg => arg),
             ["UseStore"] = () => Hooks.UseStore(s_store, value => value),
             ["Use"] = () => Hooks.Use(() => VelvetTask.FromResult(1), resourceKey: "sheet"),
+            ["UseCallback"] = () => Hooks.UseCallback((Action)(() => { })),
+            ["UseBlocker"] = () => Hooks.UseBlocker(_ => false),
+            ["UseInsertionEffect"] = () => Hooks.UseInsertionEffect((Func<Action>)(() => null)),
+            ["UseEffect"] = () => Hooks.UseEffect((Func<Action>)(() => null)),
+            ["UseImperativeHandle"] = () => Hooks.UseImperativeHandle(s_handle, () => new object()),
+            ["UseId"] = () => Hooks.UseId(),
+            ["UseDeferredValue"] = () => Hooks.UseDeferredValue(1),
+            ["UseOptimistic"] = () => Hooks.UseOptimistic<int, int>(0, (state, action) => state + action),
+            ["UseMutation"] = () => Hooks.UseMutation(new MutationOptions<int, int>(
+                MutationFn: (value, _) => VelvetTask.FromResult(value))),
+        };
+
+        // Hooks whose extra call would start something observable if it went on to append its slot: each
+        // counts in s_slotStarts what only a new slot runs.
+        private static readonly Dictionary<string, Action> s_countingSheetHooks = new()
+        {
+            ["UseState"] = () => Hooks.UseState(() => ++s_slotStarts),
+            ["UseReducer with init"] = () => Hooks.UseReducer<int, int, int>(
+                (state, action) => state + action, 0, arg => ++s_slotStarts),
+            ["UseStore"] = () => Hooks.UseStore(s_store, value => ++s_slotStarts),
+            ["Use"] = () => Hooks.Use(() => VelvetTask.FromResult(++s_slotStarts), resourceKey: "sheet"),
         };
 
         private VisualElement _root;
         private static Exception s_caught;
+        private static int s_slotStarts;
         private static bool s_initiallyOpen;
         private static StateUpdater<bool> s_setOpen;
         private static Action s_sheetHook;
@@ -54,6 +82,7 @@ namespace Velvet.Tests
             s_initiallyOpen = false;
             s_setOpen = default;
             s_sheetHook = null;
+            s_slotStarts = 0;
         }
 
         private static VNode InBoundary(VNode child)
@@ -109,6 +138,43 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(s_caught?.StackTrace, Does.Contain(nameof(DetailSheet)));
+        }
+
+        #endregion
+
+        #region The same shape in a props component, whose fiber body is a closure over the method
+
+        private sealed record PanelProps(string Title);
+
+        [Component]
+        private static VNode PropsPanelRender(PanelProps props)
+        {
+            var (open, setOpen) = Hooks.UseState(false);
+            return V.Div(children: new VNode?[]
+            {
+                V.Button(name: "open", text: props.Title, onClick: () => setOpen.Invoke(true)),
+                open ? DetailSheet() : null,
+            });
+        }
+
+        [TestCase("V.Component")]
+        [TestCase("V.Memo")]
+        public void Given_APropsComponentWhoseHelperCallsUseStateOnlyWhileOpen_When_Opened_Then_TheErrorNamesTheComponent(
+            string factory)
+        {
+            // Arrange
+            var props = new PanelProps("open");
+            var node = factory == "V.Memo"
+                ? V.Memo(PropsPanelRender, props, (previous, next) => previous == next)
+                : V.Component(PropsPanelRender, props);
+            using var mounted = V.Mount(_root, InBoundary(node));
+
+            // Act
+            _root.Q<Button>("open").SimulateClick();
+
+            // Assert
+            Assert.That(s_caught?.Message, Does.StartWith(
+                "HookCountDiagnosticTests.PropsPanelRender: Rendered more hooks than during the previous render"));
         }
 
         #endregion
@@ -179,6 +245,89 @@ namespace Velvet.Tests
             // Assert
             Assert.That(s_caught?.Message, Does.StartWith(
                 $"HookCountDiagnosticTests.HostRender: Rendered fewer hooks than expected ({kind}: {before} before, {now} now)."));
+        }
+
+        [TestCase("UseState")]
+        [TestCase("UseReducer with init")]
+        [TestCase("UseStore")]
+        [TestCase("Use")]
+        public void Given_AHookOnlyAnOpenRenderCalls_When_Opened_Then_TheRefusedCallStartsNoSlot(string hook)
+        {
+            // Arrange
+            s_sheetHook = s_countingSheetHooks[hook];
+            using var mounted = V.Mount(_root, InBoundary(V.Component(HostRender, key: "host")));
+
+            // Act
+            s_setOpen.Invoke(true);
+            mounted.FlushStateForTest();
+
+            // Assert — the refusal is folded in, since a helper that never ran would start nothing either
+            Assert.That($"{s_caught?.Message.Contains("Rendered more hooks") == true} | slots started: {s_slotStarts}",
+                Is.EqualTo("True | slots started: 0"));
+        }
+
+        // UseLayoutEffect's log is pinned in UseLayoutEffectTests.
+        [TestCase("UseCallback", "UseCallback")]
+        [TestCase("UseBlocker", "UseBlocker")]
+        [TestCase("UseInsertionEffect", "UseInsertionEffect")]
+        [TestCase("UseEffect", "UseEffect")]
+        [TestCase("UseImperativeHandle", "UseImperativeHandle")]
+        [TestCase("UseId", "UseId")]
+        [TestCase("UseDeferredValue", "UseDeferredValue")]
+        [TestCase("UseOptimistic", "UseOptimistic")]
+        [TestCase("UseMutation", "UseMutation")]
+        public void Given_AnEditorCheckedHookOnlyAnOpenRenderCalls_When_Opened_Then_ItLogsMoreHooksNamingTheComponent(
+            string hook, string kind)
+        {
+            // Arrange
+            s_sheetHook = s_sheetHooks[hook];
+            using var mounted = V.Mount(_root, InBoundary(V.Component(HostRender, key: "host")));
+            LogAssert.Expect(LogType.Error, new Regex(Regex.Escape(
+                $"HookCountDiagnosticTests.HostRender: Rendered more hooks than during the previous render ({kind}: 0 before, 1 now).")));
+
+            // Act
+            s_setOpen.Invoke(true);
+            mounted.FlushStateForTest();
+
+            // Assert — LogAssert.Expect verifies the log
+        }
+
+        #endregion
+
+        #region A fiber unmounted and mounted again is compared as a mount
+
+        private static bool s_remountExtraHook;
+
+        [Component(Compiler = false)]
+        private static VNode RemountRender()
+        {
+            Hooks.UseState(0);
+            if (s_remountExtraHook) Hooks.UseState(1);
+            return V.Label(name: "remounted", text: s_remountExtraHook ? "two hooks" : "one hook");
+        }
+
+        [Test]
+        public void Given_AFiberUnmounted_When_MountedAgainWithAnotherHookCount_Then_ItRendersAsAMount()
+        {
+            // Arrange — the Unmount then Mount pair reuses one fiber, as UseDeferredValueTests' remount case does
+            s_remountExtraHook = false;
+            var fiber = FiberRenderer.CreateRoot(RemountRender);
+            try
+            {
+                FiberRenderer.Mount(fiber, _root);
+                FiberRenderer.Unmount(fiber);
+                s_remountExtraHook = true;
+
+                // Act
+                FiberRenderer.Mount(fiber, _root);
+
+                // Assert
+                Assert.That(_root.Q<Label>("remounted")?.text, Is.EqualTo("two hooks"));
+            }
+            finally
+            {
+                FiberRenderer.Dispose(fiber);
+            }
         }
 
         #endregion

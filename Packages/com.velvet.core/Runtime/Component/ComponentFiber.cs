@@ -606,8 +606,9 @@ namespace Velvet
         }
 #endif
 
-        // The cursors (and AsyncSlotCursor) as the last render whose body settled left them, which
-        // HookCountSentinel holds the next render to. Unmounting clears HasCommittedHookCounts, so a remount is not compared.
+        // The cursors (and AsyncSlotCursor) as the last render that passed HookCountSentinel.ValidateAndCommit
+        // left them, which the sentinel holds the next render to. Unmounting clears HasCommittedHookCounts,
+        // so a remount is not compared.
         internal HookIndexTable CommittedHookCounts;
         internal int CommittedAsyncSlotCount;
         internal bool HasCommittedHookCounts;
