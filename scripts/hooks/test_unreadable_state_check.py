@@ -630,7 +630,7 @@ class ZeroCheckTests(unittest.TestCase):
     quota walks back in as "no checks".
     """
 
-    GUARD = REPO_ROOT / ".claude/hooks/stop/unsettled_pr.py"
+    GUARD = REPO_ROOT / "scripts/pr/diagnostics/unsettled_pr.py"
 
     def said(self, stub):
         home = Path(tempfile.mkdtemp(prefix="velvet-zero-check-home-"))
@@ -746,7 +746,7 @@ class AllHeldTests(unittest.TestCase):
     requests and a report about what was claimed of them.
     """
 
-    GUARD = REPO_ROOT / ".claude/hooks/stop/unsettled_pr.py"
+    GUARD = REPO_ROOT / "scripts/pr/diagnostics/unsettled_pr.py"
 
     def said(self, deferrals):
         home = Path(tempfile.mkdtemp(prefix="velvet-all-held-home-"))

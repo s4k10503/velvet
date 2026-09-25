@@ -1,6 +1,6 @@
 """The files the watcher and its readers leave for each other, and what each may conclude.
 
-Three programs touch these. The watcher writes them; `.claude/hooks/stop/unsettled_pr.py` forgives a
+Three programs touch these. The watcher writes them; `scripts/pr/diagnostics/unsettled_pr.py` forgives a
 pending check while one is alive; `.claude/hooks/refuse/edit_while_a_ready_pr_sits.py` refuses a
 write while a ready pull request has sat. The format lives here because it was written in three
 places and read back in two, under two different comments for the same 180 seconds.

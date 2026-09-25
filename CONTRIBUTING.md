@@ -600,7 +600,7 @@ The shell guards retain their existing command-parser limits.
 Repository-wide backlog and pull-request state do not establish the scope or completion
 criteria of the current task. The clients therefore register neither `open_backlog.py` nor
 `unsettled_pr.py` on Stop. Assigned issues do not authorize starting another task, and passing
-PR checks do not authorize merging. Their scripts remain available for explicit diagnostics;
+PR checks do not authorize merging. Their scripts live in `scripts/pr/diagnostics/` for explicit diagnostics;
 completion is judged against the user's request. A future blocking Stop policy must identify
 work accepted by the current task and its agreed completion condition.
 
@@ -626,7 +626,6 @@ The owning `.harness/hooks/` directory is grouped by what a script is able to st
 
 - `refuse/` — `PreToolUse`. Stops the tool call, by exiting 2 with the reason on stderr or by
   answering with a `permissionDecision` of `deny`.
-- `stop/` — `Stop`. Exits 2 to refuse the end of a turn.
 - `report/` — `SessionStart`, `SubagentStop`, `PostToolUse`. Stops nothing: `PostToolUse` fires
   after the tool has already run, so it writes into the transcript and exits 0 whatever it finds.
 - `lib/` — imported by the rest, wired to no event of its own.
@@ -767,12 +766,12 @@ refuses, and read as an allow it scores exactly as a guard whose subject is not 
 five of nineteen guards replaced by files that raise on import and the sweep came back clean. So an
 exit that is neither is reported as the fault it is.
 
-The `Stop` guards declare the same policy and are held to one thing more, because blocking was never
+The explicit PR diagnostics declare the same policy and are held to one thing more, because blocking was never
 what they got wrong. They blocked, and described the pull requests rather than the reading — so the
 deferral the message invited named the API error instead of whatever the work was waiting on.
 `.claude/hooks/lib/repository.py` owns both halves of the remedy: a second way of asking, drawn on a
 different quota, before blindness is declared at all, and the sentence a block has to carry when it
-is. The same check runs every guard in `.claude/hooks/stop` and requires that sentence of one that
+is. The same check runs every guard in `scripts/pr/diagnostics` and requires that sentence of one that
 blocks. It poses two modes: nothing answers, and — the one a second way of asking creates — the
 listing answers while every per-pull-request read fails, which is where a guard can report on a
 pull request it learned nothing about. An empty answer is posed as neither, being the ordinary state

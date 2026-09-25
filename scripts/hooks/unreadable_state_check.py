@@ -50,7 +50,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 REFUSE_DIRECTORY = ".claude/hooks/refuse"
-STOP_DIRECTORY = ".claude/hooks/stop"
+STOP_DIRECTORY = "scripts/pr/diagnostics"
 
 # Raised with the tree, the way the hook fixtures' floors are: an empty directory declares nothing
 # and would otherwise pass every check below.
