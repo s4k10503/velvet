@@ -88,15 +88,17 @@ namespace Velvet.Tests
         [Test]
         public void Given_AStringInThePreviousGeneration_When_ParsedAgain_Then_NothingIsAllocated()
         {
-            // Arrange — the first carry runs on a throwaway cache, so first-execution work is not charged to
-            // the measured one.
-            _ = CacheHoldingInPreviousGeneration("warm-up p-1").Parse("warm-up p-1");
+            // Arrange — the measured delegate runs once against a throwaway cache first, so work done on a
+            // delegate's first execution is not charged to the carry.
             var cache = CacheHoldingInPreviousGeneration("flex flex-row p-4");
+            Action carry = () => cache.Parse("flex flex-row p-4");
+            carry();
+            cache = CacheHoldingInPreviousGeneration("flex flex-row p-4");
             var carriedFromPrevious = InGeneration(cache, "_previous", "flex flex-row p-4")
                 && !InGeneration(cache, "_current", "flex flex-row p-4");
 
             // Act
-            var blocks = GCAllocationProbe.SampleBlocksDuring(() => cache.Parse("flex flex-row p-4"));
+            var blocks = GCAllocationProbe.SampleBlocksDuring(carry);
 
             // Assert
             Assert.That((carriedFromPrevious, blocks), Is.EqualTo((true, 0)));
