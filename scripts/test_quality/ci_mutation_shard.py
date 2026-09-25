@@ -8,11 +8,13 @@ before the first editor, and return it after the last, whatever the campaign exi
 
     python3 scripts/test_quality/ci_mutation_shard.py -- --base <sha> --shard 0/4 --max 12
 
-Everything after `--` is handed to mutation_check.py, with `--unity` set to the image's editor.
-Run it under `xvfb-run`, which is how the image's own `unity-editor` wrapper gives the editor a display.
+Everything after `--` is handed to mutation_check.py, with `--unity` set to the image's editor. The
+editor gets a display from an Xvfb this starts, which is what the image's own `unity-editor` wrapper
+gives each launch through `xvfb-run`.
 """
 
 import base64
+import functools
 import os
 import re
 import subprocess
@@ -84,6 +86,30 @@ def activate(unity, blank, serial, email, password, run=subprocess.call, sleep=t
     return False
 
 
+def say(what):
+    """A phase line, timestamped, because a step's log is the only reading of where a shard spent its time."""
+    print("[{}] {}".format(time.strftime("%H:%M:%S", time.gmtime()), what), flush=True)
+
+
+def start_display(number=99, wait=30):
+    """(the environment carrying DISPLAY, a function that stops the server)."""
+    server = subprocess.Popen(["Xvfb", ":{}".format(number), "-screen", "0", "1280x1024x24",
+                               "-nolisten", "tcp"])
+    socket = Path("/tmp/.X11-unix/X{}".format(number))
+    deadline = time.time() + wait
+    while not socket.exists() and server.poll() is None and time.time() < deadline:
+        time.sleep(0.5)
+    if not socket.exists():
+        server.kill()
+        raise SystemExit("Xvfb did not come up on :{} within {}s".format(number, wait))
+
+    def stop():
+        server.terminate()
+        server.wait()
+
+    return dict(os.environ, DISPLAY=":{}".format(number)), stop
+
+
 def randomize_machine_id():
     """What the action's entrypoint does before activating a serial beginning `F`."""
     identifier = subprocess.run(["dbus-uuidgen"], capture_output=True, text=True, check=True).stdout
@@ -96,7 +122,7 @@ def randomize_machine_id():
 
 
 def main(argv, environ=os.environ, run=subprocess.call, sleep=time.sleep,
-         machine_id=randomize_machine_id):
+         machine_id=randomize_machine_id, display=start_display):
     passthrough = argv[argv.index("--") + 1:] if "--" in argv else argv
     serial = environ.get("UNITY_SERIAL") or serial_from_license(environ.get("UNITY_LICENSE", ""))
     email, password = environ.get("UNITY_EMAIL", ""), environ.get("UNITY_PASSWORD", "")
@@ -107,16 +133,24 @@ def main(argv, environ=os.environ, run=subprocess.call, sleep=time.sleep,
     if serial.startswith("F"):
         machine_id()
 
-    with tempfile.TemporaryDirectory(prefix="blank-") as holder:
-        blank = blank_project(Path(holder) / "project", VERSION_FILE)
-        if not activate(UNITY, blank, serial, email, password, run, sleep):
-            print("::error::the Unity licence could not be activated, so no mutant was measured")
-            return 1
-        try:
-            return run([sys.executable, str(CAMPAIGN), *passthrough, "--unity", UNITY])
-        finally:
-            bounded(run, licence_command(UNITY, blank, "-returnlicense", "-username", email,
-                                         "-password", password), "licence return")
+    shown, stop = display()
+    launch = functools.partial(run, env=shown)
+    try:
+        with tempfile.TemporaryDirectory(prefix="blank-") as holder:
+            blank = blank_project(Path(holder) / "project", VERSION_FILE)
+            say("activating the licence")
+            if not activate(UNITY, blank, serial, email, password, launch, sleep):
+                print("::error::the Unity licence could not be activated, so no mutant was measured")
+                return 1
+            try:
+                say("running the campaign")
+                return launch([sys.executable, "-u", str(CAMPAIGN), *passthrough, "--unity", UNITY])
+            finally:
+                say("returning the licence")
+                bounded(launch, licence_command(UNITY, blank, "-returnlicense", "-username", email,
+                                                "-password", password), "licence return")
+    finally:
+        stop()
 
 
 if __name__ == "__main__":

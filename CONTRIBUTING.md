@@ -179,25 +179,20 @@ The run also fails or stops rather than pass over a mutant nobody asked about, a
 [Generators~/README.md ▸ The Unity assemblies](Packages/com.velvet.core/Generators~/README.md#the-unity-assemblies)
 says when it does which.
 
-**What asks whether the campaign was run is a receipt, not attentiveness.** A finished run leaves one
-under the campaign's own log directory, keyed as
-[Generators~/README.md ▸ The Unity assemblies](Packages/com.velvet.core/Generators~/README.md#the-unity-assemblies)
-defines, and `gh pr create` is refused where no receipt covers the checkout it is run in. A
-branch that changes no mutable package source is owed nothing and is not asked; a change no operator
-reaches records that verdict and is accepted, since such a branch cannot earn a passing run at all. The
-receipt is keyed on what the campaign measured rather than on the head commit, because the campaign
-diffs the merge base against the **working tree** — an uncommitted edit to a mutated file changes what
-it measured and moves no tree sha — and because 16 of 44 commits over five recent branches changed no
-mutable source, each of which would have voided a receipt over a change no operator can see. What it
-does not cover is a test-side change: removing a test can make a killed mutant survive, and including
-tests would void the receipt on the ordinary act of adding one after the run.
-
-**Merge time is not gated, and cannot be from here.** A guard on `gh pr merge` would read the checkout
-the command runs in, which at merge time is `main` after a pull — a tree with no change in it — so it
-would pass every merge while printing a verdict about a change it never read. `scripts/pr/settle.py`
-merges through the REST merge endpoint besides, which no hook matcher sees. The effective contract is one
-campaign at pull-request-open time, and a review round that changes production code after that is
-measured by nothing until the next `gh pr create`.
+**A pull request's CI runs the campaign, and that run is the one the pull request answers to.**
+`Test ▸ mutation-plan` generates the mutants of the pull request's diff against its base, taking the
+readings `--list` takes, and stops there when there are none — because no mutable package source
+changed, or because no operator reaches the lines that did, which its job summary names. Otherwise,
+where a licence is configured, `Test ▸ mutation-shard` measures them in up to ten jobs, each running
+every Nth mutant against the whole EditMode suite in the editor image `Test ▸ unity-tests` pulls and
+recording its verdicts, and `Test ▸ mutation-verdict` — the check named `Mutation campaign` — reads
+every shard's records and decides as a local run over the same diff decides: an unanswered survivor, a
+stale declaration or a mutant nothing measured fails it. Unlike a local run it takes every mutant
+rather than stopping at `--max`. A shard whose baseline is red fails on its own. Its job summary names
+each survivor and each unmeasured mutant by line, and each shard's editor logs and results files are
+uploaded as `Mutation shard N`. All three feed `Required checks (Unity)`, and every push to the pull
+request runs them again, so a review round that changes production code is measured by the push that
+carries it. Running the campaign locally is optional: it answers the same question before a push.
 
 **A round is answered by a layer on top, not by an amend.** A finding cites the commit it was taken
 on, so replacing that commit leaves the round and its answer inseparable, and the branch cannot land
@@ -205,13 +200,10 @@ without a force-push. `.claude/hooks/refuse/amend_of_published_commit.py` refuse
 when a `refs/remotes/*` ref reaches HEAD, and when git could not say whether one does. Amending a
 commit git placed and found unpushed is the ordinary case, and is what the predicate leaves alone.
 
-**Nothing in CI runs the campaign, and at the measured cost nothing can.** A mutant is one editor launch.
-Over the twenty commits ending at `48057c8`, ten generated no mutant at all and the other ten ranged
-3 to 51 with a median of 22. A mutant's launch-compile-run measured 100–118 s here against a 94 s
-baseline, so a median branch is around 41 minutes and the largest around an hour and a half; on the CI
-runner, where the EditMode job alone takes 5m47s, a median branch is 23 sequential Unity jobs.
-Run it on a branch before opening the pull request. `Test ▸ test-quality` holds the half that
-needs no editor: that the mutants can be generated at all, and that every declaration in the package is one
+**What the split costs.** A mutant is one editor launch. Over the twenty commits ending at `48057c8`,
+ten generated no mutant at all and the other ten ranged 3 to 51 with a median of 22. A mutant's
+launch-compile-run measured 100–118 s on a developer machine against a 94 s baseline, so a median
+branch run locally is around 41 minutes. `Test ▸ test-quality` holds the half that needs no editor: that the mutants can be generated at all, and that every declaration in the package is one
 the script would accept rather than one it silently refuses.
 
 A campaign holds a mutation in the working tree while the suite runs, and records what it holds in
@@ -420,7 +412,7 @@ withdraw by that rule, and the local loop alone keeps a second for a round whose
 one silent file at a time, which it says as it goes rather than making it the case's verdict. A
 file the log blames that the branch did not carry is the base failing to build itself, and neither
 flow spends a further round on it. A last round that still writes nothing measured nothing, fails,
-and prints the local command. Run it locally on a branch whose tests are the point.
+and prints the local command.
 `scripts/test_quality/test_base_red_check.py` holds the reader against every test file in this
 repository and runs in `Test ▸ test-quality`.
 
@@ -821,6 +813,9 @@ on every platform.
 | `Test ▸ test-quality` | push (filtered) / every PR / merge group | not required | no |
 | `Test ▸ base-red-python` | push (filtered) / every PR / merge group | not required | no |
 | `Test ▸ base-red` (EditMode / PlayMode) | every PR | **required** (skipped if absent) | no |
+| `Test ▸ mutation-plan` | every PR | not required | no |
+| `Test ▸ mutation-shard` | every PR | **required** (skipped if absent) | no |
+| `Test ▸ mutation-verdict` | every PR | **required** (skipped if absent) | no |
 | `Test ▸ Required checks (Unity)` | push (filtered) / every PR / merge group | not required | **yes** |
 | `UPM ▸ split` | push to `main` / manual (`workflow_dispatch`, which also tags and publishes the release) | not required | no |
 | `Docs` (DocFX → GitHub Pages) | push (filtered) / release / manual | **required** (skipped if absent) | no |

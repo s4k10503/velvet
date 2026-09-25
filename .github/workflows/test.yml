@@ -414,7 +414,7 @@ jobs:
       github.event_name == 'pull_request' && needs.license-check.outputs.has_license == 'true'
       && needs.mutation-plan.outputs.shards != '[]'
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
@@ -442,13 +442,13 @@ jobs:
           MUTANTS: ${{ needs.mutation-plan.outputs.mutants }}
           SHARDS: ${{ needs.mutation-plan.outputs.shards }}
         run: |
-          docker run --rm --workdir /github/workspace \
+          docker run --rm --init --workdir /github/workspace \
             --volume "$GITHUB_WORKSPACE:/github/workspace" \
             --env UNITY_LICENSE --env UNITY_EMAIL --env UNITY_PASSWORD \
             --env GIT_CONFIG_COUNT=1 --env GIT_CONFIG_KEY_0=safe.directory --env GIT_CONFIG_VALUE_0='*' \
             --env PYTHONDONTWRITEBYTECODE=1 \
             unityci/editor:ubuntu-6000.3.23f1-linux-il2cpp-3 \
-            xvfb-run -a python3 scripts/test_quality/ci_mutation_shard.py -- \
+            python3 -u scripts/test_quality/ci_mutation_shard.py -- \
               --base "$BASE" --max "$MUTANTS" \
               --shard "${{ matrix.shard }}/$(echo "$SHARDS" | jq length)" \
               --output Logs/mutation-shard

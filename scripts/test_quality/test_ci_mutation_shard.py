@@ -69,7 +69,8 @@ def run_shard(recorder, environ=None):
                 ["--", "--base", "abc", "--shard", "0/2"],
                 environ=environ or {"UNITY_LICENSE": licence_file(SERIAL), "UNITY_EMAIL": "e",
                                     "UNITY_PASSWORD": "p"},
-                run=recorder, sleep=lambda _seconds: None, machine_id=lambda: None)
+                run=recorder, sleep=lambda _seconds: None, machine_id=lambda: None,
+                display=lambda: ({}, lambda: None))
 
 
 class LicenceTests(unittest.TestCase):
@@ -126,8 +127,8 @@ class LicenceTests(unittest.TestCase):
 
         # Assert
         campaign = next(command for command in recorder.commands
-                        if str(command[1]).endswith("mutation_check.py"))
-        self.assertEqual(campaign[2:], ["--base", "abc", "--shard", "0/2", "--unity",
+                        if any(str(part).endswith("mutation_check.py") for part in command))
+        self.assertEqual(campaign[3:], ["--base", "abc", "--shard", "0/2", "--unity",
                                         ci_mutation_shard.UNITY])
 
 
