@@ -318,11 +318,11 @@ approximation described here rather than a true shear transform.
 
 **Where `rounded-full` deviates from CSS.** CSS scales radii that overlap until they fit, so
 `rounded-full` is a pill. Where UI Toolkit paints the face, `rounded-full` on a 330 × 34 box paints
-the same silhouette as a `50%` radius on every corner — an ellipse spanning the box. Where Velvet paints
-it — the fill and border under `skew-*` or on the caster of a `shadow-*` / `drop-shadow-*`, and a
-`border-dashed` / `border-dotted` stroke — each corner is clamped to half the box's shorter side, which
-gives the pill, and a shadow's silhouette takes the same clamp. For a pill UI Toolkit paints, name the
-radius: `rounded-[17px]` on a 34 px-tall box.
+the same silhouette as a `50%` radius on every corner, and four fifths of the way along its top edge
+has already fallen away where `rounded-[17px]`'s is still flat. Where Velvet paints it — the fill and border under `skew-*` or on the caster
+of a `shadow-*` / `drop-shadow-*`, and a `border-dashed` / `border-dotted` stroke — each corner is
+clamped to half the box's shorter side, which gives the pill, and a shadow's silhouette takes the same
+clamp. For a pill UI Toolkit paints, name the radius: `rounded-[17px]` on a 34 px-tall box.
 
 **Where the other wrapper-less paints deviate from CSS under a hidden overflow.** UI Toolkit applies an
 element's own overflow clip to the element's own painted content, and cuts it at the **padding** box.

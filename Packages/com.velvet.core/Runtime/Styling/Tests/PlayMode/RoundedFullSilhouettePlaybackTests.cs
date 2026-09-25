@@ -11,20 +11,20 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Pins, by real GPU pixel readback, what <c>rounded-full</c> paints where UI Toolkit paints the face, and
-    /// that a shadow behind it keeps its halo.
+    /// the corner radius a shadow is baked with.
     /// </summary>
     /// <remarks>
     /// <c>--radius-full</c> is larger than the boxes these cases mount, so each layer that reads it decides for
     /// itself what a radius the box cannot carry becomes. <c>Documentation~/styling-variants.md</c> states the
-    /// deviation the first case pins. <see cref="VelvetStyleUtilities"/> is attached because
-    /// <c>rounded-full</c> is a plain USS rule: without the sheet the box stays square-cornered and each case
-    /// reads its control's outcome.
+    /// deviation the first two cases pin. <see cref="VelvetStyleUtilities"/> is attached because
+    /// <c>rounded-full</c> and <c>rounded-lg</c> are plain USS rules: without the sheet the box stays
+    /// square-cornered, which reddens every case here.
     /// </remarks>
     [Timeout(600000)]
     internal sealed class RoundedFullSilhouettePlaybackTests
     {
         private const int Width = 360;
-        private const int Height = 80;
+        private const int Height = 160;
 
         // Wider than it is tall by roughly ten to one: on a square box a 50% radius and a pill agree.
         private const string WideGeometry = "w-[330px] h-[34px] mt-[20px] ml-[15px]";
@@ -149,29 +149,98 @@ namespace Velvet.Tests
                 Is.EqualTo((true, true)));
         }
 
+        // GREEN_ON_BASE(characterization): UI Toolkit paints both faces and this change leaves them alone.
+        // The case holds the advice styling-variants.md gives, a named radius for a pill that
+        // UI Toolkit paints, so a change to either face reddens it and the guide moves with it.
+        [UnityTest]
+        public IEnumerator Given_AWideBox_When_UIToolkitPaintsAHalfHeightRadiusAndRoundedFull_Then_OnlyTheNamedRadiusKeepsAFlatTopEdge()
+        {
+            // Arrange — square corners, the control: the strip lies on the box's top edge and the instrument
+            // reads paint there.
+            yield return MountBox("SquareEdge", $"{WideGeometry} bg-[#0000ff]");
+            var square = CountTopEdgeStrip(Box.worldBound);
+
+            yield return MountBox("NamedEdge", $"{WideGeometry} bg-[#0000ff] rounded-[17px]");
+            var named = CountTopEdgeStrip(Box.worldBound);
+
+            // Act
+            yield return MountBox("FullEdge", $"{WideGeometry} bg-[#0000ff] rounded-full");
+            var full = CountTopEdgeStrip(Box.worldBound);
+
+            // Assert
+            Assert.That((square > 0, named == square, full), Is.EqualTo((true, true, 0)));
+        }
+
+        // Blue pixels in a strip on the top edge, four fifths of the way along and two rows deep: inside a
+        // pill's flat run on the wide box, and outside a 50% radius's boundary there.
+        private int CountTopEdgeStrip(Rect box)
+        {
+            var pixels = ReadFrame();
+            var left = Mathf.RoundToInt(box.xMin + (box.width * 0.8f));
+            var top = Mathf.RoundToInt(box.yMin);
+            var n = 0;
+            for (var row = top; row < top + 2; row++)
+            {
+                for (var col = left; col < left + 8; col++)
+                {
+                    if (IsBlue(At(pixels, col, row)))
+                    {
+                        n++;
+                    }
+                }
+            }
+            return n;
+        }
+
         [UnityTest]
         public IEnumerator Given_ARoundedFullBoxWearingAShadow_When_Painted_Then_ItsHaloReachesTheScreen()
         {
             // Arrange — a shadow-free mount says how much red sits beside the box with no shadow at all, and
             // the same shadow behind a radius the box can carry says the shadow layer paints on this panel.
             yield return MountBox("NoShadow", $"{CasterGeometry} rounded-full");
-            var bare = HaloRed(Box.worldBound);
+            var bare = HaloMean(Box.worldBound, RedOf);
 
             yield return MountBox("ShadowLg", $"{CasterGeometry} rounded-lg shadow-[0px_0px_24px_#ff0000]");
-            var lg = HaloRed(Box.worldBound);
+            var lg = HaloMean(Box.worldBound, RedOf);
 
             // Act
             yield return MountBox("ShadowFull", $"{CasterGeometry} rounded-full shadow-[0px_0px_24px_#ff0000]");
             var radiusExceededTheBox = Box.resolvedStyle.borderTopLeftRadius > Box.layout.height;
-            var full = HaloRed(Box.worldBound);
+            var full = HaloMean(Box.worldBound, RedOf);
 
             // Assert
             Assert.That((radiusExceededTheBox, full > bare, lg > bare), Is.EqualTo((true, true, true)));
         }
 
-        // Mean red of a strip just outside the caster's LEFT edge at its vertical centre, where only the
-        // shadow paints and where a pill's boundary and an 8px-rounded box's lie within a pixel of the edge.
-        private float HaloRed(Rect box)
+        [UnityTest]
+        public IEnumerator Given_ARoundedFullBoxWearingADropShadow_When_Painted_Then_ItsHaloReachesTheScreen()
+        {
+            // Arrange — the drop-shadow presets paint the dark shadow colour, which the red channel cannot
+            // tell from the cleared frame, so where the shadow-[…] case reads red this one reads coverage: the
+            // frame is cleared transparent and only paint raises its alpha outside the box.
+            yield return MountBox("NoDropShadow", $"{CasterGeometry} rounded-full");
+            var bare = HaloMean(Box.worldBound, AlphaOf);
+
+            yield return MountBox("DropShadowLg", $"{CasterGeometry} rounded-lg drop-shadow-2xl");
+            var lg = HaloMean(Box.worldBound, AlphaOf);
+
+            // Act
+            yield return MountBox("DropShadowFull", $"{CasterGeometry} rounded-full drop-shadow-2xl");
+            var radiusExceededTheBox = Box.resolvedStyle.borderTopLeftRadius > Box.layout.height;
+            var full = HaloMean(Box.worldBound, AlphaOf);
+
+            // Assert
+            Assert.That((radiusExceededTheBox, full > bare, lg > bare), Is.EqualTo((true, true, true)));
+        }
+
+        private static float RedOf(Color32 p) => p.r;
+
+        private static float AlphaOf(Color32 p) => p.a;
+
+        // Mean of one channel over a strip just outside the caster's LEFT edge at its vertical centre, where
+        // only the shadow paints and where a pill's boundary and an 8px-rounded box's lie within a pixel of
+        // the edge.
+        private float HaloMean(Rect box, Func<Color32, float> channel)
         {
             var pixels = ReadFrame();
             var col = Mathf.RoundToInt(box.xMin) - 5;
@@ -182,11 +251,63 @@ namespace Velvet.Tests
             {
                 for (var c = col; c < col + 4; c++)
                 {
-                    total += At(pixels, c, row).r;
+                    total += channel(At(pixels, c, row));
                     n++;
                 }
             }
             return n == 0 ? 0f : total / n;
+        }
+
+        // GREEN_ON_BASE(characterization): the base already bakes a radius the box can carry as declared.
+        // Bounding every radius instead, `Mathf.Min(binding.CornerRadius, bound)` -> `bound`, reddens it.
+        [UnityTest]
+        public IEnumerator Given_AShadowOffsetClearOfItsCaster_When_TheCasterIsRoundedLg_Then_TheShadowCornerKeepsTheEightPixelRadius()
+        {
+            // Arrange — the offset carries the shadow's bottom-right corner clear of the face painted over it,
+            // and the 1px blur keeps its edge within half a pixel of the SDF boundary.
+            yield return MountBox("OffsetLg", $"{OffsetCasterGeometry} rounded-lg {OffsetShadow}");
+
+            // Act — an 8px corner leaves the corner pixel outside the silhouette (SDF +2.6px at 0.5px in along
+            // the diagonal) and covers the pixel 4.5px in (-3.1px); the box's bound, 60px, covers neither.
+            var frame = ReadFrame();
+            var cornerPixel = IsShadowAtCornerDiagonal(frame, Box.worldBound, 0.5f);
+            var fourAndAHalfIn = IsShadowAtCornerDiagonal(frame, Box.worldBound, 4.5f);
+
+            // Assert
+            Assert.That((cornerPixel, fourAndAHalfIn), Is.EqualTo((false, true)));
+        }
+
+        [UnityTest]
+        public IEnumerator Given_AShadowOffsetClearOfItsCaster_When_TheCasterIsRoundedFull_Then_TheShadowCornerTakesHalfTheShorterSide()
+        {
+            // Arrange — as for the rounded-lg corner; the caster is 160 x 120, so the bound is 60px, and its
+            // shorter side is over twice the 50 a 50% --radius-full would resolve to.
+            yield return MountBox("OffsetFull", $"{OffsetCasterGeometry} rounded-full {OffsetShadow}");
+
+            // Act — a 60px corner leaves the pixel 16.5px in along the diagonal outside the silhouette (SDF
+            // +1.5px; a 50px corner puts it at -2.6px) and covers the pixel 25.5px in (-11.2px; a 120px corner
+            // on the SDF's 80 x 60 half-extent puts it at +13.6px).
+            var frame = ReadFrame();
+            var sixteenAndAHalfIn = IsShadowAtCornerDiagonal(frame, Box.worldBound, 16.5f);
+            var twentyFiveAndAHalfIn = IsShadowAtCornerDiagonal(frame, Box.worldBound, 25.5f);
+
+            // Assert
+            Assert.That((sixteenAndAHalfIn, twentyFiveAndAHalfIn), Is.EqualTo((false, true)));
+        }
+
+        private const string OffsetCasterGeometry = "w-[160px] h-[120px] mt-[10px] ml-[20px] bg-[#ffffff]";
+        private const float ShadowOffset = 20f;
+        private const string OffsetShadow = "shadow-[20px_20px_1px_#ff0000]";
+
+        // Whether the pixel whose centre sits `inset` px in from the offset shadow's bottom-right corner, along
+        // the corner's diagonal, reads as the shadow's red. Derived from the caster's measured box.
+        private static bool IsShadowAtCornerDiagonal(Color32[] frame, Rect caster, float inset)
+        {
+            var cornerX = caster.xMax + ShadowOffset;
+            var cornerY = caster.yMax + ShadowOffset;
+            var col = Mathf.RoundToInt(cornerX - inset - 0.5f);
+            var row = Mathf.RoundToInt(cornerY - inset - 0.5f);
+            return RenderTexturePixelReader.IsRedPixel(At(frame, col, row));
         }
     }
 }
