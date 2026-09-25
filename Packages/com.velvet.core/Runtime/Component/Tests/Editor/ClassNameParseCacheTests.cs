@@ -53,7 +53,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AFullGeneration_When_AnotherStringIsParsed_Then_ItSplitsOnSpaces()
+        public void Given_AFullGeneration_When_AnotherStringIsParsed_Then_ParsingItAgainReturnsTheSameArray()
         {
             // Arrange
             var cache = new ClassNameParseCache();
@@ -63,10 +63,10 @@ namespace Velvet.Tests
             }
 
             // Act
-            var tokens = cache.Parse("overflow-trigger  overflow-trigger--on");
+            var overflowing = cache.Parse("overflow-trigger overflow-trigger--on");
 
             // Assert
-            Assert.That(tokens, Is.EqualTo(new[] { "overflow-trigger", "overflow-trigger--on" }));
+            Assert.That(cache.Parse("overflow-trigger overflow-trigger--on"), Is.SameAs(overflowing));
         }
 
         // The probe has to move on this path for the zero below to mean anything: a miss splits, and a split
