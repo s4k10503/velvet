@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Unit tests for .claude/hooks/stop/open_backlog.py's verdict on an assigned backlog.
+"""Unit tests for scripts/pr/diagnostics/open_backlog.py's verdict on an assigned backlog.
 
 The harness that poses every guard an unreadable state holds this one to what it says when gh
 cannot answer. Nothing poses it an issue list: in the one mode there where gh answers anything, an
@@ -23,7 +23,7 @@ import unittest
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-HOOK = REPO_ROOT / ".claude/hooks/stop/open_backlog.py"
+HOOK = REPO_ROOT / "scripts/pr/diagnostics/open_backlog.py"
 
 HELD = 2
 LET_GO = 0

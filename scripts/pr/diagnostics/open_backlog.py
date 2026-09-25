@@ -36,7 +36,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / ".harness/hooks/lib"))
 
 from deferrals import DEFERRALS_OPERAND, deferred, disowned, unusable  # noqa: E402
 from repository import open_pull_requests, unreadable_report  # noqa: E402

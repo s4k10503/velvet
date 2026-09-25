@@ -241,8 +241,8 @@ def main():
            if live else
            "A watcher is writing the heartbeat in a form this cannot read, and polling this on its "
            "own cycle against the same rate limit.\n\n")
-        + "Do nothing and let the turn end: `.claude/hooks/stop/unsettled_pr.py` is what reports an "
-        "open pull request that has not settled. Which ones the watcher has recorded ready is in:\n\n"
+        + "Use the existing watcher for the pull requests this task is responsible for. "
+        "Which ones the watcher has recorded ready is in:\n\n"
         f"  {READY_STATE}\n\n"
         "Merge one with:\n\n"
         "  python3 scripts/pr/settle.py merge <n>\n")
