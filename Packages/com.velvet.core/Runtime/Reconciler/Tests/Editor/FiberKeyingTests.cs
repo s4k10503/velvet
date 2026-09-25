@@ -17,8 +17,8 @@ namespace Velvet.Tests
     /// unkeyed one contributes its positional index, but only once an enclosing keyed boundary has
     /// established a scope — otherwise it stays scope-less (null).</item>
     /// <item>A Memo opens an <c>"m"</c>-prefixed index scope so a nested Memo cannot collide with an
-    /// unkeyed Component at the same node index, and its dep-cache key prefers an explicit key over
-    /// that scope.</item>
+    /// unkeyed Component at the same node index. <see cref="MemoCacheCollisionTests"/> owns the
+    /// dep-cache key composed from that position.</item>
     /// <item>A Suspense boundary key extends the enclosing scope by its key or index, and its
     /// committed subtree renders under that key extended by <c>"p"</c> (primary) or <c>"f"</c>
     /// (fallback), keeping the two subtrees in disjoint scopes.</item>
@@ -206,26 +206,6 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(scope, Is.EqualTo("p" + Nul + "m3"));
-        }
-
-        [Test]
-        public void Given_ExplicitMemoKey_When_MemoCacheKey_Then_PrefersExplicitKey()
-        {
-            // Act
-            var cacheKey = FiberKeying.MemoCacheKey("k", "m3");
-
-            // Assert
-            Assert.That(cacheKey, Is.EqualTo("k"));
-        }
-
-        [Test]
-        public void Given_NoMemoKey_When_MemoCacheKey_Then_FallsBackToScope()
-        {
-            // Act
-            var cacheKey = FiberKeying.MemoCacheKey(null, "m3");
-
-            // Assert
-            Assert.That(cacheKey, Is.EqualTo("m3"));
         }
 
         [Test]

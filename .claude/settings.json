@@ -61,26 +61,6 @@
         "matcher": "Write"
       }
     ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/stop/unsettled_pr.py\"",
-            "timeout": 20.0,
-            "type": "command"
-          }
-        ]
-      },
-      {
-        "hooks": [
-          {
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/stop/open_backlog.py\"",
-            "timeout": 20.0,
-            "type": "command"
-          }
-        ]
-      }
-    ],
     "PreToolUse": [
       {
         "hooks": [

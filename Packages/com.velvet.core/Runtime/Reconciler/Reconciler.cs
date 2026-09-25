@@ -67,7 +67,7 @@ namespace Velvet
             _ownsContext = ownsContext;
             _cleaner = new FiberElementCleaner(_ctx);
             _patcher = new FiberNodePatcher(_ctx);
-            _factory = new FiberNodeFactory(_ctx, _patcher);
+            _factory = new FiberNodeFactory(_ctx, _patcher, _cleaner);
             _childReconciler = new ChildReconciler(_ctx, _patcher, _factory, _cleaner);
 
             _factory.SetHost(this);
@@ -245,9 +245,9 @@ namespace Velvet
                 // per render, so unconsumed entries would otherwise accumulate across renders.
                 _ctx.EffectiveKeys.Clear();
                 // Scoped to one top-level pass because that is the span holding both readings it
-                // compares, and placed after the portal drain above so a presence the drain's own nested
+                // compares, and placed after the portal drain above so a wrapper the drain's own nested
                 // reconciles rendered is marked before the marks are read.
-                _ctx.RetirePresenceStatesNotReRendered();
+                _ctx.RetireBoundaryStatesNotReRendered();
                 // Return the inline children's old trees (queued by SubsumeFiberIntoThisPass) to the
                 // VNode pool now that the whole pass is done using them as patch baselines — deferred
                 // to here to avoid a mid-pass use-after-return that duplicates re-expanded subtrees.
@@ -761,6 +761,7 @@ namespace Velvet
 
         private void ReleaseHostsAndScopes()
         {
+            _ctx.ClearSuspenseState();
             _ctx.PortalState.Clear();
             _ctx.PendingPortalMounts.Clear();
             // ZLayerHosts/ZLayerMembers are pure side-tables (dropped by ClearAllSideTables); these two

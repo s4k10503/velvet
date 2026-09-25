@@ -148,6 +148,7 @@ def faults(root):
 
 
 class DeclarationTests(unittest.TestCase):
+    # GREEN_ON_BASE(refactor): relocating the PR diagnostics leaves this existing guard behavior unchanged.
     def test_Given_AGuardDeclaringNothing_When_TheCheckRuns_Then_ItIsReported(self):
         # Arrange
         root = directory(quiet=PREAMBLE + "\nsys.exit(0)\n")
@@ -158,6 +159,7 @@ class DeclarationTests(unittest.TestCase):
         # Assert
         self.assertEqual(len(found), 1, faults(root))
 
+    # GREEN_ON_BASE(refactor): relocating the PR diagnostics leaves this existing guard behavior unchanged.
     def test_Given_AGuardDeclaringAllowWithNoCommentAboveIt_When_TheCheckRuns_Then_ItIsReported(self):
         # Arrange — the sibling is there so the missing comment is the only fault left.
         root = directory(lenient=guard("allow", ALLOWS), holds=guard("refuse", HOLDS))
@@ -170,6 +172,7 @@ class DeclarationTests(unittest.TestCase):
 
 
 class VerdictTests(unittest.TestCase):
+    # GREEN_ON_BASE(refactor): relocating the PR diagnostics leaves this existing guard behavior unchanged.
     def test_Given_AGuardReadingAnEmptyAnswerAsNothingToRefuse_When_TheCheckRuns_Then_ItIsReported(self):
         # Arrange
         root = directory(quiet=guard("refuse", FAILS_OPEN))
@@ -180,6 +183,7 @@ class VerdictTests(unittest.TestCase):
         # Assert — every mode that reaches the read reports it, so the count rides along.
         self.assertEqual(len(found), 2, faults(root))
 
+    # GREEN_ON_BASE(refactor): relocating the PR diagnostics leaves this existing guard behavior unchanged.
     def test_Given_TheSameGuardRefusingOnThatAnswer_When_TheCheckRuns_Then_NothingIsReported(self):
         # Arrange
         root = directory(quiet=guard("refuse", HOLDS))
@@ -190,6 +194,7 @@ class VerdictTests(unittest.TestCase):
         # Assert
         self.assertEqual(found, [])
 
+    # GREEN_ON_BASE(refactor): relocating the PR diagnostics leaves this existing guard behavior unchanged.
     def test_Given_AGuardHoldingOnlyWhenTheReadErrors_When_TheCheckRuns_Then_TheEmptyAnswerIsReported(self):
         # Arrange
         root = directory(partial=guard("refuse", HOLDS_ON_ERROR_ONLY))
@@ -200,6 +205,7 @@ class VerdictTests(unittest.TestCase):
         # Assert
         self.assertEqual(len(found), 1, faults(root))
 
+    # GREEN_ON_BASE(refactor): relocating the PR diagnostics leaves this existing guard behavior unchanged.
     def test_Given_AGuardFailingOpenUnderTheSecondToolItDeclares_When_TheCheckRuns_Then_ItIsReported(self):
         # Arrange — the failure is under the tool that sorts later, which is the one a check posing
         # a single tool per guard never poses.
@@ -211,6 +217,7 @@ class VerdictTests(unittest.TestCase):
         # Assert — every mode that reaches the read reports it, so the count rides along.
         self.assertEqual(len(found), 2, faults(root))
 
+    # GREEN_ON_BASE(refactor): relocating the PR diagnostics leaves this existing guard behavior unchanged.
     def test_Given_AGuardWhoseRefusalIsWhatGitsNegativeAnswerMeans_When_TheCheckRuns_Then_NothingIsReported(self):
         # Arrange
         root = directory(negative=guard("refuse", NEGATIVE_IS_AN_ANSWER))
@@ -223,6 +230,7 @@ class VerdictTests(unittest.TestCase):
 
 
 class ScopeTests(unittest.TestCase):
+    # GREEN_ON_BASE(refactor): relocating the PR diagnostics leaves this existing guard behavior unchanged.
     def test_Given_AGuardDeclaringNoneThatConsultsGit_When_TheCheckRuns_Then_ItIsReported(self):
         # Arrange
         root = directory(reader=guard("none", READS_GIT))
@@ -233,6 +241,7 @@ class ScopeTests(unittest.TestCase):
         # Assert
         self.assertEqual(len(found), 1, faults(root))
 
+    # GREEN_ON_BASE(refactor): relocating the PR diagnostics leaves this existing guard behavior unchanged.
     def test_Given_AGuardDeclaringNoneThatConsultsNeither_When_TheCheckRuns_Then_NothingIsReported(self):
         # Arrange
         root = directory(textual=guard("none", READS_NOTHING))
@@ -243,6 +252,7 @@ class ScopeTests(unittest.TestCase):
         # Assert
         self.assertEqual(found, [])
 
+    # GREEN_ON_BASE(refactor): relocating the PR diagnostics leaves this existing guard behavior unchanged.
     def test_Given_AGuardWhoseProbeReachesNeitherProgram_When_TheCheckRuns_Then_ItIsReported(self):
         # Arrange — a "refuse" that no reading takes part in says nothing about an unreadable state.
         root = directory(textual=guard("refuse", READS_NOTHING))
@@ -255,6 +265,7 @@ class ScopeTests(unittest.TestCase):
 
 
 class BackingTests(unittest.TestCase):
+    # GREEN_ON_BASE(refactor): relocating the PR diagnostics leaves this existing guard behavior unchanged.
     def test_Given_AGuardDeclaringAllowAndNoSiblingRefusingItsProbe_When_TheCheckRuns_Then_ItIsReported(self):
         # Arrange
         root = directory(lenient=guard("allow", ALLOWS, reason="nothing holds this"),
@@ -266,6 +277,7 @@ class BackingTests(unittest.TestCase):
         # Assert
         self.assertEqual(len(found), 2, faults(root))
 
+    # GREEN_ON_BASE(refactor): relocating the PR diagnostics leaves this existing guard behavior unchanged.
     def test_Given_AGuardDeclaringAllowAndASiblingRefusingItsProbe_When_TheCheckRuns_Then_NothingIsReported(self):
         # Arrange
         root = directory(lenient=guard("allow", ALLOWS, reason="the sibling holds this"),
@@ -337,6 +349,7 @@ def stop_faults(root):
 
 
 class StopGuardTests(unittest.TestCase):
+    # GREEN_ON_BASE(refactor): relocating the PR diagnostics leaves this existing guard behavior unchanged.
     def test_Given_AStopGuardEndingTheSessionWhenNothingAnswered_When_TheCheckRuns_Then_ItIsReported(self):
         # Arrange
         root = directory(lenient=stop_guard("refuse", STOP_FAILS_OPEN))
@@ -348,6 +361,7 @@ class StopGuardTests(unittest.TestCase):
         # agree all the way down to the one mode that missed the defect this branch is about.
         self.assertEqual(len(found), 2, stop_faults(root))
 
+    # GREEN_ON_BASE(refactor): relocating the PR diagnostics leaves this existing guard behavior unchanged.
     def test_Given_AStopGuardBlockingWithoutSayingTheReadingFailed_When_TheCheckRuns_Then_ItIsReported(self):
         # Arrange
         root = directory(mute=stop_guard("refuse", STOP_BLOCKS_MUTE))
@@ -359,6 +373,7 @@ class StopGuardTests(unittest.TestCase):
         # agree all the way down to the one mode that missed the defect this branch is about.
         self.assertEqual(len(found), 2, stop_faults(root))
 
+    # GREEN_ON_BASE(refactor): relocating the PR diagnostics leaves this existing guard behavior unchanged.
     def test_Given_AStopGuardThatSaysTheReadingFailed_When_TheCheckRuns_Then_NothingIsReported(self):
         # Arrange
         root = directory(plain=stop_guard("refuse", STOP_BLOCKS_SAYING))
@@ -369,6 +384,7 @@ class StopGuardTests(unittest.TestCase):
         # Assert
         self.assertEqual(found, [])
 
+    # GREEN_ON_BASE(refactor): relocating the PR diagnostics leaves this existing guard behavior unchanged.
     def test_Given_AStopGuardDeclaringNothing_When_TheCheckRuns_Then_ItIsReported(self):
         # Arrange
         root = directory(quiet=STOP_PREAMBLE + "\nsys.exit(0)\n")
@@ -379,6 +395,7 @@ class StopGuardTests(unittest.TestCase):
         # Assert
         self.assertEqual(len(found), 1, stop_faults(root))
 
+    # GREEN_ON_BASE(refactor): relocating the PR diagnostics leaves this existing guard behavior unchanged.
     def test_Given_AStopGuardThatReadsNeitherProgram_When_TheCheckRuns_Then_ItIsReported(self):
         # Arrange — a "refuse" no reading takes part in says nothing about an unreadable state.
         root = directory(textual=stop_guard("refuse", STOP_READS_NOTHING))
@@ -389,6 +406,7 @@ class StopGuardTests(unittest.TestCase):
         # Assert
         self.assertEqual(len(found), 1, stop_faults(root))
 
+    # GREEN_ON_BASE(refactor): relocating the PR diagnostics leaves this existing guard behavior unchanged.
     def test_Given_AStopGuardDeclaringAnExemptionWithNoCommentAboveIt_When_TheCheckRuns_Then_ItIsReported(self):
         # Arrange
         root = directory(lenient=stop_guard("refuse", STOP_BLOCKS_SAYING,
@@ -400,6 +418,7 @@ class StopGuardTests(unittest.TestCase):
         # Assert
         self.assertEqual(len(found), 1, stop_faults(root))
 
+    # GREEN_ON_BASE(refactor): relocating the PR diagnostics leaves this existing guard behavior unchanged.
     def test_Given_AnExemptionNoSiblingRefusesUnder_When_TheCheckRuns_Then_ItIsReported(self):
         # Arrange — the exemption alone would let the session end with the failed reading unsaid.
         root = directory(lenient=stop_guard("refuse", STOP_PARTIAL_ALLOWS,
@@ -412,6 +431,7 @@ class StopGuardTests(unittest.TestCase):
         # Assert
         self.assertEqual(len(found), 1, stop_faults(root))
 
+    # GREEN_ON_BASE(refactor): relocating the PR diagnostics leaves this existing guard behavior unchanged.
     def test_Given_AnExemptionWithASiblingRefusingUnderIt_When_TheCheckRuns_Then_NothingIsReported(self):
         # Arrange
         root = directory(lenient=stop_guard("refuse", STOP_PARTIAL_ALLOWS,
@@ -425,6 +445,7 @@ class StopGuardTests(unittest.TestCase):
         # Assert
         self.assertEqual(found, [])
 
+    # GREEN_ON_BASE(refactor): relocating the PR diagnostics leaves this existing guard behavior unchanged.
     def test_Given_AnExemptionForAModeTheGuardRefusesIn_When_TheCheckRuns_Then_ItIsReportedStale(self):
         # Arrange
         root = directory(lenient=stop_guard("refuse", STOP_BLOCKS_SAYING,
@@ -437,6 +458,7 @@ class StopGuardTests(unittest.TestCase):
         # Assert
         self.assertEqual(len(found), 1, stop_faults(root))
 
+    # GREEN_ON_BASE(refactor): relocating the PR diagnostics leaves this existing guard behavior unchanged.
     def test_Given_AStopGuardDeclaringAllowWithNoCommentAboveIt_When_TheCheckRuns_Then_ItIsReported(self):
         # Arrange — the sibling is there so the missing comment is the only fault left.
         root = directory(lenient=stop_guard("allow", STOP_FAILS_OPEN),
@@ -448,6 +470,7 @@ class StopGuardTests(unittest.TestCase):
         # Assert
         self.assertEqual(len(found), 1, stop_faults(root))
 
+    # GREEN_ON_BASE(refactor): relocating the PR diagnostics leaves this existing guard behavior unchanged.
     def test_Given_AStopGuardDeclaringAllowAndNoSiblingRefusing_When_TheCheckRuns_Then_ItIsReported(self):
         # Arrange — one line of a new guard otherwise reaches the silence this exists to stop.
         root = directory(lenient=stop_guard("allow", STOP_FAILS_OPEN,
@@ -459,6 +482,7 @@ class StopGuardTests(unittest.TestCase):
         # Assert — every mode that reaches the read reports it.
         self.assertEqual(len(found), 2, stop_faults(root))
 
+    # GREEN_ON_BASE(refactor): relocating the PR diagnostics leaves this existing guard behavior unchanged.
     def test_Given_AStopGuardDeclaringAllowAndASiblingRefusing_When_TheCheckRuns_Then_NothingIsReported(self):
         # Arrange — the control: a policy nothing can declare is not a policy.
         root = directory(lenient=stop_guard("allow", STOP_FAILS_OPEN, reason="the sibling holds this"),
@@ -470,6 +494,7 @@ class StopGuardTests(unittest.TestCase):
         # Assert
         self.assertEqual(found, [])
 
+    # GREEN_ON_BASE(refactor): relocating the PR diagnostics leaves this existing guard behavior unchanged.
     def test_Given_ThisRepositorysStopGuards_When_NoReadingAnswers_Then_EachAnswersWhatItDeclares(self):
         # Arrange
         stop_directory = REPO_ROOT / check.STOP_DIRECTORY
@@ -483,6 +508,7 @@ class StopGuardTests(unittest.TestCase):
 
 
 class RepositoryTests(unittest.TestCase):
+    # GREEN_ON_BASE(refactor): relocating the PR diagnostics leaves this existing guard behavior unchanged.
     def test_Given_ThisRepositorysGuards_When_EachIsPosedItsOwnProbe_Then_EachAnswersWhatItDeclares(self):
         # Arrange
         refuse_directory = REPO_ROOT / check.REFUSE_DIRECTORY
@@ -630,7 +656,7 @@ class ZeroCheckTests(unittest.TestCase):
     quota walks back in as "no checks".
     """
 
-    GUARD = REPO_ROOT / ".claude/hooks/stop/unsettled_pr.py"
+    GUARD = REPO_ROOT / "scripts/pr/diagnostics/unsettled_pr.py"
 
     def said(self, stub):
         home = Path(tempfile.mkdtemp(prefix="velvet-zero-check-home-"))
@@ -746,7 +772,7 @@ class AllHeldTests(unittest.TestCase):
     requests and a report about what was claimed of them.
     """
 
-    GUARD = REPO_ROOT / ".claude/hooks/stop/unsettled_pr.py"
+    GUARD = REPO_ROOT / "scripts/pr/diagnostics/unsettled_pr.py"
 
     def said(self, deferrals):
         home = Path(tempfile.mkdtemp(prefix="velvet-all-held-home-"))
@@ -799,6 +825,7 @@ class UnreadableHeartbeatTests(unittest.TestCase):
         finally:
             shutil.rmtree(home, ignore_errors=True)
 
+    # GREEN_ON_BASE(refactor): relocating the PR diagnostics leaves this existing guard behavior unchanged.
     def test_Given_AFreshHeartbeatInTheOlderForm_When_AWriteIsAttempted_Then_ItSaysSomethingIsWatching(self):
         # Arrange — one field and a live stamp, which is what a watcher predating the pid writes.
         said = self.said(f"{int(time.time())}\n")
@@ -808,6 +835,7 @@ class UnreadableHeartbeatTests(unittest.TestCase):
         self.assertEqual(("Something IS watching" in said, "nothing is watching" in said),
                          (True, False))
 
+    # GREEN_ON_BASE(refactor): relocating the PR diagnostics leaves this existing guard behavior unchanged.
     def test_Given_NoHeartbeatAtAll_When_AWriteIsAttempted_Then_ItStillSaysNothingIsWatching(self):
         # Arrange — the control: the older-form message must be about the older form, not about
         # every refusal this branch makes.
@@ -853,9 +881,7 @@ class WatcherDeferralTests(unittest.TestCase):
                                     CLAUDE_CODE_SESSION_ID=check.SESSION))
         return len(recipes)
 
-    # GREEN_ON_BASE(characterization): the refusal the case below has to escape from, which this branch
-    # does not change. An escape that is always open is not one, and without this the round trip could be
-    # satisfied by a guard that stopped refusing.
+    # GREEN_ON_BASE(refactor): relocating the PR diagnostics leaves this existing guard behavior unchanged.
     def test_Given_NothingWatchingAndNoDeferral_When_AWriteIsAttempted_Then_ItIsRefused(self):
         # Act
         code, _, _, _ = check.run_guard(self.GUARD, self.PAYLOAD, "gh-empty", REPO_ROOT, self.home())
@@ -883,6 +909,7 @@ class WatcherDeferralTests(unittest.TestCase):
             (home / ".velvet-pr-watch.heartbeat").write_text(f"{now} {os.getpid()}", encoding="utf-8")
             (home / ".velvet-pr-ready").write_text(f"777 {now - 3600}\n", encoding="utf-8")
 
+    # GREEN_ON_BASE(refactor): relocating the PR diagnostics leaves this existing guard behavior unchanged.
     def test_Given_EveryBranchItRefusesFrom_When_TheRecipeIsRead_Then_EachNamesTheSession(self):
         # Arrange — the round trip below runs one branch's recipe end to end, and there are four
         # recipes over three branches. A recipe the reading disowns is one an agent follows and is
@@ -906,6 +933,7 @@ class WatcherDeferralTests(unittest.TestCase):
         # the recipe it stopped reaching would then be unsigned with this green.
         self.assertEqual((reached, unsigned), ([(True, True)] * 3, []))
 
+    # GREEN_ON_BASE(refactor): relocating the PR diagnostics leaves this existing guard behavior unchanged.
     def test_Given_AnotherSessionDeferredIt_When_TheGuardRefuses_Then_ItSaysSoRatherThanNothing(self):
         # Arrange — a deferral this session did not write suppresses nothing, which is the ownership
         # rule. What it must not do is vanish: the reader is refused with a line about their pull
@@ -921,6 +949,7 @@ class WatcherDeferralTests(unittest.TestCase):
         # Assert
         self.assertIn("another-0002", refusal)
 
+    # GREEN_ON_BASE(refactor): relocating the PR diagnostics leaves this existing guard behavior unchanged.
     def test_Given_TheRecipesItPrints_When_TheyAreFollowed_Then_TheNextWriteGoesThrough(self):
         # Arrange — both branches whose recipe can be followed as printed. The other two key their
         # line on `<pr>`, a placeholder a person fills in, so a verbatim run writes a line about no
@@ -949,6 +978,7 @@ class GuardSessionTests(unittest.TestCase):
     them passed on CI, where nothing sets the variable, and failed in every session that ran them.
     """
 
+    # GREEN_ON_BASE(refactor): relocating the PR diagnostics leaves this existing guard behavior unchanged.
     def test_Given_TheRunnerHasASessionOfItsOwn_When_AGuardIsRun_Then_ItReadsTheSuitesInstead(self):
         # Arrange
         workspace = Path(tempfile.mkdtemp(prefix="velvet-session-probe-"))

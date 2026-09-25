@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Unit tests for the zero-checks reading in .claude/hooks/stop/unsettled_pr.py.
+"""Unit tests for the zero-checks reading in scripts/pr/diagnostics/unsettled_pr.py.
 
 No pull request in this repository is entitled to zero checks: both required workflows subscribe to
 `pull_request` without a path filter, so a head with none is a run that did not start. The guard used
@@ -24,7 +24,7 @@ from pathlib import Path
 from unittest import mock
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-GUARD = REPO_ROOT / ".claude/hooks/stop/unsettled_pr.py"
+GUARD = REPO_ROOT / "scripts/pr/diagnostics/unsettled_pr.py"
 
 _spec = importlib.util.spec_from_file_location("unsettled_pr", GUARD)
 unsettled_pr = importlib.util.module_from_spec(_spec)

@@ -9,6 +9,7 @@ namespace Velvet
     {
         private readonly ReconcilerContext _ctx;
         private readonly FiberNodePatcher _patcher;
+        private readonly FiberElementCleaner _cleaner;
         private IReconcilerHost _host = null!;
 
         // The reserved key prefix for unkeyed AnimatePresence children (BuildKeyedMapCopy). Internal so
@@ -20,10 +21,11 @@ namespace Velvet
         // ContextProviderNode: the class lets tests and consumers identify Provider boundaries in the DOM.
         internal const string ContextProviderClassName = "velvet-context-provider";
 
-        public FiberNodeFactory(ReconcilerContext ctx, FiberNodePatcher patcher)
+        public FiberNodeFactory(ReconcilerContext ctx, FiberNodePatcher patcher, FiberElementCleaner cleaner)
         {
             _ctx = ctx;
             _patcher = patcher;
+            _cleaner = cleaner;
         }
 
         internal void SetHost(IReconcilerHost host)
@@ -77,6 +79,24 @@ namespace Velvet
             }
         }
 
+        // A throw out of the children of an element being created reaches no caller holding the element, so
+        // what those children left against it — a ref setup the next drain would run, a fiber mounted under
+        // it — is released before the throw goes on. A suspend passes through untouched: releasing the
+        // element on one too left the Suspense boundary on its fallback after the resource resolved, which
+        // ElementCreationFailureTests holds.
+        private void ReconcileChildrenOfNewElement(VisualElement element, VisualElement childContainer, VNode?[] children)
+        {
+            try
+            {
+                _host.ReconcileChildren(childContainer, Array.Empty<VNode>(), children);
+            }
+            catch (Exception exception) when (exception is not FiberSuspendSignal)
+            {
+                _cleaner.CleanupElement(element);
+                throw;
+            }
+        }
+
         private VisualElement CreateForElementNode(ElementNode elementNode)
         {
             var element = _ctx.FiberElementFactory.Create(elementNode);
@@ -98,7 +118,7 @@ namespace Velvet
                 // produce no DOM element of their own. The same path is used
                 // on patch (PatchCommon) so initial-mount and patch DOM layouts stay
                 // symmetric — both omit the per-Component wrapper VE.
-                _host.ReconcileChildren(childContainer, Array.Empty<VNode>(), elementNode.Children);
+                ReconcileChildrenOfNewElement(element, childContainer, elementNode.Children);
             }
             try
             {
@@ -283,7 +303,7 @@ namespace Velvet
                     _ctx.ComponentContextStack.Push(MotionContext.ActiveLabel, childLabel);
                     try
                     {
-                        _host.ReconcileChildren(childContainer, Array.Empty<VNode>(), motionNode.Children);
+                        ReconcileChildrenOfNewElement(element, childContainer, motionNode.Children);
                     }
                     finally
                     {
@@ -292,7 +312,7 @@ namespace Velvet
                 }
                 else
                 {
-                    _host.ReconcileChildren(childContainer, Array.Empty<VNode>(), motionNode.Children);
+                    ReconcileChildrenOfNewElement(element, childContainer, motionNode.Children);
                 }
             }
             _ctx.SyncRefCallback(element, motionNode.RefCallback);
@@ -564,7 +584,7 @@ namespace Velvet
             {
                 if (providerNode.Children != null)
                 {
-                    _host.ReconcileChildren(container, Array.Empty<VNode>(), providerNode.Children);
+                    ReconcileChildrenOfNewElement(container, container, providerNode.Children);
                 }
             }
             finally

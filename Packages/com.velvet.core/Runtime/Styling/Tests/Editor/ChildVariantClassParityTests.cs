@@ -296,6 +296,48 @@ namespace Velvet.Tests
             Assert.That(content.Children().All(c => c.ClassListContains("text-red-500")), Is.True);
         }
 
+        // GREEN_ON_BASE(characterization): the base already routes this walk through the control itself.
+        // No production code changes here. The case stands in for a header sentence that said the payload
+        // never lands on a widget's internal hierarchy, which held for ScrollView and not for this control.
+        [Test]
+        public void Given_TextFieldChildVariant_When_Reconciled_Then_TheControlsOwnInputTakesPayload()
+        {
+            // Arrange — a TextField redirects nothing, so the walk root is the control itself. It is handed
+            // no reconciled children at all: every child the walk finds is a part the control built, and
+            // #unity-text-input, the box a theme paints the field's background on, is one of them.
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { V.TextField(className: "[&>*]:text-red-500") };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), tree);
+            var input = scope.Root[0].Q<VisualElement>(TextField.textInputUssName);
+
+            // Assert
+            Assert.That(input.ClassListContains("text-red-500"), Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): the base seats a declared label ahead of the input already.
+        // This pins the half of that reach a caller does not ask for, which the styling guide now states.
+        [Test]
+        public void Given_TextFieldChildVariantAndALabel_When_Reconciled_Then_TheLabelTakesThePayloadAsWell()
+        {
+            // Arrange — a declared label is a SECOND part of the same control, seated ahead of the input, so
+            // the token a caller aimed at the input reaches the label as well. Both parts are read in one
+            // comparison: a walk that found only one of them satisfies either half alone.
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { V.TextField(className: "[&>*]:text-red-500", label: "Name") };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), tree);
+            var field = (TextField)scope.Root[0];
+            var input = field.Q<VisualElement>(TextField.textInputUssName);
+
+            // Assert
+            Assert.That(
+                (field.labelElement.ClassListContains("text-red-500"), input.ClassListContains("text-red-500")),
+                Is.EqualTo((true, true)));
+        }
+
         [Test]
         public void Given_NoChildVariantClass_When_Reconciled_Then_NoManipulatorRegistered()
         {

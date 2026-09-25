@@ -34,7 +34,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-HOOK_DIRECTORY = Path(__file__).resolve().parent.parent
+HOOK_DIRECTORY = Path(__file__).resolve().parents[3] / ".harness/hooks"
 sys.path.insert(0, str(HOOK_DIRECTORY / "lib"))
 sys.path.insert(0, str(HOOK_DIRECTORY.parent.parent / "scripts" / "pr"))
 

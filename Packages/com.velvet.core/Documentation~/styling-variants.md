@@ -287,6 +287,35 @@ is the only one hosted outside the element the renderer applies that opacity to.
 An ancestor's `overflow-hidden` clips the band, as CSS does. The ringed element's **own**
 `overflow-hidden` does not — so `overflow-hidden rounded-full ring-2`, the avatar pattern, renders.
 
+**Where `skew-*` deviates from CSS.** UI Toolkit's transform carries rotation, scale and translation and
+no shear, so a skew here is not a transform: the caster's own face is repainted sheared in its generated
+content, and each direct in-flow child is seated with an inline `translate` that puts its centroid where
+the shear would carry it. Four things follow that a CSS `skewX()` does not do.
+
+- **The caster's hit region does not lean with its face.** Its layout box stays axis-aligned and that box
+  is what answers a pointer, so a click near an edge lands by the upright rectangle while the paint has
+  moved off it. The two part company most at the top and bottom edges, where the face is carried
+  ±(height / 2) · tan θ sideways: ±2.5 px for `skew-x-6` on a 48 px-tall button, ±42.5 px for
+  `skew-x-12` on a 400 px-tall card. A direct child's hit region *does* follow, its seat being a real
+  transform.
+- **A caster's own text neither shears nor moves.** `V.Button(text:)` and `V.Label` paint their text on
+  the caster itself rather than into a child, so there is no child for the seat to move and the text
+  stands upright over the sheared fill.
+- **Descendants are seated, not sheared.** The seat is exact at each direct child's centroid and constant
+  across that child, so a child large relative to the caster reads off at its far corners, and a
+  grandchild moves only because its parent did.
+- **The seat shares each direct child's inline `translate` slot.** The seat and a child's own
+  `translate-x-*`, a `V.Motion` translation, or a drag offset follow last-writer-wins behavior. Velvet runs
+  a seat pass when the caster attaches, when its geometry changes, and from caster reconciliation. Attachment
+  resets the pass guard; subsequent passes write only when their signature of caster size, skew angles, and
+  direct-child identity, order, flow state or layout changed. A translate-only write does not change that
+  signature, so it can remain visible until a later seat pass has another reason to write. Use an inner wrapper
+  when both effects must compose.
+
+`origin-*` does not move the skew pivot either: the shear is always taken about the box centre, while
+`rotate-*` and `scale-*` are real USS transforms and do honour it. Velvet therefore exposes the painted
+approximation described here rather than a true shear transform.
+
 **Where the other wrapper-less paints deviate from CSS under a hidden overflow.** UI Toolkit applies an
 element's own overflow clip to the element's own painted content, and cuts it at the **padding** box.
 CSS clips neither a box-shadow nor a border that way, so a painted utility silently loses whatever falls
@@ -349,6 +378,15 @@ the reconciler. So `V.Div(whileHoverClass: "shadow-lg")` toggles a class nothing
 the first paragraph above versus everything else, not as whole categories: `gap-4` is spacing and
 `skew-x-6` is a transform, yet both are in that list and neither works here. A `V.Motion`'s resting
 `variants` classes go through the reconciler and are unaffected.
+
+**`[&>*]:` on a UI Toolkit composite lands on the control's own parts.** The walk is over whatever the
+container redirects its children into. A `V.ScrollView` redirects, so the payload reaches the children
+reconciled into it. Controls that redirect nothing answer with themselves, so the walk finds the parts the
+control built for itself. On `V.TextField`, for example, the input box (`#unity-text-input`) is a direct
+child and is reached. How far the payload gets differs per control because `& > *` stops after one level.
+
+A declared `label:` seats the label element ahead of the input, and it takes the payload as well, so
+`[&>*]:text-red-500` on a labelled field colours both.
 
 **`[&>*]:` reaches the paints late, and inconsistently.** It is the only family whose payload is
 spelled on the *container* rather than on the element it lands on, and a child is fully built before

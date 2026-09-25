@@ -32,6 +32,23 @@ class HarnessSyncTests(unittest.TestCase):
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(content)
 
+    def test_Given_RepositoryPolicies_When_ClientsAreGenerated_Then_RepositoryWorkCannotBlockStop(self):
+        # Arrange
+        root = Path(__file__).resolve().parents[2]
+        # Act
+        generated = sync.outputs(root)
+        commands = []
+        for client, filename, event in (("claude", "settings.json", "Stop"),
+                                        ("codex", "hooks.json", "Stop"),
+                                        ("cursor", "hooks.json", "stop")):
+            groups = json.loads(generated[f".{client}/{filename}"])["hooks"].get(event, [])
+            for group in groups:
+                commands.extend(hook["command"] for hook in group.get("hooks", [group]))
+        # Assert
+        self.assertEqual([command for command in commands
+                          if any(name in command for name in
+                                 ("stop/open_backlog.py", "stop/unsettled_pr.py"))], [])
+
     def test_Given_SharedSources_When_Edited_Then_ClientsReadChangesWithoutSynchronization(self):
         # Arrange
         sync.synchronize(self.root)

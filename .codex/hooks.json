@@ -61,26 +61,6 @@
         "matcher": "Write"
       }
     ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" codex Stop stop/unsettled_pr.py",
-            "timeout": 20,
-            "type": "command"
-          }
-        ]
-      },
-      {
-        "hooks": [
-          {
-            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" codex Stop stop/open_backlog.py",
-            "timeout": 20,
-            "type": "command"
-          }
-        ]
-      }
-    ],
     "PreToolUse": [
       {
         "hooks": [

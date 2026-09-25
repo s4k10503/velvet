@@ -1120,6 +1120,9 @@ namespace Velvet
         /// attaching a stable per-item key.
         /// If <paramref name="renderer"/> returns null for an item, the slot is included in the array
         /// but renders nothing: the reconciler's inline expansion drops it.
+        /// A node a list has placed before — returned for an earlier item, or held from an earlier render —
+        /// keeps the key it was placed under; where the selected key differs, its slot takes a copy of the
+        /// node carrying that key.
         /// </summary>
         /// <typeparam name="T">Element type of the source collection.</typeparam>
         /// <param name="items">Source collection. When null or empty, returns an empty VNode array.</param>
@@ -1150,9 +1153,9 @@ namespace Velvet
                     var node = renderer(items[i]);
                     if (node != null)
                     {
-                        // The selector key is authoritative: it overrides any key the renderer set on the
-                        // node, so the list-mapping site owns the identity used for reconciliation.
-                        node.Key = keySelector(items[i]);
+                        // The selector key is authoritative over any key the renderer set, so the
+                        // list-mapping site owns the identity used for reconciliation.
+                        node = node.WithListKey(keySelector(items[i]));
                     }
                     result[i] = node;
                 }
@@ -1168,7 +1171,8 @@ namespace Velvet
 
         /// <summary>
         /// Builds a keyed VNode list from an indexed collection, mapping each item together with
-        /// its index to a VNode.
+        /// its index to a VNode. A node a list has placed before is placed as
+        /// <see cref="List{T}(IReadOnlyList{T}, Func{T, string}, Func{T, VNode})"/> places one.
         /// </summary>
         /// <typeparam name="T">Element type of the source collection.</typeparam>
         /// <param name="items">Source collection. When null or empty, returns an empty VNode array.</param>
@@ -1197,9 +1201,8 @@ namespace Velvet
                     var node = renderer(items[i], i);
                     if (node != null)
                     {
-                        // The selector key is authoritative: it overrides any key the renderer set on the
-                        // node, so the list-mapping site owns the identity used for reconciliation.
-                        node.Key = keySelector(items[i], i);
+                        // Same authority as the overload above.
+                        node = node.WithListKey(keySelector(items[i], i));
                     }
                     result[i] = node;
                 }
@@ -1286,9 +1289,9 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Embeds a function-style component (`[Component] static VNode Foo()`) into the VNode tree
-        /// as a child node. Props are read from Stores / Context via hooks,
-        /// so passing state/props through method arguments is not the supported pattern.
+        /// Embeds a function-style component that takes no parameter (`[Component] static VNode Foo()`) into the
+        /// VNode tree as a child node; <see cref="Component{TProps}(Func{TProps, VNode}, TProps, string)"/> embeds
+        /// one that takes props.
         /// </summary>
         /// <param name="body">Delegate of a static method annotated with <c>[Component]</c> (e.g. <c>FooComp.Render</c>).</param>
         /// <param name="key">Key used to disambiguate siblings at the same position.</param>
@@ -1477,13 +1480,14 @@ namespace Velvet
         /// <summary>
         /// Memoization node. Skips rebuilding the child subtree while the dependency array is unchanged.
         /// When <c>key</c> is omitted, the order of MemoNodes within the same component must remain stable,
-        /// since identity is resolved by call order. If the order can change dynamically, use
+        /// since the node is identified by its position in the element it is written into. If the order can
+        /// change dynamically, use
         /// <see cref="MemoizedWithKey(string, Func{VNode}, object[])"/> instead. This is distinct from
         /// <see cref="Memo{TProps}"/>, which
         /// memoizes a function-style component by props equality.
         /// </summary>
         /// <param name="factory">Factory invoked to produce the cached VNode when <paramref name="deps"/> change.</param>
-        /// <param name="deps">Dependency values. When equal to the previous render, the cached VNode is reused; <see cref="MemoNode.Dependencies"/> states the branch each element type takes. Pass an empty array to declare no dependencies and cache the subtree for the node's whole life; null declares no dependency array, which no newly built node's comparison can satisfy.</param>
+        /// <param name="deps">Dependency values. When equal to the previous render, the cached VNode is reused; <see cref="MemoNode.Dependencies"/> states the branch each element type takes. Pass an empty array to declare no dependencies and keep the cached subtree while the memo keeps its position; null declares no dependency array, which no newly built node's comparison can satisfy.</param>
         /// <returns>The created <see cref="MemoNode"/>.</returns>
         public static MemoNode Memoized(Func<VNode> factory, params object?[]? deps)
         {
@@ -1500,8 +1504,8 @@ namespace Velvet
         /// </summary>
         /// <remarks>
         /// The single-argument overload exists so that omitting deps is unambiguous — see
-        /// <see cref="Hooks.UseCallback{T}(T)"/> for the hazard it avoids. To cache the subtree for the node's
-        /// whole life instead, pass an empty array.
+        /// <see cref="Hooks.UseCallback{T}(T)"/> for the hazard it avoids. To keep the cached subtree while the
+        /// memo keeps its position instead, pass an empty array.
         /// </remarks>
         /// <param name="factory">Factory invoked on every reconcile to produce the subtree.</param>
         /// <returns>The created <see cref="MemoNode"/>.</returns>
@@ -2342,9 +2346,11 @@ namespace Velvet
         /// gives the same selector: the row renders, and a range change reuses it by its item index.</param>
         /// <param name="itemHeight">Fixed height (pixels) used for layout and visible-range calculation.</param>
         /// <param name="renderer">Function that produces a VNode for each visible item. Must not be null.
-        /// A key it sets on the node it returns is overwritten by <paramref name="keySelector"/>'s, which is
-        /// the identity a range change reuses a row by. A throw of its own is not contained — it reaches
-        /// the caller, and the range update it ends leaves the list showing no rows.</param>
+        /// A key it sets on the node it returns plays no part in which row a range change reuses —
+        /// <paramref name="keySelector"/>'s key does — and the node is left as the renderer returned it, so
+        /// one node returned for several items does not merge their rows. A throw of its own is not
+        /// contained — it reaches the caller, and the range update it ends leaves the list showing no
+        /// rows.</param>
         /// <param name="overscan">Extra items rendered above/below the visible window to smooth scroll-in.</param>
         /// <param name="key">Key used to disambiguate siblings at the same position.</param>
         /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces.</param>

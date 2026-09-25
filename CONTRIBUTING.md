@@ -180,9 +180,9 @@ The run also fails or stops rather than pass over a mutant nobody asked about, a
 says when it does which.
 
 **What asks whether the campaign was run is a receipt, not attentiveness.** A finished run leaves one
-under the campaign's own log directory, keyed on the merge base (taken against what
-`mutation_check.origin_copy` returns for the base), the platform and the content of every file it
-mutated, and `gh pr create` is refused where no receipt covers the checkout it is run in. A
+under the campaign's own log directory, keyed as
+[Generators~/README.md ▸ The Unity assemblies](Packages/com.velvet.core/Generators~/README.md#the-unity-assemblies)
+defines, and `gh pr create` is refused where no receipt covers the checkout it is run in. A
 branch that changes no mutable package source is owed nothing and is not asked; a change no operator
 reaches records that verdict and is accepted, since such a branch cannot earn a passing run at all. The
 receipt is keyed on what the campaign measured rather than on the head commit, because the campaign
@@ -597,6 +597,13 @@ path. The adapter reconstructs exact-context add/update/delete/move patches with
 files. Missing or ambiguous context is refused before editing; retry with more exact context.
 The shell guards retain their existing command-parser limits.
 
+Repository-wide backlog and pull-request state do not establish the scope or completion
+criteria of the current task. The clients therefore register neither `open_backlog.py` nor
+`unsettled_pr.py` on Stop. Assigned issues do not authorize starting another task, and passing
+PR checks do not authorize merging. Their scripts live in `scripts/pr/diagnostics/` for explicit diagnostics;
+completion is judged against the user's request. A future blocking Stop policy must identify
+work accepted by the current task and its agreed completion condition.
+
 Hook session identifiers are passed to the deferral reader, and non-Claude refusal messages
 contain the literal session identifier needed to write a deferral. No cross-session identifier
 is inferred when the event lacks one. Cursor stop refusals become follow-up messages and are
@@ -619,7 +626,6 @@ The owning `.harness/hooks/` directory is grouped by what a script is able to st
 
 - `refuse/` — `PreToolUse`. Stops the tool call, by exiting 2 with the reason on stderr or by
   answering with a `permissionDecision` of `deny`.
-- `stop/` — `Stop`. Exits 2 to refuse the end of a turn.
 - `report/` — `SessionStart`, `SubagentStop`, `PostToolUse`. Stops nothing: `PostToolUse` fires
   after the tool has already run, so it writes into the transcript and exits 0 whatever it finds.
 - `lib/` — imported by the rest, wired to no event of its own.
@@ -760,12 +766,12 @@ refuses, and read as an allow it scores exactly as a guard whose subject is not 
 five of nineteen guards replaced by files that raise on import and the sweep came back clean. So an
 exit that is neither is reported as the fault it is.
 
-The `Stop` guards declare the same policy and are held to one thing more, because blocking was never
+The explicit PR diagnostics declare the same policy and are held to one thing more, because blocking was never
 what they got wrong. They blocked, and described the pull requests rather than the reading — so the
 deferral the message invited named the API error instead of whatever the work was waiting on.
 `.claude/hooks/lib/repository.py` owns both halves of the remedy: a second way of asking, drawn on a
 different quota, before blindness is declared at all, and the sentence a block has to carry when it
-is. The same check runs every guard in `.claude/hooks/stop` and requires that sentence of one that
+is. The same check runs every guard in `scripts/pr/diagnostics` and requires that sentence of one that
 blocks. It poses two modes: nothing answers, and — the one a second way of asking creates — the
 listing answers while every per-pull-request read fails, which is where a guard can report on a
 pull request it learned nothing about. An empty answer is posed as neither, being the ordinary state
@@ -777,7 +783,7 @@ A fifth way is a guard nothing poses at all. The checks above each ask one dimen
 unreadable reading, a wiring, a base, a tree — and `merge_unproven_head.py` agreed with every one of
 them on `main` while exiting 1 on a `gh` that failed after answering, and reading a check list `gh`
 reported under a non-zero exit as no list at all. `scripts/hooks/test_hook_coverage.py` is the floor
-under that: every script under `refuse/`, `report/` and `stop/` has to be named in the **code** of a
+under that: every script under `refuse/` and `report/` has to be named in the **code** of a
 tracked test source, comments and docstrings taken out first, so that a summary naming a guard does
 not count as a case posing one. A guard whose subject is decided in a module of its own names that module's suite in a
 `DECISION_TESTS` tuple instead — `merge_onto_unpublished_release.py` does, the release state it

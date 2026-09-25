@@ -30,6 +30,7 @@ namespace Velvet
     //   - AnimatePresence bookkeeping (PresenceStates' committed entries): an exiting ghost's
     //     node outlives the tree that last emitted it, staying the old-side baseline until the
     //     exit finishes;
+    //   - current memo-cache entries, whose children can be shared by a replacement cache result;
     //   - every parked PendingOldTree in the context: a paused time-sliced pass keeps reading its
     //     baseline across frames, so no other fiber's retirement may recycle nodes it shares.
     //
@@ -87,15 +88,8 @@ namespace Velvet
             }
         }
 
-        // Returns retired's pooled objects (props bags, single-event arrays, node arrays) to
-        // VNodePool, recursing through every child-bearing node kind, while sparing nodes still
-        // reachable from the live-mark roots (see the header). Pass a null owner only when the
-        // whole tree is being discarded with no committed successor and no owning fiber left (a
-        // memo cache torn down at reconciler disposal) — the sweep then returns everything.
-        // Returns are idempotent (rent-scoped pool ownership) and pass-deferred (VNodePool release
-        // staging), so a node reachable through several retired trees recycles exactly once and is
-        // never re-rented within the pass that retired it.
-        internal static void ReturnRetiredTree(VNode?[]? retired, ComponentFiber? owner)
+        // A memo expanded without a component owner supplies its cache as an explicit root source.
+        internal static void ReturnRetiredTree(VNode?[]? retired, ComponentFiber? owner, FiberMemoCache? memoCache = null)
         {
             if (retired == null || retired.Length == 0) return;
 
@@ -103,12 +97,24 @@ namespace Velvet
             try
             {
                 MarkOwnerRoots(owner, live);
+                memoCache?.MarkCachedTrees(live);
                 SweepTree(retired, live);
             }
             finally
             {
                 ReleaseLiveMarks(live);
             }
+        }
+
+        // Takes what of tree is still rented out of VNodePool's rented sets without recycling it, for a tree let
+        // go of while it may still be in use: no later return recycles it.
+        internal static void Release(VNode?[] tree)
+        {
+            for (var i = 0; i < tree.Length; i++)
+            {
+                ReleaseNode(tree[i]);
+            }
+            VNodePool.DisownNodeArray(tree);
         }
 
         // Unmount-time variant: retires the fiber's committed tree, its parked baseline, and the
@@ -248,6 +254,7 @@ namespace Velvet
 
             var ctx = owner.Reconciler?.Context;
             if (ctx == null) return;
+            ctx.FiberMemoCache.MarkCachedTrees(live);
 
             // Exiting AnimatePresence ghosts: PresenceBoundaryState.Committed keeps re-emitting the
             // removed child's node as the old-side baseline until its exit animation completes, long
@@ -372,7 +379,7 @@ namespace Velvet
         // never rented). Arrays must be marked individually because a live array can arrive at a
         // sweep as a retired tree ROOT (fragment unwrapping), where SweepTree consults the set for
         // the array itself before any node prune applies.
-        private static void MarkNode(VNode? node, HashSet<object> live)
+        internal static void MarkNode(VNode? node, HashSet<object> live)
         {
             if (node == null || !live.Add(node)) return;
             WalkChildSlots(node, live, WalkMode.Mark);
@@ -409,20 +416,32 @@ namespace Velvet
             }
         }
 
+        private static void ReleaseNode(VNode? node)
+        {
+            if (node is BaseElementNode element)
+            {
+                VNodePool.DisownProps(element.Props);
+                VNodePool.DisownEventArray(element.Events);
+            }
+            if (node != null) WalkChildSlots(node, s_noMarks, WalkMode.Release);
+        }
+
+        private static readonly HashSet<object> s_noMarks = new(ReferenceComparer.Instance);
+
         #endregion
 
         #region shared child-slot walk
 
-        private enum WalkMode { Mark, Sweep }
+        private enum WalkMode { Mark, Sweep, Release }
 
         // The ONE switch that knows which node kinds bear children (and which child slots they
-        // have). Mark and sweep both descend through here so the two passes cannot drift: a kind
-        // descended by one but not the other either re-opens the per-render leak (mark-only) or
-        // recycles live committed subtrees (sweep-only).
+        // have). Mark, sweep and release all descend through here so the passes cannot drift: a kind
+        // descended by one but not another either leaks its parts (skipped by the sweep or the
+        // release) or recycles live committed subtrees (skipped by the mark).
         //
-        // Deliberately opaque on both sides: MemoNode (its inner lives in the memo cache — the
-        // cache's own replace / dispose paths retire it) and ComponentNode (its props are an
-        // opaque user value; a node passed through a props record is protected only while a
+        // Deliberately opaque to every pass: MemoNode (its inner lives in the memo cache, which
+        // retires it on a replace and at disposal and releases it on an eviction) and ComponentNode
+        // (its props are an opaque user value; a node passed through a props record is protected only while a
         // slot along the logical ancestor chain also holds it — see the header contract).
         // ContextProviderNode's VALUE is marked but never swept: a consumer may have committed the
         // value's node into its own tree, and leaking a provider-held node is recoverable while
@@ -464,13 +483,18 @@ namespace Velvet
         private static void WalkOne(VNode? node, HashSet<object> live, WalkMode mode)
         {
             if (mode == WalkMode.Mark) MarkNode(node, live);
-            else SweepNode(node, live);
+            else if (mode == WalkMode.Sweep) SweepNode(node, live);
+            else ReleaseNode(node);
         }
 
         private static void WalkTree(VNode?[]? tree, HashSet<object> live, WalkMode mode)
         {
             if (tree == null || tree.Length == 0) return;
-            if (mode == WalkMode.Mark)
+            if (mode == WalkMode.Release)
+            {
+                Release(tree);
+            }
+            else if (mode == WalkMode.Mark)
             {
                 // The array object joins the mark too: a live children array can arrive at a later
                 // sweep as a retired tree ROOT (a memoized fragment-rooted body unwraps to its

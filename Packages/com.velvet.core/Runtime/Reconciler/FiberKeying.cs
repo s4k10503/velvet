@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using UnityEngine.UIElements;
 
 namespace Velvet
 {
@@ -77,6 +78,12 @@ namespace Velvet
             SlotPath = slotPath;
         }
     }
+
+    // The part of a memo's dep-cache key FiberContextSpine can derive; FiberMemoCache's position index owns why
+    // the element the memo's output lands in is not part of it. Owner and PortalScope are members for the reason
+    // ComponentRegistry's _inlineInstances key carries the same two.
+    internal readonly record struct MemoPosition(
+        ComponentFiber? Owner, VisualElement? PortalScope, string? Key, long SlotPath);
 
     // Tree position of one inline-expanded ContextProviderNode, used to pair a new-side Provider with the
     // Provider that held the same position on the old side (whose value it must be compared against to decide
@@ -187,8 +194,8 @@ namespace Velvet
                 ExtendPath(parent.Path, WalkPathKind.Component, componentKey, nodeIndex),
                 unchecked((long)PathSeed));
 
-        // The position a MemoNode opens for its resolved inner. The memo's own key selects the dep-cache
-        // entry (MemoCacheKey), not the position, so only the node index contributes here.
+        // The position a MemoNode opens for its resolved inner. The memo's own key places its dep-cache entry
+        // (MemoAt) and nothing here, so only the node index contributes.
         internal static WalkPosition MemoInner(WalkPosition parent, int nodeIndex)
             => new(MemoScope(parent.Scope, nodeIndex),
                 ExtendPath(parent.Path, WalkPathKind.Memo, null, nodeIndex),
@@ -277,10 +284,18 @@ namespace Velvet
         internal static string MemoScope(string? parentScope, int nodeIndex)
             => ComposeFragmentScope(parentScope, "m" + Index(nodeIndex));
 
-        // The dep-cache key for a MemoNode: its explicit key when present, otherwise its
-        // MemoScope (a stable position scope, not a per-pass counter).
-        internal static string MemoCacheKey(string? memoKey, string memoScope)
-            => memoKey ?? memoScope;
+        // An unkeyed memo is placed by the SlotPath its inner opens, SlotPath rather than Path for the reason
+        // WalkPosition gives. A keyed memo is placed by its key under the SlotPath of the array it is written in:
+        // the key stands in for its own index, and the levels above count as they do for an unkeyed one. Not by
+        // the scope ReconcileKeying.RegisterScopedKey qualifies an element's key with: that scope runs on into a
+        // component's output on its parent's walk and starts afresh on the component's own render, so it would
+        // spell one memo two ways.
+        internal static MemoPosition MemoAt(
+            ComponentFiber? owner, VisualElement? portalScope, string? memoKey, WalkPosition position,
+            WalkPosition innerPosition)
+            => memoKey != null
+                ? new MemoPosition(owner, portalScope, memoKey, position.SlotPath)
+                : new MemoPosition(owner, portalScope, null, innerPosition.SlotPath);
 
         // The boundary key for a SuspenseNode (also the position key its
         // ReconcilerContext.SetSuspenseFallbackShown entry is stored under): the parent scope extended

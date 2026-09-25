@@ -25,6 +25,9 @@ namespace Velvet
 
         private VirtualListNode _node;
         private VNode[] _renderedNodes;
+        // Kept beside the node rather than written onto it: a node the renderer returns for several items
+        // holds one key between all of them.
+        private string?[] _renderedKeys;
         private VisualElement[] _renderedElements;
         // _firstRenderedIndex cannot stand in for this: ForceRefresh drops it to -1 while the buffers
         // above still hold the rows it named.
@@ -88,6 +91,7 @@ namespace Velvet
             };
 
             _renderedNodes = Array.Empty<VNode>();
+            _renderedKeys = Array.Empty<string?>();
             _renderedElements = Array.Empty<VisualElement>();
 
             _scrollView.contentContainer.Add(_totalHeightSpacer);
@@ -179,7 +183,7 @@ namespace Velvet
 
             IndexOldRenderedItems();
 
-            AllocateRenderBuffers(newCount, out var newNodes, out var newElements);
+            AllocateRenderBuffers(newCount, out var newNodes, out var newKeys, out var newElements);
 
             // The loop below can throw — from the application's keySelector and renderer, and from
             // creating or patching the row the renderer describes — and it must not escape half-done:
@@ -189,7 +193,7 @@ namespace Velvet
             // what its pass took and rethrows.
             try
             {
-                PatchOrReplaceVisibleItems(newFirst, newCount, newNodes, newElements);
+                PatchOrReplaceVisibleItems(newFirst, newCount, newNodes, newKeys, newElements);
             }
             catch
             {
@@ -202,10 +206,20 @@ namespace Velvet
             RebuildVisibleContainer(newFirst, newCount, newElements);
 
             _renderedNodes = newNodes;
+            _renderedKeys = newKeys;
             _renderedElements = newElements;
             _bufferFirstItemIndex = newFirst;
             _firstRenderedIndex = newFirst;
             _lastRenderedIndex = newLast;
+
+            // A Dispose that reached the list during the loop — an error boundary above it catching a row's
+            // render is one way — released the buffers as they stood then, and the rows this pass placed
+            // need not have been among them.
+            if (_isDisposed)
+            {
+                ClearRenderedItems();
+                return;
+            }
 
             // After DisposeUntakenRows, so a recycled item's ref cleanup runs before the setup of
             // whatever took its place, and after the container rebuild, so a setup reads an item that is
@@ -229,14 +243,12 @@ namespace Velvet
             {
                 if (_renderedNodes[i] != null)
                 {
-                    var key = _renderedNodes[i].Key;
+                    var key = _renderedKeys[i];
                     if (key != null)
                     {
-                        if (!_oldNodesByKey.TryAdd(key, (_renderedNodes[i], _renderedElements[i])))
-                        {
-                            FiberLogger.LogWarning("FiberVirtualListController", $"Duplicate key detected in rendered items: \"{key}\". Later element overwrites earlier one.");
-                            _oldNodesByKey[key] = (_renderedNodes[i], _renderedElements[i]);
-                        }
+                        // No key reaches this twice: the pass that filled these slots claimed each key in
+                        // _reusedKeys before writing its slot.
+                        _oldNodesByKey.Add(key, (_renderedNodes[i], _renderedElements[i]));
                     }
                     else
                     {
@@ -246,12 +258,16 @@ namespace Velvet
             }
         }
 
-        // Aliases the existing _renderedNodes/_renderedElements buffers when the window size is unchanged
-        // (zero-allocation reuse), else allocates fresh ones sized to newCount, and clears both plus the
-        // per-render set the patch-or-replace pass detects a repeated key with.
-        private void AllocateRenderBuffers(int newCount, out VNode[] newNodes, out VisualElement[] newElements)
+        // Aliases the existing _renderedNodes/_renderedKeys/_renderedElements buffers when the window size is
+        // unchanged (zero-allocation reuse), else allocates fresh ones sized to newCount, and clears the node
+        // and element buffers plus the per-render set the patch-or-replace pass detects a repeated key with.
+        // The key buffer is left as it was: IndexOldRenderedItems reads a key only beside a node this pass
+        // filled.
+        private void AllocateRenderBuffers(
+            int newCount, out VNode[] newNodes, out string?[] newKeys, out VisualElement[] newElements)
         {
             newNodes = _renderedNodes.Length == newCount ? _renderedNodes : new VNode[newCount];
+            newKeys = _renderedKeys.Length == newCount ? _renderedKeys : new string?[newCount];
             newElements = _renderedElements.Length == newCount ? _renderedElements : new VisualElement[newCount];
             System.Array.Clear(newNodes, 0, newCount);
             System.Array.Clear(newElements, 0, newCount);
@@ -260,8 +276,9 @@ namespace Velvet
         }
 
         // Renders each visible-range item and either patches its reused element or creates a replacement,
-        // filling newNodes/newElements in place.
-        private void PatchOrReplaceVisibleItems(int newFirst, int newCount, VNode[] newNodes, VisualElement[] newElements)
+        // filling newNodes/newKeys/newElements in place.
+        private void PatchOrReplaceVisibleItems(
+            int newFirst, int newCount, VNode[] newNodes, string?[] newKeys, VisualElement[] newElements)
         {
             // Render the items under the context that enclosed the V.VirtualList: the scope parents new item
             // fibers under the host (so they share its context) and restores the enclosing snapshot onto the
@@ -271,6 +288,13 @@ namespace Velvet
             {
                 for (var i = 0; i < newCount; i++)
                 {
+                    // Rows rendered for a disposed list would be released unseen, their bodies run for
+                    // nothing.
+                    if (_isDisposed)
+                    {
+                        break;
+                    }
+
                     var itemIndex = newFirst + i;
                     var item = _node.Items[itemIndex];
                     var key = _node.KeySelector(item);
@@ -302,12 +326,8 @@ namespace Velvet
                         }
                         continue;
                     }
-                    // IndexOldRenderedItems keys the next pass's reuse table off VNode.Key, and that table
-                    // is read back by the selector's key, so the two sides answer each other only while
-                    // the selector's key is the one that lands on the node — the same overwrite V.List
-                    // makes at its own mapping site.
-                    vnode.Key = key;
                     newNodes[i] = vnode;
+                    newKeys[i] = key;
 
                     // Not routed through ChildReconciler.PatchOrReplaceAtSlot despite the same CanPatch
                     // gate: this controller lives in a separate class reached only through
@@ -394,6 +414,7 @@ namespace Velvet
 
             _visibleContainer.Clear();
             _renderedNodes = Array.Empty<VNode>();
+            _renderedKeys = Array.Empty<string?>();
             _renderedElements = Array.Empty<VisualElement>();
             _firstRenderedIndex = -1;
             _lastRenderedIndex = -1;
@@ -428,6 +449,7 @@ namespace Velvet
             }
             _visibleContainer.Clear();
             _renderedNodes = Array.Empty<VNode>();
+            _renderedKeys = Array.Empty<string?>();
             _renderedElements = Array.Empty<VisualElement>();
         }
 

@@ -21,9 +21,11 @@ namespace Velvet
     // GeometryChangedEvent (a child add / remove / reorder from an unrelated reconcile), and an
     // AttachToPanelEvent. A signature makes a redundant Apply a no-op.
     //
-    // Child container. Like gap / divide it resolves and iterates FiberNodePatcher.GetChildContainer(target)
-    // (a composite widget's inner box; else self), so the payload lands on the reconciled content and never
-    // on the widget's internal hierarchy.
+    // Child container. Like gap / divide it resolves and iterates FiberNodePatcher.GetChildContainer(target).
+    // A widget that redirects children into an inner box (ScrollView) therefore has the payload land on the
+    // reconciled content; one that does not redirect answers with itself, so the children the walk finds are
+    // the widget's own parts and the payload lands on those. ChildVariantClassParityTests pins both sides and
+    // Documentation~/styling-variants.md states which widget is which for a caller.
     //
     // Out-of-flow children (position: absolute) are excluded from the walk via StyleOutOfFlowChild, the same
     // way gap / divide exclude them. This is a deliberate deviation from literal CSS `> *` (which DOES match
