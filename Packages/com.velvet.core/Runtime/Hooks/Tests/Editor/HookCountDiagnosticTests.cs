@@ -306,6 +306,8 @@ namespace Velvet.Tests
             return V.Label(name: "remounted", text: s_remountExtraHook ? "two hooks" : "one hook");
         }
 
+        // GREEN_ON_BASE(characterization): the base also resets its hook-count baselines on unmount.
+        // HasCommittedHookCounts takes that reset over, and deleting its line in Unmount reddens this case.
         [Test]
         public void Given_AFiberUnmounted_When_MountedAgainWithAnotherHookCount_Then_ItRendersAsAMount()
         {
