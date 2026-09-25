@@ -33,7 +33,7 @@ FIRST_BACKOFF = 15
 # never exits holds the job to its own timeout with nothing measured.
 LICENCE_TIMEOUT = 600
 
-# What game-ci's run_tests.sh passes to every launch of the unity-tests jobs besides coverage, and the
+# game-ci's run_tests.sh launches the unity-tests suites with -debugCodeOptimization, and the
 # campaign's baseline has to be the suite those jobs run.
 EDITOR_ARGS = ["--editor-arg=-debugCodeOptimization"]
 
@@ -91,7 +91,7 @@ def activate(unity, blank, serial, email, password, run=subprocess.call, sleep=t
 
 
 def say(what):
-    """A phase line, timestamped, because a step's log is the only reading of where a shard spent its time."""
+    """A phase line, timestamped, so the step's log shows where a shard spent its time."""
     print("[{}] {}".format(time.strftime("%H:%M:%S", time.gmtime()), what), flush=True)
 
 

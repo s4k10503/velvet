@@ -27,24 +27,24 @@ def judge(guard, command, cwd=None):
 
 
 class MetadataSpellingTests(unittest.TestCase):
-    # GREEN_ON_BASE(refactor): only the receipt guard's cases left this file; the metadata guard is unchanged.
+    # GREEN_ON_BASE(refactor): the receipt guard's cases and helpers left this file; the metadata guard is unchanged.
     def test_Given_APullRequestOpenedAsNew_When_ItCarriesNoMetadata_Then_ItIsRefused(self):
         # Act / Assert
         self.assertEqual(judge(METADATA, "gh pr new --title x"), 2)
 
-    # GREEN_ON_BASE(refactor): only the receipt guard's cases left this file; the metadata guard is unchanged.
+    # GREEN_ON_BASE(refactor): the receipt guard's cases and helpers left this file; the metadata guard is unchanged.
     def test_Given_AnIssueOpenedAsNew_When_ItCarriesNoMetadata_Then_ItIsRefused(self):
         # Arrange — `gh issue new` prints a usage too, so the alias is on both subcommands.
         # Act / Assert
         self.assertEqual(judge(METADATA, "gh issue new --title x"), 2)
 
-    # GREEN_ON_BASE(refactor): only the receipt guard's cases left this file; the metadata guard is unchanged.
+    # GREEN_ON_BASE(refactor): the receipt guard's cases and helpers left this file; the metadata guard is unchanged.
     def test_Given_APullRequestOpenedAsCreate_When_ItCarriesNoMetadata_Then_ItIsStillRefused(self):
         # Arrange — the half that already worked, and what the widening must not lose.
         # Act / Assert
         self.assertEqual(judge(METADATA, "gh pr create --title x"), 2)
 
-    # GREEN_ON_BASE(refactor): only the receipt guard's cases left this file; the metadata guard is unchanged.
+    # GREEN_ON_BASE(refactor): the receipt guard's cases and helpers left this file; the metadata guard is unchanged.
     def test_Given_ANewCarryingItsMetadata_When_Judged_Then_ItGoesThrough(self):
         # Arrange — the control: a widening that refused every `new` would satisfy the cases above.
         # Act / Assert
