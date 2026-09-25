@@ -117,7 +117,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   different number of times from the previous render now fails with a message that opens on the
   component's name and continues in React's words — `Rendered more hooks than during the previous
   render (UseState / UseReducer: 1 before, 2 now)`, or `Rendered fewer hooks than expected` — where it
-  said only that a `FiberRenderer` call count differed. A call past the previous render's count throws from that call instead of after
+  named no component. A call past the previous render's count throws from that call instead of after
   the body returns, so a hook inside a plain helper method that the component calls on some renders
   only puts the helper on the exception's stack. The editor-only log for the other hooks takes the same
   wording.
