@@ -107,7 +107,8 @@ declared in another file is found, and two same-named types that disagree keep t
 read for a local is the member rather than the block, so a string local in one block still answers for
 a same-named field read in a sibling block, and that `+` is declined though its mutant compiles. It
 does not read an inherited member, an instance member reached through a local (`row.Name`), a generic
-call's result or a deconstructed local, so a `+` beside one of those can still emit an invalid `-`.
+call's result or a deconstructed local, so a `+` beside one of those can still emit an invalid `-`,
+which the verdict **not a mutant (the operator does not apply)** below takes instead of failing the run.
 
 Measured by compiling every mutant against the reference set, the defines and the source generators
 recorded for Unity's editor build of each assembly, and diffing each mutant's errors against the
@@ -127,13 +128,15 @@ ineligible even when every other input is unchanged.
 
 Widening the operator set is the obvious answer and is not free: a statement-deletion operator adds a mutant for every statement line it reaches. It also has to emit compilable C#, which deleting a declaration the rest of the method reads does not — the constraint the refusal above already meets, at the three operators that delete.
 
-Seven verdicts:
+Nine verdicts:
 
 - **survived** — no test failed, or only fixtures reading this tree's text did, which fail on the edit rather than on what it does. Either a test that never asked about the mutated behaviour, or a mutation the behaviour does not depend on. Which of the two it was has to be written down: the run fails until the line either stops surviving or carries the declaration [CONTRIBUTING.md ▸ Checking that the tests can fail](../../../CONTRIBUTING.md#checking-that-the-tests-can-fail) shows.
 - **survived (inconclusive)** — no test failed and at least one reported inconclusive. It is a survivor, answered the way that section gives for one.
 - **not rebuilt** — the assembly came out byte-identical to the baseline, so the suite ran the unmutated binary and answered nothing. This is what an edit the editor never compiled looks like, and it is the only case the check catches: a mutation the compiler did see but discarded — one inside an `#if` the editor does not define — still comes out as a different assembly and reads as **survived**, which was measured on this package rather than assumed.
 - **not measured (timed out)** — the editor was killed at `--timeout`, and the baseline had taken more than a third of that. A mutation that leaves a loop unbounded and a bound the suite was always going to outrun arrive here identically, so this is a mutant nobody asked about and it fails the run: raise `--timeout`, or read the log.
 - **uncompilable** — the build stopped or the runner wrote no result. Neither provides a completed test reading, so the run fails. Inspect the editor log to distinguish a compilation failure from a runner failure.
+- **not a mutant (the operator does not apply)** — an arithmetic `+ -> -` rewrite the build stopped on with CS0019 for its `-` and nothing else: every line of the log carrying an `error <ID>:` is that one, in the mutated source, between the first line of the statement holding the mutant and the mutated line. The statement is read rather than the mutated line so that a diagnostic placed on a left operand that starts above the operator still counts, which is where Roslyn put it when measured on three such shapes. There was no mutated program, so nothing could have been asked of a test: it is not a survivor, needs no declaration, and does not fail the run, and the run names it in a list of its own because the reach it prints counts its line as reached. This is what answers for a `+` between strings the arithmetic reader above cannot see; any other failure stays **uncompilable**, so an operator emitting broken C# still fails the run.
+- **not measured (no shard recorded it)** — `--collect` found no record of the mutant in any shard's output, as when a shard job never uploaded. It fails the run.
 - **not measured (the suite did not finish)** — the editor was killed at `--timeout`, where the baseline had finished in a third of that or less. The run fails: elapsed wall time alone does not identify a failing test or establish why the run did not finish. Inspect the log and repeat the measurement.
 - **killed** — the failing tests are named, because a mutant killed only by a test that also fails on an unmutated tree was killed by nothing, and because whether the fixture that caught it is the one named for the behaviour is the second question worth asking of a kill.
 
