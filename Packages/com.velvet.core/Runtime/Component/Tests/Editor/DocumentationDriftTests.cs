@@ -75,7 +75,7 @@ namespace Velvet.Tests
         };
 
         // Paths the tree is right not to hold: each is written at run time inside a git-ignored
-        // directory — a capture harness's output, and a mutation campaign's receipt store.
+        // directory — a capture harness's output, and a mutation campaign's verdict store.
         private static readonly HashSet<string> PathAllowlist =
             new() { "Logs/story-captures/", "Logs/mutation_check/" };
 

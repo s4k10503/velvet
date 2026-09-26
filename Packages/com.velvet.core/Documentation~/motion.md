@@ -233,7 +233,7 @@ the plan are built in one synchronous call, off-panel, before any style resoluti
   subsystem owns the slot: semantic theme tokens (`bg-primary`, `text-current`) resolve through
   `--color-*` with no C# mirror; the preset font-size (`text-lg`) and letter-spacing
   (`tracking-wide`) names likewise, per the bullet above; keyword lengths (`w-auto`, `w-full`) are
-  modes, not magnitudes; `rounded-full` is a saturating pill sentinel; `shadow-*`, `skew-*` and
+  modes, not magnitudes; `rounded-full` is a saturating radius sentinel; `shadow-*`, `skew-*` and
   gradients are baked silhouette paints; `filter-*` is driven by its own opt-in
   `transition-filter`; `z-*` is a physical reparent; `aspect-[…]` is claimed by neither motion
   parser, so a ratio change snaps.

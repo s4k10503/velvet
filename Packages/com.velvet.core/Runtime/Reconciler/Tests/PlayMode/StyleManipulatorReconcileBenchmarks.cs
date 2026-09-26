@@ -76,8 +76,8 @@ namespace Velvet.Tests.Performance
             var mounted = BuildRows("red");
             // Parsed class-name arrays are cached by string CONTENT, so a second build from the same
             // strings would hand back the very same arrays and the class diff would exit at its
-            // identity check. Draining the cache reproduces what a component that rebuilds its VNode
-            // tree every render actually hands the reconciler.
+            // identity check. Draining the cache makes the second build's arrays fresh, which is what the
+            // reconciler receives for a class string ClassNameParseCache does not hold.
             ClassNameCacheTestAccess.ClearForTest();
             var repeat = BuildRows("red");
             _reconciler.Reconcile(_root, Array.Empty<VNode>(), mounted);

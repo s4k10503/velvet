@@ -14,6 +14,7 @@ to ask what the tree holds at a moment the campaign is inside.
 Run: python3 scripts/test_quality/test_mutation_check.py
 """
 
+import argparse
 import contextlib
 import importlib.util
 import io
@@ -47,6 +48,19 @@ def load_module():
 
 
 mutation_check = load_module()
+
+# The stub's one-mutant body with that mutant's line answered for, which is what separates a mutant
+# nothing measured from a survivor: the declaration passes the one and not the other.
+DECLARED_BODY = textwrap.dedent("""\
+    namespace Velvet
+    {
+        internal static class Probe
+        {
+            // MUTANT_SURVIVES(equivalent): every caller clamps the operand already.
+            internal static bool Ready(int a, int b) => a <= b;
+        }
+    }
+    """)
 
 GREEN_RESULTS = '<test-run total="1" passed="1" failed="0" inconclusive="0" />'
 FAILING_RESULTS = ('<test-run total="1" passed="0" failed="1" inconclusive="0">'
@@ -186,45 +200,6 @@ class TextReadingKillerTests(unittest.TestCase):
         # Act / Assert
         self.assertEqual(("DocumentationDriftTests" in found, "HookBailoutEqualityTests" in found),
                          (True, False))
-
-
-class NeighbouringCampaignTests(unittest.TestCase):
-    """A receipt says whether the verdict was reached with the machine to itself.
-
-    wait_for_quiet counts editors, and a campaign holds none between its mutants -- it applies the
-    mutation, restores the previous one and writes its record. So two can sample zero in the same gap
-    and launch together, and a case reddened by that load reads KILLED in both receipts, with nothing
-    in either to tell it from a mutant a test really killed.
-
-    Recorded rather than gated: whether a lock is worth its deadlock is a question about how often
-    two are live at once, and that is not answerable from what this repository keeps -- two receipts
-    survive locally, ninety minutes apart.
-    """
-
-    def test_Given_ACampaignsOwnCommandLine_When_TheProcessListIsRead_Then_ItCounts(self):
-        # Arrange — what this campaign looks like from outside.
-        line = "/usr/bin/python3 /repo/scripts/test_quality/mutation_check.py --base origin/main"
-
-        # Act / Assert
-        self.assertIsNotNone(mutation_check.CAMPAIGN_RUNNING.match(line))
-
-    def test_Given_ASiblingHarness_When_TheProcessListIsRead_Then_ItDoesNotCount(self):
-        # Arrange — the control: base_red_check and neuter_check wait for a quiet machine
-        # themselves, and counting them here would make a campaign wait out something that is not a
-        # second explanation for its own failures.
-        line = "/usr/bin/python3 /repo/scripts/test_quality/base_red_check.py --lane csharp"
-
-        # Act / Assert
-        self.assertIsNone(mutation_check.CAMPAIGN_RUNNING.match(line))
-
-    # GREEN_ON_BASE(refactor): the matcher never reads the version this branch respells in the path.
-    def test_Given_AnEditorRunningTests_When_TheProcessListIsRead_Then_ItIsNotACampaign(self):
-        # Arrange — the other control: an editor is what the existing wait already counts, and
-        # counting it twice would report a neighbour where there is one explanation, not two.
-        line = "/Applications/Unity/Hub/Editor/6000.3.23f1/Unity.app/Contents/MacOS/Unity -runTests"
-
-        # Act / Assert
-        self.assertIsNone(mutation_check.CAMPAIGN_RUNNING.match(line))
 
 
 class RewritesThatCannotCompile(unittest.TestCase):
@@ -912,8 +887,8 @@ class MutableScopeTests(unittest.TestCase):
 
     Unity's asset database does not import a `~`-suffixed directory, so a source under one compiles
     into nothing: mutating a line there leaves every assembly byte-identical, the run scores
-    `NOT_BUILT`, and no receipt can be written. A branch editing one could therefore never earn a
-    passing campaign, and what it was told named a build state rather than a scope rule.
+    `NOT_BUILT`, and the campaign fails. A branch editing one could therefore never earn a passing
+    campaign, and what it was told named a build state rather than a scope rule.
     """
 
     def test_Given_ASourceUnderATildeDirectory_When_TheScopeIsRead_Then_ItIsNotMutable(self):
@@ -2151,12 +2126,6 @@ class StubbedCampaign:
             (self.project / ".gitignore").write_text("Library/\nout/\n")
             subprocess.run(["git", "-C", str(self.project), *command], capture_output=True)
 
-    def write_receipt(self, verdict):
-        """A receipt for exactly this tree, written through the module so the digest cannot drift."""
-        since = mutation_check.merge_base_of(self.project, "HEAD")
-        digest = mutation_check.scope_digest(since, {self.source: None}, self.project, "EditMode")
-        return mutation_check.write_receipt(self.project / "out", digest, "HEAD", verdict, "stub")
-
     printed = ""
     kills = False
     times_out = False
@@ -2661,162 +2630,51 @@ namespace Velvet
 """
 
 
-class ReceiptTests(unittest.TestCase):
-    """What asks whether the campaign was run at all.
+class VerdictKeyTests(unittest.TestCase):
+    """What a verdict record is keyed on, which is what lets a later run or `--collect` take it.
 
-    The head tree cannot: the campaign diffs the merge base against the **working tree**, so an
-    uncommitted edit to a mutated file changes what it measured and moves no tree sha.
+    The head tree cannot be the key: the campaign diffs the merge base against the **working tree**,
+    so an uncommitted edit to a mutated file changes what it measured and moves no tree sha.
     """
 
-    def test_Given_ATreeWithNoMutableChange_When_AReceiptIsAsked_Then_NoneIsOwed(self):
-        # Arrange — a documentation or tooling branch has no campaign to run.
-        campaign = StubbedCampaign("/// <summary>Nothing here.</summary>\n")
+    @staticmethod
+    def key(campaign):
+        since = mutation_check.merge_base_of(campaign.project, "HEAD")
+        return mutation_check.scope_digest(since, {campaign.source: None}, campaign.project, "EditMode")
 
-        # Act
-        code = campaign.run_over_diff("--receipt")
+    def edited(self, body, before, after):
+        campaign = StubbedCampaign(body)
+        first = self.key(campaign)
+        campaign.source.write_text(campaign.source.read_text().replace(before, after))
+        return first != self.key(campaign)
 
-        # Assert
-        self.assertEqual(code, 0)
+    # GREEN_ON_BASE(refactor): the key's reading of this edit is unchanged; only the receipt that read it went.
+    def test_Given_AMutatedFileEditedWithoutCommitting_When_ItIsKeyed_Then_TheKeyMoves(self):
+        # Act / Assert
+        self.assertTrue(self.edited(None, "a <= b", "a < b"))
 
-    def test_Given_ACampaignThatNeverRan_When_AReceiptIsAsked_Then_ItIsRefused(self):
-        # Arrange
-        campaign = StubbedCampaign()
+    # GREEN_ON_BASE(refactor): the key's reading of this edit is unchanged; only the receipt that read it went.
+    def test_Given_OnlyACommentAdded_When_ItIsKeyed_Then_TheKeyStays(self):
+        # Arrange — a comment carries no mutant, so moving on one discards kills over a byte-identical
+        # mutant set.
+        # Act / Assert
+        self.assertFalse(self.edited(None, "    internal static class Probe",
+                                     "    // an edit after the run\n    internal static class Probe"))
 
-        # Act
-        code = campaign.run_over_diff("--receipt")
-
-        # Assert
-        self.assertEqual(code, mutation_check.RECEIPT_REFUSAL)
-
-    def test_Given_APassingCampaign_When_AReceiptIsAsked_Then_ItIsAccepted(self):
-        # Arrange
-        campaign = StubbedCampaign()
-        campaign.write_receipt("pass")
-
-        # Act
-        code = campaign.run_over_diff("--receipt")
-
-        # Assert
-        self.assertEqual(code, 0)
-
-    def test_Given_AFailingCampaign_When_AReceiptIsAsked_Then_ItIsRefused(self):
-        # Arrange — a campaign that ran and ended with an unanswered survivor is not a campaign that
-        # satisfies this; the receipt records the verdict rather than the fact of a run.
-        campaign = StubbedCampaign()
-        campaign.write_receipt("fail")
-
-        # Act
-        code = campaign.run_over_diff("--receipt")
-
-        # Assert
-        self.assertEqual(code, mutation_check.RECEIPT_REFUSAL)
-
-    def test_Given_ACampaignNothingCouldAsk_When_AReceiptIsAsked_Then_ItIsAccepted(self):
-        # Arrange — a change no operator reaches cannot earn a passing run, and refusing its pull
-        # request outright would leave a one-line behaviour fix with no way through.
-        campaign = StubbedCampaign()
-        campaign.write_receipt("unreachable")
-
-        # Act
-        code = campaign.run_over_diff("--receipt")
-
-        # Assert
-        self.assertEqual(code, 0)
-
-    def test_Given_AFinishedCampaign_When_AReceiptIsAskedAfterIt_Then_ItsOwnReadingIsAccepted(self):
-        # Arrange — the two halves have to agree on the digest, and each computes it separately.
-        campaign = StubbedCampaign()
-        campaign.kills = True
-        campaign.run_over_diff("--max", "40")
-
-        # Act
-        code = campaign.run_over_diff("--receipt")
-
-        # Assert
-        self.assertEqual(code, 0)
-
-    def test_Given_ACampaignWithAnUnansweredSurvivor_When_AReceiptIsAskedAfterIt_Then_ItIsRefused(self):
-        # Arrange — the counterpart: a run that happened is not a run that passed, and the receipt
-        # records the verdict rather than the fact of a run.
-        campaign = StubbedCampaign()
-        campaign.run_over_diff("--max", "40")
-
-        # Act
-        code = campaign.run_over_diff("--receipt")
-
-        # Assert
-        self.assertEqual(code, mutation_check.RECEIPT_REFUSAL)
-
-    def test_Given_ANarrowedCampaign_When_AReceiptIsAskedAfterIt_Then_NoneCoversTheChange(self):
-        # Arrange — a `--filter` run asks whether one fixture notices, and under it nearly everything
-        # survives. A receipt from one would sign a branch off against a question nobody asked.
-        campaign = StubbedCampaign()
-        campaign.kills = True
-        campaign.run_over_diff("--max", "40", "--filter", "Velvet.Tests.Probe")
-
-        # Act
-        code = campaign.run_over_diff("--receipt")
-
-        # Assert
-        self.assertEqual(code, mutation_check.RECEIPT_REFUSAL)
-
-    # GREEN_ON_BASE(refactor): the byte hash refused a code edit too; what moves is the comment case beside it.
-    def test_Given_APassingCampaign_When_AMutatedFileIsEditedWithoutCommitting_Then_ItIsRefusedAgain(self):
-        # Arrange — the reading the head tree sha cannot take: this edit moves no tree sha at all.
-        campaign = StubbedCampaign()
-        campaign.write_receipt("pass")
-        campaign.source.write_text(
-            campaign.source.read_text().replace("a <= b", "a < b"))
-
-        # Act
-        code = campaign.run_over_diff("--receipt")
-
-        # Assert
-        self.assertEqual(code, mutation_check.RECEIPT_REFUSAL)
-
-    def test_Given_APassingCampaign_When_OnlyACommentIsAdded_Then_TheReceiptStillCovers(self):
-        # Arrange — a comment carries no mutant, so voiding on one asks for a fresh campaign over a
-        # byte-identical mutant set.
-        campaign = StubbedCampaign()
-        campaign.write_receipt("pass")
-        campaign.source.write_text(campaign.source.read_text() + "// an edit after the run\n")
-
-        # Act
-        code = campaign.run_over_diff("--receipt")
-
-        # Assert
-        self.assertEqual(code, 0)
-
-    # GREEN_ON_BASE(refactor): the byte hash refused this too. It is the shape the line-dropping
-    # this change adds could reach and must not, and only running it says whether it did.
-    def test_Given_APassingCampaign_When_ABlankLineInsideAVerbatimStringGoes_Then_ItIsRefusedAgain(self):
+    # GREEN_ON_BASE(refactor): the key's reading of this edit is unchanged; only the receipt that read it went.
+    def test_Given_ABlankLineInsideAVerbatimStringGone_When_ItIsKeyed_Then_TheKeyMoves(self):
         # Arrange — an empty line inside a verbatim string is part of the value, and it is the one
         # place where removing a line changes behaviour. The digest drops the lines a comment
         # emptied, so this is the shape that drop must not reach.
-        campaign = StubbedCampaign(PROBE_WITH_VERBATIM)
-        campaign.write_receipt("pass")
-        campaign.source.write_text(campaign.source.read_text().replace("a\n\nb", "a\nb"))
+        # Act / Assert
+        self.assertTrue(self.edited(PROBE_WITH_VERBATIM, "a\n\nb", "a\nb"))
 
-        # Act
-        code = campaign.run_over_diff("--receipt")
-
-        # Assert
-        self.assertEqual(code, mutation_check.RECEIPT_REFUSAL)
-
-    # GREEN_ON_BASE(refactor): the byte hash refused a literal edit too, and this pins that the narrower keying still does.
-    def test_Given_APassingCampaign_When_AStringLiteralIsEdited_Then_ItIsRefusedAgain(self):
+    # GREEN_ON_BASE(refactor): the key's reading of this edit is unchanged; only the receipt that read it went.
+    def test_Given_AStringLiteralEdited_When_ItIsKeyed_Then_TheKeyMoves(self):
         # Arrange — a literal is masked for generation and kept in the digest: editing one changes
-        # behaviour a mutant could have covered, so the receipt does not carry across it.
-        campaign = StubbedCampaign(body=PROBE_WITH_LITERAL)
-        campaign.write_receipt("pass")
-        campaign.source.write_text(
-            campaign.source.read_text().replace('"ready"', '"steady"'))
-
-        # Act
-        code = campaign.run_over_diff("--receipt")
-
-        # Assert
-        self.assertEqual(code, mutation_check.RECEIPT_REFUSAL)
+        # behaviour a mutant could have covered.
+        # Act / Assert
+        self.assertTrue(self.edited(PROBE_WITH_LITERAL, '"ready"', '"steady"'))
 
 
 class ForkedCampaign(StubbedCampaign):
@@ -2865,14 +2723,17 @@ class ForkedCampaign(StubbedCampaign):
 
 
 class LaggingLocalBaseTests(unittest.TestCase):
-    """A receipt read by `gh pr create`'s gate, which names no base, while the local main lags."""
+    """A kill kept for a second run of the same campaign, while the local main lags origin's."""
 
     def setUp(self):
         self.campaign = ForkedCampaign()
         self.addCleanup(shutil.rmtree, self.campaign.root, ignore_errors=True)
         self.campaign.kills = True
 
-    def test_Given_ACampaignAgainstALaggingMain_When_MainIsBroughtCurrentAfterAMerge_Then_ItsReceiptCovers(self):
+    KEPT = "from a previous run of this campaign"
+
+    # GREEN_ON_BASE(refactor): the key is unchanged; the case reads it through a resumed run where it read the receipt.
+    def test_Given_ACampaignAgainstALaggingMain_When_MainIsBroughtCurrentAfterAMerge_Then_ItsKillIsKept(self):
         # Arrange — the base spelled as CONTRIBUTING.md spells it, an unrelated merge, and then the
         # local main brought current.
         ran = self.campaign.drive("--base", "main", "--max", "40")
@@ -2880,21 +2741,22 @@ class LaggingLocalBaseTests(unittest.TestCase):
         self.campaign.git(self.campaign.primary, "fetch", "-q", "origin", "main:main")
 
         # Act
-        code = self.campaign.drive("--receipt")
+        again = self.campaign.drive("--base", "main", "--max", "40")
 
         # Assert
-        self.assertEqual((ran, code), (0, 0))
+        self.assertEqual((ran, again, self.KEPT in self.campaign.printed), (0, 0, True))
 
-    def test_Given_ACampaignAgainstOriginsMain_When_TheLocalMainLagsItsForkPoint_Then_ItsReceiptCovers(self):
+    # GREEN_ON_BASE(refactor): the key is unchanged; the case reads it through a resumed run where it read the receipt.
+    def test_Given_ACampaignAgainstOriginsMain_When_TheLocalMainLagsItsForkPoint_Then_ItsKillIsKept(self):
         # Arrange — an unrelated merge after the campaign, with the local main left where it was.
         ran = self.campaign.drive("--base", "origin/main", "--max", "40")
         self.campaign.land("second.md")
 
         # Act
-        code = self.campaign.drive("--receipt")
+        again = self.campaign.drive("--base", "origin/main", "--max", "40")
 
         # Assert
-        self.assertEqual((ran, code), (0, 0))
+        self.assertEqual((ran, again, self.KEPT in self.campaign.printed), (0, 0, True))
 
     # GREEN_ON_BASE(characterization): the base reads `HEAD` as this checkout's own commit.
     def test_Given_AnOriginCarryingAHead_When_TheChangeIsReadAgainstHead_Then_OnlyTheUncommittedIs(self):
@@ -2946,10 +2808,10 @@ class MutationRefusalStatusTests(unittest.TestCase):
 
 
 class CampaignVerdictTests(unittest.TestCase):
-    """What the run's own exit status and receipt are a function of.
+    """What the run's own exit status and its records' key are a function of.
 
     Each case here was written after removing the term it names left the whole suite green: the cap,
-    the unmeasured mutants, the receipt a change nothing reaches earns, and the merge base in the key.
+    the unmeasured mutants, and the merge base in the key.
     """
 
     SEVERAL = textwrap.dedent("""\
@@ -3003,44 +2865,23 @@ class CampaignVerdictTests(unittest.TestCase):
         # Assert
         self.assertEqual(code, 1)
 
-    def test_Given_AMutantTheEditorNeverRebuilt_When_TheRunFinishes_Then_NothingSignsItOff(self):
+    # GREEN_ON_BASE(refactor): the verdict is the base's; the case reads it without the receipt it read it through.
+    def test_Given_AMutantTheEditorNeverRebuilt_When_ItsLineIsDeclared_Then_NothingSignsItOff(self):
         # Arrange — the assembly comes out byte-identical, so the suite ran the unmutated binary and
-        # answered about nothing. Pre-existing behaviour, and it now decides a receipt as well.
-        campaign = StubbedCampaign()
+        # answered about nothing. The declaration is what tells this apart from an ordinary survivor,
+        # which also exits 1 undeclared and passes declared.
+        campaign = StubbedCampaign(DECLARED_BODY)
         campaign.not_rebuilt = True
 
         # Act
         run = campaign.run_over_diff("--max", "40")
-        receipt = campaign.run_over_diff("--receipt")
-
-        # Assert — both, because an ordinary unanswered survivor also exits 1: with `kills` off this
-        # same mutant reclassifies and the status alone cannot tell the two apart.
-        self.assertEqual((run, receipt), (1, mutation_check.RECEIPT_REFUSAL))
-
-    def test_Given_ACampaignNoOperatorReaches_When_ItRefuses_Then_ItStillLeavesAReceipt(self):
-        # Arrange — such a branch cannot earn a passing run, so without the receipt it could never
-        # open a pull request at all.
-        campaign = StubbedCampaign(textwrap.dedent("""\
-            namespace Velvet
-            {
-                internal sealed class Probe
-                {
-                    private int _value;
-                    internal void Settle(int next) { _value = next; }
-                }
-            }
-            """))
-        campaign.run_over_diff("--max", "40")
-
-        # Act
-        code = campaign.run_over_diff("--receipt")
 
         # Assert
-        self.assertEqual(code, 0)
+        self.assertEqual(run, 1)
 
     def test_Given_TwoMergeBases_When_TheScopeIsDigested_Then_TheKeysDiffer(self):
         # Arrange — the merge base is half the key, and every document leads with it. Without it a
-        # receipt earned against one base answers for a branch rebased onto another.
+        # kill kept against one base answers for a branch rebased onto another.
         campaign = StubbedCampaign()
         targets = {campaign.source: None}
 
@@ -3052,8 +2893,8 @@ class CampaignVerdictTests(unittest.TestCase):
         self.assertEqual(len(keys), 2)
 
     def test_Given_TwoPlatforms_When_TheScopeIsDigested_Then_TheKeysDiffer(self):
-        # Arrange — a PlayMode campaign is a statement about the PlayMode suite, and a receipt that
-        # did not say so would let one sign off a question the other was asked.
+        # Arrange — a PlayMode campaign is a statement about the PlayMode suite, and a record that
+        # did not say so would let one answer a question the other was asked.
         campaign = StubbedCampaign()
         targets = {campaign.source: None}
 
@@ -3064,6 +2905,7 @@ class CampaignVerdictTests(unittest.TestCase):
         # Assert
         self.assertEqual(len(keys), 2)
 
+    # GREEN_ON_BASE(refactor): the key is the base's; the receipt half of the reading went with the receipt.
     def test_Given_AnOlderOperatorModel_When_ItsArtifactsAreRead_Then_NeitherIsReused(self):
         # Arrange -- the source, base and platform stay fixed while the generation rules change.
         campaign = StubbedCampaign()
@@ -3071,7 +2913,7 @@ class CampaignVerdictTests(unittest.TestCase):
         old_digest = mutation_check.scope_digest(
             "aaaaaaa", targets, campaign.project, "EditMode")
         output = campaign.project / "out"
-        mutation_check.write_receipt(output, old_digest, "HEAD", "pass", "stub")
+        output.mkdir(parents=True, exist_ok=True)
         mutant = mutation_check.Mutant(campaign.source, 5, 0, "<=", "<", "boundary")
         mutant.verdict = mutation_check.KILLED
         mutation_check.write_verdict(output, 1, old_digest, mutant, campaign.project)
@@ -3080,37 +2922,34 @@ class CampaignVerdictTests(unittest.TestCase):
         with mock.patch.object(mutation_check, "MUTATION_MODEL_VERSION", "next", create=True):
             new_digest = mutation_check.scope_digest(
                 "aaaaaaa", targets, campaign.project, "EditMode")
-            reading = (mutation_check.read_receipt(output, new_digest),
-                       mutation_check.read_verdict(
-                           output, 1, new_digest, mutant, campaign.project))
+            reading = mutation_check.read_verdict(output, 1, new_digest, mutant, campaign.project)
 
         # Assert
-        self.assertEqual((new_digest != old_digest, reading), (True, (None, None)))
+        self.assertEqual((new_digest != old_digest, reading), (True, None))
 
 
 class UncompilableMutantTests(unittest.TestCase):
     """A mutant the build rejected is one nobody asked about, and this run must not pass on it.
 
     It is not a survivor -- no test could fail on a binary that was never produced -- so a reading
-    that only counts survivors lets it through, and the receipt it writes says the change was
-    measured. That is this file's own thesis, and it was open here: the earlier version of this case
+    that only counts survivors lets it through wherever a declaration answers for the line. That is this file's own thesis, and it was open here: the earlier version of this case
     asserted the passing exit and locked it in.
     """
 
+    # GREEN_ON_BASE(refactor): the verdict is the base's; the case reads it without the receipt it read it through.
     def test_Given_AMutantThisRepositorysAnalyzersRejected_When_ItIsDecided_Then_NothingSignsItOff(self):
         # Arrange — VEL501 is this repository's own branching-complexity limit, reported as an error
         # and invisible to a reading that matches `error CS`. The suite writes a green result either
         # way when the build produced no assembly, so without the log this reads as a survivor.
-        campaign = StubbedCampaign()
+        campaign = StubbedCampaign(DECLARED_BODY)
         campaign.build_error = True
 
         # Act
         run = campaign.run_over_diff("--max", "40")
-        receipt = campaign.run_over_diff("--receipt")
 
-        # Assert — both together, because a run that treats this as an ordinary survivor also exits
-        # 1, and the receipt is the half `gh pr create` reads.
-        self.assertEqual((run, receipt), (1, mutation_check.RECEIPT_REFUSAL))
+        # Assert — declared, because a run that treats this as an ordinary survivor also exits 1
+        # undeclared, and passes declared.
+        self.assertEqual(run, 1)
 
 
 class HoldOrderingTests(unittest.TestCase):
@@ -3217,19 +3056,10 @@ class VerdictNamingTests(unittest.TestCase):
                  if verdict + ":" in campaign.printed]
         return code, named
 
-    def test_Given_ABaselineWithRoomToSpare_When_AMutantTimesOut_Then_NoReceiptSignsItOff(self):
-        # Arrange
-        campaign = StubbedCampaign()
-        campaign.times_out = True
-
-        # Act
-        run = campaign.run_over_diff("--max", "40")
-        named = mutation_check.HUNG + ":" in campaign.printed
-        receipt = campaign.run_over_diff("--receipt")
-
-        # Assert
-        self.assertEqual((run, receipt, named),
-                         (1, mutation_check.RECEIPT_REFUSAL, True))
+    # GREEN_ON_BASE(refactor): the verdict is the base's; the case reads it without the receipt it read it through.
+    def test_Given_ABaselineWithRoomToSpare_When_AMutantTimesOut_Then_ItNamesTheHung(self):
+        # Act / Assert
+        self.assertEqual(self.tally_of(times_out=True), (1, [mutation_check.HUNG]))
 
     def test_Given_ABaselineAlreadyNearTheBound_When_AMutantReachesIt_Then_ItIsNotMeasured(self):
         # Arrange — a bound the suite was always going to outrun says nothing about the mutation, and
@@ -3277,6 +3107,7 @@ class StaleDeclarationTests(unittest.TestCase):
         }
         """)
 
+    # GREEN_ON_BASE(refactor): the verdict is the base's; the case reads it without the receipt it read it through.
     def test_Given_ADeclarationOverALineWhoseMutantDied_When_TheCampaignRuns_Then_NothingSignsItOff(self):
         # Arrange — the declaration answers for a survivor, and the mutant on that line is killed, so
         # it describes a state the tree is no longer in.
@@ -3285,11 +3116,11 @@ class StaleDeclarationTests(unittest.TestCase):
 
         # Act
         run = campaign.run_over_diff("--max", "40")
-        receipt = campaign.run_over_diff("--receipt")
 
         # Assert
-        self.assertEqual((run, receipt), (1, mutation_check.RECEIPT_REFUSAL))
+        self.assertEqual(run, 1)
 
+    # GREEN_ON_BASE(refactor): the verdict is the base's; the case reads it without the receipt it read it through.
     def test_Given_ADeclarationOverASurvivingLine_When_TheCampaignRuns_Then_ItSignsItOff(self):
         # Arrange — the counterpart, so the case above is not passing for a run that refuses any tree
         # carrying a declaration at all.
@@ -3297,10 +3128,9 @@ class StaleDeclarationTests(unittest.TestCase):
 
         # Act
         run = campaign.run_over_diff("--max", "40")
-        receipt = campaign.run_over_diff("--receipt")
 
         # Assert
-        self.assertEqual((run, receipt), (0, 0))
+        self.assertEqual(run, 0)
 
 
 class SignalledCampaignTests(unittest.TestCase):
@@ -3575,7 +3405,7 @@ class ResumedCampaignTests(unittest.TestCase):
 
     def test_Given_AKillANarrowedRunTook_When_TheWholeSuiteFollows_Then_ItIsMeasuredAgain(self):
         # Arrange — narrowed by both flags, so that this turns on what the whole run reads rather than
-        # on how either flag is recorded. The second run writes the receipt, and its suite lets the
+        # on how either flag is recorded. The second run reads declarations, and its suite lets the
         # mutant survive.
         first = {"kills": True}
         second = {}
@@ -3621,7 +3451,6 @@ def listed_processes(listing):
 
 NOT_UTF8_NEIGHBOUR = b"/usr/bin/probe --label \xff"
 EDITOR = b"/Applications/Unity/Hub/Editor/6000.3.23f1/Unity.app/Contents/MacOS/Unity -runTests -batchmode"
-CAMPAIGN = b"/usr/bin/python3 /repo/scripts/test_quality/mutation_check.py --base origin/main"
 
 
 class ProcessListDecodingTests(unittest.TestCase):
@@ -3641,19 +3470,6 @@ class ProcessListDecodingTests(unittest.TestCase):
         # Assert — the mark separates this listing's count from the machine's own.
         self.assertEqual(counted, (1, True))
 
-    def test_Given_ANeighbourWhoseCommandLineIsNotUtf8_When_CampaignsAreCounted_Then_TheCampaignBesideItCounts(self):
-        # Arrange
-        listing = NOT_UTF8_NEIGHBOUR + b"\n" + CAMPAIGN + b"\n"
-
-        # Act
-        with listed_processes(listing) as ran:
-            try:
-                counted = (mutation_check.campaigns_running(), ran.exists())
-            except UnicodeDecodeError as error:
-                counted = (repr(error), ran.exists())
-
-        # Assert — the mark separates this listing's count from the machine's own.
-        self.assertEqual(counted, (1, True))
 
 
 
@@ -3703,6 +3519,252 @@ class EditorReapedWhenAnExceptionEndsTheRunTests(unittest.TestCase):
 
         # Assert
         self.assertEqual((raised, left_running), (True, [False]))
+
+
+class ParityKilledCampaign(StubbedCampaign):
+    """Two mutants on two lines, the first killed and the second surviving, so a decision that took a
+    verdict from the wrong mutant or dropped one reads differently from the whole run's."""
+
+    BODY = textwrap.dedent("""\
+        namespace Velvet
+        {
+            internal static class Probe
+            {
+                internal static bool Ready(int a, int b) => a <= b;
+                internal static bool Other(int a, int b) => a >= b;
+            }
+        }
+        """)
+
+    def __init__(self, body=None):
+        super().__init__(body)
+        self.measured = []
+
+    def run_suite(self, _unity, _project, _platform, _scope, results, log, _timeout, _holder=None):
+        name = Path(results).name
+        self.measured.append(name)
+        Path(log).write_text("")
+        Path(results).write_text(FAILING_RESULTS if name == "mutant-001.xml" else GREEN_RESULTS)
+        return 0.0, False, 0
+
+    def shard(self, spec, directory):
+        return self.run_over_diff("--shard", spec, "--output", str(self.project / directory))
+
+
+def decision(printed):
+    """What a run decided: everything from its survivor list on, less the line naming its log directory.
+    A run that decided nothing yields everything it printed, so the comparison fails rather than raises."""
+    start = printed.find("--- mutants no test killed ---")
+    tail = printed[max(start, 0):]
+    return "\n".join(line for line in tail.splitlines() if not line.startswith("logs:"))
+
+
+class ShardedCampaignTests(unittest.TestCase):
+    """A campaign split across jobs: each `--shard` measures a slice, `--collect` decides over them all.
+
+    The decision is only as good as its agreement with the unsplit run, so the cases below compare
+    against one.
+    """
+
+    def test_Given_ADiffSplitInTwo_When_TheShardsAreCollected_Then_TheDecisionIsTheWholeRunsDecision(self):
+        # Arrange
+        split, whole = ParityKilledCampaign(), ParityKilledCampaign()
+        split.shard("0/2", "out0")
+        split.shard("1/2", "out1")
+        whole_code = whole.run_over_diff()
+        whole_decision = decision(whole.printed)
+
+        # Act
+        code = split.run_over_diff("--collect", str(split.project / "out0"), str(split.project / "out1"))
+
+        # Assert
+        self.assertEqual((code, decision(split.printed)), (whole_code, whole_decision))
+
+    def test_Given_AShard_When_ItRuns_Then_OnlyItsMutantsReachTheEditor(self):
+        # Arrange
+        campaign = ParityKilledCampaign()
+
+        # Act
+        campaign.shard("1/2", "out1")
+
+        # Assert
+        self.assertEqual(campaign.measured, ["baseline.xml", "mutant-002.xml"])
+
+    def test_Given_AShardWhoseSliceHoldsAnUnansweredSurvivor_When_ItEnds_Then_ItLeavesTheDecision(self):
+        # Arrange — the survivor is the second mutant's, and a declaration anywhere else in the diff
+        # could be what answers it, which the shard does not hold.
+        campaign = ParityKilledCampaign()
+
+        # Act
+        code = campaign.shard("1/2", "out1")
+
+        # Assert
+        self.assertEqual(code, 0)
+
+    def test_Given_AMutantNoShardRecorded_When_Collected_Then_ItIsUnmeasuredAndTheRunFails(self):
+        # Arrange — the second shard's output is missing, as it is when that job never uploaded.
+        campaign = ParityKilledCampaign()
+        campaign.shard("0/2", "out0")
+
+        # Act
+        code = campaign.run_over_diff("--collect", str(campaign.project / "out0"))
+
+        # Assert
+        self.assertEqual((code, mutation_check.UNRECORDED in campaign.printed), (1, True))
+
+    def test_Given_ADeclarationAboveAMutantAnotherShardMeasured_When_Collected_Then_ItAnswersForIt(self):
+        # Arrange — the survivor is on the line the second shard measured.
+        campaign = ParityKilledCampaign(ParityKilledCampaign.BODY.replace(
+            "        internal static bool Other",
+            "        // MUTANT_SURVIVES(equivalent): no caller reaches the bound, so both agree.\n"
+            "        internal static bool Other"))
+        campaign.shard("0/2", "out0")
+        campaign.shard("1/2", "out1")
+
+        # Act
+        code = campaign.run_over_diff("--collect", str(campaign.project / "out0"),
+                                      str(campaign.project / "out1"))
+
+        # Assert
+        self.assertEqual(code, 0)
+
+
+class EditorArgumentTests(unittest.TestCase):
+    def test_Given_AnEditorArgument_When_TheCampaignRuns_Then_ItReachesTheLaunchAndNotTheVerdictsKey(self):
+        # Arrange
+        campaign = ParityKilledCampaign()
+        launched = []
+        stub = campaign.run_suite
+
+        def recording(unity, project, platform, scope, *rest):
+            launched.append(list(scope))
+            return stub(unity, project, platform, scope, *rest)
+
+        campaign.run_suite = recording
+
+        # Act
+        campaign.run_over_diff("--editor-arg=-debugCodeOptimization")
+
+        # Assert
+        record = campaign.project / "out" / "mutant-001.json"
+        keyed = json.loads(record.read_text())["scope"] if record.exists() else None
+        self.assertEqual((launched[:1], keyed), ([["-debugCodeOptimization"]], []))
+
+
+class CampaignPlanTests(unittest.TestCase):
+    def test_Given_ADiffWithMutants_When_Planned_Then_ItNamesTheirCountAndTheShards(self):
+        # Arrange
+        campaign = ParityKilledCampaign()
+
+        # Act
+        code = campaign.run_over_diff("--plan")
+
+        # Assert
+        self.assertEqual((code, re.findall(r"^(?:mutants|shards)=.*$", campaign.printed, re.MULTILINE)),
+                         (0, ["mutants=2", "shards=[0]"]))
+
+    def test_Given_NoMutableChange_When_Planned_Then_NoShardIsPlanned(self):
+        # Arrange — a tree whose one change is outside the package.
+        campaign = StubbedCampaign()
+        campaign.source.unlink()
+        (campaign.project / "README.md").write_text("prose\n")
+
+        # Act
+        code = campaign.run_over_diff("--plan")
+
+        # Assert
+        self.assertEqual((code, re.findall(r"^(?:mutants|shards)=.*$", campaign.printed, re.MULTILINE)),
+                         (0, ["mutants=0", "shards=[]"]))
+
+    def test_Given_AChangeNoOperatorReaches_When_Planned_Then_ItPassesAndAsksThePullRequestWhy(self):
+        # Arrange — a local run refuses this change; the plan passes it, naming the lines, so the
+        # reason has to reach the pull request instead.
+        campaign = StubbedCampaign(textwrap.dedent("""\
+            namespace Velvet
+            {
+                internal sealed class Probe
+                {
+                    private int _value;
+                    internal void Settle(int next) { _value = next; }
+                }
+            }
+            """))
+
+        # Act
+        code = campaign.run_over_diff("--plan")
+
+        # Assert
+        self.assertEqual((code, "Say in the pull request why" in campaign.printed,
+                          "unreached  Packages/com.velvet.core/Runtime/Probe.cs" in campaign.printed,
+                          re.findall(r"^mutants=.*$", campaign.printed, re.MULTILINE)),
+                         (0, True, True, ["mutants=0"]))
+
+    def test_Given_MoreMutantsThanTheShardsCanCarry_When_Planned_Then_ItAsksForASplit(self):
+        # Arrange — two mutants against a ceiling of one.
+        campaign = ParityKilledCampaign()
+
+        # Act
+        with mock.patch.object(mutation_check, "MAX_SHARDS", 1), \
+                mock.patch.object(mutation_check, "MAX_MUTANTS_PER_SHARD", 1):
+            code = campaign.run_over_diff("--plan")
+
+        # Assert
+        self.assertEqual((code, "Split the pull request" in campaign.printed,
+                          "mutants=" in campaign.printed),
+                         (getattr(mutation_check, "CEILING_REFUSAL", None), True, False))
+
+    def test_Given_MutantCounts_When_Sharded_Then_EachShardHoldsAtMostItsShareUpToTheCap(self):
+        # Arrange
+        per, cap = mutation_check.MUTANTS_PER_SHARD, mutation_check.MAX_SHARDS
+        counts = [0, 1, per, per + 1, per * cap * 4]
+
+        # Act
+        shards = [mutation_check.shard_count(count) for count in counts]
+
+        # Assert
+        self.assertEqual(shards, [0, 1, 1, 2, cap])
+
+    def test_Given_AShardOutsideItsCount_When_Parsed_Then_ItIsRefused(self):
+        # Act / Assert
+        with self.assertRaises(argparse.ArgumentTypeError):
+            mutation_check.parse_shard("2/2")
+
+
+
+class ShardCeilingTests(unittest.TestCase):
+    """The plan's ceiling against the shard job's own timeout, which lives in the workflow."""
+
+    # The slowest mutant measured on CI, and the longest measured of each setup phase added together:
+    # image pull, activation and baseline, 146 + 52 + 225 s, with the checkout and cache restore's 20 s.
+    SLOWEST_MUTANT = 190
+    LONGEST_SETUP = 443
+
+    def test_Given_AFullShard_When_ItsWorstMeasuredCostIsTaken_Then_ItFitsTheJobTimeout(self):
+        # Arrange
+        workflow = (REPO_ROOT / ".github/workflows/test.yml").read_text()
+        job = workflow.partition("\n  mutation-shard:")[2]
+        found = re.search(r"^    timeout-minutes: (\d+)$", job, re.MULTILINE)
+
+        per = getattr(mutation_check, "MAX_MUTANTS_PER_SHARD", None)
+
+        # Act
+        fits = (per is not None and found is not None
+                and self.LONGEST_SETUP + per * self.SLOWEST_MUTANT <= int(found.group(1)) * 60)
+
+        # Assert
+        self.assertTrue(fits)
+
+    def test_Given_ThePlanStep_When_ItsCeilingStatusIsRead_Then_ItIsTheOneThePlanExits(self):
+        # Arrange — the step lets the ceiling through without a licence by this number, and a copy
+        # drifting from the script's either fails every such fork or lets another refusal through.
+        workflow = (REPO_ROOT / ".github/workflows/test.yml").read_text()
+        job = workflow.partition("\n  mutation-plan:")[2].partition("\n  mutation-shard:")[0]
+
+        # Act
+        mirrored = re.findall(r'"\$status" -eq (\d+) \] && \[ "\$HAS_LICENSE"', job)
+
+        # Assert
+        self.assertEqual(mirrored, [str(getattr(mutation_check, "CEILING_REFUSAL", None))])
 
 
 if __name__ == "__main__":

@@ -441,7 +441,8 @@ namespace Velvet
             {
                 if (!seen.Add(f)) continue;
                 detached ??= new DetachedMountContext(
-                    enclosingContext, itemVnode != null ? new[] { itemVnode } : null, host);
+                    enclosingContext, itemVnode != null ? new[] { itemVnode } : null, host,
+                    rootProviderChildrenStartAtWalkRoot: true);
                 f.DetachedMountContext = detached;
             }
         }

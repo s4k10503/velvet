@@ -13,9 +13,9 @@ namespace Velvet.Tests
     /// than shifting the ones after it, and a ComponentNode boundary restarts SlotPath.</item>
     /// <item>Scope segments are joined by the NUL (U+0000) delimiter; a null parent scope means the
     /// outermost keyed boundary, so the contribution becomes the entire scope.</item>
-    /// <item>A keyed Fragment / Provider / Component extends the enclosing scope with its own key; an
-    /// unkeyed one contributes its positional index, but only once an enclosing keyed boundary has
-    /// established a scope — otherwise it stays scope-less (null).</item>
+    /// <item>Explicit Fragment / Provider / Component / Suspense / AnimatePresence keys and terminal leaf
+    /// keys carry distinct tags. Positional contributions retain their index. A keyed Fragment establishes
+    /// the outermost scope itself; a Provider or Component only extends one.</item>
     /// <item>A Memo opens an <c>"m"</c>-prefixed index scope so a nested Memo cannot collide with an
     /// unkeyed Component at the same node index. <see cref="MemoCacheCollisionTests"/> owns the
     /// dep-cache key composed from that position.</item>
@@ -105,7 +105,7 @@ namespace Velvet.Tests
             var scope = FiberKeying.FragmentChildScope("p", "k", 3);
 
             // Assert
-            Assert.That(scope, Is.EqualTo("p" + Nul + "k"));
+            Assert.That(scope, Is.EqualTo("p" + Nul + "Fk"));
         }
 
         [Test]
@@ -115,7 +115,7 @@ namespace Velvet.Tests
             var scope = FiberKeying.FragmentChildScope(null, "k", 3);
 
             // Assert
-            Assert.That(scope, Is.EqualTo("k"));
+            Assert.That(scope, Is.EqualTo("Fk"));
         }
 
         [Test]
@@ -155,7 +155,7 @@ namespace Velvet.Tests
             var scope = FiberKeying.ProviderChildScope("p", "k", 3);
 
             // Assert
-            Assert.That(scope, Is.EqualTo("p" + Nul + "k"));
+            Assert.That(scope, Is.EqualTo("p" + Nul + "Pk"));
         }
 
         [Test]
@@ -169,6 +169,35 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_KeyedFragmentAndProviderWithSameParentAndKey_When_ChildScopesDerived_Then_ScopesDiffer()
+        {
+            // Arrange
+            const string parentScope = "parent";
+            const string sharedKey = "shared";
+
+            // Act
+            var fragmentScope = FiberKeying.FragmentChildScope(parentScope, sharedKey, 0);
+            var providerScope = FiberKeying.ProviderChildScope(parentScope, sharedKey, 1);
+
+            // Assert
+            Assert.That(fragmentScope, Is.Not.EqualTo(providerScope));
+        }
+
+        [Test]
+        public void Given_KeyedAndPositionalFragmentsWithMatchingKeyAndIndex_When_ChildScopesDerived_Then_ScopesDiffer()
+        {
+            // Arrange
+            const string parentScope = "parent";
+
+            // Act
+            var keyedScope = FiberKeying.FragmentChildScope(parentScope, "1", 0);
+            var positionalScope = FiberKeying.FragmentChildScope(parentScope, null, 1);
+
+            // Assert
+            Assert.That(keyedScope, Is.Not.EqualTo(positionalScope));
+        }
+
+        [Test]
         public void Given_ScopeLess_When_ComponentChildScope_Then_StaysNull()
         {
             // Act
@@ -179,6 +208,19 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_KeyedComponentWithinScope_When_ComponentChildScope_Then_ExtendsWithTaggedKey()
+        {
+            // Arrange
+            const string key = "k";
+
+            // Act
+            var scope = FiberKeying.ComponentChildScope("p", key, 3);
+
+            // Assert
+            Assert.That(scope, Is.EqualTo("p" + Nul + "Ck"));
+        }
+
+        [Test]
         public void Given_UnkeyedComponentWithinScope_When_ComponentChildScope_Then_ContributesIndex()
         {
             // Act
@@ -186,6 +228,20 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(scope, Is.EqualTo("p" + Nul + "3"));
+        }
+
+        [Test]
+        public void Given_KeyedComponentAndPositionalFragmentWithMatchingKeyAndIndex_When_ChildScopesDerived_Then_ScopesDiffer()
+        {
+            // Arrange
+            const string parentScope = "parent";
+
+            // Act
+            var componentScope = FiberKeying.ComponentChildScope(parentScope, "1", 0);
+            var fragmentScope = FiberKeying.FragmentChildScope(parentScope, null, 1);
+
+            // Assert
+            Assert.That(componentScope, Is.Not.EqualTo(fragmentScope));
         }
 
         [Test]
@@ -209,6 +265,38 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_KeyedLeafWithinScope_When_RegisterScopedKey_Then_EffectiveKeyUsesLeafTag()
+        {
+            // Arrange
+            var context = new ReconcilerContext();
+            var keying = new ReconcileKeying(context);
+            var node = new TextNode { Text = "leaf", Key = "k" };
+
+            // Act
+            keying.RegisterScopedKey(node, "p", 3);
+
+            // Assert
+            Assert.That(keying.EffectiveKey(node), Is.EqualTo("p" + Nul + "Lk"));
+        }
+
+        [Test]
+        public void Given_KeyedAndPositionalLeavesWithMatchingKeyAndIndex_When_RegisteredWithinScope_Then_EffectiveKeysDiffer()
+        {
+            // Arrange
+            var context = new ReconcilerContext();
+            var keying = new ReconcileKeying(context);
+            var keyedNode = new TextNode { Text = "keyed", Key = "1" };
+            var positionalNode = new TextNode { Text = "positional" };
+
+            // Act
+            keying.RegisterScopedKey(keyedNode, "p", 0);
+            keying.RegisterScopedKey(positionalNode, "p", 1);
+
+            // Assert
+            Assert.That(keying.EffectiveKey(keyedNode), Is.Not.EqualTo(keying.EffectiveKey(positionalNode)));
+        }
+
+        [Test]
         public void Given_UnkeyedSuspenseWithinScope_When_SuspenseKey_Then_ContributesIndex()
         {
             // Act
@@ -225,7 +313,20 @@ namespace Velvet.Tests
             var key = FiberKeying.SuspenseKey(null, "k", 3);
 
             // Assert
-            Assert.That(key, Is.EqualTo("k"));
+            Assert.That(key, Is.EqualTo("Sk"));
+        }
+
+        [Test]
+        public void Given_KeyedPresenceAtRoot_When_PresenceKey_Then_KeyBecomesTaggedScope()
+        {
+            // Arrange
+            const string key = "k";
+
+            // Act
+            var scope = FiberKeying.PresenceKey(null, key, 3);
+
+            // Assert
+            Assert.That(scope, Is.EqualTo("Ak"));
         }
 
         [Test]

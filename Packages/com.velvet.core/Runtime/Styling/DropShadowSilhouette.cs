@@ -340,7 +340,10 @@ namespace Velvet
                 return;
             }
 
-            var tex = DropShadowBaker.GetOrBakeSilhouette(binding.CornerRadius, spec.Blur, spec.Spread,
+            // Bounded as the face painter bounds a corner. RoundedFullSilhouettePlaybackTests pins the halo an
+            // unbounded --radius-full bakes away.
+            var corner = Mathf.Min(binding.CornerRadius, SilhouetteFace.MaxRadius(w, h));
+            var tex = DropShadowBaker.GetOrBakeSilhouette(corner, spec.Blur, spec.Spread,
                 w, h, binding.SkewXDeg);
             if (tex == null)
             {
