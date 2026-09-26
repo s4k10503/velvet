@@ -17,9 +17,11 @@ namespace Velvet
     // fails to recognize a child or a fiber's state is reset. Centralizing the derivation here makes that lockstep structural: changing a
     // keying rule changes both walkers at once.
 
-    // How the child array a node sits in was opened. Part of the structural path below, so two arrays opened
-    // at the same node index by different constructs — a Suspense's primary vs its fallback, a Memo's
-    // resolved inner vs a Fragment's children — never compose to the same path.
+    // The construct one contribution to the structural path below comes from. Every member but Suspense names
+    // how the child array a node sits in was opened, so two arrays opened at the same node index by different
+    // constructs — a Suspense's primary vs its fallback, a Memo's resolved inner vs a Fragment's children —
+    // never compose to the same path. Suspense opens no array: it is the contribution SuspenseAt places a
+    // boundary's fallback row with.
     internal enum WalkPathKind : byte
     {
         Fragment = 1,
@@ -343,7 +345,7 @@ namespace Velvet
                 ? new MemoPosition(owner, portalScope, memoKey, position.SlotPath)
                 : new MemoPosition(owner, portalScope, null, innerPosition.SlotPath);
 
-        // The boundary key for a SuspenseNode, which SuspenseSubtreeScope extends: the parent scope extended
+        // The scope a SuspenseNode's two branches extend through SuspenseSubtreeScope: the parent scope extended
         // by the Suspense's own key (or its positional index when unkeyed).
         internal static string SuspenseKey(string? parentScope, string? suspenseKey, int nodeIndex)
             => ComposeFragmentScope(

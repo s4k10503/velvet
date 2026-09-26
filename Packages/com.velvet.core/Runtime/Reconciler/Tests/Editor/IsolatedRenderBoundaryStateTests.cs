@@ -18,6 +18,13 @@ namespace Velvet.Tests
     /// <item>A consumer inside that fallback, re-rendering alone, still reads the Provider the fallback
     /// places above it.</item>
     /// <item>An AnimatePresence keeps the child element it committed, under the same two wrappers.</item>
+    /// <item>A suspended boundary rendered by a component inside another Suspense's children keeps its one
+    /// fallback element too: a Suspense's branches establish a scope of their own.</item>
+    /// <item>An AnimatePresence rendered by a component that is another AnimatePresence's child keeps its
+    /// committed child the same way.</item>
+    /// <item>Two boundaries in one body, the second under an unkeyed Fragment or Provider at the first's index,
+    /// each keep their own record: a resolved Suspense does not take a suspended one's fallback away, and two
+    /// AnimatePresence do not show each other's children.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -114,6 +121,73 @@ namespace Velvet.Tests
         [Component(Compiler = false)]
         private static VNode PresenceInsideMemoHost() => InsideMemo(PresenceOwner);
 
+        [Component(Compiler = false)]
+        private static VNode SuspenseInsideSuspenseHost()
+            => V.Div(children: new VNode?[]
+            {
+                V.Suspense(V.Label(name: "outer-loading"), new VNode?[] { V.Component(SuspenseOwner) }),
+            });
+
+        // The second boundary sits at the first's index inside an unkeyed wrapper, which opens no scope where
+        // none is open, so only a key that counts the wrapper tells the two apart.
+        private static VNode ResolvedBesideSuspended(int tick, Func<VNode?[], VNode> wrap)
+            => V.Fragment(children: new VNode?[]
+            {
+                V.Suspense(V.Label(name: "loading"), new VNode?[] { V.Component(Pending) }),
+                wrap(new VNode?[] { V.Suspense(V.Label(name: "unused"), new VNode?[] { V.Label(name: "ready") }) }),
+                V.Label(name: "tick", text: tick.ToString()),
+            });
+
+        [Component(Compiler = false)]
+        private static VNode ResolvedUnderFragmentBesideSuspendedOwner()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setOwnerTick = setTick;
+            return ResolvedBesideSuspended(tick, children => V.Fragment(children: children));
+        }
+
+        [Component(Compiler = false)]
+        private static VNode ResolvedUnderProviderBesideSuspendedOwner()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setOwnerTick = setTick;
+            return ResolvedBesideSuspended(tick, children => V.Provider(Theme, "inside", children: children));
+        }
+
+        private static readonly Dictionary<string, MotionVariant> s_fade = new()
+        {
+            ["visible"] = "opacity-100",
+            ["hidden"] = "opacity-0",
+        };
+
+        // An exit that animates, so a child one presence does not name is held as a ghost rather than dropped.
+        private static VNode FadingChild(string name, string key)
+            => V.Motion(name: name, key: key, variants: s_fade, animate: "visible", exit: "hidden",
+                transition: new StyleTransitionConfig { DurationSec = 0.3f });
+
+        [Component(Compiler = false)]
+        private static VNode TwoPresencesOwner()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setOwnerTick = setTick;
+            return V.Fragment(children: new VNode?[]
+            {
+                V.AnimatePresence(initial: false, children: new VNode?[] { FadingChild("first", "a") }),
+                V.Fragment(children: new VNode?[]
+                {
+                    V.AnimatePresence(initial: false, children: new VNode?[] { FadingChild("second", "b") }),
+                }),
+                V.Label(name: "tick", text: tick.ToString()),
+            });
+        }
+
+        [Component(Compiler = false)]
+        private static VNode PresenceAsPresenceChildHost()
+            => V.Div(children: new VNode?[]
+            {
+                V.AnimatePresence(initial: false, children: new VNode?[] { V.Component(PresenceOwner, key: "row") }),
+            });
+
         private static IReadOnlyList<VisualElement> Named(VisualElement container, string name)
             => container.Query<VisualElement>(name: name).ToList();
 
@@ -200,6 +274,75 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(observed, Is.EqualTo(("1", 1, true)));
+        }
+
+        [Test]
+        public void Given_SuspendedBoundaryInsideAnotherSuspense_When_ItsOwnerReRendersAlone_Then_ItKeepsItsOneFallbackElement()
+        {
+            // Arrange
+            var host = (Func<VNode>)SuspenseInsideSuspenseHost;
+
+            // Act
+            var observed = OwnerReRendersAlone(host, "loading");
+
+            // Assert
+            Assert.That(observed, Is.EqualTo(("1", 1, true)));
+        }
+
+        [Test]
+        public void Given_ResolvedBoundaryUnderUnkeyedFragmentBesideSuspendedOne_When_TheOwnerReRenders_Then_TheSuspendedOneKeepsItsOneFallbackElement()
+        {
+            // Arrange
+            var host = (Func<VNode>)ResolvedUnderFragmentBesideSuspendedOwner;
+
+            // Act
+            var observed = OwnerReRendersAlone(host, "loading");
+
+            // Assert
+            Assert.That(observed, Is.EqualTo(("1", 1, true)));
+        }
+
+        [Test]
+        public void Given_ResolvedBoundaryUnderUnkeyedProviderBesideSuspendedOne_When_TheOwnerReRenders_Then_TheSuspendedOneKeepsItsOneFallbackElement()
+        {
+            // Arrange
+            var host = (Func<VNode>)ResolvedUnderProviderBesideSuspendedOwner;
+
+            // Act
+            var observed = OwnerReRendersAlone(host, "loading");
+
+            // Assert
+            Assert.That(observed, Is.EqualTo(("1", 1, true)));
+        }
+
+        [Test]
+        public void Given_AnimatePresenceRenderedAsAnotherPresencesChild_When_ItsOwnerReRendersAlone_Then_ItKeepsItsCommittedChild()
+        {
+            // Arrange
+            var host = (Func<VNode>)PresenceAsPresenceChildHost;
+
+            // Act
+            var observed = OwnerReRendersAlone(host, "item");
+
+            // Assert
+            Assert.That(observed, Is.EqualTo(("1", 1, true)));
+        }
+
+        [Test]
+        public void Given_SecondAnimatePresenceUnderUnkeyedFragment_When_TheOwnerReRenders_Then_EachShowsOnlyItsOwnChild()
+        {
+            // Arrange
+            var container = new VisualElement();
+            _mounted = V.Mount(container, V.Component(TwoPresencesOwner, key: "host"));
+
+            // Act
+            s_setOwnerTick.Invoke(1);
+            _mounted.FlushStateForTest();
+
+            // Assert
+            var shown = string.Join("|", container.Query<VisualElement>()
+                .Where(element => element.name is "first" or "second").ToList().Select(element => element.name));
+            Assert.That((container.Q<Label>("tick")?.text, shown), Is.EqualTo(("1", "first|second")));
         }
 
         [Test]
