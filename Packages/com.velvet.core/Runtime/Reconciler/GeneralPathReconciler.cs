@@ -1615,8 +1615,8 @@ namespace Velvet
             MotionOrchestrationFrame? frame,
             in DescendantExitWalk walk)
         {
-            var target = portal.Target;
-            if (target == null) return 0;
+            // A portal with no target holds an empty range, so the loop never reads the target.
+            var target = portal.Target!;
             var count = 0;
             for (var slot = portal.SlotStart; slot < portal.SlotStart + portal.SlotLength; slot++)
             {

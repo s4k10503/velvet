@@ -759,7 +759,6 @@ namespace Velvet
         private void ReleaseHostsAndScopes()
         {
             _ctx.ClearSuspenseState();
-            _ctx.PresenceDescendantExitWaits.Clear();
             _ctx.PortalState.Clear();
             _ctx.PendingPortalMounts.Clear();
             // MUTANT_SURVIVES(equivalent): as at the pass boundary, an entry outliving its queue is never read.

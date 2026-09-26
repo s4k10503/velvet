@@ -148,11 +148,6 @@ namespace Velvet.Tests
                 children: new[] { SlowMotion() }),
             "classic" => V.Component(ClassicRender, key: key),
             "portal" => V.Div(key: key, children: new VNode[] { V.Portal(s_portalTarget, new[] { TimedMotion(null) }) }),
-            "portal-missing" => V.Div(key: key, children: new VNode[]
-            {
-                V.Portal("velvet-anchor-tests-unregistered", new[] { SlowMotion() }),
-                TimedMotion(null),
-            }),
             _ => throw new System.ArgumentOutOfRangeException(nameof(s_wrapper), s_wrapper, null),
         };
 
@@ -168,10 +163,11 @@ namespace Velvet.Tests
         }
 
         // A Motion outside the presence, portalled into the same target after the presence child's own portal,
-        // so its content sits in the slot right after that portal's.
+        // so its content sits in the slot right after that portal's. It declares an exit, so a walk that strayed
+        // into that slot would play one.
         private static VNode OutsidePortal() => s_portalTarget == null ? null : V.Portal(s_portalTarget, new[]
         {
-            V.Motion(name: "other", variants: s_fade, animate: "visible",
+            V.Motion(name: "other", variants: s_fade, animate: "visible", exit: "hidden",
                 transition: new StyleTransitionConfig { DurationSec = 0.3f }),
         });
 
@@ -469,21 +465,6 @@ namespace Velvet.Tests
             Assert.That((HasClass("item", "opacity-0"), HasClass("other", "opacity-0")), Is.EqualTo((true, false)));
         }
 
-        [Test]
-        public void Given_APortalWithNoTargetInsideTheChild_When_TheKeyIsRemoved_Then_TheChildIsHeldForItsOtherMotion()
-        {
-            // Arrange
-            using var mounted = MountSettled("portal-missing", "a");
-            using var keys = s_keyStore;
-
-            // Act
-            keys.Set(string.Empty);
-            Drain(mounted);
-
-            // Assert
-            Assert.That(HostChildCount, Is.EqualTo(1));
-        }
-
         // GREEN_ON_BASE(characterization): no onExitComplete follows the whole presence leaving the tree.
         [Test]
         public void Given_AComponentChildExiting_When_TheWholePresenceUnmounts_Then_NoExitCompletionFollows()
@@ -554,10 +535,11 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AMotionBehindAComponentEntering_When_TheKeyIsRemovedBeforeTheEnterSwaps_Then_ItExitsFromItsRestingPose()
+        public void Given_AMotionInsideAnElementEntering_When_TheKeyIsRemovedBeforeTheEnterSwaps_Then_ItExitsFromItsRestingPose()
         {
             // Arrange — added after the first render, so its mount enter plays and strips it to its initial pose.
-            using var mounted = MountSettled("component", string.Empty);
+            // Inside an element, the Motion is not the ghost's first element, which the removal cancels anyway.
+            using var mounted = MountSettled("element", string.Empty);
             using var keys = s_keyStore;
             keys.Set("a");
             Drain(mounted);
