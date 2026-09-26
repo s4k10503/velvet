@@ -141,7 +141,7 @@ def without_comments(text):
 
 
 def units(text):
-    """Each job of a workflow, or the whole of a composite action, as (name, steps)."""
+    """Each job of a workflow that has steps, or the whole of a composite action, as (name, steps)."""
     jobs = text.partition("\njobs:\n")[2]
     named = re.split(r"^  ([A-Za-z0-9_-]+):[ \t]*$", jobs, flags=re.M)[1:] if jobs else ["runs", text]
     for name, body in zip(named[::2], named[1::2]):
