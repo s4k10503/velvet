@@ -157,7 +157,7 @@ def remove(placed):
 def seed(source, destination, run=subprocess.run, out=sys.stdout, err=sys.stderr):
     """Clones `source` into `destination` minus `LEFT_BEHIND`: 0 where it did, 130 where it was
     interrupted, 1 where it did not."""
-    source = Path(source)
+    source = Path(os.path.abspath(str(source)))
     destination = Path(destination)
     if not source.is_dir():
         err.write(f"seed_library: {source} is not a directory.\n")
@@ -190,7 +190,7 @@ def seed(source, destination, run=subprocess.run, out=sys.stdout, err=sys.stderr
             done = subprocess.CompletedProcess([], 130, "", "interrupted")
         if done.returncode == 0:
             continue
-        missing = vanished(done.stderr, source)
+        missing = vanished(done.stderr, source) if done.returncode == 1 else None
         if missing is not None:
             gone.extend(missing)
             continue

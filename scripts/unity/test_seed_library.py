@@ -43,32 +43,33 @@ class SeedLibraryTests(unittest.TestCase):
         self.ran = []
 
     def runner(self, fail_at=None, stderr="clone refused", copies_first=False, after=None,
-               interrupt=False):
+               interrupt=False, code=1):
         """A command runner that copies what `cp` would, failing at the entry named `fail_at`.
 
-        `copies_first` places the failing entry before failing with `stderr`; `after` runs on each
-        entry once it is placed; `interrupt` raises the interrupt a Ctrl-C delivers instead of
-        returning.
+        `copies_first` places the failing entry before failing with `stderr` and exit code `code`;
+        a callable `stderr` is handed the source as `cp` received it. `after` runs on each entry
+        once it is placed; `interrupt` raises the interrupt a Ctrl-C delivers instead of returning.
         """
         def run(argv, **_):
             self.ran.append(argv)
             source, target = Path(argv[-2]), Path(argv[-1])
             failing = source.name == fail_at
+            said = stderr(argv[-2]) if callable(stderr) else stderr
             if failing and interrupt:
                 raise KeyboardInterrupt
             if failing and not copies_first:
-                return subprocess.CompletedProcess(argv, 1, "", stderr)
+                return subprocess.CompletedProcess(argv, code, "", said)
             if source.is_dir():
                 shutil.copytree(str(source), str(target), symlinks=True)
             else:
                 shutil.copy2(str(source), str(target))
             if after:
                 after(target)
-            return subprocess.CompletedProcess(argv, 1 if failing else 0, "",
-                                               stderr if failing else "")
+            return subprocess.CompletedProcess(argv, code if failing else 0, "",
+                                               said if failing else "")
         return run
 
-    def seed(self, platform="darwin", can_clone=True, **runner):
+    def seed(self, platform="darwin", can_clone=True, source=None, **runner):
         """The script's exit code with `sys.platform` and `clones` as given, and its stderr.
 
         Its stdout lands in `self.told`.
@@ -77,7 +78,8 @@ class SeedLibraryTests(unittest.TestCase):
         out = io.StringIO()
         with mock.patch.object(seed_library.sys, "platform", platform), \
                 mock.patch.object(seed_library, "clones", lambda source, destination: can_clone):
-            code = seed_library.seed(self.source, self.destination, run=self.runner(**runner),
+            code = seed_library.seed(source or self.source, self.destination,
+                                     run=self.runner(**runner),
                                      out=out, err=err)
         self.told = out.getvalue()
         return code, err.getvalue()
@@ -183,6 +185,32 @@ class SeedLibraryTests(unittest.TestCase):
         # Assert
         self.assertEqual((code, self.placed(), "in use" in self.told),
                          (0, [name for name in ENTRIES if name != "ScriptAssemblies"], True))
+
+    def test_Given_ARelativeSourceAndAFileThatLeftIt_When_Seeded_Then_TheSeedStands(self):
+        # Arrange — `cp` names a path the way it received it.
+        here = os.getcwd()
+        os.chdir(str(self.holder))
+        self.addCleanup(os.chdir, here)
+
+        # Act
+        code, _ = self.seed(source=Path("other") / "Library", fail_at="Artifacts",
+                            stderr=lambda given: f"cp: {given}/gone.bin: No such file or directory\n",
+                            copies_first=True)
+
+        # Assert
+        self.assertEqual((code, self.placed()),
+                         (0, [name for name in ENTRIES if name != "ScriptAssemblies"]))
+
+    def test_Given_AFileThatLeftTheSourceAndACloneKilledBySignal_When_Seeded_Then_ItFails(self):
+        # Arrange
+        gone = self.source / "Artifacts" / "gone.bin"
+        stderr = f"cp: {gone}: No such file or directory\n"
+
+        # Act
+        code, _ = self.seed(fail_at="Artifacts", stderr=stderr, copies_first=True, code=-9)
+
+        # Assert
+        self.assertEqual((code, self.placed()), (1, None))
 
     def test_Given_AMissingFileReportThatIsStillThere_When_Seeded_Then_ItFails(self):
         # Arrange — the path the line names exists, so it is not a file that left the source.
