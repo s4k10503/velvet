@@ -86,6 +86,10 @@ namespace Velvet
         // Child VNode array from the previous render, as the caller supplied it: nulls and fragments are
         // dropped and expanded during inline expansion, not before this is stored.
         public VNode?[] OldNodes { get; init; } = null!;
+        // The key each OldNodes entry was emitted under, index-aligned with it, or null on the terms
+        // ChildReconciler.OldKey gives. A copy rather than the caller's rented list, which goes back to the pool
+        // when the pass that parked this state returns.
+        public ChildKey[]? OldKeys { get; init; }
         // Child VNode array requested by the current render, on the same terms as the previous one above.
         public VNode?[] NewNodes { get; init; } = null!;
         // Zero-based slot offset into Parent.children at which this keyed reconcile operates.
@@ -137,32 +141,45 @@ namespace Velvet
     // explicit string keys from numeric implicit indices: an explicit key and a positional
     // index can never compare equal, so a user key value — including one a Fragment scope composes
     // — cannot collide with an unkeyed sibling's slot.
+    //
+    // The general path also carries the fiber whose output emitted the leaf (OwnedBy), so two components'
+    // leaves never match each other whatever keys they carry. The flat diff never sets one: it is taken only
+    // where the old side reached no descendant fiber, so every leaf on both sides has the same emitter.
     internal readonly struct ChildKey : IEquatable<ChildKey>
     {
         private readonly string? _key;
         private readonly int _index;
         private readonly bool _isPositional;
+        private readonly ComponentFiber? _owner;
 
-        private ChildKey(string? key, int index, bool isPositional)
+        private ChildKey(string? key, int index, bool isPositional, ComponentFiber? owner)
         {
             _key = key;
             _index = index;
             _isPositional = isPositional;
+            _owner = owner;
         }
 
-        public static ChildKey Explicit(string key) => new(key, 0, false);
+        public static ChildKey Explicit(string key) => new(key, 0, false, null);
 
-        public static ChildKey Positional(int index) => new(null, index, true);
+        public static ChildKey Positional(int index) => new(null, index, true, null);
+
+        internal ChildKey OwnedBy(ComponentFiber? owner) => new(_key, _index, _isPositional, owner);
 
         public bool Equals(ChildKey other)
-            => _isPositional
-                ? other._isPositional && _index == other._index
-                : !other._isPositional && _key == other._key;
+            => ReferenceEquals(_owner, other._owner)
+                && (_isPositional
+                    ? other._isPositional && _index == other._index
+                    : !other._isPositional && _key == other._key);
 
         public override bool Equals(object obj) => obj is ChildKey other && Equals(other);
 
         public override int GetHashCode()
-            => _isPositional ? _index : (_key?.GetHashCode() ?? 0);
+            => (_isPositional ? _index : (_key?.GetHashCode() ?? 0))
+                // MUTANT_SURVIVES(equivalent, equality): the owner term only spreads owned keys across buckets.
+                // Either spelling gives equal keys equal hashes, and which keys match is Equals' answer, which
+                // reads the owner.
+                ^ (_owner == null ? 0 : System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(_owner));
 
         public override string ToString()
             => _isPositional

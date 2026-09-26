@@ -838,6 +838,112 @@ namespace Velvet.Tests
                 "A duplicate-keyed list must defer to Pass 2 rather than take the suffix-trim fast path");
         }
 
+        // The pooled old-key map, marked: Rent and Return both clear, so the mark survives only while no pass
+        // rents the map, which separates the prefix, suffix and trim fast paths from Pass 2 without an empty
+        // pool — a wrapper on the old side mounts through the general path, which rents one first.
+        private static Dictionary<ChildKey, (int index, VNode node)> MarkPooledOldKeyMap(Reconciler reconciler)
+        {
+            var pool = reconciler.Context.BufferPool;
+            var map = pool.RentOldKeyMap();
+            pool.Return(map);
+            map[ChildKey.Explicit("mark")] = (0, null);
+            return map;
+        }
+
+        private static VNode[] BehindAFragment(string first, params string[] rest)
+            => new[] { V.Fragment(new[] { K(first) }) }.Concat(Tree(rest)).ToArray();
+
+        // GREEN_ON_BASE(characterization): the base takes the trim here, reading the old nodes' keys.
+        // The old side's keys come from its walk now, and this is what fails when their check refuses a
+        // list it should pass, including a single key.
+        [TestCase(1)]
+        [TestCase(3)]
+        public void Given_AnOldSideBehindAFragment_When_ItsDistinctKeysTakeAPrepend_Then_NoPass2BufferIsRented(int count)
+        {
+            // Arrange — the old side needs expanding, so the trim reads the keys its walk emitted.
+            var keys = new[] { "a", "b", "c" }.Take(count).ToArray();
+            var oldTree = BehindAFragment(keys[0], keys.Skip(1).ToArray());
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
+            var map = MarkPooledOldKeyMap(Reconciler);
+
+            // Act
+            Reconciler.Reconcile(Root, oldTree, Tree(new[] { "x" }.Concat(keys).ToArray()));
+
+            // Assert
+            Assert.That((map.Count, string.Join(",", DomKeys())), Is.EqualTo((1, "x," + string.Join(",", keys))));
+        }
+
+        // GREEN_ON_BASE(characterization): the base defers this shape to Pass 2 on its old side's repeat.
+        // This is what fails when the check over the keys the old side's walk emitted stops refusing one.
+        [Test]
+        public void Given_AnOldSideBehindAFragmentRepeatingAKey_When_ItCollapsesToARemove_Then_ItDefersToPass2()
+        {
+            // Arrange — the new side repeats nothing, so the old side's check is the one that has to refuse.
+            var oldTree = BehindAFragment("d", "d", "e");
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
+            var map = MarkPooledOldKeyMap(Reconciler);
+
+            // Act
+            Reconciler.Reconcile(Root, oldTree, Tree("d", "e"));
+
+            // Assert
+            Assert.That(map.Count, Is.EqualTo(0));
+        }
+
+        // GREEN_ON_BASE(characterization): the base's check over the old side returns the set it rents.
+        // The check over the old side's emitted keys is a separate method, and this is what fails when it
+        // keeps the set.
+        [Test]
+        public void Given_AnOldSideBehindAFragment_When_ItsKeysAreCheckedForTheTrim_Then_TheKeySetGoesBackToThePool()
+        {
+            // Arrange — marked for the reason MarkPooledOldKeyMap gives; the new side's check rents the set the
+            // old side's check returned, so the one on top afterwards is the one the old side's check took.
+            var oldTree = BehindAFragment("a", "b");
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
+            var pool = Reconciler.Context.BufferPool;
+            var set = pool.RentKeySet();
+            pool.ReturnKeySet(set);
+
+            // Act
+            Reconciler.Reconcile(Root, oldTree, Tree("x", "a", "b"));
+
+            // Assert
+            Assert.That(pool.RentKeySet(), Is.SameAs(set));
+        }
+
+        // GREEN_ON_BASE(characterization): the base stops the trim at a tail it cannot patch.
+        // The trim's key and patch tests were split apart, and this is what fails when the patch test goes.
+        [Test]
+        public void Given_AKeyedTailWhoseElementTypeChanges_When_ItTakesAPrepend_Then_TheTailIsReplaced()
+        {
+            // Arrange
+            var oldTree = new[] { K("a"), V.Label(text: "t", key: "t") };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
+
+            // Act
+            Reconciler.Reconcile(Root, oldTree, new[] { K("x"), K("a"), V.Button(text: "t", key: "t") });
+
+            // Assert
+            Assert.That(Root.ElementAt(2), Is.TypeOf<Button>());
+        }
+
+        // GREEN_ON_BASE(characterization): the base stops the trim where an unkeyed tail's index moved.
+        // That rests on a positional key's index taking part in its equality, whose line gained the owner.
+        [Test]
+        public void Given_AnUnkeyedTailBehindKeyedSiblings_When_AKeyedPrependShiftsItsIndex_Then_ItIsBuiltAgain()
+        {
+            // Arrange — the unkeyed tail reconciles by its full sibling index, which the prepend moves.
+            var oldTree = new[] { K("a"), V.Label(text: "u") };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
+            var tail = Root.ElementAt(1);
+
+            // Act
+            Reconciler.Reconcile(Root, oldTree, new[] { K("x"), K("a"), V.Label(text: "u") });
+
+            // Assert
+            Assert.That((Root.childCount, ReferenceEquals(Root.ElementAt(2), tail)), Is.EqualTo((3, false)));
+        }
+
         [Test]
         public void Given_Rotation_When_Reconciled_Then_Pass2BufferIsRented()
         {
