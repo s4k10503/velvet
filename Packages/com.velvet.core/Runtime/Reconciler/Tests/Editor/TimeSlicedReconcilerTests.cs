@@ -339,6 +339,30 @@ namespace Velvet.Tests
                 "The keyed linear scan park/resumes to patch the full list in order");
         }
 
+        // GREEN_ON_BASE(characterization): the base's time-sliced linear scan matches every slot here.
+        // Its key test gained a term for scoped old keys, and this is what fails when it stops a scan it
+        // should let run.
+        [Test]
+        public void Given_KeyedLinearScan_When_TimeSliced_Then_NoPass2BufferIsRented()
+        {
+            // Arrange — the case above, with the pooled old-key map marked: Rent and Return both clear, so the
+            // mark survives only while no pass rents the map, which the linear scan alone never does.
+            var oldChildren = BuildKeyedLabelArray(50, "old");
+            var newChildren = BuildKeyedLabelArray(50, "new");
+            _reconciler.Reconcile(_root, Array.Empty<VNode>(), oldChildren);
+            var pool = _reconciler.Context.BufferPool;
+            var map = pool.RentOldKeyMap();
+            pool.Return(map);
+            map[ChildKey.Explicit("mark")] = (0, null);
+
+            // Act
+            _reconciler.Reconcile(_root, oldChildren, newChildren, frameBudgetMs: 0.001);
+            DrainPendingWork();
+
+            // Assert
+            Assert.That(map.Count, Is.EqualTo(1));
+        }
+
         [Test]
         public void Given_KeyedLinearScanWithTypeFlip_When_TimeSliced_Then_ReplacesElementWithNewType()
         {
