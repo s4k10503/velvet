@@ -310,7 +310,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fallback could replace a neighbour's row while the boundary's own stayed. A `V.Portal` whose child
   component grew also left a row behind on the target when it unmounted, and a second `V.Portal` on that
   target, patched after the first one's component grew, rewrote a row of the first. Two components rendering
-  nothing that a keyed reorder swapped now render their rows in the swapped order when they grow.
+  nothing that a keyed reorder swapped keep the swapped order when they grow, where they could render their
+  rows in the order they were created.
 
 - A component's own re-render now reads the Providers of the container it is written into, where the
   declaring body writes the component into each container as its own occurrence. Two sibling containers

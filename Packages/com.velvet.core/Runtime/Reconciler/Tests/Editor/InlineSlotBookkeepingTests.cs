@@ -9,7 +9,8 @@ namespace Velvet.Tests
     /// Specifies the lifetime of the bookkeeping behind an inline component's recorded slot start.
     /// <list type="bullet">
     /// <item>A container's tenancy holds the components mounted on it and lets go of one that unmounts;
-    /// once the last one has gone, and once the registry is disposed, the container has none.</item>
+    /// once the last one has gone, and once the reconciler owning the registry is disposed, the container has
+    /// none.</item>
     /// <item>The list a walk records its placements in goes back to <see cref="ReconcilerBufferPool"/>
     /// when the walk ends, so a reconcile does not leave one behind for the collector on every pass.</item>
     /// </list>
@@ -101,14 +102,15 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ARegistryDisposedWhileItsContextLives_When_AContainersTenancyIsRead_Then_ThereIsNone()
+        public void Given_ARootReconcilerDisposed_When_AContainersTenancyIsRead_Then_ThereIsNone()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(OneComponentHostRender, key: "host"));
             var box = _root.Q(name: "box");
 
-            // Act — the registry's own disposal, which disposes the fibers without unregistering each.
-            mounted.Root.Reconciler.Context.ComponentRegistry.Dispose();
+            // Act — the context is marked disposed before the registry is, so no unmount reconcile runs to
+            // unregister the fibers one by one.
+            mounted.Root.Reconciler.Dispose();
 
             // Assert
             Assert.That(TenancyOf(mounted, box), Is.Null);
