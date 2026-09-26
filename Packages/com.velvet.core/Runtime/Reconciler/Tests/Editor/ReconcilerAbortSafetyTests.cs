@@ -232,6 +232,9 @@ namespace Velvet.Tests
             RuntimeStateProbe.ClearPortalRegistry();
         }
 
+        // GREEN_ON_BASE(characterization): the base's resumed slice drains the Portal and its boundary catches.
+        // The catch was an Assume, and sits in the assertion now so a pass whose boundary no longer catches
+        // reads red rather than inconclusive.
         [Test]
         public void Given_ATimeSlicedResumeDrainsAPortalWhoseErrorBoundaryCatches_When_AnUnrelatedFiberLaterReRenders_Then_ItsChangeStillCommits()
         {
@@ -256,8 +259,7 @@ namespace Velvet.Tests
             s_listFiber.FlushStateWithTinyBudgetForTest();
             var parkedMidCommit = s_listFiber.HasPendingReconcileWorkForTest();
             s_listFiber.DrainTimeSlicedReconcileForTest();
-            Assume.That(s_fallbackShown, Is.True,
-                "Precondition: the Portal's error boundary actually caught the throw");
+            var caught = s_fallbackShown;
 
             // Act (2) — an unrelated fiber sharing the same mounted tree (and so the same ReconcilerContext)
             // re-renders normally, synchronously, well after the time-sliced pass above fully completed and
@@ -268,7 +270,8 @@ namespace Velvet.Tests
             // Assert — RED without the fix: a stale IsAborted left over from the Portal drain makes
             // ChildReconciler.Reconcile's entry guard silently no-op this fiber's entire reconcile, leaving
             // the old text in place instead of committing the update.
-            Assert.That((parkedMidCommit, _root.Q<Label>("counter-label").text), Is.EqualTo((true, "updated")));
+            Assert.That(
+                (parkedMidCommit, caught, _root.Q<Label>("counter-label").text), Is.EqualTo((true, true, "updated")));
         }
 
         [Component]

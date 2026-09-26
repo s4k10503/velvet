@@ -174,6 +174,8 @@ namespace Velvet
 
         public override bool Equals(object obj) => obj is ChildKey other && Equals(other);
 
+        // MUTANT_SURVIVES(equivalent, equality): the owner term only spreads owned keys across buckets. Either
+        // spelling gives equal keys equal hashes, and which keys match is Equals' answer, which reads the owner.
         public override int GetHashCode()
             => (_isPositional ? _index : (_key?.GetHashCode() ?? 0))
                 ^ (_owner == null ? 0 : System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(_owner));
