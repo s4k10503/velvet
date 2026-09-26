@@ -317,13 +317,23 @@ jobs:
 
       # After the reading, not before: the tree is a worktree git refuses to create over a directory
       # that already holds a Library.
+      #
+      # Keyed on the pull request rather than on the base commit. The base moves with main, so a commit
+      # key saves another entry per platform on each push with cases to carry after main moves --
+      # 1096 MB each, measured -- where this saves one per pull request. The price is a Library restored
+      # into a base tree it was not built from, which is the warm Library CARRIES_NOTHING in
+      # scripts/test_quality/base_red_check.py is written for: the step after this removes the
+      # directory it names.
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         if: steps.read.outputs.fixtures != ''
         with:
           path: base-tree/Library
-          key: BaseLibrary-${{ matrix.testMode }}-${{ steps.base.outputs.sha }}
+          key: BaseLibrary-${{ matrix.testMode }}-${{ github.event.pull_request.number }}
           restore-keys: |
             BaseLibrary-${{ matrix.testMode }}-
+
+      - if: steps.read.outputs.fixtures != ''
+        run: rm -rf base-tree/Library/ScriptAssemblies
 
       # continue-on-error because a base that cannot build the branch's test file is the answer, not
       # a broken job. Which of the two it was is settled by the step after this from the results file.

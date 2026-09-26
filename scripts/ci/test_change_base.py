@@ -130,20 +130,26 @@ class ResolverTests(unittest.TestCase):
         self.assertEqual((done.returncode, done.stdout), (0, "sha=\n"))
 
 
-def workflow_sources():
-    github = REPO_ROOT / ".github"
-    return sorted(list((github / "workflows").glob("*.yml")) + list((github / "workflows").glob("*.yaml"))
-                  + list((github / "actions").rglob("action.yml")))
+def workflow_sources(root=REPO_ROOT):
+    github = root / ".github"
+    return sorted([path for pattern in ("*.yml", "*.yaml") for path in (github / "workflows").glob(pattern)]
+                  + [path for name in ("action.yml", "action.yaml") for path in (github / "actions").rglob(name)])
 
 
 def without_comments(text):
     return "\n".join(re.sub(r"(^|\s)#.*$", r"\1", line) for line in text.splitlines())
 
 
-def units(text):
+EVENT_BASE = re.compile(r"pull_request\W{1,8}base\W{1,8}sha\b", re.IGNORECASE)
+
+
+def units(text, composite):
     """Each job of a workflow that has steps, or the whole of a composite action, as (name, steps)."""
-    jobs = text.partition("\njobs:\n")[2]
-    named = re.split(r"^  ([A-Za-z0-9_-]+):[ \t]*$", jobs, flags=re.M)[1:] if jobs else ["runs", text]
+    if composite:
+        named = ["runs", text]
+    else:
+        found = re.search(r"^jobs:[ \t]*$", text, re.M)
+        named = re.split(r"^  ([A-Za-z0-9_-]+):[ \t]*$", text[found.end():], flags=re.M)[1:] if found else []
     for name, body in zip(named[::2], named[1::2]):
         found = re.search(r"^( *)steps:[ \t]*$", body, re.M)
         if not found:
@@ -154,46 +160,118 @@ def units(text):
         yield name, [after[start:end] for start, end in zip(starts, starts[1:] + [len(after)])]
 
 
+def wiring(sources):
+    """(label, text, composite) -> the steps passing `--base` wrongly, and the jobs that pass one."""
+    wrong, reading = [], set()
+    for label, text, composite in sources:
+        for name, steps in units(without_comments(text), composite):
+            resolvers = set()
+            for index, step in enumerate(steps):
+                where = "{} {} step {}".format(label, name, index)
+                identity = re.search(r"^\s*-?\s*id:\s*(\S+)\s*$", step, re.M)
+                if RESOLVER_RUN in step and identity:
+                    resolvers.add(identity.group(1))
+                values = re.findall(r"--base[\s=]+(\S+)", step)
+                if not values:
+                    continue
+                reading.add((label, name))
+                if any(not re.match(r'"?\$\{?BASE\b', value) for value in values):
+                    wrong.append(where + ": --base " + " ".join(values))
+                env = re.search(r"^\s+BASE:\s*(.+?)\s*$", step, re.M)
+                wired = env and re.fullmatch(r"\$\{\{\s*steps\.([\w-]+)\.outputs\.sha\s*\}\}", env.group(1))
+                if not wired or wired.group(1) not in resolvers:
+                    wrong.append(where + ": BASE is " + (env.group(1) if env else "unset"))
+    return wrong, reading
+
+
+def repository_sources():
+    return [(str(path.relative_to(REPO_ROOT)), path.read_text(encoding="utf-8"), path.parent.name != "workflows")
+            for path in workflow_sources()]
+
+
 class WorkflowTests(unittest.TestCase):
 
     def test_Given_EveryWorkflowAndAction_When_ReadWithoutComments_Then_NoneReadsThePullRequestsBaseSha(self):
         # Arrange
-        pattern = re.compile(r"pull_request\s*\.\s*base\s*(?:\.\s*sha|\[\s*['\"]sha['\"]\s*\])")
+        sources = repository_sources()
 
         # Act
-        reading = [str(path.relative_to(REPO_ROOT)) for path in workflow_sources()
-                   if pattern.search(without_comments(path.read_text(encoding="utf-8")))]
+        reading = [label for label, text, _ in sources if EVENT_BASE.search(without_comments(text))]
 
         # Assert
         self.assertEqual(reading, [])
 
-    def test_Given_EveryStepPassingABase_When_Read_Then_ItTakesTheResolverOutputFromAnEarlierStep(self):
+    # GREEN_ON_BASE(construction): the scan is this file's own, so a base run takes the branch's copy of
+    # it. What shows the case can fail is putting back the dot-only `pull_request\s*\.\s*base` pattern:
+    # measured, it then misses the index spelling.
+    def test_Given_EachSpellingOfTheEventsBase_When_Scanned_Then_EveryOneIsFound(self):
         # Arrange
-        wrong, passing = [], 0
+        spellings = [
+            "${{ github.event.pull_request.base.sha }}",
+            "${{ github.event['pull_request']['base']['sha'] }}",
+            "${{ github.event.pull_request['base'].sha }}",
+            "${{ github.event.Pull_Request.BASE.SHA }}",
+        ]
 
         # Act
-        for path in workflow_sources():
-            for name, steps in units(without_comments(path.read_text(encoding="utf-8"))):
-                resolvers = set()
-                for index, step in enumerate(steps):
-                    where = "{} {} step {}".format(path.relative_to(REPO_ROOT), name, index)
-                    identity = re.search(r"^\s*-?\s*id:\s*(\S+)\s*$", step, re.M)
-                    if RESOLVER_RUN in step and identity:
-                        resolvers.add(identity.group(1))
-                    values = re.findall(r"--base[\s=]+(\S+)", step)
-                    if not values:
-                        continue
-                    passing += 1
-                    if any(not re.match(r'"?\$\{?BASE\b', value) for value in values):
-                        wrong.append(where + ": --base " + " ".join(values))
-                    env = re.search(r"^\s+BASE:\s*(.+?)\s*$", step, re.M)
-                    wired = env and re.fullmatch(r"\$\{\{\s*steps\.([\w-]+)\.outputs\.sha\s*\}\}",
-                                                 env.group(1))
-                    if not wired or wired.group(1) not in resolvers:
-                        wrong.append(where + ": BASE is " + (env.group(1) if env else "unset"))
+        missed = [spelling for spelling in spellings if not EVENT_BASE.search(spelling)]
 
         # Assert
-        self.assertEqual((wrong, passing > 0), ([], True))
+        self.assertEqual(missed, [])
+
+    # GREEN_ON_BASE(construction): `workflow_sources` is this file's own, so a base run takes the
+    # branch's copy of it. What shows the case can fail is narrowing it back to `action.yml`: measured,
+    # the listing then leaves the action out.
+    def test_Given_ActionsAndWorkflowsUnderEitherExtension_When_Listed_Then_EachIsRead(self):
+        # Arrange
+        root = Path(tempfile.mkdtemp(prefix="velvet-change-base-sources-"))
+        self.addCleanup(shutil.rmtree, root, True)
+        expected = [root / ".github" / "actions" / "probe" / "action.yaml",
+                    root / ".github" / "workflows" / "probe.yaml"]
+        for path in expected:
+            path.parent.mkdir(parents=True)
+            path.write_text("name: probe\n", encoding="utf-8")
+
+        # Act
+        listed = workflow_sources(root)
+
+        # Assert
+        self.assertEqual(listed, expected)
+
+    def test_Given_EveryStepPassingABase_When_Read_Then_ItTakesTheResolverOutputFromAnEarlierStep(self):
+        # Arrange
+        sources = repository_sources()
+
+        # Act
+        wrong, reading = wiring(sources)
+
+        # Assert — more than one job, so a reader that ran every job together into one reads as broken
+        # rather than as clean.
+        self.assertEqual((wrong, len(reading) > 1), ([], True))
+
+    # GREEN_ON_BASE(construction): `units` is this file's own, so a base run takes the branch's copy of
+    # it. What shows the case can fail is finding the jobs by `text.partition("\njobs:\n")` again:
+    # measured, every job is then read as one and nothing is reported.
+    def test_Given_AResolverInAnotherJobUnderACommentedJobsLine_When_Read_Then_TheReadingStepIsReported(self):
+        # Arrange
+        workflow = (
+            "on: pull_request\n"
+            "jobs: # the jobs\n"
+            "  one:\n"
+            "    steps:\n"
+            "      - id: base\n"
+            "        run: " + RESOLVER_RUN + "\n"
+            "  two:\n"
+            "    steps:\n"
+            "      - env:\n"
+            "          BASE: ${{ steps.base.outputs.sha }}\n"
+            "        run: python3 probe.py --base \"$BASE\"\n")
+
+        # Act
+        wrong, _ = wiring([("probe.yml", workflow, False)])
+
+        # Assert
+        self.assertEqual([entry.partition(":")[0] for entry in wrong], ["probe.yml two step 0"])
 
 
 if __name__ == "__main__":

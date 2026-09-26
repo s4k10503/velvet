@@ -551,7 +551,7 @@ need the identifier to say what it says.
 proves, and what the sources carry), `release/` (cutting a release and publishing it), `hooks/` (the
 suites for the guards under `.claude/hooks/`, and the checks holding those guards to their
 contracts), `generators/` (the committed generator DLLs), `pr/` (settling a pull request), `ci/`
-(what a workflow job reads off the event that started it) and `unity/` (sample sync). Two rules keep
+(which commit a workflow job reads its change against) and `unity/` (sample sync). Two rules keep
 the tree readable:
 
 - **Python, named in `snake_case`.** Every harness is importable, so a test can exercise it directly rather
