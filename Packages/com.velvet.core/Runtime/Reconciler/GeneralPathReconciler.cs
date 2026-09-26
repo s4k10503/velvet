@@ -1161,11 +1161,7 @@ namespace Velvet
             var nodesToExpand = wasFallback
                 ? (suspense.Fallback != null ? new[] { suspense.Fallback } : Array.Empty<VNode>())
                 : (suspense.Children ?? Array.Empty<VNode>());
-            if (nodesToExpand.Length > 0)
-            {
-                ExpandInlineRecursive(walk, nodesToExpand,
-                    wasFallback ? fallbackPosition : primaryPosition);
-            }
+            ExpandInlineRecursive(walk, nodesToExpand, wasFallback ? fallbackPosition : primaryPosition);
             return wasFallback;
         }
 
