@@ -15,12 +15,21 @@ namespace Velvet
             }
         }
 
-        internal static void RemoveClasses(VisualElement element, string[]? classes)
+        // Removes each class, except one kept names, which is added instead: a play may have removed it
+        // before the caller that keeps it recorded it as present.
+        internal static void RemoveClasses(VisualElement element, string[]? classes, string[]? kept = null)
         {
             if (classes == null) return;
             foreach (var cls in classes)
             {
-                element.RemoveFromClassList(cls);
+                if (kept != null && System.Array.IndexOf(kept, cls) >= 0)
+                {
+                    element.AddToClassList(cls);
+                }
+                else
+                {
+                    element.RemoveFromClassList(cls);
+                }
             }
         }
     }

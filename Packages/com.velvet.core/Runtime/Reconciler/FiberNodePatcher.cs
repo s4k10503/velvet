@@ -489,6 +489,12 @@ namespace Velvet
             var appliedOld = hasPreviousApplied ? previousApplied.Merged : oldNode.ClassNames;
             var oldVariantClasses = hasPreviousApplied ? previousApplied.VariantClasses : Array.Empty<string>();
             var variantApplied = newVariantClasses.Length > 0;
+            // Decided before the class-driven sync rather than beside the play below, because a tween swap
+            // changes what that sync may write (ResolveInlineHold).
+            var playedTransition = ResolvePlayedSwap(element, swapTransition, oldVariantClasses, newVariantClasses);
+            var (syncOld, syncNew, onSwap) = ResolveInlineHold(element, newNode.ClassNames,
+                new MotionAppliedClassSet(appliedOld, oldVariantClasses),
+                new MotionAppliedClassSet(appliedNew, newVariantClasses), playedTransition);
             // Keep an entry only while a variant is applied; drop it when a variant→no-variant transition happens
             // (the diff above still uses the stored old classes to REMOVE the now-stale variant utilities).
             if (variantApplied)
@@ -556,7 +562,7 @@ namespace Velvet
                 }
                 try
                 {
-                    PatchBaseElement(element, oldNode, newNode, appliedOld, appliedNew);
+                    PatchBaseElement(element, oldNode, newNode, syncOld, syncNew);
                 }
                 finally
                 {
@@ -569,11 +575,12 @@ namespace Velvet
             }
             else
             {
-                PatchBaseElement(element, oldNode, newNode, appliedOld, appliedNew);
+                PatchBaseElement(element, oldNode, newNode, syncOld, syncNew);
             }
 
             // Runtime variant swap: PatchBaseElement above already synced the class list to the final resting
-            // state (appliedNew) via a plain, instant diff. When the effective label actually changed WHICH
+            // state (appliedNew) via a plain, instant diff, less the inline-resolved tokens ResolveInlineHold
+            // holds for the swap to write. When the effective label actually changed WHICH
             // variant classes are applied AND a transition resolved for the destination pose, replay that same
             // swap as a VISUAL tween on the scheduler instead — a transition should apply to every animate
             // update, not just the first. No resolved transition keeps the plain, instant diff (Velvet applies
@@ -590,11 +597,10 @@ namespace Velvet
             // (CancelExit's reversal, or no-op) — so the one real overlap is a GHOST re-patched on a LATER
             // render while still exiting (skipping the ghost dispatch's own CancelEnter, which only runs the
             // FIRST time state.Exiting.Add(key) succeeds): IsExiting catches exactly that window.
-            if (swapTransition != null && !_ctx.StyleAnimationScheduler.IsExiting(element)
-                && !SequenceEqual(oldVariantClasses, newVariantClasses))
+            if (playedTransition != null)
             {
                 _ctx.StyleAnimationScheduler.PlayVariantEnter(element, oldVariantClasses, newVariantClasses,
-                    swapTransition, onComplete: null, additionalDelaySec: extraDelaySec);
+                    playedTransition, onComplete: null, additionalDelaySec: extraDelaySec, onSwap: onSwap);
             }
 
             // MotionNode has no Styles diff, so the shared passes follow PatchCommon (which reconciles
@@ -620,6 +626,213 @@ namespace Velvet
                 MotionLayoutIdDriver.OnPatched(element, newNode.LayoutId,
                     t?.Stiffness ?? 100f, t?.Damping ?? 10f, t?.Mass ?? 1f, _ctx);
             }
+        }
+
+        private StyleTransitionConfig? ResolvePlayedSwap(VisualElement element, StyleTransitionConfig? swapTransition,
+            string[] oldVariantClasses, string[] newVariantClasses)
+            => swapTransition != null && !_ctx.StyleAnimationScheduler.IsExiting(element)
+                && !SequenceEqual(oldVariantClasses, newVariantClasses)
+                ? swapTransition
+                : null;
+
+        // The class sets the class-driven sync diffs this render, and the onSwap that writes what it holds back.
+        // A tween swap's inline-resolved pose tokens are held until the swap: an inline style write animates on
+        // the transition the element carries at the moment of the write (InlineStyleTransitionTimingTests pins
+        // that), and the swap's transition is written only by the play after this sync, so a pose written here
+        // would animate on the transition the element carried before this render rather than the swap's. Held,
+        // rather than moved behind a transition written ahead of them, so they land at the swap itself: with
+        // the pose's USS classes, and in the stagger slot, which delays the swap and not the transition. The
+        // enters hold the same way (HoldInlineForEnter) and the exit writes at its swap too (PlanInlineExit).
+        // swapTransition is null when no swap plays this render.
+        private (string[] syncOld, string[] syncNew, Action? onSwap) ResolveInlineHold(VisualElement element,
+            string[]? baseClasses, MotionAppliedClassSet previous, MotionAppliedClassSet next,
+            StyleTransitionConfig? swapTransition)
+        {
+            var oldVariantClasses = previous.VariantClasses;
+            var newVariantClasses = next.VariantClasses;
+            var appliedNew = next.Merged;
+            var syncOld = previous.Merged;
+            MotionHeldInline? kept = null;
+            if (_ctx.MotionHeldInline.Remove(element, out var hold))
+            {
+                syncOld = hold.Applied;
+                if (swapTransition == null && SequenceEqual(oldVariantClasses, newVariantClasses)
+                    && _ctx.StyleAnimationScheduler.IsSwapPending(element, hold.Release))
+                {
+                    // A re-render inside the window before the swap: the swap still owes the held tokens.
+                    kept = hold;
+                }
+            }
+
+            if (swapTransition != null && StyleAnimationScheduler.RunsOnSwap(swapTransition))
+            {
+                // The pose this swap starts from, not a hold's HeldTokens: where this swap interrupts one that
+                // had not swapped, that pose was never written, and this sync writes it so the new swap starts
+                // there, as the class path's cancel restores the interrupted pose's classes.
+                var created = TryHoldInline(element, baseClasses, oldVariantClasses, next);
+                return (syncOld, created?.Applied ?? appliedNew, created?.Release);
+            }
+            if (kept == null || SameTokens(kept.HeldTokens, CollectInlineResolved(newVariantClasses)))
+            {
+                return (syncOld, appliedNew, null);
+            }
+
+            kept.Applied = ComposeWithHeldTokens(baseClasses ?? Array.Empty<string>(), newVariantClasses,
+                kept.HeldTokens);
+            kept.Target = appliedNew;
+            _ctx.MotionHeldInline[element] = kept;
+            return (syncOld, kept.Applied, null);
+        }
+
+        // Registers a hold keeping fromVariantClasses' inline-resolved tokens in place of target's, or returns
+        // null when the two carry the same ones. The caller syncs the element to the hold's Applied.
+        private MotionHeldInline? TryHoldInline(VisualElement element, string[]? baseClasses,
+            string[] fromVariantClasses, MotionAppliedClassSet target)
+        {
+            var heldTokens = CollectInlineResolved(fromVariantClasses);
+            if (SameTokens(heldTokens, CollectInlineResolved(target.VariantClasses)))
+            {
+                return null;
+            }
+            var hold = new MotionHeldInline(heldTokens,
+                ComposeWithHeldTokens(baseClasses ?? Array.Empty<string>(), target.VariantClasses, heldTokens),
+                target.Merged);
+            hold.Release = () =>
+            {
+                if (_ctx.MotionHeldInline.TryGetValue(element, out var current) && ReferenceEquals(current, hold))
+                {
+                    _ctx.MotionHeldInline.Remove(element);
+                    SyncClassDrivenStyling(element, hold.Applied, hold.Target);
+                }
+            };
+            _ctx.MotionHeldInline[element] = hold;
+            return hold;
+        }
+
+        // The set the element rests at: its MotionAppliedClasses entry, else its base classes alone.
+        internal MotionAppliedClassSet RestingClassSet(VisualElement element, string[]? baseClasses)
+            => _ctx.MotionAppliedClasses.TryGetValue(element, out var resting)
+                ? resting
+                : new MotionAppliedClassSet(baseClasses ?? Array.Empty<string>(), Array.Empty<string>());
+
+        // A variant enter's counterpart of ResolveInlineHold: the element rests at animate, so the enter's
+        // initial pose is written now, before the play puts the enter's transition on the element, and
+        // animate's inline-resolved tokens are held for the swap. Returns the play's onSwap, or null when the
+        // enter holds nothing.
+        internal Action? HoldInlineForEnter(VisualElement element, string[]? baseClasses, string[] fromVariantClasses,
+            StyleTransitionConfig transition)
+        {
+            if (!StyleAnimationScheduler.RunsOnSwap(transition))
+            {
+                return null;
+            }
+            var resting = RestingClassSet(element, baseClasses);
+            var hold = TryHoldInline(element, baseClasses, fromVariantClasses, resting);
+            if (hold == null)
+            {
+                return null;
+            }
+            SyncClassDrivenStyling(element, resting.Merged, hold.Applied);
+            return hold.Release;
+        }
+
+        // Writes the resting inline-resolved tokens a hold keeps off the element, on whatever transition the
+        // element carries at that moment.
+        internal void LandInlineHold(VisualElement element)
+        {
+            if (_ctx.MotionHeldInline.Remove(element, out var hold))
+            {
+                SyncClassDrivenStyling(element, hold.Applied, hold.Target);
+            }
+        }
+
+        // A variant exit's counterpart of ResolveInlineHold: the exit pose's inline-resolved tokens are written
+        // at the exit's swap, after the play has put the exit's transition on the element, and
+        // RestoreInlineAfterExit writes the resting ones back. Returns the play's onSwap, or null when the exit
+        // moves no such token.
+        internal Action? PlanInlineExit(VisualElement element, string[]? baseClasses, string[] exitVariantClasses,
+            StyleTransitionConfig transition)
+        {
+            var exitTokens = CollectInlineResolved(exitVariantClasses);
+            if (!StyleAnimationScheduler.RunsOnSwap(transition)
+                || SameTokens(exitTokens, CollectInlineResolved(RestingClassSet(element, baseClasses).VariantClasses)))
+            {
+                return null;
+            }
+            var exit = new MotionInlineExit(exitTokens);
+            _ctx.MotionInlineExits[element] = exit;
+            return () =>
+            {
+                if (_ctx.MotionInlineExits.TryGetValue(element, out var current) && ReferenceEquals(current, exit))
+                {
+                    var resting = RestingClassSet(element, baseClasses);
+                    SyncClassDrivenStyling(element, resting.Merged, WithExitTokens(baseClasses, resting, exit));
+                    exit.Swapped = true;
+                }
+            };
+        }
+
+        // Writes the element's resting inline-resolved tokens back over an exit's, for an exit cancelled by its key
+        // coming back and for one that completed before the render that would drop it. Both callers run after the
+        // re-added node has been reconciled onto the element, so the resting set is the one that reconcile
+        // recorded, and baseClasses are the re-added node's.
+        internal void RestoreInlineAfterExit(VisualElement element, string[]? baseClasses)
+        {
+            if (_ctx.MotionInlineExits.Remove(element, out var exit) && exit.Swapped)
+            {
+                var resting = RestingClassSet(element, baseClasses);
+                SyncClassDrivenStyling(element, WithExitTokens(baseClasses, resting, exit), resting.Merged);
+            }
+        }
+
+        private static string[] WithExitTokens(string[]? baseClasses, MotionAppliedClassSet resting,
+            MotionInlineExit exit)
+            => ComposeWithHeldTokens(baseClasses ?? Array.Empty<string>(), resting.VariantClasses, exit.ExitTokens);
+
+        private static string[] CollectInlineResolved(string[] classes)
+        {
+            List<string>? tokens = null;
+            foreach (var cls in classes)
+            {
+                if (TryGetInlineResolvedCore(cls, out _, out _))
+                {
+                    (tokens ??= new List<string>()).Add(cls);
+                }
+            }
+            return tokens?.ToArray() ?? Array.Empty<string>();
+        }
+
+        private static bool SameTokens(string[] a, string[] b)
+            => ContainsAll(a, b) && ContainsAll(b, a);
+
+        private static bool ContainsAll(string[] container, string[] tokens)
+        {
+            foreach (var token in tokens)
+            {
+                if (Array.IndexOf(container, token) < 0)
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        // The base classes, then the variant's classes other than its inline-resolved ones, then the held
+        // tokens: the variant tail stays last, where MotionVariantResolver.ResolveApplied puts it.
+        private static string[] ComposeWithHeldTokens(string[] baseClasses, string[] variantClasses,
+            string[] heldTokens)
+        {
+            var composed = new List<string>(baseClasses.Length + variantClasses.Length + heldTokens.Length);
+            composed.AddRange(baseClasses);
+            foreach (var cls in variantClasses)
+            {
+                if (!TryGetInlineResolvedCore(cls, out _, out _))
+                {
+                    composed.Add(cls);
+                }
+            }
+            composed.AddRange(heldTokens);
+            return composed.ToArray();
         }
 
         // Resolves the MotionOrchestrationFrame this node exposes to its OWN inheriting children.
@@ -1109,19 +1322,8 @@ namespace Velvet
         {
             foreach (var rawCls in classes)
             {
-                if (string.IsNullOrEmpty(rawCls) || StyleVariantClass.IsVariant(rawCls)
-                    || StyleStructuralVariantClass.IsStructural(rawCls)
-                    || StyleHasVariantClass.IsHas(rawCls)
-                    || StyleAttributeVariantClass.IsAttribute(rawCls)
-                    || StyleSupportsVariantClass.IsSupports(rawCls)
-                    || StyleChildVariantClass.IsChildVariant(rawCls))
-                {
-                    continue;
-                }
-
-                // Strip the important bang so it reapplies on the same Important layer AddClass used.
-                var cls = StyleArbitraryValueResolver.StripImportant(rawCls, out var important);
-                if (!StyleArbitraryValueResolver.IsInlineResolved(cls))
+                // The important bang is stripped so the token reapplies on the same Important layer AddClass used.
+                if (!TryGetInlineResolvedCore(rawCls, out var cls, out var important))
                 {
                     continue;
                 }
@@ -1137,6 +1339,23 @@ namespace Velvet
                 // resolver (e.g. font-[..] by StyleFontResolver) and must not enter the USS class list.
                 StyleArbitraryValueResolver.ApplyClassToken(element, cls, priority, addToClassListFallback: false);
             }
+        }
+
+        private static bool TryGetInlineResolvedCore(string rawCls, out string core, out bool important)
+        {
+            core = rawCls;
+            important = false;
+            if (string.IsNullOrEmpty(rawCls) || StyleVariantClass.IsVariant(rawCls)
+                || StyleStructuralVariantClass.IsStructural(rawCls)
+                || StyleHasVariantClass.IsHas(rawCls)
+                || StyleAttributeVariantClass.IsAttribute(rawCls)
+                || StyleSupportsVariantClass.IsSupports(rawCls)
+                || StyleChildVariantClass.IsChildVariant(rawCls))
+            {
+                return false;
+            }
+            core = StyleArbitraryValueResolver.StripImportant(rawCls, out important);
+            return StyleArbitraryValueResolver.IsInlineResolved(core);
         }
 
         private static bool SequenceEqual(string[] a, string[] b)

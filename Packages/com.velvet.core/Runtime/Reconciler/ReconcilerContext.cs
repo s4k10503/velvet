@@ -611,6 +611,14 @@ namespace Velvet
         // cleanup / reconciler dispose through that mechanism.
         public Dictionary<VisualElement, MotionAppliedClassSet> MotionAppliedClasses { get; } = new();
 
+        // Per-Motion-element hold on a pending tween swap's inline-resolved tokens (see MotionHeldInline). A
+        // pure side-table, enrolled in _pureElementSideTables.
+        public Dictionary<VisualElement, MotionHeldInline> MotionHeldInline { get; } = new();
+
+        // Per-Motion-element record of a variant exit's inline-resolved tokens (see MotionInlineExit). A pure
+        // side-table, enrolled in _pureElementSideTables.
+        public Dictionary<VisualElement, MotionInlineExit> MotionInlineExits { get; } = new();
+
         // Per-Motion-element bookkeeping of the label last propagated to CHILDREN (Animate ?? ambient) —
         // independent of MotionAppliedClasses above, because a "coordinator" Motion may propagate a label to
         // descendants (for staggerChildren/delayChildren orchestration) while carrying no Variants of its own,
@@ -1747,6 +1755,8 @@ namespace Velvet
                 DataAttributes,
                 SupportsVariants,
                 MotionAppliedClasses,
+                MotionHeldInline,
+                MotionInlineExits,
                 MotionChildLabel,
                 ElementToLayoutId,
                 TextEffects,

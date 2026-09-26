@@ -40,6 +40,7 @@ namespace Velvet
             // enter's to-classes; null for preset plays, whose classes are all transient.
             internal string[]? RestingClasses { get; init; }
             internal Action? OnComplete { get; init; }
+            internal Action? OnSwap { get; init; }
             internal float DelaySec { get; init; }
             internal float AdditionalDelaySec { get; init; }
             // Selects both the exit-shaped self-cancel and which bookkeeping map the play registers into — a
@@ -108,14 +109,24 @@ namespace Velvet
         // AnimatePresence-driven variant enter) reads its timing/spring knobs straight off the enclosing
         // Motion's OWN StyleTransitionConfig, so this unpacks it once here instead of each call site repeating
         // the same eight-argument unpack of the same object.
+        // onSwap: run at the swap, once the classes have moved. Only a play for which RunsOnSwap holds runs it,
+        // and one cancelled before its swap never does.
         public void PlayVariantEnter(VisualElement? element, string[]? fromClasses, string[]? toClasses,
-            StyleTransitionConfig config, Action? onComplete = null, float additionalDelaySec = 0f)
+            StyleTransitionConfig config, Action? onComplete = null, float additionalDelaySec = 0f,
+            Action? onSwap = null)
         {
             PlayVariantEnter(element, fromClasses, toClasses, config.DurationSec, config.Easing, config.DelaySec,
                 onComplete, additionalDelaySec, config.PropertyOverrides,
                 config.Type, config.Stiffness, config.Damping, config.Mass,
-                config.BezierX1, config.BezierY1, config.BezierX2, config.BezierY2);
+                config.BezierX1, config.BezierY1, config.BezierX2, config.BezierY2, onSwap);
         }
+
+        // Shares IsPlayableDuration with ValidateDuration, so the two cannot disagree about which durations play.
+        internal static bool RunsOnSwap(StyleTransitionConfig config)
+            => config.Type == TransitionType.Tween && IsPlayableDuration(config.DurationSec);
+
+        internal bool IsSwapPending(VisualElement element, Action onSwap)
+            => _pendingEnters.TryGetValue(element, out var pending) && ReferenceEquals(pending.OnSwap, onSwap);
 
         // Variant-driven enter (initial → animate). Unlike PlayEnter, the
         // element already carries the toClasses (the resting variants[animate], applied
@@ -133,7 +144,8 @@ namespace Velvet
             float durationSec, EasingMode easing, float delaySec, Action? onComplete = null, float additionalDelaySec = 0f,
             IReadOnlyList<StylePropertyTransition>? propertyOverrides = null,
             TransitionType type = TransitionType.Tween, float stiffness = 100f, float damping = 10f, float mass = 1f,
-            float bezierX1 = 0.4f, float bezierY1 = 0f, float bezierX2 = 0.2f, float bezierY2 = 1f)
+            float bezierX1 = 0.4f, float bezierY1 = 0f, float bezierX2 = 0.2f, float bezierY2 = 1f,
+            Action? onSwap = null)
         {
             if (element == null)
             {
@@ -149,6 +161,7 @@ namespace Velvet
                 ToClasses = resolvedTo,
                 RestingClasses = resolvedTo,
                 OnComplete = onComplete,
+                OnSwap = onSwap,
                 DelaySec = delaySec,
                 AdditionalDelaySec = additionalDelaySec,
                 IsExit = false,
@@ -212,6 +225,7 @@ namespace Velvet
                 DurationList = durationList,
                 DelayList = delayList,
                 AnimatingElement = element,
+                OnSwap = play.OnSwap,
             };
             // Seed the ring band at the from-value (0 = invisible) NOW (synchronously, before the next-frame
             // swap) so there is no first-frame flash; the tick (started at the swap) then ramps it to follow
@@ -301,6 +315,7 @@ namespace Velvet
 
             StyleAnimationClassUtils.RemoveClasses(element, pending.FromClasses);
             StyleAnimationClassUtils.AddClasses(element, toClasses);
+            RunOnSwap(pending);
             // The CSS opacity transition is now firing — start sampling the caster's opacity each frame so its
             // ring band fades in lockstep with it.
             RingCoFadeCoordinator.StartRingCoFadeTick(pending);
@@ -342,8 +357,9 @@ namespace Velvet
         // whose FromClasses are transient).
         // additionalDelaySec: extra delay before the exit transition fires, on top of config.DelaySec. Used for
         // exit staggering (each removed child delayed by stagger × its index), mirroring the enter stagger.
+        // onSwap: as PlayVariantEnter's.
         public void PlayExit(VisualElement? element, StyleTransitionConfig? config, Action? onComplete,
-            bool restoreFromOnCancel = false, float additionalDelaySec = 0f)
+            bool restoreFromOnCancel = false, float additionalDelaySec = 0f, Action? onSwap = null)
         {
             if (element == null || config == null)
             {
@@ -412,6 +428,7 @@ namespace Velvet
                 DurationList = durationList,
                 DelayList = delayList,
                 AnimatingElement = element,
+                OnSwap = onSwap,
             };
             // Seed the ring band at the from-value (1 = opaque, the element's current state); the tick (started
             // at the swap) then ramps it down to follow the caster's fading opacity. Released on completion /
@@ -491,6 +508,7 @@ namespace Velvet
 
             StyleAnimationClassUtils.RemoveClasses(element, pending.FromClasses);
             StyleAnimationClassUtils.AddClasses(element, pending.ToClasses!);
+            RunOnSwap(pending);
             // The CSS opacity fade-out is now firing — sample the caster's opacity each frame on the
             // stable host so its ring band fades out in lockstep (and keeps ticking through any
             // reconcile-reorder detach of the exiting ghost, which is why the host is the panel root).
@@ -920,7 +938,13 @@ namespace Velvet
         // Cancels the exit animation on the given element and removes the applied CSS classes; the
         // element reverses toward its resting classes with the transition kept alive (the inline
         // transition styles are cleared only after the reversal has run its course).
-        public void CancelExit(VisualElement element) => CancelPending(_pendingExits, element, animateReversal: true);
+        // restingClasses: what a variant exit's cancel restores in place of the resting classes the exit started
+        // from, for a caller that has re-applied the element's resting state since; keptClasses: the classes that
+        // resting state carries, which the cancel leaves on the element, or puts back where the exit's swap
+        // removed them, rather than removing with the exit's.
+        public void CancelExit(VisualElement element, string[]? restingClasses = null, string[]? keptClasses = null)
+            => CancelPending(_pendingExits, element, animateReversal: true, restingOverride: restingClasses,
+                keptClasses: keptClasses);
 
         // Cancels the exit animation on an element being torn down for good (pool return / disposal) — never
         // hands off to a reversal, regardless of whether the element is still attached at the moment this
@@ -947,6 +971,16 @@ namespace Velvet
             CancelAllInMap(_pendingEnters);
         }
 
+        private static void RunOnSwap(PendingAnimation pending)
+        {
+            var onSwap = pending.OnSwap;
+            pending.OnSwap = null;
+            onSwap?.Invoke();
+        }
+
+        private static bool IsPlayableDuration(float durationSec)
+            => durationSec != 0f && !(durationSec < 0f || durationSec > MaxDurationSec);
+
         private static bool ValidateDuration(float durationSec, Action? onComplete)
         {
             if (durationSec == 0f)
@@ -954,7 +988,7 @@ namespace Velvet
                 onComplete?.Invoke();
                 return false;
             }
-            if (durationSec < 0f || durationSec > MaxDurationSec)
+            if (!IsPlayableDuration(durationSec))
             {
                 UnityEngine.Debug.LogWarning(
                     $"[StyleAnimationScheduler] Invalid DurationSec: {durationSec}. Expected 0 < duration <= {MaxDurationSec}.");
@@ -1142,10 +1176,22 @@ namespace Velvet
         // even when animateReversal is requested and the element still happens to be attached: see
         // CancelExitForTeardown for why handing off to one would corrupt the element after it is pooled.
         private void CancelPending(Dictionary<VisualElement, PendingAnimation> map, VisualElement element,
-            bool animateReversal = false, bool forTeardown = false)
+            bool animateReversal = false, bool forTeardown = false, string[]? restingOverride = null,
+            string[]? keptClasses = null)
         {
             if (map.Remove(element, out var pending))
             {
+                // Written back onto the pending, since a reversal hand-off below carries it on and a later cancel
+                // of that reversal reads both again.
+                if (restingOverride != null && pending.RestingClasses != null)
+                {
+                    pending.RestingClasses = restingOverride;
+                }
+                if (keptClasses != null)
+                {
+                    pending.KeptClasses = keptClasses;
+                }
+                keptClasses = pending.KeptClasses;
                 // Pause() corresponds to cancelling a one-shot schedule produced by schedule.Execute().
                 // Removing from the dictionary also makes the ContainsKey check inside the callback fail,
                 // providing defense in depth.
@@ -1154,8 +1200,8 @@ namespace Velvet
                 // Remove the off-panel deferred-attach callback if it never fired (cancel-before-attach), else it
                 // and its captured PendingAnimation linger on the element across pool reuse.
                 if (pending.PendingAttach != null) element.UnregisterCallback(pending.PendingAttach);
-                StyleAnimationClassUtils.RemoveClasses(element, pending.FromClasses);
-                StyleAnimationClassUtils.RemoveClasses(element, pending.ToClasses);
+                StyleAnimationClassUtils.RemoveClasses(element, pending.FromClasses, keptClasses);
+                StyleAnimationClassUtils.RemoveClasses(element, pending.ToClasses, keptClasses);
                 // A variant exit's FromClasses ARE the resting state (variants[animate]); cancelling the exit
                 // (key re-added mid-exit) must return the element to that resting variant rather than strip it.
                 // Re-add after the removals so the element is left in its resting state and stays consistent with
@@ -1429,6 +1475,10 @@ namespace Velvet
             // Non-null for a bezier-driven entry (StartBezierVariant) — the bezier sibling of Spring. Mutually
             // exclusive with it per play (which one is set depends on config.Type); both null for a plain tween.
             public BezierTweenState? Bezier;
+            // A variant play's onSwap until the swap runs it; null once it has run, and for a play given none.
+            public Action? OnSwap;
+            // The classes a CancelExit caller kept (see CancelExit), for a reversal that is cancelled in turn.
+            public string[]? KeptClasses;
 
             // The animating element's OWN ring band, when it has one. Only its own: a band belonging to a
             // DESCENDANT is a child of a descendant, so UI Toolkit's opacity compositing already fades it.
