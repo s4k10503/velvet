@@ -794,11 +794,12 @@ namespace Velvet
             // tree, blocking proper re-mount on the next normal render.
             if (_ctx.IsAborted) return;
             var identity = component.ResolvedIdentity;
-            var slotKey = component.Key ?? FiberKeying.ResolveInlinePositionKey(
-                position, nodeIndex, _ctx.ComponentRegistry.InlinePositionKeyBoxes);
-            // The scope member of this component's own registry key. Read at this level and never carried
-            // into its output: ExpandFiberPreviousTree pushes the fiber below, which is where the reading
-            // stops answering — ReconcilerContext.PortalChildKeyScope owns why that has to be so.
+            var slotKey = FiberKeying.ResolveInlineRegistryPositionKey(
+                position, component.Key, nodeIndex,
+                _ctx.ComponentRegistry.InlinePositionKeyBoxes,
+                _ctx.ComponentRegistry.InlineExplicitPositionKeyBoxes);
+            // Read the Portal scope member of this component's registry key before ExpandFiberPreviousTree
+            // pushes the component fiber. ReconcilerContext.PortalChildKeyScope owns that boundary.
             var portalScope = _ctx.PortalChildKeyScopeHere;
             var commit = walk.Commit;
             var result = walk.Result;
@@ -826,7 +827,7 @@ namespace Velvet
                 if (priorFiber != null && walk.NewFibers.Contains(priorFiber))
                 {
                     FiberLogger.LogWarning("GeneralPathReconciler",
-                        $"Duplicate component key detected among siblings: '{slotKey}'. " +
+                        $"Duplicate component key detected among siblings: '{component.Key ?? slotKey}'. " +
                         "The repeated sibling is skipped; give each sibling a unique key.");
                     return;
                 }
@@ -910,7 +911,7 @@ namespace Velvet
             WalkPosition position,
             int nodeIndex)
         {
-            var innerPosition = FiberKeying.MemoInner(position, nodeIndex);
+            var innerPosition = FiberKeying.MemoInner(position, memo.Key, nodeIndex);
             var memoPosition = FiberKeying.MemoAt(
                 _ctx.FiberStack.Current, _ctx.PortalChildKeyScopeHere, memo.Key, position, innerPosition);
             var (inner, previousCached) = _ctx.FiberMemoCache.GetOrCompute(memoPosition, walk.Parent, memo);

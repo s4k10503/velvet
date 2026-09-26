@@ -113,6 +113,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Keyed wrappers keep what they enclose apart. Under one keyed scope, a Fragment and a Provider carrying the
+  same key, or a Fragment keyed `"1"` beside an unkeyed Fragment at index 1, no longer share an identity, so
+  neither takes the other's elements on a re-render. A keyed component written under different wrappers in one
+  container, such as two keyed Providers, now mounts one instance per wrapper instead of rendering only the
+  first; moving it from one wrapper to another remounts it, as in React. A component rendered by a keyed memo
+  keeps its state when the memo moves among its keyed siblings, while one rendered by an unkeyed `V.Memoized`
+  is placed by that memo's slot: after a reorder, a keyed component there remounts and an unkeyed one takes
+  over the state of whatever held that slot.
+
 - A class string whose arbitrary value changes every render, such as `left-[{x}px]`, and a screen of
   more than 256 distinct class strings no longer log "ParseClassNames cache exceeded limit", and a
   moving value no longer pushes the class strings rendered beside it out of the parse cache, which

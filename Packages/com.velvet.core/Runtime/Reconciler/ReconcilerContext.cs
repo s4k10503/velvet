@@ -30,9 +30,8 @@ namespace Velvet
     //   reconciled the declaring component's own tree has already unwound past it.
     //   VirtualList — items mount via the controller (FiberVirtualListController) on scroll, outside any pass.
     // EnclosingSnapshot is the top value of every context active outside the detached mount (the base the
-    // consumer reads). DescendantNodes is the committed VNode children to walk to recover any Provider placed
-    // directly inside the detached subtree above this fiber (Portal children; null for VirtualList, whose
-    // items add no in-list Provider layer above the item). Anchor is the fiber the detached mount parented
+    // consumer reads). DescendantNodes is the committed VNode subtree to walk to recover any Provider placed
+    // directly inside the detached subtree above this fiber. Anchor is the fiber the detached mount parented
     // the children under (the registry-lookup parent the DescendantNodes walk matches against; null when no
     // walk is needed). The snapshot reflects mount time; a host re-render that changes the enclosing context
     // re-runs the detached mount with a correct cursor, so this stale copy only matters for the narrow case
@@ -42,6 +41,7 @@ namespace Velvet
         internal readonly List<KeyValuePair<object, object>>? EnclosingSnapshot;
         internal readonly VNode?[]? DescendantNodes;
         internal readonly ComponentFiber Anchor;
+        internal readonly bool RootProviderChildrenStartAtWalkRoot;
         // The ComponentFiber that logically called V.Portal/V.WorldSpace (captured at enqueue time — see
         // PendingPortalMounts). Null for VirtualList's detached items (no portal call site to resolve)
         // and for a bare Reconciler.Reconcile() drain with nothing on FiberStack. Anchor is the separate
@@ -51,12 +51,13 @@ namespace Velvet
 
         internal DetachedMountContext(
             List<KeyValuePair<object, object>>? enclosingSnapshot, VNode?[]? descendantNodes, ComponentFiber anchor,
-            ComponentFiber? logicalParent = null)
+            ComponentFiber? logicalParent = null, bool rootProviderChildrenStartAtWalkRoot = false)
         {
             EnclosingSnapshot = enclosingSnapshot;
             DescendantNodes = descendantNodes;
             Anchor = anchor;
             LogicalParent = logicalParent;
+            RootProviderChildrenStartAtWalkRoot = rootProviderChildrenStartAtWalkRoot;
         }
     }
 
