@@ -17,14 +17,14 @@ namespace Velvet.Tests
     /// <c>--radius-full</c> is larger than the boxes these cases mount, so each layer that reads it decides for
     /// itself what a radius the box cannot carry becomes. <c>Documentation~/styling-variants.md</c> states the
     /// deviation the first two cases pin. <see cref="VelvetStyleUtilities"/> is attached because
-    /// <c>rounded-full</c> and <c>rounded-lg</c> are plain USS rules: without the sheet the box stays
-    /// square-cornered, which reddens every case here.
+    /// <c>rounded-full</c>, <c>rounded-lg</c> and <c>rounded-3xl</c> are plain USS rules: without the sheet
+    /// the box stays square-cornered, which reddens every case here.
     /// </remarks>
     [Timeout(600000)]
     internal sealed class RoundedFullSilhouettePlaybackTests
     {
         private const int Width = 360;
-        private const int Height = 160;
+        private const int Height = 290;
 
         // Wider than it is tall by roughly ten to one: on a square box a 50% radius and a pill agree.
         private const string WideGeometry = "w-[330px] h-[34px] mt-[20px] ml-[15px]";
@@ -261,43 +261,45 @@ namespace Velvet.Tests
         // GREEN_ON_BASE(characterization): the base already bakes a radius the box can carry as declared.
         // Bounding every radius instead, `Mathf.Min(binding.CornerRadius, bound)` -> `bound`, reddens it.
         [UnityTest]
-        public IEnumerator Given_AShadowOffsetClearOfItsCaster_When_TheCasterIsRoundedLg_Then_TheShadowCornerKeepsTheEightPixelRadius()
+        public IEnumerator Given_AShadowOffsetClearOfItsCaster_When_TheCasterIsRounded3xl_Then_TheShadowCornerKeepsItsTwentyFourPixelRadius()
         {
             // Arrange — the offset carries the shadow's bottom-right corner clear of the face painted over it,
             // and the 1px blur keeps its edge within half a pixel of the SDF boundary.
-            yield return MountBox("OffsetLg", $"{OffsetCasterGeometry} rounded-lg {OffsetShadow}");
+            yield return MountBox("Offset3xl", $"{OffsetCasterGeometry} rounded-3xl {OffsetShadow}");
 
-            // Act — an 8px corner leaves the corner pixel outside the silhouette (SDF +2.6px at 0.5px in along
-            // the diagonal) and covers the pixel 4.5px in (-3.1px); the box's bound, 60px, covers neither.
+            // Act — along the corner's diagonal, a 24px corner leaves the corner pixel outside the silhouette
+            // (SDF +9.2px) and covers the pixel 14.5px in (-10.6px); the box's bound, 100px, puts that pixel at
+            // +20.9px.
             var frame = ReadFrame();
             var cornerPixel = IsShadowAtCornerDiagonal(frame, Box.worldBound, 0.5f);
-            var fourAndAHalfIn = IsShadowAtCornerDiagonal(frame, Box.worldBound, 4.5f);
+            var fourteenAndAHalfIn = IsShadowAtCornerDiagonal(frame, Box.worldBound, 14.5f);
 
             // Assert
-            Assert.That((cornerPixel, fourAndAHalfIn), Is.EqualTo((false, true)));
+            Assert.That((cornerPixel, fourteenAndAHalfIn), Is.EqualTo((false, true)));
         }
 
         [UnityTest]
         public IEnumerator Given_AShadowOffsetClearOfItsCaster_When_TheCasterIsRoundedFull_Then_TheShadowCornerTakesHalfTheShorterSide()
         {
-            // Arrange — as for the rounded-lg corner; the caster is 160 x 120, so the bound is 60px, and its
-            // shorter side is over twice the 50 a 50% --radius-full would resolve to.
+            // Arrange — as for the rounded-3xl corner; the caster is 240 x 200, so the bound is 100px, twice the
+            // 50 a 50% --radius-full would resolve to.
             yield return MountBox("OffsetFull", $"{OffsetCasterGeometry} rounded-full {OffsetShadow}");
 
-            // Act — a 60px corner leaves the pixel 16.5px in along the diagonal outside the silhouette (SDF
-            // +1.5px; a 50px corner puts it at -2.6px) and covers the pixel 25.5px in (-11.2px; a 120px corner
-            // on the SDF's 80 x 60 half-extent puts it at +13.6px).
+            // Act — along the corner's diagonal, a 100px corner leaves the pixel 22.5px in outside the
+            // silhouette (SDF +9.6px; a 50px corner puts it at -11.1px) and covers the pixel 45.5px in
+            // (-22.9px; a 200px corner on the SDF's 120 x 100 half-extent puts it at +18.5px).
             var frame = ReadFrame();
-            var sixteenAndAHalfIn = IsShadowAtCornerDiagonal(frame, Box.worldBound, 16.5f);
-            var twentyFiveAndAHalfIn = IsShadowAtCornerDiagonal(frame, Box.worldBound, 25.5f);
+            var twentyTwoAndAHalfIn = IsShadowAtCornerDiagonal(frame, Box.worldBound, 22.5f);
+            var fortyFiveAndAHalfIn = IsShadowAtCornerDiagonal(frame, Box.worldBound, 45.5f);
 
             // Assert
-            Assert.That((sixteenAndAHalfIn, twentyFiveAndAHalfIn), Is.EqualTo((false, true)));
+            Assert.That((twentyTwoAndAHalfIn, fortyFiveAndAHalfIn), Is.EqualTo((false, true)));
         }
 
-        private const string OffsetCasterGeometry = "w-[160px] h-[120px] mt-[10px] ml-[20px] bg-[#ffffff]";
-        private const float ShadowOffset = 20f;
-        private const string OffsetShadow = "shadow-[20px_20px_1px_#ff0000]";
+        // The offset exceeds the deepest sample, so every sample lies outside the caster's face.
+        private const string OffsetCasterGeometry = "w-[240px] h-[200px] mt-[10px] ml-[10px] bg-[#ffffff]";
+        private const float ShadowOffset = 60f;
+        private const string OffsetShadow = "shadow-[60px_60px_1px_#ff0000]";
 
         // Whether the pixel whose centre sits `inset` px in from the offset shadow's bottom-right corner, along
         // the corner's diagonal, reads as the shadow's red. Derived from the caster's measured box.
