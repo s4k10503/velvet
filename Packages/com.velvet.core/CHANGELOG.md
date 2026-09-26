@@ -113,6 +113,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A radius a `rounded-*` class or an arbitrary radius declares larger than its box is scaled to the box the
+  way CSS scales it, so `rounded-full` on a 330 × 34 button paints a pill with 17 px ends rather than an
+  ellipse, and `rounded-r-[400px]` on a 75 px-tall tab ends in a half-disc. `Documentation~/styling-variants.md`
+  states where the fit still differs from CSS.
+
 - One `V.Fragment` returned for several `V.List` items gives each item a row that keeps its element when
   the items are reordered or appended to. Each item's copy of the Fragment shares its children, and a row's
   key was read back from that shared child, so the rows resolved to one item's key: a row already on screen

@@ -278,13 +278,7 @@ namespace Velvet
                 br = Mathf.Max(0f, spec.CornerRadii[2].Resolve(radiusBasis));
                 bl = Mathf.Max(0f, spec.CornerRadii[3].Resolve(radiusBasis));
 
-                // CSS overlap rule: when adjacent radii would overlap on a side, ALL radii scale
-                // down by the worst side's ratio, preserving the corner proportions.
-                var f = 1f;
-                ReduceRadiusScale(ref f, boxW, tl, tr);
-                ReduceRadiusScale(ref f, boxW, bl, br);
-                ReduceRadiusScale(ref f, boxH, tl, bl);
-                ReduceRadiusScale(ref f, boxH, tr, br);
+                var f = CornerRadiusFit.ScaleFactor(boxW, boxH, CornerRadii.Circular(tl, tr, br, bl));
                 tl *= f;
                 tr *= f;
                 br *= f;
@@ -302,15 +296,6 @@ namespace Velvet
             AddCorner(painter, new Vector2(left + bl, bottom - bl), bl, 90f, 180f, new Vector2(left, bottom - bl));
             painter.LineTo(new Vector2(left, top + tl));
             AddCorner(painter, new Vector2(left + tl, top + tl), tl, 180f, 270f, new Vector2(left + tl, top));
-        }
-
-        private static void ReduceRadiusScale(ref float f, float side, float ra, float rb)
-        {
-            var sum = ra + rb;
-            if (sum > side && sum > 0f)
-            {
-                f = Mathf.Min(f, side / sum);
-            }
         }
 
         // A zero-radius "arc" degenerates to the corner point itself; Arc with radius 0 is skipped

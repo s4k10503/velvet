@@ -24,8 +24,8 @@ namespace Velvet.SourceGenerators.Tests
     /// </remarks>
     public sealed class BundledStyleSheetCensusTests
     {
-        private const int SurveyedRuleCount = 2136;
-        private const int SurveyedSingleClassRuleCount = 2096;
+        private const int SurveyedRuleCount = 2217;
+        private const int SurveyedSingleClassRuleCount = 2177;
         private const int SurveyedDistinctPropertyNameCount = 63;
         private const int SurveyedUtilityClassCount = 2139;
         private const int SurveyedTransitionUtilityCount = 36;
@@ -44,6 +44,24 @@ namespace Velvet.SourceGenerators.Tests
 
             // Assert
             Assert.Equal(File.ReadAllText(CommittedTablePath()), derived);
+        }
+
+        [Fact]
+        public void Given_TheBundledStyleSheets_When_TheRadiusDeclarationsAreDerivedAfresh_Then_TheCommittedSheetMatches()
+        {
+            // Arrange
+            var sheets = BundledStyleSheets();
+            Assume.NotEmpty(sheets, "the bundled stylesheets were located");
+
+            // Act
+            var derived = CornerRadiusDeclarationSheet.Build(
+                sheets.Select(s => new UssSourceText(s.Path, s.Text)).ToList());
+
+            // Assert — the problems travel with the text, so a derivation that refused says why rather than
+            // only that its partial output differs.
+            Assert.Equal(
+                (File.ReadAllText(CommittedRadiusSheetPath()), ""),
+                (derived.EmittedSheet, string.Join("\n", derived.Problems.Select(p => p.ToString()))));
         }
 
         [Fact]
@@ -229,7 +247,7 @@ namespace Velvet.SourceGenerators.Tests
             // Arrange
             var expected = new Dictionary<SelectorShape, int>
             {
-                [SelectorShape.SingleClass] = 2096,
+                [SelectorShape.SingleClass] = 2177,
                 [SelectorShape.SelectorList] = 2,
                 [SelectorShape.ClassWithPseudoClass] = 32,
                 [SelectorShape.ClassWithStateMarker] = 3,
@@ -420,6 +438,9 @@ namespace Velvet.SourceGenerators.Tests
         /// <summary>Where the committed table lives, which is also where the build script writes it.</summary>
         private static string CommittedTablePath() =>
             Path.Combine(SolutionPaths.RuntimeRoot(), "Styling", "StyleUtilityProperties.g.cs");
+
+        private static string CommittedRadiusSheetPath() =>
+            Path.Combine(BundledStyleSheetDirectory(), CornerRadiusDeclarationSheet.FileName);
 
         /// <summary>
         /// In cascade order, the same as the build script supplies them: the derivation records which of two

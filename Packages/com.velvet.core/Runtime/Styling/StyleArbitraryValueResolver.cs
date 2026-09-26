@@ -583,24 +583,25 @@ namespace Velvet
             },
             [ArbitraryProperty.MarginX] = new Action<IStyle, StyleLength>[] { (s, v) => s.marginLeft = v, (s, v) => s.marginRight = v },
             [ArbitraryProperty.MarginY] = new Action<IStyle, StyleLength>[] { (s, v) => s.marginTop = v, (s, v) => s.marginBottom = v },
-            [ArbitraryProperty.BorderRadius] = new Action<IStyle, StyleLength>[]
-            {
-                (s, v) => s.borderTopLeftRadius = v, (s, v) => s.borderTopRightRadius = v,
-                (s, v) => s.borderBottomLeftRadius = v, (s, v) => s.borderBottomRightRadius = v,
-            },
-            [ArbitraryProperty.BorderTopRadius] = new Action<IStyle, StyleLength>[] { (s, v) => s.borderTopLeftRadius = v, (s, v) => s.borderTopRightRadius = v },
-            [ArbitraryProperty.BorderRightRadius] = new Action<IStyle, StyleLength>[] { (s, v) => s.borderTopRightRadius = v, (s, v) => s.borderBottomRightRadius = v },
-            [ArbitraryProperty.BorderBottomRadius] = new Action<IStyle, StyleLength>[] { (s, v) => s.borderBottomLeftRadius = v, (s, v) => s.borderBottomRightRadius = v },
-            [ArbitraryProperty.BorderLeftRadius] = new Action<IStyle, StyleLength>[] { (s, v) => s.borderTopLeftRadius = v, (s, v) => s.borderBottomLeftRadius = v },
-            [ArbitraryProperty.BorderTopLeftRadius] = new Action<IStyle, StyleLength>[] { (s, v) => s.borderTopLeftRadius = v },
-            [ArbitraryProperty.BorderTopRightRadius] = new Action<IStyle, StyleLength>[] { (s, v) => s.borderTopRightRadius = v },
-            [ArbitraryProperty.BorderBottomLeftRadius] = new Action<IStyle, StyleLength>[] { (s, v) => s.borderBottomLeftRadius = v },
-            [ArbitraryProperty.BorderBottomRightRadius] = new Action<IStyle, StyleLength>[] { (s, v) => s.borderBottomRightRadius = v },
             [ArbitraryProperty.FontSize] = new Action<IStyle, StyleLength>[] { (s, v) => s.fontSize = v },
             [ArbitraryProperty.LetterSpacing] = new Action<IStyle, StyleLength>[] { (s, v) => s.letterSpacing = v },
             // size-[..] fans out to width + height (same dual-setter shape as Inset).
             [ArbitraryProperty.Size] = new Action<IStyle, StyleLength>[] { (s, v) => s.width = v, (s, v) => s.height = v },
             [ArbitraryProperty.FlexBasis] = new Action<IStyle, StyleLength>[] { (s, v) => s.flexBasis = v },
+        };
+
+        // The corner radii are not written here but handed to CornerRadiusFit, which owns those four slots.
+        private static readonly Dictionary<ArbitraryProperty, RadiusCorners> RadiusCornersOf = new()
+        {
+            [ArbitraryProperty.BorderRadius] = RadiusCorners.All,
+            [ArbitraryProperty.BorderTopRadius] = RadiusCorners.TopLeft | RadiusCorners.TopRight,
+            [ArbitraryProperty.BorderRightRadius] = RadiusCorners.TopRight | RadiusCorners.BottomRight,
+            [ArbitraryProperty.BorderBottomRadius] = RadiusCorners.BottomLeft | RadiusCorners.BottomRight,
+            [ArbitraryProperty.BorderLeftRadius] = RadiusCorners.TopLeft | RadiusCorners.BottomLeft,
+            [ArbitraryProperty.BorderTopLeftRadius] = RadiusCorners.TopLeft,
+            [ArbitraryProperty.BorderTopRightRadius] = RadiusCorners.TopRight,
+            [ArbitraryProperty.BorderBottomLeftRadius] = RadiusCorners.BottomLeft,
+            [ArbitraryProperty.BorderBottomRightRadius] = RadiusCorners.BottomRight,
         };
 
         // Color-valued counterpart to PropertySetters. Color properties take a
@@ -985,6 +986,8 @@ namespace Velvet
         public static void ClearAll(VisualElement element)
         {
             if (element != null) s_layers.Remove(element);
+            // What the fit records the radius layers as declaring goes with them.
+            if (element != null) CornerRadiusFit.Release(element);
         }
 
         // Resolves an inline-value class token to inline style — arbitrary value first, then background
@@ -1386,6 +1389,12 @@ namespace Velvet
                 return;
             }
 
+            if (RadiusCornersOf.TryGetValue(style.Property, out var corners))
+            {
+                CornerRadiusFit.SetInline(element, corners, new Length(style.Value, style.Unit));
+                return;
+            }
+
             if (!PropertySetters.TryGetValue(style.Property, out var setters))
             {
                 return;
@@ -1428,6 +1437,12 @@ namespace Velvet
                 {
                     setter(fs, nullFloat);
                 }
+                return;
+            }
+
+            if (RadiusCornersOf.TryGetValue(property, out var corners))
+            {
+                CornerRadiusFit.ClearInline(element, corners);
                 return;
             }
 
