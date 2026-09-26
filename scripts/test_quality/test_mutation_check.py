@@ -3710,7 +3710,8 @@ class CampaignPlanTests(unittest.TestCase):
 
         # Assert
         self.assertEqual((code, "Split the pull request" in campaign.printed,
-                          "mutants=" in campaign.printed), (1, True, False))
+                          "mutants=" in campaign.printed),
+                         (getattr(mutation_check, "CEILING_REFUSAL", None), True, False))
 
     def test_Given_MutantCounts_When_Sharded_Then_EachShardHoldsAtMostItsShareUpToTheCap(self):
         # Arrange
@@ -3752,6 +3753,18 @@ class ShardCeilingTests(unittest.TestCase):
 
         # Assert
         self.assertTrue(fits)
+
+    def test_Given_ThePlanStep_When_ItsCeilingStatusIsRead_Then_ItIsTheOneThePlanExits(self):
+        # Arrange — the step lets the ceiling through without a licence by this number, and a copy
+        # drifting from the script's either fails every such fork or lets another refusal through.
+        workflow = (REPO_ROOT / ".github/workflows/test.yml").read_text()
+        job = workflow.partition("\n  mutation-plan:")[2].partition("\n  mutation-shard:")[0]
+
+        # Act
+        mirrored = re.findall(r'"\$status" -eq (\d+) \] && \[ "\$HAS_LICENSE"', job)
+
+        # Assert
+        self.assertEqual(mirrored, [str(getattr(mutation_check, "CEILING_REFUSAL", None))])
 
 
 if __name__ == "__main__":

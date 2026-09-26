@@ -85,6 +85,9 @@ MAX_SHARDS = 10
 # mutant, after the longest measured of each setup phase, fit the shard job's timeout in test.yml.
 # `ShardCeilingTests` holds the two together.
 MAX_MUTANTS_PER_SHARD = 25
+# What `--plan` exits with over that ceiling, apart from 1, so the workflow can let it through where
+# no licence means no shard would run.
+CEILING_REFUSAL = 4
 
 CATEGORIES = ("equivalent", "unreachable")
 
@@ -2265,7 +2268,7 @@ def main():
             print("{} mutants is more than {} shards of {} can measure inside the shard job's "
                   "timeout.\nSplit the pull request.".format(len(mutants), MAX_SHARDS,
                                                              MAX_MUTANTS_PER_SHARD))
-            return 1
+            return CEILING_REFUSAL
         print(coverage if (mutants or unreached) else "no mutable change; no campaign is owed")
         if unreached and not mutants:
             # Passed rather than refused, where a local run refuses: a change with nothing to ask

@@ -391,6 +391,7 @@ jobs:
   # ---------------------------------------------------------------------------
   mutation-plan:
     name: Mutation campaign (plan)
+    needs: license-check
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     outputs:
@@ -404,14 +405,22 @@ jobs:
       # HEAD^1 rather than the event's base.sha. The checkout is the merge commit, whose first parent is
       # the base branch it was merged onto; measured on this job, the event's base.sha sat a merged pull
       # request behind that parent, and the plan then counted that pull request's lines as this one's.
-      # The summary is written before the status is read, so a refused plan names why in it.
+      # The summary is written before the status is read, and carries stderr, where a refusal other
+      # than the ceiling's is printed, so a refused plan names why in it. Over the ceiling with no
+      # licence no shard would run, so it passes the way the skipped Unity jobs do.
       - id: plan
+        env:
+          HAS_LICENSE: ${{ needs.license-check.outputs.has_license }}
         run: |
           set +e
-          python3 scripts/test_quality/mutation_check.py --base HEAD^1 --plan > plan.txt
+          python3 scripts/test_quality/mutation_check.py --base HEAD^1 --plan > plan.txt 2>&1
           status=$?
           cat plan.txt
           { echo '### Mutation campaign plan'; echo '```'; cat plan.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$status" -eq 4 ] && [ "$HAS_LICENSE" != true ]; then
+            echo 'shards=[]' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           [ "$status" -eq 0 ] || exit "$status"
           grep -E '^(mutants|shards)=' plan.txt >> "$GITHUB_OUTPUT"
 

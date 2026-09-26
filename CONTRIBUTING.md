@@ -184,8 +184,10 @@ says when it does which.
 readings `--list` takes, and stops there when there are none — because no mutable package source
 changed, or because no operator reaches the lines that did. The second passes, where a local run
 refuses it: its job summary names the lines, and the pull request body says why the change is not
-something a mutation can ask about. A diff of more mutants than ten shards of 25 can measure inside
-the shard job's timeout is refused at the plan, and is split into smaller pull requests. Otherwise,
+something a mutation can ask about. Where a licence is configured, a diff of more mutants than ten
+shards of 25 can measure inside the shard job's timeout is refused at the plan and is split into
+smaller pull requests; without one no shard would run, and the plan passes as the Unity jobs skip.
+Otherwise,
 where a licence is configured, `Test ▸ mutation-shard` measures them in up to ten jobs, each running
 every Nth mutant against the whole EditMode suite in the editor image `Test ▸ unity-tests` pulls and
 recording its verdicts, and `Test ▸ mutation-verdict` — the check named `Mutation campaign` — reads
@@ -424,11 +426,13 @@ file the log blames that the branch did not carry is the base failing to build i
 flow spends a further round on it. A last round that still writes nothing measured nothing, fails,
 and prints the local command.
 
-**What CI leaves to the author is the case the base cannot build.** A case reported `could not
-compile there` or `could not load there` is accepted on the surface it names, and its assertion never
-ran without the change — so a test calling a new API passes this check whether or not its assertion
-would have failed on the old behaviour. For exactly those cases, show the failure yourself: run the
-case locally against a cut that breaks the fix while keeping the surface the case names, and quote the
+**What CI leaves to the author is two kinds of case.** A case reported `could not compile there` or
+`could not load there` is accepted on the surface it names, and its assertion never ran without the
+change — so a test calling a new API passes this check whether or not its assertion would have failed
+on the old behaviour. A case declared `GREEN_ON_BASE(construction)` is read as green as declared,
+and of its perturbation the check asks only that the reason name one, which no base run performs. For exactly
+those two kinds, show the failure yourself — run the case against a cut that breaks the fix while
+keeping the surface it names, or against the perturbation its declaration names — and quote the
 failure text where the change is reported. Every other case this check measures in CI, as
 `Test ▸ unity-tests` measures it green, and a local run of those is optional.
 
