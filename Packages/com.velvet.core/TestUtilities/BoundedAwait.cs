@@ -17,9 +17,10 @@ namespace Velvet.TestUtilities
     /// which is unmeasured rather than survived and fails the campaign.
     /// <para>
     /// The bound is generous rather than tuned. What separates a wedge from a slow rendezvous here is not
-    /// a hand-picked margin — every one of these completes in the same frame the code under test reaches
-    /// it, or never — so any bound above scheduling noise reports the same thing, and a large one cannot
-    /// redden a healthy run on a loaded machine.
+    /// a hand-picked margin — an awaited completion arrives in the frame the code under test reaches it,
+    /// and a coroutine this bounds whole finishes a few frames later, or neither ever does — so any bound
+    /// above scheduling noise reports the same thing, and a large one cannot redden a healthy run on a
+    /// loaded machine.
     /// </para>
     /// </remarks>
     public static class BoundedAwait

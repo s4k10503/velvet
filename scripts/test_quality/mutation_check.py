@@ -78,8 +78,8 @@ OTHER_PLATFORM = {"EditMode": "PlayMode", "PlayMode": "EditMode"}
 UNMEASURED = (NOT_BUILT, TIMED_OUT, HUNG, UNCOMPILABLE, UNRECORDED)
 
 # How `--plan` splits a pass across CI jobs, per platform. Each shard pays an image pull, a licence
-# activation and a baseline before its first mutant; CONTRIBUTING.md ▸ Checking that the tests can fail
-# has the cost of each, measured for EditMode and estimated for PlayMode.
+# activation and a baseline before its first mutant. CONTRIBUTING.md ▸ Checking that the tests can fail
+# has EditMode's measured cost of each; `ShardCeilingTests.COSTS` holds PlayMode's, estimated.
 SHARD_SIZE = {"EditMode": 3, "PlayMode": 2}
 MAX_SHARDS = 10
 # The most a shard is given before `--plan` refuses: this many of the slowest mutant, after the longest
