@@ -197,8 +197,9 @@ namespace Velvet
         /// a <c>duration-*</c> utility, or the bracket form the resolver applies as an inline value rather than
         /// a class — leaves the initial <c>all</c> standing. Failing that too, nothing transitions.
         /// <para>
-        /// An inline transition-property is not read here: the one this package writes besides this class is a
-        /// variant tween's, and both entry points deal with that before asking (see <see cref="HoldsAForeignValue"/>).
+        /// An inline transition-property is not read here: the only one this package originates besides this class
+        /// is a variant tween's, and both entry points deal with that before asking (see
+        /// <see cref="HoldsAForeignValue"/>).
         /// One residual blind spot is accepted rather than fixed: a play asks once at its start, so a variant
         /// that turns on <c>transition-all</c> midway through one is not picked up until the next.
         /// <see cref="SyncSuspension"/> is what a driver outliving a patch asks instead.
@@ -337,7 +338,9 @@ namespace Velvet
 
         // Rewrites the held transition-property list without the longhands drivenSlots covers — an `all` entry
         // becoming every other longhand, on that entry's timing — and rebuilds each companion list to match,
-        // since those pair with transition-property by position.
+        // since those pair with transition-property by position. The expansion never names `filter`: under the
+        // `all` it replaces StyleFilterTransitionDriver stands down, and a list naming filter hands a filter
+        // change to that driver instead.
         private static void ExcludeFromHeldList(VisualElement element, MotionTransitionSlots drivenSlots)
         {
             var driven = LonghandsOf(drivenSlots);
@@ -345,6 +348,8 @@ namespace Velvet
             var names = new List<StylePropertyName>(held.Count);
             // The held entry each kept name takes its duration, easing and delay from.
             var sources = new List<int>(held.Count);
+            // MUTANT_SURVIVES(equivalent): with nothing left out, the rewrite this skips writes back the names and
+            // timings it read, in the order it read them.
             var changed = false;
             for (var i = 0; i < held.Count; i++)
             {
@@ -353,7 +358,7 @@ namespace Velvet
                     changed = true;
                     for (var longhand = 0; longhand < s_longhandNames.Length; longhand++)
                     {
-                        if (!driven.Contains((StyleLonghand)longhand))
+                        if (!driven.Contains((StyleLonghand)longhand) && longhand != (int)StyleLonghand.Filter)
                         {
                             names.Add(s_longhandNames[longhand]);
                             sources.Add(i);
@@ -374,16 +379,21 @@ namespace Velvet
             {
                 return;
             }
+            // Everything is read before anything is written: a list read out of a slot is refilled by that slot's
+            // next write, which MotionNativeTransitionGuardSuspensionTests pins.
+            var durations = Realigned(element.style.transitionDuration.value, held.Count, sources);
+            var easings = Realigned(element.style.transitionTimingFunction.value, held.Count, sources);
+            var delays = Realigned(element.style.transitionDelay.value, held.Count, sources);
             element.style.transitionProperty = names;
-            if (Realigned(element.style.transitionDuration.value, held.Count, sources) is { } durations)
+            if (durations != null)
             {
                 element.style.transitionDuration = durations;
             }
-            if (Realigned(element.style.transitionTimingFunction.value, held.Count, sources) is { } easings)
+            if (easings != null)
             {
                 element.style.transitionTimingFunction = easings;
             }
-            if (Realigned(element.style.transitionDelay.value, held.Count, sources) is { } delays)
+            if (delays != null)
             {
                 element.style.transitionDelay = delays;
             }
@@ -391,20 +401,16 @@ namespace Velvet
 
         private static bool NamesADrivenLonghand(StylePropertyName name, StyleLonghandSet driven)
         {
-            for (var longhand = 0; longhand < s_longhandNames.Length; longhand++)
-            {
-                if (driven.Contains((StyleLonghand)longhand) && s_longhandNames[longhand] == name)
-                {
-                    return true;
-                }
-            }
-            return false;
+            var longhand = Array.IndexOf(s_longhandNames, name);
+            return longhand >= 0 && driven.Contains((StyleLonghand)longhand);
         }
 
-        // Null, leaving the list as it was, unless it pairs one-to-one with the held list — the shape every list
-        // StyleAnimationScheduler writes beside its transition-property has.
+        // Null, leaving the list as it was, where the slot holds none or it does not pair one-to-one with the held
+        // list.
         private static List<T> Realigned<T>(List<T> list, int heldCount, List<int> sources)
         {
+            // MUTANT_SURVIVES(unreachable): every list StyleAnimationScheduler writes beside its transition-property
+            // has that list's count, so no list reaching here has another.
             if (list == null || list.Count != heldCount)
             {
                 return null;

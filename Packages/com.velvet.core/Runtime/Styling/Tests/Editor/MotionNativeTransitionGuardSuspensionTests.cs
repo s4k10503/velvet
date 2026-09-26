@@ -115,6 +115,23 @@ namespace Velvet.Tests
             Assert.That(ReferenceEquals(element.style.transitionProperty.value, written), Is.False);
         }
 
+        // GREEN_ON_BASE(characterization): an engine fact the guard's list rewrite orders its reads and writes
+        // around, pinned so a change to it fails here rather than in a mid-tween paint.
+        [Test]
+        public void Given_AListReadOutOfTheSlot_When_TheSlotIsWrittenAgain_Then_TheReadListHoldsTheNewValue()
+        {
+            // Arrange
+            var element = new VisualElement();
+            element.style.transitionProperty = new List<StylePropertyName> { new("translate"), new("opacity") };
+            var read = element.style.transitionProperty.value;
+
+            // Act
+            element.style.transitionProperty = new List<StylePropertyName> { new("opacity") };
+
+            // Assert
+            Assert.That(read.Count, Is.EqualTo(1));
+        }
+
         [Test]
         public void Given_ADurationOnlyUtility_When_AnOpacityPlayRuns_Then_TheElementIsSuspended()
         {
@@ -126,6 +143,75 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(suspended, Is.True);
+        }
+
+        [TestCase(MotionTransitionSlots.Opacity, "filter,opacity")]
+        [TestCase(MotionTransitionSlots.Translate, "filter,translate")]
+        [TestCase(MotionTransitionSlots.Scale, "filter,scale")]
+        [TestCase(MotionTransitionSlots.Rotate, "filter,rotate")]
+        [TestCase(MotionTransitionSlots.Color,
+            "background-color,border-bottom-color,border-left-color,border-right-color,border-top-color,color,filter")]
+        [TestCase(MotionTransitionSlots.Length,
+            "border-bottom-left-radius,border-bottom-right-radius,border-bottom-width,border-left-width,"
+            + "border-right-width,border-top-left-radius,border-top-right-radius,border-top-width,bottom,"
+            + "filter,flex-basis,font-size,height,left,letter-spacing,margin-bottom,margin-left,margin-right,margin-top,"
+            + "max-height,max-width,min-height,min-width,padding-bottom,padding-left,padding-right,padding-top,"
+            + "right,top,width")]
+        [TestCase(MotionTransitionSlots.Filter, "filter")]
+        [TestCase(MotionTransitionSlots.BackgroundPosition, "background-position-x,background-position-y,filter")]
+        public void Given_ATweenHoldingTransitionPropertyAll_When_APlayStarts_Then_WhatThePlayDrivesIsLeftOutOfTheList(
+            MotionTransitionSlots drivenSlots, string expectedLeftOut)
+        {
+            // Arrange — the list a variant tween writes. Filter is left out of every expansion, whatever the
+            // play drives.
+            var element = new VisualElement();
+            element.style.transitionProperty = new List<StylePropertyName> { new("all") };
+            element.style.transitionDuration = new List<TimeValue> { new(350, TimeUnit.Millisecond) };
+
+            // Act
+            MotionNativeTransitionGuard.SuspendIfIntercepted(element, new object(), drivenSlots);
+
+            // Assert
+            Assert.That(LonghandsLeftOut(element), Is.EqualTo(expectedLeftOut));
+        }
+
+        [Test]
+        public void Given_ATweenListNamingFilter_When_AFilterPlayStarts_Then_OnlyFilterLeavesTheList()
+        {
+            // Arrange — a per-property list, which names filter itself rather than through `all`.
+            var element = new VisualElement();
+            element.style.transitionProperty = new List<StylePropertyName> { new("filter"), new("opacity") };
+            element.style.transitionDuration = new List<TimeValue>
+            {
+                new(100, TimeUnit.Millisecond), new(350, TimeUnit.Millisecond),
+            };
+
+            // Act
+            MotionNativeTransitionGuard.SuspendIfIntercepted(element, new object(), MotionTransitionSlots.Filter);
+
+            // Assert
+            Assert.That(string.Join(",", element.style.transitionProperty.value), Is.EqualTo("opacity"));
+        }
+
+        // Every longhand the element's inline transition-property does not name, sorted and joined.
+        private static string LonghandsLeftOut(VisualElement element)
+        {
+            var listed = new HashSet<string>();
+            foreach (var name in element.style.transitionProperty.value)
+            {
+                listed.Add(name.ToString());
+            }
+            var leftOut = new List<string>();
+            for (var i = 0; i < StyleUtilityProperties.LonghandCount; i++)
+            {
+                var ussName = StyleUtilityProperties.UssName((StyleLonghand)i);
+                if (!listed.Contains(ussName))
+                {
+                    leftOut.Add(ussName);
+                }
+            }
+            leftOut.Sort(System.StringComparer.Ordinal);
+            return string.Join(",", leftOut);
         }
     }
 }

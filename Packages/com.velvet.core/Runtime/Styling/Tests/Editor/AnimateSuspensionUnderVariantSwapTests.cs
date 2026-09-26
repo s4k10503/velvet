@@ -58,27 +58,30 @@ namespace Velvet.Tests
         // A layoutId card placed after a spacer: widening the spacer moves the card without touching the card's
         // own styles, which a swap's transition-property would otherwise tween into the move before the
         // layoutId driver ever saw it.
-        private static VNode LayoutIdRow(int spacerWidth, string className, string label, float swapDurationSec)
+        private static VNode LayoutIdRow(int spacerWidth, string className, string label, StyleTransitionConfig transition)
             => V.Div(className: "flex-row", children: new VNode[]
             {
                 V.Div(className: $"w-[{spacerWidth}px] h-[40px]"),
                 V.Motion(className: className, name: "card", variants: s_variants, animate: label, layoutId: "card",
-                    transition: new StyleTransitionConfig { DurationSec = swapDurationSec }),
+                    transition: transition ?? new StyleTransitionConfig { DurationSec = SwapDurationSec }),
             });
 
-        private VisualElement MountLayoutIdRow(string className, float swapDurationSec = SwapDurationSec)
+        private VisualElement MountLayoutIdRow(string className, StyleTransitionConfig transition = null)
         {
-            _mounted = V.Mount(_window.rootVisualElement, LayoutIdRow(0, className, "hidden", swapDurationSec));
+            _mounted = V.Mount(_window.rootVisualElement, LayoutIdRow(0, className, "hidden", transition));
             var element = _window.rootVisualElement.Q<VisualElement>("card");
             ForcePanelUpdate(element.panel);
             return element;
         }
 
         private void PatchLayoutIdRow(string className, (int Spacer, string Label) from, (int Spacer, string Label) to,
-            float swapDurationSec = SwapDurationSec) => _mounted!.Root.Reconciler.Reconcile(
+            StyleTransitionConfig transition = null) => _mounted!.Root.Reconciler.Reconcile(
             _window.rootVisualElement,
-            new VNode[] { LayoutIdRow(from.Spacer, className, from.Label, swapDurationSec) },
-            new VNode[] { LayoutIdRow(to.Spacer, className, to.Label, swapDurationSec) });
+            new VNode[] { LayoutIdRow(from.Spacer, className, from.Label, transition) },
+            new VNode[] { LayoutIdRow(to.Spacer, className, to.Label, transition) });
+
+        // A swap short enough to end while the spring it runs beside is still moving fast.
+        private static readonly StyleTransitionConfig s_shortSwap = new() { DurationSec = 0.1f };
 
         private bool LayoutIdSpringRuns(VisualElement element)
             => _mounted!.Root.Reconciler.Context.LayoutIdTicks.ContainsKey(element);
@@ -260,6 +263,31 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ASwapWithPerPropertyTransitions_When_ALayoutIdSpringStartsUnderIt_Then_BothLandAsTheirOwn()
+        {
+            // Arrange — translate is listed first on a near-instant duration, so an opacity left paired with
+            // translate's timing after translate is taken out would land at once.
+            var transition = new StyleTransitionConfig
+            {
+                DurationSec = SwapDurationSec,
+                PropertyOverrides = new[]
+                {
+                    new StylePropertyTransition("translate", durationSec: 0.01f),
+                    new StylePropertyTransition("opacity", durationSec: SwapDurationSec),
+                },
+            };
+            var element = MountLayoutIdRow("w-[40px] h-[40px] bg-red-500", transition);
+            PatchLayoutIdRow("w-[40px] h-[40px] bg-red-500", (0, "hidden"), (200, "visible"), transition);
+
+            // Act
+            PlayOutTheSwap();
+
+            // Assert — the spring's frame is painted as written, and the swap is still short of opacity-100.
+            Assert.That((System.Math.Abs(SpringTrail(element)) < 0.5f, element.resolvedStyle.opacity < 0.9f),
+                Is.EqualTo((true, true)));
+        }
+
+        [Test]
         public void Given_ALayoutIdSpringOnATransitionColorsElement_When_ItStartsUnderAPendingSwap_Then_TheSpringsFrameIsPaintedAsWritten()
         {
             // Arrange — transition-colors names nothing the spring drives, so the spring takes no suspension
@@ -281,9 +309,9 @@ namespace Velvet.Tests
         {
             // Arrange — transition-transform names translate, so after the swap the spring still needs the
             // suspension.
-            var element = MountLayoutIdRow("w-[40px] h-[40px] bg-red-500 transition-transform", swapDurationSec: 0.1f);
+            var element = MountLayoutIdRow("w-[40px] h-[40px] bg-red-500 transition-transform", s_shortSwap);
             PatchLayoutIdRow("w-[40px] h-[40px] bg-red-500 transition-transform", (0, "hidden"), (400, "visible"),
-                swapDurationSec: 0.1f);
+                s_shortSwap);
             ForcePanelUpdate(_window.rootVisualElement.panel);
 
             // Act — past the swap's completion, with the spring still moving fast.
