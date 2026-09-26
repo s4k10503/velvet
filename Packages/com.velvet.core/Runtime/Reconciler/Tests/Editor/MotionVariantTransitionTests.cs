@@ -92,6 +92,14 @@ namespace Velvet.Tests
             ["gone"] = new MotionVariant(exitClass, new StyleTransitionConfig { DurationSec = 0.5f }),
         };
 
+        // A label coordinator: neither pose applies a class of its own, and each only orchestrates or times
+        // the inheriting child below it.
+        private static readonly Dictionary<string, MotionVariant> s_classlessCoordinator = new()
+        {
+            ["visible"] = new MotionVariant(null, new StyleTransitionConfig { StaggerChildrenSec = 0.1f }),
+            ["hidden"] = new MotionVariant(null, new StyleTransitionConfig { DurationSec = 0.3f }),
+        };
+
         private static Dictionary<string, MotionVariant> s_classlessExitVariants;
         private static StyleTransitionConfig s_classlessExitNode;
 
@@ -244,6 +252,24 @@ namespace Velvet.Tests
                 children.Add(V.Motion(name: "item-" + key, key: key.ToString(),
                     variants: s_classlessExitVariants, animate: "visible", exit: "absent",
                     transition: s_classlessExitNode));
+            }
+            return V.Div(name: "host", children: new VNode[]
+            {
+                V.AnimatePresence(key: "presence", children: children.ToArray()),
+            });
+        }
+
+        [Component]
+        private static VNode ClasslessCoordinatorPresence()
+        {
+            var keys = Hooks.UseStore(s_keyStore, s => s.Keys);
+            var children = new List<VNode>();
+            foreach (var key in keys)
+            {
+                children.Add(V.Motion(name: "coordinator-" + key, key: key.ToString(),
+                    variants: s_classlessCoordinator, animate: "visible", exit: "hidden",
+                    transition: s_nodeDefault,
+                    children: new VNode[] { V.Motion(name: "child-" + key, variants: s_plainFade) }));
             }
             return V.Div(name: "host", children: new VNode[]
             {
@@ -566,6 +592,28 @@ namespace Velvet.Tests
             // Assert — still mounted as a ghost: a gate reading only the node's config sees DurationSec 0
             // and reaps the leaf in this very reconcile, so the exit pose's timing never plays.
             Assert.That(Root.Q<VisualElement>("host").childCount, Is.EqualTo(1));
+        }
+
+        // GREEN_ON_BASE(characterization): the exit label reaches no inheriting child, before this change or after it.
+        [Test]
+        public void Given_ACoordinatorWhoseExitPoseAppliesNoClass_When_TheKeyIsRemoved_Then_ItsInheritingChildKeepsItsPose()
+        {
+            // Arrange — the child declares no `animate` of its own and rests at the coordinator's label.
+            using var keys = new KeySetStore("a");
+            s_keyStore = keys;
+            using var mounted = V.Mount(Root, V.Component(ClasslessCoordinatorPresence, key: "root"));
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+            Tick();
+
+            // Act — remove the key, then run the frame an exit swap is scheduled on.
+            keys.Set(string.Empty);
+            scheduler.DrainImmediateForTest();
+            Tick();
+
+            // Assert — the coordinator is held as a ghost and its child still shows variants[visible].
+            Assert.That(
+                (Root.Q<VisualElement>("host").childCount, PoseOf(Root.Q<VisualElement>("child-a"))),
+                Is.EqualTo((1, "visible")));
         }
 
         [Test]

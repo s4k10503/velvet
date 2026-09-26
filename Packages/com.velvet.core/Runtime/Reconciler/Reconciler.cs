@@ -144,11 +144,6 @@ namespace Velvet
         {
             if (_ctx.IsDisposed) { return; }
 
-            // Shared depth across all Reconciler instances that observe this context. Each fiber
-            // owns its own Reconciler (per-fiber pause/resume independence), but the context-keyed
-            // EffectiveKeys registry only flushes when the outermost pass across the whole fiber
-            // tree completes — instance-local depth would treat a child fiber's RenderAndReconcile
-            // as a fresh top-level and clear entries sibling subtrees still need to consume.
             var isTopLevel = _ctx.SharedReconcileDepth == 0;
 
             ProfilerMarker.AutoScope profilerScope = default;
@@ -245,9 +240,6 @@ namespace Velvet
                 // Declaring-resolution misses are scoped to one top-level pass: retrying the
                 // scan next pass is what lets a late-arriving declaring panel resolve.
                 _ctx.DeclaringResolveMisses.Clear();
-                // EffectiveKeys is scoped to one top-level pass. VNode references are fresh
-                // per render, so unconsumed entries would otherwise accumulate across renders.
-                _ctx.EffectiveKeys.Clear();
                 // Scoped to one top-level pass because that is the span holding both readings it
                 // compares, and placed after the portal drain above so a wrapper the drain's own nested
                 // reconciles rendered is marked before the marks are read.
@@ -305,7 +297,7 @@ namespace Velvet
             // A resume continues the same pass an earlier time-slice suspended, so while genuinely
             // nested inside an ancestor's still-unwinding pass (e.g. FiberCommitWork.DrainPendingWork
             // force-completing a parked inline fiber from inside another fiber's live expansion) it must
-            // not run the top-level reset (abort / EffectiveKeys / DeclaringResolveMisses / portal drain)
+            // not run the top-level reset (abort / DeclaringResolveMisses / portal drain)
             // that Reconcile's own isTopLevel finally performs — clearing those mid-pass would discard
             // state sibling subtrees still need, and the ancestor's own eventual top-level finally runs
             // them once already. But a resume driven by the scheduler tick (FiberWorkLoop.ContinueReconcile,
