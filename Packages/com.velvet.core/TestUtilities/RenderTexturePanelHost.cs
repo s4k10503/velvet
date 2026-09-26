@@ -6,9 +6,8 @@ namespace Velvet.TestUtilities
 {
     /// <summary>
     /// Builds a UIDocument-backed runtime panel whose PanelSettings targets a RenderTexture, so a
-    /// PlayMode fixture can read back what the panel actually drew. Shared across the SceneView and
-    /// Particles playback specs so each fixture does not hand-roll the same GameObject + UIDocument +
-    /// PanelSettings + RenderTexture wiring and teardown.
+    /// fixture in either mode can read back what the panel actually drew. Shared so each fixture does not
+    /// hand-roll the same GameObject + UIDocument + PanelSettings + RenderTexture wiring and teardown.
     /// Test-only. Must not be used from production code.
     /// </summary>
     public sealed class RenderTexturePanelHost : IDisposable
@@ -34,12 +33,12 @@ namespace Velvet.TestUtilities
 
         public void Dispose()
         {
-            if (_document != null) UnityEngine.Object.Destroy(_document.gameObject);
-            if (_settings != null) UnityEngine.Object.Destroy(_settings);
+            if (_document != null) TestObjects.Destroy(_document.gameObject);
+            if (_settings != null) TestObjects.Destroy(_settings);
             if (TargetTexture != null)
             {
                 TargetTexture.Release();
-                UnityEngine.Object.Destroy(TargetTexture);
+                TestObjects.Destroy(TargetTexture);
             }
         }
     }
@@ -66,7 +65,7 @@ namespace Velvet.TestUtilities
             finally
             {
                 RenderTexture.active = previouslyActive;
-                UnityEngine.Object.Destroy(texture);
+                TestObjects.Destroy(texture);
             }
         }
 
@@ -75,5 +74,14 @@ namespace Velvet.TestUtilities
         /// specs' test materials — a fixed threshold wide enough to absorb sRGB/anti-aliasing drift.
         /// </summary>
         public static bool IsRedPixel(Color32 pixel) => pixel.r > 140 && pixel.g < 90 && pixel.b < 90;
+    }
+
+    internal static class TestObjects
+    {
+        public static void Destroy(UnityEngine.Object target)
+        {
+            if (Application.isPlaying) UnityEngine.Object.Destroy(target);
+            else UnityEngine.Object.DestroyImmediate(target);
+        }
     }
 }
