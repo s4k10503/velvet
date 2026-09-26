@@ -129,7 +129,6 @@ namespace Velvet.Tests
         private string Texts(string name)
             => string.Join("|", _root.Q<VisualElement>(name).Query<Label>().ToList().Select(label => label.text));
 
-        // GREEN_ON_BASE(refactor): moving fallback rows to slot positions must keep this container isolation.
         [Test]
         public void Given_ASuspendedAndAReadyBoundaryInSeparateContainers_When_TheOffscreenCounterUpdates_Then_TheFallbackStaysVisible()
         {
@@ -146,7 +145,6 @@ namespace Velvet.Tests
                 Is.EqualTo(("loading", "loading", "ready")));
         }
 
-        // GREEN_ON_BASE(refactor): moving fallback rows to slot positions must keep this container isolation.
         [Test]
         public void Given_AnOffscreenUpdateBesideAReadyBoundary_When_TheResourceResolves_Then_OnlyTheWaitingContainerRevealsItsUpdatedPrimary()
         {
@@ -189,7 +187,7 @@ namespace Velvet.Tests
                     new VNode[] { V.Component(Reader) }),
             });
 
-        // GREEN_ON_BASE(refactor): moving fallback rows to slot positions must keep this container isolation.
+        // GREEN_ON_BASE(characterization): container isolation must preserve the existing fallback context.
         [Test]
         public void Given_AFallbackConsumerInsideANestedHost_When_ItUpdates_Then_ItsProviderIsRestored()
         {
@@ -213,7 +211,6 @@ namespace Velvet.Tests
             return (int)entries.GetType().GetProperty("Count").GetValue(entries);
         }
 
-        // GREEN_ON_BASE(refactor): moving fallback rows to slot positions must keep this container isolation.
         [Test]
         public void Given_ARootlessSuspenseShowingFallback_When_TheReconcilerIsDisposed_Then_ItsContainerStateIsReleased()
         {
@@ -232,7 +229,6 @@ namespace Velvet.Tests
             Assert.That((before, RootlessFallbackCount(scope.Reconciler)), Is.EqualTo((1, 0)));
         }
 
-        // GREEN_ON_BASE(refactor): moving fallback rows to slot positions must keep this container isolation.
         [Test]
         public void Given_ARootlessSuspenseShowingFallback_When_TheResourceResolves_Then_ItsContainerStateIsReleased()
         {
@@ -253,7 +249,6 @@ namespace Velvet.Tests
             Assert.That((before, RootlessFallbackCount(scope.Reconciler)), Is.EqualTo((1, 0)));
         }
 
-        // GREEN_ON_BASE(refactor): moving fallback rows to slot positions must keep this container isolation.
         [Test]
         public void Given_ABoundedSuspenseShowingFallback_When_TheTreeIsDisposed_Then_ItsBoundaryStateIsReleased()
         {
@@ -270,7 +265,6 @@ namespace Velvet.Tests
             Assert.That((before, reconciler.Context.AnyBoundaryShowingFallback), Is.EqualTo((true, false)));
         }
 
-        // GREEN_ON_BASE(refactor): moving fallback rows to slot positions must keep this container isolation.
         [Test]
         public void Given_ASuspendedBoundary_When_TheResourceResolves_Then_AnyBoundaryShowingFallbackIsFalse()
         {
@@ -287,7 +281,6 @@ namespace Velvet.Tests
             Assert.That(context.AnyBoundaryShowingFallback, Is.False);
         }
 
-        // GREEN_ON_BASE(refactor): moving fallback rows to slot positions must keep this container isolation.
         [Test]
         public void Given_ABoundedSuspenseFallbackEntry_When_ClearSuspenseStateRuns_Then_TheTableIsEmpty()
         {
@@ -303,7 +296,9 @@ namespace Velvet.Tests
             Assert.That((before, context.AnyBoundaryShowingFallback), Is.EqualTo((true, false)));
         }
 
-        // GREEN_ON_BASE(refactor): moving fallback rows to slot positions must keep this container isolation.
+        // GREEN_ON_BASE(refactor): the base already answers false for another container at one position.
+        // This change retypes the position a fallback row is recorded under, so the query now passes the row's
+        // own position back by reflection; what it pins is that the container still separates the rows.
         [Test]
         public void Given_OneBoundaryWithFallbackInOneContainer_When_IsSuspenseFallbackShownQueriesAnotherContainerAtTheSameKey_Then_ItReturnsFalse()
         {
@@ -322,7 +317,6 @@ namespace Velvet.Tests
             Assert.That((Texts("waiting"), shownOnReady), Is.EqualTo(("loading", false)));
         }
 
-        // GREEN_ON_BASE(refactor): moving fallback rows to slot positions must keep this container isolation.
         [Test]
         public void Given_OneSuspendedAndOneReadyBoundary_When_TheHostReRenders_Then_TheReadyContainerStaysResolved()
         {
@@ -351,7 +345,6 @@ namespace Velvet.Tests
                     V.Provider(Tint, "primary", new VNode[] { V.Component(FallbackCounter) }),
                 });
 
-        // GREEN_ON_BASE(refactor): moving fallback rows to slot positions must keep this container isolation.
         [Test]
         public void Given_AResolvedPrimarySubtree_When_ItsConsumerUpdates_Then_ThePrimaryProviderIsRestored()
         {
@@ -404,7 +397,6 @@ namespace Velvet.Tests
             });
         }
 
-        // GREEN_ON_BASE(refactor): moving fallback rows to slot positions must keep this container isolation.
         [Test]
         public void Given_ASuspendedBoundaryInARemovedPortal_When_TheHostUpdates_Then_ThatPortalsFallbackStateIsPruned()
         {
@@ -425,7 +417,6 @@ namespace Velvet.Tests
                 Is.EqualTo(("loading|ready", false, "ready")));
         }
 
-        // GREEN_ON_BASE(refactor): moving fallback rows to slot positions must keep this container isolation.
         [Test]
         public void Given_TwoPortalsSharingATarget_When_AnOffscreenCounterUpdates_Then_TheOtherPortalDoesNotClearItsFallback()
         {
@@ -477,7 +468,6 @@ namespace Velvet.Tests
                 V.Portal(s_sharedTarget, new VNode[] { PortalContextWaitingBoundary("portal-b", PortalBFallbackCounter, PortalBReader) }),
             });
 
-        // GREEN_ON_BASE(refactor): moving fallback rows to slot positions must keep this container isolation.
         [Test]
         public void Given_TwoPortalsWithFallbackConsumers_When_OneFallbackUpdates_Then_TheOtherKeepsItsProvider()
         {
@@ -518,7 +508,6 @@ namespace Velvet.Tests
             });
         }
 
-        // GREEN_ON_BASE(refactor): moving fallback rows to slot positions must keep this container isolation.
         [Test]
         public void Given_ASuspendedBoundaryInARemovedWaitingContainer_When_TheHostUpdates_Then_ThatContainersFallbackStateIsPruned()
         {
@@ -544,7 +533,6 @@ namespace Velvet.Tests
             return V.Div(children: new VNode[] { show ? WaitingBoundary() : V.Label(text: "empty") });
         }
 
-        // GREEN_ON_BASE(refactor): moving fallback rows to slot positions must keep this container isolation.
         [Test]
         public void Given_ASuspenseRemovedFromASurvivingContainer_When_TheHostUpdates_Then_ItsFallbackStateRetires()
         {
@@ -562,7 +550,6 @@ namespace Velvet.Tests
                 Is.EqualTo((true, "empty", false)));
         }
 
-        // GREEN_ON_BASE(refactor): moving fallback rows to slot positions must keep this container isolation.
         [Test]
         public void Given_ASuspenseThatWasRemovedAndRestored_When_ItSuspendsAgain_Then_ItsFallbackRenders()
         {
@@ -585,7 +572,6 @@ namespace Velvet.Tests
         private static VNode RegistryPortalSuspenseHost()
             => V.Portal(SuspenseRetargetId, new VNode[] { WaitingBoundary() });
 
-        // GREEN_ON_BASE(refactor): moving fallback rows to slot positions must keep this container isolation.
         [Test]
         public void Given_ASuspendedBoundaryInARetargetedRegistryPortal_When_TheIdNamesADifferentElement_Then_ItsPriorContainerFallbackEntryIsReleased()
         {
@@ -641,7 +627,6 @@ namespace Velvet.Tests
                 }),
             });
 
-        // GREEN_ON_BASE(refactor): moving fallback rows to slot positions must keep this container isolation.
         [Test]
         public void Given_OppositeSuspenseBranchesInTwoContainers_When_TheReadyPrimaryConsumerUpdates_Then_ItKeepsItsPrimaryProvider()
         {
@@ -709,7 +694,6 @@ namespace Velvet.Tests
             });
         }
 
-        // GREEN_ON_BASE(refactor): moving fallback rows to slot positions must keep this container isolation.
         [Test]
         public void Given_AHiddenCommittedPrimaryAfterAnEarlierFailingSibling_When_TheAbortedRenderRetries_Then_ItsStateSurvives()
         {
@@ -739,7 +723,6 @@ namespace Velvet.Tests
                 Is.EqualTo(("okay:0|primary:1|loaded:0:initial", "okay:1|loading", "error|loading", "okay:3|primary:1|loaded:3:value")));
         }
 
-        // GREEN_ON_BASE(refactor): moving fallback rows to slot positions must keep this container isolation.
         [Test]
         public void Given_AHiddenCommittedPrimaryAfterAnEarlierFailingSibling_When_TheRenderAborts_Then_ItsPassiveEffectStaysSubscribed()
         {
