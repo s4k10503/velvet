@@ -56,7 +56,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ComponentRoot_When_Mounted_Then_LabelIsComponentFunctionName()
+        public void Given_ComponentRoot_When_Mounted_Then_LabelIsTheComponentsName()
         {
             // Arrange
             Assume.That(VelvetDevToolsRegistry.Entries, Is.Empty,
@@ -67,7 +67,18 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(VelvetDevToolsRegistry.Entries.Single(e => ReferenceEquals(e.Fiber, mounted.Root)).Label,
-                Is.EqualTo(nameof(AutoAttachProbe.Render)));
+                Is.EqualTo("AutoAttachProbe.Render"));
+        }
+
+        [Test]
+        public void Given_PropsComponentRoot_When_Mounted_Then_LabelIsTheComponentsNameRatherThanItsClosure()
+        {
+            // Act
+            using var mounted = V.Mount(_root, V.Component(AutoAttachPropsProbe.Render, "probe", key: "props-probe"));
+
+            // Assert
+            Assert.That(VelvetDevToolsRegistry.Entries.Single(e => ReferenceEquals(e.Fiber, mounted.Root)).Label,
+                Is.EqualTo("AutoAttachPropsProbe.Render"));
         }
     }
 
@@ -75,6 +86,12 @@ namespace Velvet.Tests
     {
         [Component]
         public static VNode Render() => V.Label(text: "probe");
+    }
+
+    internal static class AutoAttachPropsProbe
+    {
+        [Component]
+        public static VNode Render(string text) => V.Label(text: text);
     }
 }
 #endif

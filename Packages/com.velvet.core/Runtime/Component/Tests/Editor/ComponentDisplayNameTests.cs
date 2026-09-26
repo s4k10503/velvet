@@ -85,6 +85,19 @@ namespace Velvet.Tests
 
             // Assert — LogAssert.Expect verifies the message names the component by its DisplayName
         }
+
+        [Test]
+        public void Given_PropsComponentCallingAHookFromItsRefCallback_When_Mounted_Then_TheGuardNamesTheComponent()
+        {
+            // Arrange
+            LogAssert.Expect(LogType.Exception,
+                new Regex(@"MyRefHookName: UseState\(\) may only be used inside Render\(\)\."));
+
+            // Act
+            using var mounted = V.Mount(_root, V.Component(RefHookPropsComponent.Render, "ref-hook", key: "ref-hook"));
+
+            // Assert — LogAssert.Expect verifies the guard's message names the component by its DisplayName
+        }
     }
 
     internal static class DisplayNameProbeState
@@ -123,6 +136,17 @@ namespace Velvet.Tests
     {
         [Component(DisplayName = "MyFancyPropsName")]
         public static VNode Render(string label) => DisplayNameProbeShared.ProbeBody(label);
+    }
+
+    internal static class RefHookPropsComponent
+    {
+        // The ref setup runs in the commit phase, where a hook call is refused.
+        [Component(DisplayName = "MyRefHookName")]
+        public static VNode Render(string name) => V.Div(name: name, refCallback: _ =>
+        {
+            Hooks.UseState(0);
+            return null;
+        });
     }
 
     internal static class EmptyDisplayNameComponent

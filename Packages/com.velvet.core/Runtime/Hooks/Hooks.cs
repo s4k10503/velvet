@@ -2199,12 +2199,18 @@ namespace Velvet
             return disposable == null ? null : disposable.Dispose;
         }
 
+        // The node's identity before the body: a props overload's body is a closure over the [Component]
+        // method, and the identity is that method.
         internal static string ComponentName(ComponentFiber? fiber)
+            => ComponentNameOrNull(fiber!.SourceNode?.Identity as MethodInfo ?? fiber.Body?.Method)
+               ?? "[Component]";
+
+        internal static string? ComponentNameOrNull(ComponentNode node)
+            => ComponentNameOrNull(node.Identity as MethodInfo ?? node.Body?.Method);
+
+        private static string? ComponentNameOrNull(MethodInfo? method)
         {
-            // The node's identity before the body: a props overload's body is a closure over the
-            // [Component] method, and the identity is that method.
-            var method = fiber!.SourceNode?.ResolvedIdentity as MethodInfo ?? fiber.Body?.Method;
-            if (method == null) return "[Component]";
+            if (method == null) return null;
             var displayName = ComponentMethodRegistry.TryGetDisplayName(method);
             if (displayName != null) return displayName;
             var type = method.DeclaringType?.Name;
