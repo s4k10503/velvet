@@ -16,8 +16,7 @@ namespace Velvet.TestUtilities
         /// </summary>
         /// <exception cref="MissingFieldException">
         /// The cache field was renamed or removed. Throwing is the point: callers drain to start from an empty
-        /// cache at its initial generation size, or to push content-identical trees off the reference-identity
-        /// fast path, and a clear that quietly reached nothing would leave both asserting on the wrong state.
+        /// cache, or to push content-identical trees off the reference-identity fast path, and a clear that quietly reached nothing would leave both asserting on the wrong state.
         /// </exception>
         // Bypasses: nothing — it calls the same Clear that V's editor-only SubsystemRegistration reset calls.
         public static void ClearForTest()

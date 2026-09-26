@@ -31,8 +31,8 @@ namespace Velvet.Tests
     /// </summary>
     /// <remarks>
     /// The cache is process-wide static, so <see cref="SetUp"/> drains it via
-    /// <see cref="ClassNameCacheTestAccess.ClearForTest"/>: another fixture's entries, and the generation
-    /// size its strings grew the cache to, would otherwise decide what these cases measure.
+    /// <see cref="ClassNameCacheTestAccess.ClearForTest"/>: another fixture's cached entries, probation,
+    /// remembered hashes and window count would otherwise decide what these cases measure.
     /// </remarks>
     [TestFixture]
     internal sealed class ParseClassNamesCacheTests

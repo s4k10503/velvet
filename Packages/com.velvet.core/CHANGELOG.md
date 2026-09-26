@@ -121,9 +121,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Counting parses of strings the cache neither holds nor remembers, a string parsed again within 2048
   of them is cached, and one parsed again only after 4096 is not; a cached string keeps its parsed
   array while it is parsed again within 2048 of them and is released once 4096 pass without it. Past
-  those counts — a render parsing thousands of moving strings between two parses of a stable one, or a
-  screen of 4096 or more distinct class strings parsed in the same order each render — the strings are
-  parsed again every render, as before, without the warning.
+  those counts the strings are parsed again every render, as before, without the warning. So a cached
+  class string stays cached beside fewer than 2048 moving strings per render and is released beside
+  4096 or more, and a screen shown for the first time settles only while its distinct class strings plus
+  the moving strings of one render stay under about 4096: measured, 3000 strings beside 1000 moving ones
+  settle and 3000 beside 1100 never do, while the same 3000 already cached stay cached beside 1100.
 
 - Memoized components rebuild their compiled VNode cache when their props comparison detects a
   change, including a record struct float member changing from positive zero to negative zero.

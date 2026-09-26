@@ -13,14 +13,17 @@ namespace Velvet
     // that. Within the last ProbationGenerationSize to twice that it is cached with the array its first
     // parse returned; past that, only its hash is remembered, and it is cached with a fresh one. A cached
     // string keeps its array while it is parsed again within FirstSightingsPerWindow first parses, and is
-    // dropped once twice that many pass without it. So a moving arbitrary value (left-[{x}px]) enters the
-    // cache only where a string's hash collides with a remembered one, and ages it only by its own first
-    // parses, and a render's stable strings stay cached while it parses fewer moving strings than a window
-    // holds.
+    // dropped once twice that many pass without it. So a moving arbitrary value (left-[{x}px]) whose strings
+    // are each parsed once enters the cache only where a string's hash collides with a remembered one, and
+    // ages it only by its own first parses; a render's cached strings stay cached while it parses fewer
+    // moving strings than a window holds. A screen shown for the first time counts its own first parses as
+    // well, so its distinct strings plus a render's moving strings are what has to fit.
     //
     // Rejected: bounding the cache by its size — cleared whole, least-recently-used, or generations turning
-    // over when full. Moving values then fill it at their own rate, and push the strings that stay put out
-    // with them.
+    // over when full. Such a cache keeps a string beside M moving strings per render only while its size
+    // exceeds M, so it holds the moving strings themselves as entries, about 4096 of them at this cache's
+    // reach, where here they occupy at most twice ProbationGenerationSize entries and twice
+    // FirstSightingsPerWindow hashes.
     //
     // Nothing is logged: a moving value and a large screen are both supported styling.
     //
