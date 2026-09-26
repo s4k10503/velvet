@@ -16,8 +16,7 @@ namespace Velvet.SourceGenerators.Tests
     /// <remarks>
     /// Its sibling <see cref="MutantParseabilityTests"/> cannot see either: what a removal leaves is
     /// well-formed C#, which is the fact that fixture measures, and what refuses the mutant is the
-    /// compiler, over a name. The campaign scores such a mutant unmeasured and fails the run, and the
-    /// pull-request hook then refuses a branch that has no receipt to show.
+    /// compiler, over a name. The campaign scores such a mutant unmeasured and fails the run.
     /// <para/>
     /// Designations rather than declarators: <c>foreach (var f in drop) Remove(f);</c> and
     /// <c>using (var x = Open()) Read(x);</c> take their variable away with the line that declared it,

@@ -33,9 +33,7 @@ namespace Velvet
             return events;
         }
 
-        /// <summary>Not thread-safe. Acceptable because Velvet's Reconciler is main-thread only.</summary>
-        private static readonly Dictionary<string, string[]> s_classNameCache = new();
-        internal const int MaxClassNameCacheSize = 256;
+        private static readonly ClassNameParseCache s_classNameCache = new();
 
 #if UNITY_EDITOR
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
@@ -2612,33 +2610,11 @@ namespace Velvet
         /// <summary>
         /// Splits a space-separated class name string into an array.
         /// "btn btn--active" → ["btn", "btn--active"]
-        /// Note: results are cached, so passing dynamically-built strings will grow the cache without bound.
-        /// Pass only literal or constant strings.
+        /// The array is shared with other callers passing the same string, so it must not be mutated;
+        /// <see cref="ClassNameParseCache"/> owns how long it stays shared.
         /// </summary>
         internal static string[] ParseClassNames(string? classNames)
-        {
-            if (string.IsNullOrEmpty(classNames))
-            {
-                return EmptyClassNames;
-            }
-
-            if (s_classNameCache.TryGetValue(classNames, out var cached))
-            {
-                return cached;
-            }
-
-            if (s_classNameCache.Count >= MaxClassNameCacheSize)
-            {
-                Debug.LogWarning(
-                    "[Velvet] ParseClassNames cache exceeded limit. Ensure only constant class name strings are passed.");
-                s_classNameCache.Clear();
-                // After clearing, the new entry below is added immediately, so the triggering key is cached right away.
-            }
-
-            var result = classNames.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            s_classNameCache[classNames] = result;
-            return result;
-        }
+            => string.IsNullOrEmpty(classNames) ? EmptyClassNames : s_classNameCache.Parse(classNames);
 
         /// <summary>
         /// Allocation-free wrapper that adapts an <see cref="IReadOnlyList{T}"/> to a list of nullable

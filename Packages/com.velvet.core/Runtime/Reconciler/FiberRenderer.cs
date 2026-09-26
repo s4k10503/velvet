@@ -349,9 +349,7 @@ namespace Velvet
 #if UNITY_EDITOR
             fiber.ResetEditorHookCountBaselines();
 #endif
-            fiber.PrevStateHookCountRuntime = -1;
-            fiber.PrevStoreHookCountRuntime = -1;
-            fiber.PrevAsyncHookCountRuntime = -1;
+            fiber.HasCommittedHookCounts = false;
 
             // Scrub the detached-mount marker so a fiber re-mounted (pooled) for a normal position does not
             // inherit a prior consumer's enclosing-context snapshot. Re-set on the next detached mount
@@ -467,7 +465,7 @@ namespace Velvet
 
                 FiberBeginWork.CommitSettledHookDeps(fiber);
 
-                FiberBeginWork.ValidateRuntimeHookCounts(fiber);
+                HookCountSentinel.ValidateAndCommit(fiber);
 
 #if UNITY_EDITOR
                 FiberBeginWork.ValidateEditorHookCounts(fiber);
@@ -656,7 +654,7 @@ namespace Velvet
         // refs are untouched.
         // The diagnostic tree is never reconciled; it is recursively returned to the VNode pool here.
         // A throw during the diagnostic render is caught and logged only — the valid commit stands.
-        // The hook-count sentinel and its baselines are not touched by this pass.
+        // This pass writes no hook-count baseline; a hook call past one throws into the catch below.
         // A render-phase setState observed during the diagnostic is logged as impure and
         // ComponentFiber.HasRenderPhaseUpdate is cleared so it cannot leak into the next render.
         private static void DoubleInvokeRenderForStrictMode(ComponentFiber fiber, VNode?[] committedTree)

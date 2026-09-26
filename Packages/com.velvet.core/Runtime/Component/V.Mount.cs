@@ -46,8 +46,8 @@ namespace Velvet
         {
             if (tree is ComponentNode component)
             {
-                var name = component.Body?.Method?.Name;
-                if (!string.IsNullOrEmpty(name)) return name;
+                var name = Hooks.ComponentNameOrNull(component);
+                if (name != null) return name;
             }
 
             if (tree is BaseElementNode element && !string.IsNullOrEmpty(element.Name))

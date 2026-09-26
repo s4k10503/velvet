@@ -205,16 +205,6 @@
       {
         "hooks": [
           {
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse/pr_without_mutation_receipt.py\"",
-            "timeout": 25.0,
-            "type": "command"
-          }
-        ],
-        "matcher": "Bash"
-      },
-      {
-        "hooks": [
-          {
             "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse/edit_while_a_ready_pr_sits.py\"",
             "timeout": 15.0,
             "type": "command"

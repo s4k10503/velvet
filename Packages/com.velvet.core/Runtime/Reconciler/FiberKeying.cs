@@ -17,9 +17,11 @@ namespace Velvet
     // fails to recognize a child or a fiber's state is reset. Centralizing the derivation here makes that lockstep structural: changing a
     // keying rule changes both walkers at once.
 
-    // How the child array a node sits in was opened. Part of the structural path below, so two arrays opened
-    // at the same node index by different constructs — a Suspense's primary vs its fallback, a Memo's
-    // resolved inner vs a Fragment's children — never compose to the same path.
+    // The construct one contribution to the structural path below comes from. Every member but Suspense names
+    // how the child array a node sits in was opened, so two arrays opened at the same node index by different
+    // constructs — a Suspense's primary vs its fallback, a Memo's resolved inner vs a Fragment's children —
+    // never compose to the same path. Suspense opens no array: it is the contribution SuspenseAt places a
+    // boundary's fallback row with.
     internal enum WalkPathKind : byte
     {
         Fragment = 1,
@@ -30,6 +32,7 @@ namespace Velvet
         SuspenseFallback = 6,
         Presence = 7,
         PresenceChild = 8,
+        Suspense = 9,
     }
 
     // The position coordinates the inline-expansion walk carries down one descent. Every construct below has
@@ -38,7 +41,9 @@ namespace Velvet
     // Scope is the fiber-keying scope chain, and deliberately COLLAPSES: a Fragment / Provider / Component
     // contributes nothing while no enclosing keyed boundary has established a scope, which is what keeps an
     // unkeyed subtree participating in its parent's plain keyed/indexed list. ReconcileKeying.RegisterScopedKey
-    // and FiberContextSpine depend on that exact rule.
+    // depends on that exact rule. Scope runs on into a component's output on its parent's walk and starts
+    // afresh at WalkRoot on the component's own render, so it can spell one node two ways across those two
+    // entry points: nothing recorded in one walk and read back in another may be placed by it.
     //
     // Path never collapses: every construct the descent passes through contributes, starting at the walk root.
     // Provider pairing needs that. Under Scope alone, a Provider nested directly inside another one is
@@ -202,6 +207,10 @@ namespace Velvet
                 ExtendPath(parent.Path, WalkPathKind.Memo, memoKey, nodeIndex),
                 ExtendPath(parent.SlotPath, WalkPathKind.Memo, memoKey, nodeIndex));
 
+        // Where a Suspense's fallback row is recorded; SlotPath for the reason WalkPosition gives.
+        internal static long SuspenseAt(WalkPosition parent, string? suspenseKey, int nodeIndex)
+            => ExtendPath(parent.SlotPath, WalkPathKind.Suspense, suspenseKey, nodeIndex);
+
         // The position a Suspense's primary or fallback subtree renders under. The two branches contribute
         // different kinds, so a Provider in the fallback is never paired against one in the primary.
         internal static WalkPosition SuspenseSubtree(
@@ -214,7 +223,7 @@ namespace Velvet
                     isFallback ? WalkPathKind.SuspenseFallback : WalkPathKind.SuspensePrimary,
                     ownKey, nodeIndex));
 
-        // The position of a DOM-less AnimatePresence itself; its Scope doubles as the boundary's state key.
+        // The position of a DOM-less AnimatePresence itself; its SlotPath places the boundary's state.
         internal static WalkPosition Presence(WalkPosition parent, string? presenceKey, int nodeIndex)
             => new(PresenceKey(parent.Scope, presenceKey, nodeIndex),
                 ExtendPath(parent.Path, WalkPathKind.Presence, presenceKey, nodeIndex),
@@ -325,12 +334,10 @@ namespace Velvet
             => ComposeFragmentScope(
                 parentScope, key is { } explicitKey ? TaggedKey(LeafKeyTag, explicitKey) : Index(nodeIndex));
 
-        // An unkeyed memo is placed by the SlotPath its inner opens, SlotPath rather than Path for the reason
-        // WalkPosition gives. A keyed memo is placed by its key under the SlotPath of the array it is written in:
-        // the key stands in for its own index, and the levels above count as they do for an unkeyed one. Not by
-        // the scope ReconcileKeying.RegisterScopedKey qualifies an element's key with: that scope runs on into a
-        // component's output on its parent's walk and starts afresh on the component's own render, so it would
-        // spell one memo two ways.
+        // An unkeyed memo is placed by the SlotPath its inner opens, SlotPath rather than Path or Scope for the
+        // reason WalkPosition gives. A keyed memo is placed by its key under the SlotPath of the array it is
+        // written in: the key stands in for its own index, and the levels above count as they do for an unkeyed
+        // one.
         internal static MemoPosition MemoAt(
             ComponentFiber? owner, VisualElement? portalScope, string? memoKey, WalkPosition position,
             WalkPosition innerPosition)
@@ -338,17 +345,15 @@ namespace Velvet
                 ? new MemoPosition(owner, portalScope, memoKey, position.SlotPath)
                 : new MemoPosition(owner, portalScope, null, innerPosition.SlotPath);
 
-        // The boundary key for a SuspenseNode (also the position key its
-        // ReconcilerContext.SetSuspenseFallbackShown entry is stored under): the parent scope extended
+        // The scope a SuspenseNode's two branches extend through SuspenseSubtreeScope: the parent scope extended
         // by the Suspense's own key (or its positional index when unkeyed).
         internal static string SuspenseKey(string? parentScope, string? suspenseKey, int nodeIndex)
             => ComposeFragmentScope(
                 parentScope,
                 suspenseKey is { } key ? TaggedKey(SuspenseKeyTag, key) : Index(nodeIndex));
 
-        // The scoped position key for a DOM-less AnimatePresence: its parent scope extended by the
-        // AnimatePresence's own key (or its positional index when unkeyed). Used with the boundary fiber
-        // to key its PresenceBoundaryState, mirroring SuspenseKey.
+        // The scope a DOM-less AnimatePresence opens: its parent scope extended by the AnimatePresence's own
+        // key (or its positional index when unkeyed).
         internal static string PresenceKey(string? parentScope, string? presenceKey, int nodeIndex)
             => ComposeFragmentScope(
                 parentScope,

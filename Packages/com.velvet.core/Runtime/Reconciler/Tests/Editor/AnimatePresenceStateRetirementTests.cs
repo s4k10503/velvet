@@ -11,7 +11,7 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Pins the retirement of an AnimatePresence boundary's per-expansion state. The entry is keyed by
-    /// (boundary fiber, parent element, scoped position key) and holds the committed VNodes plus each
+    /// (boundary fiber, parent element, slot position) and holds the committed VNodes plus each
     /// key's exit anchor and Motion element, so it outliving its AnimatePresence node pins elements that
     /// have already gone back to the pool — and, where the node is rendered again at the same key, hands
     /// the next expansion a committed set describing leaves the DOM no longer has: the departed children
