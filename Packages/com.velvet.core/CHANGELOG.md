@@ -356,9 +356,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fallback could replace a neighbour's row while the boundary's own stayed. A `V.Portal` whose child
   component grew also left a row behind on the target when it unmounted, and a second `V.Portal` on that
   target, patched after the first one's component grew, rewrote a row of the first. An empty `V.Portal`
-  sharing its first row with another Portal on the target, and mounted before it, now keeps its place
+  sharing its first row with another Portal on the target that holds rows, and mounted before it, now
+  keeps its place
   when that Portal's own children grow or it unmounts: its first rows landed between the other Portal's
-  rows, or its second row ahead of its first. Two components rendering
+  rows, or its second row ahead of its first. Two Portals that both held no rows keep the order they are
+  written in when either gains rows. Two components rendering
   nothing that a keyed reorder swapped keep the swapped order when they grow, where they could render their
   rows in the order they were created.
 

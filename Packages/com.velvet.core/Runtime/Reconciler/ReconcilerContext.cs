@@ -80,34 +80,37 @@ namespace Velvet
     // Shared helpers for maintaining the multi-Portal slot range invariant.
     internal static class PortalSlotTracker
     {
-        // The boundary a change to range moves the other ranges from. A range that held rows ends where the
-        // ranges behind it begin, so an empty range starting at its first row is ahead of it and stays. An
-        // empty range's order against another starting at the same row is not recorded, so a change to it
-        // moves that other one whichever side it was on.
-        internal static int ShiftBoundaryOf(PortalSlotInfo range)
-            => range.SlotLength > 0 ? range.SlotStart + range.SlotLength : range.SlotStart;
+        // Whether rows starting at start lie behind the range changedPlaceholder held before it changed. A
+        // range that held rows ends where the rows behind it begin, and one starting at its first row is
+        // ahead of it. At the first row of a range that held none, rows are behind it, and so is an empty
+        // start whose Portal comes later in the element tree; an empty start of the target's own content,
+        // with no Portal, is ahead.
+        internal static bool IsBehind(
+            int start, bool holdsRows, VisualElement? startsPortal, VisualElement changedPlaceholder, PortalSlotInfo changed)
+        {
+            var end = changed.SlotStart + changed.SlotLength;
+            if (start != end) return start > end;
+            if (changed.SlotLength > 0 || holdsRows) return true;
+            return startsPortal != null && PrecedesInTree(changedPlaceholder, startsPortal);
+        }
 
-        // Shifts PortalSlotInfo.SlotStart by delta for every Portal
-        // sharing the same resolved target element whose range starts at or after
-        // boundary. excludePlaceholder skips one entry (typically
-        // the Portal that just patched its own range and updated its own state). When the cleanup
-        // path invokes this after removing its own entry, excludePlaceholder may
-        // be left null. Mutate-while-iterate is avoided via a deferred 2-pass scan: first collect the
-        // placeholders to shift, then rewrite their entries.
-        internal static void ShiftSlotStartsAfter(
+        // Moves by delta the other ranges on target that lie behind the one changedPlaceholder held before its
+        // change. The changed entry is excluded whether or not it is still recorded. Mutate-while-iterate is
+        // avoided via a deferred 2-pass scan.
+        internal static void ShiftRangesBehind(
             Dictionary<VisualElement, PortalSlotInfo> portalState,
             VisualElement? target,
-            int boundary,
-            int delta,
-            VisualElement? excludePlaceholder = null)
+            VisualElement changedPlaceholder,
+            PortalSlotInfo changed,
+            int delta)
         {
             if (delta == 0 || target == null) return;
             List<VisualElement>? placeholders = null;
             foreach (var entry in portalState)
             {
-                if (ReferenceEquals(entry.Key, excludePlaceholder)) continue;
+                if (ReferenceEquals(entry.Key, changedPlaceholder)) continue;
                 if (!ReferenceEquals(entry.Value.Target, target)) continue;
-                if (entry.Value.SlotStart < boundary) continue;
+                if (!IsBehind(entry.Value.SlotStart, entry.Value.SlotLength > 0, entry.Key, changedPlaceholder, changed)) continue;
                 placeholders ??= new List<VisualElement>();
                 placeholders.Add(entry.Key);
             }
@@ -118,8 +121,33 @@ namespace Velvet
                 portalState[ph] = state with { SlotStart = state.SlotStart + delta };
             }
         }
-    }
 
+        // Document order: an ancestor precedes its descendants, and elements in separate trees are unordered.
+        private static bool PrecedesInTree(VisualElement first, VisualElement second)
+        {
+            var a = first;
+            var b = second;
+            var depthA = Depth(a);
+            var depthB = Depth(b);
+            for (; depthA > depthB; depthA--) a = a.hierarchy.parent;
+            for (; depthB > depthA; depthB--) b = b.hierarchy.parent;
+            if (ReferenceEquals(a, b)) return !ReferenceEquals(first, second) && ReferenceEquals(a, first);
+            while (!ReferenceEquals(a.hierarchy.parent, b.hierarchy.parent))
+            {
+                a = a.hierarchy.parent;
+                b = b.hierarchy.parent;
+            }
+            var parent = a.hierarchy.parent;
+            return parent != null && parent.hierarchy.IndexOf(a) < parent.hierarchy.IndexOf(b);
+        }
+
+        private static int Depth(VisualElement element)
+        {
+            var depth = 0;
+            for (var ancestor = element.hierarchy.parent; ancestor != null; ancestor = ancestor.hierarchy.parent) depth++;
+            return depth;
+        }
+    }
 
     // Per-element bookkeeping for the class-driven passes a variant payload can change, held in
     // ReconcilerContext.VariantGateClasses. An entry is opened by whichever comes first: the reconcile pass

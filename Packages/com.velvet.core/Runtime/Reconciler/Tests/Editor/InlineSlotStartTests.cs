@@ -80,6 +80,16 @@ namespace Velvet.Tests
             s_setSeamGrowerRows = null;
             s_setSeamOwnRows = null;
             s_setShowSeamGrower = null;
+            s_setEmptyGrowerRows = null;
+            s_setBehindEmptyRows = null;
+            s_setLateRangeOnTarget = null;
+            s_setLateRangeRows = null;
+            s_setEmptyAheadChildRows = null;
+            s_setOwnRowsFromEmpty = null;
+            s_setRetargeted = null;
+            s_setRetargetFirstRows = null;
+            s_setRetargetRowTick = null;
+            s_retargetElsewhere = null;
             s_setMidWalkOrder = null;
             s_midWalkThrows = false;
         }
@@ -1257,6 +1267,70 @@ namespace Velvet.Tests
             Assert.That(Names(_root.Q(name: "box")), Is.EqualTo("second0,first0"));
         }
 
+        private static Action<int> s_setRetargeted;
+        private static Action<int> s_setRetargetFirstRows;
+        private static Action<int> s_setRetargetRowTick;
+        private static VisualElement s_retargetElsewhere;
+
+        [Component]
+        private static VNode RetargetFirstRender()
+        {
+            var (rows, setRows) = Hooks.UseState(0);
+            s_setRetargetFirstRows = setRows;
+            return Rows("f", rows);
+        }
+
+        [Component]
+        private static VNode RetargetRowRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setRetargetRowTick = setTick;
+            return V.Label(name: "t-" + tick, key: "t");
+        }
+
+        [Component(Compiler = false)]
+        private static VNode RetargetedPortalRender()
+        {
+            var (onTarget, setOnTarget) = Hooks.UseState(0);
+            s_setRetargeted = setOnTarget;
+            return V.Portal(onTarget == 1 ? s_portalTarget : s_retargetElsewhere,
+                children: new VNode[] { V.Component(RetargetRowRender, key: "t") });
+        }
+
+        [Component]
+        private static VNode RetargetFirstPortalRender()
+            => V.Portal(s_portalTarget, children: new VNode[] { V.Component(RetargetFirstRender, key: "f") });
+
+        [Component]
+        private static VNode RetargetAheadHostRender()
+            => V.Fragment(children: new VNode[]
+            {
+                V.Component(RetargetedPortalRender, key: "retargeted"),
+                V.Component(RetargetFirstPortalRender, key: "first"),
+            });
+
+        // The retargeted Portal is declared ahead and mounts its range at the target's end, so its component
+        // and the empty one share the target's first row while the committed order puts its component first.
+        [Test]
+        public void Given_APortalRetargetedOntoTheRowOfAnEmptyComponentDeclaredBehindIt_When_TheEmptyOneGrowsAndTheOtherRerenders_Then_ItRewritesItsOwnRow()
+        {
+            // Arrange
+            s_portalTarget = new VisualElement();
+            s_retargetElsewhere = new VisualElement();
+            using var mounted = V.Mount(_root, V.Component(RetargetAheadHostRender, key: "host"));
+            s_setRetargeted.Invoke(1);
+            mounted.FlushStateForTest();
+            s_setRetargetFirstRows.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Act
+            s_setRetargetRowTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Names(s_portalTarget), Is.EqualTo("f0,t-1"));
+        }
+
         private static Action<int> s_setAheadOrder;
 
         [Component]
@@ -1437,6 +1511,212 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(Names(s_portalTarget), Is.EqualTo("a0,b0,b1"));
+        }
+
+        private static Action<int> s_setEmptyGrowerRows;
+        private static Action<int> s_setEmptyAheadChildRows;
+        private static Action<int> s_setOwnRowsFromEmpty;
+
+        [Component]
+        private static VNode EmptyGrowerRender()
+        {
+            var (rows, setRows) = Hooks.UseState(0);
+            s_setEmptyGrowerRows = setRows;
+            return Rows("b", rows);
+        }
+
+        [Component]
+        private static VNode EmptyGrowerPortalRender()
+            => V.Portal(s_portalTarget, children: new VNode[] { V.Component(EmptyGrowerRender, key: "grower") });
+
+        [Component]
+        private static VNode EmptyAheadChildRender()
+        {
+            var (rows, setRows) = Hooks.UseState(0);
+            s_setEmptyAheadChildRows = setRows;
+            return Rows("a", rows);
+        }
+
+        [Component]
+        private static VNode EmptyAheadChildPortalRender()
+            => V.Portal(s_portalTarget, children: new VNode[] { V.Component(EmptyAheadChildRender, key: "child") });
+
+        [Component]
+        private static VNode OwnRowsFromEmptyPortalRender()
+        {
+            var (rows, setRows) = Hooks.UseState(0);
+            s_setOwnRowsFromEmpty = setRows;
+            var children = new VNode[rows];
+            for (var i = 0; i < rows; i++) children[i] = V.Label(name: "b" + i, key: "b" + i);
+            return V.Portal(s_portalTarget, children: children);
+        }
+
+        [Component]
+        private static VNode EmptyAheadOfEmptyGrowerHostRender()
+            => V.Fragment(children: new VNode[]
+            {
+                V.Component(EmptyAheadPortalRender, key: "ahead"),
+                V.Component(EmptyGrowerPortalRender, key: "grower"),
+            });
+
+        [Component]
+        private static VNode EmptyChildAheadOfEmptyOwnRowsHostRender()
+            => V.Fragment(children: new VNode[]
+            {
+                V.Component(EmptyAheadChildPortalRender, key: "ahead"),
+                V.Component(OwnRowsFromEmptyPortalRender, key: "grower"),
+            });
+
+        private static Action<int> s_setBehindEmptyRows;
+
+        [Component]
+        private static VNode BehindEmptyPortalRender()
+        {
+            var (rows, setRows) = Hooks.UseState(0);
+            s_setBehindEmptyRows = setRows;
+            var children = new VNode[rows];
+            for (var i = 0; i < rows; i++) children[i] = V.Label(name: "b" + i, key: "b" + i);
+            return V.Portal(s_portalTarget, children: children);
+        }
+
+        [Component]
+        private static VNode EmptyGrowerAheadOfEmptyHostRender()
+            => V.Fragment(children: new VNode[]
+            {
+                V.Component(EmptyAheadChildPortalRender, key: "grower"),
+                V.Component(BehindEmptyPortalRender, key: "behind"),
+            });
+
+        [Test]
+        public void Given_TwoEmptyPortalsAndTheFirstsComponentGrew_When_TheSecondGainsARow_Then_ItLandsBehind()
+        {
+            // Arrange
+            s_portalTarget = new VisualElement();
+            using var mounted = V.Mount(_root, V.Component(EmptyGrowerAheadOfEmptyHostRender, key: "host"));
+            s_setEmptyAheadChildRows.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Act
+            s_setBehindEmptyRows.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Names(s_portalTarget), Is.EqualTo("a0,b0"));
+        }
+
+        private static Action<int> s_setLateRangeOnTarget;
+        private static Action<int> s_setLateRangeRows;
+
+        // Declared first, and retargeted onto the target after the Portal behind it has mounted there, so its
+        // range sits after that Portal's start although its placeholder comes first.
+        [Component(Compiler = false)]
+        private static VNode LateRangePortalRender()
+        {
+            var (onTarget, setOnTarget) = Hooks.UseState(0);
+            var (rows, setRows) = Hooks.UseState(1);
+            s_setLateRangeOnTarget = setOnTarget;
+            s_setLateRangeRows = setRows;
+            var children = new VNode[rows];
+            for (var i = 0; i < rows; i++) children[i] = V.Label(name: "o" + i, key: "o" + i);
+            return V.Portal(onTarget == 1 ? s_portalTarget : s_retargetElsewhere, children: children);
+        }
+
+        [Component]
+        private static VNode LateRangeAheadOfEmptyGrowerHostRender()
+            => V.Fragment(children: new VNode[]
+            {
+                V.Component(LateRangePortalRender, key: "late"),
+                V.Component(EmptyGrowerPortalRender, key: "grower"),
+            });
+
+        [Component]
+        private static VNode LateEmptyRangeAheadOfOwnRowsHostRender()
+            => V.Fragment(children: new VNode[]
+            {
+                V.Component(LateRangePortalRender, key: "late"),
+                V.Component(SeamOwnRowsPortalRender, key: "rows"),
+            });
+
+        [Test]
+        public void Given_ARangeHoldingRowsRetargetedOntoAnEmptyOnesRow_When_TheEmptyOnesComponentGrowsAndTheRangeGrows_Then_ItsRowsStayBehind()
+        {
+            // Arrange
+            s_portalTarget = new VisualElement();
+            s_retargetElsewhere = new VisualElement();
+            using var mounted = V.Mount(_root, V.Component(LateRangeAheadOfEmptyGrowerHostRender, key: "host"));
+            s_setLateRangeOnTarget.Invoke(1);
+            mounted.FlushStateForTest();
+            s_setEmptyGrowerRows.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Act
+            s_setLateRangeRows.Invoke(2);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Names(s_portalTarget), Is.EqualTo("b0,o0,o1"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base moves every range at or after the growing one's start.
+        // What it pins is that a range at the grown one's end moves, whichever Portal is declared first.
+        [Test]
+        public void Given_AnEmptyRangeRetargetedOntoTheEndOfAnotherRange_When_TheOtherGrowsAndTheEmptyOneGainsARow_Then_ItLandsBehind()
+        {
+            // Arrange
+            s_portalTarget = new VisualElement();
+            s_retargetElsewhere = new VisualElement();
+            using var mounted = V.Mount(_root, V.Component(LateEmptyRangeAheadOfOwnRowsHostRender, key: "host"));
+            s_setLateRangeRows.Invoke(0);
+            mounted.FlushStateForTest();
+            s_setLateRangeOnTarget.Invoke(1);
+            mounted.FlushStateForTest();
+            s_setSeamOwnRows.Invoke(2);
+            mounted.FlushStateForTest();
+
+            // Act
+            s_setLateRangeRows.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Names(s_portalTarget), Is.EqualTo("b0,b1,o0"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base moves no Portal range for a component's own growth.
+        // What it pins is that the growth leaves an empty range declared ahead where it is.
+        [Test]
+        public void Given_TwoEmptyPortalsAndTheSecondsComponentGrew_When_TheFirstGainsARow_Then_ItLandsAhead()
+        {
+            // Arrange — both ranges are empty at the target's first row; the first is declared ahead.
+            s_portalTarget = new VisualElement();
+            using var mounted = V.Mount(_root, V.Component(EmptyAheadOfEmptyGrowerHostRender, key: "host"));
+            s_setEmptyGrowerRows.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Act
+            s_setAheadPortalRows.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Names(s_portalTarget), Is.EqualTo("a0,b0"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base's Portal patch moves no component's start.
+        // What it pins is that the patch leaves the component of an empty range declared ahead where it is.
+        [Test]
+        public void Given_TwoEmptyPortalsAndTheSecondsOwnChildrenGrew_When_TheFirstsComponentGrows_Then_ItsRowLandsAhead()
+        {
+            // Arrange
+            s_portalTarget = new VisualElement();
+            using var mounted = V.Mount(_root, V.Component(EmptyChildAheadOfEmptyOwnRowsHostRender, key: "host"));
+            s_setOwnRowsFromEmpty.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Act
+            s_setEmptyAheadChildRows.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Names(s_portalTarget), Is.EqualTo("a0,b0"));
         }
 
         #endregion

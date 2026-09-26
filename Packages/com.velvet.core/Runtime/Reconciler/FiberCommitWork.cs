@@ -77,11 +77,12 @@ namespace Velvet
             ShiftPortalRangesAround(fiber, mountPoint, actualDelta);
         }
 
-        // A Portal's range on target changed length by delta. The fibers whose rows come after that range move
-        // with it; the range's own fibers were placed by the reconcile that changed it, or are leaving with it.
-        // Called beside PortalSlotTracker.ShiftSlotStartsAfter, which moves the other Portals' ranges.
+        // A Portal's range on target, changed before this, changed length by delta. The fibers whose rows lie
+        // behind it move with it (PortalSlotTracker.IsBehind decides, as it does for the other Portals' ranges);
+        // the range's own fibers were placed by the reconcile that changed it, or are leaving with it. Called
+        // beside PortalSlotTracker.ShiftRangesBehind.
         internal static void ShiftTenantsAfterPortalRange(
-            ComponentRegistry registry, VisualElement target, VisualElement placeholder, int rangeEnd, int delta)
+            ComponentRegistry registry, VisualElement target, VisualElement placeholder, PortalSlotInfo changed, int delta)
         {
             // MUTANT_SURVIVES(equivalent): a zero delta moves no start and adds nothing to the total, so the
             // loop it skips changes nothing.
@@ -91,8 +92,12 @@ namespace Velvet
             tenancy.ShiftedRows += delta;
             foreach (var tenant in tenancy.Fibers)
             {
-                if (tenant.MountSlotStart < rangeEnd) continue;
-                if (ReferenceEquals(OwningPortalOf(tenant, target), placeholder)) continue;
+                var owning = OwningPortalOf(tenant, target);
+                if (ReferenceEquals(owning, placeholder)) continue;
+                if (!PortalSlotTracker.IsBehind(tenant.MountSlotStart, tenant.MountSlotCount > 0, owning, placeholder, changed))
+                {
+                    continue;
+                }
                 MoveTenant(tenant, delta);
             }
         }
@@ -223,8 +228,7 @@ namespace Velvet
                 return;
             }
             portalState[owning] = range with { SlotLength = range.SlotLength + delta };
-            PortalSlotTracker.ShiftSlotStartsAfter(
-                portalState, mountPoint, PortalSlotTracker.ShiftBoundaryOf(range), delta, owning);
+            PortalSlotTracker.ShiftRangesBehind(portalState, mountPoint, owning, range, delta);
         }
 
         // Drains parked time-sliced work before the new reconcile measures childCount. Force-draining
