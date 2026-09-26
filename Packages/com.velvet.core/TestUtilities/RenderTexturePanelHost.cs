@@ -45,8 +45,8 @@ namespace Velvet.TestUtilities
 
     /// <summary>
     /// Reads pixels back from a RenderTexture via a throwaway Texture2D, saving and restoring
-    /// RenderTexture.active around the read. Shared across the SceneView/Particles/Portal playback
-    /// specs so each fixture does not hand-roll the same readback.
+    /// RenderTexture.active around the read. Shared so each fixture does not hand-roll the same
+    /// readback.
     /// Test-only. Must not be used from production code.
     /// </summary>
     public static class RenderTexturePixelReader

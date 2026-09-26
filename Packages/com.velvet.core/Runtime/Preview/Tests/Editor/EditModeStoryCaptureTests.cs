@@ -33,6 +33,7 @@ namespace Velvet.Tests
             // Arrange
             TestGraphics.IgnoreIfHeadless("an offscreen panel render and a ReadPixels readback");
             using var host = new RenderTexturePanelHost(nameof(EditModeStoryCaptureTests), Size, Size);
+            ClearTarget(host);
             using var preview = new VelvetPreviewHost(host.Root);
             preview.Mount(Story());
 
@@ -55,6 +56,7 @@ namespace Velvet.Tests
             // Arrange
             TestGraphics.IgnoreIfHeadless("an offscreen panel render and a ReadPixels readback");
             using var host = new RenderTexturePanelHost(nameof(EditModeStoryCaptureTests), Size, Size);
+            ClearTarget(host);
             using var preview = new VelvetPreviewHost(host.Root);
 
             // Act
@@ -65,6 +67,15 @@ namespace Velvet.Tests
             Assert.That(
                 (MountErrorName(preview), host.Root.childCount, RenderTexturePixelReader.IsRedPixel(story)),
                 Is.EqualTo((string.Empty, 1, false)));
+        }
+
+        // A known non-red start, so a pixel either case reads as red can only be one this mount drew.
+        private static void ClearTarget(RenderTexturePanelHost host)
+        {
+            var previouslyActive = RenderTexture.active;
+            RenderTexture.active = host.TargetTexture;
+            GL.Clear(true, true, Color.blue);
+            RenderTexture.active = previouslyActive;
         }
 
         private static string MountErrorName(VelvetPreviewHost preview) =>
