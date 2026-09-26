@@ -114,14 +114,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - A component keeps the elements it rendered when a reorder or an inserted sibling moves it. Unless a
-  keyed `V.Fragment` between the component and its container kept them apart, a keyed component's unkeyed
-  elements were matched by their index in the container, so moving it rebuilt them while the component
-  itself kept its state: a component rendered inside them, or inside its `V.Portal`, remounted with its
-  state lost, and the elements already on the Portal's target were left there beside the remounted ones. A
+  key scope stood between the component and its container — a keyed `V.Fragment`, or a `V.Memoized`, a
+  `V.Suspense` or a `V.AnimatePresence`, each of which opens one — a keyed component's unkeyed elements
+  were matched by their index in the container, so moving it rebuilt them while the component itself
+  kept its state: a component rendered inside them, or inside its `V.Portal`, remounted with its state
+  lost, and the elements already on the Portal's target were left there beside the remounted ones. A
   keyed `V.Fragment` returned as a component's whole output did not count, its key being dropped. A
   reordered `V.List` of components rebuilt the element of each row whose index changed, the same way. An
   unkeyed element is now matched by its position counted from where the output of the component that
-  renders it begins, as in React.
+  renders it begins. This still differs from React, which counts a position in the parent's own child
+  array, where a nested component, a Fragment or a `null` takes one slot: Velvet counts the elements
+  emitted ahead of it, so a change in how many elements an earlier component in the same output renders
+  still shifts it.
 
 - A keyed `V.Fragment` that a component returns as its whole output keeps its key. Its key was dropped
   and its children taken as the component's output, so changing that key kept the components and
@@ -1079,22 +1083,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   all host leaves, since the time-sliced diff carries no owner to compare: a `Transition`-lane pass
   over such a container runs to completion, where the time-sliced one could park at the frame budget.
 
-  What a caller has to edit around, in three places. A `refCallback` on the arriving component is
+  What a caller has to edit around, in two places. A `refCallback` on the arriving component is
   handed a freshly built element where it used to be handed the departing component's, so a reference
   taken on an earlier render is stale — read the element from the callback each time it fires rather
   than holding one across renders. What the element instance itself carries does not survive a freshly
   built one — focus, a `V.ScrollView`'s scroll offset, a `V.TextField`'s caret and selection among
   them — so state to keep is lifted above both components, into a `Store` or a `Hooks.UseState` in the
-  component that declares the slot. And a `V.List` of components written straight into a container
-  rebuilds a row's element when the item moves to a different slot — a reorder, or an insert ahead of
-  it — because a component at a scope-less position opens no key scope, so the leaves it emits
-  reconcile by sibling index and a moved row lands on a leaf a different component emitted; its hook
-  state still travels, since the fiber is found by the item's key, but its element does not, so
-  everything above about a freshly built one reaches a reordered row too. A
-  `V.FocusScope(autoFocus: true)` in such a row is mounted afresh by that rebuild and takes focus back
-  from wherever the user had moved it. Wrapping the list in
-  `V.ListFragment(items, …, key: "rows")` keeps the element: the Fragment's key establishes the scope,
-  each row's leaf then carries the item's own key, and the element moves to the new slot with it.
+  component that declares the slot.
 
 - An Outlet navigating to a location that matches no route at its depth no longer keeps the route it
   was holding. Every clearing path in the Outlet's own patch sat below an early return taken on a

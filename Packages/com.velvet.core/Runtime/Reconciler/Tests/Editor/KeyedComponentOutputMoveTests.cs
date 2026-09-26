@@ -19,8 +19,8 @@ namespace Velvet.Tests
     /// <item>An element the host itself writes after those components is still matched by its position
     /// in the host's output, which the inserted sibling's element shifts.</item>
     /// </list>
-    /// <see cref="ComponentSwapElementOwnershipTests"/> owns the other direction: a slot whose component
-    /// changes does not hand the departing component's elements to the arriving one.
+    /// A slot whose component changes, which must not hand the departing component's elements to the
+    /// arriving one, is <see cref="ComponentSwapElementOwnershipTests"/>'s subject.
     /// </summary>
     [TestFixture]
     internal sealed class KeyedComponentOutputMoveTests
@@ -131,9 +131,8 @@ namespace Velvet.Tests
             s_setInserted.Invoke(true);
             Flush();
 
-            // Assert — the setup count separates a kept instance from a remount. A remount under a Portal still
-            // reads "f0", the row the discarded Portal left on its target, so the rows alone would not; they are
-            // here for a kept instance whose row was lost or doubled.
+            // Assert — the setup count separates a kept instance from a remount; the rows are here for a kept
+            // instance whose row was lost or doubled.
             var container = output == Output.Element ? _root.Q<VisualElement>("holder") : s_portalTarget;
             Assert.That(
                 (s_rowSetups, string.Join(",", container.Children().Select(c => c.name))),
