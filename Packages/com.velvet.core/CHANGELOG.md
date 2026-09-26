@@ -113,6 +113,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A Motion declaring `exit:` that an `AnimatePresence` child wraps where the presence does not look —
+  behind a component, `V.Memoized` or `V.Suspense`, or inside another element — now warns at mount
+  that its exit does not play, which it used to drop without a word. The motion guide now
+  states which Motion a keyed child's enter and exit play on, and that a Motion outside that rule keeps
+  its own mount enter, which the presence's `initial: false` does not suppress.
+
 - An absolutely positioned element carrying a `clip-path-*` utility keeps the box its edge offsets
   declare, and an `absolute inset-0` child fills it, as without the clip. The wrapper that hosts the
   clip stayed in its parent's flow as a relative flex item, and the element's offsets resolved against

@@ -2222,9 +2222,10 @@ namespace Velvet
         /// the DIRECT child of an AnimatePresence or mounts standalone. <see cref="MotionVariant.Transition"/>
         /// resolves the timing, and <see cref="MotionVariant.ClassName"/> the class <c>variants[initial]</c>
         /// must apply for the enter to play at all.</param>
-        /// <param name="exit">Exit variant label. When this Motion is the DIRECT child of an
-        /// AnimatePresence and also sets <paramref name="animate"/> + <paramref name="variants"/>, removal animates
-        /// from <c>variants[animate]</c> to <c>variants[exit]</c> before the element unmounts.
+        /// <param name="exit">Exit variant label. When this Motion is the anchor of a keyed AnimatePresence
+        /// child (the motion guide's <i>Exits</i> section says which Motion that is) and also sets
+        /// <paramref name="animate"/> + <paramref name="variants"/>, removal animates from
+        /// <c>variants[animate]</c> to <c>variants[exit]</c> before the element unmounts.
         /// <see cref="MotionVariant.Transition"/> resolves the timing, whether or not <c>variants[exit]</c>
         /// applies a class. Unlike <paramref name="initial"/>, this needs AnimatePresence to defer the
         /// unmount — set outside one, it is inert and logs a warning.</param>

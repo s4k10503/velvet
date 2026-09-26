@@ -79,6 +79,12 @@ V.Div(name: "row", className: "flex flex-row gap-x-2", children: new VNode[]
   for out of the class strings; *Driven channels* below is the single list of what that covers and
   what it deliberately leaves out. A `skew-*` exit never animates under any driver, because skew
   is a silhouette paint rather than a transform.
+- **Which Motion a keyed child's enter and exit play on** — its *anchor* — is the child itself when
+  it is a Motion, else the first Motion found through the `V.Provider`s, `V.Fragment`s and z-managed
+  elements it wraps. A Motion behind a component, `V.Memoized` or `V.Suspense`, or inside any other
+  element, is not an anchor: it plays its own mount enter, which `initial: false` does not suppress,
+  and no exit, warning at mount when it declares one; a child with no anchor is removed at once. A
+  `V.Fragment` cannot be the keyed child itself; it is refused with an error.
 - A classless `exit` pose is still a variant exit: the removal takes the resting pose's classes
   off, on the timing that pose resolves; see *Transition semantics* below. An `exit` label naming no
   pose plays the classic exit instead.

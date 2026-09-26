@@ -188,8 +188,9 @@ namespace Velvet
         public string? Initial { get; init; }
 
         /// <summary>
-        /// Exit variant label. When this Motion is the direct child of an AnimatePresence and
-        /// sets <see cref="Exit"/> + <see cref="Animate"/> + <see cref="Variants"/>, removal animates from the resting
+        /// Exit variant label. When this Motion is the anchor of a keyed AnimatePresence child (the motion
+        /// guide's <i>Exits</i> section says which Motion that is) and sets <see cref="Exit"/> +
+        /// <see cref="Animate"/> + <see cref="Variants"/>, removal animates from the resting
         /// <c>variants[Animate]</c> to <c>variants[Exit]</c> before the element unmounts, on the timing
         /// <see cref="MotionVariant.Transition"/> resolves, whether or not <c>variants[Exit]</c> applies a
         /// class (see <see cref="MotionVariant.ClassName"/>). A label <see cref="Variants"/> has no pose for

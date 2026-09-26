@@ -2017,8 +2017,7 @@ namespace Velvet
             _ctx.ComponentRegistry.DisposeFibersUnder(new HashSet<VisualElement> { anchor });
         }
 
-        // Expands one keyed AnimatePresence child (a Motion, or a transparent Provider / Fragment / Memo /
-        // Suspense resolving to one) into the parent's slot range via ExpandInlineRecursive,
+        // Expands one keyed AnimatePresence child into the parent's slot range via ExpandInlineRecursive,
         // under a render-stable per-child scope. Returns the child's anchor element — the first element it
         // emitted into GeneralCommitState.NewElements — for enter / exit animation, or null on
         // the structural (old-side) walk or when the child emitted nothing.

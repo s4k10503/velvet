@@ -466,6 +466,15 @@ namespace Velvet
                     "exit on a Motion outside AnimatePresence is inert: exit tweens are driven by the "
                     + "AnimatePresence expansion. Wrap the Motion in V.AnimatePresence (or drop exit).");
             }
+            else if (motionNode.Exit != null && !ReferenceEquals(motionNode, _ctx.PresenceAnchorMotion))
+            {
+                FiberLogger.LogWarning("Motion",
+                    "exit on this Motion is inert: AnimatePresence plays the exit of a keyed child's anchor "
+                    + "only — the child itself when it is a Motion, else the first Motion found through the "
+                    + "V.Provider, V.Fragment or z-managed element it wraps. A Motion behind a component, "
+                    + "V.Memoized or V.Suspense, or inside any other element, is no anchor, and its exit "
+                    + "does not play. Make the Motion the keyed child (or drop exit).");
+            }
         }
 
         private VisualElement CreateForPortalNode(PortalNode portalNode)
@@ -778,6 +787,9 @@ namespace Velvet
             // deliberately NOT walked into: unlike Provider/Fragment it emits its own real DOM element, so
             // silently treating any Motion nested anywhere inside it as the presence anchor would surprise a
             // caller who wrapped a Motion in a plain structural Div for unrelated styling reasons.
+            // The expansion treats a Component, a Memo and a Suspense as transparent too, and this walk still
+            // stops at each: the first two hold a render function rather than children, and which of a
+            // Suspense's two branches is emitted is settled inside the expansion this walk runs ahead of.
             var children = node switch
             {
                 ContextProviderNode provider => provider.Children,
