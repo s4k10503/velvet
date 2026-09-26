@@ -623,9 +623,9 @@ namespace Velvet
         public Dictionary<VisualElement, string> MotionChildLabel { get; } = new();
 
         // The MotionNode each Motion element was last created or patched from. A keyed AnimatePresence child's
-        // removal reads it to find the Motions its committed subtree holds, including those behind a component,
-        // a memo or a Suspense, whose nodes the child's own VNode does not contain. A pure side-table (bare
-        // Remove on teardown), enrolled in _pureElementSideTables.
+        // removal reads it to find the Motions its committed subtree holds, including those behind a component
+        // or a memo, whose nodes the child's own VNode does not contain. A pure side-table (bare Remove on
+        // teardown), enrolled in _pureElementSideTables.
         public Dictionary<VisualElement, MotionNode> MotionNodes { get; } = new();
 
         // The AnimatePresence child each top-level element a keyed child emits belongs to, and the emission
@@ -1430,9 +1430,10 @@ namespace Velvet
             public readonly Dictionary<string, VisualElement> MotionElements = new();
 
             // The top-level elements each key's last committing emission placed, a z-managed placeholder
-            // replaced by the element it stands for. A removal walks down from these to find the descendant
-            // Motions whose exits it waits for; ReconcilerContext.PresenceChildRoots says which of them the key
-            // still owns. Entries retire with their key.
+            // replaced by the element it stands for and any an inner presence's child claimed left out. A
+            // removal walks down from these to find the descendant Motions whose exits it waits for;
+            // ReconcilerContext.PresenceChildRoots says which of them the key still owns. Entries retire with
+            // their key.
             public readonly Dictionary<string, List<VisualElement>> ChildRoots = new();
 
             // Per exiting key, the exits it waits for, so a re-entry can close the wait and cancel or undo its

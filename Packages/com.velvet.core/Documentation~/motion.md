@@ -79,10 +79,10 @@ V.Div(name: "row", className: "flex flex-row gap-x-2", children: new VNode[]
   for out of the class strings; *Driven channels* below is the single list of what that covers and
   what it deliberately leaves out. A `skew-*` exit never animates under any driver, because skew
   is a silhouette paint rather than a transform.
-- **Every Motion in a removed child exits**, however deep — behind a component, `V.Memoized` or
-  `V.Suspense`, or inside another element or Motion — when it declares an `exit` or inherits one from
-  the Motion above it the way an `animate` label is inherited, and the child stays mounted until the
-  last of those exits completes. A coordinator's exit pose staggers its inheriting children as a label
+- **A removed child's exits play however deep their Motion sits** — behind a component,
+  `V.Memoized` or `V.Suspense`, or inside another element or Motion: a Motion plays the `exit` it
+  declares, or one it inherits from the Motion above it the way an `animate` label is inherited, and
+  the child stays mounted until the last of those exits completes. A coordinator's exit pose staggers its inheriting children as a label
   change does (see *Orchestration* below). The children of an inner `V.AnimatePresence` are that
   presence's, as in Framer without `propagate`. `initial: false` suppresses the mount enter of the
   Motions the presence's first render creates.

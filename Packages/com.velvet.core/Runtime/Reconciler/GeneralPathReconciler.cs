@@ -1195,14 +1195,13 @@ namespace Velvet
         // (ReconcilerContext.PresenceBoundaryState, keyed by (boundary fiber, position key)
         // like Suspense) records the leaf composition committed to the DOM so the old-side structural walk
         // reproduces it for the diff. The new side emits the current children plus still-exiting "ghost"
-        // children (kept mounted until every exit they play finishes), then plays enter / exit / stagger on
-        // each keyed child's <em>anchor</em> (its first emitted element), and a removed child's exit on the
-        // descendant Motions CollectDescendantExits finds as well — element create / patch / remove / reorder are handled by the
-        // surrounding general-commit machinery (CommitLeaf / FinalizeGeneralCommit), matched by key. Exit is
-        // reconcile-driven: when a child's last exit completes, the key is flagged and the boundary
-        // re-rendered; the next render stops
-        // emitting that child so the diff removes its leaves (no out-of-band DOM mutation that would shift
-        // sibling slots).
+        // children (kept mounted until the exits they play finish or their Motions leave the tree), then plays
+        // enter / exit / stagger on each keyed child's <em>anchor</em> (its first emitted element), and a
+        // removed child's exit on the descendant Motions CollectDescendantExits finds as well — element create
+        // / patch / remove / reorder are handled by the surrounding general-commit machinery (CommitLeaf /
+        // FinalizeGeneralCommit), matched by key. Exit is reconcile-driven: when a child's last exit completes,
+        // the key is flagged and the boundary re-rendered; the next render stops emitting that child so the
+        // diff removes its leaves (no out-of-band DOM mutation that would shift sibling slots).
 
         // Everything one expansion pass writes as it walks its entries, in one place so a PlayExit
         // completion — which can fire either synchronously (see the Settled comment in
@@ -1990,8 +1989,7 @@ namespace Velvet
             }
         }
 
-        // Everything the presence keeps per key besides its committed entry, retired when the key's leaves
-        // leave the DOM: a pooled element left in any of them could be resurrected as a later dispatch target.
+        // Everything the presence keeps per key besides its committed entry.
         private static void RetirePresenceKeyEntries(ReconcilerContext.PresenceBoundaryState state, string key)
         {
             state.MotionElements.Remove(key);
