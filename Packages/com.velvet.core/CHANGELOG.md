@@ -124,8 +124,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Under a tween transition, a `V.Motion`'s mount enter and `V.AnimatePresence` enter show a `translate-*`
   `initial` pose and tween from it to `animate`, and a presence exit tweens to a `translate-*` `exit` pose
   before the child is removed. None of the three moved a translate pose: the enters rested at `animate`
-  from the first frame and the exit stayed there until removal. An exit interrupted by its key coming back,
-  or finished just before it came back, leaves the child at the values the re-added child declares.
+  from the first frame and the exit stayed there until removal. An exit interrupted by its key coming back
+  leaves the child at the values the re-added child declares; so does one that finished just before its key
+  came back, except that a re-add changing the variants map can keep the previous exit pose's USS classes.
 
 - A `V.AnimatePresence` child re-added mid-exit with a different `animate` label rests at the new label's
   pose. The exit's cancel put back the previous label's USS classes after the new ones had been applied, so

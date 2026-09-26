@@ -710,7 +710,7 @@ namespace Velvet
         }
 
         // The set the element rests at: its MotionAppliedClasses entry, else its base classes alone.
-        private MotionAppliedClassSet RestingClassSet(VisualElement element, string[]? baseClasses)
+        internal MotionAppliedClassSet RestingClassSet(VisualElement element, string[]? baseClasses)
             => _ctx.MotionAppliedClasses.TryGetValue(element, out var resting)
                 ? resting
                 : new MotionAppliedClassSet(baseClasses ?? Array.Empty<string>(), Array.Empty<string>());
@@ -784,9 +784,6 @@ namespace Velvet
                 SyncClassDrivenStyling(element, WithExitTokens(baseClasses, resting, exit), resting.Merged);
             }
         }
-
-        internal string[] RestingVariantClasses(VisualElement element, string[]? baseClasses)
-            => RestingClassSet(element, baseClasses).VariantClasses;
 
         private static string[] WithExitTokens(string[]? baseClasses, MotionAppliedClassSet resting,
             MotionInlineExit exit)

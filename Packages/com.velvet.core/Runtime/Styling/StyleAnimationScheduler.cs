@@ -939,9 +939,12 @@ namespace Velvet
         // element reverses toward its resting classes with the transition kept alive (the inline
         // transition styles are cleared only after the reversal has run its course).
         // restingClasses: what a variant exit's cancel restores in place of the resting classes the exit started
-        // from, for a caller that has re-applied the element's resting state since.
-        public void CancelExit(VisualElement element, string[]? restingClasses = null)
-            => CancelPending(_pendingExits, element, animateReversal: true, restingOverride: restingClasses);
+        // from, for a caller that has re-applied the element's resting state since; keptClasses: the classes that
+        // resting state carries, which the cancel leaves on the element, or puts back where the exit's swap
+        // removed them, rather than removing with the exit's.
+        public void CancelExit(VisualElement element, string[]? restingClasses = null, string[]? keptClasses = null)
+            => CancelPending(_pendingExits, element, animateReversal: true, restingOverride: restingClasses,
+                keptClasses: keptClasses);
 
         // Cancels the exit animation on an element being torn down for good (pool return / disposal) — never
         // hands off to a reversal, regardless of whether the element is still attached at the moment this
@@ -1173,7 +1176,8 @@ namespace Velvet
         // even when animateReversal is requested and the element still happens to be attached: see
         // CancelExitForTeardown for why handing off to one would corrupt the element after it is pooled.
         private void CancelPending(Dictionary<VisualElement, PendingAnimation> map, VisualElement element,
-            bool animateReversal = false, bool forTeardown = false, string[]? restingOverride = null)
+            bool animateReversal = false, bool forTeardown = false, string[]? restingOverride = null,
+            string[]? keptClasses = null)
         {
             if (map.Remove(element, out var pending))
             {
@@ -1190,8 +1194,8 @@ namespace Velvet
                 // Remove the off-panel deferred-attach callback if it never fired (cancel-before-attach), else it
                 // and its captured PendingAnimation linger on the element across pool reuse.
                 if (pending.PendingAttach != null) element.UnregisterCallback(pending.PendingAttach);
-                StyleAnimationClassUtils.RemoveClasses(element, pending.FromClasses);
-                StyleAnimationClassUtils.RemoveClasses(element, pending.ToClasses);
+                StyleAnimationClassUtils.RemoveClasses(element, pending.FromClasses, keptClasses);
+                StyleAnimationClassUtils.RemoveClasses(element, pending.ToClasses, keptClasses);
                 // A variant exit's FromClasses ARE the resting state (variants[animate]); cancelling the exit
                 // (key re-added mid-exit) must return the element to that resting variant rather than strip it.
                 // Re-add after the removals so the element is left in its resting state and stays consistent with

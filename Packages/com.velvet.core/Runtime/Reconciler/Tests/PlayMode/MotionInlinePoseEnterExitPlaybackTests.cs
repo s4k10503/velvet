@@ -427,6 +427,32 @@ namespace Velvet.Tests
             Assert.That((ySamples.Count > 10, ySamples.Exists(y => y > 1f)), Is.EqualTo((true, false)),
                 string.Join(", ", ySamples));
         }
+
+        // GREEN_ON_BASE(characterization): the base's cancel puts back the resting classes the exit started
+        // from, which include the one moved into className. Measured red at the commit that restored the
+        // re-added resting variant alone: opacity 1.
+        [UnityTest]
+        public IEnumerator Given_APresenceChildExitingFromAUssPose_When_ItIsAddedBackMidExitWithThatClassMovedIntoClassName_Then_TheClassHolds()
+        {
+            // Arrange — the bundled sheet is attached here alone, because this case reads a USS utility.
+            var root = CreateRuntimePanel(shown: true);
+            VelvetStyleUtilities.AttachTo(root);
+            _store.Set(true, Box, "dim");
+            yield return null;
+            _mounted = V.Mount(root, V.Component(PresenceHost, key: "root"));
+            var motion = root.Q<VisualElement>("m");
+            yield return PlayModeRealtimeTestHelpers.WaitRealtime(0.6);
+            _store.Set(false);
+            yield return WaitUntilExitMoved(motion, new List<float>());
+
+            // Act
+            _store.Set(true, Box + " opacity-50", "cover");
+            yield return PlayModeRealtimeTestHelpers.WaitRealtime(0.8);
+
+            // Assert
+            Assert.That(motion.resolvedStyle.opacity, Is.EqualTo(0.5f).Within(1e-4f),
+                string.Join(" ", motion.GetClasses()));
+        }
     }
 }
 #endif
