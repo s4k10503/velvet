@@ -456,6 +456,178 @@ class RewritesThatCannotCompile(unittest.TestCase):
         self.assertEqual(len(self.operators("var ready = true;\n", "literal")), 1)
 
 
+class StringTypedOperandTests(unittest.TestCase):
+    """A `+` beside an operand the source declares `string` is not rewritten to `-`.
+
+    `RewritesThatCannotCompile`'s string reading, taken from declarations rather than literals: `-`
+    has no string overload whatever spells the string.
+    """
+
+    def arithmetic(self, source):
+        lines = set(range(1, source.count("\n") + 2))
+        return [m for m in mutation_check.mutations_for("C.cs", source, lines)
+                if m.operator == "arithmetic"]
+
+    def test_Given_ACharPlusAStringParameter_When_TheMutantsAreRead_Then_NoneIsOffered(self):
+        # Arrange -- `tag - key` is char minus string. The member is expression-bodied, so its own
+        # parameter list stands in front of an `=>` without being a lambda's.
+        source = "class C { static string F(char tag, string key) => tag + key; }\n"
+
+        # Act / Assert
+        self.assertEqual(self.arithmetic(source), [])
+
+    def test_Given_AStringConstantOfTheEnclosingType_When_TheMutantsAreRead_Then_NoneIsOffered(self):
+        # Arrange
+        source = 'class C { const string P = "x"; string F(int k) { return P + k; } }\n'
+
+        # Act / Assert
+        self.assertEqual(self.arithmetic(source), [])
+
+    def test_Given_AStringMethodOfTheEnclosingType_When_TheMutantsAreRead_Then_NoneIsOffered(self):
+        # Arrange -- a call's declared return type.
+        source = 'class C { static string S(int n) => ""; string F(int k) { return S(k) + k; } }\n'
+
+        # Act / Assert
+        self.assertEqual(self.arithmetic(source), [])
+
+    def test_Given_AThisQualifiedStringField_When_TheMutantsAreRead_Then_NoneIsOffered(self):
+        # Arrange
+        source = 'class C { string p = ""; string F(int k) { return this.p + k; } }\n'
+
+        # Act / Assert
+        self.assertEqual(self.arithmetic(source), [])
+
+    def test_Given_AVarInitializedFromAStringJoin_When_TheMutantsAreRead_Then_NoneIsOffered(self):
+        # Arrange -- the initializer is read the way a `+` operand is, so a literal join reaches it.
+        source = 'class C { string F(int k) { var p = "[" + k; return p + k; } }\n'
+
+        # Act / Assert
+        self.assertEqual(self.arithmetic(source), [])
+
+    def test_Given_AConstantOfANestedType_When_TheMutantsAreRead_Then_NoneIsOffered(self):
+        # Arrange -- the nested type is declared in the body the operand sits in, and its name is a
+        # type there rather than a member some instance could be reached through.
+        source = ('class C { static class Strings { public const string P = ""; }\n'
+                  "  string F(int k) => Strings.P + k; }\n")
+
+        # Act / Assert
+        self.assertEqual(self.arithmetic(source), [])
+
+    def test_Given_AParameterlessToString_When_TheMutantsAreRead_Then_NoneIsOffered(self):
+        # Arrange -- whatever the receiver, `ToString()` answers a string.
+        source = "class C { string F(object a, int k) { return a + k.ToString(); } }\n"
+
+        # Act / Assert
+        self.assertEqual(self.arithmetic(source), [])
+
+    def test_Given_AConstantOfATypeInAnotherPackageSource_When_Listed_Then_NoneIsOffered(self):
+        # Arrange -- the type is declared in a different file, which the campaign reads for the
+        # declaration.
+        campaign = StubbedCampaign(textwrap.dedent("""\
+            namespace Velvet
+            {
+                internal static class Probe
+                {
+                    internal static string Key(int k) => Keys.Prefix + k;
+                }
+            }
+            """))
+        (campaign.source.parent / "Keys.cs").write_text(
+            'namespace Velvet { internal static class Keys { internal const string Prefix = "k"; } }\n')
+
+        # Act
+        campaign.run("--list")
+
+        # Assert
+        self.assertEqual(re.findall(r"Probe\.cs:\d+ .*\(arithmetic\)$", campaign.printed, re.MULTILINE),
+                         [])
+
+    def test_Given_AConstantOfATypeInAnotherPackageSource_When_Emitted_Then_NoneIsOffered(self):
+        # Arrange -- the emitted set is the one the Roslyn guards read, so it takes the same reading
+        # as the campaign's.
+        campaign = StubbedCampaign(textwrap.dedent("""\
+            namespace Velvet
+            {
+                internal static class Probe
+                {
+                    internal static string Key(int k) => Keys.Prefix + k;
+                }
+            }
+            """))
+        (campaign.source.parent / "Keys.cs").write_text(
+            'namespace Velvet { internal static class Keys { internal const string Prefix = "k"; } }\n')
+        emitted = campaign.project / "out" / "emitted.json"
+        emitted.parent.mkdir(parents=True, exist_ok=True)
+
+        # Act
+        campaign.drive("--emit-lines", str(emitted))
+
+        # Assert
+        self.assertEqual([entry["operator"] for entry in json.loads(emitted.read_text())
+                          if entry["operator"] == "arithmetic"], [])
+
+    # GREEN_ON_BASE(characterization): the base offers it; this pins that a local's declaration,
+    # not a field's of the same name, decides what the name is.
+    def test_Given_ALocalShadowingAStringField_When_TheMutantsAreRead_Then_ItIsOffered(self):
+        # Arrange -- the local, not the field, is what `p` names inside the member.
+        source = "class C { string p; int F(int k) { int p = 1; return p + k; } }\n"
+
+        # Act / Assert
+        self.assertEqual(len(self.arithmetic(source)), 1)
+
+    # GREEN_ON_BASE(characterization): the base offers it; this pins that a lambda parameter is read
+    # as a declaration of the name it shadows.
+    def test_Given_ALambdaParameterShadowingAStringField_When_TheMutantsAreRead_Then_ItIsOffered(self):
+        # Arrange -- untyped, bare and parenthesised.
+        sources = ("class C { string p; static void G(System.Func<int, int> f) { }\n"
+                   "  void F() { G(p => p + 1); } }\n",
+                   "class C { string p; static void G(System.Func<int, int, int> f) { }\n"
+                   "  void F() { G((p, q) => p + 1); } }\n")
+
+        # Act / Assert
+        self.assertEqual([len(self.arithmetic(source)) for source in sources], [1, 1])
+
+    # GREEN_ON_BASE(characterization): the base offers it; this pins that a `var` whose initializer
+    # is not known text is not read as the field it shadows.
+    def test_Given_ANumericVarShadowingAStringField_When_TheMutantsAreRead_Then_ItIsOffered(self):
+        # Arrange
+        source = "class C { string p; int F(int k) { var p = k * 2; return p + k; } }\n"
+
+        # Act / Assert
+        self.assertEqual(len(self.arithmetic(source)), 1)
+
+    # GREEN_ON_BASE(characterization): the base offers it; this pins that a qualifier naming a
+    # parameter is an instance of the parameter's type, not the type the qualifier spells.
+    def test_Given_AQualifierThatIsAParameter_When_TheMutantsAreRead_Then_ItIsOffered(self):
+        # Arrange -- `D` is an `E` here, and `E.P` is an int.
+        source = ('class D { public const string P = ""; } class E { public int P; }\n'
+                  "class C { int F(E D, int k) => D.P + k; }\n")
+
+        # Act / Assert
+        self.assertEqual(len(self.arithmetic(source)), 1)
+
+    # GREEN_ON_BASE(characterization): the base offers it; this pins that one declaration saying
+    # anything other than `string` is enough to keep the operator.
+    def test_Given_TwoTypesOfOneNameThatDisagree_When_TheMutantsAreRead_Then_ItIsOffered(self):
+        # Arrange -- the reading pools same-named types, so the two must agree for either to count.
+        source = ('namespace A { class K { public const string P = ""; } }\n'
+                  "namespace B { class K { public const int P = 1; } }\n"
+                  "namespace B { class C { int F(int k) => K.P + k; } }\n")
+
+        # Act / Assert
+        self.assertEqual(len(self.arithmetic(source)), 1)
+
+    # GREEN_ON_BASE(characterization): the base offers them; this pins that a member read off a
+    # string, and a switch over one, are operands of some other type.
+    def test_Given_AStringNameInsideALongerOperand_When_TheMutantsAreRead_Then_ItIsOffered(self):
+        # Arrange -- on either side of the plus.
+        sources = ("class C { int F(string s, int k) => s.Length + k; }\n",
+                   "class C { int F(string s, int k) => k + s.Length; }\n",
+                   "class C { int F(string s, int k) => k + s switch { _ => 1 }; }\n")
+
+        # Act / Assert
+        self.assertEqual([len(self.arithmetic(source)) for source in sources], [1, 1, 1])
+
 class GuardRemovalReadsTheStatement(unittest.TestCase):
     """The guard operator deletes a whole line, so it takes the reading the removal operator does.
 
