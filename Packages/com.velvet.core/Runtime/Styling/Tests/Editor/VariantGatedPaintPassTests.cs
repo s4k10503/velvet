@@ -220,7 +220,7 @@ namespace Velvet.Tests
             // Arrange — the composed source is what every gated pass reads, and these passes run on EVERY
             // patch, so a re-render that changes nothing must not rebuild it. The parse cache is drained so
             // the second render hands over a freshly allocated array with the same tokens, which is what a
-            // component rebuilding its VNode tree every render actually produces.
+            // render hands over for a class string ClassNameParseCache does not hold.
             using var scope = new ReconcilerScope();
             var first = new VNode[] { V.Div(className: "bg-[#FFFFFF] dark:shadow-lg", name: "card") };
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), first);
