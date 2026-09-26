@@ -113,6 +113,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A `V.Motion` label change tweens a `translate-*` pose — written as inline style, since translate has no
+  USS form — on the transition of the pose it swaps into. It took whatever transition the element carried
+  before the change: the previous swap's while that was still on the element, so a 0.3s
+  `Hooks.UseAnimationSequence` step after a near-instant one arrived in a single frame; and, once it had
+  been released, the element's own, so a step following a finished one jumped unless the element's own
+  classes gave it a transition. A pose's inline values now land at the swap itself, alongside its USS
+  classes and in its stagger slot.
+
 - Memoized components rebuild their compiled VNode cache when their props comparison detects a
   change, including a record struct float member changing from positive zero to negative zero.
 

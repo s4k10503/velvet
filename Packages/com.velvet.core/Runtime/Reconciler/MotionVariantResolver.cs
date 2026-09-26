@@ -98,4 +98,24 @@ namespace Velvet
             VariantClasses = variantClasses;
         }
     }
+
+    // A runtime tween swap whose pose's inline-resolved tokens FiberNodePatcher.PatchMotion keeps off the
+    // element until the swap writes them (see FiberNodePatcher.ResolveInlineHold). Applied is the class set
+    // the class-driven sync last wrote to the element, Target the one the swap brings it to, and HeldTokens
+    // the inline-resolved tokens Applied carries in place of Target's. Release is handed to the swap as its
+    // onSwap, and its identity is what ties the pending play to this hold.
+    internal sealed class MotionHeldInline
+    {
+        public readonly string[] HeldTokens;
+        public string[] Applied;
+        public string[] Target;
+        public Action Release;
+
+        public MotionHeldInline(string[] heldTokens, string[] applied, string[] target)
+        {
+            HeldTokens = heldTokens;
+            Applied = applied;
+            Target = target;
+        }
+    }
 }

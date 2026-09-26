@@ -40,6 +40,7 @@ namespace Velvet
             // enter's to-classes; null for preset plays, whose classes are all transient.
             internal string[]? RestingClasses { get; init; }
             internal Action? OnComplete { get; init; }
+            internal Action? OnSwap { get; init; }
             internal float DelaySec { get; init; }
             internal float AdditionalDelaySec { get; init; }
             // Selects both the exit-shaped self-cancel and which bookkeeping map the play registers into — a
@@ -108,14 +109,24 @@ namespace Velvet
         // AnimatePresence-driven variant enter) reads its timing/spring knobs straight off the enclosing
         // Motion's OWN StyleTransitionConfig, so this unpacks it once here instead of each call site repeating
         // the same eight-argument unpack of the same object.
+        // onSwap: run at the swap, once the classes have moved. Only a play for which DefersSwapToALaterFrame
+        // holds runs it, and one cancelled before its swap never does.
         public void PlayVariantEnter(VisualElement? element, string[]? fromClasses, string[]? toClasses,
-            StyleTransitionConfig config, Action? onComplete = null, float additionalDelaySec = 0f)
+            StyleTransitionConfig config, Action? onComplete = null, float additionalDelaySec = 0f,
+            Action? onSwap = null)
         {
             PlayVariantEnter(element, fromClasses, toClasses, config.DurationSec, config.Easing, config.DelaySec,
                 onComplete, additionalDelaySec, config.PropertyOverrides,
                 config.Type, config.Stiffness, config.Damping, config.Mass,
-                config.BezierX1, config.BezierY1, config.BezierX2, config.BezierY2);
+                config.BezierX1, config.BezierY1, config.BezierX2, config.BezierY2, onSwap);
         }
+
+        // Shares IsPlayableDuration with ValidateDuration, so the two cannot disagree about which durations play.
+        internal static bool DefersSwapToALaterFrame(StyleTransitionConfig config)
+            => config.Type == TransitionType.Tween && IsPlayableDuration(config.DurationSec);
+
+        internal bool IsSwapPending(VisualElement element, Action onSwap)
+            => _pendingEnters.TryGetValue(element, out var pending) && ReferenceEquals(pending.OnSwap, onSwap);
 
         // Variant-driven enter (initial → animate). Unlike PlayEnter, the
         // element already carries the toClasses (the resting variants[animate], applied
@@ -133,7 +144,8 @@ namespace Velvet
             float durationSec, EasingMode easing, float delaySec, Action? onComplete = null, float additionalDelaySec = 0f,
             IReadOnlyList<StylePropertyTransition>? propertyOverrides = null,
             TransitionType type = TransitionType.Tween, float stiffness = 100f, float damping = 10f, float mass = 1f,
-            float bezierX1 = 0.4f, float bezierY1 = 0f, float bezierX2 = 0.2f, float bezierY2 = 1f)
+            float bezierX1 = 0.4f, float bezierY1 = 0f, float bezierX2 = 0.2f, float bezierY2 = 1f,
+            Action? onSwap = null)
         {
             if (element == null)
             {
@@ -149,6 +161,7 @@ namespace Velvet
                 ToClasses = resolvedTo,
                 RestingClasses = resolvedTo,
                 OnComplete = onComplete,
+                OnSwap = onSwap,
                 DelaySec = delaySec,
                 AdditionalDelaySec = additionalDelaySec,
                 IsExit = false,
@@ -212,6 +225,7 @@ namespace Velvet
                 DurationList = durationList,
                 DelayList = delayList,
                 AnimatingElement = element,
+                OnSwap = play.OnSwap,
             };
             // Seed the ring band at the from-value (0 = invisible) NOW (synchronously, before the next-frame
             // swap) so there is no first-frame flash; the tick (started at the swap) then ramps it to follow
@@ -301,6 +315,9 @@ namespace Velvet
 
             StyleAnimationClassUtils.RemoveClasses(element, pending.FromClasses);
             StyleAnimationClassUtils.AddClasses(element, toClasses);
+            var onSwap = pending.OnSwap;
+            pending.OnSwap = null;
+            onSwap?.Invoke();
             // The CSS opacity transition is now firing — start sampling the caster's opacity each frame so its
             // ring band fades in lockstep with it.
             RingCoFadeCoordinator.StartRingCoFadeTick(pending);
@@ -947,6 +964,9 @@ namespace Velvet
             CancelAllInMap(_pendingEnters);
         }
 
+        private static bool IsPlayableDuration(float durationSec)
+            => durationSec != 0f && !(durationSec < 0f || durationSec > MaxDurationSec);
+
         private static bool ValidateDuration(float durationSec, Action? onComplete)
         {
             if (durationSec == 0f)
@@ -954,7 +974,7 @@ namespace Velvet
                 onComplete?.Invoke();
                 return false;
             }
-            if (durationSec < 0f || durationSec > MaxDurationSec)
+            if (!IsPlayableDuration(durationSec))
             {
                 UnityEngine.Debug.LogWarning(
                     $"[StyleAnimationScheduler] Invalid DurationSec: {durationSec}. Expected 0 < duration <= {MaxDurationSec}.");
@@ -1429,6 +1449,8 @@ namespace Velvet
             // Non-null for a bezier-driven entry (StartBezierVariant) — the bezier sibling of Spring. Mutually
             // exclusive with it per play (which one is set depends on config.Type); both null for a plain tween.
             public BezierTweenState? Bezier;
+            // A variant enter's onSwap until the swap runs it; null once it has run, and for every other play.
+            public Action? OnSwap;
 
             // The animating element's OWN ring band, when it has one. Only its own: a band belonging to a
             // DESCENDANT is a child of a descendant, so UI Toolkit's opacity compositing already fades it.
