@@ -225,6 +225,40 @@ namespace Velvet.Tests
                 Is.EqualTo("opacity|350ms|EaseIn|200ms"));
         }
 
+        // GREEN_ON_BASE(characterization): the base writes the suspension over a keyword in the slot, which the
+        // narrowing a held list gets must not replace with a throw.
+        [Test]
+        public void Given_AKeywordInTheInlineTransitionProperty_When_AnInterceptedPlayStarts_Then_TheSuspensionIsWrittenOverIt()
+        {
+            // Arrange
+            var element = Classed("duration-300");
+            element.style.transitionProperty = StyleKeyword.Initial;
+
+            // Act
+            MotionNativeTransitionGuard.SuspendIfIntercepted(element, new object(), MotionTransitionSlots.Opacity);
+
+            // Assert — the one-entry list naming no property.
+            Assert.That(string.Join(",", element.style.transitionProperty.value), Is.EqualTo(""));
+        }
+
+        [Test]
+        public void Given_ATweenListWithOneSharedDuration_When_APlayDrivingOneOfItsPropertiesStarts_Then_TheSharedDurationIsLeftAsItWas()
+        {
+            // Arrange — two properties under one duration entry, which pairs with neither by position.
+            var element = new VisualElement();
+            element.style.transitionProperty = new List<StylePropertyName> { new("translate"), new("opacity") };
+            element.style.transitionDuration = new List<TimeValue> { new(350, TimeUnit.Millisecond) };
+
+            // Act
+            MotionNativeTransitionGuard.SuspendIfIntercepted(element, new object(), MotionTransitionSlots.Translate);
+
+            // Assert
+            Assert.That(
+                string.Join(",", element.style.transitionProperty.value)
+                + "|" + string.Join(",", element.style.transitionDuration.value),
+                Is.EqualTo("opacity|350ms"));
+        }
+
         // Every longhand the element's inline transition-property does not name, sorted and joined.
         private static string LonghandsLeftOut(VisualElement element)
         {

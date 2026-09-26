@@ -116,7 +116,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A `V.Motion` whose `layoutId` spring starts while one of its variant swaps is tweening no longer lands
   the swap at its target or has the swap's transition drag the spring's frames. The spring takes what
   it drives out of the swap's transition list instead of replacing the list, so both run, as in Framer
-  Motion. An `animate-*` utility under a swap is handled the same way.
+  Motion. `animate-spin` and `animate-pulse` get the same treatment under a swap a re-render starts.
 
 - One `V.Fragment` returned for several `V.List` items gives each item a row that keeps its element when
   the items are reordered or appended to. Each item's copy of the Fragment shares its children, and a row's

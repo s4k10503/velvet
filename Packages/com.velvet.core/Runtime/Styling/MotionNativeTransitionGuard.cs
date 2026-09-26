@@ -46,9 +46,9 @@ namespace Velvet
     /// value trails the driver for the whole play and then jumps when the driver hands the slot back.
     /// </para>
     /// <para>
-    /// UI Toolkit's <c>transition-property</c> is a positive list with no "everything except these" spelling, and
-    /// the RESOLVED list cannot be read before the element is on a panel, so the suspension is necessarily
-    /// element-wide: for its duration the element's OTHER transitions land instantly too. That cost is only
+    /// The RESOLVED <c>transition-property</c> cannot be read before the element is on a panel, so there is no
+    /// list of the element's own to narrow, and the suspension is element-wide: for its duration the element's
+    /// OTHER transitions land instantly too. That cost is only
     /// worth paying where the conflict is real, so the decision is made from the element's own CLASS LIST,
     /// resolved against the table <c>Generators~/src/Velvet.StyleTable</c> derives from the bundled
     /// stylesheets. A play suspends only when the slots it drives intersect what those classes leave
@@ -95,7 +95,8 @@ namespace Velvet
             }
             // A variant tween holding the slot is narrowed whatever the classes say: its list names this play's
             // slots, and writing `none` over it instead would land the tween at its target.
-            var held = HoldsAForeignValue(element);
+            // A keyword in the slot is not a list to narrow, and is written over as it always was.
+            var held = HoldsAForeignValue(element) && element.style.transitionProperty.value != null;
             if (held)
             {
                 ExcludeFromHeldList(element, drivenSlots);
@@ -345,6 +346,10 @@ namespace Velvet
         {
             var driven = LonghandsOf(drivenSlots);
             var held = element.style.transitionProperty.value;
+            if (held == null)
+            {
+                return;
+            }
             var names = new List<StylePropertyName>(held.Count);
             // The held entry each kept name takes its duration, easing and delay from.
             var sources = new List<int>(held.Count);
@@ -411,8 +416,6 @@ namespace Velvet
         // list.
         private static List<T> Realigned<T>(List<T> list, int heldCount, List<int> sources)
         {
-            // MUTANT_SURVIVES(unreachable): every list StyleAnimationScheduler writes beside its transition-property
-            // has that list's count, so no list reaching here has another.
             if (list == null || list.Count != heldCount)
             {
                 return null;
