@@ -208,6 +208,26 @@ namespace Velvet.Tests
         }
 
         [Component]
+        private static VNode RecolorRow() => V.Motion(name: "item", variants: s_recolor, animate: "visible",
+            exit: "hidden", transition: new StyleTransitionConfig { Type = TransitionType.Spring });
+
+        // CompletedExitHost's Motion, behind a component, so it exits as a descendant rather than an anchor.
+        [Component]
+        private static VNode CompletedDescendantExitHost()
+        {
+            var keys = Hooks.UseStore(s_store, s => s.Keys);
+            var children = new List<VNode>();
+            foreach (var key in keys)
+            {
+                children.Add(V.Component(RecolorRow, key: key.ToString()));
+            }
+            return V.Div(name: "host", children: new VNode[]
+            {
+                V.AnimatePresence(key: "presence", children: children.ToArray()),
+            });
+        }
+
+        [Component]
         private static VNode CompletedExitWithInitialHost()
         {
             var keys = Hooks.UseStore(s_store, s => s.Keys);
@@ -462,6 +482,30 @@ namespace Velvet.Tests
             Assert.AreEqual((false, true),
                 (item.ClassListContains("bg-red-500"), item.ClassListContains("bg-blue-500")),
                 "A re-entry after a completed exit restores the resting variant");
+        }
+
+        [Test]
+        public void Given_ACompletedExitOnAMotionBehindAComponent_When_TheKeyIsReAddedBeforeTheDropRender_Then_ItsRestingVariantIsRestored()
+        {
+            // Arrange — the same completed-exit window as above, on a Motion the presence reaches as a descendant.
+            using var store = new SetStore();
+            s_store = store;
+            using var mounted = V.Mount(_root, V.Component(CompletedDescendantExitHost, key: "host"));
+            var before = _root.Q<VisualElement>("item");
+            store.Set("");
+            mounted.FlushStateForTest();
+            var parked = _root.Q<VisualElement>("item")?.ClassListContains("bg-red-500") == true;
+
+            // Act
+            store.Set("a");
+            mounted.FlushStateForTest();
+
+            // Assert — the exit parked the same element at variants[exit], and the re-entry put the resting pose back.
+            var item = _root.Q<VisualElement>("item");
+            Assert.That(
+                (parked, ReferenceEquals(item, before), item.ClassListContains("bg-red-500"),
+                    item.ClassListContains("bg-blue-500")),
+                Is.EqualTo((true, true, false, true)));
         }
 
         [Test]

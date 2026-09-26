@@ -1489,23 +1489,23 @@ namespace Velvet
         // inner presence answers for its own children.
         internal bool PresenceSuppressesInitial;
 
-        internal readonly record struct PresenceChildRootOwner(PresenceBoundaryState State, string Key, long Emission);
+        // Roots is the owning key's list in PresenceBoundaryState.ChildRoots, which stands for that key.
+        internal readonly record struct PresenceChildRootOwner(List<VisualElement> Roots, long Emission);
 
         // One descendant Motion's exit: the element, the config PlayExit was handed, and whether that config's
         // from classes are the resting pose a cancel returns to.
         internal readonly record struct PresenceDescendantExit(
             VisualElement Element, StyleTransitionConfig Config, bool RestoresResting, float DelaySec);
 
-        // Counts one exiting presence child's exits down and settles once, when the last has completed or left
-        // the tree. A closed wait settles nothing: a re-entry closes it, and a completion arriving after that
-        // belongs to an exit the re-entry cancelled.
+        // Counts one exiting presence child's exits down and settles when the last has completed or left the
+        // tree. A re-entry cancels the exits still playing and drops the wait from
+        // PresenceBoundaryState.ExitWaits, which a teardown's deferred settle is read against.
         internal sealed class PresenceExitWait
         {
             internal enum DescendantStatus { Playing, Completed, Gone }
 
             private readonly DescendantStatus[] _statuses;
             private int _pending;
-            private bool _closed;
             private readonly System.Action _onSettled;
             private readonly System.Action<VisualElement> _onSettledByTeardown;
 
@@ -1530,40 +1530,29 @@ namespace Velvet
 
             internal void CompleteDescendant(VisualElement element)
             {
-                var index = IndexOf(element);
-                if (index < 0 || _statuses[index] != DescendantStatus.Playing) return;
-                _statuses[index] = DescendantStatus.Completed;
+                _statuses[IndexOf(element)] = DescendantStatus.Completed;
                 if (Settles()) _onSettled();
             }
 
             // A descendant leaving the tree is marked whatever its exit had reached, so nothing touches its
-            // element again: a pooled element can already be serving another mount.
+            // element again: a pooled element can already be serving another mount. Only one still playing
+            // was being waited for.
             internal void TearDown(VisualElement element)
             {
                 var index = IndexOf(element);
-                if (index < 0) return;
-                var wasPlaying = _statuses[index] == DescendantStatus.Playing;
+                if (_statuses[index] != DescendantStatus.Playing)
+                {
+                    _statuses[index] = DescendantStatus.Gone;
+                    return;
+                }
                 _statuses[index] = DescendantStatus.Gone;
-                if (wasPlaying && Settles()) _onSettledByTeardown(element);
+                if (Settles()) _onSettledByTeardown(element);
             }
-
-            internal void Close() => _closed = true;
 
             private int IndexOf(VisualElement element)
-            {
-                for (var i = 0; i < Descendants.Count; i++)
-                {
-                    if (ReferenceEquals(Descendants[i].Element, element)) return i;
-                }
-                return -1;
-            }
+                => Descendants.FindIndex(exit => ReferenceEquals(exit.Element, element));
 
-            private bool Settles()
-            {
-                if (_closed || --_pending > 0) return false;
-                _closed = true;
-                return true;
-            }
+            private bool Settles() => --_pending == 0;
         }
 
         // The three subjects a prune retires a DOM-less AnimatePresence entry for. A presence whose node

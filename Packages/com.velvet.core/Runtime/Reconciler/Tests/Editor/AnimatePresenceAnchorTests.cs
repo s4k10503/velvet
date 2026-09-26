@@ -54,8 +54,11 @@ namespace Velvet.Tests
 
         private static KeySetStore s_keyStore;
         private static FlagStore s_flagStore;
+        private static FlagStore s_showStore;
         private static string s_wrapper;
         private static int s_exitsCompleted;
+        private static bool s_presenceInitial;
+        private static VisualElement s_portalTarget;
 
         private EditorPanelSimulator _sim;
 
@@ -67,8 +70,11 @@ namespace Velvet.Tests
             _sim.ResetTimePerSimulatedFrameToDefault();
             s_keyStore = null;
             s_flagStore = null;
+            s_showStore = null;
             s_wrapper = null;
             s_exitsCompleted = 0;
+            s_presenceInitial = false;
+            s_portalTarget = null;
         }
 
         [TearDown]
@@ -94,13 +100,25 @@ namespace Velvet.Tests
         [Component]
         private static VNode MotionRender() => TimedMotion(null);
 
-        // The timed Motion while s_flagStore is on, nothing once it is off.
+        // Exits more slowly than TimedMotion, so the two exiting together settle at different times.
+        private static VNode SlowMotion() => V.Motion(name: "slow", variants: s_fade, animate: "visible",
+            exit: "hidden", transition: new StyleTransitionConfig { DurationSec = 0.6f });
+
+        // The timed Motion while s_flagStore is on, a plain element once it is off.
         [Component]
         private static VNode ToggledMotionRender()
         {
             var on = Hooks.UseStore(s_flagStore, s => s.On);
-            return on ? TimedMotion(null) : null;
+            return on ? TimedMotion(null) : V.Div(name: "placeholder");
         }
+
+        // A Motion with no variants, whose exit label therefore plays the classic exit of its transition.
+        [Component]
+        private static VNode ClassicRender() => V.Motion(name: "item", exit: "gone", transition: StyleTransition.Fade);
+
+        [Component]
+        private static VNode InnerPresenceRender() => V.AnimatePresence(key: "inner",
+            children: new[] { TimedMotion("inner-item") });
 
         [Component]
         private static VNode CoordinatorRender() => V.Motion(variants: s_coordinator, animate: "visible",
@@ -124,23 +142,53 @@ namespace Velvet.Tests
             {
                 V.AnimatePresence(key: "inner", children: new[] { TimedMotion("inner-item") }),
             }),
+            "inner-presence-top" => V.Component(InnerPresenceRender, key: key),
+            "anchor-and-descendant" => V.Motion(name: "item", key: key, variants: s_fade, initial: "hidden",
+                animate: "visible", exit: "hidden", transition: new StyleTransitionConfig { DurationSec = 0.3f },
+                children: new[] { SlowMotion() }),
+            "classic" => V.Component(ClassicRender, key: key),
+            "portal" => V.Div(key: key, children: new VNode[] { V.Portal(s_portalTarget, new[] { TimedMotion(null) }) }),
+            "portal-missing" => V.Div(key: key, children: new VNode[]
+            {
+                V.Portal("velvet-anchor-tests-unregistered", new[] { SlowMotion() }),
+                TimedMotion(null),
+            }),
             _ => throw new System.ArgumentOutOfRangeException(nameof(s_wrapper), s_wrapper, null),
         };
 
-        [Component]
-        private static VNode PresenceHost()
+        private static VNode Presence(string keys)
         {
-            var keys = Hooks.UseStore(s_keyStore, s => s.Keys);
             var children = new List<VNode>();
             foreach (var key in keys)
             {
                 children.Add(KeyedChild(key.ToString()));
             }
-            return V.Div(name: "host", children: new VNode[]
-            {
-                V.AnimatePresence(key: "presence", initial: false, children: children.ToArray(),
-                    onExitComplete: () => s_exitsCompleted++),
-            });
+            return V.AnimatePresence(key: "presence", initial: s_presenceInitial, children: children.ToArray(),
+                onExitComplete: () => s_exitsCompleted++);
+        }
+
+        // A Motion outside the presence, portalled into the same target after the presence child's own portal,
+        // so its content sits in the slot right after that portal's.
+        private static VNode OutsidePortal() => s_portalTarget == null ? null : V.Portal(s_portalTarget, new[]
+        {
+            V.Motion(name: "other", variants: s_fade, animate: "visible",
+                transition: new StyleTransitionConfig { DurationSec = 0.3f }),
+        });
+
+        [Component]
+        private static VNode PresenceHost()
+        {
+            var keys = Hooks.UseStore(s_keyStore, s => s.Keys);
+            return V.Div(name: "host", children: new[] { Presence(keys), OutsidePortal() });
+        }
+
+        // PresenceHost's presence, taken out of the tree while s_showStore is off.
+        [Component]
+        private static VNode ShowablePresenceHost()
+        {
+            var keys = Hooks.UseStore(s_keyStore, s => s.Keys);
+            var shown = Hooks.UseStore(s_showStore, s => s.On);
+            return V.Div(name: "host", children: new[] { shown ? Presence(keys) : null });
         }
 
         // The inline transition-duration the scheduler wrote on the timed Motion's element, in milliseconds, or
@@ -164,6 +212,11 @@ namespace Velvet.Tests
             Frames(40);
             return mounted;
         }
+
+        private bool HasClass(string name, string className)
+            => Root.Q<VisualElement>(name)?.ClassListContains(className) == true;
+
+        private static void Drain(MountedTree mounted) => mounted.GetSchedulerForTest().DrainImmediateForTest();
 
         private void Frames(int count)
         {
@@ -340,6 +393,230 @@ namespace Velvet.Tests
 
             // Assert — mounted, with no enter timing on it.
             Assert.That((Root.Q<VisualElement>("item") != null, float.IsNaN(ItemDurationMs())), Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_AComponentChildRenderedAgain_When_TheKeyIsRemoved_Then_ItIsHeldUntilItsExitCompletes()
+        {
+            // Arrange — the reorder emits "a" a second time before its removal.
+            using var mounted = MountSettled("component", "ab");
+            using var keys = s_keyStore;
+            keys.Set("ba");
+            Drain(mounted);
+            keys.Set("b");
+            Drain(mounted);
+            var heldWhileExiting = HostChildCount;
+
+            // Act — well past the 300ms exit.
+            Frames(40);
+            Drain(mounted);
+
+            // Assert — "a" held beside "b", then gone once, with onExitComplete fired once.
+            Assert.That((heldWhileExiting, HostChildCount, s_exitsCompleted), Is.EqualTo((2, 1, 1)));
+        }
+
+        [Test]
+        public void Given_AnAnchorAndADescendantExitingTogether_When_TheAnchorsExitCompletes_Then_TheChildIsHeldForTheSlowerOne()
+        {
+            // Arrange
+            using var mounted = MountSettled("anchor-and-descendant", "a");
+            using var keys = s_keyStore;
+            keys.Set(string.Empty);
+            Drain(mounted);
+
+            // Act — past the anchor's 300ms, short of the descendant's 600ms; then past both.
+            Frames(25);
+            Drain(mounted);
+            var heldPastTheAnchor = HostChildCount;
+            Frames(40);
+            Drain(mounted);
+
+            // Assert
+            Assert.That((heldPastTheAnchor, HostChildCount), Is.EqualTo((1, 0)));
+        }
+
+        [Test]
+        public void Given_AMotionWithNoVariantsDeclaringExit_When_TheKeyIsRemoved_Then_ItPlaysItsClassicExit()
+        {
+            // Arrange
+            using var mounted = MountSettled("classic", "a");
+            using var keys = s_keyStore;
+
+            // Act
+            keys.Set(string.Empty);
+            Drain(mounted);
+            Frames(2);
+
+            // Assert — held, with the transition's exit class swapped in.
+            Assert.That((HostChildCount, HasClass("item", "anim-fade-exit-to")), Is.EqualTo((1, true)));
+        }
+
+        [Test]
+        public void Given_APortalInsideTheChild_When_TheKeyIsRemoved_Then_ItsMotionExitsAndTheNextPortalsDoesNot()
+        {
+            // Arrange — a second portal into the same target holds a Motion outside the presence.
+            s_portalTarget = new VisualElement { name = "target" };
+            Root.Add(s_portalTarget);
+            using var mounted = MountSettled("portal", "a");
+            using var keys = s_keyStore;
+
+            // Act
+            keys.Set(string.Empty);
+            Drain(mounted);
+            Frames(2);
+
+            // Assert — the portalled Motion swapped to its exit pose; the one in the next slot kept its own.
+            Assert.That((HasClass("item", "opacity-0"), HasClass("other", "opacity-0")), Is.EqualTo((true, false)));
+        }
+
+        [Test]
+        public void Given_APortalWithNoTargetInsideTheChild_When_TheKeyIsRemoved_Then_TheChildIsHeldForItsOtherMotion()
+        {
+            // Arrange
+            using var mounted = MountSettled("portal-missing", "a");
+            using var keys = s_keyStore;
+
+            // Act
+            keys.Set(string.Empty);
+            Drain(mounted);
+
+            // Assert
+            Assert.That(HostChildCount, Is.EqualTo(1));
+        }
+
+        // GREEN_ON_BASE(characterization): no onExitComplete follows the whole presence leaving the tree.
+        [Test]
+        public void Given_AComponentChildExiting_When_TheWholePresenceUnmounts_Then_NoExitCompletionFollows()
+        {
+            // Arrange
+            s_wrapper = "component";
+            using var keys = new KeySetStore("a");
+            s_keyStore = keys;
+            using var show = new FlagStore();
+            s_showStore = show;
+            using var mounted = V.Mount(Root, V.Component(ShowablePresenceHost, key: "root"));
+            Frames(40);
+            keys.Set(string.Empty);
+            Drain(mounted);
+            var completedBefore = s_exitsCompleted;
+
+            // Act — the presence leaves mid-exit, taking the exiting Motion with it.
+            show.Set(false);
+            Drain(mounted);
+            Frames(3);
+            Drain(mounted);
+
+            // Assert
+            Assert.That(s_exitsCompleted, Is.EqualTo(completedBefore));
+        }
+
+        [Test]
+        public void Given_AnExitingMotionUnmounted_When_TheKeyReturnsInTheSameFrame_Then_NoExitCompletionFollows()
+        {
+            // Arrange
+            using var flag = new FlagStore();
+            s_flagStore = flag;
+            using var mounted = MountSettled("toggled", "a");
+            using var keys = s_keyStore;
+            keys.Set(string.Empty);
+            Drain(mounted);
+            flag.Set(false);
+            Drain(mounted);
+
+            // Act — back before a frame passes, then several frames on.
+            keys.Set("a");
+            Drain(mounted);
+            Frames(3);
+            Drain(mounted);
+
+            // Assert — the key stayed, so its removal never completed.
+            Assert.That((HostChildCount, s_exitsCompleted), Is.EqualTo((1, 0)));
+        }
+
+        // GREEN_ON_BASE(characterization): a child left with no Motion to exit was removed at once on the base too.
+        [Test]
+        public void Given_AChildsOnlyMotionReplacedInTheRenderRemovingIt_When_ThatRenderDrains_Then_TheChildIsRemoved()
+        {
+            // Arrange
+            using var flag = new FlagStore();
+            s_flagStore = flag;
+            using var mounted = MountSettled("toggled", "a");
+            using var keys = s_keyStore;
+
+            // Act — the removal and the Motion's replacement land in one drain.
+            keys.Set(string.Empty);
+            flag.Set(false);
+            Drain(mounted);
+            Drain(mounted);
+
+            // Assert — nothing plays, so the removal completes.
+            Assert.That((HostChildCount, s_exitsCompleted), Is.EqualTo((0, 1)));
+        }
+
+        [Test]
+        public void Given_AMotionBehindAComponentEntering_When_TheKeyIsRemovedBeforeTheEnterSwaps_Then_ItExitsFromItsRestingPose()
+        {
+            // Arrange — added after the first render, so its mount enter plays and strips it to its initial pose.
+            using var mounted = MountSettled("component", string.Empty);
+            using var keys = s_keyStore;
+            keys.Set("a");
+            Drain(mounted);
+
+            // Act
+            keys.Set(string.Empty);
+            Drain(mounted);
+
+            // Assert — the enter was cancelled back to the resting pose the exit starts from.
+            Assert.That((HasClass("item", "opacity-0"), HasClass("item", "opacity-100")), Is.EqualTo((false, true)));
+        }
+
+        // GREEN_ON_BASE(characterization): a Motion behind a component added after the first render played its enter.
+        [Test]
+        public void Given_InitialFalseOnThePresence_When_AMotionBehindAComponentIsAddedLater_Then_ItsEnterPlays()
+        {
+            // Arrange
+            using var mounted = MountSettled("component", string.Empty);
+            using var keys = s_keyStore;
+
+            // Act
+            keys.Set("a");
+            Drain(mounted);
+
+            // Assert
+            Assert.That(ItemDurationMs(), Is.EqualTo(300f));
+        }
+
+        // GREEN_ON_BASE(characterization): a presence left at initial: true never held back a descendant's enter.
+        [Test]
+        public void Given_InitialTrueOnThePresence_When_AMotionBehindAComponentMountsWithIt_Then_ItsEnterPlays()
+        {
+            // Arrange
+            s_wrapper = "component";
+            s_presenceInitial = true;
+            using var keys = new KeySetStore("a");
+            s_keyStore = keys;
+
+            // Act
+            using var mounted = V.Mount(Root, V.Component(PresenceHost, key: "root"));
+
+            // Assert
+            Assert.That(ItemDurationMs(), Is.EqualTo(300f));
+        }
+
+        // GREEN_ON_BASE(characterization): an inner presence's child never held the outer removal.
+        [Test]
+        public void Given_AKeyedChildWhoseTopIsAnInnerAnimatePresence_When_TheOuterKeyIsRemoved_Then_TheInnerChildDoesNotHoldIt()
+        {
+            // Arrange
+            using var mounted = MountSettled("inner-presence-top", "a");
+            using var keys = s_keyStore;
+
+            // Act
+            keys.Set(string.Empty);
+            Drain(mounted);
+
+            // Assert — the outer child leaves at once.
+            Assert.That(HostChildCount, Is.EqualTo(0));
         }
     }
 }

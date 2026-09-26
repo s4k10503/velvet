@@ -646,14 +646,14 @@ namespace Velvet
         //   ancestor's stagger sequence reaching its own grandchildren.
         internal static MotionOrchestrationFrame? ResolveChildOrchestration(
             MotionNode newNode, StyleTransitionConfig? swapTransition, bool childLabelChanged,
-            MotionOrchestrationFrame? ambientOrchestration, float extraDelaySec, bool warn = true)
+            MotionOrchestrationFrame? ambientOrchestration, float extraDelaySec)
         {
             var hasOwnOrchestration = swapTransition != null
                 && (swapTransition.StaggerChildrenSec > 0f || swapTransition.DelayChildrenSec > 0f
                     || swapTransition.When != TransitionWhen.Together);
             if (childLabelChanged && hasOwnOrchestration)
             {
-                if (warn && swapTransition.When == TransitionWhen.AfterChildren)
+                if (swapTransition.When == TransitionWhen.AfterChildren)
                 {
                     FiberLogger.LogWarning("Motion",
                         "transition.When = AfterChildren is not yet orchestrated for label propagation; "
