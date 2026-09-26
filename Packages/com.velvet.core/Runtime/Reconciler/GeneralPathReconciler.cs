@@ -1983,7 +1983,9 @@ namespace Velvet
             anchor.style.top = StyleKeyword.Null;
             anchor.style.width = StyleKeyword.Null;
             anchor.style.height = StyleKeyword.Null;
-            if (classNames != null)
+            // A clip wrapper is pinned in its inner's place but carries none of the inner's arbitrary values, and
+            // classNames are the inner's: reapplying them would size and offset the wrapper by the inner's own.
+            if (classNames != null && !anchor.ClassListContains(FiberWrapperElementAppliers.ClipPathWrapperClass))
             {
                 FiberNodePatcher.ReapplyArbitraryValues(anchor, classNames);
             }
