@@ -704,6 +704,11 @@ namespace Velvet
         // property), so the clip wrapper's mask must be re-derived. Null until the patcher wires it.
         public System.Action<VisualElement> ClipPathReResolve { get; set; } = null!;
 
+        // Hook to bring a clipped element's wrapper to the element's current position mode after a variant
+        // toggled any payload on it, set by FiberNodePatcher and invoked by StyleVariantPayload.Apply. Null
+        // until the patcher wires it.
+        public System.Action<VisualElement> ClipPathWrapperModeSync { get; set; } = null!;
+
         // Per-element ring-* / outline-* bookkeeping, keyed by the element itself. An entry means a
         // native-border overlay painting the outset (or inset) band is hosted as a reconciler-invisible
         // sibling of the element (RingOverlay). No GPU resource to dispose (unlike clip), but cleanup must
@@ -893,6 +898,11 @@ namespace Velvet
         // registry half cannot be left to whatever fiber the drain happens to find current.
         public Queue<(VisualElement Placeholder, VNode Node, VisualElement? Target,
             List<KeyValuePair<object, object>> ContextSnapshot, ComponentFiber? LogicalParent)> PendingPortalMounts { get; } = new();
+
+        // The Portal / WorldSpace placeholders queued in PendingPortalMounts and not torn down since. A
+        // placeholder's parent cannot answer that: one built inside an element whose creation then failed is
+        // still parented by that element, which no caller holds.
+        internal HashSet<VisualElement> PendingHostPlaceholders { get; } = new();
 
         // Per-stacking-context-parent z-layer containers (FiberZLayerCoordinator), lazily created on first
         // z-marked absolute child. NOT a pure side-table: the record's Front/Back reference live VisualElement

@@ -410,7 +410,7 @@ namespace Velvet
             if (mountPoint == null) return;
             if (!fiber.Reconciler.HasPendingWork) return;
 
-            var fiberPushed = FiberRenderer.PushFiber(fiber);
+            var pushedOnto = FiberRenderer.PushFiber(fiber);
             try
             {
                 // Resume at the budget the starting lane chose so a Transition slice keeps time-slicing.
@@ -499,7 +499,7 @@ namespace Velvet
             }
             finally
             {
-                FiberRenderer.PopFiber(fiber, fiberPushed);
+                FiberRenderer.PopFiber(pushedOnto);
             }
         }
 
