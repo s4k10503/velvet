@@ -453,6 +453,36 @@ namespace Velvet.Tests
             Assert.That(motion.resolvedStyle.opacity, Is.EqualTo(0.5f).Within(1e-4f),
                 string.Join(" ", motion.GetClasses()));
         }
+
+        // GREEN_ON_BASE(characterization): the base's cancel hands the spring's reversal the resting classes the
+        // exit started from, which include the one moved into className. Measured red at the commit whose exit
+        // cancel kept the re-add's classes but did not hand them to that reversal: opacity 1.
+        [UnityTest]
+        public IEnumerator Given_APresenceChildWithASpringExitFromAUssPose_When_ItIsAddedBackWithThatClassInClassNameAndItsLabelChangesAgain_Then_TheClassHolds()
+        {
+            // Arrange — the bundled sheet is attached here alone, because this case reads a USS utility.
+            s_exitLabel = "goneSpring";
+            var root = CreateRuntimePanel(shown: true);
+            VelvetStyleUtilities.AttachTo(root);
+            _store.Set(true, Box, "dim");
+            yield return null;
+            _mounted = V.Mount(root, V.Component(PresenceHost, key: "root"));
+            var motion = root.Q<VisualElement>("m");
+            yield return PlayModeRealtimeTestHelpers.WaitRealtime(0.6);
+            _store.Set(false);
+            yield return WaitUntilExitMoved(motion, new List<float>());
+
+            // Act — the re-add cancels the spring exit into its reversal; the next label swap cancels that.
+            _store.Set(true, Box + " opacity-50", "cover");
+            _mounted.FlushStateForTest();
+            _store.Set(true, Box + " opacity-50", "cover2");
+            _mounted.FlushStateForTest();
+            yield return PlayModeRealtimeTestHelpers.WaitRealtime(1.0);
+
+            // Assert
+            Assert.That(motion.resolvedStyle.opacity, Is.EqualTo(0.5f).Within(1e-4f),
+                string.Join(" ", motion.GetClasses()));
+        }
     }
 }
 #endif

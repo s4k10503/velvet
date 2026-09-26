@@ -1181,11 +1181,17 @@ namespace Velvet
         {
             if (map.Remove(element, out var pending))
             {
-                // Written back onto the pending, since a reversal hand-off below carries its RestingClasses on.
+                // Written back onto the pending, since a reversal hand-off below carries it on and a later cancel
+                // of that reversal reads both again.
                 if (restingOverride != null && pending.RestingClasses != null)
                 {
                     pending.RestingClasses = restingOverride;
                 }
+                if (keptClasses != null)
+                {
+                    pending.KeptClasses = keptClasses;
+                }
+                keptClasses = pending.KeptClasses;
                 // Pause() corresponds to cancelling a one-shot schedule produced by schedule.Execute().
                 // Removing from the dictionary also makes the ContainsKey check inside the callback fail,
                 // providing defense in depth.
@@ -1471,6 +1477,8 @@ namespace Velvet
             public BezierTweenState? Bezier;
             // A variant play's onSwap until the swap runs it; null once it has run, and for a play given none.
             public Action? OnSwap;
+            // The classes a CancelExit caller kept (see CancelExit), for a reversal that is cancelled in turn.
+            public string[]? KeptClasses;
 
             // The animating element's OWN ring band, when it has one. Only its own: a band belonging to a
             // DESCENDANT is a child of a descendant, so UI Toolkit's opacity compositing already fades it.
