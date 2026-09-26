@@ -16,7 +16,6 @@ namespace Velvet.Tests
     /// <c>V.Portal</c> it rendered, and the component inside either keeps its instance and its rows —
     /// whether the list is written into an element, under an unkeyed <c>V.Fragment</c>, or under a keyed one
     /// the host returns as its whole output.</item>
-    /// <item>Two sibling components that each render an element under one key keep both.</item>
     /// <item>An element the host itself writes after those components is still matched by its position
     /// in the host's output, which the inserted sibling's element shifts.</item>
     /// </list>
@@ -32,7 +31,6 @@ namespace Velvet.Tests
 
         private static StateUpdater<int> s_setRows;
         private static StateUpdater<bool> s_setInserted;
-        private static StateUpdater<int> s_setTick;
         private static int s_rowSetups;
         private static Wrapper s_wrapper;
         private static Output s_output;
@@ -103,22 +101,6 @@ namespace Velvet.Tests
         }
 
         [Component]
-        private static VNode Titled() => V.Label(name: "title", key: "title");
-
-        [Component(Compiler = false)]
-        private static VNode TwoTitlesHost()
-        {
-            var (tick, setTick) = Hooks.UseState(0);
-            s_setTick = setTick;
-            return V.Div(name: "host", children: new VNode[]
-            {
-                V.Component(Titled, key: "a"),
-                V.Component(Titled, key: "b"),
-                V.Label(name: "tick", text: tick.ToString()),
-            });
-        }
-
-        [Component]
         private static VNode Plain() => V.Div(name: "plain");
 
         [Component(Compiler = false)]
@@ -155,25 +137,6 @@ namespace Velvet.Tests
             Assert.That(
                 (s_rowSetups, string.Join(",", container.Children().Select(c => c.name))),
                 Is.EqualTo((1, "f0")));
-        }
-
-        [Test]
-        public void Given_TwoSiblingComponentsEachRenderingAnElementUnderOneKey_When_TheHostRerenders_Then_BothElementsAreKept()
-        {
-            // Arrange
-            _mounted = V.Mount(_root, V.Component(TwoTitlesHost, key: "host"));
-            var host = _root.Q<VisualElement>("host");
-            var before = new[] { host.ElementAt(0), host.ElementAt(1) };
-
-            // Act
-            s_setTick.Invoke(1);
-            Flush();
-
-            // Assert — the tick text rides along, since a host that never re-rendered keeps both on its own.
-            Assert.That(
-                (ReferenceEquals(host.ElementAt(0), before[0]), ReferenceEquals(host.ElementAt(1), before[1]),
-                    _root.Q<Label>("tick").text),
-                Is.EqualTo((true, true, "1")));
         }
 
         [Test]

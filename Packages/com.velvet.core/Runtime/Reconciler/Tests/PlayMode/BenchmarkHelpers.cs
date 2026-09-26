@@ -17,6 +17,17 @@ namespace Velvet.Tests.Performance
             return nodes;
         }
 
+        // BuildLabelNodes with a key per slot, the same key for the same slot whatever the prefix.
+        internal static VNode[] BuildKeyedLabelNodes(int count, string prefix = "item-")
+        {
+            var nodes = new VNode[count];
+            for (int i = 0; i < count; i++)
+            {
+                nodes[i] = V.Label(key: $"key-{i}", text: $"{prefix}{i}");
+            }
+            return nodes;
+        }
+
         // Mixed Label/Button leaves for benchmarks exercising VNodePool's per-widget-type recycle path
         // (both types are poolable primitives, so an unmount round-trips each through its own pool).
         internal static VNode[] BuildLabelAndButtonNodes(int countEach)

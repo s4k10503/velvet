@@ -86,6 +86,10 @@ namespace Velvet
         // Child VNode array from the previous render, as the caller supplied it: nulls and fragments are
         // dropped and expanded during inline expansion, not before this is stored.
         public VNode?[] OldNodes { get; init; } = null!;
+        // The key each OldNodes entry was emitted under, index-aligned with it, or null on the terms
+        // ChildReconciler.OldKey gives. A copy rather than the caller's rented list, which goes back to the pool
+        // when the pass that parked this state returns.
+        public ChildKey[]? OldKeys { get; init; }
         // Child VNode array requested by the current render, on the same terms as the previous one above.
         public VNode?[] NewNodes { get; init; } = null!;
         // Zero-based slot offset into Parent.children at which this keyed reconcile operates.
@@ -138,10 +142,9 @@ namespace Velvet
     // index can never compare equal, so a user key value — including one a Fragment scope composes
     // — cannot collide with an unkeyed sibling's slot.
     //
-    // The general path also carries the fiber whose output emitted the child (OwnedBy), and counts a
-    // positional index from where that fiber's output starts, so a component's elements are matched within
-    // its own output and move with it. The flat diff never sets one: it is taken only where the old side
-    // reached no descendant fiber, so every leaf on both sides has the same emitter.
+    // The general path also carries the fiber whose output emitted the leaf (OwnedBy), so two components'
+    // leaves never match each other whatever keys they carry. The flat diff never sets one: it is taken only
+    // where the old side reached no descendant fiber, so every leaf on both sides has the same emitter.
     internal readonly struct ChildKey : IEquatable<ChildKey>
     {
         private readonly string? _key;
@@ -171,12 +174,11 @@ namespace Velvet
 
         public override bool Equals(object obj) => obj is ChildKey other && Equals(other);
 
-        // The owner is hashed as well as compared: every component in a keyed list that renders one unkeyed
-        // element emits it at position 0, and without the owner those keys would all share one bucket.
-        // MUTANT_SURVIVES(equivalent, equality): dropping the owner term changes which bucket a key lands in,
-        // never which keys match, since equal keys still hash alike and Equals reads the owner.
         public override int GetHashCode()
             => (_isPositional ? _index : (_key?.GetHashCode() ?? 0))
+                // MUTANT_SURVIVES(equivalent, equality): the owner term only spreads owned keys across buckets.
+                // Either spelling gives equal keys equal hashes, and which keys match is Equals' answer, which
+                // reads the owner.
                 ^ (_owner == null ? 0 : System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(_owner));
 
         public override string ToString()
