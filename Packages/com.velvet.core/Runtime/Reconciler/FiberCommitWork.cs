@@ -12,7 +12,12 @@ namespace Velvet
     // trees the orchestrator (FiberRenderer.RenderAndReconcile) hands in after FiberBeginWork produced them.
     internal static class FiberCommitWork
     {
-        // Bound desync recovery to this fiber's range even when co-located siblings surround it.
+        // The slotLimit of this fiber's own reconcile: the nearest start beyond its own among the co-located
+        // fibers of its parent's chain, or int.MaxValue. The chain is the parent's alone, so a fiber that is
+        // its holder's last child gets int.MaxValue even where the holder's next sibling's rows follow.
+        // A fiber no walk has placed yet (MountSlotCount still -1) is passed over: its start is where a walk
+        // still in progress means to put it, and a boundary catching in that walk would be bounded short of
+        // its own rows.
         private static int NextInlineSiblingSlotStart(ComponentFiber fiber)
         {
             var limit = int.MaxValue;
@@ -21,6 +26,7 @@ namespace Velvet
             {
                 if (!ReferenceEquals(sibling, fiber)
                     && sibling.IsInlineMounted
+                    && sibling.MountSlotCount >= 0
                     && sibling.MountPoint == fiber.MountPoint
                     && sibling.MountSlotStart > fiber.MountSlotStart
                     && sibling.MountSlotStart < limit)
@@ -217,7 +223,8 @@ namespace Velvet
                 return;
             }
             portalState[owning] = range with { SlotLength = range.SlotLength + delta };
-            PortalSlotTracker.ShiftSlotStartsAfter(portalState, mountPoint, range.SlotStart, delta, owning);
+            PortalSlotTracker.ShiftSlotStartsAfter(
+                portalState, mountPoint, PortalSlotTracker.ShiftBoundaryOf(range), delta, owning);
         }
 
         // Drains parked time-sliced work before the new reconcile measures childCount. Force-draining

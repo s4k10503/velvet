@@ -76,6 +76,12 @@ namespace Velvet.Tests
             s_setOwnPortalShown = null;
             s_setPortalHolderTick = null;
             s_setShowHeldPortal = null;
+            s_setAheadPortalRows = null;
+            s_setSeamGrowerRows = null;
+            s_setSeamOwnRows = null;
+            s_setShowSeamGrower = null;
+            s_setMidWalkOrder = null;
+            s_midWalkThrows = false;
         }
 
         private static string Names(VisualElement container)
@@ -1306,6 +1312,196 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(Names(_root.Q(name: "box")), Is.EqualTo("sib-1,first0,first1"));
+        }
+
+        #endregion
+
+        #region An empty Portal range at the start of the one that changes
+
+        private static Action<int> s_setAheadPortalRows;
+        private static Action<int> s_setSeamGrowerRows;
+        private static Action<int> s_setSeamOwnRows;
+        private static Action<int> s_setShowSeamGrower;
+
+        [Component]
+        private static VNode EmptyAheadPortalRender()
+        {
+            var (rows, setRows) = Hooks.UseState(0);
+            s_setAheadPortalRows = setRows;
+            var children = new VNode[rows];
+            for (var i = 0; i < rows; i++) children[i] = V.Label(name: "a" + i, key: "a" + i);
+            return V.Portal(s_portalTarget, children: children);
+        }
+
+        [Component]
+        private static VNode SeamGrowerRender()
+        {
+            var (rows, setRows) = Hooks.UseState(1);
+            s_setSeamGrowerRows = setRows;
+            return Rows("b", rows);
+        }
+
+        [Component]
+        private static VNode SeamGrowerPortalRender()
+            => V.Portal(s_portalTarget, children: new VNode[] { V.Component(SeamGrowerRender, key: "grower") });
+
+        [Component]
+        private static VNode SeamOwnRowsPortalRender()
+        {
+            var (rows, setRows) = Hooks.UseState(1);
+            s_setSeamOwnRows = setRows;
+            var children = new VNode[rows];
+            for (var i = 0; i < rows; i++) children[i] = V.Label(name: "b" + i, key: "b" + i);
+            return V.Portal(s_portalTarget, children: children);
+        }
+
+        [Component]
+        private static VNode EmptyAheadOfComponentGrowthHostRender()
+            => V.Fragment(children: new VNode[]
+            {
+                V.Component(EmptyAheadPortalRender, key: "ahead"),
+                V.Component(SeamGrowerPortalRender, key: "grower"),
+            });
+
+        [Component]
+        private static VNode EmptyAheadOfOwnRowsGrowthHostRender()
+            => V.Fragment(children: new VNode[]
+            {
+                V.Component(EmptyAheadPortalRender, key: "ahead"),
+                V.Component(SeamOwnRowsPortalRender, key: "grower"),
+            });
+
+        [Component]
+        private static VNode EmptyAheadOfLeavingPortalHostRender()
+        {
+            var (shown, setShown) = Hooks.UseState(1);
+            s_setShowSeamGrower = setShown;
+            return V.Fragment(children: new VNode[]
+            {
+                V.Component(EmptyAheadPortalRender, key: "ahead"),
+                shown == 1 ? V.Component(SeamOwnRowsPortalRender, key: "leaving") : null,
+                V.Component(PortalWithChildRender, key: "behind"),
+            });
+        }
+
+        [Test]
+        public void Given_AnEmptyPortalAheadOfOneThatUnmounted_When_TheEmptyOneGainsTwoRows_Then_TheyLandAheadOfTheRest()
+        {
+            // Arrange
+            s_portalTarget = new VisualElement();
+            using var mounted = V.Mount(_root, V.Component(EmptyAheadOfLeavingPortalHostRender, key: "host"));
+            s_setShowSeamGrower.Invoke(0);
+            mounted.FlushStateForTest();
+            s_setAheadPortalRows.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Act
+            s_setAheadPortalRows.Invoke(2);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Names(s_portalTarget), Is.EqualTo("a0,a1,b-0"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base moves no Portal range for a component's own growth.
+        // What it pins is that the growth, which moves the ranges behind it now, leaves an empty one ahead.
+        [Test]
+        public void Given_AnEmptyPortalAheadOfOneWhoseComponentGrew_When_TheEmptyOneGainsARow_Then_ItLandsAhead()
+        {
+            // Arrange — both ranges start at the target's first row; the empty one was mounted first.
+            s_portalTarget = new VisualElement();
+            using var mounted = V.Mount(_root, V.Component(EmptyAheadOfComponentGrowthHostRender, key: "host"));
+            s_setSeamGrowerRows.Invoke(2);
+            mounted.FlushStateForTest();
+
+            // Act
+            s_setAheadPortalRows.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Names(s_portalTarget), Is.EqualTo("a0,b0,b1"));
+        }
+
+        [Test]
+        public void Given_AnEmptyPortalAheadOfOneWhoseOwnChildrenGrew_When_TheEmptyOneGainsARow_Then_ItLandsAhead()
+        {
+            // Arrange
+            s_portalTarget = new VisualElement();
+            using var mounted = V.Mount(_root, V.Component(EmptyAheadOfOwnRowsGrowthHostRender, key: "host"));
+            s_setSeamOwnRows.Invoke(2);
+            mounted.FlushStateForTest();
+
+            // Act
+            s_setAheadPortalRows.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Names(s_portalTarget), Is.EqualTo("a0,b0,b1"));
+        }
+
+        #endregion
+
+        #region A boundary catching in a walk that created a component ahead of it
+
+        private static Action<int> s_setMidWalkOrder;
+        private static bool s_midWalkThrows;
+
+        [Component(Compiler = false)]
+        private static VNode MidWalkThrowerRender()
+        {
+            if (s_midWalkThrows) throw new InvalidOperationException(ThrowMessage);
+            return V.Label(name: "thrower", key: "thrower");
+        }
+
+        [Component(IsErrorBoundary = true)]
+        private static VNode MidWalkGuardRender()
+        {
+            Hooks.UseFallback(_ => V.Label(name: "g-fallback", key: "fallback"));
+            return V.Fragment(children: new VNode[]
+            {
+                V.Label(name: "ga", key: "ga"),
+                V.Div(name: "gb", key: "gb", children: new VNode[] { V.Component(MidWalkThrowerRender, key: "t") }),
+            });
+        }
+
+        [Component]
+        private static VNode MidWalkCRender() => V.Label(name: "c", key: "c");
+
+        [Component]
+        private static VNode MidWalkXRender() => V.Label(name: "x", key: "x");
+
+        [Component]
+        private static VNode MidWalkHostRender()
+        {
+            var (order, setOrder) = Hooks.UseState(0);
+            s_setMidWalkOrder = setOrder;
+            return V.Div(name: "box", children: order == 0
+                ? new VNode[] { V.Component(MidWalkGuardRender, key: "guard"), V.Component(MidWalkCRender, key: "c") }
+                : new VNode[]
+                {
+                    V.Component(MidWalkCRender, key: "c"),
+                    V.Component(MidWalkXRender, key: "x"),
+                    V.Component(MidWalkGuardRender, key: "guard"),
+                });
+        }
+
+        // GREEN_ON_BASE(characterization): the base's fallback swap passes no slot limit and removes both rows.
+        // What it pins is that the limit the swap takes now is not cut short by a component no walk has placed.
+        [Test]
+        public void Given_AWalkThatCreatedAComponentAheadOfABoundary_When_TheBoundaryCatches_Then_ItsFallbackReplacesBothItsRows()
+        {
+            // Arrange — the walk emits c, creates x, and then reaches the boundary, whose own child throws.
+            using var mounted = V.Mount(_root, V.Component(MidWalkHostRender, key: "host"));
+            s_midWalkThrows = true;
+
+            // Act
+            s_setMidWalkOrder.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert — what the aborted walk places is ErrorBoundaryTests' subject; this pins the boundary's rows.
+            Assert.That(
+                Names(_root.Q(name: "box")).Split(','),
+                Has.Member("g-fallback").And.No.Member("ga").And.No.Member("gb"));
         }
 
         #endregion

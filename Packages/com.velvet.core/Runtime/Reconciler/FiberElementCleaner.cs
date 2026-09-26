@@ -528,7 +528,8 @@ namespace Velvet
 
             // Surviving Portals on the same target whose slot starts after the removed range
             // collapse left by SlotLength so their next patch addresses the right DOM positions.
-            PortalSlotTracker.ShiftSlotStartsAfter(_ctx.PortalState, target, portalInfo.SlotStart, -portalInfo.SlotLength);
+            PortalSlotTracker.ShiftSlotStartsAfter(
+                _ctx.PortalState, target, PortalSlotTracker.ShiftBoundaryOf(portalInfo), -portalInfo.SlotLength);
             FiberCommitWork.ShiftTenantsAfterPortalRange(
                 _ctx.ComponentRegistry, target, element, portalInfo.SlotStart + portalInfo.SlotLength, -portalInfo.SlotLength);
         }

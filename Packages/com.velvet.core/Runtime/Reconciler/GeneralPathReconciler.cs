@@ -68,7 +68,8 @@ namespace Velvet
             public int NewIndex;
             // The component fibers whose expansion this walk completed, each with the NewElements index its
             // rows begin at and how many it emitted. FinalizeGeneralCommit writes them onto the fiber where it
-            // places the rows.
+            // places the rows. RollbackCommitTo leaves the entries of a suspended primary's fibers in place, so
+            // those fibers are written the rows they had before the rollback.
             public List<(ComponentFiber Fiber, int FirstRow, int Rows)> Placements = null!;
         }
 
@@ -392,40 +393,46 @@ namespace Velvet
             return false;
         }
 
+        // One pass buckets the placements by parent, then each parent with two or more is walked once, so the
+        // cost is the placements plus the child chains of those parents.
         private void CommitComponentOrder(List<(ComponentFiber Fiber, int FirstRow, int Rows)> placements)
         {
+            if (placements.Count < 2) return;
             var pool = _ctx.BufferPool;
-            var parents = pool.RentFiberSet();
-            var selected = pool.RentFiberSet();
-            var ordered = pool.RentFiberList();
+            var byParent = pool.RentFiberBuckets();
+            var placed = pool.RentFiberSet();
             var siblings = pool.RentFiberList();
             try
             {
                 foreach (var (fiber, _, _) in placements)
-                    if (!fiber.IsOffscreen && fiber.Parent != null) parents.Add(fiber.Parent);
-                foreach (var parent in parents)
                 {
-                    selected.Clear();
-                    ordered.Clear();
-                    siblings.Clear();
-                    foreach (var (fiber, _, _) in placements)
-                        if (!fiber.IsOffscreen && ReferenceEquals(fiber.Parent, parent) && selected.Add(fiber))
-                            ordered.Add(fiber);
+                    if (fiber.IsOffscreen || fiber.Parent == null || !placed.Add(fiber)) continue;
+                    if (!byParent.TryGetValue(fiber.Parent, out var ordered))
+                    {
+                        ordered = pool.RentFiberList();
+                        byParent[fiber.Parent] = ordered;
+                    }
+                    ordered.Add(fiber);
+                }
+                foreach (var (parent, ordered) in byParent)
+                {
                     if (ordered.Count < 2) continue;
+                    siblings.Clear();
                     for (var sibling = parent.Child; sibling != null; sibling = sibling.Sibling)
                         siblings.Add(sibling);
+                    // A child of parent is in placed exactly when it is in ordered, since each fiber has one parent.
                     var next = 0;
                     for (var i = 0; i < siblings.Count; i++)
-                        if (selected.Contains(siblings[i])) siblings[i] = ordered[next++];
+                        if (placed.Contains(siblings[i])) siblings[i] = ordered[next++];
                     parent.CommitChildOrder(siblings);
                 }
             }
             finally
             {
+                foreach (var ordered in byParent.Values) pool.ReturnFiberList(ordered);
+                pool.ReturnFiberBuckets(byParent);
                 pool.ReturnFiberList(siblings);
-                pool.ReturnFiberList(ordered);
-                pool.ReturnFiberSet(selected);
-                pool.ReturnFiberSet(parents);
+                pool.ReturnFiberSet(placed);
             }
         }
 

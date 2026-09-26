@@ -673,8 +673,8 @@ namespace Velvet
         /// TARGET as its <see cref="MountPoint"/>, so it is a sibling of the elements a portal teardown
         /// removes rather than a descendant of any of them; this is what tells the teardown which of the
         /// several Portals sharing that target the fiber belongs to.
-        /// <see cref="MountSlotStart"/> cannot answer that for a fiber holding no rows at the seam between
-        /// two neighbouring Portals' ranges, where either range could hold it.
+        /// It is stamped rather than read off <see cref="MountSlotStart"/> because a fiber holding no rows can
+        /// start at the seam between two neighbouring Portals' ranges, where either could hold it.
         /// Rewritten whenever a reconcile reaches the fiber rather than at creation only, so it names the
         /// Portal of the last reconcile to reach it; a fiber the teardown must reach that carries none is
         /// reached instead through the parent index (ComponentRegistry.DisposeInlineFibersOwnedByPortal owns

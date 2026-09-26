@@ -110,6 +110,11 @@ namespace Velvet
         public HashSet<ComponentFiber> RentFiberSet() => _fiberSetPool.Rent();
         public void ReturnFiberSet(HashSet<ComponentFiber> set) => _fiberSetPool.Return(set);
 
+        private readonly ClearablePool<Dictionary<ComponentFiber, List<ComponentFiber>>> _fiberBucketsPool = new(d => d.Clear());
+
+        public Dictionary<ComponentFiber, List<ComponentFiber>> RentFiberBuckets() => _fiberBucketsPool.Rent();
+        public void ReturnFiberBuckets(Dictionary<ComponentFiber, List<ComponentFiber>> buckets) => _fiberBucketsPool.Return(buckets);
+
         private readonly ClearablePool<List<(ComponentFiber Fiber, int FirstRow, int Rows)>> _placementListPool = new(l => l.Clear());
 
         public List<(ComponentFiber Fiber, int FirstRow, int Rows)> RentPlacementList() => _placementListPool.Rent();

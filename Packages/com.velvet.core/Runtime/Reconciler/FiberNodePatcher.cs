@@ -1013,7 +1013,8 @@ namespace Velvet
             _ctx.PortalState[placeholder] = prevState with { Target = target, SlotLength = newSlotLength };
 
             var unshifted = delta - ((tenancy?.ShiftedRows ?? 0) - shiftedBefore);
-            PortalSlotTracker.ShiftSlotStartsAfter(_ctx.PortalState, target, prevState.SlotStart, unshifted, placeholder);
+            PortalSlotTracker.ShiftSlotStartsAfter(
+                _ctx.PortalState, target, PortalSlotTracker.ShiftBoundaryOf(prevState), unshifted, placeholder);
             FiberCommitWork.ShiftTenantsAfterPortalRange(
                 _ctx.ComponentRegistry, target, placeholder, prevState.SlotStart + prevState.SlotLength, unshifted);
         }

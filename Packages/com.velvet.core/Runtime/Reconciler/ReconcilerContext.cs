@@ -80,6 +80,13 @@ namespace Velvet
     // Shared helpers for maintaining the multi-Portal slot range invariant.
     internal static class PortalSlotTracker
     {
+        // The boundary a change to range moves the other ranges from. A range that held rows ends where the
+        // ranges behind it begin, so an empty range starting at its first row is ahead of it and stays. An
+        // empty range's order against another starting at the same row is not recorded, so a change to it
+        // moves that other one whichever side it was on.
+        internal static int ShiftBoundaryOf(PortalSlotInfo range)
+            => range.SlotLength > 0 ? range.SlotStart + range.SlotLength : range.SlotStart;
+
         // Shifts PortalSlotInfo.SlotStart by delta for every Portal
         // sharing the same resolved target element whose range starts at or after
         // boundary. excludePlaceholder skips one entry (typically
