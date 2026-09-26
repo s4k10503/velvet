@@ -1,5 +1,7 @@
 using System;
+using System.IO;
 using NUnit.Framework;
+using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
@@ -23,6 +25,9 @@ namespace Velvet.Tests
         // Host 400x300; the four offsets above leave a 340x220 box at (20, 30).
         private static readonly Rect DeclaredAbsoluteBox = new Rect(20f, 30f, 340f, 220f);
 
+        // An application stylesheet written by the one case that needs it, and removed after every case.
+        private const string UserSheetPath = "Assets/VelvetClipPathUserPosition.uss";
+
         private static StateUpdater<int> s_setStep;
         private static Func<int, string> s_classFor;
         private static string s_hostClass;
@@ -36,6 +41,13 @@ namespace Velvet.Tests
             s_setStep = default;
             s_classFor = _ => InFlowBox;
             s_hostClass = "";
+        }
+
+        [TearDown]
+        public override void TearDown()
+        {
+            base.TearDown();
+            AssetDatabase.DeleteAsset(UserSheetPath);
         }
 
         // The card's className is chosen by the current step, so a case seeds s_classFor and advances the step to
@@ -154,6 +166,28 @@ namespace Velvet.Tests
             Assert.That((IsClipWrapped(Named("card")), card), Is.EqualTo((true, new Rect(350f, 0f, 50f, 40f))));
         }
 
+        // GREEN_ON_BASE(characterization): the base already anchors a patch-time wrap's mask at the wrapper origin.
+        // Anchoring it at the old layout position, as `innerAtWrapperOrigin: false` does, reddens this.
+        [Test]
+        public void Given_ACardAwayFromItsParentsOrigin_When_ClipAddedByPatch_Then_TheWrapTimeMaskIgnoresItsOldPosition()
+        {
+            // Arrange: justify-end puts the card 240px down its host; inside the fresh wrapper it sits at the top,
+            // which the next layout pass reports and the wrap cannot yet read.
+            s_hostClass = "justify-end";
+            Mount(s => InFlowBox + (s == 0 ? "" : " " + Triangle));
+            var card = Named("card");
+            var oldY = card.layout.y;
+
+            // Act: the patch alone, before the layout pass that would re-anchor the mask.
+            s_setStep.Invoke(1);
+            _mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            var binding = _mounted.Root.Reconciler.Context.ClipPathBindings[card];
+            Assert.That((oldY, binding.Wrapper.style.backgroundPositionY.value.offset.value),
+                Is.EqualTo((240f, binding.Bounds.y)));
+        }
+
         [Test]
         public void Given_AnAbsoluteElement_When_ClipAddedByPatch_Then_TheMaskIsAnchoredAtTheElementsBox()
         {
@@ -230,8 +264,9 @@ namespace Velvet.Tests
         {
             // Arrange: a stylesheet of the application's own sets the position, which no Velvet utility declares;
             // under items-start the card sits at the host's origin whichever mode its wrapper is in.
-            var sheet = UnityEditor.AssetDatabase.LoadAssetAtPath<StyleSheet>(
-                "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ClipPathWrapperUserPosition.uss");
+            File.WriteAllText(UserSheetPath, ".clip-test-overlay { position: absolute; }\n");
+            AssetDatabase.ImportAsset(UserSheetPath, ImportAssetOptions.ForceSynchronousImport);
+            var sheet = AssetDatabase.LoadAssetAtPath<StyleSheet>(UserSheetPath);
             _window.rootVisualElement.styleSheets.Add(sheet);
             s_hostClass = "items-start";
             Mount(s => "clip-test-overlay left-0 top-0 w-[50px] h-[40px] "
