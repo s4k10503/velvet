@@ -399,11 +399,12 @@ jobs:
         with:
           fetch-depth: 0
 
+      # HEAD^1 rather than the event's base.sha. The checkout is the merge commit, whose first parent is
+      # the base branch it was merged onto; measured on this job, the event's base.sha sat a merged pull
+      # request behind that parent, and the plan then counted that pull request's lines as this one's.
       - id: plan
-        env:
-          BASE: ${{ github.event.pull_request.base.sha }}
         run: |
-          python3 scripts/test_quality/mutation_check.py --base "$BASE" --plan | tee plan.txt
+          python3 scripts/test_quality/mutation_check.py --base HEAD^1 --plan | tee plan.txt
           grep -E '^(mutants|shards)=' plan.txt >> "$GITHUB_OUTPUT"
           { echo '### Mutation campaign plan'; echo '```'; cat plan.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
@@ -438,7 +439,6 @@ jobs:
           UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
           UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
-          BASE: ${{ github.event.pull_request.base.sha }}
           MUTANTS: ${{ needs.mutation-plan.outputs.mutants }}
           SHARDS: ${{ needs.mutation-plan.outputs.shards }}
         # safe.directory names the workspace alone: DocumentationDriftTests arranges checkouts elsewhere
@@ -451,7 +451,7 @@ jobs:
             --env PYTHONDONTWRITEBYTECODE=1 \
             unityci/editor:ubuntu-6000.3.23f1-linux-il2cpp-3 \
             python3 -u scripts/test_quality/ci_mutation_shard.py -- \
-              --base "$BASE" --max "$MUTANTS" \
+              --base HEAD^1 --max "$MUTANTS" \
               --shard "${{ matrix.shard }}/$(echo "$SHARDS" | jq length)" \
               --output Logs/mutation-shard
 
@@ -480,11 +480,10 @@ jobs:
           merge-multiple: true
 
       - env:
-          BASE: ${{ github.event.pull_request.base.sha }}
           MUTANTS: ${{ needs.mutation-plan.outputs.mutants }}
         run: |
           set +e
-          python3 scripts/test_quality/mutation_check.py --base "$BASE" --max "$MUTANTS" \
+          python3 scripts/test_quality/mutation_check.py --base HEAD^1 --max "$MUTANTS" \
             --collect Logs/mutation-shards --output Logs/mutation-verdict | tee verdict.txt
           status=${PIPESTATUS[0]}
           { echo '### Mutation campaign'; echo '```'; cat verdict.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
