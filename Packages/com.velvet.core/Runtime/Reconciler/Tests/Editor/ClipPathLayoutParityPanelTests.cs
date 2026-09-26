@@ -8,9 +8,9 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// CSS <c>clip-path</c> changes painting only, so a clipped element has to sit and size exactly as the same
-    /// element without the clip does. Every case mounts the two side by side in identical hosts and compares the
-    /// clipped element's box, and the box of the sibling after it, with its unclipped twin's. GWT, one assert per
-    /// case.
+    /// element without the clip does. The layout cases mount the two side by side in identical hosts and compare
+    /// the clipped element's box, and the box of the sibling after it, with its unclipped twin's; one case asks
+    /// where a parent's paint payload lands. GWT, one assert per case.
     /// </summary>
     [TestFixture]
     internal sealed class ClipPathLayoutParityPanelTests : PanelTestBase
@@ -133,9 +133,8 @@ namespace Velvet.Tests
         [Test]
         public void Given_ACard_When_AClipIsAddedByPatch_Then_ItSitsWhereItsUnclippedTwinSits()
         {
-            // Arrange: the clip is on the first step only, so the twin never carries it.
+            // Arrange: the clip arrives with step 1, and the twin never carries it.
             s_hostClass = "items-start";
-            s_cardClass = _ => "";
             _mounted = V.Mount(_window.rootVisualElement, V.Component(RenderPatchedClip));
             ForcePanelUpdate(_window.rootVisualElement.panel);
 

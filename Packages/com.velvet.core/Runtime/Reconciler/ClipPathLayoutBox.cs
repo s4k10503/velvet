@@ -9,10 +9,6 @@ namespace Velvet
     // classes and the inline values Velvet writes to place or size the element, the element keeps its paint,
     // and the element fills the wrapper. Declarations are moved rather than resolved values copied, so the wrapper
     // resolves them against the element's real parent in the same style pass the element would have.
-    //
-    // Rejected: keeping the declarations on the element and copying its resolved alignment onto a centring
-    // wrapper. A resolved value is only as current as the last style pass, so the copy could stay stale, and
-    // percentages, auto margins and a slot size a grid or a VirtualList writes onto the wrapper stayed wrong.
     internal static class ClipPathLayoutBox
     {
         private enum Role
