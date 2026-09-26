@@ -359,8 +359,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sharing its first row with another Portal on the target that holds rows, and mounted before it, now
   keeps its place
   when that Portal's own children grow or it unmounts: its first rows landed between the other Portal's
-  rows, or its second row ahead of its first. Two Portals that both held no rows keep the order they are
-  written in when either gains rows. Two components rendering
+  rows, or its second row ahead of its first. Two Portals on one target that both held no rows keep the order they
+  are written in when either gains rows, where both are written in one element tree and neither inside
+  another Portal's children. Two components rendering
   nothing that a keyed reorder swapped keep the swapped order when they grow, where they could render their
   rows in the order they were created.
 

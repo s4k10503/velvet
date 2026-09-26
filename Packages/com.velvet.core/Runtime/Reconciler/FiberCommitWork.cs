@@ -164,14 +164,24 @@ namespace Velvet
         // fiber's own start the answer turns on emptiness. A fiber that held rows starts at its first row, and
         // a tenant starting there either holds that row or holds none and sits before it. One that held none
         // sits before any tenant's first row there; between two that hold none this takes the committed
-        // sibling order.
+        // sibling order, or the order of their Portals where they belong to two.
         private static bool IsPlacedAfter(ComponentFiber tenant, ComponentFiber fiber, bool fiberHeldNoRows)
         {
             if (ReferenceEquals(tenant, fiber)) return false;
             if (tenant.MountSlotStart < fiber.MountSlotStart || HoldsRowsOf(fiber, tenant)) return false;
             if (tenant.MountSlotStart > fiber.MountSlotStart) return true;
             if (!fiberHeldNoRows || HoldsRowsOf(tenant, fiber)) return false;
-            return tenant.MountSlotCount > 0 || FollowsInSiblingChain(tenant, fiber);
+            if (tenant.MountSlotCount > 0) return true;
+            // Two components of different Portals take the order those Portals' ranges take, which
+            // PortalSlotTracker.IsBehind reads off the placeholders: the fiber chain need not agree with it once
+            // the two were placed by different walks.
+            var tenantPortal = OwningPortalOf(tenant, fiber.MountPoint);
+            var fiberPortal = OwningPortalOf(fiber, fiber.MountPoint);
+            if (tenantPortal != null && fiberPortal != null && !ReferenceEquals(tenantPortal, fiberPortal))
+            {
+                return PortalSlotTracker.PrecedesInTree(fiberPortal, tenantPortal);
+            }
+            return FollowsInSiblingChain(tenant, fiber);
         }
 
         private static bool FollowsInSiblingChain(ComponentFiber tenant, ComponentFiber fiber)

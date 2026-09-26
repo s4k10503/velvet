@@ -123,7 +123,7 @@ namespace Velvet
         }
 
         // Document order: an ancestor precedes its descendants, and elements in separate trees are unordered.
-        private static bool PrecedesInTree(VisualElement first, VisualElement second)
+        internal static bool PrecedesInTree(VisualElement first, VisualElement second)
         {
             var a = first;
             var b = second;

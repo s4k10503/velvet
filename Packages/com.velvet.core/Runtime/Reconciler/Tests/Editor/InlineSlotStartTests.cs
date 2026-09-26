@@ -84,6 +84,9 @@ namespace Velvet.Tests
             s_setBehindEmptyRows = null;
             s_setLateRangeOnTarget = null;
             s_setLateRangeRows = null;
+            s_setWrittenAheadShown = null;
+            s_setWrittenAheadRows = null;
+            s_setWrittenBehindRows = null;
             s_setEmptyAheadChildRows = null;
             s_setOwnRowsFromEmpty = null;
             s_setRetargeted = null;
@@ -1713,6 +1716,69 @@ namespace Velvet.Tests
 
             // Act
             s_setEmptyAheadChildRows.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Names(s_portalTarget), Is.EqualTo("a0,b0"));
+        }
+
+        private static Action<int> s_setWrittenAheadShown;
+        private static Action<int> s_setWrittenAheadRows;
+        private static Action<int> s_setWrittenBehindRows;
+
+        [Component]
+        private static VNode WrittenAheadChildRender()
+        {
+            var (rows, setRows) = Hooks.UseState(0);
+            s_setWrittenAheadRows = setRows;
+            return Rows("a", rows);
+        }
+
+        [Component]
+        private static VNode WrittenBehindChildRender()
+        {
+            var (rows, setRows) = Hooks.UseState(0);
+            s_setWrittenBehindRows = setRows;
+            return Rows("b", rows);
+        }
+
+        [Component]
+        private static VNode WrittenAheadPortalRender()
+            => V.Portal(s_portalTarget, children: new VNode[] { V.Component(WrittenAheadChildRender, key: "child") });
+
+        [Component]
+        private static VNode WrittenBehindPortalRender()
+            => V.Portal(s_portalTarget, children: new VNode[] { V.Component(WrittenBehindChildRender, key: "child") });
+
+        // The Portal written ahead appears after the one behind it has mounted, and the one behind it is placed
+        // by the walk of an element of its own, so the fiber chain puts the one behind first.
+        [Component]
+        private static VNode WrittenAheadLaterHostRender()
+        {
+            var (aheadShown, setAheadShown) = Hooks.UseState(0);
+            s_setWrittenAheadShown = setAheadShown;
+            return V.Fragment(children: new VNode[]
+            {
+                aheadShown == 1 ? V.Component(WrittenAheadPortalRender, key: "ahead") : null,
+                V.Div(key: "box", children: new VNode[] { V.Component(WrittenBehindPortalRender, key: "behind") }),
+            });
+        }
+
+        // GREEN_ON_BASE(characterization): the base's growth moves only siblings in the chain and no range.
+        // What it pins is that the growth order and the Portals' written order agree across two walks.
+        [Test]
+        public void Given_AnEmptyPortalWrittenAheadAppearingLater_When_TheOneBehindAndThenItGrow_Then_TheRowsFollowTheWrittenOrder()
+        {
+            // Arrange
+            s_portalTarget = new VisualElement();
+            using var mounted = V.Mount(_root, V.Component(WrittenAheadLaterHostRender, key: "host"));
+            s_setWrittenAheadShown.Invoke(1);
+            mounted.FlushStateForTest();
+            s_setWrittenBehindRows.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Act
+            s_setWrittenAheadRows.Invoke(1);
             mounted.FlushStateForTest();
 
             // Assert
