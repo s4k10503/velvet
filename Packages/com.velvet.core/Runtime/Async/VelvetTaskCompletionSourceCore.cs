@@ -18,6 +18,7 @@ namespace Velvet
         int _completedCount;
         Action<object?>? _continuation;
         object? _continuationState;
+        bool _resumeOnMainThread;
 
         public short Version => _version;
 
@@ -135,6 +136,7 @@ namespace Velvet
             if (previous == null)
             {
                 _continuationState = state;
+                _resumeOnMainThread = VelvetMainThread.IsCurrent;
                 previous = Interlocked.CompareExchange(ref _continuation, continuation, null);
             }
 
@@ -149,13 +151,24 @@ namespace Velvet
             }
         }
 
+        // A continuation that lands between the read and the exchange is what the exchange returns, and
+        // it is run from there: the read alone would leave it registered with nothing left to run it.
         void InvokeContinuation()
         {
-            var continuation = _continuation;
-            if (continuation != null
-                || Interlocked.CompareExchange(ref _continuation, VelvetTaskCompletionSourceCoreShared.Sentinel, null) != null)
+            var continuation = Volatile.Read(ref _continuation)
+                ?? Interlocked.CompareExchange(ref _continuation, VelvetTaskCompletionSourceCoreShared.Sentinel, null);
+            if (continuation == null)
             {
-                continuation?.Invoke(_continuationState);
+                return;
+            }
+
+            if (_resumeOnMainThread && !VelvetMainThread.IsCurrent)
+            {
+                VelvetMainThread.Post(continuation, _continuationState);
+            }
+            else
+            {
+                continuation(_continuationState);
             }
         }
 

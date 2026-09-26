@@ -35,12 +35,21 @@ A BCL `Task` resumes through the synchronization context captured at the `await`
 main thread it comes back on the main thread, and the same await written `ConfigureAwait(false)`
 comes back off it. That fixture pins both of those too.
 
-A continuation that resumed off the main thread must not call back into Velvet. The pools it rents
-task sources and state-machine runners from, and the frame driver's queues, are plain collections
-that nothing synchronizes, and `VelvetTask.Yield()` is not a way back out: scheduling one appends to the same list
-the main-thread drain swaps and clears. Keep off-thread work inside the awaited `Task` and await it
-without `ConfigureAwait(false)`, so the continuation is on the main thread before it reaches any of
-that.
+## Leaving the main thread and coming back
+
+A `VelvetTask` awaited on the main thread resumes there, whichever thread completes it. A completion
+arriving from another thread does not run the continuation on that thread: it hands it to Unity's
+main-thread synchronization context, and it runs the next time Unity executes the work posted there.
+So a route loader that returns after awaiting `ConfigureAwait(false)` still hands its result to the
+router on the main thread. `VelvetTaskMainThreadEditorTests` and `VelvetTaskMainThreadPlayModeTests`
+pin this.
+
+What stays off the main thread is the rest of your own method after such an await. It may await
+other `VelvetTask`s there, but `VelvetTask.Yield()` throws `InvalidOperationException` there, and the
+rest of Velvet — hooks, stores, `V.Mount` — is for the main thread only. Await
+`VelvetTask.SwitchToMainThread()` before reaching any of them: on the main thread it completes at
+once, and elsewhere it resumes the method on the main thread the way a completion from another thread
+does.
 
 ## Awaiting several tasks at once
 
@@ -62,9 +71,6 @@ throws out of the call rather than out of the await. A task that carries a value
 `VelvetTask.FromResult`, `VelvetTask.CompletedTask`, and an `async` method that returned without
 suspending — has no version to consume, so the same one may sit at two argument positions. Consume
 what the combination returns once as well.
-
-The main-thread constraint above covers the combination too: it completes on whichever thread
-completed its last member, so a member that resumed off the main thread publishes from there.
 
 ## Declining a cancellation
 
