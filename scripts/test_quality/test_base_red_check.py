@@ -733,9 +733,13 @@ class NeighbourDuringTheRunTests(unittest.TestCase):
             sys.executable, ".", "EditMode", ["X"], Path("/dev/null"), Path("/dev/null"), 30)
         return tuple(result) if isinstance(result, tuple) else (result,)
 
+    # GREEN_ON_BASE(characterization): the base's reading is right on a quiet machine; the list
+    # stands in so it stays right when another checkout's editor is running tests too.
     def test_Given_ARunThatMetNoNeighbour_When_ItIsRead_Then_ThePeakIsZero(self):
-        # Arrange -- a command that exits at once, so the loop samples and finds only this run.
-        reading = self.reading()
+        # Arrange -- the process list reports this run alone; the machine's own list would count
+        # whatever other editors happen to be up while the suite runs.
+        with mock.patch.object(base_red_check, "unity_busy", lambda: 1):
+            reading = self.reading()
 
         # Act / Assert -- the wall clock rides along, since a peak of zero from a run that never
         # started says nothing.
