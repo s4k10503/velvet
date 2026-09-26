@@ -938,6 +938,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pose can carry `StaggerChildrenSec` and a `When = BeforeChildren` wait is measured from that pose's
   own span. The motion guide states which pose each play reads.
 
+- An `exit:` label naming a pose that applies no class plays a variant exit, as a mount enter and a
+  label change into such a pose already did: the removal takes the resting pose's classes off, on the
+  timing that pose resolves. It played the classic exit instead — on the Motion's own `transition:` and
+  with that transition's own exit classes, the `Fade` preset's where the call site left `transition:`
+  out — so a variants map whose exit entry is `""` or `null` now removes the child differently, and a
+  timing a classless exit pose declared, which was discarded, now plays. An `exit:` label the map has
+  no pose for still plays the classic exit.
+
 - `V.Outlet()` emits no element of its own: the matched route's own output takes the Outlet's position
   in the parent's child list, and an Outlet whose location matches no route at its depth takes no
   position there at all. It used to emit a layout-passthrough container — absolutely positioned and

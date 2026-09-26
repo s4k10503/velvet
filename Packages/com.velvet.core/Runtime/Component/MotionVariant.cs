@@ -11,12 +11,11 @@ namespace Velvet
     {
         /// <summary>
         /// The utility-class string applied while this variant is the active pose. Merged on top of the
-        /// Motion's own <c>className</c>; null or empty applies nothing. A variant enter and a variant exit
-        /// each require a class on the NON-resting pose — <see cref="MotionNode.Initial"/>'s and
-        /// <see cref="MotionNode.Exit"/>'s respectively, against the resting <see cref="MotionNode.Animate"/>
-        /// — so an <see cref="MotionNode.Initial"/> or <see cref="MotionNode.Exit"/> pose leaving this empty
-        /// is no variant swap at all: the mount enter is skipped and the element rests at
-        /// <see cref="MotionNode.Animate"/>'s pose from the start.
+        /// Motion's own <c>className</c>; null or empty applies nothing. A variant enter requires a class on
+        /// the <see cref="MotionNode.Initial"/> pose it starts from, so an <see cref="MotionNode.Initial"/>
+        /// pose leaving this empty is no variant enter at all: the mount enter is skipped and the element
+        /// rests at <see cref="MotionNode.Animate"/>'s pose from the start. An <see cref="MotionNode.Exit"/>
+        /// pose leaving it empty is still a variant exit, which takes the resting pose's classes off.
         /// </summary>
         public string? ClassName { get; }
 
@@ -24,9 +23,7 @@ namespace Velvet
         /// The transition a swap INTO this variant plays on: a mount enter whose
         /// <see cref="MotionNode.Animate"/> names it, a runtime label change to it, and a removal whose
         /// <see cref="MotionNode.Exit"/> names it. The destination pose supplies it whether or not it applies
-        /// a class — except at a removal, where the destination is also the non-resting pose
-        /// <see cref="ClassName"/> requires a class on, so an exit pose leaving that empty is no variant exit
-        /// and the classic exit plays on the Motion's own transition instead.
+        /// a class.
         /// Null falls back to the enclosing <c>V.Motion</c>'s own
         /// <c>transition:</c> — itself <see cref="StyleTransition"/>'s <c>Fade</c> preset when the call site
         /// left that out. Same delegate-outward shape as <see cref="AnimationSequenceStep.Transition"/>,
