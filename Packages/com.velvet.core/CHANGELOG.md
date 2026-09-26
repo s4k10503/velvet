@@ -243,17 +243,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   not cleaned up even when the list was disposed, and outside any list it was set up once; in each it is
   now never set up.
 
-- A render abandoned partway releases what it had built. Where the keyed diff matches rows by key rather
-  than by their place at either end of the list, it builds every new row before placing any, and it
-  released none of them when a later row's creation threw, when an error boundary caught a failure
-  inside one of those rows, or when a new render discarded a time-sliced one parked partway. The walk
-  that expands components, fragments and `null`s in place released what it had built on a throw, but
-  not when a boundary's catch stopped the render. Each left a `refCallback:` set up once on an element
-  no tree holds, and where a row's creation threw with no boundary above it, a component mounted inside
-  an earlier new row ran its layout effect on the next render. Where an element's creation threw, a
-  `V.Portal` among its children still mounted its children into the target, and a `z-*` absolute child
-  still had its element placed into a layer container after that element had gone back to the pool —
-  measured on a `V.Button`, the pool's next button came out with a parent.
+- An element that an abandoned render built and had not placed is released. Where the keyed diff
+  matches rows by key rather than by their place at either end of the list, it builds every new row
+  before placing any, and it released none of them when a later row's creation threw, when an error
+  boundary caught a failure inside one of those rows, or when a new render discarded a time-sliced one
+  parked partway. The walk that expands components, fragments and `null`s in place released what it had
+  built on a throw, but not when a boundary's catch stopped the render. And where a list appends rows —
+  unkeyed, or keyed in a time-sliced pass — or rebuilds a range it found shorter than its last render,
+  the row whose creation raised the abort was dropped unplaced without being released. Each left a
+  `refCallback:` set up once on an element no tree holds, and where a row's creation threw with no
+  boundary above it, a component mounted inside an earlier new row ran its layout effect on the next
+  render. Where an element's creation threw, a `V.Portal` among its children still mounted its children
+  into the target, and a `z-*` absolute child still had its element placed into a layer container after
+  that element had gone back to the pool — measured on a `V.Button`, the pool's next button came out
+  with a parent.
 
 - An error boundary's catch no longer disposes a component that the render it stopped had not reached
   yet. Such a component was taken as removed: its effect cleanups ran and it was disposed while its

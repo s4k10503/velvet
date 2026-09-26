@@ -22,7 +22,9 @@ namespace Velvet.Tests
     /// pass discarded it. A component mounted inside such a leaf by a synchronous pass never runs its layout
     /// effect.</item>
     /// <item>Where a boundary's catch aborts the pass, the row the keyed diff was building and the leaf the
-    /// general walk had built both get no ref.</item>
+    /// general walk had built both get no ref, and so does a row whose creation raised the abort in an
+    /// unkeyed append, a time-sliced keyed append or the rebuild of a range found shorter than the old side.
+    /// A row the keyed diff built and placed in a pass that completed does get its ref.</item>
     /// <item>A Portal or a z-layer child inside an element whose creation failed mounts nothing when the
     /// deferred mounts drain, and the pooled element of the z-layer child stays detached.</item>
     /// </list>
@@ -150,6 +152,27 @@ namespace Velvet.Tests
                 Is.EqualTo("[constructor refused] thrown, " + expectedPark + ", ref 0 set up"));
         }
 
+        // GREEN_ON_BASE(characterization): the merge base places a row its keyed Pass 2 built and sets its ref up.
+        // Releasing a built row that the reorder has placed is what drops that setup.
+        [Test]
+        public void Given_AKeyedDiffThatBuildsALeaf_When_ThePassCompletes_Then_ThatLeafsRefIsSetUp()
+        {
+            // Arrange — the keyed Pass 2 of the case above, with nothing refusing.
+            var oldTree = new VNode[] { V.Label(key: "old", text: "old"), V.Label(key: "tail", text: "tail") };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
+            var nextTree = new VNode[]
+            {
+                V.Label(key: "new", text: "new", refCallback: CountRef),
+                V.Label(key: "other", text: "other"),
+            };
+
+            // Act
+            Reconciler.Reconcile(Root, oldTree, nextTree);
+
+            // Assert
+            Assert.That("rows " + Root.childCount + ", ref " + _refSetUps + " set up", Is.EqualTo("rows 2, ref 1 set up"));
+        }
+
         [Test]
         public void Given_AParkedKeyedPassThatBuiltALeaf_When_ANewPassDiscardsIt_Then_ThatLeafGetsNoRef()
         {
@@ -252,7 +275,8 @@ namespace Velvet.Tests
 
         // The row that raises the abort carries the ref, and reaches the keyed Pass 2 by each of the three
         // branches that build an element there: a key the old side never held, a key whose old element is of
-        // another type, and a key a new sibling ahead of it already claimed.
+        // another type, and a key a new sibling ahead of it already claimed. It is the last row each time,
+        // so no later row's own check stops the pass in its place.
         private static VNode[] KeyedAbortRows(bool next)
         {
             var aborting = V.Div(key: "d", refCallback: s_rowRef,
@@ -260,7 +284,7 @@ namespace Velvet.Tests
             return s_keyedAbortShape switch
             {
                 0 => next
-                    ? new VNode[] { aborting, V.Label(key: "z", text: "z") }
+                    ? new VNode[] { V.Label(key: "z", text: "z"), aborting }
                     : new VNode[] { V.Label(key: "x", text: "x"), V.Label(key: "y", text: "y") },
                 1 => next
                     ? new VNode[] { V.Label(key: "w", text: "w"), aborting }
@@ -307,6 +331,102 @@ namespace Velvet.Tests
                 (root.FindLabelByText("fallback") != null ? "fell back" : "never fell back")
                     + ", ref " + _refSetUps + " set up",
                 Is.EqualTo("fell back, ref 0 set up"));
+        }
+
+        private static Action<int> s_appendSetTick;
+
+        [Component(Compiler = false)]
+        private static VNode AppendHostRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_appendSetTick = setTick;
+            var kept = V.Label(text: "kept");
+            return V.Div(children: tick == 0
+                ? new VNode[] { kept }
+                : new VNode[]
+                {
+                    kept,
+                    V.Div(refCallback: s_rowRef, children: new VNode[] { V.Component(RefusingRowRender, key: "refusing") }),
+                });
+        }
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode AppendBoundaryRender()
+        {
+            Hooks.UseFallback(_ => V.Label(text: "fallback"));
+            return V.Component(AppendHostRender, key: "host");
+        }
+
+        [Test]
+        public void Given_AnUnkeyedRowAppendedWhoseChildRenderFails_When_ABoundaryAbortsThePass_Then_TheRowGetsNoRef()
+        {
+            // Arrange — unkeyed host leaves take the indexed diff, whose append builds each new row and inserts
+            // it before building the next.
+            s_rowRenderRefused = true;
+            s_rowRef = CountRef;
+            var root = new VisualElement();
+            using var mounted = V.Mount(root, V.Component(AppendBoundaryRender, key: "boundary"));
+
+            // Act
+            s_appendSetTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert — the fallback term for the reason the keyed case above gives.
+            Assert.That(
+                (root.FindLabelByText("fallback") != null ? "fell back" : "never fell back")
+                    + ", ref " + _refSetUps + " set up",
+                Is.EqualTo("fell back, ref 0 set up"));
+        }
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode InnerBoundaryRender()
+        {
+            Hooks.UseFallback(_ => V.Label(text: "inner fallback"));
+            return V.Component(RefusingRowRender, key: "refusing");
+        }
+
+        // A row holding its own boundary, so a pass with no component above it can still be aborted.
+        private static VNode RowAbortedFromInside(string key)
+            => V.Div(key: key, refCallback: s_rowRef,
+                children: new VNode[] { V.Component(InnerBoundaryRender, key: "inner") });
+
+        [Test]
+        public void Given_ATimeSlicedKeyedTailAddWhoseRowAbortsFromInside_When_ItRuns_Then_TheRowGetsNoRef()
+        {
+            // Arrange — every old key matches the new side's head, so the time-sliced machine appends the rest.
+            s_rowRenderRefused = true;
+            s_rowRef = CountRef;
+            var oldTree = new VNode[] { V.Label(key: "x", text: "x") };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
+            var nextTree = new VNode[] { V.Label(key: "x", text: "x"), RowAbortedFromInside("d") };
+
+            // Act
+            Reconciler.Reconcile(Root, oldTree, nextTree, frameBudgetMs: double.Epsilon);
+            while (Reconciler.HasPendingWork) Reconciler.ContinueReconcile(double.Epsilon);
+
+            // Assert — the row count says the row was built and never placed.
+            Assert.That("rows " + Root.childCount + ", ref " + _refSetUps + " set up",
+                Is.EqualTo("rows 1, ref 0 set up"));
+        }
+
+        [Test]
+        public void Given_ADesyncedKeyedRangeWhoseRebuiltRowAbortsFromInside_When_ItRebuilds_Then_TheRowGetsNoRef()
+        {
+            // Arrange — a row taken out of the parent behind the reconciler's back leaves the live range
+            // shorter than the old side, which is what sends the keyed diff to rebuild the range.
+            s_rowRenderRefused = true;
+            s_rowRef = CountRef;
+            var oldTree = new VNode[] { V.Label(key: "x", text: "x"), V.Label(key: "y", text: "y") };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
+            Root.RemoveAt(1);
+            var nextTree = new VNode[] { V.Label(key: "x", text: "x"), RowAbortedFromInside("d") };
+
+            // Act
+            Reconciler.Reconcile(Root, oldTree, nextTree);
+
+            // Assert
+            Assert.That("rows " + Root.childCount + ", ref " + _refSetUps + " set up",
+                Is.EqualTo("rows 1, ref 0 set up"));
         }
 
         private static bool s_wrapAbortedLeaf;

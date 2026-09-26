@@ -26,8 +26,14 @@ namespace Velvet.Tests
     /// <item>Where the pass that catches was itself re-placing the boundary, the rows rewritten are the
     /// ones the container is still holding rather than the ones that pass was moving them to; where such
     /// a pass has already committed, they are the rows it placed.</item>
-    /// <item>A catch that aborts its parent's render leaves a sibling that render never reached mounted, with
-    /// its state and its effect.</item>
+    /// <item>A catch that aborts its parent's render leaves a component that render never reached mounted,
+    /// with its state and its effect: a sibling behind the boundary, one inside a child that re-rendered in
+    /// that render, and one the discarded render itself dropped.</item>
+    /// <item>A component the aborted render did reach and drop is cleaned up, whether a child that
+    /// re-rendered dropped it, with its own children, or an element that child owns did. The one a child
+    /// dropped comes back as a new instance when rendered again, and so does one whose own cleanup threw into
+    /// the boundary that caught it.</item>
+    /// <item>A catch leaves no fiber on the reconciler's fiber stack once the pass ends.</item>
     /// </list>
     /// </summary>
     /// <remarks>
@@ -801,6 +807,10 @@ namespace Velvet.Tests
             s_unreachedSetHostTick = null;
             s_unreachedSetCount = null;
             s_unreachedCleanups = 0;
+            s_droppedCleanups = 0;
+            s_droppedSetValue = null;
+            s_throwingCleanupRuns = 0;
+            s_throwingSetValue = null;
         }
 
         [Test]
@@ -829,6 +839,24 @@ namespace Velvet.Tests
                 Is.EqualTo("fell back, cleanups 0, thrower,count:1"));
         }
 
+        [Test]
+        public void Given_ABoundaryCatchingAChildsRender_When_ThePassEnds_Then_NoFiberIsLeftOnTheStack()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(UnreachedHostRender, key: "host"));
+            s_unreachedShouldThrow = true;
+
+            // Act
+            s_unreachedSetHostTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert — the fallback term says the catch that disposes the thrower mid-render happened.
+            Assert.That(
+                (_root.FindLabelByText("unreached-fallback") != null ? "fell back" : "never fell back")
+                    + ", stack depth " + mounted.Root.Reconciler.Context.FiberStack.Depth,
+                Is.EqualTo("fell back, stack depth 0"));
+        }
+
         [Component(Compiler = false)]
         private static VNode UnreachedThrowerRender()
         {
@@ -850,6 +878,263 @@ namespace Velvet.Tests
             s_unreachedSetCount = setCount;
             Hooks.UseEffect(() => () => s_unreachedCleanups++, Array.Empty<object>());
             return V.Label(text: "count:" + count);
+        }
+
+        private static int s_droppedCleanups;
+        private static Action<int> s_droppedSetValue;
+
+        // GREEN_ON_BASE(characterization): the merge base sweeps every orphan of an aborted walk, this one included.
+        // Keeping every orphan such a walk leaves is what hands this instance back with its state.
+        [Test]
+        public void Given_AChildThatDropsItsOwnChildAheadOfACatch_When_TheChildRendersItAgain_Then_ItMountsAfresh()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(DroppingHostRender, key: "host"));
+            mounted.FlushEffectsForTest();
+            s_droppedSetValue.Invoke(5);
+            mounted.FlushStateForTest();
+            s_unreachedShouldThrow = true;
+            s_unreachedSetHostTick.Invoke(1);
+            mounted.FlushStateForTest();
+            var fellBack = _root.FindLabelByText("unreached-fallback") != null;
+            var cleanupsAfterAbort = s_droppedCleanups;
+            s_unreachedShouldThrow = false;
+
+            // Act
+            s_unreachedSetHostTick.Invoke(0);
+            mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
+
+            // Assert — the fallback term says the boundary caught, which is what raises the abort; the value
+            // says which instance came back: a new one starts at 0, the one the abort left registered holds 5.
+            // The component behind the boundary makes the walk skip a node, and the great-grandchild is the
+            // dropped child's own child, so both cleanups count. Only the grandchild's label is read: the
+            // dropped instance's elements stay behind after the abort, which the other labels show.
+            Assert.That(
+                (fellBack ? "fell back" : "never fell back") + ", cleanups " + cleanupsAfterAbort + ", "
+                    + string.Join(",", _root.Query<Label>().ToList().Select(label => label.text)
+                        .Where(text => text.StartsWith("grandchild"))),
+                Is.EqualTo("fell back, cleanups 2, grandchild:0"));
+        }
+
+        [Test]
+        public void Given_ASiblingBehindACatchInsideAChildThatReRendered_When_TheCatchAbortsTheRender_Then_TheSiblingKeepsItsStateAndEffect()
+        {
+            // Arrange — the same sibling as the case above it, two components further in: the child holding the
+            // boundary and the sibling, and the one above it, both render in the stopped pass.
+            using var mounted = V.Mount(_root, V.Component(NestingHostRender, key: "host"));
+            mounted.FlushEffectsForTest();
+            s_unreachedSetCount.Invoke(1);
+            mounted.FlushStateForTest();
+            s_unreachedShouldThrow = true;
+            s_unreachedSetHostTick.Invoke(1);
+            mounted.FlushStateForTest();
+            var fellBack = _root.FindLabelByText("unreached-fallback") != null;
+            var cleanupsAfterAbort = s_unreachedCleanups;
+            s_unreachedShouldThrow = false;
+
+            // Act
+            s_unreachedSetHostTick.Invoke(2);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(
+                (fellBack ? "fell back" : "never fell back") + ", cleanups " + cleanupsAfterAbort + ", "
+                    + string.Join(",", _root.Query<Label>().ToList().Select(label => label.text)),
+                Is.EqualTo("fell back, cleanups 0, thrower,count:1"));
+        }
+
+        // GREEN_ON_BASE(characterization): the merge base sweeps every orphan of an aborted walk, this one included.
+        // Keeping the orphans whose parent owns the stopped walk is what leaves this one's cleanup unrun.
+        [Test]
+        public void Given_AChildWhoseOwnElementDropsAComponentBehindACatch_When_TheCatchAbortsTheRender_Then_TheDroppedComponentIsCleanedUp()
+        {
+            // Arrange — the boundary and the dropped component sit in an element the child renders, so the
+            // walk that stops is that element's, and the child that owns it re-rendered in the enclosing one.
+            using var mounted = V.Mount(_root, V.Component(WrappingHostRender, key: "host"));
+            mounted.FlushEffectsForTest();
+            s_unreachedShouldThrow = true;
+
+            // Act
+            s_unreachedSetHostTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(
+                (_root.FindLabelByText("unreached-fallback") != null ? "fell back" : "never fell back")
+                    + ", cleanups " + s_droppedCleanups,
+                Is.EqualTo("fell back, cleanups 2"));
+        }
+
+        [Component(Compiler = false)]
+        private static VNode WrappingChildRender(int tick)
+            => V.Div(children: new VNode[]
+            {
+                V.Component(UnreachedBoundaryRender, key: "boundary"),
+                tick == 0 ? V.Component(DroppedGrandchildRender, key: "grandchild") : null,
+            });
+
+        [Component(Compiler = false)]
+        private static VNode WrappingHostRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_unreachedSetHostTick = setTick;
+            return V.Div(children: new VNode[] { V.Component(WrappingChildRender, tick, key: "child") });
+        }
+
+        [Component(Compiler = false)]
+        private static VNode DroppedGrandchildRender()
+        {
+            var (value, setValue) = Hooks.UseState(0);
+            s_droppedSetValue = setValue;
+            Hooks.UseEffect(() => () => s_droppedCleanups++, Array.Empty<object>());
+            return V.Fragment(new VNode[]
+            {
+                V.Label(text: "grandchild:" + value),
+                V.Component(DroppedGreatGrandchildRender, key: "great"),
+            });
+        }
+
+        [Test]
+        public void Given_AParentWhoseAbortedRenderDropsAChild_When_ItRendersTheChildAgain_Then_TheChildKeptItsState()
+        {
+            // Arrange — the parent is the render the abort discards, and the child it drops comes ahead of the
+            // boundary, so the stopped walk never met a node for it.
+            using var mounted = V.Mount(_root, V.Component(DiscardedDropHostRender, key: "host"));
+            mounted.FlushEffectsForTest();
+            s_unreachedSetCount.Invoke(1);
+            mounted.FlushStateForTest();
+            s_unreachedShouldThrow = true;
+            s_unreachedSetHostTick.Invoke(1);
+            mounted.FlushStateForTest();
+            var fellBack = _root.FindLabelByText("unreached-fallback") != null;
+            var cleanupsAfterAbort = s_unreachedCleanups;
+            s_unreachedShouldThrow = false;
+
+            // Act
+            s_unreachedSetHostTick.Invoke(0);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(
+                (fellBack ? "fell back" : "never fell back") + ", cleanups " + cleanupsAfterAbort + ", "
+                    + string.Join(",", _root.Query<Label>().ToList().Select(label => label.text)),
+                Is.EqualTo("fell back, cleanups 0, count:1,thrower"));
+        }
+
+        [Component(Compiler = false)]
+        private static VNode DiscardedDropHostRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_unreachedSetHostTick = setTick;
+            return V.Div(children: new VNode[]
+            {
+                tick == 0 ? V.Component(UnreachedCounterRender, key: "counter") : null,
+                V.Component(UnreachedBoundaryRender, key: "boundary"),
+            });
+        }
+
+        [Component(Compiler = false)]
+        private static VNode DroppedGreatGrandchildRender()
+        {
+            Hooks.UseEffect(() => () => s_droppedCleanups++, Array.Empty<object>());
+            return V.Label(text: "great");
+        }
+
+        [Component(Compiler = false)]
+        private static VNode DroppingChildRender(int tick)
+            => tick == 0 ? V.Component(DroppedGrandchildRender, key: "grandchild") : V.Label(text: "no-grandchild");
+
+        [Component(Compiler = false)]
+        private static VNode DroppingHostRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_unreachedSetHostTick = setTick;
+            return V.Div(children: new VNode[]
+            {
+                V.Component(DroppingChildRender, tick, key: "child"),
+                V.Component(UnreachedBoundaryRender, key: "boundary"),
+                V.Component(UnreachedCounterRender, key: "counter"),
+            });
+        }
+
+        [Component(Compiler = false)]
+        private static VNode NestingChildRender(int tick)
+            => V.Fragment(new VNode[]
+            {
+                V.Component(UnreachedBoundaryRender, key: "boundary"),
+                V.Component(UnreachedCounterRender, key: "counter"),
+            });
+
+        [Component(Compiler = false)]
+        private static VNode NestingOuterRender(int tick) => V.Component(NestingChildRender, tick, key: "child");
+
+        [Component(Compiler = false)]
+        private static VNode NestingHostRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_unreachedSetHostTick = setTick;
+            return V.Div(children: new VNode[] { V.Component(NestingOuterRender, tick, key: "outer") });
+        }
+
+        private static int s_throwingCleanupRuns;
+        private static Action<int> s_throwingSetValue;
+
+        // GREEN_ON_BASE(characterization): the merge base already disposes an orphan whose cleanup raised the abort.
+        // That abort comes after a walk that reached every fiber, so nothing is kept back from the sweep, and a
+        // later render mounting the component at the same key gets a new instance rather than the old one.
+        [Test]
+        public void Given_AnOrphanWhoseCleanupThrowsIntoABoundary_When_TheRenderDropsIt_Then_ItIsDisposed()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(CleanupThrowHostRender, key: "host"));
+            mounted.FlushEffectsForTest();
+            s_throwingSetValue.Invoke(5);
+            mounted.FlushStateForTest();
+            s_unreachedSetHostTick.Invoke(1);
+            mounted.FlushStateForTest();
+            var fellBack = _root.FindLabelByText("cleanup-fallback") != null;
+
+            // Act
+            s_unreachedSetHostTick.Invoke(2);
+            mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That(
+                (fellBack ? "fell back" : "never fell back") + ", cleanup ran " + s_throwingCleanupRuns + ", "
+                    + string.Join(",", _root.Query<Label>().ToList().Select(label => label.text)),
+                Is.EqualTo("fell back, cleanup ran 1, throwing:0"));
+        }
+
+        [Component(Compiler = false)]
+        private static VNode ThrowingCleanupRender()
+        {
+            var (value, setValue) = Hooks.UseState(0);
+            s_throwingSetValue = setValue;
+            Hooks.UseEffect(() => () =>
+            {
+                s_throwingCleanupRuns++;
+                throw new InvalidOperationException("Cleanup throw");
+            }, Array.Empty<object>());
+            return V.Label(text: "throwing:" + value);
+        }
+
+        // The boundary is the orphan's own parent, so the fallback it shows replaces a tree that no longer
+        // holds the orphan, and only the sweep of the walk that dropped it can dispose it.
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode CleanupBoundaryRender(int tick)
+        {
+            Hooks.UseFallback(_ => V.Label(text: "cleanup-fallback"));
+            return tick == 1 ? V.Label(text: "dropped") : V.Component(ThrowingCleanupRender, key: "throwing");
+        }
+
+        [Component(Compiler = false)]
+        private static VNode CleanupThrowHostRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_unreachedSetHostTick = setTick;
+            return V.Div(children: new VNode[] { V.Component(CleanupBoundaryRender, tick, key: "boundary") });
         }
 
         [Component(Compiler = false)]

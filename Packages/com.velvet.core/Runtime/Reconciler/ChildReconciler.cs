@@ -693,6 +693,7 @@ namespace Velvet
             for (var i = 0; i < newNodes.Length; i++)
             {
                 var element = _factory.CreateElement(newNodes[i]);
+                if (_ctx.IsAborted) ReleaseUnplacedElement(element);
                 if (_ctx.IsAborted) return true;
                 parent.Insert(LogicalChildSlots.ToPhysical(parent, slotStart + i), element);
             }
@@ -921,6 +922,7 @@ namespace Velvet
                 if (_ctx.IsAborted) return true;
 
                 var newElement = _factory.CreateElement(newNodes[i]);
+                if (_ctx.IsAborted) ReleaseUnplacedElement(newElement);
                 if (_ctx.IsAborted) return true;
                 // Insert at the absolute slot to avoid colliding with siblings outside this fiber's
                 // range when slotStart > 0. When the range covers the entire children list, this is
@@ -1385,6 +1387,7 @@ namespace Velvet
                 if (AbortIfCanceled(state)) return true;
 
                 var newElement = _factory.CreateElement(newNodes[i]);
+                if (_ctx.IsAborted) ReleaseUnplacedElement(newElement);
                 if (AbortIfCanceled(state)) return true;
                 parent.Insert(LogicalChildSlots.ToPhysical(parent, slotStart + i), newElement);
 
@@ -1593,10 +1596,15 @@ namespace Velvet
         {
             foreach (var (element, isExisting) in elements)
             {
-                if (isExisting || element == null || element.parent != null) continue;
-                _ctx.ComponentRegistry.DisposeFibersUnder(element);
-                _cleaner.ReturnRolledBackOrphan(element);
+                if (isExisting || element!.parent != null) continue;
+                ReleaseUnplacedElement(element);
             }
+        }
+
+        private void ReleaseUnplacedElement(VisualElement element)
+        {
+            _ctx.ComponentRegistry.DisposeFibersUnder(element);
+            _cleaner.ReturnRolledBackOrphan(element);
         }
 
         private void ReleaseKeyedBuffers(KeyedReconcileState state)
@@ -1605,12 +1613,8 @@ namespace Velvet
             if (state.OldKeyMap != null) { pool.Return(state.OldKeyMap); state.OldKeyMap = null; }
             if (state.UsedKeys != null) { pool.ReturnKeySet(state.UsedKeys); state.UsedKeys = null; }
             if (state.ReplacedKeys != null) { pool.ReturnReplacedKeySet(state.ReplacedKeys); state.ReplacedKeys = null; }
-            if (state.NewElements != null)
-            {
-                ReleaseUnplacedElements(state.NewElements);
-                pool.Return(state.NewElements);
-                state.NewElements = null;
-            }
+            if (state.NewElements != null) ReleaseUnplacedElements(state.NewElements);
+            if (state.NewElements != null) { pool.Return(state.NewElements); state.NewElements = null; }
             if (state.OrphanedOldIndices != null) { pool.ReturnOrphanedIndexSet(state.OrphanedOldIndices); state.OrphanedOldIndices = null; }
             if (state.LisIndices != null) { pool.ReturnIntSet(state.LisIndices); state.LisIndices = null; }
         }
@@ -1710,10 +1714,11 @@ namespace Velvet
                         $"Duplicate key detected among new siblings: {key}. " +
                         "The repeated sibling mounts a fresh element; give each sibling a unique key.");
                     var duplicateElement = _factory.CreateElement(newNode);
+                    newElements.Add((duplicateElement, false));
+                    if (_ctx.IsAborted) return true;
                     UnityEngine.Debug.Assert(duplicateElement.parent == null,
                         "[ChildReconciler] _factory.CreateElement must return an orphaned VisualElement (no parent).");
-                    newElements.Add((duplicateElement, false));
-                    return _ctx.IsAborted;
+                    return false;
                 }
                 AssertDomIndexInvariant(slotStart, old.index, parent);
                 var existingDomElement = parent.ElementAt(LogicalChildSlots.ToPhysical(parent, slotStart + old.index));
@@ -1737,19 +1742,19 @@ namespace Velvet
                 {
                     tables.ReplacedKeys.Add(key);
                     var newElement = _factory.CreateElement(newNode);
-                    UnityEngine.Debug.Assert(newElement.parent == null,
-                        "[ChildReconciler] _factory.CreateElement must return an orphaned VisualElement (no parent).");
                     newElements.Add((newElement, false));
                     if (_ctx.IsAborted) return true;
+                    UnityEngine.Debug.Assert(newElement.parent == null,
+                        "[ChildReconciler] _factory.CreateElement must return an orphaned VisualElement (no parent).");
                 }
             }
             else
             {
                 var newElement = _factory.CreateElement(newNode);
-                UnityEngine.Debug.Assert(newElement.parent == null,
-                    "[ChildReconciler] _factory.CreateElement must return an orphaned VisualElement (no parent).");
                 newElements.Add((newElement, false));
                 if (_ctx.IsAborted) return true;
+                UnityEngine.Debug.Assert(newElement.parent == null,
+                    "[ChildReconciler] _factory.CreateElement must return an orphaned VisualElement (no parent).");
             }
 
             return false;
