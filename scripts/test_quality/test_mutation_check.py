@@ -3723,23 +3723,18 @@ class TwoPassCampaignTests(unittest.TestCase):
         self.assertEqual((sorted(halves[0] + halves[1]) == sorted(whole),
                           len(halves[0]) == len(halves[1]) > 0), (True, True))
 
-    def test_Given_AnEditModeSurvivorAnsweredForAndNoPlayModeRecord_When_Collected_Then_TheRunFails(self):
-        # Arrange — both survivors carry a declaration, so what fails the run is the PlayMode pass that
-        # recorded nothing, not the survivors.
-        campaign = TwoPlatformCampaign(TwoPlatformCampaign.BODY
-                                       .replace("        internal static bool Other",
-                                                "        // MUTANT_SURVIVES(equivalent): no caller reaches the bound here.\n"
-                                                "        internal static bool Other")
-                                       .replace("        internal static bool Fourth",
-                                                "        // MUTANT_SURVIVES(equivalent): no caller reaches the bound here.\n"
-                                                "        internal static bool Fourth"))
+    def test_Given_EditModeSurvivorsNoPlayModeShardRecorded_When_Collected_Then_TheyAreUnmeasuredAndTheRunFails(self):
+        # Arrange — no declaration above either survivor, so nothing but the missing PlayMode record
+        # can fail the run.
+        campaign = TwoPlatformCampaign()
         campaign.edit_pass()
 
         # Act
         code = campaign.collect()
 
         # Assert
-        self.assertEqual(code, 1)
+        self.assertEqual((code, re.findall(r"^killed: .*$", campaign.printed, re.MULTILINE)),
+                         (1, ["killed: 2, {}: 2".format(mutation_check.UNRECORDED)]))
 
     def test_Given_EditModeSurvivors_When_ThePlayModePassIsPlanned_Then_ItCountsWhatThePassMeasures(self):
         # Arrange — held against the pass rather than against a number, so which mutants the pass
@@ -3769,6 +3764,45 @@ class TwoPassCampaignTests(unittest.TestCase):
 
         # Assert
         self.assertEqual((code, "shards=" in campaign.printed), (mutation_check.CEILING_REFUSAL, False))
+
+    def test_Given_SurvivorsWithinThePlayModeCeiling_When_Planned_Then_TheMutantsEditModeKilledDoNotCount(self):
+        # Arrange — four mutants, two of them survivors, against a PlayMode ceiling of two.
+        campaign = TwoPlatformCampaign()
+        campaign.edit_pass()
+
+        # Act
+        with mock.patch.object(mutation_check, "MAX_SHARDS", 1), \
+                mock.patch.dict(mutation_check.SHARD_CEILING, {"EditMode": 4, "PlayMode": 2}):
+            code = campaign.play_pass("--plan")
+
+        # Assert
+        self.assertEqual((code, re.findall(r"^shards=.*$", campaign.printed, re.MULTILINE)),
+                         (0, ["shards=[0]"]))
+
+    def test_Given_ThePlayModeShardSize_When_ThePlayModePassIsPlanned_Then_ItSizesTheShards(self):
+        # Arrange — two survivors, one to a PlayMode shard where an EditMode shard would take both.
+        campaign = TwoPlatformCampaign()
+        campaign.edit_pass()
+
+        # Act
+        with mock.patch.dict(mutation_check.SHARD_SIZE, {"EditMode": 3, "PlayMode": 1}):
+            campaign.play_pass("--plan")
+
+        # Assert
+        self.assertEqual(re.findall(r"^shards=.*$", campaign.printed, re.MULTILINE), ["shards=[0, 1]"])
+
+    def test_Given_SurvivorsOfTheDirectoryTheRunCollects_When_Run_Then_ItIsRefused(self):
+        # Arrange
+        campaign = TwoPlatformCampaign()
+        campaign.edit_pass()
+
+        # Act
+        refused = io.StringIO()
+        with contextlib.redirect_stderr(refused):
+            code = campaign.play_pass("--collect", str(campaign.project / "edit"))
+
+        # Assert
+        self.assertEqual((code, "keep their records apart" in refused.getvalue()), (2, True))
 
     def test_Given_SurvivorsOfTheDirectoryTheRunWrites_When_Run_Then_ItIsRefused(self):
         # Arrange — one record file per index, so the second pass would write over the first's.

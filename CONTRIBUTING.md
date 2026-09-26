@@ -196,9 +196,10 @@ when either suite fails on it, and one only a PlayMode fixture notices survives 
 against the whole EditMode suite in the editor image `Test ▸ unity-tests` pulls and recording its
 verdicts. Once every one of those jobs has passed, `Test ▸ mutation-playmode-plan` counts the mutants
 they left surviving, and `Test ▸ mutation-playmode-shard` measures only those against the whole
-PlayMode suite, in up to ten jobs of its own; a pass over more survivors than ten of its shards can
-measure inside their timeout is refused there, and the tests the survivors ask for are what brings it
-under. `Test ▸ mutation-verdict` — the check named `Mutation campaign` — reads both passes' records
+PlayMode suite, in up to ten jobs of its own. That pass has a ceiling of its own, an estimate until
+a PlayMode shard is measured, and over it the pass is refused: EditMode tests for the survivors bring
+the count under it, since the count is of EditMode survivors and no PlayMode test lowers it, and
+otherwise the pull request is split. `Test ▸ mutation-verdict` — the check named `Mutation campaign` — reads both passes' records
 and decides as a local run over the same diff decides: an unanswered survivor, a stale declaration or
 a mutant nothing measured fails it, and a survivor of the EditMode pass that no PlayMode shard
 recorded is one nothing measured. Unlike a local run it takes every mutant rather than stopping at
@@ -218,9 +219,11 @@ commit git placed and found unpushed is the ordinary case, and is what the predi
 **What the split costs.** A mutant is one editor launch. Over the twenty commits ending at `48057c8`,
 ten generated no mutant at all and the other ten ranged 3 to 51 with a median of 22. A mutant's
 launch-compile-run measured 100–118 s on a developer machine against a 94 s baseline, so a median
-branch run locally is around 41 minutes. `--plan` gives a shard three mutants and stops adding shards
-at ten, because each shard pays for an image pull, a licence activation and a baseline before its
-first mutant. Measured on the pull request that moved the campaign here, over two campaigns — seven
+branch run locally is around 41 minutes. `--plan` gives an EditMode shard three mutants and stops
+adding shards at ten, because each shard pays for an image pull, a licence activation and a baseline
+before its first mutant; a PlayMode shard takes two, which, like the PlayMode ceiling, is an estimate
+from the PlayMode suite's 347 s in `Test ▸ unity-tests` until a PlayMode shard is measured. Measured
+for the EditMode shards on the pull request that moved the campaign here, over two campaigns — seven
 mutants in three shards, and forty-nine in ten — the pull took 79–146 s, the activation 31–52 s and
 the baseline 153–225 s, each mutant 119–190 s, and plan to verdict took 12m54s and 22m12s, against
 8–10 minutes for the rest of the run. The ten shards ran beside the three other licensed jobs, and all

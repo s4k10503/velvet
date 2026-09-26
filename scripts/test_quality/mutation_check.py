@@ -79,12 +79,12 @@ UNMEASURED = (NOT_BUILT, TIMED_OUT, HUNG, UNCOMPILABLE, UNRECORDED)
 
 # How `--plan` splits a pass across CI jobs, per platform. Each shard pays an image pull, a licence
 # activation and a baseline before its first mutant; CONTRIBUTING.md ▸ Checking that the tests can fail
-# has the measured cost of each.
+# has the cost of each, measured for EditMode and estimated for PlayMode.
 SHARD_SIZE = {"EditMode": 3, "PlayMode": 2}
 MAX_SHARDS = 10
-# The most a shard is given before `--plan` refuses: this many of the slowest measured mutant, after
-# the longest measured of each setup phase, fit that platform's shard job's timeout in test.yml.
-# `ShardCeilingTests` holds each pair together.
+# The most a shard is given before `--plan` refuses: this many of the slowest mutant, after the longest
+# of each setup phase, fit that platform's shard job's timeout in test.yml. `ShardCeilingTests` holds
+# each pair together, over EditMode costs measured on CI and PlayMode costs estimated.
 SHARD_CEILING = {"EditMode": 25, "PlayMode": 10}
 # What `--plan` exits with over that ceiling, apart from 1, so the workflow can let it through where
 # no licence means no shard would run.

@@ -1,4 +1,6 @@
 using System;
+using System.Collections;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Threading;
 
@@ -53,6 +55,24 @@ namespace Velvet.TestUtilities
             catch (OperationCanceledException) when (expiry.IsCancellationRequested)
             {
                 throw new TimeoutException(Wedged(caller, line, seconds));
+            }
+        }
+
+        // The coroutine form, for a UnityTest driven by VelvetTask.ToCoroutine: its enumerator answers
+        // MoveNext with true for as long as the task is pending, so a wedge otherwise ends only at the
+        // runner's per-test timeout.
+        public static IEnumerator Bounded(this IEnumerator coroutine, [CallerMemberName] string caller = "",
+                                          [CallerLineNumber] int line = 0, int seconds = DefaultSeconds)
+        {
+            var clock = Stopwatch.StartNew();
+            while (coroutine.MoveNext())
+            {
+                if (clock.Elapsed.TotalSeconds > seconds)
+                {
+                    throw new TimeoutException(Wedged(caller, line, seconds));
+                }
+
+                yield return coroutine.Current;
             }
         }
 
