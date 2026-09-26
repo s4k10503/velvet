@@ -594,9 +594,8 @@ namespace Velvet.Tests
             Assert.That(Root.Q<VisualElement>("host").childCount, Is.EqualTo(1));
         }
 
-        // GREEN_ON_BASE(characterization): an inheriting child with no timing of its own keeps its pose on the base.
         [Test]
-        public void Given_ACoordinatorWhoseExitPoseAppliesNoClass_When_TheKeyIsRemoved_Then_ItsInheritingChildKeepsItsPose()
+        public void Given_ACoordinatorWhoseExitPoseAppliesNoClass_When_TheKeyIsRemoved_Then_ItsInheritingChildTakesTheExitLabel()
         {
             // Arrange — the child declares no `animate` of its own and rests at the coordinator's label.
             using var keys = new KeySetStore("a");
@@ -610,10 +609,10 @@ namespace Velvet.Tests
             scheduler.DrainImmediateForTest();
             Tick();
 
-            // Assert — the coordinator is held as a ghost and its child still shows variants[visible].
+            // Assert — the coordinator is held as a ghost and its child exits to variants[hidden].
             Assert.That(
                 (Root.Q<VisualElement>("host").childCount, PoseOf(Root.Q<VisualElement>("child-a"))),
-                Is.EqualTo((1, "visible")));
+                Is.EqualTo((1, "hidden")));
         }
 
         [Test]

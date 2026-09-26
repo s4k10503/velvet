@@ -1817,13 +1817,11 @@ namespace Velvet
             {
                 void SettleIfStillExiting()
                 {
-                    if (_ctx.PresenceStates.TryGetValue(capturedStateKey, out var live)
-                        && ReferenceEquals(live, state)
-                        && state.ExitWaits.TryGetValue(key, out var current)
-                        && ReferenceEquals(current, wait))
-                    {
-                        runExitComplete();
-                    }
+                    var stateLive = _ctx.PresenceStates.TryGetValue(capturedStateKey, out var live)
+                        && ReferenceEquals(live, state);
+                    var waitCurrent = state.ExitWaits.TryGetValue(key, out var current)
+                        && ReferenceEquals(current, wait);
+                    if (stateLive && waitCurrent) runExitComplete();
                 }
                 var panel = tornDown.panel ?? ghostAnchor.panel;
                 if (panel != null) panel.visualTree.schedule.Execute(SettleIfStillExiting);
