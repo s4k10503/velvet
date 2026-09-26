@@ -1335,7 +1335,8 @@ namespace Velvet
         }
 
         // Writes a single ArbitraryStyle to the element's inline style (no layering), fanning a shorthand out to
-        // every slot it owns (padding → four edges, border-color → four sides, size → width + height).
+        // every slot it owns (padding → four edges, border-color → four sides, size → width + height). A value
+        // that places or sizes a clipped element goes to its clip wrapper instead (ClipPathLayoutBox.StyleFor).
         // Class-diff callers must go through Apply / Clear instead so per-property layering is respected; the
         // layer-bypassing form is for a per-frame driver that OWNS the slot for the duration of its play and
         // hands it back through ClearInline (see MotionSpringDriver / BezierTweenDriver), where registering and
@@ -1359,7 +1360,7 @@ namespace Velvet
                 case ArbitraryProperty.AspectRatio:
                 {
                     Ratio ratio = style.Value;          // float -> Ratio (implicit)
-                    element.style.aspectRatio = ratio;  // Ratio -> StyleRatio (implicit)
+                    ClipPathLayoutBox.StyleFor(element, style.Property).aspectRatio = ratio;  // Ratio -> StyleRatio (implicit)
                     return;
                 }
             }
@@ -1378,7 +1379,7 @@ namespace Velvet
             if (FloatSetters.TryGetValue(style.Property, out var floatSetters))
             {
                 var width = new StyleFloat(style.Value);
-                var fs = element.style;
+                var fs = ClipPathLayoutBox.StyleFor(element, style.Property);
                 foreach (var setter in floatSetters)
                 {
                     setter(fs, width);
@@ -1392,7 +1393,7 @@ namespace Velvet
             }
 
             var length = new StyleLength(new Length(style.Value, style.Unit));
-            var s = element.style;
+            var s = ClipPathLayoutBox.StyleFor(element, style.Property);
             foreach (var setter in setters)
             {
                 setter(s, length);
@@ -1423,7 +1424,7 @@ namespace Velvet
             if (FloatSetters.TryGetValue(property, out var floatSetters))
             {
                 var nullFloat = new StyleFloat(StyleKeyword.Null);
-                var fs = element.style;
+                var fs = ClipPathLayoutBox.StyleFor(element, property);
                 foreach (var setter in floatSetters)
                 {
                     setter(fs, nullFloat);
@@ -1437,7 +1438,7 @@ namespace Velvet
             }
 
             var nullStyle = new StyleLength(StyleKeyword.Null);
-            var s = element.style;
+            var s = ClipPathLayoutBox.StyleFor(element, property);
             foreach (var setter in setters)
             {
                 setter(s, nullStyle);
@@ -1457,7 +1458,7 @@ namespace Velvet
                     element.style.transformOrigin = StyleKeyword.Null;
                     return true;
                 case ArbitraryProperty.AspectRatio:
-                    element.style.aspectRatio = StyleKeyword.Null;
+                    ClipPathLayoutBox.StyleFor(element, property).aspectRatio = StyleKeyword.Null;
                     return true;
                 // translate and scale are each a single shorthand for both axes (and scale composes the uniform
                 // + per-axis layers), so clearing any one reverts the whole property. In the class-diff reconcile

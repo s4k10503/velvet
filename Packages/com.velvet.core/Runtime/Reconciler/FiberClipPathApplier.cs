@@ -76,7 +76,7 @@ namespace Velvet
                     binding.BakedHeight = -1f;
                     SyncClipPathGeometry(element, binding);
                 }
-                SyncWrapperMode(element, binding);
+                ClipPathLayoutBox.SyncClasses(element);
                 return true;
             }
             if (wantWrap)
@@ -117,9 +117,9 @@ namespace Velvet
             SyncClipPathGeometry(element, binding);
         }
 
-        // Builds the clip wrapper around element: a layout-passthrough container that additionally
-        // hides overflow and carries the baked
-        // vector shape as its background — the combination UIR stencil-clips descendants to.
+        // Builds the clip wrapper around element: a container that stands in for the element in its parent's
+        // layout (ClipPathLayoutBox), hides overflow and carries the baked vector shape as its background — the
+        // combination UIR stencil-clips descendants to.
         // Does NOT touch any parent — the caller inserts the returned wrapper.
         private VisualElement BuildClipPathWrapper(VisualElement element, ClipPathSpec? spec)
         {
@@ -130,20 +130,20 @@ namespace Velvet
             wrapper.style.overflow = spec != null ? Overflow.Hidden : Overflow.Visible;
             wrapper.Add(element); // reparents element from its current parent (if any) into the wrapper
 
-            var binding = new ClipPathBinding(wrapper) { Spec = spec };
+            var binding = new ClipPathBinding(wrapper) { Spec = spec, Inner = element };
             binding.OnGeometry = _ => SyncClipPathGeometry(element, binding);
             element.RegisterCallback(binding.OnGeometry);
 
             _ctx.ClipPathBindings[element] = binding;
             _ctx.WrapperToInnerMap[wrapper] = element;
+            ClipPathLayoutBox.Adopt(element, binding);
 
             // Off-panel / pre-layout the size is unknown (NaN) and the sync no-ops; on a patch-time
             // wrap of an already-laid-out element it bakes immediately. element.layout still holds stale
             // OLD-parent coordinates until the next layout pass, so the anchor must not read it here (a
             // (100,50) card would otherwise show its mask offset by (100,50) for one frame); that pass's
             // GeometryChangedEvent re-anchors it at the inner's real place in the wrapper.
-            binding.DeclaredOutOfFlow = IsDeclaredOutOfFlow(element);
-            SyncClipPathGeometry(element, binding, innerAtWrapperOrigin: true, binding.DeclaredOutOfFlow);
+            SyncClipPathGeometry(element, binding, innerAtWrapperOrigin: true);
             return wrapper;
         }
 
@@ -174,22 +174,19 @@ namespace Velvet
             }
             _ctx.ClipPathBindings.Remove(element);
             _ctx.WrapperToInnerMap.Remove(wrapper);
+            ClipPathLayoutBox.Release(element, binding);
             WrapperInfrastructure.RemoveWrapperRestoreInner(element, wrapper);
         }
 
-        // Keeps the mask tracking its target: lays the wrapper out, forwards the inner's flex to it and (re)bakes
-        // the vector shape at the inner's resolved box. The baked
+        // Keeps the mask tracking its target: (re)bakes the vector shape at the inner's resolved box. The baked
         // VectorImage stores TIGHT bounds, so the background is explicitly positioned and sized by
         // the analytic path bounds, anchored at the inner's layout origin within the wrapper.
         // innerAtWrapperOrigin: true on the wrap-time call, when element.layout still holds
         // OLD-parent coordinates, so the anchor takes the wrapper's origin until the next layout pass
         // (whose GeometryChangedEvent re-anchors with real coordinates).
         private static void SyncClipPathGeometry(VisualElement element, ClipPathBinding binding,
-            bool innerAtWrapperOrigin = false, bool? outOfFlow = null)
+            bool innerAtWrapperOrigin = false)
         {
-            SyncWrapperLayout(element, binding, outOfFlow ?? StyleOutOfFlowChild.IsOutOfFlow(element));
-            WrapperInfrastructure.ForwardInnerFlexToWrapper(element, binding.Wrapper);
-
             // No active clip (a variant-only clip at rest, e.g. an element carrying only hover:clip-path-[…]
             // while not hovered): the persistent wrapper shows the subtree unclipped. Drop the mask but KEEP
             // the wrapper + the bake cache, so a later state change re-applies a cached shape with no re-bake.
@@ -211,9 +208,6 @@ namespace Velvet
                 return;
             }
 
-            // The inner need not sit at the wrapper's origin — its margins, a forwarded flex-grow that enlarges
-            // the centring wrapper, or an out-of-flow inner's edge offsets place it elsewhere — so the background
-            // follows the inner's layout origin.
             var originX = innerAtWrapperOrigin ? 0f : element.layout.x;
             var originY = innerAtWrapperOrigin ? 0f : element.layout.y;
             if (float.IsNaN(originX)) originX = 0f;
@@ -254,7 +248,7 @@ namespace Velvet
                 // mask — a crossing inset must render nothing, not everything. Record the attempted
                 // size so the next identical geometry event does not re-attempt the bake.
                 binding.Image = null;
-                binding.Wrapper.style.backgroundImage = StyleKeyword.Null;
+                binding.Wrapper.style.backgroundImage = StyleKeyword.None;
                 binding.BakedWidth = width;
                 binding.BakedHeight = height;
                 binding.Wrapper.style.visibility = Visibility.Hidden;
@@ -272,84 +266,6 @@ namespace Velvet
             ws.backgroundImage = Background.FromVectorImage(image);
             ws.backgroundRepeat = new BackgroundRepeat(Repeat.NoRepeat, Repeat.NoRepeat);
             ApplyClipPathBackgroundRect(binding, originX, originY);
-        }
-
-        // An out-of-flow inner resolves its edge offsets against the wrapper, so the wrapper then leaves the
-        // flow, spans the real parent (inset 0) and takes the parent's flex-direction, justify-content and
-        // align-items, which place an inner with no offset on an axis. An in-flow inner keeps the relative
-        // wrapper that centres it on both axes.
-        // Position and offsets are written only when the inner changes mode or something has cleared the
-        // position: a PopLayout exit pins the wrapper (GeneralPathReconciler.PinExitingChildOutOfFlow), a sync
-        // must leave that pin alone, and cancelling the exit clears it.
-        // KNOWN LIMITATION (CSS clip-path is paint-only; this wrapper is not): an in-flow inner resolves its
-        // size and alignment against the wrapper rather than the parent, flexGrow/flexShrink being the only
-        // values forwarded — a fixed-size inner is centred across its parent instead of placed by the parent's
-        // alignment, its own align-self and the parent's cross-axis stretch are lost, and a percentage size
-        // resolves against the wrapper. An out-of-flow inner's wrapper spans the parent with overflow hidden,
-        // so whatever of the inner lies outside the parent's box is cut, where CSS clips only to the shape; and
-        // the parent's flex-direction, justify-content and align-items are read again only at a sync, which a
-        // change to the parent's direction or alignment alone does not start.
-        private static void SyncWrapperLayout(VisualElement element, ClipPathBinding binding, bool outOfFlow)
-        {
-            var ws = binding.Wrapper.style;
-            if (binding.WrapperOutOfFlow != outOfFlow || ws.position.keyword == StyleKeyword.Null)
-            {
-                binding.WrapperOutOfFlow = outOfFlow;
-                ws.position = outOfFlow ? Position.Absolute : Position.Relative;
-                var offset = outOfFlow ? new StyleLength(0f) : new StyleLength(StyleKeyword.Null);
-                ws.left = offset;
-                ws.top = offset;
-                ws.right = offset;
-                ws.bottom = offset;
-            }
-            if (outOfFlow)
-            {
-                var parentStyle = binding.Wrapper.parent?.resolvedStyle;
-                ws.flexDirection = parentStyle != null ? parentStyle.flexDirection : StyleKeyword.Null;
-                ws.justifyContent = parentStyle != null ? parentStyle.justifyContent : StyleKeyword.Null;
-                ws.alignItems = parentStyle != null ? parentStyle.alignItems : StyleKeyword.Null;
-                return;
-            }
-            ws.flexDirection = FlexDirection.Row;
-            ws.justifyContent = Justify.Center;
-            ws.alignItems = Align.Center;
-        }
-
-        // Invoked after a variant toggled any payload on the element (StyleVariantPayload.Apply); a no-op for an
-        // element that is not clipped.
-        internal void SyncWrapperMode(VisualElement element)
-        {
-            if (_ctx.ClipPathBindings.TryGetValue(element, out var binding))
-            {
-                SyncWrapperMode(element, binding);
-            }
-        }
-
-        // A patch or a variant that adds or drops `absolute` without moving the inner raises no geometry event,
-        // so the wrapper's mode follows it here — only when the declared mode itself changed. A position the
-        // declaration cannot see (a user stylesheet class) never changes it, and is left to the geometry sync's
-        // resolved reading rather than overwritten on every patch.
-        private static void SyncWrapperMode(VisualElement element, ClipPathBinding binding)
-        {
-            var declared = IsDeclaredOutOfFlow(element);
-            if (binding.DeclaredOutOfFlow == declared)
-            {
-                return;
-            }
-            binding.DeclaredOutOfFlow = declared;
-            SyncWrapperLayout(element, binding, declared);
-        }
-
-        // Whether the inner is out of flow by what was just written to it — its inline position (V.Anchored
-        // sets one), else the live `absolute` class — for the wrap, a patch and a variant toggle. On a panel
-        // resolvedStyle still holds the previous values there until the style pass, and off a panel
-        // StyleOutOfFlowChild.IsOutOfFlow reads the class alone. The geometry sync reads the resolved position.
-        private static bool IsDeclaredOutOfFlow(VisualElement element)
-        {
-            var inline = element.style.position;
-            return inline.keyword == StyleKeyword.Undefined
-                ? inline.value == Position.Absolute
-                : element.ClassListContains("absolute");
         }
 
         // Writes the background anchor (and, for the stretch path, the rescaled size) from the

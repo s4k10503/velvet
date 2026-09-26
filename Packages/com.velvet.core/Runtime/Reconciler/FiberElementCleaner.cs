@@ -283,6 +283,7 @@ namespace Velvet
                 {
                     element.UnregisterCallback(clipPathBinding.OnGeometry);
                 }
+                ClipPathLayoutBox.Forget(element, clipPathBinding);
                 _ctx.ClipPathBindings.Remove(element);
             }
             if (_ctx.RingBindings.TryGetValue(element, out var ringBinding))

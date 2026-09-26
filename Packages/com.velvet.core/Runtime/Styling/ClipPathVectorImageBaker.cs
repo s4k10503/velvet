@@ -341,17 +341,13 @@ namespace Velvet
     internal sealed class ClipPathBinding
     {
         public readonly VisualElement Wrapper;
+        public VisualElement Inner { get; init; } = null!;
         public ClipPathSpec? Spec;
         public EventCallback<GeometryChangedEvent> OnGeometry = null!;
         public VectorImage? Image;
 
-        // Which position the wrapper was last given for its inner (see FiberClipPathApplier.SyncWrapperLayout);
-        // null until the first sync.
-        public bool? WrapperOutOfFlow;
-
-        // The inner's declared out-of-flow mode as the wrap, the last patch or the last variant toggle read it
-        // (see FiberClipPathApplier.SyncWrapperMode).
-        public bool DeclaredOutOfFlow;
+        // The classes ClipPathLayoutBox.SyncClasses last copied from the inner onto the wrapper.
+        public System.Collections.Generic.HashSet<string>? MirroredClasses;
 
         // Analytic path bounds of the live bake (element-local px). The geometry sync re-anchors the
         // background by these when only the inner's origin moved (no re-bake), and rescales them for
@@ -413,7 +409,7 @@ namespace Velvet
         // is swapped or cleared (no active clip). Forces the next sync to re-evaluate.
         internal void DetachBackground()
         {
-            Wrapper.style.backgroundImage = StyleKeyword.Null;
+            Wrapper.style.backgroundImage = StyleKeyword.None;
             Image = null;
             BakedWidth = -1f;
             BakedHeight = -1f;

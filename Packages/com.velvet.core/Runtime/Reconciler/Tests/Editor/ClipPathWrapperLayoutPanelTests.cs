@@ -222,10 +222,12 @@ namespace Velvet.Tests
             Assert.That((IsClipWrapped(Named("card")), RelativeToHost(Named("next")).y), Is.EqualTo((true, 40f)));
         }
 
+        // GREEN_ON_BASE(characterization): the base takes the wrapper out of the flow when `absolute` arrives.
+        // A wrapper that stays in the flow after the element's position changed is what reddens this.
         [Test]
-        public void Given_AnInFlowClippedElement_When_AbsoluteIsAddedWithoutMovingIt_Then_ItsWrapperSpansTheHost()
+        public void Given_AnInFlowClippedElement_When_AbsoluteIsAddedWithoutMovingIt_Then_TheNextSiblingTakesItsPlace()
         {
-            // Arrange: under items-start the in-flow wrapper hugs the card at the host's origin, which is where
+            // Arrange: under items-start the in-flow card sits at the host's origin, which is where
             // `absolute left-0 top-0` puts it too.
             s_hostClass = "items-start";
             Mount(s => (s == 0 ? "" : "absolute left-0 top-0 ") + "w-[50px] h-[40px] " + Triangle);
@@ -234,13 +236,13 @@ namespace Velvet.Tests
             Step(1);
 
             // Assert
-            var card = Named("card");
-            Assert.That((IsClipWrapped(card), RelativeToHost(card.parent)),
-                Is.EqualTo((true, new Rect(0f, 0f, 400f, 300f))));
+            Assert.That((IsClipWrapped(Named("card")), RelativeToHost(Named("next")).y), Is.EqualTo((true, 0f)));
         }
 
+        // GREEN_ON_BASE(characterization): the base takes the wrapper out of the flow when a hover makes the
+        // element absolute. A wrapper that does not follow a variant's position is what reddens this.
         [Test]
-        public void Given_AnInFlowClippedElement_When_AHoverMakesItAbsoluteWithoutMovingIt_Then_ItsWrapperSpansTheHost()
+        public void Given_AnInFlowClippedElement_When_AHoverMakesItAbsoluteWithoutMovingIt_Then_TheNextSiblingTakesItsPlace()
         {
             // Arrange: the same no-move shape as the patch case above, with the position coming from a variant.
             s_hostClass = "items-start";
@@ -255,12 +257,14 @@ namespace Velvet.Tests
             ForcePanelUpdate(_window.rootVisualElement.panel);
 
             // Assert
-            Assert.That((IsClipWrapped(card), RelativeToHost(card.parent)),
-                Is.EqualTo((true, new Rect(0f, 0f, 400f, 300f))));
+            Assert.That((IsClipWrapped(card), RelativeToHost(Named("next")).y), Is.EqualTo((true, 0f)));
         }
 
+        // GREEN_ON_BASE(characterization): the base keeps the wrapper out of the flow across a render when a user
+        // stylesheet makes the element absolute. A wrapper whose mode a render re-derives from Velvet's own
+        // declarations alone is what reddens this.
         [Test]
-        public void Given_AnElementMadeAbsoluteByAUserStylesheet_When_RerenderedWithoutMovingIt_Then_ItsWrapperStillSpansTheHost()
+        public void Given_AnElementMadeAbsoluteByAUserStylesheet_When_RerenderedWithoutMovingIt_Then_TheNextSiblingStillTakesItsPlace()
         {
             // Arrange: a stylesheet of the application's own sets the position, which no Velvet utility declares;
             // under items-start the card sits at the host's origin whichever mode its wrapper is in.
@@ -271,15 +275,13 @@ namespace Velvet.Tests
             s_hostClass = "items-start";
             Mount(s => "clip-test-overlay left-0 top-0 w-[50px] h-[40px] "
                 + (s == 0 ? "bg-[#ff0000] " : "bg-[#0000ff] ") + Triangle);
-            var card = Named("card");
-            var mounted = RelativeToHost(card.parent);
+            var mounted = RelativeToHost(Named("next")).y;
 
             // Act
             Step(1);
 
             // Assert
-            Assert.That((sheet != null, mounted, RelativeToHost(card.parent)),
-                Is.EqualTo((true, new Rect(0f, 0f, 400f, 300f), new Rect(0f, 0f, 400f, 300f))));
+            Assert.That((sheet != null, mounted, RelativeToHost(Named("next")).y), Is.EqualTo((true, 0f, 0f)));
         }
 
         // V.Anchored makes its element absolute with an inline position and no `absolute` class.
