@@ -180,10 +180,11 @@ namespace Velvet
         /// <c>variants[Animate]</c> (which it then rests at, persistently).
         /// <see cref="MotionVariant.Transition"/> resolves the timing, and
         /// <see cref="MotionVariant.ClassName"/> the class <c>variants[Initial]</c> must apply for the
-        /// enter to play at all. AnimatePresence plays it, under its own <c>initial:</c>, when this Motion is
-        /// a keyed child's anchor (the motion guide's <i>Exits</i> section says which Motion that is); any
-        /// other Motion plays it itself on mount — <c>initial</c>/<c>animate</c> apply to any Motion node;
-        /// AnimatePresence is only required for <see cref="Exit"/>. Null = no variant initial state.
+        /// enter to play at all. AnimatePresence plays it when this Motion is a keyed child's anchor (the
+        /// motion guide's <i>Exits</i> section says which Motion that is); any other Motion plays it itself on
+        /// mount; a presence's <c>initial: false</c> suppresses it in the Motions its first render creates —
+        /// <c>initial</c>/<c>animate</c> apply to any Motion node; AnimatePresence is only required for
+        /// <see cref="Exit"/>. Null = no variant initial state.
         /// </summary>
         public string? Initial { get; init; }
 

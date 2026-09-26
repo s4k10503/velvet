@@ -84,8 +84,8 @@ V.Div(name: "row", className: "flex flex-row gap-x-2", children: new VNode[]
   the Motion above it the way an `animate` label is inherited, and the child stays mounted until the
   last of those exits completes. A coordinator's exit pose staggers its inheriting children as a label
   change does (see *Orchestration* below). The children of an inner `V.AnimatePresence` are that
-  presence's, as in Framer without `propagate`. `initial: false` suppresses the mount enter of every
-  Motion the presence's first render mounts.
+  presence's, as in Framer without `propagate`. `initial: false` suppresses the mount enter of the
+  Motions the presence's first render creates.
 - The presence's own enter, and the classic exit a Motion with no `exit` label plays from its
   `transition:`, belong to the child's *anchor*: the child itself when it is a Motion, else the first
   Motion found through the `V.Provider`s, `V.Fragment`s and z-managed elements it wraps. A

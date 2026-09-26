@@ -113,13 +113,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- A Motion declaring `exit:` that an `AnimatePresence` child wraps where the presence does not look —
-  behind a component, `V.Memoized` or `V.Suspense`, or inside another element — now warns, when the
-  presence's own render creates it, that it is not the child's anchor and its exit is inert; the exit
-  used to be dropped without a word. The motion guide states which Motion a keyed child's enter and
-  exit play on, and that a Motion outside that rule keeps its own mount enter, which the presence's
-  `initial: false` does not suppress.
-
 - One `V.Fragment` returned for several `V.List` items gives each item a row that keeps its element when
   the items are reordered or appended to. Each item's copy of the Fragment shares its children, and a row's
   key was read back from that shared child, so the rows resolved to one item's key: a row already on screen
@@ -974,8 +967,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   exit classes, the `Fade` preset's where the call site left `transition:` out — so a variants map whose
   exit entry is `""` or `null` now removes the child differently. Where the resting pose applies no
   class either, as on a label coordinator whose poses only orchestrate its children, the exit changes
-  nothing on screen: the exit label does not reach inheriting children, so the coordinator is held for
-  that timing and then removed, where the classic exit used to play the transition's exit classes on it.
+  nothing on the coordinator itself, which is held for that timing and then removed, where the classic
+  exit used to play the transition's exit classes on it.
   An `exit:` label the map has no pose for still plays the classic exit.
 
 - `V.Outlet()` emits no element of its own: the matched route's own output takes the Outlet's position
@@ -1036,6 +1029,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   shape.
 
 ### Fixed
+
+- A removed `AnimatePresence` child plays the exit of each Motion in it that declares or inherits one,
+  as Framer's does: one behind a component, `V.Memoized` or `V.Suspense`, or inside another element or
+  Motion, exits too, and the child stays mounted until the last of those exits completes. Only the
+  child's anchor used to exit, so a keyed `V.List` row rendered by a component vanished at once. A
+  Motion inheriting its labels takes its coordinator's exit label, staggered by the coordinator's exit
+  pose, and `initial: false` suppresses the mount enter of the Motions the presence's first render
+  creates, where it reached the anchor alone. The children of an inner `AnimatePresence` stay that
+  presence's. A variant Motion whose classic exit completed no longer keeps that exit's class when its
+  key returns before the removal.
 
 - A node the renderer of `V.List` returns that a list has placed before — returned for an earlier item
   of the same call, or held from an earlier render — keeps the key it was placed under, and the slot of

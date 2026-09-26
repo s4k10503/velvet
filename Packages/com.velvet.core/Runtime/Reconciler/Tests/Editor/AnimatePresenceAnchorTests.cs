@@ -14,7 +14,7 @@ namespace Velvet.Tests
     /// Suspense, an element or another Motion around it: the Motions in the removed child's committed subtree
     /// exit and hold the child until they have, a coordinator's exit label and stagger reach the Motions that
     /// inherit its labels, an inner AnimatePresence's child is that presence's, and the presence's
-    /// <c>initial: false</c> reaches the Motions its first render mounts.
+    /// <c>initial: false</c> reaches the Motions its first render creates.
     /// </summary>
     [TestFixture]
     internal sealed class AnimatePresenceAnchorTests

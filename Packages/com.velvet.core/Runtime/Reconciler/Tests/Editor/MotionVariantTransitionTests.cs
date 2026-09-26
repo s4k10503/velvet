@@ -594,7 +594,7 @@ namespace Velvet.Tests
             Assert.That(Root.Q<VisualElement>("host").childCount, Is.EqualTo(1));
         }
 
-        // GREEN_ON_BASE(characterization): the exit label reaches no inheriting child, before this change or after it.
+        // GREEN_ON_BASE(characterization): an inheriting child with no timing of its own keeps its pose on the base.
         [Test]
         public void Given_ACoordinatorWhoseExitPoseAppliesNoClass_When_TheKeyIsRemoved_Then_ItsInheritingChildKeepsItsPose()
         {

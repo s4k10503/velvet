@@ -2219,9 +2219,10 @@ namespace Velvet
         /// <param name="initial">Mount-time starting variant label. When this Motion also sets
         /// <paramref name="animate"/> + <paramref name="variants"/>, the enter starts at <c>variants[initial]</c>
         /// and transitions to <c>variants[animate]</c> (its persistent resting state) — played by
-        /// AnimatePresence, under its <c>initial:</c>, when this Motion is a keyed child's anchor, and by the
-        /// Motion itself on mount anywhere else (the motion guide's <i>Exits</i> section says which Motion
-        /// is the anchor). <see cref="MotionVariant.Transition"/>
+        /// AnimatePresence when this Motion is a keyed child's anchor, and by the Motion itself on mount
+        /// anywhere else (the motion guide's <i>Exits</i> section says which Motion is the anchor); a
+        /// presence's <c>initial: false</c> suppresses it in the Motions its first render creates.
+        /// <see cref="MotionVariant.Transition"/>
         /// resolves the timing, and <see cref="MotionVariant.ClassName"/> the class <c>variants[initial]</c>
         /// must apply for the enter to play at all.</param>
         /// <param name="exit">Exit variant label. When the keyed AnimatePresence child this Motion sits in,

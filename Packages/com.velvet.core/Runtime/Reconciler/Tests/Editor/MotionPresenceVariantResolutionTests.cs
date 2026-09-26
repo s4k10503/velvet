@@ -182,6 +182,31 @@ namespace Velvet.Tests
             });
         }
 
+        // A variant Motion with no exit label: its removal plays the classic exit of this spring, whose class
+        // pair names no channel either, so that exit completes synchronously too.
+        private static readonly StyleTransitionConfig s_classicSpringExit = new()
+        {
+            Type = TransitionType.Spring,
+            ExitFromClass = "anim-fade-exit-from",
+            ExitToClass = "anim-fade-exit-to",
+        };
+
+        [Component]
+        private static VNode CompletedClassicExitHost()
+        {
+            var keys = Hooks.UseStore(s_store, s => s.Keys);
+            var children = new List<VNode>();
+            foreach (var key in keys)
+            {
+                children.Add(V.Motion(name: "item-" + key, key: key.ToString(),
+                    variants: s_recolor, animate: "visible", transition: s_classicSpringExit));
+            }
+            return V.Div(name: "host", children: new VNode[]
+            {
+                V.AnimatePresence(key: "presence", children: children.ToArray()),
+            });
+        }
+
         [Component]
         private static VNode CompletedExitWithInitialHost()
         {
@@ -437,6 +462,26 @@ namespace Velvet.Tests
             Assert.AreEqual((false, true),
                 (item.ClassListContains("bg-red-500"), item.ClassListContains("bg-blue-500")),
                 "A re-entry after a completed exit restores the resting variant");
+        }
+
+        [Test]
+        public void Given_ACompletedClassicExitOnAVariantMotion_When_TheKeyIsReAddedBeforeTheDropRender_Then_TheExitClassIsRemoved()
+        {
+            // Arrange — the same completed-exit window as above, reached by the classic exit.
+            using var store = new SetStore();
+            s_store = store;
+            using var mounted = V.Mount(_root, V.Component(CompletedClassicExitHost, key: "host"));
+            store.Set("");
+            mounted.FlushStateForTest();
+            var parked = _root.Q<VisualElement>("item-a")?.ClassListContains("anim-fade-exit-to") == true;
+
+            // Act — re-add the key inside that window, reproducing the same still-attached element.
+            store.Set("a");
+            mounted.FlushStateForTest();
+
+            // Assert — the completed exit parked its class on the element, and the re-entry took it off.
+            Assert.That((parked, _root.Q<VisualElement>("item-a").ClassListContains("anim-fade-exit-to")),
+                Is.EqualTo((true, false)));
         }
 
         [Test]

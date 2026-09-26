@@ -2059,6 +2059,16 @@ namespace Velvet
                 // resolver-applied inline values a transparent-wrapper child cannot re-resolve.
                 RestorePopLayoutChildToFlow(anchor, (node as BaseElementNode)?.ClassNames);
             }
+            var completedExit = TryResolveVariantExit(motion);
+            if (completedExit == null)
+            {
+                // A completed classic exit leaves its to classes on the anchor it played on.
+                if (motion?.Transition != null && !freshReplacement)
+                {
+                    StyleAnimationClassUtils.RemoveClasses(anchor, motion.Transition.ExitToClasses);
+                }
+                return;
+            }
             if (motionElement == null) return;
 
             // The completed swap left the element AT variants[exit] with the resting
@@ -2069,12 +2079,8 @@ namespace Velvet
             // re-add that also changed the variants map may leave the old exit class
             // behind, or skip this restoration entirely when the exit label no longer
             // resolves — the same staleness any heuristic over the new declaration has.
-            var completedExit = TryResolveVariantExit(motion);
-            if (completedExit != null)
-            {
-                StyleAnimationClassUtils.RemoveClasses(motionElement, completedExit.ExitToClasses);
-                StyleAnimationClassUtils.AddClasses(motionElement, completedExit.ExitFromClasses);
-            }
+            StyleAnimationClassUtils.RemoveClasses(motionElement, completedExit.ExitToClasses);
+            StyleAnimationClassUtils.AddClasses(motionElement, completedExit.ExitFromClasses);
         }
 
         private void PlayPresenceEnter(
