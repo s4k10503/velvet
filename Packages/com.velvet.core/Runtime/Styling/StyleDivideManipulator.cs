@@ -210,12 +210,25 @@ namespace Velvet
                 // a plain inline border. Detach any stale dash paint (e.g. a divide-dashed → divide-solid flip, or
                 // a colored child reordered to the first slot).
                 DetachDash(child);
-                var width = isDivider ? new StyleFloat(_spec.Width) : new StyleFloat(StyleKeyword.Null);
-                // Own the edge's color channel on EVERY pass (like the gap manipulator owns its margin): write
-                // the divider color only on a colored divider, else reset to Null so a dropped divide-{color}
+                if (isDivider)
+                {
+                    StyleArbitraryValueResolver.Hold(child, WidthSlot(edge), new StyleFloat(_spec.Width));
+                }
+                else
+                {
+                    StyleArbitraryValueResolver.HandBack(child, WidthSlot(edge));
+                }
+                // Decide the edge's color channel on EVERY pass (like the gap manipulator its margin): hold
+                // the divider color only on a colored divider, else hand it back so a dropped divide-{color}
                 // class (or a colored child reordered to the first slot) leaves no stale inline color.
-                var color = isDivider && _spec.HasColor ? new StyleColor(_spec.Color) : new StyleColor(StyleKeyword.Null);
-                WriteEdge(child, edge, width, color);
+                if (isDivider && _spec.HasColor)
+                {
+                    StyleArbitraryValueResolver.Hold(child, ColorSlot(edge), new StyleColor(_spec.Color));
+                }
+                else
+                {
+                    StyleArbitraryValueResolver.HandBack(child, ColorSlot(edge));
+                }
                 return;
             }
 
@@ -229,7 +242,8 @@ namespace Velvet
 
             // Reserve the same gutter as a solid divider (real width) but mask the native border color so only
             // the dashed / dotted paint shows.
-            WriteEdge(child, edge, new StyleFloat(_spec.Width), new StyleColor(SilhouetteFace.SuppressedColor));
+            StyleArbitraryValueResolver.Hold(child, WidthSlot(edge), new StyleFloat(_spec.Width));
+            StyleArbitraryValueResolver.Hold(child, ColorSlot(edge), new StyleColor(SilhouetteFace.SuppressedColor));
 
             if (hasBinding)
             {
@@ -260,13 +274,18 @@ namespace Velvet
         }
 
         // The child's would-be border color for an implicit (no divide-{color}) dashed divider, re-resolved every
-        // pass so a class / theme change moving that color after the first bind is picked up. Mirrors
-        // SilhouetteFaceStash.CaptureFace's three cases: a fresh inline value (the child's own border-[…] resolver
-        // write, re-applied before this manipulator runs) wins; an unset inline slot reads the USS color via
-        // resolvedStyle; and the previous pass's own suppression sentinel keeps the last captured color rather than
-        // reading the mask back.
+        // pass so a class / theme change moving that color after the first bind is picked up. A color the child's
+        // own border-[…] layers give the edge wins, read from the layer map because the inline slot holds this
+        // manipulator's sentinel once a dashed divider has drawn there. Otherwise it mirrors
+        // SilhouetteFaceStash.CaptureFace's three cases: a fresh inline value wins; an unset inline slot reads the
+        // USS color via resolvedStyle; and the previous pass's own suppression sentinel keeps the last captured
+        // color rather than reading the mask back.
         private static Color ResolveImplicitColor(VisualElement child, DivideEdge edge, Color? captured)
         {
+            if (StyleArbitraryValueResolver.TryResolveLayered(child, ColorSlot(edge), out var layered))
+            {
+                return layered.Color;
+            }
             var inline = InlineColor(child, edge);
             if (!SilhouetteFace.IsUnset(inline) && !SilhouetteFace.IsSentinel(inline))
             {
@@ -297,28 +316,23 @@ namespace Velvet
         };
 #pragma warning restore CS8524
 
-        private static void WriteEdge(VisualElement child, DivideEdge edge, StyleFloat width, StyleColor color)
+#pragma warning disable CS8524 // no discard arm: a new edge has to name the slots it writes
+        private static HeldSlot WidthSlot(DivideEdge edge) => edge switch
         {
-            switch (edge)
-            {
-                case DivideEdge.Left:
-                    child.style.borderLeftWidth = width;
-                    child.style.borderLeftColor = color;
-                    break;
-                case DivideEdge.Right:
-                    child.style.borderRightWidth = width;
-                    child.style.borderRightColor = color;
-                    break;
-                case DivideEdge.Top:
-                    child.style.borderTopWidth = width;
-                    child.style.borderTopColor = color;
-                    break;
-                case DivideEdge.Bottom:
-                    child.style.borderBottomWidth = width;
-                    child.style.borderBottomColor = color;
-                    break;
-            }
-        }
+            DivideEdge.Left => HeldSlot.BorderLeftWidth,
+            DivideEdge.Right => HeldSlot.BorderRightWidth,
+            DivideEdge.Top => HeldSlot.BorderTopWidth,
+            DivideEdge.Bottom => HeldSlot.BorderBottomWidth,
+        };
+
+        private static HeldSlot ColorSlot(DivideEdge edge) => edge switch
+        {
+            DivideEdge.Left => HeldSlot.BorderLeftColor,
+            DivideEdge.Right => HeldSlot.BorderRightColor,
+            DivideEdge.Top => HeldSlot.BorderTopColor,
+            DivideEdge.Bottom => HeldSlot.BorderBottomColor,
+        };
+#pragma warning restore CS8524
 
         private void DetachDash(VisualElement child)
         {
@@ -394,9 +408,9 @@ namespace Velvet
         }
 
         // The claim in ReconcilerContext.ChildDividerOwners decides this, not the tracked list, and every
-        // turn-off on a child that has LEFT the container goes through here. The nulls that land on
+        // turn-off on a child that has LEFT the container goes through here. The hand-backs that land on
         // CURRENT children do not ask — ClearEdge clears an edge this pass is about to rewrite, and the
-        // first child's own pass writes the no-divider null. The dash paint goes with the border:
+        // first child's own pass hands the no-divider edge back. The dash paint goes with the border:
         // it is the same divider drawn a different way, so a container that may not reset one may not
         // detach the other.
         private void ReleaseBordered(VisualElement child)
@@ -411,9 +425,7 @@ namespace Velvet
         // Resets every edge this manipulator has ever written, not just the currently applied one: an element
         // reaching here has left the container (or the manipulator is being torn down), so it may still carry
         // a border from an edge an earlier flip abandoned while it was still a member. It is deliberately not
-        // all four edges — this manipulator only claims the divider's own edge (an app-authored border on any
-        // other edge of a divided child is preserved), and a blanket reset would erase a child's own
-        // border-r/border-b on the way out.
+        // all four edges — this manipulator only claims the divider's own edge.
         private void ResetOwnedEdges(VisualElement child)
         {
             for (var edge = DivideEdge.Left; edge <= DivideEdge.Bottom; edge++)
@@ -429,7 +441,10 @@ namespace Velvet
         // go together: the width is the gutter that participates in the box model, and the color is the
         // channel a colored or sentinel-masked divider wrote alongside it.
         private static void ResetEdge(VisualElement child, DivideEdge edge)
-            => WriteEdge(child, edge, new StyleFloat(StyleKeyword.Null), new StyleColor(StyleKeyword.Null));
+        {
+            StyleArbitraryValueResolver.HandBack(child, WidthSlot(edge));
+            StyleArbitraryValueResolver.HandBack(child, ColorSlot(edge));
+        }
 
         // Order-sensitive hash of the inputs that change the applied borders: width, color, edge, line style,
         // and the current child identity sequence. Apply() early-returns when this matches the last

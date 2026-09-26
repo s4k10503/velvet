@@ -85,17 +85,10 @@ namespace Velvet
     // DIFFERENT edge than the gap (e.g. mt-2 on a child under a NON-wrap gap-x-4 row) are
     // preserved; under the wrap half-margin path all four edges belong to the gap, so any explicit child
     // margin is overwritten on every side.
-    // The non-wrap path forces the FIRST child's leading-edge margin to Null, so an explicit
-    // per-first-child margin on the gap edge (e.g. ml-2 on the first child of a gap-x-4
-    // row) is ERASED. The first child must have no leading gap to match CSS gap (no outer-edge
-    // spacing), and the manipulator cannot tell an intentional first-child margin from a stale gap
-    // value it wrote on a previous pass, so it always resets it. Use container padding for a leading
-    // inset.
     // The wrap half-margin path writes the CHILD CONTAINER's own four margins (-gap/2),
-    // so an explicit container margin (e.g. m-4 on the same element) is OVERWRITTEN while gap is
-    // active, and Clear resets the container margin to Null — the user's container margin
-    // is LOST (not restored) for as long as a wrapping gap is applied. Non-wrap containers never touch
-    // the container's own margin. Use an outer wrapper for a margin on a wrapping gap container.
+    // so an explicit container margin (e.g. m-4 on the same element) is OVERWRITTEN while a wrapping
+    // gap is active. Non-wrap containers never touch the container's own margin. Use an outer wrapper
+    // for a margin on a wrapping gap container.
     // The wrap half-margin path's container negative margin (-gap/2 on all four sides)
     // bleeds gap/2 OUTWARD, overlapping the container's own siblings or its parent's padding by
     // gap/2. This is inherent to every pre-native-gap wrap polyfill; only native UITK gap
@@ -302,24 +295,14 @@ namespace Velvet
                 {
                     continue;
                 }
-                var value = logicalIndex == 0 ? new StyleLength(StyleKeyword.Null) : new StyleLength(_gap);
-                // Four explicit cases (matching ClearEdge's shape below) rather than a Left/Right/Top +
-                // default: ResolveEdge never returns Edge.None, but an explicit case makes that invariant
-                // visible here instead of silently folding None into Bottom.
-                switch (edge)
+                // The first child takes no gap, so its edge goes back to whatever the child's own layers say.
+                if (logicalIndex == 0)
                 {
-                    case Edge.Left:
-                        child.style.marginLeft = value;
-                        break;
-                    case Edge.Right:
-                        child.style.marginRight = value;
-                        break;
-                    case Edge.Top:
-                        child.style.marginTop = value;
-                        break;
-                    case Edge.Bottom:
-                        child.style.marginBottom = value;
-                        break;
+                    StyleArbitraryValueResolver.HandBack(child, SlotOf(edge));
+                }
+                else
+                {
+                    StyleArbitraryValueResolver.Hold(child, SlotOf(edge), new StyleLength(_gap));
                 }
                 StyleChildOwnership.Claim(_ctx.ChildBoxOwners, child, this);
                 _margined.Add(child);
@@ -356,18 +339,12 @@ namespace Velvet
                 {
                     continue;
                 }
-                child.style.marginLeft = half;
-                child.style.marginRight = half;
-                child.style.marginTop = half;
-                child.style.marginBottom = half;
+                HoldMargins(child, half);
                 StyleChildOwnership.Claim(_ctx.ChildBoxOwners, child, this);
                 _margined.Add(child);
             }
 
-            container.style.marginLeft = negHalf;
-            container.style.marginRight = negHalf;
-            container.style.marginTop = negHalf;
-            container.style.marginBottom = negHalf;
+            HoldMargins(container, negHalf);
         }
 
         // Clears every margin this manipulator still owns (invoked on detach / removal / mode flip).
@@ -395,59 +372,28 @@ namespace Velvet
         // Unlike ApplyLeading, this does NOT skip out-of-flow children — it clears the ABANDONED edge on
         // every current child unconditionally, including a PopLayout ghost mid-exit. That ghost's margin on
         // the OLD edge is frozen into the left/top PinExitingChildOutOfFlow already computed for it (see
-        // that method), so an edge flip landing here WHILE it is still mid-exit would null the same margin
+        // that method), so an edge flip landing here WHILE it is still mid-exit would change the same margin
         // its pinned position assumed stays put, visibly shifting it. This window already existed for the
         // original Left<->Top axis flip (a row<->column re-render mid-exit); the reverse-driven Left<->Right
         // / Top<->Bottom flips this file adds are the same shape of risk, not a new one.
         private void ClearEdge(VisualElement container, Edge edge)
         {
-            if (container == null)
-            {
-                return;
-            }
-            var nullLength = new StyleLength(StyleKeyword.Null);
             var count = container.childCount;
             for (var i = 0; i < count; i++)
             {
-                switch (edge)
-                {
-                    case Edge.Left:
-                        container[i].style.marginLeft = nullLength;
-                        break;
-                    case Edge.Right:
-                        container[i].style.marginRight = nullLength;
-                        break;
-                    case Edge.Top:
-                        container[i].style.marginTop = nullLength;
-                        break;
-                    case Edge.Bottom:
-                        container[i].style.marginBottom = nullLength;
-                        break;
-                }
+                StyleArbitraryValueResolver.HandBack(container[i], SlotOf(edge));
             }
         }
 
-        // Clears the four-side child margins and the container's negative margin written by the wrap path.
+        // Hands back the four-side child margins and the container's negative margin written by the wrap path.
         private void ClearHalfMargin(VisualElement container)
         {
-            if (container == null)
-            {
-                return;
-            }
-            var nullLength = new StyleLength(StyleKeyword.Null);
             var count = container.childCount;
             for (var i = 0; i < count; i++)
             {
-                var child = container[i];
-                child.style.marginLeft = nullLength;
-                child.style.marginRight = nullLength;
-                child.style.marginTop = nullLength;
-                child.style.marginBottom = nullLength;
+                HandBackMargins(container[i]);
             }
-            container.style.marginLeft = nullLength;
-            container.style.marginRight = nullLength;
-            container.style.marginTop = nullLength;
-            container.style.marginBottom = nullLength;
+            HandBackMargins(container);
             _applied = Edge.None;
         }
 
@@ -477,28 +423,45 @@ namespace Velvet
         }
 
         // The claim in ReconcilerContext.ChildBoxOwners decides this, not the tracked list, and every
-        // turn-off on a child that has LEFT the container goes through here. The nulls that land on
+        // turn-off on a child that has LEFT the container goes through here. The hand-backs that land on
         // CURRENT children do not ask — ClearEdge and ClearHalfMargin clear an edge this pass is about to
-        // rewrite. It resets all four margin edges
+        // rewrite. It hands back all four margin edges
         // rather than the currently applied one: an earlier axis or mode flip may have written any of them
         // while this element was still a member.
         private void ReleaseGapMargins(VisualElement child)
         {
             if (StyleChildOwnership.TryRelease(_ctx.ChildBoxOwners, child, this))
             {
-                ResetGapMargins(child);
+                HandBackMargins(child);
             }
         }
 
-        // Resets the inline margin edges this manipulator writes (leading edge + all four half-margin sides).
-        private static void ResetGapMargins(VisualElement child)
+        private static void HoldMargins(VisualElement element, StyleLength value)
         {
-            var nullLength = new StyleLength(StyleKeyword.Null);
-            child.style.marginLeft = nullLength;
-            child.style.marginRight = nullLength;
-            child.style.marginTop = nullLength;
-            child.style.marginBottom = nullLength;
+            StyleArbitraryValueResolver.Hold(element, HeldSlot.MarginLeft, value);
+            StyleArbitraryValueResolver.Hold(element, HeldSlot.MarginRight, value);
+            StyleArbitraryValueResolver.Hold(element, HeldSlot.MarginTop, value);
+            StyleArbitraryValueResolver.Hold(element, HeldSlot.MarginBottom, value);
         }
+
+        private static void HandBackMargins(VisualElement element)
+        {
+            StyleArbitraryValueResolver.HandBack(element, HeldSlot.MarginLeft);
+            StyleArbitraryValueResolver.HandBack(element, HeldSlot.MarginRight);
+            StyleArbitraryValueResolver.HandBack(element, HeldSlot.MarginTop);
+            StyleArbitraryValueResolver.HandBack(element, HeldSlot.MarginBottom);
+        }
+
+#pragma warning disable CS8524 // no discard arm: a new edge has to name the slot it writes
+        private static HeldSlot SlotOf(Edge edge) => edge switch
+        {
+            Edge.Left => HeldSlot.MarginLeft,
+            Edge.Right => HeldSlot.MarginRight,
+            Edge.Top => HeldSlot.MarginTop,
+            Edge.Bottom => HeldSlot.MarginBottom,
+            Edge.None => throw new System.ArgumentOutOfRangeException(nameof(edge), edge, "names no slot"),
+        };
+#pragma warning restore CS8524
 
         // A cheap order-sensitive hash of the inputs that change the applied margins: gap value, mode,
         // resolved edge, and the current child identity sequence. Apply() early-returns when this matches

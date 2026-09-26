@@ -671,6 +671,10 @@ namespace Velvet
             // a bracket value with a variant-applied class ever gets one.
             public Dictionary<ArbitraryProperty, int>? Floors;
 
+            // The slots a gap, grid or divide manipulator holds on this element — see Hold. Lazily
+            // allocated: only an element one of them writes to gets one.
+            public StyleHeldSlots? Holds;
+
             public bool HasLayers => Count > 0;
 
             public void CollectLayers(List<StyleClassProjection.InlineLayer> into)
@@ -972,6 +976,88 @@ namespace Velvet
             }
         }
 
+        // A gap, grid or divide manipulator's own write to a slot it owns. Not a layer — HasLayer and the class
+        // projection see none of it — but every layer resolve that writes a held slot writes the held value
+        // back after it, so a layer that changes once the manipulator has written — a [&>*]: payload turned
+        // off — cannot take the slot from it.
+        internal static void Hold(VisualElement element, HeldSlot slot, StyleLength value)
+        {
+            var holds = HoldsOf(element);
+            holds.Set(slot, value);
+            holds.Reassert(element.style, StyleHeldSlots.Bit(slot));
+        }
+
+        internal static void Hold(VisualElement element, HeldSlot slot, StyleFloat value)
+        {
+            var holds = HoldsOf(element);
+            holds.Set(slot, value);
+            holds.Reassert(element.style, StyleHeldSlots.Bit(slot));
+        }
+
+        internal static void Hold(VisualElement element, HeldSlot slot, StyleColor value)
+        {
+            var holds = HoldsOf(element);
+            holds.Set(slot, value);
+            holds.Reassert(element.style, StyleHeldSlots.Bit(slot));
+        }
+
+        private static StyleHeldSlots HoldsOf(VisualElement element)
+        {
+            var map = s_layers.GetValue(element, static _ => new LayerMap());
+            return map.Holds ??= new StyleHeldSlots();
+        }
+
+        // Gives a slot back to the cascade: drops any hold on it and writes what the element's own layers
+        // resolve to there, or nothing when none does. Gap, grid and divide stop owning a slot through here
+        // rather than by writing Null, which would erase a layer's value along with their own.
+        //
+        // Re-resolves every property WritersOf names, not only the slot's own writers: a shorthand
+        // re-resolved for this edge rewrites its other edges too, and the narrower layers after it put those
+        // back.
+        internal static void HandBack(VisualElement element, HeldSlot slot)
+        {
+            StyleHeldSlots.WriteNull(element.style, slot);
+            if (!s_layers.TryGetValue(element, out var map))
+            {
+                return;
+            }
+            map.Holds?.Drop(slot);
+            foreach (var writer in HeldSlotGroups.WritersOf(slot))
+            {
+                // A writer with no layer is skipped rather than resolved: resolving it clears its whole fan-out.
+                if (map.ContainsKey(writer))
+                {
+                    ResolveAndApply(element, writer, map);
+                }
+            }
+        }
+
+        // What the element's own layers resolve slot to, ignoring any hold on it: the value HandBack would
+        // leave there. False when no layer writes it.
+        internal static bool TryResolveLayered(VisualElement element, HeldSlot slot, out ArbitraryStyle winner)
+        {
+            winner = default;
+            if (!s_layers.TryGetValue(element, out var map))
+            {
+                return false;
+            }
+            var found = false;
+            var bit = StyleHeldSlots.Bit(slot);
+            foreach (var writer in HeldSlotGroups.WritersOf(slot))
+            {
+                if ((HeldSlotGroups.SlotsOf(writer) & bit) == 0)
+                {
+                    continue;
+                }
+                if (TryWinningLayer(map, writer, out var style))
+                {
+                    winner = style;
+                    found = true;
+                }
+            }
+            return found;
+        }
+
         // Whether any layer is registered for property. Uncontaminated for a caller asking about a slot it
         // writes directly rather than through Apply — no manipulator registers a layer.
         internal static bool HasLayer(VisualElement element, ArbitraryProperty property)
@@ -1130,6 +1216,7 @@ namespace Velvet
             {
                 ClearInline(element, property);
             }
+            map.Holds?.Reassert(element.style, HeldSlotGroups.SlotsOf(property));
         }
 
         private static void ApplyCombinedTranslate(VisualElement element, LayerMap map)

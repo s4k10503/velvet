@@ -113,6 +113,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A `[&>*]:` arbitrary payload and a `gap-*`, `grid-cols-*` or `divide-*` container no longer erase
+  each other's value on a child they both write. The container's spacing, column width or divider holds
+  while it applies, even when a payload on the same slot changes afterwards; where the container stops —
+  its utility is dropped, the child leaves it, a direction change abandons an edge, or the child is the
+  first and takes no gap or divider — the slot shows what the child's own arbitrary values and payloads
+  give it rather than nothing. So `flex flex-row gap-x-4 [&>*]:ml-[2px]` now gives its first child
+  `2px`, and every child `2px` once the gap is dropped; a child moving between a `[&>*]:` row and a
+  `gap-*`, `grid-cols-*` or `divide-*` row keeps what the row it is in gave it, whichever of the two
+  re-applies last; a solid `divide-x` with no `divide-{color}` draws in a child's own `border-[…]` color;
+  and a wrapping gap container's own arbitrary margin returns when the wrap or
+  the gap goes. While a container applies, it still replaces a margin on the edge it spaces rather than
+  adding to it.
+
 - An absolutely positioned element carrying a `clip-path-*` utility keeps the box its edge offsets
   declare, and an `absolute inset-0` child fills it, as without the clip. The wrapper that hosts the
   clip stayed in its parent's flow as a relative flex item, and the element's offsets resolved against
