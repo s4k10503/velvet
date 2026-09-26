@@ -1,6 +1,9 @@
 #if UNITY_EDITOR
 using System.Linq;
+using System.Text.RegularExpressions;
 using NUnit.Framework;
+using UnityEngine;
+using UnityEngine.TestTools;
 using UnityEngine.UIElements;
 using Velvet.DevTools;
 
@@ -56,7 +59,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ComponentRoot_When_Mounted_Then_LabelIsComponentFunctionName()
+        public void Given_ComponentRoot_When_Mounted_Then_LabelIsTheComponentsName()
         {
             // Arrange
             Assume.That(VelvetDevToolsRegistry.Entries, Is.Empty,
@@ -67,7 +70,37 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(VelvetDevToolsRegistry.Entries.Single(e => ReferenceEquals(e.Fiber, mounted.Root)).Label,
-                Is.EqualTo(nameof(AutoAttachProbe.Render)));
+                Is.EqualTo("AutoAttachProbe.Render"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base also labels a root node naming no method by its target.
+        // The shared name lookup has to keep returning nothing for such a node for this to keep passing.
+        [Test]
+        public void Given_ARootNodeNamingNoMethod_When_Mounted_Then_LabelFallsBackToTheTargetName()
+        {
+            // Arrange — a hand-built node with no body and an identity that is not a method; the registry
+            // refuses it and logs, and the label still has to come from somewhere
+            _root.name = "host-target";
+            var node = new ComponentNode { Body = null, Identity = "no-method" };
+            LogAssert.Expect(LogType.Exception, new Regex(@"ArgumentException: ComponentNode\.Body must not be null"));
+
+            // Act
+            using var mounted = V.Mount(_root, node);
+
+            // Assert
+            Assert.That(VelvetDevToolsRegistry.Entries.Single(e => ReferenceEquals(e.Fiber, mounted.Root)).Label,
+                Is.EqualTo("host-target"));
+        }
+
+        [Test]
+        public void Given_PropsComponentRoot_When_Mounted_Then_LabelIsTheComponentsNameRatherThanItsClosure()
+        {
+            // Act
+            using var mounted = V.Mount(_root, V.Component(AutoAttachPropsProbe.Render, "probe", key: "props-probe"));
+
+            // Assert
+            Assert.That(VelvetDevToolsRegistry.Entries.Single(e => ReferenceEquals(e.Fiber, mounted.Root)).Label,
+                Is.EqualTo("AutoAttachPropsProbe.Render"));
         }
     }
 
@@ -75,6 +108,12 @@ namespace Velvet.Tests
     {
         [Component]
         public static VNode Render() => V.Label(text: "probe");
+    }
+
+    internal static class AutoAttachPropsProbe
+    {
+        [Component]
+        public static VNode Render(string text) => V.Label(text: text);
     }
 }
 #endif

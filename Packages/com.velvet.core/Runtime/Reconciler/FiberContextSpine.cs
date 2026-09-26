@@ -374,7 +374,9 @@ namespace Velvet
             var ancestor = walk.Ancestor;
             var suspenseKey = FiberKeying.SuspenseKey(position.Scope, suspense.Key, nodeIndex);
             var wasFallback = ancestor.Reconciler != null
-                && ancestor.Reconciler.Context.IsSuspenseFallbackShownOnSpine(ancestor, walk.Container, walk.PortalScope, suspenseKey, suspense);
+                && ancestor.Reconciler.Context.IsSuspenseFallbackShownOnSpine(
+                    ancestor, walk.Container, walk.PortalScope, FiberKeying.SuspenseAt(position, suspense.Key, nodeIndex),
+                    suspense);
             var sub = wasFallback
                 ? (suspense.Fallback != null ? new[] { suspense.Fallback } : System.Array.Empty<VNode>())
                 : (suspense.Children ?? System.Array.Empty<VNode>());

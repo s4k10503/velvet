@@ -69,6 +69,38 @@ namespace Velvet.Tests
 
             // Assert — LogAssert.Expect verifies the message falls back to DeclaringType.MethodName
         }
+
+        [Test]
+        public void Given_PropsComponentWithDisplayName_When_HookTypeChanges_Then_MessageUsesDisplayName()
+        {
+            // Arrange — the props overload renders through a closure over Render, so the name has to come
+            // from the node's identity rather than the fiber's body
+            using var mounted = V.Mount(_root, V.Component(CustomNamedPropsComponent.Render, "named-props", key: "named-props"));
+            DisplayNameProbeState.UseIntSlot = false;
+            LogAssert.Expect(LogType.Exception, new Regex(@"MyFancyPropsName: UseState type changed"));
+
+            // Act
+            DisplayNameProbeState.SetMode.Invoke(true);
+            mounted.FlushStateForTest();
+
+            // Assert — LogAssert.Expect verifies the message names the component by its DisplayName
+        }
+
+        [Test]
+        public void Given_PropsComponentCallingAHookFromItsRefCallback_When_ItReRenders_Then_TheGuardNamesTheComponent()
+        {
+            // Arrange — a re-render of the component alone, so the fiber on the ambient stack while its ref
+            // cycles is its own; during the initial mount it is the root's
+            using var mounted = V.Mount(_root, V.Component(RefHookPropsComponent.Render, "ref-hook", key: "ref-hook"));
+            LogAssert.Expect(LogType.Exception,
+                new Regex(@"MyRefHookName: UseState\(\) may only be used inside Render\(\)\."));
+
+            // Act
+            RefHookPropsComponent.SetTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert — LogAssert.Expect verifies the guard's message names the component by its DisplayName
+        }
     }
 
     internal static class DisplayNameProbeState
@@ -80,6 +112,7 @@ namespace Velvet.Tests
         {
             UseIntSlot = true;
             SetMode = null;
+            RefHookPropsComponent.SetTick = null;
         }
     }
 
@@ -101,6 +134,31 @@ namespace Velvet.Tests
     {
         [Component(DisplayName = "MyFancyName")]
         public static VNode Render() => DisplayNameProbeShared.ProbeBody("named");
+    }
+
+    internal static class CustomNamedPropsComponent
+    {
+        [Component(DisplayName = "MyFancyPropsName")]
+        public static VNode Render(string label) => DisplayNameProbeShared.ProbeBody(label);
+    }
+
+    internal static class RefHookPropsComponent
+    {
+        public static Action<int> SetTick;
+
+        // The ref callback is a fresh delegate each render, so a re-render cycles it in its commit, where a
+        // hook call is refused.
+        [Component(DisplayName = "MyRefHookName")]
+        public static VNode Render(string name)
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            SetTick = setTick;
+            return V.Div(name: name, refCallback: _ =>
+            {
+                if (tick > 0) Hooks.UseState(0);
+                return null;
+            });
+        }
     }
 
     internal static class EmptyDisplayNameComponent

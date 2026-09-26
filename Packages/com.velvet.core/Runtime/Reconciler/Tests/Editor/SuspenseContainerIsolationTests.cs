@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -48,39 +49,32 @@ namespace Velvet.Tests
 
         private const string SuspenseRetargetId = "suspense-retarget-target";
 
-        private static int SuspenseFallbackEntriesForContainer(ReconcilerContext ctx, VisualElement container)
+        private static IEnumerable<(ComponentFiber Boundary, VisualElement? Container, VisualElement? PortalScope, object Position)>
+            BoundedFallbackRows(ReconcilerContext ctx)
         {
-            var map = (Dictionary<ComponentFiber,
-                    Dictionary<(VisualElement? Container, VisualElement? PortalScope, string Position), SuspenseNode>>)
-                typeof(ReconcilerContext)
-                    .GetField("_suspenseFallbackKeys", BindingFlags.Instance | BindingFlags.NonPublic)
-                    .GetValue(ctx);
-            var count = 0;
-            foreach (var entry in map.Values)
+            var map = (IDictionary)typeof(ReconcilerContext)
+                .GetField("_suspenseFallbackKeys", BindingFlags.Instance | BindingFlags.NonPublic)
+                .GetValue(ctx);
+            foreach (DictionaryEntry boundary in map)
             {
-                foreach (var key in entry.Keys)
+                foreach (var key in ((IDictionary)boundary.Value).Keys)
                 {
-                    if (ReferenceEquals(key.Container, container)) count++;
+                    var type = key.GetType();
+                    yield return ((ComponentFiber)boundary.Key,
+                        (VisualElement?)type.GetField("Item1").GetValue(key),
+                        (VisualElement?)type.GetField("Item2").GetValue(key),
+                        type.GetField("Item3").GetValue(key));
                 }
             }
-            return count;
         }
 
-        private static (ComponentFiber Boundary, VisualElement? Container, VisualElement? PortalScope, string Position)
+        private static int SuspenseFallbackEntriesForContainer(ReconcilerContext ctx, VisualElement container)
+            => BoundedFallbackRows(ctx).Count(row => ReferenceEquals(row.Container, container));
+
+        private static (ComponentFiber Boundary, VisualElement? Container, VisualElement? PortalScope, object Position)
             FirstBoundedFallbackKey(ReconcilerContext ctx)
         {
-            var map = (Dictionary<ComponentFiber,
-                    Dictionary<(VisualElement? Container, VisualElement? PortalScope, string Position), SuspenseNode>>)
-                typeof(ReconcilerContext)
-                    .GetField("_suspenseFallbackKeys", BindingFlags.Instance | BindingFlags.NonPublic)
-                    .GetValue(ctx);
-            foreach (var boundary in map)
-            {
-                foreach (var key in boundary.Value.Keys)
-                {
-                    return (boundary.Key, key.Container, key.PortalScope, key.Position);
-                }
-            }
+            foreach (var row in BoundedFallbackRows(ctx)) return row;
             throw new InvalidOperationException("No bounded suspense fallback entry was recorded.");
         }
 
@@ -302,6 +296,9 @@ namespace Velvet.Tests
             Assert.That((before, context.AnyBoundaryShowingFallback), Is.EqualTo((true, false)));
         }
 
+        // GREEN_ON_BASE(refactor): the base already answers false for another container at one position.
+        // This change retypes the position a fallback row is recorded under, so the query now passes the row's
+        // own position back by reflection; what it pins is that the container still separates the rows.
         [Test]
         public void Given_OneBoundaryWithFallbackInOneContainer_When_IsSuspenseFallbackShownQueriesAnotherContainerAtTheSameKey_Then_ItReturnsFalse()
         {
@@ -312,8 +309,9 @@ namespace Velvet.Tests
             var ready = _root.Q<VisualElement>("ready");
 
             // Act
-            var shownOnReady = context.IsSuspenseFallbackShown(
-                sample.Boundary, ready, sample.PortalScope, sample.Position);
+            var shownOnReady = (bool)typeof(ReconcilerContext)
+                .GetMethod(nameof(ReconcilerContext.IsSuspenseFallbackShown), BindingFlags.Instance | BindingFlags.NonPublic)
+                .Invoke(context, new[] { sample.Boundary, ready, sample.PortalScope, sample.Position });
 
             // Assert
             Assert.That((Texts("waiting"), shownOnReady), Is.EqualTo(("loading", false)));

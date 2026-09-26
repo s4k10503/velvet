@@ -33,7 +33,7 @@ namespace Velvet.DevTools
             {
                 Fiber = fiber;
                 Label = label;
-                TypeName = fiber.Body?.Method?.Name ?? "[Component]";
+                TypeName = Hooks.ComponentName(fiber);
             }
         }
 
@@ -47,7 +47,7 @@ namespace Velvet.DevTools
         /// Adds a fiber, or replaces its existing entry when registered again.
         /// </summary>
         /// <param name="fiber">The fiber to observe.</param>
-        /// <param name="label">Display name in the EditorWindow. Defaults to Body's function name when omitted.</param>
+        /// <param name="label">Display name in the EditorWindow. Defaults to the component's name when omitted.</param>
         public static void Register(ComponentFiber fiber, string? label = null)
         {
             if (fiber == null)
@@ -55,7 +55,7 @@ namespace Velvet.DevTools
                 throw new ArgumentNullException(nameof(fiber));
             }
 
-            var resolvedLabel = label ?? fiber.Body?.Method?.Name ?? "[Component]";
+            var resolvedLabel = label ?? Hooks.ComponentName(fiber);
             for (var i = 0; i < s_entries.Count; i++)
             {
                 if (ReferenceEquals(s_entries[i].Fiber, fiber))
