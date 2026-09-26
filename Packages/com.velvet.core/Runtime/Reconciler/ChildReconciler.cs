@@ -1251,11 +1251,6 @@ namespace Velvet
             }
         }
 
-        // True when every key in the list is distinct. The suffix-trim fast path inserts /
-        // patches positionally and so would render N elements for a key repeated N times, whereas Pass 2
-        // de-duplicates it; the prepass therefore defers a duplicate-key list to Pass 2. Unkeyed nodes carry
-        // Positional(index) keys, which are inherently distinct, so an unkeyed list always passes. Uses a pooled
-        // key set (no allocation after warmup) and is only reached on the collapse-to-insert/remove shapes.
         // The key old leaf i was emitted under. Null keys stand for an old side that needed no expansion, where
         // each leaf was emitted under its own key.
         private ChildKey OldKey(List<ChildKey>? keys, VNode?[] oldNodes, int i)
@@ -1264,6 +1259,11 @@ namespace Velvet
         private ChildKey OldKey(ChildKey[]? keys, VNode?[] oldNodes, int i)
             => keys == null ? _keying.ReconcileKey(oldNodes[i], i) : keys[i];
 
+        // True when every key in the list is distinct. The suffix-trim fast path inserts /
+        // patches positionally and so would render N elements for a key repeated N times, whereas Pass 2
+        // de-duplicates it; the prepass therefore defers a duplicate-key list to Pass 2. Unkeyed nodes carry
+        // Positional(index) keys, which are inherently distinct, so an unkeyed list always passes. Uses a pooled
+        // key set (no allocation after warmup) and is only reached on the collapse-to-insert/remove shapes.
         private bool AllOldKeysUnique(List<ChildKey> keys)
         {
             if (keys.Count < 2) return true;
