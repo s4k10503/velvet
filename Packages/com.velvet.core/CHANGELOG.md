@@ -676,6 +676,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   of the failure announcement is reported the same way, where it used to be left to whatever observes a
   forgotten task.
 
+- A `shadow-*` or `drop-shadow-*` behind a `rounded-full` element paints its halo. The silhouette was
+  baked at `--radius-full` itself, which is larger than the element, and came out empty; it now takes the
+  bound the face Velvet paints over it takes, half the element's shorter side. A radius the element can
+  carry bakes as before.
+
 ## [Unreleased — breaking]
 
 ### Added

@@ -107,8 +107,10 @@
     --radius-xl: 12px;
     --radius-2xl: 16px;
     --radius-3xl: 24px;
-    /* A large length (not 50%) so a non-square box rounds to a stadium/pill, not an ellipse;
-       UI Toolkit clamps each corner to half the shorter side, matching Tailwind's rounded-full. */
+    /* A length, not 50%: Velvet's own painters read the resolved radius as a number, and 50% reaches
+       them as 50. RoundedFullSilhouettePlaybackTests' rounded-full shadow corner case reddens under 50%.
+       Where UI Toolkit paints the face this is not the CSS pill on a box that is not square;
+       Documentation~/styling-variants.md states the deviation. */
     --radius-full: 9999px;
 
     /* === Transition === */
