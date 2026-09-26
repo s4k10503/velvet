@@ -282,7 +282,7 @@ namespace Velvet
         // color rather than reading the mask back.
         private static Color ResolveImplicitColor(VisualElement child, DivideEdge edge, Color? captured)
         {
-            if (StyleArbitraryValueResolver.TryResolveLayered(child, ColorSlot(edge), out var layered))
+            if (StyleArbitraryValueResolver.ResolveLayered(child, ColorSlot(edge)) is { } layered)
             {
                 return layered.Color;
             }

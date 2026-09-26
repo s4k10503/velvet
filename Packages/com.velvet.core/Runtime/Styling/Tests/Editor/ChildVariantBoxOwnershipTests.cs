@@ -430,6 +430,52 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ADivideRowCarryingABorderPayload_When_ItsFirstChildIsRemoved_Then_TheNewFirstChildKeepsOnlyThePayloadBorder()
+        {
+            // Arrange — keyed, so the second Label is the element that becomes first rather than a patched copy.
+            using var scope = new ReconcilerScope();
+            const string row = "flex flex-row divide-x-4 [&>*]:border-l-[2px]";
+            var before = new VNode[]
+            {
+                V.Div(className: row,
+                    children: new VNode[] { V.Label(key: "a", text: "a"), V.Label(key: "b", text: "b") }),
+            };
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), before);
+            var promoted = scope.Root[0][1];
+            var divided = Inline(promoted.style.borderLeftWidth);
+            var after = new VNode[]
+            {
+                V.Div(className: row, children: new VNode[] { V.Label(key: "b", text: "b") }),
+            };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, before, after);
+
+            // Assert — the divider it carried as the second child rides along, since the stale value is the point.
+            Assert.That((divided, Inline(promoted.style.borderLeftWidth)), Is.EqualTo(("4", "2")));
+        }
+
+        [Test]
+        public void Given_AColoredDivideRow_When_ItRenders_Then_TheFirstChildKeepsItsOwnBorderColor()
+        {
+            // Arrange — the divider starts at the second child, so its color is not the first child's.
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[]
+            {
+                V.Div(className: "flex flex-row divide-x divide-gray-200",
+                    children: new VNode[] { V.Div(className: "border-[#FF0000]"), V.Div() }),
+            };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), tree);
+
+            // Assert — the second child reads the divider's color, so a row whose color never landed cannot pass.
+            var row = scope.Root[0];
+            Assert.That((Inline(row[0].style.borderLeftColor), Inline(row[1].style.borderLeftColor) == "null"),
+                Is.EqualTo((Color.red.ToString(), false)));
+        }
+
+        [Test]
         public void Given_AWrappingGapContainerWithItsOwnMargin_When_TheGapIsDropped_Then_ItsMarginReturns()
         {
             // Arrange — a wrapping gap writes -gap/2 onto the container's own four margins.
@@ -521,6 +567,35 @@ namespace Velvet.Tests
             // Assert — the column width rides along, since a grid that never sized leaves the child's own.
             Assert.That((sizedByColumn, container[0].style.width.value.value),
                 Is.EqualTo((true, 8f)));
+        }
+
+        // GREEN_ON_BASE(characterization): a child that leaves a grid that sized it keeps no column width,
+        // which a release handing back nothing would stop.
+        [Test]
+        public void Given_AGridThatSizedAChild_When_TheChildLeavesAndTheGridRunsAgain_Then_TheColumnWidthIsReleased()
+        {
+            // Arrange
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Div(name: "grid", className: "grid grid-cols-2 gap-4 w-[300px]",
+                    children: new VNode[] { V.Div(), V.Div() }));
+            var container = _window.rootVisualElement.Q<VisualElement>("grid");
+            ForcePanelUpdate(container.panel);
+            using (var evt = EventBase<GeometryChangedEvent>.GetPooled())
+            {
+                container.SimulateEvent(evt);
+            }
+            var leaving = container[1];
+            var sizedByColumn = leaving.style.width.value.value > 100f;
+            new VisualElement().Add(leaving);
+
+            // Act
+            using (var evt = EventBase<GeometryChangedEvent>.GetPooled())
+            {
+                container.SimulateEvent(evt);
+            }
+
+            // Assert — the column width rides along, since a child the grid never sized carries none.
+            Assert.That((sizedByColumn, leaving.style.width.keyword), Is.EqualTo((true, StyleKeyword.Null)));
         }
     }
 }

@@ -1033,16 +1033,12 @@ namespace Velvet
         }
 
         // What the element's own layers resolve slot to, ignoring any hold on it: the value HandBack would
-        // leave there. False when no layer writes it.
-        internal static bool TryResolveLayered(VisualElement element, HeldSlot slot, out ArbitraryStyle winner)
+        // leave there. Null when no layer writes it.
+        internal static ArbitraryStyle? ResolveLayered(VisualElement element, HeldSlot slot)
         {
-            winner = default;
-            if (!s_layers.TryGetValue(element, out var map))
-            {
-                return false;
-            }
-            var found = false;
+            var map = s_layers.GetValue(element, static _ => new LayerMap());
             var bit = StyleHeldSlots.Bit(slot);
+            ArbitraryStyle? winner = null;
             foreach (var writer in HeldSlotGroups.WritersOf(slot))
             {
                 if ((HeldSlotGroups.SlotsOf(writer) & bit) == 0)
@@ -1052,10 +1048,9 @@ namespace Velvet
                 if (TryWinningLayer(map, writer, out var style))
                 {
                     winner = style;
-                    found = true;
                 }
             }
-            return found;
+            return winner;
         }
 
         // Whether any layer is registered for property. Uncontaminated for a caller asking about a slot it
