@@ -120,11 +120,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   height, so an element offset from all four edges came out with no height and its `inset-0` child
   with it. The wrapper around an absolute element now leaves the flow, spans the parent and takes the
   parent's flex-direction, `justify-content` and `align-items`, so an absolute clipped element with no
-  offsets is placed where the parent's alignment puts it rather than centred on the wrapper; it returns
-  to the flow when a later render drops `absolute`. Still different from CSS: whatever of the element
-  lies outside its parent's box is cut, and a change to the parent's alignment alone is followed only
-  once the element's own box or its clip next changes. An in-flow clipped element is laid out as
-  before, centred in a wrapper that takes its size from it.
+  offsets is placed where the parent's alignment puts it rather than centred on the wrapper. The
+  wrapper follows the element into and out of the flow when a render or a variant adds or drops
+  `absolute`, including when that leaves the element's box where it was. Still different from CSS:
+  whatever of the element lies outside its parent's box is cut, and a change to the parent's direction
+  or alignment alone is followed only once the element's own box or its clip next changes, or the
+  element is next patched or has a variant toggled. An in-flow clipped element is laid out as before,
+  centred in its wrapper.
 
 - Memoized components rebuild their compiled VNode cache when their props comparison detects a
   change, including a record struct float member changing from positive zero to negative zero.

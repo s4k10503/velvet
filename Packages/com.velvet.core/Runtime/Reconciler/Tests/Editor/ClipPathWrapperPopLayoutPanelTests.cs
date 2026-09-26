@@ -81,5 +81,30 @@ namespace Velvet.Tests
                     new Rect(box.x - host.x, box.y - host.y, box.width, box.height)),
                 Is.EqualTo((true, new Rect(12f, 12f, 176f, 176f))));
         }
+
+        [Test]
+        public void Given_APinnedClippedElementWithArbitrarySizes_When_ThePinIsCleared_Then_ItKeepsItsOwnBox()
+        {
+            // Arrange: the restore is handed the inner's class array, whose arbitrary size and offsets belong to
+            // the inner and not to the wrapper the pin was on.
+            const string cardClass = "absolute right-[10px] bottom-[10px] w-[50px] h-[40px]";
+            var card = MountCardInBorderedHost(cardClass);
+            var wrapper = card.parent;
+            Invoke("PinExitingChildOutOfFlow", wrapper);
+            ForcePanelUpdate(_window.rootVisualElement.panel);
+
+            // Act
+            Invoke("RestorePopLayoutChildToFlow", wrapper, (cardClass + " " + Triangle).Split(' '));
+            ForcePanelUpdate(_window.rootVisualElement.panel);
+
+            // Assert: inside the 2px border the host's padding box is 196x196, so the offsets put the 50x40 card
+            // at (138, 148).
+            var host = Named("host").worldBound;
+            var box = card.worldBound;
+            Assert.That(
+                (wrapper.ClassListContains(FiberWrapperElementAppliers.ClipPathWrapperClass),
+                    new Rect(box.x - host.x, box.y - host.y, box.width, box.height)),
+                Is.EqualTo((true, new Rect(138f, 148f, 50f, 40f))));
+        }
     }
 }

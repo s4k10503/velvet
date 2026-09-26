@@ -172,6 +172,90 @@ namespace Velvet.Tests
                 Is.EqualTo((card.layout.x + binding.Bounds.x, card.layout.y + binding.Bounds.y)));
         }
 
+        // GREEN_ON_BASE(characterization): the base keeps every clip wrapper relative, so the card rejoins the flow.
+        // A wrapper whose mode follows only the inner's geometry events is what reddens this.
+        [Test]
+        public void Given_AnAbsoluteClippedElement_When_AbsoluteIsDroppedWithoutMovingIt_Then_TheNextSiblingSitsBelowIt()
+        {
+            // Arrange: absolute or not, the 50x40 card sits at its wrapper's origin, so dropping `absolute`
+            // leaves its own box where it was.
+            Mount(s => (s == 0 ? "absolute " : "") + "w-[50px] h-[40px] " + Triangle);
+
+            // Act
+            Step(1);
+
+            // Assert
+            Assert.That((IsClipWrapped(Named("card")), RelativeToHost(Named("next")).y), Is.EqualTo((true, 40f)));
+        }
+
+        [Test]
+        public void Given_AnInFlowClippedElement_When_AbsoluteIsAddedWithoutMovingIt_Then_ItsWrapperSpansTheHost()
+        {
+            // Arrange: under items-start the in-flow wrapper hugs the card at the host's origin, which is where
+            // `absolute left-0 top-0` puts it too.
+            s_hostClass = "items-start";
+            Mount(s => (s == 0 ? "" : "absolute left-0 top-0 ") + "w-[50px] h-[40px] " + Triangle);
+
+            // Act
+            Step(1);
+
+            // Assert
+            var card = Named("card");
+            Assert.That((IsClipWrapped(card), RelativeToHost(card.parent)),
+                Is.EqualTo((true, new Rect(0f, 0f, 400f, 300f))));
+        }
+
+        [Test]
+        public void Given_AnInFlowClippedElement_When_AHoverMakesItAbsoluteWithoutMovingIt_Then_ItsWrapperSpansTheHost()
+        {
+            // Arrange: the same no-move shape as the patch case above, with the position coming from a variant.
+            s_hostClass = "items-start";
+            Mount(_ => "w-[50px] h-[40px] hover:absolute hover:left-0 hover:top-0 " + Triangle);
+            var card = Named("card");
+
+            // Act
+            using (var over = PointerOverEvent.GetPooled())
+            {
+                card.SimulateEvent(over);
+            }
+            ForcePanelUpdate(_window.rootVisualElement.panel);
+
+            // Assert
+            Assert.That((IsClipWrapped(card), RelativeToHost(card.parent)),
+                Is.EqualTo((true, new Rect(0f, 0f, 400f, 300f))));
+        }
+
+        // V.Anchored makes its element absolute with an inline position and no `absolute` class.
+        [Component]
+        private static VNode RenderAnchoredHost()
+        {
+            var (step, setStep) = Hooks.UseState(0);
+            s_setStep = setStep;
+            return V.Div(name: "host", className: "relative w-[400px] h-[300px]", children: new VNode[]
+            {
+                V.Anchored(target: null, name: "card", className: s_classFor(step)),
+            });
+        }
+
+        [Test]
+        public void Given_AnAnchoredClippedElement_When_Patched_Then_ThePatchLeavesItsWrapperAbsolute()
+        {
+            // Arrange
+            s_classFor = s => (s == 0 ? "w-[50px]" : "w-[60px]") + " h-[40px] " + Triangle;
+            _mounted = V.Mount(_window.rootVisualElement, V.Component(RenderAnchoredHost));
+            ForcePanelUpdate(_window.rootVisualElement.panel);
+            var wrapper = Named("card").parent;
+            var beforePatch = wrapper.style.position.value;
+
+            // Act: the patch alone, before any layout pass could put a wrongly-written mode right again.
+            s_setStep.Invoke(1);
+            _mounted.GetSchedulerForTest().DrainImmediateForTest();
+
+            // Assert
+            Assert.That((beforePatch, wrapper.style.position.value),
+                Is.EqualTo((Position.Absolute, Position.Absolute)));
+        }
+
         // GREEN_ON_BASE(characterization): a parent's child variant still reaches its clipped child's slot.
         // A wrapper given the inner's align-self inline, over the class the variant puts on it, reddens this.
         [Test]

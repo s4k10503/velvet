@@ -76,6 +76,7 @@ namespace Velvet
                     binding.BakedHeight = -1f;
                     SyncClipPathGeometry(element, binding);
                 }
+                SyncWrapperMode(element, binding);
                 return true;
             }
             if (wantWrap)
@@ -141,7 +142,7 @@ namespace Velvet
             // OLD-parent coordinates until the next layout pass, so the anchor must not read it here (a
             // (100,50) card would otherwise show its mask offset by (100,50) for one frame); that pass's
             // GeometryChangedEvent re-anchors it at the inner's real place in the wrapper.
-            SyncClipPathGeometry(element, binding, innerAtWrapperOrigin: true);
+            SyncClipPathGeometry(element, binding, innerAtWrapperOrigin: true, IsDeclaredOutOfFlow(element));
             return wrapper;
         }
 
@@ -183,9 +184,9 @@ namespace Velvet
         // OLD-parent coordinates, so the anchor takes the wrapper's origin until the next layout pass
         // (whose GeometryChangedEvent re-anchors with real coordinates).
         private static void SyncClipPathGeometry(VisualElement element, ClipPathBinding binding,
-            bool innerAtWrapperOrigin = false)
+            bool innerAtWrapperOrigin = false, bool? outOfFlow = null)
         {
-            SyncWrapperLayout(element, binding);
+            SyncWrapperLayout(element, binding, outOfFlow ?? StyleOutOfFlowChild.IsOutOfFlow(element));
             WrapperInfrastructure.ForwardInnerFlexToWrapper(element, binding.Wrapper);
 
             // No active clip (a variant-only clip at rest, e.g. an element carrying only hover:clip-path-[…]
@@ -286,11 +287,10 @@ namespace Velvet
         // resolves against the wrapper. An out-of-flow inner's wrapper spans the parent with overflow hidden,
         // so whatever of the inner lies outside the parent's box is cut, where CSS clips only to the shape; and
         // the parent's flex-direction, justify-content and align-items are read again only at a sync, which a
-        // change to the parent's alignment alone does not start.
-        private static void SyncWrapperLayout(VisualElement element, ClipPathBinding binding)
+        // change to the parent's direction or alignment alone does not start.
+        private static void SyncWrapperLayout(VisualElement element, ClipPathBinding binding, bool outOfFlow)
         {
             var ws = binding.Wrapper.style;
-            var outOfFlow = StyleOutOfFlowChild.IsOutOfFlow(element);
             if (binding.WrapperOutOfFlow != outOfFlow || ws.position.keyword == StyleKeyword.Null)
             {
                 binding.WrapperOutOfFlow = outOfFlow;
@@ -312,6 +312,33 @@ namespace Velvet
             ws.flexDirection = FlexDirection.Row;
             ws.justifyContent = Justify.Center;
             ws.alignItems = Align.Center;
+        }
+
+        // Invoked after a variant toggled any payload on the element (StyleVariantPayload.Apply); a no-op for an
+        // element that is not clipped.
+        internal void SyncWrapperMode(VisualElement element)
+        {
+            if (_ctx.ClipPathBindings.TryGetValue(element, out var binding))
+            {
+                SyncWrapperMode(element, binding);
+            }
+        }
+
+        // A patch or a variant that adds or drops `absolute` without moving the inner raises no geometry event,
+        // so the wrapper's mode follows it here.
+        private static void SyncWrapperMode(VisualElement element, ClipPathBinding binding)
+            => SyncWrapperLayout(element, binding, IsDeclaredOutOfFlow(element));
+
+        // Whether the inner is out of flow by what was just written to it — its inline position (V.Anchored
+        // sets one), else the live `absolute` class — for the wrap, a patch and a variant toggle. On a panel
+        // resolvedStyle still holds the previous values there until the style pass, and off a panel
+        // StyleOutOfFlowChild.IsOutOfFlow reads the class alone. The geometry sync reads the resolved position.
+        private static bool IsDeclaredOutOfFlow(VisualElement element)
+        {
+            var inline = element.style.position;
+            return inline.keyword == StyleKeyword.Undefined
+                ? inline.value == Position.Absolute
+                : element.ClassListContains("absolute");
         }
 
         // Writes the background anchor (and, for the stretch path, the rescaled size) from the
