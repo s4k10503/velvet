@@ -113,6 +113,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A component keeps the elements it rendered when a reorder or an inserted sibling moves it. Unless a
+  keyed `V.Fragment` between the component and its container kept them apart, a keyed component's
+  elements were matched by their index in the container, so moving it rebuilt them while the component
+  itself kept its state: a component rendered inside them, or inside its `V.Portal`, remounted with its
+  state lost, and the rows it had rendered into the Portal's target stayed there beside the new ones. A
+  keyed `V.Fragment` returned as a component's whole output did not count, its key being dropped. A
+  reordered `V.List` of components gave every row a new element the same way. An element is now matched
+  within the output of the component that renders it, as in React, so two sibling components that each
+  render an element under one `key:` also keep both across a re-render instead of rebuilding them with a
+  duplicate-key warning.
+
 - An absolutely positioned element carrying a `clip-path-*` utility keeps the box its edge offsets
   declare, and an `absolute inset-0` child fills it, as without the clip. The wrapper that hosts the
   clip stayed in its parent's flow as a relative flex item, and the element's offsets resolved against

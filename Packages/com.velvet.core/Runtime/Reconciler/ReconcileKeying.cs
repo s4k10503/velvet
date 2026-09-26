@@ -72,8 +72,12 @@ namespace Velvet
         // all three keyed-diff map-build sites (synchronous keyed, time-sliced Pass2BuildMap, general).
         internal void RegisterOldKey(VNode? node, int index,
             Dictionary<ChildKey, (int index, VNode? node)> map, HashSet<int>? orphaned)
+            => RegisterOldKey(ReconcileKey(node, index), node, index, map, orphaned);
+
+        // The general path's form, handed the key the old-side walk recorded for the node.
+        internal static void RegisterOldKey(ChildKey key, VNode? node, int index,
+            Dictionary<ChildKey, (int index, VNode? node)> map, HashSet<int>? orphaned)
         {
-            var key = ReconcileKey(node, index);
             if (map.TryAdd(key, (index, node))) return;
 
             FiberLogger.LogWarning("ReconcileKeying",

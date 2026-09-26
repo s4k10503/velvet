@@ -137,32 +137,47 @@ namespace Velvet
     // explicit string keys from numeric implicit indices: an explicit key and a positional
     // index can never compare equal, so a user key value — including one a Fragment scope composes
     // — cannot collide with an unkeyed sibling's slot.
+    //
+    // The general path also carries the fiber whose output emitted the child (OwnedBy), and counts a
+    // positional index from where that fiber's output starts, so a component's elements are matched within
+    // its own output and move with it. The flat diff never sets one: it is taken only where the old side
+    // reached no descendant fiber, so every leaf on both sides has the same emitter.
     internal readonly struct ChildKey : IEquatable<ChildKey>
     {
         private readonly string? _key;
         private readonly int _index;
         private readonly bool _isPositional;
+        private readonly ComponentFiber? _owner;
 
-        private ChildKey(string? key, int index, bool isPositional)
+        private ChildKey(string? key, int index, bool isPositional, ComponentFiber? owner)
         {
             _key = key;
             _index = index;
             _isPositional = isPositional;
+            _owner = owner;
         }
 
-        public static ChildKey Explicit(string key) => new(key, 0, false);
+        public static ChildKey Explicit(string key) => new(key, 0, false, null);
 
-        public static ChildKey Positional(int index) => new(null, index, true);
+        public static ChildKey Positional(int index) => new(null, index, true, null);
+
+        internal ChildKey OwnedBy(ComponentFiber? owner) => new(_key, _index, _isPositional, owner);
 
         public bool Equals(ChildKey other)
-            => _isPositional
-                ? other._isPositional && _index == other._index
-                : !other._isPositional && _key == other._key;
+            => ReferenceEquals(_owner, other._owner)
+                && (_isPositional
+                    ? other._isPositional && _index == other._index
+                    : !other._isPositional && _key == other._key);
 
         public override bool Equals(object obj) => obj is ChildKey other && Equals(other);
 
+        // The owner is hashed as well as compared: every component in a keyed list that renders one unkeyed
+        // element emits it at position 0, and without the owner those keys would all share one bucket.
+        // MUTANT_SURVIVES(equivalent, equality): dropping the owner term changes which bucket a key lands in,
+        // never which keys match, since equal keys still hash alike and Equals reads the owner.
         public override int GetHashCode()
-            => _isPositional ? _index : (_key?.GetHashCode() ?? 0);
+            => (_isPositional ? _index : (_key?.GetHashCode() ?? 0))
+                ^ (_owner == null ? 0 : System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(_owner));
 
         public override string ToString()
             => _isPositional
