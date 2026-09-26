@@ -64,7 +64,7 @@ namespace Velvet
             _factory = factory;
             _cleaner = cleaner;
             _placement = new ChildElementPlacement(ctx.BufferPool);
-            _keying = new ReconcileKeying(ctx);
+            _keying = new ReconcileKeying();
             _general = new GeneralPathReconciler(ctx, patcher, factory, cleaner, _placement, _keying);
         }
 
@@ -204,12 +204,14 @@ namespace Velvet
             var oldFibers = _ctx.BufferPool.RentFiberList();
             var newFibers = _ctx.BufferPool.RentFiberSet();
             var oldOwners = _ctx.BufferPool.RentFiberOwnerList();
+            var oldKeys = _ctx.BufferPool.RentLeafKeyList();
             var pairing = new GeneralPathReconciler.InlinePairing
             {
                 OldFibers = oldFibers,
                 NewFibers = newFibers,
                 OldProviders = oldProviders,
                 OldOwners = oldOwners,
+                OldKeys = oldKeys,
             };
             VNode?[] oldNodes;
             // The boundary reproductions this container's own walk takes, retirable only once the removal
@@ -221,7 +223,7 @@ namespace Velvet
             {
                 // Old side is always expanded structurally into the flat leaf array used for matching.
                 // (No context push, no render — it reproduces the previously committed leaf order.)
-                oldNodes = _general.ExpandInlineForReconcile(oldChildren, isNewSide: false, parent, slotStart, oldFibers, newFibers, oldProviders, owners: oldOwners);
+                oldNodes = _general.ExpandInlineForReconcile(oldChildren, isNewSide: false, parent, slotStart, oldFibers, newFibers, oldProviders, owners: oldOwners, keys: oldKeys);
 
                 // oldFibers is non-empty wherever the old side reached a descendant fiber, so a leaf of
                 // this container may have been emitted by one. That pairing is what the fast path cannot
@@ -246,9 +248,12 @@ namespace Velvet
                     // path is selected if either side carries a key (unifying keyed/unkeyed transitions).
                     _general.RunOrphanEffectCleanups(oldFibers, newFibers);
                     var newNodes = newChildren ?? Array.Empty<VNode>();
-                    if (_keying.HasAnyKey(newNodes) || _keying.HasAnyKey(oldNodes))
+                    // Null where the old side needed no expansion; OldKey says what that stands for.
+                    var scopedOldKeys = oldKeys.Count == 0 ? null : oldKeys;
+                    if (_keying.HasAnyKey(newNodes)
+                        || (scopedOldKeys == null ? _keying.HasAnyKey(oldNodes) : _keying.HasAnyKey(scopedOldKeys)))
                     {
-                        ReconcileKeyed(parent, oldNodes, newNodes, frameBudgetMs, slotStart, slotLimit);
+                        ReconcileKeyed(parent, oldNodes, newNodes, scopedOldKeys, frameBudgetMs, slotStart, slotLimit);
                     }
                     else
                     {
@@ -265,6 +270,7 @@ namespace Velvet
                 _ctx.BufferPool.ReturnFiberList(oldFibers);
                 _ctx.BufferPool.ReturnFiberSet(newFibers);
                 _ctx.BufferPool.ReturnFiberOwnerList(oldOwners);
+                _ctx.BufferPool.ReturnLeafKeyList(oldKeys);
             }
         }
 
@@ -956,11 +962,11 @@ namespace Velvet
         // When frameBudgetMs > 0, the suspendable state-machine path is taken.
         // When 0 or below, execution is fully synchronous as before (no state object allocation).
         private void ReconcileKeyed(VisualElement? parent, VNode?[] oldNodes, VNode?[] newNodes,
-            double frameBudgetMs, int slotStart = 0, int slotLimit = int.MaxValue)
+            List<ChildKey>? oldKeys, double frameBudgetMs, int slotStart = 0, int slotLimit = int.MaxValue)
         {
             if (frameBudgetMs <= 0)
             {
-                ReconcileKeyedSync(parent, oldNodes, newNodes, slotStart, slotLimit);
+                ReconcileKeyedSync(parent, oldNodes, newNodes, oldKeys, slotStart, slotLimit);
                 return;
             }
 
@@ -968,6 +974,7 @@ namespace Velvet
             {
                 Parent = parent,
                 OldNodes = oldNodes,
+                OldKeys = oldKeys?.ToArray(),
                 NewNodes = newNodes,
                 Phase = KeyedReconcilePhase.Pass1Linear,
                 LinearEnd = 0,
@@ -984,7 +991,7 @@ namespace Velvet
         // completion inline instead of allocating and driving a KeyedReconcileState, since a zero budget
         // means there is nothing to resume later and the state machine's buffers would be pure overhead.
         private void ReconcileKeyedSync(VisualElement? parent, VNode?[] oldNodes, VNode?[] newNodes,
-            int slotStart = 0, int slotLimit = int.MaxValue)
+            List<ChildKey>? oldKeys, int slotStart = 0, int slotLimit = int.MaxValue)
         {
             // DOM-desync recovery: the keyed diff relies on "oldNodes index == live DOM index" (Pass 1 scans
             // and Pass 2 looks up parent.ElementAt(slotStart + index)). A transient AnimatePresence ghost overlap
@@ -995,9 +1002,9 @@ namespace Velvet
             if (TryRebuildDesyncedSlotRange(parent, oldNodes, newNodes, slotStart, slotLimit)) return;
             if (parent == null) return;
 
-            if (!RunLinearPrefixPass(parent, oldNodes, newNodes, slotStart, out var linearEnd)) return;
-            if (TrySuffixTrimFastPath(parent, oldNodes, newNodes, slotStart, linearEnd)) return;
-            ReconcileKeyedRemainder(parent, oldNodes, newNodes, slotStart, linearEnd);
+            if (!RunLinearPrefixPass(parent, oldNodes, newNodes, oldKeys, slotStart, out var linearEnd)) return;
+            if (TrySuffixTrimFastPath(parent, oldNodes, newNodes, oldKeys, slotStart, linearEnd)) return;
+            ReconcileKeyedRemainder(parent, oldNodes, newNodes, oldKeys, slotStart, linearEnd);
         }
 
         // False when this pass finished the whole reconcile on its own — aborted mid-patch, every entry
@@ -1016,21 +1023,24 @@ namespace Velvet
         //     oldNodes[i].index == slotStart + i
         //   continues to hold in ReconcileKeyedRemainder (for i ≥ linearEnd).
         private bool RunLinearPrefixPass(VisualElement parent, VNode?[] oldNodes, VNode?[] newNodes,
-            int slotStart, out int linearEnd)
+            List<ChildKey>? oldKeys, int slotStart, out int linearEnd)
         {
             var commonLength = Math.Min(oldNodes.Length, newNodes.Length);
             linearEnd = 0;
             for (var i = 0; i < commonLength; i++)
             {
+                // A scoped old key is compared even for the same node: the node may have been emitted under a
+                // scope the new side no longer gives it. A node emitted under its own key takes that key again.
+                if ((oldKeys != null || !ReferenceEquals(oldNodes[i], newNodes[i]))
+                    && !OldKey(oldKeys, oldNodes, i).Equals(_keying.ReconcileKey(newNodes[i], i)))
+                {
+                    break;
+                }
                 // Reference-identical VNodes are diff-free (immutable per render; auto-memoization hands
-                // back the cached instance). Skip the key compare, DOM lookup, and PatchNode — identity
-                // implies key equality, so the prefix advances and the in-place DOM slot stays valid.
+                // back the cached instance). Skip the DOM lookup and PatchNode, so the prefix advances and
+                // the in-place DOM slot stays valid.
                 if (!ReferenceEquals(oldNodes[i], newNodes[i]))
                 {
-                    var oldKey = _keying.EffectiveKey(oldNodes[i]);
-                    var newKey = _keying.EffectiveKey(newNodes[i]);
-                    if (oldKey != newKey) break;
-
                     var slot = new ChildSlot { Parent = parent, SlotStart = slotStart, Index = i };
                     if (PatchOrReplaceAtSlot(in slot, oldNodes[i], newNodes[i],
                             slotExists: true))
@@ -1078,9 +1088,9 @@ namespace Velvet
         //     indices and stranding an AnimatePresence exit timer), so it stops the trim and defers to LIS.
         //   - the desync rebuild in the caller still runs first (this prepass never sees a short live range).
         private bool TrySuffixTrimFastPath(VisualElement parent, VNode?[] oldNodes, VNode?[] newNodes,
-            int slotStart, int linearEnd)
+            List<ChildKey>? oldKeys, int slotStart, int linearEnd)
         {
-            var suffix = CountTrimmableSuffix(oldNodes, newNodes, linearEnd);
+            var suffix = CountTrimmableSuffix(oldNodes, newNodes, oldKeys, linearEnd);
             var oldMidEnd = oldNodes.Length - suffix; // exclusive end of the old middle window
             var newMidEnd = newNodes.Length - suffix; // exclusive end of the new middle window
             // Take the fast path only when the middle collapses to a single insert OR remove AND every key is
@@ -1091,7 +1101,8 @@ namespace Velvet
             // Positional(index) keys,
             // which are inherently distinct, so an unkeyed list is never rejected by this check.
             if (suffix == 0 || (oldMidEnd != linearEnd && newMidEnd != linearEnd)
-                || !AllReconcileKeysUnique(oldNodes) || !AllReconcileKeysUnique(newNodes))
+                || !(oldKeys == null ? AllReconcileKeysUnique(oldNodes) : AllOldKeysUnique(oldKeys))
+                || !AllReconcileKeysUnique(newNodes))
             {
                 return false;
             }
@@ -1102,7 +1113,8 @@ namespace Velvet
 
         // How many key-equal, patch-compatible pairs the tails share, counted inward and without mutating
         // anything — the caller decides whether the shape that remains is worth the fast path.
-        private int CountTrimmableSuffix(VNode?[] oldNodes, VNode?[] newNodes, int linearEnd)
+        private int CountTrimmableSuffix(VNode?[] oldNodes, VNode?[] newNodes, List<ChildKey>? oldKeys,
+            int linearEnd)
         {
             var suffix = 0;
             while (oldNodes.Length - suffix > linearEnd && newNodes.Length - suffix > linearEnd)
@@ -1111,11 +1123,15 @@ namespace Velvet
                 var ni = newNodes.Length - 1 - suffix;
                 var o = oldNodes[oi];
                 var n = newNodes[ni];
-                if (!ReferenceEquals(o, n))
+                // A scoped old key is compared even for the same node, as RunLinearPrefixPass compares it. An old
+                // side that needed no expansion keeps the identity skip, under which the same unkeyed node counts
+                // even where its index moved.
+                if ((oldKeys != null || !ReferenceEquals(o, n))
+                    && !OldKey(oldKeys, oldNodes, oi).Equals(_keying.ReconcileKey(n, ni)))
                 {
-                    if (!_keying.ReconcileKey(o, oi).Equals(_keying.ReconcileKey(n, ni))) break;
-                    if (!ReconcileKeying.CanPatch(o, n)) break;
+                    break;
                 }
+                if (!ReferenceEquals(o, n) && !ReconcileKeying.CanPatch(o, n)) break;
                 suffix++;
             }
 
@@ -1164,7 +1180,7 @@ namespace Velvet
         }
 
         private void ReconcileKeyedRemainder(VisualElement parent, VNode?[] oldNodes, VNode?[] newNodes,
-            int slotStart, int linearEnd)
+            List<ChildKey>? oldKeys, int slotStart, int linearEnd)
         {
             var pool = _ctx.BufferPool;
             var oldKeyMap = pool.RentOldKeyMap();
@@ -1192,7 +1208,7 @@ namespace Velvet
                 // index.
                 for (var i = linearEnd; i < oldNodes.Length; i++)
                 {
-                    _keying.RegisterOldKey(oldNodes[i], i, oldKeyMap, orphanedOldIndices);
+                    ReconcileKeying.RegisterOldKey(OldKey(oldKeys, oldNodes, i), oldNodes[i], i, oldKeyMap, orphanedOldIndices);
                 }
 
                 for (var i = linearEnd; i < newNodes.Length; i++)
@@ -1206,7 +1222,7 @@ namespace Velvet
                 // unkeyed node's key is its full sibling index i, the same value the build loop used.
                 for (var i = oldNodes.Length - 1; i >= linearEnd; i--)
                 {
-                    if (ShouldRemoveOldKeyedEntry(oldNodes[i], i, usedKeys, replacedKeys, orphanedOldIndices))
+                    if (ShouldRemoveOldKeyedEntry(OldKey(oldKeys, oldNodes, i), i, usedKeys, replacedKeys, orphanedOldIndices))
                     {
                         _cleaner.RemoveElement(parent, LogicalChildSlots.ToPhysical(parent, slotStart + i));
                     }
@@ -1235,11 +1251,37 @@ namespace Velvet
             }
         }
 
-        // True when every node's ReconcileKey is distinct across the list. The suffix-trim fast path inserts /
+        // True when every key in the list is distinct. The suffix-trim fast path inserts /
         // patches positionally and so would render N elements for a key repeated N times, whereas Pass 2
         // de-duplicates it; the prepass therefore defers a duplicate-key list to Pass 2. Unkeyed nodes carry
         // Positional(index) keys, which are inherently distinct, so an unkeyed list always passes. Uses a pooled
         // key set (no allocation after warmup) and is only reached on the collapse-to-insert/remove shapes.
+        // The key old leaf i was emitted under. Null keys stand for an old side that needed no expansion, where
+        // each leaf was emitted under its own key.
+        private ChildKey OldKey(List<ChildKey>? keys, VNode?[] oldNodes, int i)
+            => keys == null ? _keying.ReconcileKey(oldNodes[i], i) : keys[i];
+
+        private ChildKey OldKey(ChildKey[]? keys, VNode?[] oldNodes, int i)
+            => keys == null ? _keying.ReconcileKey(oldNodes[i], i) : keys[i];
+
+        private bool AllOldKeysUnique(List<ChildKey> keys)
+        {
+            if (keys.Count < 2) return true;
+            var seen = _ctx.BufferPool.RentKeySet();
+            try
+            {
+                for (var i = 0; i < keys.Count; i++)
+                {
+                    if (!seen.Add(keys[i])) return false;
+                }
+                return true;
+            }
+            finally
+            {
+                _ctx.BufferPool.ReturnKeySet(seen);
+            }
+        }
+
         private bool AllReconcileKeysUnique(VNode?[] nodes)
         {
             if (nodes.Length < 2) return true;
@@ -1326,13 +1368,14 @@ namespace Velvet
             {
                 if (AbortIfCanceled(state)) return true;
 
-                // Reference-identical VNodes are diff-free; skip the compare + patch (see ReconcileKeyedSync).
+                // Keys first, then the identity skip, as RunLinearPrefixPass orders them.
+                if ((state.OldKeys != null || !ReferenceEquals(oldNodes[i], newNodes[i]))
+                    && !OldKey(state.OldKeys, oldNodes, i).Equals(_keying.ReconcileKey(newNodes[i], i)))
+                {
+                    break;
+                }
                 if (!ReferenceEquals(oldNodes[i], newNodes[i]))
                 {
-                    var oldKey = _keying.EffectiveKey(oldNodes[i]);
-                    var newKey = _keying.EffectiveKey(newNodes[i]);
-                    if (oldKey != newKey) break;
-
                     var slot = new ChildSlot { Parent = parent, SlotStart = slotStart, Index = i };
                     if (PatchOrReplaceAtSlot(in slot, oldNodes[i], newNodes[i],
                             slotExists: true))
@@ -1425,7 +1468,7 @@ namespace Velvet
             {
                 if (AbortIfCanceled(state)) return true;
 
-                _keying.RegisterOldKey(oldNodes[i], i, oldKeyMap, orphanedOldIndices);
+                ReconcileKeying.RegisterOldKey(OldKey(state.OldKeys, oldNodes, i), oldNodes[i], i, oldKeyMap, orphanedOldIndices);
 
                 var next = i + 1;
                 if (next < oldNodes.Length && TryYield(state, next, frameBudgetMs)) return false;
@@ -1493,7 +1536,7 @@ namespace Velvet
             {
                 if (AbortIfCanceled(state)) return true;
 
-                if (ShouldRemoveOldKeyedEntry(oldNodes[i], i, usedKeys, replacedKeys, orphanedOldIndices))
+                if (ShouldRemoveOldKeyedEntry(OldKey(state.OldKeys, oldNodes, i), i, usedKeys, replacedKeys, orphanedOldIndices))
                 {
                     _cleaner.RemoveElement(parent, LogicalChildSlots.ToPhysical(parent, slotStart + i));
                 }
@@ -1739,11 +1782,10 @@ namespace Velvet
         // True when the old entry at index i is not retained by the new tree and must be removed: it was
         // orphaned by a duplicate key, its key was consumed by no new node, or its key was consumed but
         // replaced because CanPatch returned false. Shared by both keyed Pass-2 reverse-removal loops.
-        private bool ShouldRemoveOldKeyedEntry(
-            VNode? oldNode, int i, HashSet<ChildKey> usedKeys, HashSet<ChildKey> replacedKeys,
+        private static bool ShouldRemoveOldKeyedEntry(
+            ChildKey key, int i, HashSet<ChildKey> usedKeys, HashSet<ChildKey> replacedKeys,
             HashSet<int> orphanedOldIndices)
         {
-            var key = _keying.ReconcileKey(oldNode, i);
             return orphanedOldIndices.Contains(i)
                 || !usedKeys.Contains(key)
                 || replacedKeys.Contains(key);

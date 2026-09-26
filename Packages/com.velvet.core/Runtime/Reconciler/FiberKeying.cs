@@ -40,7 +40,7 @@ namespace Velvet
     //
     // Scope is the fiber-keying scope chain, and deliberately COLLAPSES: a Fragment / Provider / Component
     // contributes nothing while no enclosing keyed boundary has established a scope, which is what keeps an
-    // unkeyed subtree participating in its parent's plain keyed/indexed list. ReconcileKeying.RegisterScopedKey
+    // unkeyed subtree participating in its parent's plain keyed/indexed list. ReconcileKeying.ScopedKey
     // depends on that exact rule. Scope runs on into a component's output on its parent's walk and starts
     // afresh at WalkRoot on the component's own render, so it can spell one node two ways across those two
     // entry points: nothing recorded in one walk and read back in another may be placed by it.

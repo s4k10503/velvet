@@ -113,6 +113,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- One `V.Fragment` returned for several `V.List` items gives each item a row that keeps its element when
+  the items are reordered or appended to. Each item's copy of the Fragment shares its children, and a row's
+  key was read back from that shared child, so the rows resolved to one item's key: a row already on screen
+  was built again, and a row left on screen had its ref cleanup run.
+
+- A keyed element that leaves a keyed `V.Fragment` mounts a fresh element in two cases where it patched the
+  one it had inside the Fragment: an update that is time-sliced and reaches the move after resuming, and an
+  element that is the same node on both renders. That is the remount a synchronous update of a new node
+  already gave, and the one React gives.
+
+- Two sibling components that each render an element under the same `key:` keep their elements when their
+  parent re-renders. The two keys were compared as siblings of one list, so a re-render of the parent
+  rebuilt both elements and logged a duplicate-key warning. A key is now compared only among the
+  elements one component renders, as React scopes it.
+
 - A `V.Suspense` or `V.AnimatePresence` that a component returns with no element above it keeps what it
   committed when that component re-renders on its own. That held only where nothing above the component
   opened a key scope; a keyed `V.Fragment` does, as do the children of a `V.Suspense`, a child of a
