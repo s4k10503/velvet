@@ -56,14 +56,14 @@ namespace Velvet.Tests
                 Is.EqualTo((true, 0)));
         }
 
-        // The owner case above with the list of keys the same expansion fills beside the owners; the Arrange
-        // and the Act are that case's, for the reason it gives.
+        // The owner case above with the list of keys the same expansion fills beside the owners, marked and
+        // read back for the reason that case gives.
         [Test]
         public void Given_APassThatFilledTheOldKeyList_When_ItEnds_Then_TheListIsBackInThePool()
         {
-            // Arrange
+            // Arrange — a Fragment on the old side, since a flat old side leaves the key list empty.
             var pool = _reconciler.Context.BufferPool;
-            var mounted = new VNode[] { V.Label(text: "a") };
+            var mounted = new VNode[] { V.Fragment(new VNode[] { V.Label(text: "a") }) };
             _reconciler.Reconcile(_root, Array.Empty<VNode>(), mounted);
             var borrowed = pool.RentLeafKeyList();
             pool.ReturnLeafKeyList(borrowed);
