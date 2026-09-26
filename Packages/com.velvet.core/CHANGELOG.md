@@ -115,9 +115,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The preview-tooling guide's headless capture section now says when the target texture holds a
   story. In Edit Mode the panel writes it on a later editor frame rather than during
-  `VelvetPreviewHost.Mount`, so a harness that reads the texture back in the frame it mounted in finds
-  nothing the story drew; one that waits editor frames first captures the story with public API alone.
-  The guide named no frame to wait for.
+  `VelvetPreviewHost.Mount`, so a harness that reads the texture back in the frame it mounted in does
+  not find the story there; one that waits editor frames first captures it with public API alone. The
+  guide named no frame to wait for.
 
 - An absolutely positioned element carrying a `clip-path-*` utility keeps the box its edge offsets
   declare, and an `absolute inset-0` child fills it, as without the clip. The wrapper that hosts the

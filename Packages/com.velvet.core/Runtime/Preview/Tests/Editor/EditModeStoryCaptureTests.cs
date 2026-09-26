@@ -26,7 +26,7 @@ namespace Velvet.Tests
                 new VelvetPreviewAttribute { Name = nameof(LeftHalfRed), Group = nameof(EditModeStoryCaptureTests) });
 
         // GREEN_ON_BASE(characterization): Edit Mode editor frames already paint an offscreen story panel.
-        // Public API alone builds this path; deleting the frame loop reddens it.
+        // The mount, the frames and the readback are all public API; deleting the frame loop reddens it.
         [UnityTest]
         public IEnumerator Given_AStoryMountedOnARenderTexturePanel_When_EditorFramesRun_Then_TheTextureHoldsTheStory()
         {
