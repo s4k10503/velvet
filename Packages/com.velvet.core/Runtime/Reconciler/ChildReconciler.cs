@@ -1270,11 +1270,6 @@ namespace Velvet
         // key set (no allocation after warmup) and is only reached on the collapse-to-insert/remove shapes.
         private bool AllOldKeysUnique(List<ChildKey> keys)
         {
-            // MUTANT_SURVIVES(equivalent, guard removed): the loop answers true for fewer than two keys too.
-            // MUTANT_SURVIVES(unreachable, boundary): of two old keys only a repeat changes the answer, and two
-            // old keys that repeat reach the trim only beside a new side repeating them, which the caller's
-            // check of the new side refuses.
-            if (keys.Count < 2) return true;
             var seen = _ctx.BufferPool.RentKeySet();
             try
             {
