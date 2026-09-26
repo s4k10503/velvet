@@ -15,6 +15,10 @@ The floor is twice what is being copied, derived rather than chosen: one copy's 
 one to work in. A number would have to be re-picked as the project grows, and the thing it protects
 is the copy.
 
+A clone shares the source's blocks until either side writes, so a `cp -c` that `seed_library.clones`
+says will clone is not held to that floor. `seed_library.py`, which AGENTS.md seeds with, is not a
+copier here: where it cannot clone it copies nothing and prints the byte copy for this guard to judge.
+
 `Library/` is regenerable whatever anyone is doing, so the remedy is always available: clear it out of
 the worktrees that are not running Unity. What is NOT a safe reading is "this worktree has been quiet"
 — with the disk full every worktree read as quiet while eight agents were demonstrably running,
@@ -31,14 +35,16 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts" / "unity"))
 
 from shell_commands import (NAME_THE_TREE, UNPLACEABLE_MOVE, UNRESOLVED_CD,  # noqa: E402
                             command_directory, command_segments, tokens_of, unexpanded)
+from seed_library import clones, existing_ancestor  # noqa: E402
 
 HOOK_TOOLS = {"Bash"}
 
-# The copy programs a seed is spelled with. `rsync` is what CLAUDE.md documents; `cp` is what somebody
-# reaches for when they have forgotten the exclusion.
+# The copy programs a seed is spelled with. `rsync` is the byte copy `seed_library.py` prints where it
+# cannot clone; `cp` is what somebody reaches for when they have forgotten the exclusion.
 COPIERS = {"rsync", "cp", "ditto"}
 
 # A destination that is a Library, however it is spelled: `Library`, `Library/`, `<path>/Library`.
@@ -58,20 +64,34 @@ UNREADABLE_PROBE = {"command": "rsync -a /nowhere/Library/ Library/"}
 
 
 def seeds(tokens):
-    """(source, destination) where this segment copies something into a Library, else None."""
+    """(sources, destination, cloning) where this segment copies something into a Library, else None.
+
+    `cloning` is whether it is spelled `cp -c`, read only ahead of the first operand and of `--`: macOS
+    `cp` stops reading options there, so a `-c` after either is a path rather than the flag.
+    """
     index = 0
     while index < len(tokens) and (
             "=" in tokens[index].split("/")[0] and not tokens[index].startswith("-")):
         index += 1
     if index >= len(tokens) or os.path.basename(tokens[index]) not in COPIERS:
         return None
-    operands = [token for token in tokens[index + 1:] if not token.startswith("-")]
+    flags, operands, ended = [], [], False
+    for token in tokens[index + 1:]:
+        if not ended and token == "--":
+            ended = True
+        elif not ended and token.startswith("-"):
+            if not operands:
+                flags.append(token)
+        else:
+            operands.append(token)
     if len(operands) < 2:
         return None
     destination = operands[-1]
     if not LIBRARY.search(destination.rstrip("/") or destination):
         return None
-    return operands[-2], destination
+    cloning = os.path.basename(tokens[index]) == "cp" and any(
+        not flag.startswith("--") and "c" in flag[1:] for flag in flags)
+    return operands[:-1], destination, cloning
 
 
 def directory_size(path):
@@ -100,8 +120,8 @@ def main():
         command = event.get("tool_input", {}).get("command") or ""
         if not isinstance(command, str):
             return 0
-        # Where the copy lands, which is what decides the filesystem it has to fit on: a relative
-        # destination is placed by the command's own move, not by where the tool call started.
+        # Relative operands are placed by the command's own move, not by where the tool call started:
+        # the destination decides the filesystem the copy has to fit on, the source how much it is.
         cwd = command_directory(command, event.get("cwd") or ".")
         if cwd is UNRESOLVED_CD:
             if not any(seeds(tokens_of(segment)) for segment in command_segments(command)):
@@ -114,18 +134,23 @@ def main():
             found = seeds(tokens_of(segment))
             if found is None:
                 continue
-            source, destination = found
-            if unexpanded(source) or unexpanded(destination):
+            sources, destination, cloning = found
+            if any(unexpanded(source) for source in sources) or unexpanded(destination):
                 sys.stderr.write(
                     "Refusing this Library seed: an operand is still unexpanded, so how much this "
                     "would\ncopy cannot be read here.\n\n"
                     "Spell the paths out.\n")
                 return 2
-            wanted = directory_size(os.path.expanduser(source))
-            if wanted is None:
+            sources = [os.path.join(cwd, os.path.expanduser(source)) for source in sources]
+            landing = os.path.join(cwd, os.path.expanduser(destination))
+            if cloning and all(clones(source, landing) for source in sources):
+                continue
+            sizes = [directory_size(source) for source in sources]
+            if None in sizes:
                 return 0
+            wanted = sum(sizes)
             try:
-                free = shutil.disk_usage(cwd).free
+                free = shutil.disk_usage(str(existing_ancestor(landing))).free
             except OSError:
                 return 0
             if free >= wanted * 2:
@@ -136,6 +161,8 @@ def main():
                 f"  copying   {wanted / 2**30:.1f} GiB\n"
                 f"  free      {free / 2**30:.1f} GiB\n"
                 f"  wanted    {wanted * 2 / 2**30:.1f} GiB\n\n"
+                "Where the filesystem can clone, a seed shares blocks and needs none of this room:\n\n"
+                "  python3 scripts/unity/seed_library.py <other>/Library\n\n"
                 "A Unity run that hits ENOSPC writes no results XML, which reads exactly like a "
                 "compile\nfailure, so filling the disk here wedges every agent quietly. Reclaim "
                 "first — a Library is\nregenerable, and one under a worktree no Unity is running in "
