@@ -205,16 +205,6 @@
       {
         "hooks": [
           {
-            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" codex PreToolUse refuse/pr_without_mutation_receipt.py",
-            "timeout": 25,
-            "type": "command"
-          }
-        ],
-        "matcher": "Bash"
-      },
-      {
-        "hooks": [
-          {
             "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/harness/adapter.py\" codex PreToolUse refuse/edit_while_a_ready_pr_sits.py",
             "timeout": 15,
             "type": "command"

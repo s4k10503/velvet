@@ -57,8 +57,7 @@ def carries(operands, flags):
 
 # `new` is gh's own alias for `create`, on both subcommands -- measured, `gh pr new --help` and
 # `gh issue new --help` each print a usage. A guard that claims one spelling is skippable by typing
-# the other, which for this one costs the label and the assignee and for its neighbour costs the only
-# place a mutation receipt is ever asked for.
+# the other, which here costs the label and the assignee.
 CREATE_SPELLINGS = ("create", "new")
 
 

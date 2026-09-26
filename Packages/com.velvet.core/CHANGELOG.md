@@ -137,6 +137,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is placed by that memo's slot: after a reorder, a keyed component there remounts and an unkeyed one takes
   over the state of whatever held that slot.
 
+- A class string whose arbitrary value changes every render, such as `left-[{x}px]`, and a screen of
+  more than 256 distinct class strings no longer log "ParseClassNames cache exceeded limit", and a
+  moving value no longer pushes the class strings rendered beside it out of the parse cache, which
+  cleared every entry on reaching 256. The cache now takes a class string in only when it is parsed a
+  second time, so a moving value's strings, each parsed once, stay out of it barring a hash collision.
+  Counting parses of strings the cache neither holds nor remembers, a string parsed again within 2048
+  of them is cached, and one parsed again only after 4096 is not; a cached string keeps its parsed
+  array while it is parsed again within 2048 of them and is released once 4096 pass without it. Past
+  those counts the strings are parsed again every render, as before, without the warning. So a cached
+  class string stays cached beside fewer than 2048 moving strings per render and is released beside
+  4096 or more, and a screen shown for the first time settles only while its distinct class strings plus
+  the moving strings of one render stay under about 4096: measured, 3000 strings beside 1000 moving ones
+  settle and 3000 beside 1100 never do, while the same 3000 already cached stay cached beside 1100.
+
 - Memoized components rebuild their compiled VNode cache when their props comparison detects a
   change, including a record struct float member changing from positive zero to negative zero.
 
@@ -690,6 +704,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   round stands as the loader left it, with its result recorded and no error. A subscriber throwing out
   of the failure announcement is reported the same way, where it used to be left to whatever observes a
   forgotten task.
+
+- A `shadow-*` or `drop-shadow-*` behind a `rounded-full` element paints its halo. The silhouette was
+  baked at `--radius-full` itself, which is larger than the element, and came out empty; it now takes the
+  bound the face Velvet paints over it takes, half the element's shorter side. A radius the element can
+  carry bakes as before.
 
 ## [Unreleased — breaking]
 
