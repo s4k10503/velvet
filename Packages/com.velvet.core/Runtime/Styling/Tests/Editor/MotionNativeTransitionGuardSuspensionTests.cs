@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using NUnit.Framework;
 using UnityEngine.UIElements;
 
@@ -191,6 +192,37 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(string.Join(",", element.style.transitionProperty.value), Is.EqualTo("opacity"));
+        }
+
+        [Test]
+        public void Given_APerPropertyTweenList_When_APlayDrivingOneOfItsPropertiesStarts_Then_TheRestKeepTheirOwnTimings()
+        {
+            // Arrange — the four positional lists a per-property swap writes, every entry distinct.
+            var element = new VisualElement();
+            element.style.transitionProperty = new List<StylePropertyName> { new("translate"), new("opacity") };
+            element.style.transitionDuration = new List<TimeValue>
+            {
+                new(10, TimeUnit.Millisecond), new(350, TimeUnit.Millisecond),
+            };
+            element.style.transitionTimingFunction = new List<EasingFunction>
+            {
+                new(EasingMode.Linear), new(EasingMode.EaseIn),
+            };
+            element.style.transitionDelay = new List<TimeValue>
+            {
+                new(0, TimeUnit.Millisecond), new(200, TimeUnit.Millisecond),
+            };
+
+            // Act
+            MotionNativeTransitionGuard.SuspendIfIntercepted(element, new object(), MotionTransitionSlots.Translate);
+
+            // Assert — opacity alone, still on its own duration, easing and delay.
+            Assert.That(
+                string.Join(",", element.style.transitionProperty.value)
+                + "|" + string.Join(",", element.style.transitionDuration.value)
+                + "|" + string.Join(",", element.style.transitionTimingFunction.value.Select(e => e.mode))
+                + "|" + string.Join(",", element.style.transitionDelay.value),
+                Is.EqualTo("opacity|350ms|EaseIn|200ms"));
         }
 
         // Every longhand the element's inline transition-property does not name, sorted and joined.

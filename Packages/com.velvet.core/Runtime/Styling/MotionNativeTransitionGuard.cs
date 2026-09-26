@@ -402,6 +402,8 @@ namespace Velvet
         private static bool NamesADrivenLonghand(StylePropertyName name, StyleLonghandSet driven)
         {
             var longhand = Array.IndexOf(s_longhandNames, name);
+            // MUTANT_SURVIVES(equivalent): index 0 is -unity-background-image-tint-color, which no slot's longhands
+            // include, so reading it as absent changes no answer.
             return longhand >= 0 && driven.Contains((StyleLonghand)longhand);
         }
 
