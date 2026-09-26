@@ -9,10 +9,9 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Specifies what a child keeps when a <c>[&amp;&gt;*]:</c> payload and a gap, grid or divide container
-    /// write the same inline slot on it. The manipulators write the slot directly and the payload writes it
-    /// through a layer, so each side's turn-off used to take the other's value with it. CSS decides the
-    /// outcome: the container's spacing wins while it applies, and the payload's value is what is left once
-    /// it stops.
+    /// write the same inline slot on it — the manipulators directly, the payload through a layer. The
+    /// container's value wins while it applies, the precedence its polyfill documents; once it stops, the
+    /// slot holds what CSS would leave there, the payload's value.
     /// </summary>
     /// <remarks>
     /// The transfer cases pose the same deferred re-apply <see cref="PerChildManipulatorOwnershipTests"/>
