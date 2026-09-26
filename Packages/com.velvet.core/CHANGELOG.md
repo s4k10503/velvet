@@ -123,6 +123,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   unkeyed element is now matched by its position counted from where the output of the component that
   renders it begins, as in React.
 
+- A keyed `V.Fragment` that a component returns as its whole output keeps its key. Its key was dropped
+  and its children taken as the component's output, so changing that key kept the components and
+  elements inside it where React remounts them; they now remount. React unwraps only an unkeyed
+  top-level Fragment, and Velvet still unwraps that one.
+
 - One `V.Fragment` returned for several `V.List` items gives each item a row that keeps its element when
   the items are reordered or appended to. Each item's copy of the Fragment shares its children, and a row's
   key was read back from that shared child, so the rows resolved to one item's key: a row already on screen

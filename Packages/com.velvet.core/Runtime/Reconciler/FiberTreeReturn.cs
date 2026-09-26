@@ -48,7 +48,9 @@ namespace Velvet
                 return Array.Empty<VNode>();
             }
 
-            if (node is FragmentNode fragment)
+            // Only an unkeyed Fragment unwraps, as React unwraps only an unkeyed top-level one: a keyed root
+            // stays a node, so its key opens the scope its children are matched and registered under.
+            if (node is FragmentNode { Key: null } fragment)
             {
                 return fragment.Children ?? Array.Empty<VNode>();
             }
