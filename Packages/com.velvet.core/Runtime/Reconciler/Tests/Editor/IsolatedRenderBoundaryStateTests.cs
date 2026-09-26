@@ -9,8 +9,8 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Specifies that a Suspense's committed branch and an AnimatePresence's committed children are found
-    /// again by the component that renders them when it re-renders alone, whatever its parent wraps it in.
-    /// The parent's walk reaches the component's body through the wrapper; the component's own render
+    /// again by the component that renders them when it re-renders alone under a wrapper its parent put it
+    /// in. The parent's walk reaches the component's body through the wrapper; the component's own render
     /// starts at the keying root.
     /// <list type="bullet">
     /// <item>A suspended boundary keeps the one fallback element it committed, under a keyed Fragment and

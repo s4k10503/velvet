@@ -40,8 +40,8 @@ namespace Velvet
     // contributes nothing while no enclosing keyed boundary has established a scope, which is what keeps an
     // unkeyed subtree participating in its parent's plain keyed/indexed list. ReconcileKeying.RegisterScopedKey
     // depends on that exact rule. Scope runs on into a component's output on its parent's walk and starts
-    // afresh at WalkRoot on the component's own render, so it spells one node two ways across those two entry
-    // points: nothing recorded in one walk and read back in another may be placed by it.
+    // afresh at WalkRoot on the component's own render, so it can spell one node two ways across those two
+    // entry points: nothing recorded in one walk and read back in another may be placed by it.
     //
     // Path never collapses: every construct the descent passes through contributes, starting at the walk root.
     // Provider pairing needs that. Under Scope alone, a Provider nested directly inside another one is
