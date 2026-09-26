@@ -363,9 +363,12 @@ namespace Velvet
                     // Contained on the same terms the presence expansion's own enters are, and attributed
                     // to the component whose render reached this create — the owner SyncRefCallback reads
                     // for the same element, captured here because the callback can fire frames later.
+                    var onSwap = _patcher.HoldInlineForEnter(element, motionNode.ClassNames, standaloneFromClasses!,
+                        standaloneTransition);
                     _ctx.StyleAnimationScheduler.PlayVariantEnter(element, standaloneFromClasses, standaloneToClasses,
                         standaloneTransition,
-                        GeneralPathReconciler.ContainedEnterComplete(motionNode, _ctx.FiberStack.Current));
+                        GeneralPathReconciler.ContainedEnterComplete(motionNode, _ctx.FiberStack.Current),
+                        onSwap: onSwap);
                 }
                 else
                 {

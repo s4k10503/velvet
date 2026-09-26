@@ -641,7 +641,8 @@ namespace Velvet
         // that), and the swap's transition is written only by the play after this sync, so a pose written here
         // would animate on the transition the element carried before this render rather than the swap's. Held,
         // rather than moved behind a transition written ahead of them, so they land at the swap itself: with
-        // the pose's USS classes, and in the stagger slot, which delays the swap and not the transition.
+        // the pose's USS classes, and in the stagger slot, which delays the swap and not the transition. The
+        // enters hold the same way (HoldInlineForEnter) and the exit writes at its swap too (PlanInlineExit).
         // swapTransition is null when no swap plays this render.
         private (string[] syncOld, string[] syncNew, Action? onSwap) ResolveInlineHold(VisualElement element,
             string[]? baseClasses, MotionAppliedClassSet previous, MotionAppliedClassSet next,
@@ -651,7 +652,6 @@ namespace Velvet
             var newVariantClasses = next.VariantClasses;
             var appliedNew = next.Merged;
             var syncOld = previous.Merged;
-            string[]? heldTokens = null;
             MotionHeldInline? kept = null;
             if (_ctx.MotionHeldInline.Remove(element, out var hold))
             {
@@ -660,43 +660,121 @@ namespace Velvet
                     && _ctx.StyleAnimationScheduler.IsSwapPending(element, hold.Release))
                 {
                     // A re-render inside the window before the swap: the swap still owes the held tokens.
-                    heldTokens = hold.HeldTokens;
                     kept = hold;
                 }
             }
 
-            if (swapTransition != null && StyleAnimationScheduler.DefersSwapToALaterFrame(swapTransition))
+            if (swapTransition != null && StyleAnimationScheduler.RunsOnSwap(swapTransition))
             {
                 // The pose this swap starts from, not a hold's HeldTokens: where this swap interrupts one that
                 // had not swapped, that pose was never written, and this sync writes it so the new swap starts
                 // there, as the class path's cancel restores the interrupted pose's classes.
-                heldTokens = CollectInlineResolved(oldVariantClasses);
+                var created = TryHoldInline(element, baseClasses, oldVariantClasses, next);
+                return (syncOld, created?.Applied ?? appliedNew, created?.Release);
             }
-            if (heldTokens == null || SameTokens(heldTokens, CollectInlineResolved(newVariantClasses)))
+            if (kept == null || SameTokens(kept.HeldTokens, CollectInlineResolved(newVariantClasses)))
             {
                 return (syncOld, appliedNew, null);
             }
 
-            var syncNew = ComposeWithHeldTokens(baseClasses ?? Array.Empty<string>(), newVariantClasses, heldTokens);
-            if (kept != null)
-            {
-                kept.Applied = syncNew;
-                kept.Target = appliedNew;
-                _ctx.MotionHeldInline[element] = kept;
-                return (syncOld, syncNew, null);
-            }
+            kept.Applied = ComposeWithHeldTokens(baseClasses ?? Array.Empty<string>(), newVariantClasses,
+                kept.HeldTokens);
+            kept.Target = appliedNew;
+            _ctx.MotionHeldInline[element] = kept;
+            return (syncOld, kept.Applied, null);
+        }
 
-            var created = new MotionHeldInline(heldTokens, syncNew, appliedNew);
-            created.Release = () =>
+        // Registers a hold keeping fromVariantClasses' inline-resolved tokens in place of target's, or returns
+        // null when the two carry the same ones. The caller syncs the element to the hold's Applied.
+        private MotionHeldInline? TryHoldInline(VisualElement element, string[]? baseClasses,
+            string[] fromVariantClasses, MotionAppliedClassSet target)
+        {
+            var heldTokens = CollectInlineResolved(fromVariantClasses);
+            if (SameTokens(heldTokens, CollectInlineResolved(target.VariantClasses)))
             {
-                if (_ctx.MotionHeldInline.TryGetValue(element, out var current) && ReferenceEquals(current, created))
+                return null;
+            }
+            var hold = new MotionHeldInline(heldTokens,
+                ComposeWithHeldTokens(baseClasses ?? Array.Empty<string>(), target.VariantClasses, heldTokens),
+                target.Merged);
+            hold.Release = () =>
+            {
+                if (_ctx.MotionHeldInline.TryGetValue(element, out var current) && ReferenceEquals(current, hold))
                 {
                     _ctx.MotionHeldInline.Remove(element);
-                    SyncClassDrivenStyling(element, created.Applied, created.Target);
+                    SyncClassDrivenStyling(element, hold.Applied, hold.Target);
                 }
             };
-            _ctx.MotionHeldInline[element] = created;
-            return (syncOld, syncNew, created.Release);
+            _ctx.MotionHeldInline[element] = hold;
+            return hold;
+        }
+
+        // The set the element rests at: its MotionAppliedClasses entry, else its base classes alone.
+        private MotionAppliedClassSet RestingClassSet(VisualElement element, string[]? baseClasses)
+            => _ctx.MotionAppliedClasses.TryGetValue(element, out var resting)
+                ? resting
+                : new MotionAppliedClassSet(baseClasses ?? Array.Empty<string>(), Array.Empty<string>());
+
+        // A variant enter's counterpart of ResolveInlineHold: the element rests at animate, so the enter's
+        // initial pose is written now, before the play puts the enter's transition on the element, and
+        // animate's inline-resolved tokens are held for the swap. Returns the play's onSwap, or null when the
+        // enter holds nothing.
+        internal Action? HoldInlineForEnter(VisualElement element, string[]? baseClasses, string[] fromVariantClasses,
+            StyleTransitionConfig transition)
+        {
+            if (!StyleAnimationScheduler.RunsOnSwap(transition))
+            {
+                return null;
+            }
+            var resting = RestingClassSet(element, baseClasses);
+            var hold = TryHoldInline(element, baseClasses, fromVariantClasses, resting);
+            if (hold == null)
+            {
+                return null;
+            }
+            SyncClassDrivenStyling(element, resting.Merged, hold.Applied);
+            return hold.Release;
+        }
+
+        // A variant exit's counterpart: the exit pose's inline-resolved tokens are written at the exit's swap,
+        // after the play has put the exit's transition on the element, and RestoreInlineAfterExit writes the
+        // resting ones back. An enter hold still registered is landed first, as the exit's CancelEnter restores
+        // the enter's resting classes. Returns the play's onSwap, or null when the exit moves no such token.
+        internal Action? PlanInlineExit(VisualElement element, string[]? baseClasses, string[] exitVariantClasses,
+            StyleTransitionConfig transition)
+        {
+            if (_ctx.MotionHeldInline.Remove(element, out var enterHold))
+            {
+                SyncClassDrivenStyling(element, enterHold.Applied, enterHold.Target);
+            }
+            var resting = RestingClassSet(element, baseClasses);
+            var exitTokens = CollectInlineResolved(exitVariantClasses);
+            if (!StyleAnimationScheduler.RunsOnSwap(transition)
+                || SameTokens(exitTokens, CollectInlineResolved(resting.VariantClasses)))
+            {
+                return null;
+            }
+            var exit = new MotionInlineExit(resting.Merged,
+                ComposeWithHeldTokens(baseClasses ?? Array.Empty<string>(), resting.VariantClasses, exitTokens));
+            _ctx.MotionInlineExits[element] = exit;
+            return () =>
+            {
+                if (_ctx.MotionInlineExits.TryGetValue(element, out var current) && ReferenceEquals(current, exit))
+                {
+                    SyncClassDrivenStyling(element, exit.Resting, exit.Exit);
+                    exit.Swapped = true;
+                }
+            };
+        }
+
+        // Writes the resting inline-resolved tokens back over an exit's, for an exit cancelled by its key coming
+        // back and for one that completed before the render that would drop it.
+        internal void RestoreInlineAfterExit(VisualElement element)
+        {
+            if (_ctx.MotionInlineExits.Remove(element, out var exit) && exit.Swapped)
+            {
+                SyncClassDrivenStyling(element, exit.Exit, exit.Resting);
+            }
         }
 
         private static string[] CollectInlineResolved(string[] classes)

@@ -121,6 +121,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   classes gave it a transition. A pose's inline values now land at the swap itself, alongside its USS
   classes and in its stagger slot.
 
+- Under a tween transition, a `V.Motion`'s mount enter and `V.AnimatePresence` enter show a `translate-*`
+  `initial` pose and tween from it to `animate`, and a presence exit tweens to a `translate-*` `exit` pose
+  before the child is removed. None of the three moved a translate pose: the enters rested at `animate`
+  from the first frame and the exit stayed there until removal. An exit interrupted by its key coming back
+  returns to `animate`, and so does one that finished just before its key came back.
+
 - Memoized components rebuild their compiled VNode cache when their props comparison detects a
   change, including a record struct float member changing from positive zero to negative zero.
 

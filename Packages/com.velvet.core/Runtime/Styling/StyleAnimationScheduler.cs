@@ -109,8 +109,8 @@ namespace Velvet
         // AnimatePresence-driven variant enter) reads its timing/spring knobs straight off the enclosing
         // Motion's OWN StyleTransitionConfig, so this unpacks it once here instead of each call site repeating
         // the same eight-argument unpack of the same object.
-        // onSwap: run at the swap, once the classes have moved. Only a play for which DefersSwapToALaterFrame
-        // holds runs it, and one cancelled before its swap never does.
+        // onSwap: run at the swap, once the classes have moved. Only a play for which RunsOnSwap holds runs it,
+        // and one cancelled before its swap never does.
         public void PlayVariantEnter(VisualElement? element, string[]? fromClasses, string[]? toClasses,
             StyleTransitionConfig config, Action? onComplete = null, float additionalDelaySec = 0f,
             Action? onSwap = null)
@@ -122,7 +122,7 @@ namespace Velvet
         }
 
         // Shares IsPlayableDuration with ValidateDuration, so the two cannot disagree about which durations play.
-        internal static bool DefersSwapToALaterFrame(StyleTransitionConfig config)
+        internal static bool RunsOnSwap(StyleTransitionConfig config)
             => config.Type == TransitionType.Tween && IsPlayableDuration(config.DurationSec);
 
         internal bool IsSwapPending(VisualElement element, Action onSwap)
@@ -315,9 +315,7 @@ namespace Velvet
 
             StyleAnimationClassUtils.RemoveClasses(element, pending.FromClasses);
             StyleAnimationClassUtils.AddClasses(element, toClasses);
-            var onSwap = pending.OnSwap;
-            pending.OnSwap = null;
-            onSwap?.Invoke();
+            RunOnSwap(pending);
             // The CSS opacity transition is now firing — start sampling the caster's opacity each frame so its
             // ring band fades in lockstep with it.
             RingCoFadeCoordinator.StartRingCoFadeTick(pending);
@@ -359,8 +357,9 @@ namespace Velvet
         // whose FromClasses are transient).
         // additionalDelaySec: extra delay before the exit transition fires, on top of config.DelaySec. Used for
         // exit staggering (each removed child delayed by stagger × its index), mirroring the enter stagger.
+        // onSwap: as PlayVariantEnter's.
         public void PlayExit(VisualElement? element, StyleTransitionConfig? config, Action? onComplete,
-            bool restoreFromOnCancel = false, float additionalDelaySec = 0f)
+            bool restoreFromOnCancel = false, float additionalDelaySec = 0f, Action? onSwap = null)
         {
             if (element == null || config == null)
             {
@@ -429,6 +428,7 @@ namespace Velvet
                 DurationList = durationList,
                 DelayList = delayList,
                 AnimatingElement = element,
+                OnSwap = onSwap,
             };
             // Seed the ring band at the from-value (1 = opaque, the element's current state); the tick (started
             // at the swap) then ramps it down to follow the caster's fading opacity. Released on completion /
@@ -508,6 +508,7 @@ namespace Velvet
 
             StyleAnimationClassUtils.RemoveClasses(element, pending.FromClasses);
             StyleAnimationClassUtils.AddClasses(element, pending.ToClasses!);
+            RunOnSwap(pending);
             // The CSS opacity fade-out is now firing — sample the caster's opacity each frame on the
             // stable host so its ring band fades out in lockstep (and keeps ticking through any
             // reconcile-reorder detach of the exiting ghost, which is why the host is the panel root).
@@ -962,6 +963,13 @@ namespace Velvet
         {
             CancelAllInMap(_pendingExits);
             CancelAllInMap(_pendingEnters);
+        }
+
+        private static void RunOnSwap(PendingAnimation pending)
+        {
+            var onSwap = pending.OnSwap;
+            pending.OnSwap = null;
+            onSwap?.Invoke();
         }
 
         private static bool IsPlayableDuration(float durationSec)
@@ -1449,7 +1457,7 @@ namespace Velvet
             // Non-null for a bezier-driven entry (StartBezierVariant) — the bezier sibling of Spring. Mutually
             // exclusive with it per play (which one is set depends on config.Type); both null for a plain tween.
             public BezierTweenState? Bezier;
-            // A variant enter's onSwap until the swap runs it; null once it has run, and for every other play.
+            // A variant play's onSwap until the swap runs it; null once it has run, and for a play given none.
             public Action? OnSwap;
 
             // The animating element's OWN ring band, when it has one. Only its own: a band belonging to a
