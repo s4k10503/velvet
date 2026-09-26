@@ -117,11 +117,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   keyed `V.Fragment` between the component and its container kept them apart, a keyed component's unkeyed
   elements were matched by their index in the container, so moving it rebuilt them while the component
   itself kept its state: a component rendered inside them, or inside its `V.Portal`, remounted with its
-  state lost, and the rows it had rendered into the Portal's target stayed there beside the new ones. A
+  state lost, and the elements already on the Portal's target were left there beside the remounted ones. A
   keyed `V.Fragment` returned as a component's whole output did not count, its key being dropped. A
-  reordered `V.List` of components gave every row a new element the same way. An unkeyed element is now
-  matched by its position counted from where the output of the component that renders it begins, as in
-  React.
+  reordered `V.List` of components rebuilt the element of each row whose index changed, the same way. An
+  unkeyed element is now matched by its position counted from where the output of the component that
+  renders it begins, as in React.
 
 - One `V.Fragment` returned for several `V.List` items gives each item a row that keeps its element when
   the items are reordered or appended to. Each item's copy of the Fragment shares its children, and a row's

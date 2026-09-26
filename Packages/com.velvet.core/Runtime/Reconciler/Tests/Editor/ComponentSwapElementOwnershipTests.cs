@@ -130,8 +130,7 @@ namespace Velvet.Tests
             s_items.Reorder();
             mounted.GetSchedulerForTest().DrainImmediateForTest();
 
-            // Assert — the names ride along because a pass that kept both rows without reordering them
-            // satisfies the identities on their own slots.
+            // Assert — the names say which order the pass left, which the identities alone do not print.
             Assert.That(
                 (host.ElementAt(0).name + "," + host.ElementAt(1).name,
                     _root.Q<Button>("mark-a").text,
@@ -143,7 +142,7 @@ namespace Velvet.Tests
 
         // GREEN_ON_BASE(characterization): a keyed Fragment already scoped its rows' effective keys.
         // Their elements already moved with the items; the case is here because a keyed scope is a second
-        // way the rows' keys are formed, and nothing pinned that it still works.
+        // way the rows' keys are formed, beside the unscoped list above.
         [Test]
         public void Given_AKeyedListFragmentOfComponents_When_TheItemsAreReordered_Then_EachRowsElementMovesWithIt()
         {
