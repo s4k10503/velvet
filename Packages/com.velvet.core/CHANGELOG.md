@@ -113,6 +113,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A `V.Suspense` or `V.AnimatePresence` rendered directly by a component under a keyed `V.Fragment`, or
+  inside a `V.Memoized` or `[MemoizeMethod]` wrapper, keeps what it committed when that component
+  re-renders on its own. Previously such a re-render did not find the boundary's record: a suspended
+  boundary added a second fallback element beside the one on screen, an AnimatePresence added a second
+  copy of each child, and a component inside the fallback that re-rendered alone read the context's default
+  instead of a Provider the fallback placed above it.
+
 - Keyed wrappers keep what they enclose apart. Under one keyed scope, a Fragment and a Provider carrying the
   same key, or a Fragment keyed `"1"` beside an unkeyed Fragment at index 1, no longer share an identity, so
   neither takes the other's elements on a re-render. A keyed component written under different wrappers in one

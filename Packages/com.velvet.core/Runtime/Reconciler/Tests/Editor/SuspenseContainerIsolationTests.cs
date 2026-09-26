@@ -51,7 +51,7 @@ namespace Velvet.Tests
         private static int SuspenseFallbackEntriesForContainer(ReconcilerContext ctx, VisualElement container)
         {
             var map = (Dictionary<ComponentFiber,
-                    Dictionary<(VisualElement? Container, VisualElement? PortalScope, string Position), SuspenseNode>>)
+                    Dictionary<(VisualElement? Container, VisualElement? PortalScope, long Position), SuspenseNode>>)
                 typeof(ReconcilerContext)
                     .GetField("_suspenseFallbackKeys", BindingFlags.Instance | BindingFlags.NonPublic)
                     .GetValue(ctx);
@@ -66,11 +66,11 @@ namespace Velvet.Tests
             return count;
         }
 
-        private static (ComponentFiber Boundary, VisualElement? Container, VisualElement? PortalScope, string Position)
+        private static (ComponentFiber Boundary, VisualElement? Container, VisualElement? PortalScope, long Position)
             FirstBoundedFallbackKey(ReconcilerContext ctx)
         {
             var map = (Dictionary<ComponentFiber,
-                    Dictionary<(VisualElement? Container, VisualElement? PortalScope, string Position), SuspenseNode>>)
+                    Dictionary<(VisualElement? Container, VisualElement? PortalScope, long Position), SuspenseNode>>)
                 typeof(ReconcilerContext)
                     .GetField("_suspenseFallbackKeys", BindingFlags.Instance | BindingFlags.NonPublic)
                     .GetValue(ctx);
