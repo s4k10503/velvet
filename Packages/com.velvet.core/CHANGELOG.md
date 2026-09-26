@@ -114,12 +114,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - A class string whose arbitrary value changes every render, such as `left-[{x}px]`, and a screen of
-  more than 256 distinct class strings no longer log "ParseClassNames cache exceeded limit", and no
-  longer make every parsed class string parse again each time the parse cache reaches 256 entries. The
-  cache now holds entries in two generations: a string parsed at least once per generation keeps its
-  parsed array, a moving value's strings are released two generations after their last use, and a
-  generation grows when more than half of it was strings carried from the previous one or recently
-  dropped and parsed again.
+  more than 256 distinct class strings no longer log "ParseClassNames cache exceeded limit", and a
+  moving value no longer pushes the class strings rendered beside it out of the parse cache, which
+  cleared every entry on reaching 256. The cache now takes a class string in only when it is parsed a
+  second time, so a moving value's strings, each parsed once, stay out of it barring a hash collision.
+  Counting parses of strings the cache neither holds nor remembers, a string parsed again within 2048
+  of them is cached, and one parsed again only after 4096 is not; a cached string keeps its parsed
+  array while it is parsed again within 2048 of them and is released once 4096 pass without it. Past
+  those counts — a render parsing thousands of moving strings between two parses of a stable one, or a
+  screen of 4096 or more distinct class strings parsed in the same order each render — the strings are
+  parsed again every render, as before, without the warning.
 
 - Memoized components rebuild their compiled VNode cache when their props comparison detects a
   change, including a record struct float member changing from positive zero to negative zero.

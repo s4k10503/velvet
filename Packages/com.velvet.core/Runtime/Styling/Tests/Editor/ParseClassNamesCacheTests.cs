@@ -12,7 +12,8 @@ namespace Velvet.Tests
     /// <item>Parsing different strings returns distinct array instances.</item>
     /// <item>A null or empty string returns the shared empty array.</item>
     /// <item>A cached array holds the space-split tokens of its key.</item>
-    /// <item>A thousand-odd constant strings parsed on every pass keep their arrays.</item>
+    /// <item>A thousand-odd constant strings parsed on every pass keep their arrays, and so do three hundred
+    /// parsed beside as many moving arbitrary values.</item>
     /// <item>A string parsed on every render keeps its array while a moving arbitrary value is parsed beside
     /// it, and the moving value's earlier strings are released.</item>
     /// <item>Parsing a moving value for thousands of renders logs nothing.</item>
@@ -141,6 +142,44 @@ namespace Velvet.Tests
             for (var i = 0; i < count; i++)
             {
                 lastPass[i] = V.ParseClassNames(classNames[i]);
+            }
+
+            // Assert
+            var reParsed = 0;
+            for (var i = 0; i < count; i++)
+            {
+                if (!ReferenceEquals(previousPass[i], lastPass[i])) reParsed++;
+            }
+            Assert.That(reParsed, Is.Zero);
+        }
+
+        [Test]
+        public void Given_AsManyMovingValuesAsStableStringsPerPass_When_ParsedOnEveryPass_Then_EachStableStringKeepsItsArray()
+        {
+            // Arrange
+            const int count = 300;
+            var classNames = new string[count];
+            for (var i = 0; i < count; i++)
+            {
+                classNames[i] = $"grid-cell-{i} p-2";
+            }
+            var previousPass = new string[count][];
+            var lastPass = new string[count][];
+            var x = 0;
+            for (var pass = 0; pass < 4; pass++)
+            {
+                for (var i = 0; i < count; i++)
+                {
+                    previousPass[i] = V.ParseClassNames(classNames[i]);
+                    _ = V.ParseClassNames($"absolute left-[{x++}px] top-[4px]");
+                }
+            }
+
+            // Act
+            for (var i = 0; i < count; i++)
+            {
+                lastPass[i] = V.ParseClassNames(classNames[i]);
+                _ = V.ParseClassNames($"absolute left-[{x++}px] top-[4px]");
             }
 
             // Assert

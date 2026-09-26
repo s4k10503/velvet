@@ -4,39 +4,41 @@ using System.Collections.Generic;
 
 namespace Velvet
 {
-    // A string parsed again gets the same array back for as long as it stays in use. The reconciler depends
-    // on that: FiberNodePatcher's DiffClassList returns on an identical array before comparing content, and
-    // its ResolveVariantClasses reports a change for any other array.
+    // A cached string parsed again gets the same array back, and the reconciler depends on that:
+    // FiberNodePatcher's DiffClassList returns on an identical array before comparing content, and its
+    // ResolveVariantClasses reports a change for any other array.
     //
-    // Entries live in two generations. A lookup that finds its key in the previous generation carries the
-    // same array into the current one, and when the current one fills, the previous one is dropped whole —
-    // so a string looked up at least once between one rotation and the next is never dropped, and a moving
-    // arbitrary value (left-[{x}px]) is dropped two rotations after its last use. A fixed capacity, cleared
-    // whole or evicted least-recently-used, was rejected: once a screen's strings outnumber it and are parsed
-    // in a repeating order, it misses on every lookup.
+    // Counting in first parses — parses that split a string no structure here remembers — a string is
+    // cached when it is parsed a second time within FirstSightingsPerWindow of them, and may be up to twice
+    // that. Within the last ProbationGenerationSize to twice that it is cached with the array its first
+    // parse returned; past that, only its hash is remembered, and it is cached with a fresh one. A cached
+    // string keeps its array while it is parsed again within FirstSightingsPerWindow first parses, and is
+    // dropped once twice that many pass without it. So a moving arbitrary value (left-[{x}px]) enters the
+    // cache only where a string's hash collides with a remembered one, and ages it only by its own first
+    // parses, and a render's stable strings stay cached while it parses fewer moving strings than a window
+    // holds.
     //
-    // The generation doubles when more than half of the one just ended was reuse. Reuse counts a carried
-    // entry and also a miss on a key whose hash is still remembered from its drop: a set too large for two
-    // generations misses on every lookup exactly as a moving value does, and the remembered hashes are what
-    // tell the two apart. Hashes rather than entries, so nothing a moving value parsed is held past its
-    // second rotation. Half rather than any reuse, because under a moving value every generation carries
-    // the strings that stay put, and any-reuse would double on every rotation.
+    // Rejected: bounding the cache by its size — cleared whole, least-recently-used, or generations turning
+    // over when full. Moving values then fill it at their own rate, and push the strings that stay put out
+    // with them.
     //
     // Nothing is logged: a moving value and a large screen are both supported styling.
     //
-    // Not thread-safe. Acceptable because Velvet's reconciler is main-thread only.
+    // Nothing here is synchronized; Documentation~/async.md owns the rule that code resumed off the main
+    // thread does not call back into Velvet.
     internal sealed class ClassNameParseCache
     {
-        internal const int InitialGenerationSize = 256;
-        private const int RotationsPerDroppedSet = 8;
+        internal const int ProbationGenerationSize = 128;
+        internal const int FirstSightingsPerWindow = 2048;
+        private const int InitialCacheCapacity = 256;
 
-        private Dictionary<string, string[]> _current = new(InitialGenerationSize);
-        private Dictionary<string, string[]> _previous = new(InitialGenerationSize);
-        private HashSet<int> _droppedRecent = new();
-        private HashSet<int> _droppedOlder = new();
-        private int _rotationsInDroppedRecent;
-        private int _generationSize = InitialGenerationSize;
-        private int _reusedThisGeneration;
+        private Dictionary<string, string[]> _current = new(InitialCacheCapacity);
+        private Dictionary<string, string[]> _previous = new(InitialCacheCapacity);
+        private Dictionary<string, string[]> _probationCurrent = new(ProbationGenerationSize);
+        private Dictionary<string, string[]> _probationPrevious = new(ProbationGenerationSize);
+        private HashSet<int> _seenRecent = new();
+        private HashSet<int> _seenOlder = new();
+        private int _firstSightingsThisWindow;
 
         internal string[] Parse(string classNames)
         {
@@ -45,19 +47,29 @@ namespace Velvet
                 return tokens;
             }
 
-            var carried = _previous.TryGetValue(classNames, out tokens);
-            var reused = carried || WasDropped(classNames.GetHashCode());
-            if (_current.Count >= _generationSize)
+            if (_previous.TryGetValue(classNames, out tokens)
+                || _probationCurrent.TryGetValue(classNames, out tokens)
+                || _probationPrevious.TryGetValue(classNames, out tokens))
             {
-                Rotate();
-            }
-            if (reused)
-            {
-                _reusedThisGeneration++;
+                _current.Add(classNames, tokens);
+                return tokens;
             }
 
-            tokens ??= classNames.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            _current.Add(classNames, tokens);
+            tokens = classNames.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            var hash = classNames.GetHashCode();
+            if (_seenRecent.Contains(hash) || _seenOlder.Contains(hash))
+            {
+                _current.Add(classNames, tokens);
+            }
+            else
+            {
+                _seenRecent.Add(hash);
+                AddToProbation(classNames, tokens);
+                if (++_firstSightingsThisWindow == FirstSightingsPerWindow)
+                {
+                    EndWindow();
+                }
+            }
             return tokens;
         }
 
@@ -65,36 +77,30 @@ namespace Velvet
         {
             _current.Clear();
             _previous.Clear();
-            _droppedRecent.Clear();
-            _droppedOlder.Clear();
-            _rotationsInDroppedRecent = 0;
-            _generationSize = InitialGenerationSize;
-            _reusedThisGeneration = 0;
+            _probationCurrent.Clear();
+            _probationPrevious.Clear();
+            _seenRecent.Clear();
+            _seenOlder.Clear();
+            _firstSightingsThisWindow = 0;
         }
 
-        private bool WasDropped(int hash) => _droppedRecent.Contains(hash) || _droppedOlder.Contains(hash);
-
-        private void Rotate()
+        private void AddToProbation(string classNames, string[] tokens)
         {
-            if (_reusedThisGeneration > _generationSize / 2)
+            if (_probationCurrent.Count >= ProbationGenerationSize)
             {
-                _generationSize *= 2;
+                (_probationPrevious, _probationCurrent) = (_probationCurrent, _probationPrevious);
+                _probationCurrent.Clear();
             }
+            _probationCurrent.Add(classNames, tokens);
+        }
 
-            foreach (var key in _previous.Keys)
-            {
-                _droppedRecent.Add(key.GetHashCode());
-            }
-            if (++_rotationsInDroppedRecent == RotationsPerDroppedSet)
-            {
-                (_droppedOlder, _droppedRecent) = (_droppedRecent, _droppedOlder);
-                _droppedRecent.Clear();
-                _rotationsInDroppedRecent = 0;
-            }
-
+        private void EndWindow()
+        {
             (_previous, _current) = (_current, _previous);
             _current.Clear();
-            _reusedThisGeneration = 0;
+            (_seenOlder, _seenRecent) = (_seenRecent, _seenOlder);
+            _seenRecent.Clear();
+            _firstSightingsThisWindow = 0;
         }
     }
 }
