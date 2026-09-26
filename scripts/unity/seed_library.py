@@ -157,7 +157,7 @@ def remove(placed):
 def seed(source, destination, run=subprocess.run, out=sys.stdout, err=sys.stderr):
     """Clones `source` into `destination` minus `LEFT_BEHIND`: 0 where it did, 130 where it was
     interrupted, 1 where it did not."""
-    source = Path(os.path.abspath(str(source)))
+    source = Path(os.path.realpath(str(source)))
     destination = Path(destination)
     if not source.is_dir():
         err.write(f"seed_library: {source} is not a directory.\n")

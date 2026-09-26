@@ -29,7 +29,7 @@ FILES = {"ArtifactDB", "SourceAssetDB"}
 
 class SeedLibraryTests(unittest.TestCase):
     def setUp(self):
-        self.holder = Path(tempfile.mkdtemp(prefix="seed-library-"))
+        self.holder = Path(os.path.realpath(tempfile.mkdtemp(prefix="seed-library-")))
         self.addCleanup(shutil.rmtree, self.holder, ignore_errors=True)
         self.source = self.holder / "other" / "Library"
         for name in ENTRIES:
@@ -196,6 +196,22 @@ class SeedLibraryTests(unittest.TestCase):
         code, _ = self.seed(source=Path("other") / "Library", fail_at="Artifacts",
                             stderr=lambda given: f"cp: {given}/gone.bin: No such file or directory\n",
                             copies_first=True)
+
+        # Assert
+        self.assertEqual((code, self.placed()),
+                         (0, [name for name in ENTRIES if name != "ScriptAssemblies"]))
+
+    def test_Given_ASourceSpelledThroughASymlinkAndDotDot_When_Seeded_Then_TheDirectoryItNamesIsCloned(self):
+        # Arrange — `link/..` is where the link points, then up, as the kernel resolves it; read as
+        # text it would be the holder itself, which has no Library.
+        (self.source.parent / "deep").mkdir()
+        (self.holder / "link").symlink_to(self.source.parent / "deep")
+        here = os.getcwd()
+        os.chdir(str(self.holder))
+        self.addCleanup(os.chdir, here)
+
+        # Act
+        code, _ = self.seed(source=Path("link") / ".." / "Library")
 
         # Assert
         self.assertEqual((code, self.placed()),
