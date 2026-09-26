@@ -119,18 +119,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   were matched by their index in the container, so moving it rebuilt them while the component itself
   kept its state: a component rendered inside them, or inside its `V.Portal`, remounted with its state
   lost, and the elements already on the Portal's target were left there beside the remounted ones. A
-  keyed `V.Fragment` returned as a component's whole output did not count, its key being dropped. A
-  reordered `V.List` of components rebuilt the element of each row whose index changed, the same way. An
-  unkeyed element is now matched by its position counted from where the output of the component that
-  renders it begins. This still differs from React, which counts a position in the parent's own child
-  array, where a nested component, a Fragment or a `null` takes one slot: Velvet counts the elements
-  emitted ahead of it, so a change in how many elements an earlier component in the same output renders
-  still shifts it.
-
-- A keyed `V.Fragment` that a component returns as its whole output keeps its key. Its key was dropped
-  and its children taken as the component's output, so changing that key kept the components and
-  elements inside it where React remounts them; they now remount. React unwraps only an unkeyed
-  top-level Fragment, and Velvet still unwraps that one.
+  keyed `V.Fragment` returned as a component's whole output did not count; `[Unreleased — breaking]`
+  states what keeping its key changes. A reordered `V.List` of components rebuilt the element of each
+  row whose index changed, the same way. An unkeyed element is now matched by its position counted from
+  where the output of the component that renders it begins. This still differs from React, which counts
+  a position in the parent's own child array, where a nested component, a Fragment or a `null` takes one
+  slot: Velvet counts the elements emitted ahead of it, so a change in how many elements an earlier
+  component in the same output renders still shifts it.
 
 - One `V.Fragment` returned for several `V.List` items gives each item a row that keeps its element when
   the items are reordered or appended to. Each item's copy of the Fragment shares its children, and a row's
@@ -1037,6 +1032,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   shape.
 
 ### Fixed
+
+- A keyed `V.Fragment` that a component returns as its whole output keeps its key. Its key was dropped
+  and its children taken as the component's output, so changing that key kept the components inside it
+  where React remounts them; they now remount, and so do the elements it holds. React unwraps only an
+  unkeyed top-level Fragment, and Velvet still unwraps that one. Such a component's own re-render now
+  reconciles its output through the general path, which is not time-sliced, where one whose Fragment
+  holds only elements took the flat diff, which a `StartTransition` update could spread across frames.
 
 - A node the renderer of `V.List` returns that a list has placed before — returned for an earlier item
   of the same call, or held from an earlier render — keeps the key it was placed under, and the slot of

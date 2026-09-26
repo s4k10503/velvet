@@ -9,14 +9,16 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Specifies that a keyed <c>V.Fragment</c> a component returns as its whole output keeps its key, as in
-    /// React, which unwraps only an unkeyed top-level Fragment: changing that key remounts what the Fragment
-    /// holds, whether the change arrives through the component's own re-render or its parent's.
+    /// React, which unwraps only an unkeyed top-level Fragment: changing that key remounts the component the
+    /// Fragment holds, whether the change arrives through the component's own re-render or its parent's, and
+    /// rebuilds an element it holds.
     /// </summary>
     [TestFixture]
     internal sealed class KeyedRootFragmentTests
     {
         private static StateUpdater<string> s_setOwnKey;
         private static StateUpdater<string> s_setParentKey;
+        private static StateUpdater<string> s_setElementKey;
         private static int s_childSetups;
         private MountedTree? _mounted;
 
@@ -62,12 +64,21 @@ namespace Velvet.Tests
             return V.Div(name: "host", children: new VNode[] { V.Component(PropKeyed, new KeyProps(key)) });
         }
 
+        [Component(Compiler = false)]
+        private static VNode ElementKeyed()
+        {
+            var (key, setKey) = Hooks.UseState("a");
+            s_setElementKey = setKey;
+            return V.Fragment(new VNode[] { V.Label(name: "leaf") }, key: key);
+        }
+
         [Test]
         public void Given_AComponentReturningAKeyedFragment_When_ItsOwnRerenderChangesTheKey_Then_TheChildRemounts()
         {
             // Arrange
             _mounted = V.Mount(new VisualElement(), V.Component(OwnKeyed, key: "root"));
             _mounted.FlushEffectsForTest();
+            var setupsBefore = s_childSetups;
 
             // Act
             s_setOwnKey.Invoke("b");
@@ -75,7 +86,7 @@ namespace Velvet.Tests
             _mounted.FlushEffectsForTest();
 
             // Assert
-            Assert.That(s_childSetups, Is.EqualTo(2));
+            Assert.That((setupsBefore, s_childSetups), Is.EqualTo((1, 2)));
         }
 
         [Test]
@@ -84,6 +95,7 @@ namespace Velvet.Tests
             // Arrange
             _mounted = V.Mount(new VisualElement(), V.Component(ParentKeyed, key: "root"));
             _mounted.FlushEffectsForTest();
+            var setupsBefore = s_childSetups;
 
             // Act
             s_setParentKey.Invoke("b");
@@ -91,7 +103,23 @@ namespace Velvet.Tests
             _mounted.FlushEffectsForTest();
 
             // Assert
-            Assert.That(s_childSetups, Is.EqualTo(2));
+            Assert.That((setupsBefore, s_childSetups), Is.EqualTo((1, 2)));
+        }
+
+        [Test]
+        public void Given_AComponentReturningAKeyedFragmentOfAnElement_When_ItsOwnRerenderChangesTheKey_Then_TheElementIsRebuilt()
+        {
+            // Arrange
+            var root = new VisualElement();
+            _mounted = V.Mount(root, V.Component(ElementKeyed, key: "root"));
+            var before = root.Q<Label>("leaf");
+
+            // Act
+            s_setElementKey.Invoke("b");
+            _mounted.FlushStateForTest();
+
+            // Assert — the name rides along, since a pass that emptied the root satisfies the identity alone.
+            Assert.That((ReferenceEquals(root.Q<Label>("leaf"), before), root.Q<Label>("leaf")?.name), Is.EqualTo((false, "leaf")));
         }
     }
 }
