@@ -73,6 +73,8 @@ namespace Velvet.Tests
                 Is.EqualTo("AutoAttachProbe.Render"));
         }
 
+        // GREEN_ON_BASE(characterization): the base also labels a root node naming no method by its target.
+        // The shared name lookup has to keep returning nothing for such a node for this to keep passing.
         [Test]
         public void Given_ARootNodeNamingNoMethod_When_Mounted_Then_LabelFallsBackToTheTargetName()
         {
