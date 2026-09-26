@@ -39,8 +39,8 @@ that has not fetched answers clean. The drain question wants the merge base, bec
 moved on charges this change with breaking entries it never saw. Asking it only in the second command
 is what keeps a refusal a reader should act on apart from one they should not.
 
-CI needs one invocation rather than two: actions/checkout takes the merge ref for a pull_request event,
-so --result there contains the base tip and the two values coincide.
+CI needs one invocation rather than two: the base it passes is scripts/ci/change_base.py's, an ancestor
+of the commit it passes as --result, so the base is also the merge base and the two values coincide.
 """
 
 import argparse

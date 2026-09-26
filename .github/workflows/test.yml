@@ -199,12 +199,9 @@ jobs:
   # (CONTRIBUTING.md). settle.py's contains-base precondition and stale_merge.py are what refuse such
   # a merge until the branch takes main in, and that push is a new head, which lands here.
   #
-  # The base is named from the event rather than derived from the checkout's shape: the event states
-  # which commit it is, and nothing about how the checkout is configured has to stay true for that to
-  # keep holding. fetch-depth 0 for the same reason — whatever commit the event names is present,
-  # without a claim about how far back a window has to reach. A base that cannot be read raises here
-  # rather than answering, and a red job is indistinguishable from a refusal, so the depth is not the
-  # place to economise.
+  # fetch-depth 0 so whatever commit scripts/ci/change_base.py names is present, without a claim about
+  # how far back a window has to reach. A base that cannot be read raises here rather than answering,
+  # and a red job is indistinguishable from a refusal, so the depth is not the place to economise.
   # ---------------------------------------------------------------------------
   publication:
     name: Release publication
@@ -216,8 +213,11 @@ jobs:
 
       - run: python3 scripts/test_quality/run_suite.py scripts/release/test_published_check.py
 
+      - id: base
+        run: python3 scripts/ci/change_base.py >> "$GITHUB_OUTPUT"
+
       - env:
-          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          BASE: ${{ steps.base.outputs.sha }}
         run: |
           python3 scripts/release/published_check.py --result HEAD --timeout 30 \
             ${BASE:+--base "$BASE"}
@@ -233,7 +233,7 @@ jobs:
       # except by a push, and `gh run rerun` replays the same payload it already refused.
       - if: github.event_name == 'pull_request'
         env:
-          BASE: ${{ github.event.pull_request.base.sha }}
+          BASE: ${{ steps.base.outputs.sha }}
           NUMBER: ${{ github.event.pull_request.number }}
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -258,8 +258,11 @@ jobs:
         with:
           fetch-depth: 0
 
+      - id: base
+        run: python3 scripts/ci/change_base.py >> "$GITHUB_OUTPUT"
+
       - env:
-          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          BASE: ${{ steps.base.outputs.sha }}
         run: |
           python3 scripts/test_quality/base_red_check.py --lane python \
             --base "${BASE:-HEAD^}"
@@ -300,9 +303,12 @@ jobs:
           fetch-depth: 0
           lfs: true
 
+      - id: base
+        run: python3 scripts/ci/change_base.py >> "$GITHUB_OUTPUT"
+
       - id: read
         env:
-          BASE: ${{ github.event.pull_request.base.sha }}
+          BASE: ${{ steps.base.outputs.sha }}
         run: |
           python3 scripts/test_quality/base_red_check.py --lane csharp \
             --platform "${{ matrix.testMode }}" --base "$BASE" \
@@ -315,7 +321,7 @@ jobs:
         if: steps.read.outputs.fixtures != ''
         with:
           path: base-tree/Library
-          key: BaseLibrary-${{ matrix.testMode }}-${{ github.event.pull_request.base.sha }}
+          key: BaseLibrary-${{ matrix.testMode }}-${{ steps.base.outputs.sha }}
           restore-keys: |
             BaseLibrary-${{ matrix.testMode }}-
 
@@ -402,18 +408,19 @@ jobs:
         with:
           fetch-depth: 0
 
-      # HEAD^1 rather than the event's base.sha. The checkout is the merge commit, whose first parent is
-      # the base branch it was merged onto; measured on this job, the event's base.sha sat a merged pull
-      # request behind that parent, and the plan then counted that pull request's lines as this one's.
+      - id: base
+        run: python3 scripts/ci/change_base.py >> "$GITHUB_OUTPUT"
+
       # The summary is written before the status is read, and carries stderr, where a refusal other
       # than the ceiling's is printed, so a refused plan names why in it. Over the ceiling with no
       # licence no shard would run, so it passes the way the skipped Unity jobs do.
       - id: plan
         env:
+          BASE: ${{ steps.base.outputs.sha }}
           HAS_LICENSE: ${{ needs.license-check.outputs.has_license }}
         run: |
           set +e
-          python3 scripts/test_quality/mutation_check.py --base HEAD^1 --plan > plan.txt 2>&1
+          python3 scripts/test_quality/mutation_check.py --base "$BASE" --plan > plan.txt 2>&1
           status=$?
           cat plan.txt
           { echo '### Mutation campaign plan'; echo '```'; cat plan.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
@@ -451,10 +458,14 @@ jobs:
           restore-keys: |
             Library-EditMode-
 
+      - id: base
+        run: python3 scripts/ci/change_base.py >> "$GITHUB_OUTPUT"
+
       - env:
           UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
           UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+          BASE: ${{ steps.base.outputs.sha }}
           MUTANTS: ${{ needs.mutation-plan.outputs.mutants }}
           SHARDS: ${{ needs.mutation-plan.outputs.shards }}
         # safe.directory names the workspace alone: DocumentationDriftTests arranges checkouts elsewhere
@@ -469,7 +480,7 @@ jobs:
             --env PYTHONDONTWRITEBYTECODE=1 \
             "unityci/editor:ubuntu-$version-linux-il2cpp-3" \
             python3 -u scripts/test_quality/ci_mutation_shard.py -- \
-              --base HEAD^1 --max "$MUTANTS" \
+              --base "$BASE" --max "$MUTANTS" \
               --shard "${{ matrix.shard }}/$(echo "$SHARDS" | jq length)" \
               --output Logs/mutation-shard
 
@@ -497,11 +508,15 @@ jobs:
           path: Logs/mutation-shards
           merge-multiple: true
 
+      - id: base
+        run: python3 scripts/ci/change_base.py >> "$GITHUB_OUTPUT"
+
       - env:
+          BASE: ${{ steps.base.outputs.sha }}
           MUTANTS: ${{ needs.mutation-plan.outputs.mutants }}
         run: |
           set +e
-          python3 scripts/test_quality/mutation_check.py --base HEAD^1 --max "$MUTANTS" \
+          python3 scripts/test_quality/mutation_check.py --base "$BASE" --max "$MUTANTS" \
             --collect Logs/mutation-shards --output Logs/mutation-verdict | tee verdict.txt
           status=${PIPESTATUS[0]}
           { echo '### Mutation campaign'; echo '```'; cat verdict.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
@@ -550,11 +565,16 @@ jobs:
 
       - run: python3 scripts/test_quality/run_suite.py scripts/test_quality/test_stranded_name_check.py
 
+      - run: python3 scripts/test_quality/run_suite.py scripts/ci/test_change_base.py
+
+      - id: base
+        run: python3 scripts/ci/change_base.py >> "$GITHUB_OUTPUT"
+
       # A removal reports here rather than in the corpus sweep the same question invites: read over
       # every comment it is 518 unresolved tokens for 4 real ones, and read over one change's own
       # removals it was 2 firings in 320 commits.
       - env:
-          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          BASE: ${{ steps.base.outputs.sha }}
         run: python3 scripts/test_quality/stranded_name_check.py --base "${BASE:-HEAD^}"
 
   # ---------------------------------------------------------------------------
