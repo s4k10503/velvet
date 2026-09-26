@@ -87,14 +87,17 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_PropsComponentCallingAHookFromItsRefCallback_When_Mounted_Then_TheGuardNamesTheComponent()
+        public void Given_PropsComponentCallingAHookFromItsRefCallback_When_ItReRenders_Then_TheGuardNamesTheComponent()
         {
-            // Arrange
+            // Arrange — a re-render of the component alone, so the fiber on the ambient stack while its ref
+            // cycles is its own; during the initial mount it is the root's
+            using var mounted = V.Mount(_root, V.Component(RefHookPropsComponent.Render, "ref-hook", key: "ref-hook"));
             LogAssert.Expect(LogType.Exception,
                 new Regex(@"MyRefHookName: UseState\(\) may only be used inside Render\(\)\."));
 
             // Act
-            using var mounted = V.Mount(_root, V.Component(RefHookPropsComponent.Render, "ref-hook", key: "ref-hook"));
+            RefHookPropsComponent.SetTick.Invoke(1);
+            mounted.FlushStateForTest();
 
             // Assert — LogAssert.Expect verifies the guard's message names the component by its DisplayName
         }
@@ -109,6 +112,7 @@ namespace Velvet.Tests
         {
             UseIntSlot = true;
             SetMode = null;
+            RefHookPropsComponent.SetTick = null;
         }
     }
 
@@ -140,13 +144,21 @@ namespace Velvet.Tests
 
     internal static class RefHookPropsComponent
     {
-        // The ref setup runs in the commit phase, where a hook call is refused.
+        public static Action<int> SetTick;
+
+        // The ref callback is a fresh delegate each render, so a re-render cycles it in its commit, where a
+        // hook call is refused.
         [Component(DisplayName = "MyRefHookName")]
-        public static VNode Render(string name) => V.Div(name: name, refCallback: _ =>
+        public static VNode Render(string name)
         {
-            Hooks.UseState(0);
-            return null;
-        });
+            var (tick, setTick) = Hooks.UseState(0);
+            SetTick = setTick;
+            return V.Div(name: name, refCallback: _ =>
+            {
+                if (tick > 0) Hooks.UseState(0);
+                return null;
+            });
+        }
     }
 
     internal static class EmptyDisplayNameComponent
