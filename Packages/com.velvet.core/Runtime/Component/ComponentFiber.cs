@@ -932,9 +932,20 @@ namespace Velvet
         // The caller supplies the complete existing child set after its placement has committed.
         internal void CommitChildOrder(IReadOnlyList<ComponentFiber> children)
         {
-            Child = children.Count == 0 ? null : children[0];
-            for (var i = 0; i < children.Count; i++)
-                children[i].Sibling = i + 1 < children.Count ? children[i + 1] : null;
+            // Every link is cleared before any is written, so no reordering can leave a sibling chain that
+            // loops back on itself.
+            Child = null;
+            foreach (var child in children)
+                child.Sibling = null;
+            ComponentFiber? previous = null;
+            foreach (var child in children)
+            {
+                if (previous == null)
+                    Child = child;
+                else
+                    previous.Sibling = child;
+                previous = child;
+            }
         }
 
         public void RemoveChild(ComponentFiber child)
