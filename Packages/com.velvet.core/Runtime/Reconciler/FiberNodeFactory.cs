@@ -466,14 +466,16 @@ namespace Velvet
                     "exit on a Motion outside AnimatePresence is inert: exit tweens are driven by the "
                     + "AnimatePresence expansion. Wrap the Motion in V.AnimatePresence (or drop exit).");
             }
+            // Evaluated at create only, which is why the message speaks of now: a later render can make this
+            // Motion an anchor, or stop it being one.
             else if (motionNode.Exit != null && !ReferenceEquals(motionNode, _ctx.PresenceAnchorMotion))
             {
                 FiberLogger.LogWarning("Motion",
-                    "exit on this Motion is inert: AnimatePresence plays the exit of a keyed child's anchor "
-                    + "only — the child itself when it is a Motion, else the first Motion found through the "
-                    + "V.Provider, V.Fragment or z-managed element it wraps. A Motion behind a component, "
-                    + "V.Memoized or V.Suspense, or inside any other element, is no anchor, and its exit "
-                    + "does not play. Make the Motion the keyed child (or drop exit).");
+                    "exit on this Motion is inert while it is not the anchor of a keyed AnimatePresence child, "
+                    + "and it is not one now. The anchor is the child itself when it is a Motion, else the "
+                    + "first Motion found through the V.Provider, V.Fragment or z-managed element it wraps; "
+                    + "a Motion behind a component, V.Memoized or V.Suspense, or inside any other element "
+                    + "is none.");
             }
         }
 

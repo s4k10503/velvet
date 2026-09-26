@@ -83,8 +83,10 @@ V.Div(name: "row", className: "flex flex-row gap-x-2", children: new VNode[]
   it is a Motion, else the first Motion found through the `V.Provider`s, `V.Fragment`s and z-managed
   elements it wraps. A Motion behind a component, `V.Memoized` or `V.Suspense`, or inside any other
   element, is not an anchor: it plays its own mount enter, which `initial: false` does not suppress,
-  and no exit, warning at mount when it declares one; a child with no anchor is removed at once. A
-  `V.Fragment` cannot be the keyed child itself; it is refused with an error.
+  and no exit, with a warning when it is created declaring one; a child with no anchor is removed at
+  once. A `V.Fragment` cannot be the keyed child itself; it is refused with an error.
+  This is a documented deviation from Framer, which plays the exit of every motion component inside
+  the removed child that declares one.
 - A classless `exit` pose is still a variant exit: the removal takes the resting pose's classes
   off, on the timing that pose resolves; see *Transition semantics* below. An `exit` label naming no
   pose plays the classic exit instead.
