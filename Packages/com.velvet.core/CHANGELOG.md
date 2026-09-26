@@ -113,6 +113,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Keyed wrappers keep what they enclose apart. Under one keyed scope, a Fragment and a Provider carrying the
+  same key, or a Fragment keyed `"1"` beside an unkeyed Fragment at index 1, no longer share an identity, so
+  neither takes the other's elements on a re-render. A keyed component written under different wrappers in one
+  container, such as two keyed Providers, now mounts one instance per wrapper instead of rendering only the
+  first; moving it from one wrapper to another remounts it, as in React. A component rendered by a keyed memo
+  keeps its state when the memo moves among its keyed siblings, while one rendered by an unkeyed `V.Memoized`
+  is placed by that memo's slot: after a reorder, a keyed component there remounts and an unkeyed one takes
+  over the state of whatever held that slot.
+
 - Memoized components rebuild their compiled VNode cache when their props comparison detects a
   change, including a record struct float member changing from positive zero to negative zero.
 
@@ -666,6 +675,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   round stands as the loader left it, with its result recorded and no error. A subscriber throwing out
   of the failure announcement is reported the same way, where it used to be left to whatever observes a
   forgotten task.
+
+- A `shadow-*` or `drop-shadow-*` behind a `rounded-full` element paints its halo. The silhouette was
+  baked at `--radius-full` itself, which is larger than the element, and came out empty; it now takes the
+  bound the face Velvet paints over it takes, half the element's shorter side. A radius the element can
+  carry bakes as before.
 
 ## [Unreleased — breaking]
 

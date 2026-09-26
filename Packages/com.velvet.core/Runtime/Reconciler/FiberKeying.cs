@@ -37,8 +37,8 @@ namespace Velvet
     //
     // Scope is the fiber-keying scope chain, and deliberately COLLAPSES: a Fragment / Provider / Component
     // contributes nothing while no enclosing keyed boundary has established a scope, which is what keeps an
-    // unkeyed subtree participating in its parent's plain keyed/indexed list. The registry and
-    // FiberContextSpine depend on that exact rule.
+    // unkeyed subtree participating in its parent's plain keyed/indexed list. ReconcileKeying.RegisterScopedKey
+    // and FiberContextSpine depend on that exact rule.
     //
     // Path never collapses: every construct the descent passes through contributes, starting at the walk root.
     // Provider pairing needs that. Under Scope alone, a Provider nested directly inside another one is
@@ -61,7 +61,7 @@ namespace Velvet
     // predates position pairing (see GeneralPathReconciler.ProviderPairTable).
     //
     // SlotPath is the same fold over the same contributions as Path, restarting at every ComponentNode
-    // boundary where Path does not. An unkeyed inline Component's slot key is derived from it, and that key
+    // boundary where Path does not. An inline Component's registry position is derived from it, and that position
     // has to name the same fiber from two entry points: an outer walk, which reaches a component's body
     // through its ancestors, and that component's own isolated re-render, which starts the walk at WalkRoot.
     // Path carries the levels above the fiber and so differs between the two.
@@ -194,12 +194,13 @@ namespace Velvet
                 ExtendPath(parent.Path, WalkPathKind.Component, componentKey, nodeIndex),
                 unchecked((long)PathSeed));
 
-        // The position a MemoNode opens for its resolved inner. The memo's own key places its dep-cache entry
-        // (MemoAt) and nothing here, so only the node index contributes.
-        internal static WalkPosition MemoInner(WalkPosition parent, int nodeIndex)
+        // The position a MemoNode opens for its resolved inner. A keyed memo's key replaces its index in both
+        // paths, as for a keyed Fragment, so what it renders keeps its registry position when it moves among
+        // keyed siblings. MemoAt places the memo's own dep-cache entry.
+        internal static WalkPosition MemoInner(WalkPosition parent, string? memoKey, int nodeIndex)
             => new(MemoScope(parent.Scope, nodeIndex),
-                ExtendPath(parent.Path, WalkPathKind.Memo, null, nodeIndex),
-                ExtendPath(parent.SlotPath, WalkPathKind.Memo, null, nodeIndex));
+                ExtendPath(parent.Path, WalkPathKind.Memo, memoKey, nodeIndex),
+                ExtendPath(parent.SlotPath, WalkPathKind.Memo, memoKey, nodeIndex));
 
         // The position a Suspense's primary or fallback subtree renders under. The two branches contribute
         // different kinds, so a Provider in the fallback is never paired against one in the primary.
@@ -255,6 +256,27 @@ namespace Velvet
             return boxed;
         }
 
+        // The ComponentRegistry position shared by the expansion and spine walks. SlotPath retains wrapper
+        // structure and restarts at a ComponentChild boundary, so outer and isolated walks spell a keyed child
+        // alike. An unkeyed component retains the (SlotPath, nodeIndex) scheme above.
+        internal static object ResolveInlineRegistryPositionKey(
+            WalkPosition position, string? componentKey, int nodeIndex,
+            Dictionary<(long slotPath, int nodeIndex), object> unkeyedBoxCache,
+            Dictionary<(long slotPath, string key), (object box, int registrations)> explicitBoxCache)
+        {
+            if (componentKey is null)
+            {
+                return ResolveInlinePositionKey(position, nodeIndex, unkeyedBoxCache);
+            }
+
+            var cacheKey = (position.SlotPath, componentKey);
+            if (explicitBoxCache.TryGetValue(cacheKey, out var entry))
+            {
+                return entry.box;
+            }
+            return cacheKey;
+        }
+
         // Composes a new scope by extending parentScope with
         // contribution. The NUL byte (U+0000) delimits scope segments;
         // VNode.Key refuses a key holding one, so a user-supplied key contributes a whole segment
@@ -263,26 +285,45 @@ namespace Velvet
         internal static string ComposeFragmentScope(string? parentScope, string contribution)
             => parentScope == null ? contribution : parentScope + "\0" + contribution;
 
+        // An explicit Fragment, Provider, Component, Suspense, AnimatePresence or leaf key is prefixed with its
+        // construct's tag, so it cannot spell the segment another construct's key or a positional contribution
+        // spells at the same level. No tag may be a digit or the 'm' MemoScope prefixes its index with.
+        private const char FragmentKeyTag = 'F';
+        private const char ProviderKeyTag = 'P';
+        private const char ComponentKeyTag = 'C';
+        private const char SuspenseKeyTag = 'S';
+        private const char PresenceKeyTag = 'A';
+        private const char LeafKeyTag = 'L';
+
+        private static string TaggedKey(char tag, string key) => string.Concat(tag.ToString(), key);
+
         // The scope a FragmentNode opens for its children. A keyed Fragment establishes (or extends)
         // the scope chain. An unkeyed Fragment contributes its positional index only when an enclosing
         // keyed Fragment already established a scope; otherwise it stays scope-less and its children
         // participate in the parent's keyed/indexed list under their own keys.
         internal static string? FragmentChildScope(string? parentScope, string? fragmentKey, int nodeIndex)
-            => fragmentKey != null
-                ? ComposeFragmentScope(parentScope, fragmentKey)
+            => fragmentKey is { } key
+                ? ComposeFragmentScope(parentScope, TaggedKey(FragmentKeyTag, key))
                 : (parentScope == null ? null : ComposeFragmentScope(parentScope, Index(nodeIndex)));
 
         // The scope a ContextProviderNode opens for its children: null while scope-less, otherwise the
-        // parent scope extended by the Provider's own key (or its positional index when unkeyed).
+        // parent scope extended by the Provider's tagged key (or its positional index when unkeyed).
         internal static string? ProviderChildScope(string? parentScope, string? providerKey, int nodeIndex)
             => parentScope == null
                 ? null
-                : ComposeFragmentScope(parentScope, providerKey ?? Index(nodeIndex));
+                : ComposeFragmentScope(
+                    parentScope, providerKey is { } key ? TaggedKey(ProviderKeyTag, key) : Index(nodeIndex));
 
         // The scope a MemoNode opens for its resolved inner. Distinct "m"-prefixed index so a
         // nested Memo's position key cannot collide with an unkeyed Component at the same node index.
         internal static string MemoScope(string? parentScope, int nodeIndex)
             => ComposeFragmentScope(parentScope, "m" + Index(nodeIndex));
+
+        // The terminal contribution under a non-null wrapper scope. ChildKey owns the same explicit-vs-positional
+        // distinction at an unscoped sibling list; this preserves that distinction after string composition.
+        internal static string LeafScope(string parentScope, string? key, int nodeIndex)
+            => ComposeFragmentScope(
+                parentScope, key is { } explicitKey ? TaggedKey(LeafKeyTag, explicitKey) : Index(nodeIndex));
 
         // An unkeyed memo is placed by the SlotPath its inner opens, SlotPath rather than Path for the reason
         // WalkPosition gives. A keyed memo is placed by its key under the SlotPath of the array it is written in:
@@ -301,13 +342,17 @@ namespace Velvet
         // ReconcilerContext.SetSuspenseFallbackShown entry is stored under): the parent scope extended
         // by the Suspense's own key (or its positional index when unkeyed).
         internal static string SuspenseKey(string? parentScope, string? suspenseKey, int nodeIndex)
-            => ComposeFragmentScope(parentScope, suspenseKey ?? Index(nodeIndex));
+            => ComposeFragmentScope(
+                parentScope,
+                suspenseKey is { } key ? TaggedKey(SuspenseKeyTag, key) : Index(nodeIndex));
 
         // The scoped position key for a DOM-less AnimatePresence: its parent scope extended by the
         // AnimatePresence's own key (or its positional index when unkeyed). Used with the boundary fiber
         // to key its PresenceBoundaryState, mirroring SuspenseKey.
         internal static string PresenceKey(string? parentScope, string? presenceKey, int nodeIndex)
-            => ComposeFragmentScope(parentScope, presenceKey ?? Index(nodeIndex));
+            => ComposeFragmentScope(
+                parentScope,
+                presenceKey is { } key ? TaggedKey(PresenceKeyTag, key) : Index(nodeIndex));
 
         // The scope a single keyed AnimatePresence child renders under: the AnimatePresence's own scoped
         // key extended by the child's key, so each keyed child's descendant fibers stay in a disjoint,
@@ -327,7 +372,9 @@ namespace Velvet
         internal static string? ComponentChildScope(string? parentScope, string? componentKey, int nodeIndex)
             => parentScope == null
                 ? null
-                : ComposeFragmentScope(parentScope, componentKey ?? Index(nodeIndex));
+                : ComposeFragmentScope(
+                    parentScope,
+                    componentKey is { } key ? TaggedKey(ComponentKeyTag, key) : Index(nodeIndex));
 
         // Invariant-culture stringification of a node index (the unkeyed scope contribution).
         internal static string Index(int nodeIndex)

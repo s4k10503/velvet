@@ -35,7 +35,7 @@ namespace Velvet
         // Records the effective key under which a non-wrapper VNode (leaf) participates in the keyed
         // reconciler's identity map. When fragmentKeyScope is null, no override is
         // published — the node falls through to its own VNode.Key as before (unkeyed
-        // behavior preserved). When non-null, the scope is composed with the node's own key (or its
+        // behavior preserved). When non-null, the scope is composed with the node's tagged key (or its
         // positional index when unkeyed) so siblings under the same keyed Fragment do not collide
         // with siblings under a Fragment carrying a different key. The override lives in
         // ReconcilerContext.EffectiveKeys for this reconcile pass; the underlying VNode
@@ -43,8 +43,7 @@ namespace Velvet
         internal void RegisterScopedKey(VNode? node, string? fragmentKeyScope, int nodeIndex)
         {
             if (node == null || fragmentKeyScope == null) return;
-            var contribution = node.Key ?? FiberKeying.Index(nodeIndex);
-            _ctx.EffectiveKeys[node] = FiberKeying.ComposeFragmentScope(fragmentKeyScope, contribution);
+            _ctx.EffectiveKeys[node] = FiberKeying.LeafScope(fragmentKeyScope, node.Key, nodeIndex);
         }
 
         // Returns the effective key used by the keyed reconciler for node: the
