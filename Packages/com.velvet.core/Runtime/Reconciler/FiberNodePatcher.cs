@@ -786,6 +786,9 @@ namespace Velvet
             }
         }
 
+        internal string[] RestingVariantClasses(VisualElement element, string[]? baseClasses)
+            => RestingClassSet(element, baseClasses).VariantClasses;
+
         private static string[] WithExitTokens(string[]? baseClasses, MotionAppliedClassSet resting,
             MotionInlineExit exit)
             => ComposeWithHeldTokens(baseClasses ?? Array.Empty<string>(), resting.VariantClasses, exit.ExitTokens);

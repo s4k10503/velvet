@@ -25,6 +25,10 @@ namespace Velvet.Tests
             ["cover"] = "translate-x-[0px]",
             ["gone"] = "translate-x-[-300px]",
             ["cover2"] = "translate-x-[100px]",
+            // Two resting poses differing in a USS utility; _effects.uss declares opacity-100 after opacity-50,
+            // so an element carrying both resolves 1.
+            ["lit"] = "opacity-100 translate-x-[0px]",
+            ["dim"] = "opacity-50 translate-x-[0px]",
         };
 
         private const string Box = "absolute w-[50px] h-[50px]";
@@ -352,6 +356,29 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((motion.resolvedStyle.width, motion.resolvedStyle.translate.x), Is.EqualTo((80f, 0f)));
+        }
+
+        [UnityTest]
+        public IEnumerator Given_APresenceChildExitingFromAUssPose_When_ItIsAddedBackMidExitWithAnotherUssPose_Then_TheNewPoseHolds()
+        {
+            // Arrange — the bundled sheet is attached here alone, because this case reads a USS utility.
+            var root = CreateRuntimePanel(shown: true);
+            VelvetStyleUtilities.AttachTo(root);
+            _store.Set(true, Box, "lit");
+            yield return null;
+            _mounted = V.Mount(root, V.Component(PresenceHost, key: "root"));
+            var motion = root.Q<VisualElement>("m");
+            yield return PlayModeRealtimeTestHelpers.WaitRealtime(0.6);
+            _store.Set(false);
+            yield return WaitUntilExitMoved(motion, new List<float>());
+
+            // Act
+            _store.Set(true, Box, "dim");
+            yield return PlayModeRealtimeTestHelpers.WaitRealtime(0.8);
+
+            // Assert
+            Assert.That(motion.resolvedStyle.opacity, Is.EqualTo(0.5f).Within(1e-4f),
+                string.Join(" ", motion.GetClasses()));
         }
     }
 }

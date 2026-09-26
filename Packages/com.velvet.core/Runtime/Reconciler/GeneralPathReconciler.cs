@@ -1670,12 +1670,15 @@ namespace Velvet
             AnimatePresenceNode presence,
             VNode node)
         {
-            _ctx.StyleAnimationScheduler.CancelExit(anchor);
+            // The re-added node was reconciled onto the element before this runs, so the variant exit's cancel
+            // restores the resting classes that reconcile recorded rather than the ones the exit started from.
+            var resting = motionElement != null ? _patcher.RestingVariantClasses(motionElement, motion?.ClassNames) : null;
+            _ctx.StyleAnimationScheduler.CancelExit(anchor, ReferenceEquals(anchor, motionElement) ? resting : null);
             // A wrapped Motion's variant exit ran on its own element, not the anchor — the
             // cancel (whose reversal restores the resting variant) must land there too.
             if (motionElement != null && !ReferenceEquals(motionElement, anchor))
             {
-                _ctx.StyleAnimationScheduler.CancelExit(motionElement);
+                _ctx.StyleAnimationScheduler.CancelExit(motionElement, resting);
             }
             if (motionElement != null)
             {

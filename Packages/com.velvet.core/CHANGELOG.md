@@ -127,6 +127,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   from the first frame and the exit stayed there until removal. An exit interrupted by its key coming back,
   or finished just before it came back, leaves the child at the values the re-added child declares.
 
+- A `V.AnimatePresence` child re-added mid-exit with a different `animate` label rests at the new label's
+  pose. The exit's cancel put back the previous label's USS classes after the new ones had been applied, so
+  a child re-added at `opacity-50` from `opacity-100` carried both and resolved to 1.
+
 - Memoized components rebuild their compiled VNode cache when their props comparison detects a
   change, including a record struct float member changing from positive zero to negative zero.
 

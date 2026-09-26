@@ -938,7 +938,10 @@ namespace Velvet
         // Cancels the exit animation on the given element and removes the applied CSS classes; the
         // element reverses toward its resting classes with the transition kept alive (the inline
         // transition styles are cleared only after the reversal has run its course).
-        public void CancelExit(VisualElement element) => CancelPending(_pendingExits, element, animateReversal: true);
+        // restingClasses: what a variant exit's cancel restores in place of the resting classes the exit started
+        // from, for a caller that has re-applied the element's resting state since.
+        public void CancelExit(VisualElement element, string[]? restingClasses = null)
+            => CancelPending(_pendingExits, element, animateReversal: true, restingOverride: restingClasses);
 
         // Cancels the exit animation on an element being torn down for good (pool return / disposal) — never
         // hands off to a reversal, regardless of whether the element is still attached at the moment this
@@ -1170,10 +1173,15 @@ namespace Velvet
         // even when animateReversal is requested and the element still happens to be attached: see
         // CancelExitForTeardown for why handing off to one would corrupt the element after it is pooled.
         private void CancelPending(Dictionary<VisualElement, PendingAnimation> map, VisualElement element,
-            bool animateReversal = false, bool forTeardown = false)
+            bool animateReversal = false, bool forTeardown = false, string[]? restingOverride = null)
         {
             if (map.Remove(element, out var pending))
             {
+                // Written back onto the pending, since a reversal hand-off below carries its RestingClasses on.
+                if (restingOverride != null && pending.RestingClasses != null)
+                {
+                    pending.RestingClasses = restingOverride;
+                }
                 // Pause() corresponds to cancelling a one-shot schedule produced by schedule.Execute().
                 // Removing from the dictionary also makes the ContainsKey check inside the callback fail,
                 // providing defense in depth.
