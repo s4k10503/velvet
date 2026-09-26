@@ -298,6 +298,97 @@ namespace Velvet.Tests.Performance
 
         #endregion
 
+        #region B-1-c-4: Keyed diff
+
+        // The keyed diff, which the Label-only benchmarks above never reach: their nodes carry no key, so
+        // the indexed diff takes them. NoChange passes every slot through the linear prefix without a
+        // patch, AllChange patches every slot there, and Reverse leaves the prefix at once and resolves
+        // every slot through the old-key map.
+
+        // GREEN_ON_BASE(characterization): a benchmark records what the keyed diff costs rather than asserting
+        // on it, and a run on the base is the arm the branch's run is compared against.
+        [Test, Performance]
+        public void Reconcile_Keyed_NoChange_100Elements()
+        {
+            var nodes = BenchmarkHelpers.BuildKeyedLabelNodes(100);
+            _reconciler.Reconcile(_root, Array.Empty<VNode>(), nodes);
+
+            Measure.Method(() =>
+            {
+                _reconciler.Reconcile(_root, nodes, nodes);
+            })
+            .GC()
+            .WarmupCount(20)
+            .MeasurementCount(20)
+            .Run();
+        }
+
+        // GREEN_ON_BASE(characterization): a benchmark records what the keyed diff costs rather than asserting
+        // on it, and a run on the base is the arm the branch's run is compared against.
+        [Test, Performance]
+        public void Reconcile_Keyed_AllChange_100Elements()
+        {
+            var oldNodes = BenchmarkHelpers.BuildKeyedLabelNodes(100, prefix: "old-");
+            var newNodes = BenchmarkHelpers.BuildKeyedLabelNodes(100, prefix: "new-");
+            _reconciler.Reconcile(_root, Array.Empty<VNode>(), oldNodes);
+
+            Measure.Method(() =>
+            {
+                _reconciler.Reconcile(_root, oldNodes, newNodes);
+                _reconciler.Reconcile(_root, newNodes, oldNodes);
+            })
+            .GC()
+            .WarmupCount(5)
+            .MeasurementCount(20)
+            .Run();
+        }
+
+        // GREEN_ON_BASE(characterization): a benchmark records what the keyed diff costs rather than asserting
+        // on it, and a run on the base is the arm the branch's run is compared against.
+        [Test, Performance]
+        public void Reconcile_Keyed_Reverse_100Elements()
+        {
+            var forward = BenchmarkHelpers.BuildKeyedLabelNodes(100);
+            var reversed = (VNode[])forward.Clone();
+            Array.Reverse(reversed);
+            _reconciler.Reconcile(_root, Array.Empty<VNode>(), forward);
+
+            Measure.Method(() =>
+            {
+                _reconciler.Reconcile(_root, forward, reversed);
+                _reconciler.Reconcile(_root, reversed, forward);
+            })
+            .GC()
+            .WarmupCount(5)
+            .MeasurementCount(20)
+            .Run();
+        }
+
+        // The keyed counterpart of the budgeted indexed pair above, so the parked keyed state and its
+        // resume entry are what gets measured.
+
+        // GREEN_ON_BASE(characterization): a benchmark records what the keyed diff costs rather than asserting
+        // on it, and a run on the base is the arm the branch's run is compared against.
+        [Test, Performance]
+        public void Reconcile_BudgetedKeyed_AllChange_200Elements()
+        {
+            var oldNodes = BenchmarkHelpers.BuildKeyedLabelNodes(200, prefix: "old-");
+            var newNodes = BenchmarkHelpers.BuildKeyedLabelNodes(200, prefix: "new-");
+            _reconciler.Reconcile(_root, Array.Empty<VNode>(), oldNodes);
+
+            Measure.Method(() =>
+            {
+                ReconcileToCompletionUnderBudget(oldNodes, newNodes);
+                ReconcileToCompletionUnderBudget(newNodes, oldNodes);
+            })
+            .GC()
+            .WarmupCount(5)
+            .MeasurementCount(20)
+            .Run();
+        }
+
+        #endregion
+
         #region B-1-d: Pooled-widget recycle (mount -> unmount -> remount)
 
         // Pins the primitive-element pool's recycle path: VNodePool.ReturnLabel / ReturnButton (invoked
