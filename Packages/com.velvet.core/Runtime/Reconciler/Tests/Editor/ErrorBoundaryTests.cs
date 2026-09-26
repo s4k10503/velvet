@@ -26,6 +26,8 @@ namespace Velvet.Tests
     /// <item>Where the pass that catches was itself re-placing the boundary, the rows rewritten are the
     /// ones the container is still holding rather than the ones that pass was moving them to; where such
     /// a pass has already committed, they are the rows it placed.</item>
+    /// <item>A catch that aborts its parent's render leaves a sibling that render never reached mounted, with
+    /// its state and its effect.</item>
     /// </list>
     /// </summary>
     /// <remarks>
@@ -50,6 +52,7 @@ namespace Velvet.Tests
             ResetBrokenFallback();
             ResetPlacement();
             ResetMoved();
+            ResetUnreached();
         }
 
         #region No boundary
@@ -781,6 +784,84 @@ namespace Velvet.Tests
             }
             children[leading] = V.Component(MovedBoundaryRender, key: "boundary");
             return V.Div(children: children);
+        }
+
+        #endregion
+
+        #region A sibling the aborted pass never reached
+
+        private static bool s_unreachedShouldThrow;
+        private static Action<int> s_unreachedSetHostTick;
+        private static Action<int> s_unreachedSetCount;
+        private static int s_unreachedCleanups;
+
+        private static void ResetUnreached()
+        {
+            s_unreachedShouldThrow = false;
+            s_unreachedSetHostTick = null;
+            s_unreachedSetCount = null;
+            s_unreachedCleanups = 0;
+        }
+
+        [Test]
+        public void Given_ASiblingBehindACatchingBoundary_When_TheCatchAbortsTheParentsRender_Then_TheSiblingKeepsItsStateAndEffect()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(UnreachedHostRender, key: "host"));
+            mounted.FlushEffectsForTest();
+            s_unreachedSetCount.Invoke(1);
+            mounted.FlushStateForTest();
+            s_unreachedShouldThrow = true;
+            s_unreachedSetHostTick.Invoke(1);
+            mounted.FlushStateForTest();
+            var fellBack = _root.FindLabelByText("unreached-fallback") != null;
+            var cleanupsAfterAbort = s_unreachedCleanups;
+            s_unreachedShouldThrow = false;
+
+            // Act
+            s_unreachedSetHostTick.Invoke(2);
+            mounted.FlushStateForTest();
+
+            // Assert — the fallback term says the boundary caught, which is what raises the abort.
+            Assert.That(
+                (fellBack ? "fell back" : "never fell back") + ", cleanups " + cleanupsAfterAbort + ", "
+                    + string.Join(",", _root.Query<Label>().ToList().Select(label => label.text)),
+                Is.EqualTo("fell back, cleanups 0, thrower,count:1"));
+        }
+
+        [Component(Compiler = false)]
+        private static VNode UnreachedThrowerRender()
+        {
+            if (s_unreachedShouldThrow) throw new InvalidOperationException("Unreached sibling throw");
+            return V.Label(text: "thrower");
+        }
+
+        [Component(Compiler = false, IsErrorBoundary = true)]
+        private static VNode UnreachedBoundaryRender()
+        {
+            Hooks.UseFallback(_ => V.Label(text: "unreached-fallback"));
+            return V.Component(UnreachedThrowerRender, key: "thrower");
+        }
+
+        [Component(Compiler = false)]
+        private static VNode UnreachedCounterRender()
+        {
+            var (count, setCount) = Hooks.UseState(0);
+            s_unreachedSetCount = setCount;
+            Hooks.UseEffect(() => () => s_unreachedCleanups++, Array.Empty<object>());
+            return V.Label(text: "count:" + count);
+        }
+
+        [Component(Compiler = false)]
+        private static VNode UnreachedHostRender()
+        {
+            var (_, setTick) = Hooks.UseState(0);
+            s_unreachedSetHostTick = setTick;
+            return V.Div(children: new VNode[]
+            {
+                V.Component(UnreachedBoundaryRender, key: "boundary"),
+                V.Component(UnreachedCounterRender, key: "counter"),
+            });
         }
 
         #endregion

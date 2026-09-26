@@ -678,6 +678,7 @@ namespace Velvet
             // here is what makes it available at all: the pass that had it on the stack has unwound by
             // drain time, and the drain pushes this captured value back rather than reading one.
             var logicalParent = _ctx.FiberStack.Current;
+            _ctx.PendingHostPlaceholders.Add(placeholder);
             _ctx.PendingPortalMounts.Enqueue((placeholder, node, target, contextSnapshot, logicalParent));
             return placeholder;
         }

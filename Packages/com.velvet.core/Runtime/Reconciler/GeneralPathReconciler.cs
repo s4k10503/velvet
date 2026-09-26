@@ -179,13 +179,18 @@ namespace Velvet
                     pool.ReturnInlineWalk(walk);
                 }
 
+                // An abort raised during the walk stopped it early, so an old fiber missing from newFibers may
+                // be one it never reached rather than one the new tree dropped. Read before the cleanups: one
+                // raised by an orphan's cleanup comes after a walk that ran to its end.
+                var walkReachedEnd = !_ctx.IsAborted;
                 // Orphan effect cleanups run BEFORE the DOM-removal pass (Finalize → RemoveElement),
                 // mirroring the flat path: a deleted FunctionComponent's effect cleanups fire while its
                 // Ref.Current is still valid, then the DOM is removed. The sweep (full dispose) runs after.
-                RunOrphanEffectCleanups(oldFibers, newFibers);
+                if (walkReachedEnd) RunOrphanEffectCleanups(oldFibers, newFibers);
                 var removalsRan = !_ctx.IsAborted;
                 if (removalsRan) FinalizeGeneralCommit(commit);
-                SweepOrphans(oldFibers, newFibers);
+                else RollbackCommitTo(commit, 0, fibersBefore: null, newFibers);
+                if (walkReachedEnd) SweepOrphans(oldFibers, newFibers);
                 return removalsRan;
             }
             finally

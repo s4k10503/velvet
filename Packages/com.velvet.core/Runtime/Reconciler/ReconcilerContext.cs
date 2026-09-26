@@ -856,6 +856,11 @@ namespace Velvet
         public Queue<(VisualElement Placeholder, VNode Node, VisualElement? Target,
             List<KeyValuePair<object, object>> ContextSnapshot, ComponentFiber? LogicalParent)> PendingPortalMounts { get; } = new();
 
+        // The Portal / WorldSpace placeholders queued in PendingPortalMounts and not torn down since. A
+        // placeholder's parent cannot answer that: one built inside an element whose creation then failed is
+        // still parented by that element, which no caller holds.
+        internal HashSet<VisualElement> PendingHostPlaceholders { get; } = new();
+
         // Per-stacking-context-parent z-layer containers (FiberZLayerCoordinator), lazily created on first
         // z-marked absolute child. NOT a pure side-table: the record's Front/Back reference live VisualElement
         // containers that are ordinary (if empty) children of the key until FiberZLayerCoordinator.DrainTeardowns

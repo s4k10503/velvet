@@ -308,6 +308,7 @@ namespace Velvet
                     FiberZLayerCoordinator.ResolveQueuedMount(_ctx, placeholder, zLayerMount);
                     continue;
                 }
+                if (!_ctx.PendingHostPlaceholders.Remove(placeholder)) continue;
                 // Resolve the deferred targets: a same-panel portal (a registered id, or the container
                 // the caller passed) arrived with its target resolved at enqueue; a layer portal
                 // creates (or reuses) the per-layer framework host here, and a world-space node
@@ -1230,6 +1231,7 @@ namespace Velvet
                 pool.Return(oldKeyMap);
                 pool.ReturnKeySet(usedKeys);
                 pool.ReturnReplacedKeySet(replacedKeys);
+                ReleaseUnplacedElements(newElements);
                 pool.Return(newElements);
                 pool.ReturnOrphanedIndexSet(orphanedOldIndices);
             }
@@ -1584,13 +1586,31 @@ namespace Velvet
             state.OrphanedOldIndices = pool.RentOrphanedIndexSet();
         }
 
+        // Pass 2 places what it built only in its reorder, its last step, so a pass that throws, aborts, or is
+        // discarded while parked leaves built elements that no parent holds. Both callers run on completion
+        // as well, where the reorder has placed every one of them; the parent test is what leaves those alone.
+        private void ReleaseUnplacedElements(List<(VisualElement? element, bool isExisting)> elements)
+        {
+            foreach (var (element, isExisting) in elements)
+            {
+                if (isExisting || element == null || element.parent != null) continue;
+                _ctx.ComponentRegistry.DisposeFibersUnder(element);
+                _cleaner.ReturnRolledBackOrphan(element);
+            }
+        }
+
         private void ReleaseKeyedBuffers(KeyedReconcileState state)
         {
             var pool = _ctx.BufferPool;
             if (state.OldKeyMap != null) { pool.Return(state.OldKeyMap); state.OldKeyMap = null; }
             if (state.UsedKeys != null) { pool.ReturnKeySet(state.UsedKeys); state.UsedKeys = null; }
             if (state.ReplacedKeys != null) { pool.ReturnReplacedKeySet(state.ReplacedKeys); state.ReplacedKeys = null; }
-            if (state.NewElements != null) { pool.Return(state.NewElements); state.NewElements = null; }
+            if (state.NewElements != null)
+            {
+                ReleaseUnplacedElements(state.NewElements);
+                pool.Return(state.NewElements);
+                state.NewElements = null;
+            }
             if (state.OrphanedOldIndices != null) { pool.ReturnOrphanedIndexSet(state.OrphanedOldIndices); state.OrphanedOldIndices = null; }
             if (state.LisIndices != null) { pool.ReturnIntSet(state.LisIndices); state.LisIndices = null; }
         }
@@ -1690,11 +1710,10 @@ namespace Velvet
                         $"Duplicate key detected among new siblings: {key}. " +
                         "The repeated sibling mounts a fresh element; give each sibling a unique key.");
                     var duplicateElement = _factory.CreateElement(newNode);
-                    if (_ctx.IsAborted) return true;
                     UnityEngine.Debug.Assert(duplicateElement.parent == null,
                         "[ChildReconciler] _factory.CreateElement must return an orphaned VisualElement (no parent).");
                     newElements.Add((duplicateElement, false));
-                    return false;
+                    return _ctx.IsAborted;
                 }
                 AssertDomIndexInvariant(slotStart, old.index, parent);
                 var existingDomElement = parent.ElementAt(LogicalChildSlots.ToPhysical(parent, slotStart + old.index));
@@ -1718,19 +1737,19 @@ namespace Velvet
                 {
                     tables.ReplacedKeys.Add(key);
                     var newElement = _factory.CreateElement(newNode);
-                    if (_ctx.IsAborted) return true;
                     UnityEngine.Debug.Assert(newElement.parent == null,
                         "[ChildReconciler] _factory.CreateElement must return an orphaned VisualElement (no parent).");
                     newElements.Add((newElement, false));
+                    if (_ctx.IsAborted) return true;
                 }
             }
             else
             {
                 var newElement = _factory.CreateElement(newNode);
-                if (_ctx.IsAborted) return true;
                 UnityEngine.Debug.Assert(newElement.parent == null,
                     "[ChildReconciler] _factory.CreateElement must return an orphaned VisualElement (no parent).");
                 newElements.Add((newElement, false));
+                if (_ctx.IsAborted) return true;
             }
 
             return false;

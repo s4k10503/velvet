@@ -237,6 +237,7 @@ namespace Velvet
                 // drain (a boundary inside a portal's children) is consumed at this boundary
                 // the same way.
                 _ctx.PendingPortalMounts.Clear();
+                _ctx.PendingHostPlaceholders.Clear();
                 _ctx.IsAborted = false;
                 // Declaring-resolution misses are scoped to one top-level pass: retrying the
                 // scan next pass is what lets a late-arriving declaring panel resolve.
@@ -765,6 +766,7 @@ namespace Velvet
             _ctx.ClearSuspenseState();
             _ctx.PortalState.Clear();
             _ctx.PendingPortalMounts.Clear();
+            _ctx.PendingHostPlaceholders.Clear();
             // ZLayerHosts/ZLayerMembers are pure side-tables (dropped by ClearAllSideTables); these two
             // are not — a placeholder->real entry always accompanies a live container membership, and a
             // pending teardown check references a container that may still be attached — so both are dropped
