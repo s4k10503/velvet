@@ -128,6 +128,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   render or variant adds or drops its `absolute`. An in-flow clipped element is laid out as before,
   centred in its wrapper.
 
+- A `V.Suspense` or `V.AnimatePresence` that a component returns with no element above it keeps what it
+  committed when that component re-renders on its own. That held only where nothing above the component
+  opened a key scope; a keyed `V.Fragment` does, as do the children of a `V.Suspense`, a child of a
+  `V.AnimatePresence`, and the result of a `V.Memoized` or `[MemoizeMethod]` wrapper around the component
+  in its parent. Under any of those the component's own re-render did not find the boundary's record: a
+  suspended boundary added a second fallback element beside the one on screen, an AnimatePresence added a
+  second copy of its children, and a component inside the fallback that re-rendered alone read the
+  context's default instead of a Provider the fallback placed above it.
+
+- Two `V.Suspense` boundaries in one component's output no longer share one record where the second sits
+  under an unkeyed `V.Fragment` or `V.Provider` at the same index as the first. A resolved one there cleared
+  the suspended one's record, and the next render replaced the fallback element on screen with a new one.
+  Two `V.AnimatePresence` with the second under an unkeyed `V.Fragment` that way shared one committed set,
+  so each rendered the other's children beside its own once those children had exit animations.
+
+- Keyed wrappers keep what they enclose apart. Under one keyed scope, a Fragment and a Provider carrying the
+  same key, or a Fragment keyed `"1"` beside an unkeyed Fragment at index 1, no longer share an identity, so
+  neither takes the other's elements on a re-render. A keyed component written under different wrappers in one
+  container, such as two keyed Providers, now mounts one instance per wrapper instead of rendering only the
+  first; moving it from one wrapper to another remounts it, as in React. A component rendered by a keyed memo
+  keeps its state when the memo moves among its keyed siblings, while one rendered by an unkeyed `V.Memoized`
+  is placed by that memo's slot: after a reorder, a keyed component there remounts and an unkeyed one takes
+  over the state of whatever held that slot.
+
+- A class string whose arbitrary value changes every render, such as `left-[{x}px]`, and a screen of
+  more than 256 distinct class strings no longer log "ParseClassNames cache exceeded limit", and a
+  moving value no longer pushes the class strings rendered beside it out of the parse cache, which
+  cleared every entry on reaching 256. The cache now takes a class string in only when it is parsed a
+  second time, so a moving value's strings, each parsed once, stay out of it barring a hash collision.
+  Counting parses of strings the cache neither holds nor remembers, a string parsed again within 2048
+  of them is cached, and one parsed again only after 4096 is not; a cached string keeps its parsed
+  array while it is parsed again within 2048 of them and is released once 4096 pass without it. Past
+  those counts the strings are parsed again every render, as before, without the warning. So a cached
+  class string stays cached beside fewer than 2048 moving strings per render and is released beside
+  4096 or more, and a screen shown for the first time settles only while its distinct class strings plus
+  the moving strings of one render stay under about 4096: measured, 3000 strings beside 1000 moving ones
+  settle and 3000 beside 1100 never do, while the same 3000 already cached stay cached beside 1100.
+
+- A render that calls `Hooks.UseState` / `Hooks.UseReducer`, `Hooks.UseStore` or `Hooks.Use` a
+  different number of times from the previous render now fails with a message that opens on the
+  component's name and continues in React's words — `Rendered more hooks than during the previous
+  render (UseState / UseReducer: 1 before, 2 now)`, or `Rendered fewer hooks than expected` — where it
+  named no component. The call past the previous render's count throws from itself instead of after the
+  body returns, so when that call is made inside a plain helper method, the helper is on the
+  exception's stack. The error the editor alone logs for the same mistake with `Hooks.UseEffect`,
+  `Hooks.UseCallback` and eight more hooks takes the same wording.
+
+- A component mounted through `V.Component(body, props)` or `V.Memo` is named by its method, or by its
+  `DisplayName`, in `ErrorInfo.ComponentStack`, in the hook-type error, in the StrictMode double-render
+  diagnostics, in the error for a `Hooks.UseStore` whose store changed, in the `Hooks.UseBlocker`
+  warning for a missing router and in the DevTools window's label for a mounted root. Each named the
+  compiler-generated closure the overload wraps the method in. The error for a hook called outside a
+  render and that DevTools label now give the declaring type before the method name, as the other
+  messages do, and honour `DisplayName`.
+
 - Memoized components rebuild their compiled VNode cache when their props comparison detects a
   change, including a record struct float member changing from positive zero to negative zero.
 
@@ -681,6 +736,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   round stands as the loader left it, with its result recorded and no error. A subscriber throwing out
   of the failure announcement is reported the same way, where it used to be left to whatever observes a
   forgotten task.
+
+- A `shadow-*` or `drop-shadow-*` behind a `rounded-full` element paints its halo. The silhouette was
+  baked at `--radius-full` itself, which is larger than the element, and came out empty; it now takes the
+  bound the face Velvet paints over it takes, half the element's shorter side. A radius the element can
+  carry bakes as before.
 
 ## [Unreleased — breaking]
 

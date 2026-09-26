@@ -14,7 +14,7 @@ namespace Velvet
         {
             if (fiber == null || !fiber.IsInRenderPhase)
             {
-                var typeName = fiber?.Body?.Method?.Name ?? "[Component]";
+                var typeName = fiber == null ? "[Component]" : Hooks.ComponentName(fiber);
                 throw new InvalidOperationException(
                     $"{typeName}: {hookName}() may only be used inside Render().");
             }

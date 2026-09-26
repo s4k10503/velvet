@@ -609,7 +609,7 @@ namespace Velvet.Tests
             s_conditionalEffectFactory = () => null;
             using var mounted = V.Mount(_root, V.Component(ConditionalEffectRender, key: "conditional"));
             LogAssert.Expect(LogType.Error,
-                new Regex(@"UseLayoutEffect call count differs between previous render"));
+                new Regex(@"Rendered more hooks than during the previous render \(UseLayoutEffect: 0 before, 1 now\)"));
 
             // Act
             s_conditionalEffectSetState.Invoke(EffectTestState.Initial with { Count = 1 });

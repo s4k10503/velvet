@@ -96,7 +96,7 @@ namespace Velvet
         // string being bare `rounded`) — shared so a per-class radius recognizer (MotionPropertyClassParser)
         // resolves the SAME magnitudes instead of holding a second copy that could drift, mirroring
         // StyleArbitraryValueResolver.TryGetSpacingPx's precedent. `full` is deliberately absent: it is a
-        // saturating pill sentinel (--radius-full is far larger than any element), not a magnitude a caller
+        // saturating radius sentinel (--radius-full is deliberately oversized), not a magnitude a caller
         // can interpolate through.
         internal static bool TryGetRadiusPx(string suffix, out float px) => RadiusScale.TryGetValue(suffix, out px);
 

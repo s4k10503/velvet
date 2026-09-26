@@ -30,9 +30,8 @@ namespace Velvet
     //   reconciled the declaring component's own tree has already unwound past it.
     //   VirtualList — items mount via the controller (FiberVirtualListController) on scroll, outside any pass.
     // EnclosingSnapshot is the top value of every context active outside the detached mount (the base the
-    // consumer reads). DescendantNodes is the committed VNode children to walk to recover any Provider placed
-    // directly inside the detached subtree above this fiber (Portal children; null for VirtualList, whose
-    // items add no in-list Provider layer above the item). Anchor is the fiber the detached mount parented
+    // consumer reads). DescendantNodes is the committed VNode subtree to walk to recover any Provider placed
+    // directly inside the detached subtree above this fiber. Anchor is the fiber the detached mount parented
     // the children under (the registry-lookup parent the DescendantNodes walk matches against; null when no
     // walk is needed). The snapshot reflects mount time; a host re-render that changes the enclosing context
     // re-runs the detached mount with a correct cursor, so this stale copy only matters for the narrow case
@@ -42,6 +41,7 @@ namespace Velvet
         internal readonly List<KeyValuePair<object, object>>? EnclosingSnapshot;
         internal readonly VNode?[]? DescendantNodes;
         internal readonly ComponentFiber Anchor;
+        internal readonly bool RootProviderChildrenStartAtWalkRoot;
         // The ComponentFiber that logically called V.Portal/V.WorldSpace (captured at enqueue time — see
         // PendingPortalMounts). Null for VirtualList's detached items (no portal call site to resolve)
         // and for a bare Reconciler.Reconcile() drain with nothing on FiberStack. Anchor is the separate
@@ -51,12 +51,13 @@ namespace Velvet
 
         internal DetachedMountContext(
             List<KeyValuePair<object, object>>? enclosingSnapshot, VNode?[]? descendantNodes, ComponentFiber anchor,
-            ComponentFiber? logicalParent = null)
+            ComponentFiber? logicalParent = null, bool rootProviderChildrenStartAtWalkRoot = false)
         {
             EnclosingSnapshot = enclosingSnapshot;
             DescendantNodes = descendantNodes;
             Anchor = anchor;
             LogicalParent = logicalParent;
+            RootProviderChildrenStartAtWalkRoot = rootProviderChildrenStartAtWalkRoot;
         }
     }
 
@@ -1263,9 +1264,9 @@ namespace Velvet
 
         // Only shown fallbacks are stored, so boundary-level deferral reads this table's presence.
         // The node identifies the branch when a context-spine walk reaches it through a nested host.
-        private readonly Dictionary<ComponentFiber, Dictionary<(VisualElement? Container, VisualElement? PortalScope, string Position), SuspenseNode>>
+        private readonly Dictionary<ComponentFiber, Dictionary<(VisualElement? Container, VisualElement? PortalScope, long Position), SuspenseNode>>
             _suspenseFallbackKeys = new();
-        private readonly Dictionary<(VisualElement? Container, VisualElement? PortalScope, string Position), SuspenseNode>
+        private readonly Dictionary<(VisualElement? Container, VisualElement? PortalScope, long Position), SuspenseNode>
             _rootlessSuspenseFallbackKeys = new();
 
         internal bool AnyBoundaryShowingFallback => _suspenseFallbackKeys.Count > 0;
@@ -1273,13 +1274,13 @@ namespace Velvet
         internal bool IsBoundaryShowingFallback(ComponentFiber boundary)
             => _suspenseFallbackKeys.ContainsKey(boundary);
 
-        internal bool IsSuspenseFallbackShown(ComponentFiber? boundary, VisualElement? container, VisualElement? portalScope, string positionKey)
+        internal bool IsSuspenseFallbackShown(ComponentFiber? boundary, VisualElement? container, VisualElement? portalScope, long positionKey)
             => boundary == null
                 ? _rootlessSuspenseFallbackKeys.ContainsKey((container, portalScope, positionKey))
                 : _suspenseFallbackKeys.TryGetValue(boundary, out var keys) && keys.ContainsKey((container, portalScope, positionKey));
 
         internal bool IsSuspenseFallbackShownOnSpine(ComponentFiber boundary, VisualElement? container, VisualElement? portalScope,
-            string positionKey, SuspenseNode node)
+            long positionKey, SuspenseNode node)
         {
             if (!_suspenseFallbackKeys.TryGetValue(boundary, out var entries)) return false;
             foreach (var entry in entries)
@@ -1294,7 +1295,7 @@ namespace Velvet
         }
 
         internal void SetSuspenseFallbackShown(ComponentFiber? boundary, VisualElement? container, VisualElement? portalScope,
-            string positionKey, SuspenseNode node, bool shown)
+            long positionKey, SuspenseNode node, bool shown)
         {
             var position = (container, portalScope, positionKey);
             if (boundary == null)
@@ -1307,7 +1308,7 @@ namespace Velvet
             {
                 if (!_suspenseFallbackKeys.TryGetValue(boundary, out var keys))
                 {
-                    keys = new Dictionary<(VisualElement? Container, VisualElement? PortalScope, string Position), SuspenseNode>();
+                    keys = new Dictionary<(VisualElement? Container, VisualElement? PortalScope, long Position), SuspenseNode>();
                     _suspenseFallbackKeys[boundary] = keys;
                 }
                 keys[position] = node;
@@ -1317,7 +1318,7 @@ namespace Velvet
         }
 
         private void RemoveSuspenseFallback(ComponentFiber? boundary,
-            (VisualElement? Container, VisualElement? PortalScope, string Position) position)
+            (VisualElement? Container, VisualElement? PortalScope, long Position) position)
         {
             if (boundary == null)
             {
@@ -1360,9 +1361,9 @@ namespace Velvet
         }
 
         private static void RemoveSuspenseContainer(
-            Dictionary<(VisualElement? Container, VisualElement? PortalScope, string Position), SuspenseNode> entries, VisualElement container)
+            Dictionary<(VisualElement? Container, VisualElement? PortalScope, long Position), SuspenseNode> entries, VisualElement container)
         {
-            List<(VisualElement? Container, VisualElement? PortalScope, string Position)>? removed = null;
+            List<(VisualElement? Container, VisualElement? PortalScope, long Position)>? removed = null;
             foreach (var position in entries.Keys)
                 if (ReferenceEquals(position.Container, container) || ReferenceEquals(position.PortalScope, container)) (removed ??= new()).Add(position);
             if (removed != null)
@@ -1421,13 +1422,13 @@ namespace Velvet
             public VisualElement? OwningPortalPlaceholder;
         }
 
-        // Keyed by (boundary fiber, parent element, scoped position key). The parent element is part of the
-        // key — not just (boundary, key) like Suspense — because an AnimatePresence nested inside a real
-        // element (e.g. a Motion) reconciles its children through a fresh ReconcileChildren call that
-        // resets the fragment scope to null; without the parent, that inner AnimatePresence would collide
-        // with an outer one at the same (null fiber, null scope, index 0). The parent is stable across the
-        // AnimatePresence's renders (the host element is reused), and disambiguates inner from outer.
-        internal Dictionary<(ComponentFiber? boundary, VisualElement? parent, string presenceKey), PresenceBoundaryState> PresenceStates { get; } = new();
+        // Keyed by (boundary fiber, parent element, the SlotPath FiberKeying.Presence gives). The parent
+        // element is part of the key because an AnimatePresence nested inside a real element (e.g. a Motion)
+        // reconciles its children through a fresh ReconcileChildren call that restarts the walk at
+        // FiberKeying.WalkRoot; without the parent, that inner AnimatePresence would collide with an outer
+        // one at the same fiber and index. The parent is stable across the AnimatePresence's renders (the
+        // host element is reused), and disambiguates inner from outer.
+        internal Dictionary<(ComponentFiber? boundary, VisualElement? parent, long presenceKey), PresenceBoundaryState> PresenceStates { get; } = new();
 
         // Non-zero while an AnimatePresence expansion is on the stack. Motion nodes created inside
         // it are presence-managed (initial/exit tweens are scheduled by the expansion); a Motion
@@ -1476,7 +1477,7 @@ namespace Velvet
         private void PrunePresenceStates(PresenceStateOwner owner, object subject)
         {
             if (PresenceStates.Count == 0) return;
-            List<(ComponentFiber? boundary, VisualElement? parent, string presenceKey)>? stale = null;
+            List<(ComponentFiber? boundary, VisualElement? parent, long presenceKey)>? stale = null;
             foreach (var entry in PresenceStates)
             {
 #pragma warning disable CS8524 // no discard arm, so a fourth owner fails the build rather than falling in here
@@ -1520,20 +1521,20 @@ namespace Velvet
         private readonly HashSet<BoundaryReproductionKey> _boundaryReRendered = new();
 
         internal readonly record struct BoundaryReproductionKey(
-            ComponentFiber? Boundary, VisualElement? Parent, VisualElement? PortalScope, string Position, bool IsSuspense);
+            ComponentFiber? Boundary, VisualElement? Parent, VisualElement? PortalScope, long Position, bool IsSuspense);
 
-        internal void MarkPresenceReproduced((ComponentFiber? boundary, VisualElement? parent, string presenceKey) key)
+        internal void MarkPresenceReproduced((ComponentFiber? boundary, VisualElement? parent, long presenceKey) key)
             => _boundaryReproduced.Add(new(key.boundary, key.parent, null, key.presenceKey, false));
 
-        internal void MarkPresenceReRendered((ComponentFiber? boundary, VisualElement? parent, string presenceKey) key)
+        internal void MarkPresenceReRendered((ComponentFiber? boundary, VisualElement? parent, long presenceKey) key)
             => _boundaryReRendered.Add(new(key.boundary, key.parent, null, key.presenceKey, false));
 
         internal void MarkSuspenseReproduced(ComponentFiber? boundary, VisualElement? parent,
-            VisualElement? portalScope, string position)
+            VisualElement? portalScope, long position)
             => _boundaryReproduced.Add(new(boundary, parent, portalScope, position, true));
 
         internal void MarkSuspenseReRendered(ComponentFiber? boundary, VisualElement? parent,
-            VisualElement? portalScope, string position)
+            VisualElement? portalScope, long position)
             => _boundaryReRendered.Add(new(boundary, parent, portalScope, position, true));
 
         // Opens the span of reproductions one container's reconcile takes, closed by
