@@ -666,6 +666,11 @@ namespace Velvet
         // property), so the clip wrapper's mask must be re-derived. Null until the patcher wires it.
         public System.Action<VisualElement> ClipPathReResolve { get; set; } = null!;
 
+        // Hook to bring a clipped element's wrapper to the element's current position mode after a variant
+        // toggled any payload on it, set by FiberNodePatcher and invoked by StyleVariantPayload.Apply. Null
+        // until the patcher wires it.
+        public System.Action<VisualElement> ClipPathWrapperModeSync { get; set; } = null!;
+
         // Per-element ring-* / outline-* bookkeeping, keyed by the element itself. An entry means a
         // native-border overlay painting the outset (or inset) band is hosted as a reconciler-invisible
         // sibling of the element (RingOverlay). No GPU resource to dispose (unlike clip), but cleanup must
