@@ -1070,7 +1070,14 @@ namespace Velvet
             var fallbackPosition = FiberKeying.SuspenseSubtree(
                 position, suspenseKey, suspense.Key, nodeIndex, isFallback: true);
 
-            if (walk.IsNewSide)
+            if (walk.IsNewSide && _ctx.IsAborted)
+            {
+                // Nothing under a boundary the stopped walk meets renders, so no branch can be decided here: a
+                // primary that renders nothing reads as settled. The branch the old side showed is walked
+                // instead, which records its components as skipped, and the recorded choice stays as it was.
+                ExpandCommittedSuspenseBranch(walk, suspense, boundaryFiber, suspenseAt, primaryPosition, fallbackPosition);
+            }
+            else if (walk.IsNewSide)
             {
                 if (boundaryFiber != null) boundaryFiber.IsSuspenseBoundary = true;
                 var preCount = commit != null ? commit.NewElements.Count : result!.Count;
@@ -1135,20 +1142,31 @@ namespace Velvet
                 _ctx.MarkSuspenseReRendered(boundaryFiber, walk.Parent, _ctx.PortalChildKeyScopeHere, suspenseAt);
                 _ctx.SetSuspenseFallbackShown(boundaryFiber, walk.Parent, _ctx.PortalChildKeyScopeHere, suspenseAt, suspense, suspended);
             }
-            else
+            else if (ExpandCommittedSuspenseBranch(walk, suspense, boundaryFiber, suspenseAt, primaryPosition, fallbackPosition))
             {
-                var wasFallback = _ctx.IsSuspenseFallbackShown(boundaryFiber, walk.Parent, _ctx.PortalChildKeyScopeHere, suspenseAt);
-                if (wasFallback)
-                    _ctx.MarkSuspenseReproduced(boundaryFiber, walk.Parent, _ctx.PortalChildKeyScopeHere, suspenseAt);
-                var nodesToExpand = wasFallback
-                    ? (suspense.Fallback != null ? new[] { suspense.Fallback } : Array.Empty<VNode>())
-                    : (suspense.Children ?? Array.Empty<VNode>());
-                if (nodesToExpand.Length > 0)
-                {
-                    ExpandInlineRecursive(walk, nodesToExpand,
-                        wasFallback ? fallbackPosition : primaryPosition);
-                }
+                _ctx.MarkSuspenseReproduced(boundaryFiber, walk.Parent, _ctx.PortalChildKeyScopeHere, suspenseAt);
             }
+        }
+
+        // Walks the branch the boundary's record says is on screen, and says whether that is the fallback.
+        private bool ExpandCommittedSuspenseBranch(
+            InlineWalk walk,
+            SuspenseNode suspense,
+            ComponentFiber? boundaryFiber,
+            long suspenseAt,
+            WalkPosition primaryPosition,
+            WalkPosition fallbackPosition)
+        {
+            var wasFallback = _ctx.IsSuspenseFallbackShown(boundaryFiber, walk.Parent, _ctx.PortalChildKeyScopeHere, suspenseAt);
+            var nodesToExpand = wasFallback
+                ? (suspense.Fallback != null ? new[] { suspense.Fallback } : Array.Empty<VNode>())
+                : (suspense.Children ?? Array.Empty<VNode>());
+            if (nodesToExpand.Length > 0)
+            {
+                ExpandInlineRecursive(walk, nodesToExpand,
+                    wasFallback ? fallbackPosition : primaryPosition);
+            }
+            return wasFallback;
         }
 
         #endregion

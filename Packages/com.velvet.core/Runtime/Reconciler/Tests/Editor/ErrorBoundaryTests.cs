@@ -28,7 +28,8 @@ namespace Velvet.Tests
     /// a pass has already committed, they are the rows it placed.</item>
     /// <item>A catch that aborts its parent's render leaves a component that render never reached mounted,
     /// with its state and its effect: a sibling behind the boundary, one inside a child that re-rendered in
-    /// that render, and one the discarded render itself dropped.</item>
+    /// that render, one the discarded render itself dropped, and the fallback a Suspense behind the boundary
+    /// is showing.</item>
     /// <item>A component the aborted render did reach and drop is cleaned up, whether a child that
     /// re-rendered dropped it, with its own children, or an element that child owns did. The one a child
     /// dropped comes back as a new instance when rendered again, and so does one whose own cleanup threw into
@@ -1020,6 +1021,74 @@ namespace Velvet.Tests
                 (fellBack ? "fell back" : "never fell back") + ", cleanups " + cleanupsAfterAbort + ", "
                     + string.Join(",", _root.Query<Label>().ToList().Select(label => label.text)),
                 Is.EqualTo("fell back, cleanups 0, count:1,thrower"));
+        }
+
+        private static VelvetTaskCompletionSource<string> s_pendingResource;
+        private static Action<int> s_shownFallbackSetValue;
+        private static int s_shownFallbackCleanups;
+
+        [Test]
+        public void Given_ASuspenseShowingItsFallbackBehindACatch_When_TheCatchAbortsTheRender_Then_TheFallbackKeepsItsStateAndEffect()
+        {
+            // Arrange — the Suspense comes after the boundary inside a child that re-renders, so the stopped walk
+            // meets it without rendering anything under it.
+            s_pendingResource = new VelvetTaskCompletionSource<string>();
+            s_shownFallbackCleanups = 0;
+            using var mounted = V.Mount(_root, V.Component(SuspenseAfterCatchHostRender, key: "host"));
+            mounted.FlushEffectsForTest();
+            s_shownFallbackSetValue.Invoke(5);
+            mounted.FlushStateForTest();
+            s_unreachedShouldThrow = true;
+            s_unreachedSetHostTick.Invoke(1);
+            mounted.FlushStateForTest();
+            var fellBack = _root.FindLabelByText("unreached-fallback") != null;
+            var cleanupsAfterAbort = s_shownFallbackCleanups;
+            s_unreachedShouldThrow = false;
+
+            // Act
+            s_unreachedSetHostTick.Invoke(2);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(
+                (fellBack ? "fell back" : "never fell back") + ", cleanups " + cleanupsAfterAbort + ", "
+                    + string.Join(",", _root.Query<Label>().ToList().Select(label => label.text)
+                        .Where(text => text.StartsWith("waiting"))),
+                Is.EqualTo("fell back, cleanups 0, waiting:5"));
+        }
+
+        [Component(Compiler = false)]
+        private static VNode PendingReaderRender()
+        {
+            var text = Hooks.Use(_ => s_pendingResource.Task);
+            return V.Label(text: "loaded:" + text);
+        }
+
+        [Component(Compiler = false)]
+        private static VNode ShownFallbackRender()
+        {
+            var (value, setValue) = Hooks.UseState(0);
+            s_shownFallbackSetValue = setValue;
+            Hooks.UseEffect(() => () => s_shownFallbackCleanups++, Array.Empty<object>());
+            return V.Label(text: "waiting:" + value);
+        }
+
+        [Component(Compiler = false)]
+        private static VNode SuspenseAfterCatchChildRender(int tick)
+            => V.Fragment(new VNode[]
+            {
+                V.Component(UnreachedBoundaryRender, key: "boundary"),
+                V.Suspense(
+                    fallback: V.Component(ShownFallbackRender, key: "waiting"),
+                    children: new VNode[] { V.Component(PendingReaderRender, key: "reader") }),
+            });
+
+        [Component(Compiler = false)]
+        private static VNode SuspenseAfterCatchHostRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_unreachedSetHostTick = setTick;
+            return V.Div(children: new VNode[] { V.Component(SuspenseAfterCatchChildRender, tick, key: "child") });
         }
 
         [Component(Compiler = false)]
