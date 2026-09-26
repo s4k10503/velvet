@@ -123,9 +123,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Hooks.UseCallback` and eight more hooks takes the same wording.
 
 - A component mounted through `V.Component(body, props)` or `V.Memo` is named by its method, or by its
-  `DisplayName`, in `ErrorInfo.ComponentStack`, in the hook-type error, in the error for a hook called
-  outside a render, in the StrictMode double-render diagnostics, in the error for a `Hooks.UseStore`
-  whose store changed, in the `Hooks.UseBlocker` warning for a missing router and in the DevTools
+  `DisplayName`, in `ErrorInfo.ComponentStack`, in the hook-type error, in the StrictMode double-render
+  diagnostics, in the error for a `Hooks.UseStore` whose store changed, in the `Hooks.UseBlocker` warning for a missing router and in the DevTools
   window's label for a mounted root. Each named the compiler-generated closure the overload wraps the
   method in. The error for a hook called outside a render and that DevTools label now give the
   declaring type before the method name, as the other messages do, and honour `DisplayName`.
