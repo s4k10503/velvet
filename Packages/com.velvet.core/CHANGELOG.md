@@ -116,10 +116,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A Motion declaring `exit:` that an `AnimatePresence` child wraps where the presence does not look —
   behind a component, `V.Memoized` or `V.Suspense`, or inside another element — now warns, when the
   presence's own render creates it, that it is not the child's anchor and its exit is inert; the exit
-  used to be dropped without
-  a word. The motion guide states which Motion a keyed child's enter and exit play on, and that a
-  Motion outside that rule keeps its own mount enter, which the presence's `initial: false` does not
-  suppress.
+  used to be dropped without a word. The motion guide states which Motion a keyed child's enter and
+  exit play on, and that a Motion outside that rule keeps its own mount enter, which the presence's
+  `initial: false` does not suppress.
+
+- One `V.Fragment` returned for several `V.List` items gives each item a row that keeps its element when
+  the items are reordered or appended to. Each item's copy of the Fragment shares its children, and a row's
+  key was read back from that shared child, so the rows resolved to one item's key: a row already on screen
+  was built again, and a row left on screen had its ref cleanup run.
+
+- A keyed element that leaves a keyed `V.Fragment` mounts a fresh element where an update that is
+  time-sliced reaches the move after resuming; it patched the element it had inside the Fragment. That is
+  the remount a synchronous update already gave, and the one React gives.
+
+- A node held across renders — the same `VNode` instance on both — is matched by the position it is
+  written at rather than by being the same node, wherever the previous render's child array held a
+  `V.Fragment`, a `V.Provider`, a component or another wrapper, or a `null`. It mounts a fresh element
+  when it leaves a keyed `V.Fragment`, keyed or not, and when as an unkeyed child it lands at a different
+  index, where an insertion or a removal before it could let it keep its element; both are remounts React
+  gives too. In a child array whose previous render held none of those, an unkeyed held node that lands at
+  a different index can still keep its element.
+
+- Two sibling components that each render an element under the same `key:` keep their elements when their
+  parent re-renders. The two keys were compared as siblings of one list, so a re-render of the parent
+  rebuilt both elements and logged a duplicate-key warning. A key is now compared only among the
+  elements one component renders, as React scopes it.
 
 - An absolutely positioned element carrying a `clip-path-*` utility keeps the box its edge offsets
   declare, and an `absolute inset-0` child fills it, as without the clip. The wrapper that hosts the
