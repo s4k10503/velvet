@@ -1543,6 +1543,15 @@ namespace Velvet
                         + "component (e.g. via V.Mount) rather than reconciling it onto a bare element.");
                 }
             }
+            // A spring or bezier exit reads the element's inline translate as PlayExit starts it and holds an axis
+            // neither pose names there, so a hold lands before it. A tween exit writes its transition in
+            // PlayExit, so a hold landed after moves on it where the exit plays on this element, as the resting
+            // USS classes the enter's cancel put back do.
+            var landsBeforeExit = exitTransition == null || !StyleAnimationScheduler.RunsOnSwap(exitTransition);
+            if (landsBeforeExit && ghostMotionElement != null)
+            {
+                _patcher.LandInlineHold(ghostMotionElement);
+            }
             var onExitSwap = variantExit != null
                 ? _patcher.PlanInlineExit(ghostMotionElement!, ghostMotionNode!.ClassNames, variantExit.ExitToClasses,
                     variantExit)
@@ -1556,8 +1565,7 @@ namespace Velvet
             }, restoreFromOnCancel: variantExit != null,
                 additionalDelaySec: presence.StaggerDelaySec(exitIndex, tally.AnimatedExitCount),
                 onSwap: onExitSwap);
-            // After PlayExit, whichever exit plays: see LandInlineHold.
-            if (ghostMotionElement != null)
+            if (!landsBeforeExit && ghostMotionElement != null)
             {
                 _patcher.LandInlineHold(ghostMotionElement);
             }

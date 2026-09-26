@@ -736,9 +736,8 @@ namespace Velvet
             return hold.Release;
         }
 
-        // Writes the resting inline-resolved tokens an enter hold keeps off the element. Called once the exit
-        // that cancelled the enter has put its transition on the element, so they tween on it, as the resting
-        // USS classes the enter's cancel restored do.
+        // Writes the resting inline-resolved tokens a hold keeps off the element, on whatever transition the
+        // element carries at that moment.
         internal void LandInlineHold(VisualElement element)
         {
             if (_ctx.MotionHeldInline.Remove(element, out var hold))

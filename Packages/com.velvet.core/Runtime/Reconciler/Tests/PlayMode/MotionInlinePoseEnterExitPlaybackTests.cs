@@ -29,6 +29,11 @@ namespace Velvet.Tests
             // so an element carrying both resolves 1.
             ["lit"] = "opacity-100 translate-x-[0px]",
             ["dim"] = "opacity-50 translate-x-[0px]",
+            // Initial names y alone and the resting and exit poses x alone, so y's resting value is the one no
+            // pose names; the exit springs.
+            ["awayY"] = "translate-y-[40px]",
+            ["goneSpring"] = new MotionVariant("translate-x-[-300px]",
+                new StyleTransitionConfig { Type = TransitionType.Spring, Stiffness = 300f, Damping = 30f }),
         };
 
         private const string Box = "absolute w-[50px] h-[50px]";
@@ -47,6 +52,8 @@ namespace Velvet.Tests
         private static ShownStore s_store;
         private static bool s_declaresInitial;
         private static bool s_declaresExit;
+        private static string s_initialLabel;
+        private static string s_exitLabel;
         private static float s_delayChildrenSec;
         private static System.Action s_onExitComplete;
 
@@ -63,6 +70,8 @@ namespace Velvet.Tests
             s_store = null;
             s_declaresInitial = true;
             s_declaresExit = true;
+            s_initialLabel = "away";
+            s_exitLabel = "gone";
             s_delayChildrenSec = 0f;
             s_onExitComplete = null;
             yield break;
@@ -106,8 +115,8 @@ namespace Velvet.Tests
                     {
                         state.Shown
                             ? V.Motion(key: "m", name: "m", className: state.ClassName,
-                                variants: s_poses, initial: s_declaresInitial ? "away" : null, animate: state.Animate,
-                                exit: s_declaresExit ? "gone" : null,
+                                variants: s_poses, initial: s_declaresInitial ? s_initialLabel : null,
+                                animate: state.Animate, exit: s_declaresExit ? s_exitLabel : null,
                                 transition: Linear(0.3f))
                             : null,
                     }),
@@ -379,6 +388,44 @@ namespace Velvet.Tests
             // Assert
             Assert.That(motion.resolvedStyle.opacity, Is.EqualTo(0.5f).Within(1e-4f),
                 string.Join(" ", motion.GetClasses()));
+        }
+
+        // GREEN_ON_BASE(characterization): the base's enter never writes initial's translate, so y is never
+        // anything but its resting 0. Measured red at the commit that landed the enter's pose after every
+        // exit's PlayExit: y held at 40 until the spring settled.
+        [UnityTest]
+        public IEnumerator Given_APresenceChildWithASpringExit_When_ItIsRemovedBeforeItsEnterSwaps_Then_AnAxisNoPoseNamesStaysAtRest()
+        {
+            // Arrange — delayChildrenSec holds the tween enter's swap back by 0.3s.
+            s_delayChildrenSec = 0.3f;
+            s_initialLabel = "awayY";
+            s_exitLabel = "goneSpring";
+            var root = CreateRuntimePanel(shown: false);
+            yield return null;
+            _mounted = V.Mount(root, V.Component(PresenceHost, key: "root"));
+            yield return null;
+            _store.Set(true);
+            _mounted.FlushStateForTest();
+            var motion = root.Q<VisualElement>("m");
+            yield return PlayModeRealtimeTestHelpers.WaitRealtime(0.1);
+            var ySamples = new List<float>();
+
+            // Act
+            _store.Set(false);
+            _mounted.FlushStateForTest();
+            var deadline = Time.realtimeSinceStartupAsDouble + 2.5;
+            while (Time.realtimeSinceStartupAsDouble < deadline)
+            {
+                if (motion.panel != null)
+                {
+                    ySamples.Add(motion.resolvedStyle.translate.y);
+                }
+                yield return null;
+            }
+
+            // Assert — y stays at rest for as long as the ghost is sampled, which is several frames.
+            Assert.That((ySamples.Count > 10, ySamples.Exists(y => y > 1f)), Is.EqualTo((true, false)),
+                string.Join(", ", ySamples));
         }
     }
 }
