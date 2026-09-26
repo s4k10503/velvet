@@ -73,7 +73,9 @@ namespace Velvet.Tests
         [Test]
         public void Given_AnInsetOutlineWithAnOversizedRadius_When_Built_Then_EveryCornerTakesTheInsetOffItsFittedRadius()
         {
-            // Arrange — a 40 x 70 box fits a uniform oversized radius to 20, and the inset of 4 leaves 16.
+            // Arrange — a 40 x 70 box fits a uniform oversized radius to 20, and the inset of 4 leaves 16. The
+            // outline is a move, then per corner a straight run and Samples chords.
+            const int Samples = 8;
             var points = new List<Vector2>();
 
             // Act
@@ -98,9 +100,6 @@ namespace Velvet.Tests
             };
             Assert.That(radii, Is.EqualTo(new[] { 16f, 16f, 16f, 16f }).Within(1e-4f));
         }
-
-        // Chords per corner. The outline is a move, then per corner a straight run and this many chords.
-        private const int Samples = 8;
 
         [Test]
         public void Given_MixedRadiiOverlappingOnTheTopEdge_When_Built_Then_TheSmallerCornerIsScaledWithTheLarger()
