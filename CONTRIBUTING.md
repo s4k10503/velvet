@@ -429,7 +429,7 @@ and prints the local command.
 **What CI leaves to the author is two kinds of case.** A case reported `could not compile there` or
 `could not load there` is accepted on the surface it names, and its assertion never ran without the
 change — so a test calling a new API passes this check whether or not its assertion would have failed
-on the old behaviour. A case declared `GREEN_ON_BASE(construction)` is read as green as declared,
+on the old behaviour. A case whose declaration is a `construction` one is read as green as declared,
 and of its perturbation the check asks only that the reason name one, which no base run performs. For exactly
 those two kinds, show the failure yourself — run the case against a cut that breaks the fix while
 keeping the surface it names, or against the perturbation its declaration names — and quote the
