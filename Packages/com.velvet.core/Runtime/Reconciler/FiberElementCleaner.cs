@@ -478,6 +478,7 @@ namespace Velvet
         // processing via CleanupDescendants recursion.
         private void CleanupPortal(VisualElement element)
         {
+            _ctx.PendingHostPlaceholders.Remove(element);
             if (!_ctx.PortalState.TryGetValue(element, out var portalInfo))
             {
                 return;

@@ -134,14 +134,7 @@ namespace Velvet
                 fiber.FallbackContentFailed = true;
                 return false;
             }
-            // Captured now, while fiber.Reconciler is guaranteed non-null (just checked above), rather than
-            // re-read from fiber.Reconciler in the finally below: a cascading escalation triggered by this
-            // very attempt's fallback content can dispose fiber (nulling fiber.Reconciler) before the
-            // finally runs. FiberRenderer.PopFiber re-reads fiber.Reconciler and silently no-ops when it's
-            // null, which would permanently leak this push on the shared FiberStack — popping through the
-            // captured reference instead pops the same stack regardless of what happened to fiber meanwhile.
-            var fiberStack = fiber.Reconciler.Context.FiberStack;
-            var fiberPushed = FiberRenderer.PushFiber(fiber);
+            var pushedOnto = FiberRenderer.PushFiber(fiber);
             fiber.IsShowingFallback = true;
             fiber.FallbackContentFailed = false;
             bool result;
@@ -152,7 +145,7 @@ namespace Velvet
             finally
             {
                 fiber.IsShowingFallback = false;
-                if (fiberPushed) fiberStack.Pop();
+                FiberRenderer.PopFiber(pushedOnto);
             }
             if (result)
             {

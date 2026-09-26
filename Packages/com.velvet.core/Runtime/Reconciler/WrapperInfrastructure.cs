@@ -6,9 +6,9 @@ namespace Velvet
 {
     // Shared plumbing for the structural wrapper layers — the className-driven clip-path-* wrapper and the
     // user wrapElement opt-in. Both the patcher (wrapper<->inner resolution exposed to the reconciler) and the
-    // wrapper element appliers (the wrap/unwrap surgery) depend on these, so the pieces below are the
-    // parts whose two copies must never drift: the passthrough style block, the slot-preserving unwrap
-    // surgery (which ChildReconciler's keyed-move re-fetch depends on), and the flex-forwarding contract.
+    // wrapper element appliers (the wrap/unwrap surgery) depend on these, which is why they live here rather
+    // than on either; the slot-preserving unwrap surgery is what ChildReconciler's keyed-move re-fetch
+    // depends on.
     internal sealed class WrapperInfrastructure
     {
         private readonly ReconcilerContext _ctx;
@@ -43,25 +43,10 @@ namespace Velvet
         internal bool IsAlreadyWrapped(VisualElement element)
             => !ReferenceEquals(ResolveOuter(element), element);
 
-        // A layout-passthrough wrapper: a positioning context whose centered inner stays on-origin
-        // when a forwarded flex-grow enlarges the wrapper. KNOWN LIMITATION (CSS clip-path/shadow
-        // are paint-only; this wrapper is not): only flexGrow/flexShrink are forwarded — an inner
-        // with a percentage width in a row parent, or one relying on the parent's default
-        // cross-axis stretch, sizes against the wrapper instead of the real parent and can
-        // shrink-wrap. Both wrapper layers share this limitation, so fixing it for one must fix both.
+        // A layout-passthrough wrapper, laid out by FiberClipPathApplier.SyncWrapperLayout.
         internal static VisualElement CreatePassthroughWrapper(string ussClass)
         {
-            var wrapper = new VisualElement
-            {
-                pickingMode = PickingMode.Ignore,
-                style =
-                {
-                    position = Position.Relative,
-                    flexDirection = FlexDirection.Row,
-                    justifyContent = Justify.Center,
-                    alignItems = Align.Center,
-                }
-            };
+            var wrapper = new VisualElement { pickingMode = PickingMode.Ignore };
             wrapper.AddToClassList(ussClass);
             return wrapper;
         }
@@ -86,7 +71,7 @@ namespace Velvet
 
         // Forwards the inner's resolved flex participation onto its passthrough wrapper so a
         // flex-grow/shrink declared on the inner acts on the wrapper (the element the parent
-        // actually lays out). Shared by both wrapper layers' geometry syncs.
+        // actually lays out).
         internal static void ForwardInnerFlexToWrapper(VisualElement element, VisualElement wrapper)
         {
             var flexGrow = element.resolvedStyle.flexGrow;

@@ -139,10 +139,11 @@ namespace Velvet
             ReconcilerContext ctx, VisualElement placeholder, ZLayerMountNode node)
         {
             var stackingParent = placeholder.parent;
-            if (stackingParent == null)
+            // The parent alone cannot say the pair was torn down: a placeholder inside an element whose
+            // creation failed is still parented by that element when this drains. The mapping can, since
+            // TakeReal removes it before the real element is pooled.
+            if (stackingParent == null || !ctx.ZLayerPlaceholders.ContainsKey(placeholder))
             {
-                // The placeholder's own subtree was rolled back (a Suspense/error-boundary abort) before
-                // this drained — mirrors DrainPendingPortalMounts' own placeholder.parent == null skip.
                 return;
             }
             var container = GetOrCreateContainer(ctx, stackingParent, node.ResolvedZ);
