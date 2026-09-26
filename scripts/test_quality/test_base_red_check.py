@@ -733,6 +733,8 @@ class NeighbourDuringTheRunTests(unittest.TestCase):
             sys.executable, ".", "EditMode", ["X"], Path("/dev/null"), Path("/dev/null"), 30)
         return tuple(result) if isinstance(result, tuple) else (result,)
 
+    # GREEN_ON_BASE(characterization): the base's reading is right on a quiet machine; the list
+    # stands in so it stays right when another checkout's editor is running tests too.
     def test_Given_ARunThatMetNoNeighbour_When_ItIsRead_Then_ThePeakIsZero(self):
         # Arrange -- the process list reports this run alone; the machine's own list would count
         # whatever other editors happen to be up while the suite runs.
