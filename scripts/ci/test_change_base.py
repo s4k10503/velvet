@@ -95,8 +95,8 @@ class ResolverTests(unittest.TestCase):
         # Act
         done = repository.resolve("pull_request", pull_request(repository, repository.head))
 
-        # Assert
-        self.assertNotEqual(done.returncode, 0)
+        # Assert — the head named in the refusal, so a script that failed to run at all is not one.
+        self.assertEqual((done.returncode != 0, repository.head in done.stderr), (True, True))
 
     def test_Given_ATestMergeOfAnotherHead_When_Resolved_Then_ItRefuses(self):
         # Arrange
@@ -106,7 +106,7 @@ class ResolverTests(unittest.TestCase):
         done = repository.resolve("pull_request", pull_request(repository, repository.other))
 
         # Assert
-        self.assertNotEqual(done.returncode, 0)
+        self.assertEqual((done.returncode != 0, repository.other in done.stderr), (True, True))
 
     def test_Given_AMergeGroupEvent_When_Resolved_Then_ItNamesTheGroupsBase(self):
         # Arrange — a base_sha that is neither parent, so only the event can have supplied it.
