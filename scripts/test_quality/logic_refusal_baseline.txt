@@ -3,7 +3,7 @@ Packages/com.velvet.core/CodeGen/MetadataRegistrationWeaver.cs	3
 Packages/com.velvet.core/Runtime/Component/ClassNameParseCache.cs	2
 Packages/com.velvet.core/Runtime/Component/ComponentFiber.cs	1
 Packages/com.velvet.core/Runtime/Component/ComponentMethodRegistry.cs	2
-Packages/com.velvet.core/Runtime/Component/ComponentRegistry.cs	3
+Packages/com.velvet.core/Runtime/Component/ComponentRegistry.cs	4
 Packages/com.velvet.core/Runtime/Component/SceneViewDriver.cs	4
 Packages/com.velvet.core/Runtime/Component/V.Mount.cs	1
 Packages/com.velvet.core/Runtime/Hooks/Hooks.cs	3
@@ -12,6 +12,7 @@ Packages/com.velvet.core/Runtime/Hooks/TransitionStarter.cs	1
 Packages/com.velvet.core/Runtime/Reconciler/ChildElementPlacement.cs	1
 Packages/com.velvet.core/Runtime/Reconciler/FiberAnimateMotionApplier.cs	1
 Packages/com.velvet.core/Runtime/Reconciler/FiberClipPathApplier.cs	2
+Packages/com.velvet.core/Runtime/Reconciler/FiberCommitWork.cs	3
 Packages/com.velvet.core/Runtime/Reconciler/FiberDropShadowApplier.cs	1
 Packages/com.velvet.core/Runtime/Reconciler/FiberEffects.cs	2
 Packages/com.velvet.core/Runtime/Reconciler/FiberEventBindingManager.cs	2

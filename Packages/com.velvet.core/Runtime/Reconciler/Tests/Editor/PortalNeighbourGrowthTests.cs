@@ -45,9 +45,8 @@ namespace Velvet.Tests
             return V.Div(name: tick == 0 ? "content" : "changed");
         }
 
-        // The growth is on the portal's own children array, which is what reaches
-        // PortalSlotTracker.ShiftSlotStartsAfter -- a component inside the portal growing instead is an
-        // inline-mount delta and takes the fiber sibling chain.
+        // The growth is on the portal's own children array, which the portal's patch measures; a component
+        // inside the portal growing is InlineSlotStartTests' case.
         [Component]
         private static VNode SharedTargetHostRender()
         {
@@ -61,9 +60,7 @@ namespace Velvet.Tests
             });
         }
 
-        // GREEN_ON_BASE(characterization): the base already patches the right element, and nothing said
-        // so. What holds it up is `ComponentRegistry`'s refresh of `MountSlotStart` from the reconcile
-        // site — measured, by deleting that line, which fails this case.
+        // GREEN_ON_BASE(characterization): the base already patches the right element, and nothing said so.
         [Test]
         public void Given_TwoPortalsOnOneTarget_When_TheFirstGrowsAndTheSecondsChildRerenders_Then_ItPatchesItsOwnElement()
         {
