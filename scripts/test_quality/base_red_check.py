@@ -849,7 +849,8 @@ def deleted_files(project, since):
 # reported as an undeclared pass and fails the run loudly. One that makes a case FAIL hands the branch
 # exactly the verdict it wanted, for its own code rather than the base's, and `red on the base` is the
 # answer the lane exists to produce -- so a wrong one looks like a right one and nothing says so.
-CARRIES_NOTHING = "ScriptAssemblies"
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "unity"))
+from seed_library import LEFT_BEHIND as CARRIES_NOTHING  # noqa: E402
 
 
 def clone_tree(source, destination):
