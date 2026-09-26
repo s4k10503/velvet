@@ -113,6 +113,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A `V.Motion` whose `layoutId` spring starts while one of its variant swaps is tweening no longer lands
+  that swap at its target. Where the spring suspended the element's transitions, it wrote
+  `transition-property: none` over the swap's own list; where it did not — a `transition-colors`
+  element, say — the swap's list transitioned the spring's frames, so the element jumped to its new
+  place and slid back instead of springing from the old one. The spring now takes what it drives out
+  of the swap's list, so the swap tweens the rest and the spring's frames land as written, as a variant
+  animation runs beside a Framer layout animation. An `animate-*` utility on a Motion whose variant a
+  re-render swaps is treated the same way: its frames no longer trail the swap's transition for the
+  swap's length.
+
 - An absolutely positioned element carrying a `clip-path-*` utility keeps the box its edge offsets
   declare, and an `absolute inset-0` child fills it, as without the clip. The wrapper that hosts the
   clip stayed in its parent's flow as a relative flex item, and the element's offsets resolved against

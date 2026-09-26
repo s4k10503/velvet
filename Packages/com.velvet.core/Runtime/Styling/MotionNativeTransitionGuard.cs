@@ -89,17 +89,26 @@ namespace Velvet
         /// </summary>
         public static void SuspendIfIntercepted(VisualElement element, object owner, MotionTransitionSlots drivenSlots)
         {
-            if (drivenSlots == MotionTransitionSlots.None
-                || (DeclaredSlots(element) & drivenSlots) == MotionTransitionSlots.None)
+            if (drivenSlots == MotionTransitionSlots.None)
             {
                 return;
             }
-            var suspension = s_suspensions.GetValue(element, static _ => new Suspension());
-            suspension.Owners.Add(owner);
-            // Written on EVERY suspend rather than only the first owner's: this costs one inline write per play
-            // (never per tick), and re-asserting it means a foreign write to transition-property landing between
-            // two overlapping plays cannot leave the second one unprotected.
-            element.style.transitionProperty = s_none;
+            // A variant tween holding the slot is narrowed whatever the classes say: its list names this play's
+            // slots, and writing `none` over it instead would land the tween at its target.
+            var held = HoldsAForeignValue(element);
+            if (held)
+            {
+                ExcludeFromHeldList(element, drivenSlots);
+            }
+            if ((DeclaredSlots(element) & drivenSlots) == MotionTransitionSlots.None)
+            {
+                return;
+            }
+            s_suspensions.GetValue(element, static _ => new Suspension()).Owners.Add(owner);
+            if (!held)
+            {
+                element.style.transitionProperty = s_none;
+            }
         }
 
         /// <summary>
@@ -114,9 +123,16 @@ namespace Velvet
         /// that ADDS this owner, and then only over a slot this class still holds (see
         /// <see cref="HoldsAForeignValue"/>) — a patch is not a new play, so re-asserting would overwrite
         /// whatever the element's inline transition-property legitimately became since the owner took it.
+        /// A slot a variant tween holds is narrowed on every call instead, owner or not: FiberNodePatcher starts
+        /// a swap before the class pass that calls this, so a swap started under a running motion is narrowed on
+        /// the patch that starts it.
         /// </remarks>
         public static void SyncSuspension(VisualElement element, object owner, MotionTransitionSlots drivenSlots)
         {
+            if (drivenSlots != MotionTransitionSlots.None && HoldsAForeignValue(element))
+            {
+                ExcludeFromHeldList(element, drivenSlots);
+            }
             if (drivenSlots == MotionTransitionSlots.None
                 || (DeclaredSlots(element, readInlineDuration: false) & drivenSlots) == MotionTransitionSlots.None)
             {
@@ -150,13 +166,14 @@ namespace Velvet
             element.style.transitionProperty = StyleKeyword.Null;
         }
 
-        // Whether the slot holds a value this class did not write. FiberNodePatcher starts a Motion's variant
-        // swap BEFORE the class passes that attach and detach an animate-* driver, so a patch that swaps a
-        // variant while starting or stopping a motion reaches this class with the swap's own
-        // transition-property already in the slot — writing or reverting it there would cancel that swap.
-        // What puts a still-held suspension back afterwards is the swap's own teardown, through
-        // RestoreAfterForeignWrite. Compared by CONTENT rather than by list identity, which the read back out
-        // of the slot does not preserve — MotionNativeTransitionGuardSuspensionTests holds that.
+        // Whether the slot holds a value this class did not write, which is a variant tween's transition-property
+        // (StyleAnimationScheduler.ApplyTransitionStyles): a driver can start or stop with the tween's list
+        // already in the slot (FiberNodePatcher starts a swap before the class passes that attach and detach an
+        // animate-* driver, and a layoutId spring starts on the layout pass after its patch), and writing or
+        // reverting it there would cancel that tween. What puts a still-held suspension back afterwards is the
+        // tween's own teardown, through RestoreAfterForeignWrite. Compared by CONTENT rather than by list
+        // identity, which the read back out of the slot does not preserve — MotionNativeTransitionGuardSuspensionTests
+        // holds that.
         private static bool HoldsAForeignValue(VisualElement element)
         {
             var current = element.style.transitionProperty;
@@ -180,10 +197,10 @@ namespace Velvet
         /// a <c>duration-*</c> utility, or the bracket form the resolver applies as an inline value rather than
         /// a class — leaves the initial <c>all</c> standing. Failing that too, nothing transitions.
         /// <para>
-        /// Two residual blind spots, both accepted rather than fixed: an inline whole-property value written by
-        /// something other than a duration utility (the scheduler's own tween swap sets one, though never on a
-        /// spring or bezier play) is not read here, and a play asks once at its start, so a variant that turns
-        /// on <c>transition-all</c> midway through one is not picked up until the next.
+        /// An inline transition-property is not read here: the one this package writes besides this class is a
+        /// variant tween's, and both entry points deal with that before asking (see <see cref="HoldsAForeignValue"/>).
+        /// One residual blind spot is accepted rather than fixed: a play asks once at its start, so a variant
+        /// that turns on <c>transition-all</c> midway through one is not picked up until the next.
         /// <see cref="SyncSuspension"/> is what a driver outliving a patch asks instead.
         /// </para>
         /// </remarks>
@@ -283,6 +300,121 @@ namespace Velvet
             if (declared.Overlaps(s_colorProperties)) slots |= MotionTransitionSlots.Color;
             if (declared.Overlaps(s_lengthProperties)) slots |= MotionTransitionSlots.Length;
             return slots;
+        }
+
+        /// <summary>The longhands a driver reporting <paramref name="slots"/> can write.</summary>
+        private static StyleLonghandSet LonghandsOf(MotionTransitionSlots slots)
+        {
+            var set = StyleLonghandSet.Empty;
+            if ((slots & MotionTransitionSlots.Opacity) != 0) set = set.Union(StyleLonghandSet.Of(StyleLonghand.Opacity));
+            if ((slots & MotionTransitionSlots.Translate) != 0) set = set.Union(StyleLonghandSet.Of(StyleLonghand.Translate));
+            if ((slots & MotionTransitionSlots.Scale) != 0) set = set.Union(StyleLonghandSet.Of(StyleLonghand.Scale));
+            if ((slots & MotionTransitionSlots.Rotate) != 0) set = set.Union(StyleLonghandSet.Of(StyleLonghand.Rotate));
+            if ((slots & MotionTransitionSlots.Color) != 0) set = set.Union(s_colorProperties);
+            if ((slots & MotionTransitionSlots.Length) != 0) set = set.Union(s_lengthProperties);
+            if ((slots & MotionTransitionSlots.Filter) != 0) set = set.Union(StyleLonghandSet.Of(StyleLonghand.Filter));
+            if ((slots & MotionTransitionSlots.BackgroundPosition) != 0)
+            {
+                set = set.Union(SetOf(StyleLonghand.BackgroundPositionX, StyleLonghand.BackgroundPositionY));
+            }
+            return set;
+        }
+
+        private static readonly StylePropertyName s_allName = new("all");
+
+        // Indexed by StyleLonghand.
+        private static readonly StylePropertyName[] s_longhandNames = LonghandNames();
+
+        private static StylePropertyName[] LonghandNames()
+        {
+            var names = new StylePropertyName[StyleUtilityProperties.LonghandCount];
+            for (var i = 0; i < names.Length; i++)
+            {
+                names[i] = new StylePropertyName(StyleUtilityProperties.UssName((StyleLonghand)i));
+            }
+            return names;
+        }
+
+        // Rewrites the held transition-property list without the longhands drivenSlots covers — an `all` entry
+        // becoming every other longhand, on that entry's timing — and rebuilds each companion list to match,
+        // since those pair with transition-property by position.
+        private static void ExcludeFromHeldList(VisualElement element, MotionTransitionSlots drivenSlots)
+        {
+            var driven = LonghandsOf(drivenSlots);
+            var held = element.style.transitionProperty.value;
+            var names = new List<StylePropertyName>(held.Count);
+            // The held entry each kept name takes its duration, easing and delay from.
+            var sources = new List<int>(held.Count);
+            var changed = false;
+            for (var i = 0; i < held.Count; i++)
+            {
+                if (held[i] == s_allName)
+                {
+                    changed = true;
+                    for (var longhand = 0; longhand < s_longhandNames.Length; longhand++)
+                    {
+                        if (!driven.Contains((StyleLonghand)longhand))
+                        {
+                            names.Add(s_longhandNames[longhand]);
+                            sources.Add(i);
+                        }
+                    }
+                }
+                else if (NamesADrivenLonghand(held[i], driven))
+                {
+                    changed = true;
+                }
+                else
+                {
+                    names.Add(held[i]);
+                    sources.Add(i);
+                }
+            }
+            if (!changed)
+            {
+                return;
+            }
+            element.style.transitionProperty = names;
+            if (Realigned(element.style.transitionDuration.value, held.Count, sources) is { } durations)
+            {
+                element.style.transitionDuration = durations;
+            }
+            if (Realigned(element.style.transitionTimingFunction.value, held.Count, sources) is { } easings)
+            {
+                element.style.transitionTimingFunction = easings;
+            }
+            if (Realigned(element.style.transitionDelay.value, held.Count, sources) is { } delays)
+            {
+                element.style.transitionDelay = delays;
+            }
+        }
+
+        private static bool NamesADrivenLonghand(StylePropertyName name, StyleLonghandSet driven)
+        {
+            for (var longhand = 0; longhand < s_longhandNames.Length; longhand++)
+            {
+                if (driven.Contains((StyleLonghand)longhand) && s_longhandNames[longhand] == name)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // Null, leaving the list as it was, unless it pairs one-to-one with the held list — the shape every list
+        // StyleAnimationScheduler writes beside its transition-property has.
+        private static List<T> Realigned<T>(List<T> list, int heldCount, List<int> sources)
+        {
+            if (list == null || list.Count != heldCount)
+            {
+                return null;
+            }
+            var realigned = new List<T>(sources.Count);
+            foreach (var source in sources)
+            {
+                realigned.Add(list[source]);
+            }
+            return realigned;
         }
 
         private static StyleLonghandSet SetOf(params StyleLonghand[] longhands)

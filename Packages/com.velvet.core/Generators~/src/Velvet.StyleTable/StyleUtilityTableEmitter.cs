@@ -10,8 +10,7 @@ namespace Velvet.StyleTable
     /// </summary>
     /// <remarks>
     /// The fixed parts are verbatim templates rather than a sequence of append calls, so the emitted types
-    /// read as the C# they are in this file. Only the three tables — the longhand enum, the distinct property
-    /// sets and the class map — are built line by line, because only those vary.
+    /// read as the C# they are in this file. Only the tables are built line by line, because only those vary.
     /// </remarks>
     internal static class StyleUtilityTableEmitter
     {
@@ -130,6 +129,16 @@ namespace Velvet
         /// <summary>Size of the longhand vocabulary the property sets are indexed over.</summary>
         public const int LonghandCount = {LONGHAND_COUNT};
 
+        // Indexed by StyleLonghand.
+        private static readonly string[] UssNames =
+        {
+";
+
+        private const string AfterUssNames = @"        };
+
+        /// <summary>The name USS spells <paramref name=""longhand""/> with.</summary>
+        public static string UssName(StyleLonghand longhand) => UssNames[(int)longhand];
+
         // Utilities repeat property sets heavily (every colour utility writes background-color alone), so the
         // distinct sets are stored once and the class map holds indices into them.
         private static readonly StyleUtilityRule[] Rules =
@@ -221,6 +230,8 @@ namespace Velvet
             sb.Append(AfterGateEnum
                 .Replace("{CAPACITY}", Number(StyleUtilityTableBuilder.PropertySetCapacity))
                 .Replace("{LONGHAND_COUNT}", Number(table.Longhands.Length)));
+            AppendUssNames(sb, table);
+            sb.Append(AfterUssNames);
             AppendRules(sb, rules);
             sb.Append(AfterRules.Replace("{ENTRY_COUNT}", Number(table.Entries.Length)));
             AppendClassMap(sb, table, ruleOfEntry);
@@ -284,6 +295,14 @@ namespace Velvet
                 var longhand = table.Longhands[i];
                 sb.Append("        /// <summary>The USS <c>").Append(longhand.UssName).Append("</c> property.</summary>\n");
                 sb.Append("        ").Append(longhand.Identifier).Append(" = ").Append(Number(i)).Append(",\n");
+            }
+        }
+
+        private static void AppendUssNames(StringBuilder sb, StyleUtilityTable table)
+        {
+            foreach (var longhand in table.Longhands)
+            {
+                sb.Append("            \"").Append(longhand.UssName).Append("\",\n");
             }
         }
 
