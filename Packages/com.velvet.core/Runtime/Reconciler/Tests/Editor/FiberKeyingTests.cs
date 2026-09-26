@@ -265,35 +265,31 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_KeyedLeafWithinScope_When_RegisterScopedKey_Then_EffectiveKeyUsesLeafTag()
+        public void Given_KeyedLeafWithinScope_When_ScopedKey_Then_ItUsesTheLeafTag()
         {
             // Arrange
-            var context = new ReconcilerContext();
-            var keying = new ReconcileKeying(context);
             var node = new TextNode { Text = "leaf", Key = "k" };
 
             // Act
-            keying.RegisterScopedKey(node, "p", 3);
+            var key = ReconcileKeying.ScopedKey(node, "p", 3, 0);
 
             // Assert
-            Assert.That(keying.EffectiveKey(node), Is.EqualTo("p" + Nul + "Lk"));
+            Assert.That(key, Is.EqualTo(ChildKey.Explicit("p" + Nul + "Lk")));
         }
 
         [Test]
-        public void Given_KeyedAndPositionalLeavesWithMatchingKeyAndIndex_When_RegisteredWithinScope_Then_EffectiveKeysDiffer()
+        public void Given_KeyedAndPositionalLeavesWithMatchingKeyAndIndex_When_ScopedWithinScope_Then_TheirKeysDiffer()
         {
             // Arrange
-            var context = new ReconcilerContext();
-            var keying = new ReconcileKeying(context);
             var keyedNode = new TextNode { Text = "keyed", Key = "1" };
             var positionalNode = new TextNode { Text = "positional" };
 
             // Act
-            keying.RegisterScopedKey(keyedNode, "p", 0);
-            keying.RegisterScopedKey(positionalNode, "p", 1);
+            var keyed = ReconcileKeying.ScopedKey(keyedNode, "p", 0, 0);
+            var positional = ReconcileKeying.ScopedKey(positionalNode, "p", 1, 1);
 
             // Assert
-            Assert.That(keying.EffectiveKey(keyedNode), Is.Not.EqualTo(keying.EffectiveKey(positionalNode)));
+            Assert.That(keyed, Is.Not.EqualTo(positional));
         }
 
         [Test]

@@ -195,7 +195,7 @@ namespace Velvet.Tests
     /// ContinueReconcile returns; the very next unrelated fiber's own top-level Reconcile — sharing the same
     /// ReconcilerContext — then hits ChildReconciler.Reconcile's entry guard (<c>if (_ctx.IsAborted) return;</c>)
     /// and silently no-ops its entire pass. The same boundary must also apply the REST of a pass's
-    /// per-pass resets (scoped-key registrations, declaring-panel resolution misses, deferred old-tree
+    /// per-pass resets (declaring-panel resolution misses, deferred old-tree
     /// pool returns) — a pass that happens to complete in a resumed slice is still that pass's genuine
     /// end, and anything skipped there leaks on the shared context until some unrelated fiber's own
     /// fresh top-level pass happens to clean it.
@@ -232,6 +232,9 @@ namespace Velvet.Tests
             RuntimeStateProbe.ClearPortalRegistry();
         }
 
+        // GREEN_ON_BASE(characterization): the base's resumed slice drains the Portal and its boundary catches.
+        // The catch was an Assume, and sits in the assertion now so a pass whose boundary no longer catches
+        // reads red rather than inconclusive.
         [Test]
         public void Given_ATimeSlicedResumeDrainsAPortalWhoseErrorBoundaryCatches_When_AnUnrelatedFiberLaterReRenders_Then_ItsChangeStillCommits()
         {
@@ -256,8 +259,7 @@ namespace Velvet.Tests
             s_listFiber.FlushStateWithTinyBudgetForTest();
             var parkedMidCommit = s_listFiber.HasPendingReconcileWorkForTest();
             s_listFiber.DrainTimeSlicedReconcileForTest();
-            Assume.That(s_fallbackShown, Is.True,
-                "Precondition: the Portal's error boundary actually caught the throw");
+            var caught = s_fallbackShown;
 
             // Act (2) — an unrelated fiber sharing the same mounted tree (and so the same ReconcilerContext)
             // re-renders normally, synchronously, well after the time-sliced pass above fully completed and
@@ -268,36 +270,8 @@ namespace Velvet.Tests
             // Assert — RED without the fix: a stale IsAborted left over from the Portal drain makes
             // ChildReconciler.Reconcile's entry guard silently no-op this fiber's entire reconcile, leaving
             // the old text in place instead of committing the update.
-            Assert.That((parkedMidCommit, _root.Q<Label>("counter-label").text), Is.EqualTo((true, "updated")));
-        }
-
-        [Test]
-        public void Given_AResumedSliceExpandsAKeyedFragmentSubtree_When_ThePassCompletesThroughItsOwnContinuation_Then_TheSharedContextCarriesNoStaleScopedKeyEntries()
-        {
-            // Arrange — same two-fiber host; the growth below appends an item whose subtree contains a
-            // KEYED Fragment, so the scoped-key registration the expansion performs lands during a RESUMED
-            // slice (the initial mount's own top-level pass — which does clear the table at its end — is
-            // long finished by then).
-            using var mounted = V.Mount(_root, V.Component(Host, key: "host"));
-            var ctx = mounted.Root.Reconciler.Context;
-            Assume.That(ctx.EffectiveKeys.Count, Is.EqualTo(0),
-                "Precondition: the synchronous initial mount left no scoped-key entries behind");
-
-            // Act — the pass parks per-item under the tiny budget, so the brand-new trailing item (and the
-            // keyed Fragment inside it) is expanded by a continuation tick, and that SAME tick's own
-            // top-level completion is the only boundary this pass ever gets.
-            s_keyedFragmentAdded = true;
-            s_listFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
-            s_listFiber.FlushStateWithTinyBudgetForTest();
-            var parkedMidCommit = s_listFiber.HasPendingReconcileWorkForTest();
-            s_listFiber.DrainTimeSlicedReconcileForTest();
-            Assume.That(_root.Q<Label>("keyed-fragment-leaf"), Is.Not.Null,
-                "Precondition: the keyed Fragment's subtree really was expanded and committed");
-
-            // Assert — RED without the continuation boundary clearing the table: the entries registered by
-            // the resumed slice's expansion outlive the pass on the shared context (nothing else runs), so
-            // the count stays nonzero here instead of resetting at the pass's genuine end.
-            Assert.That((parkedMidCommit, ctx.EffectiveKeys.Count), Is.EqualTo((true, 0)));
+            Assert.That(
+                (parkedMidCommit, caught, _root.Q<Label>("counter-label").text), Is.EqualTo((true, true, "updated")));
         }
 
         [Component]
