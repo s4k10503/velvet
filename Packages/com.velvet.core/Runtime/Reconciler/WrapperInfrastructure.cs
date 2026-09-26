@@ -43,10 +43,7 @@ namespace Velvet
         internal bool IsAlreadyWrapped(VisualElement element)
             => !ReferenceEquals(ResolveOuter(element), element);
 
-        // A layout-passthrough wrapper, laid out by ForwardInnerPositionToWrapper. KNOWN LIMITATION (CSS
-        // clip-path is paint-only; this wrapper is not): flexGrow/flexShrink are the only sizing an in-flow
-        // inner forwards — one with a percentage width in a row parent, or one relying on the parent's
-        // default cross-axis stretch, sizes against the wrapper instead of the real parent and can shrink-wrap.
+        // A layout-passthrough wrapper, laid out by ForwardLayoutContextToWrapper.
         internal static VisualElement CreatePassthroughWrapper(string ussClass)
         {
             var wrapper = new VisualElement { pickingMode = PickingMode.Ignore };
@@ -89,13 +86,27 @@ namespace Velvet
             }
         }
 
-        // An out-of-flow inner resolves its edge offsets against the wrapper, so the wrapper then leaves the
-        // flow and spans the real parent (inset 0) with the default flex alignment, as FiberZLayerCoordinator's
-        // layer container does. Run on every geometry sync rather than once at the wrap, because a patch can
-        // change the inner's position after it.
-        internal static void ForwardInnerPositionToWrapper(VisualElement element, VisualElement wrapper)
+        // CSS clip-path is paint-only, so the wrapper has to leave the inner where the parent would have put it.
+        // In flow the parent lays out the wrapper in the inner's place: the wrapper takes the parent's
+        // flex-direction, so the inner's flex-grow acts along the same axis inside it, and the inner's
+        // align-self, so the parent aligns the wrapper as it would have aligned the inner. Out of flow the inner
+        // resolves its edge offsets against the wrapper, so the wrapper leaves the flow, spans the real parent
+        // (inset 0) and takes the parent's justify-content and align-items, which place an inner with no offset
+        // on an axis. Run on every geometry sync rather than once at the wrap, because a patch can change the
+        // inner's position after it. ClipPathWrapperFlowParityPanelTests compares the result against an
+        // unclipped twin.
+        // KNOWN LIMITATION: in flow the wrapper takes its size from the inner along the parent's main axis, and
+        // along the cross axis unless the parent stretches it, so a percentage width, height or flex-basis on
+        // such an axis resolves against the wrapper rather than the parent, and auto margins along the main axis
+        // do not centre the inner. The justify-content and align-items an out-of-flow inner's wrapper took are
+        // read again only at the next geometry sync, so a parent that changes nothing but its alignment leaves
+        // them behind.
+        internal static void ForwardLayoutContextToWrapper(VisualElement element, VisualElement wrapper)
         {
             var ws = wrapper.style;
+            var parent = wrapper.parent;
+            var parentStyle = parent != null && parent.panel != null ? parent.resolvedStyle : null;
+            ws.flexDirection = parentStyle != null ? parentStyle.flexDirection : StyleKeyword.Null;
             if (StyleOutOfFlowChild.IsOutOfFlow(element))
             {
                 ws.position = Position.Absolute;
@@ -103,9 +114,9 @@ namespace Velvet
                 ws.top = 0f;
                 ws.right = 0f;
                 ws.bottom = 0f;
-                ws.flexDirection = StyleKeyword.Null;
-                ws.justifyContent = StyleKeyword.Null;
-                ws.alignItems = StyleKeyword.Null;
+                ws.alignSelf = StyleKeyword.Null;
+                ws.justifyContent = parentStyle != null ? parentStyle.justifyContent : StyleKeyword.Null;
+                ws.alignItems = parentStyle != null ? parentStyle.alignItems : StyleKeyword.Null;
                 return;
             }
             ws.position = Position.Relative;
@@ -113,9 +124,9 @@ namespace Velvet
             ws.top = StyleKeyword.Null;
             ws.right = StyleKeyword.Null;
             ws.bottom = StyleKeyword.Null;
-            ws.flexDirection = FlexDirection.Row;
-            ws.justifyContent = Justify.Center;
-            ws.alignItems = Align.Center;
+            ws.justifyContent = StyleKeyword.Null;
+            ws.alignItems = StyleKeyword.Null;
+            ws.alignSelf = element.panel != null ? element.resolvedStyle.alignSelf : StyleKeyword.Null;
         }
 
         // True when the class list carries an inline filter — a static filter-* utility or the animate-hue

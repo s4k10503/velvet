@@ -282,6 +282,7 @@ namespace Velvet
                 if (clipPathBinding.OnGeometry != null)
                 {
                     element.UnregisterCallback(clipPathBinding.OnGeometry);
+                    clipPathBinding.Wrapper.UnregisterCallback(clipPathBinding.OnGeometry);
                 }
                 _ctx.ClipPathBindings.Remove(element);
             }

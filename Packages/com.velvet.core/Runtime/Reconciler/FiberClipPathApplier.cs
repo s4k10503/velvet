@@ -132,6 +132,9 @@ namespace Velvet
             var binding = new ClipPathBinding(wrapper) { Spec = spec };
             binding.OnGeometry = _ => SyncClipPathGeometry(element, binding);
             element.RegisterCallback(binding.OnGeometry);
+            // The wrapper's box follows the parent, and a parent change that leaves the inner's own box where it
+            // was (a row becoming a column around an element with no width) raises no event on the inner.
+            wrapper.RegisterCallback(binding.OnGeometry);
 
             _ctx.ClipPathBindings[element] = binding;
             _ctx.WrapperToInnerMap[wrapper] = element;
@@ -169,13 +172,14 @@ namespace Velvet
             if (binding.OnGeometry != null)
             {
                 element.UnregisterCallback(binding.OnGeometry);
+                wrapper.UnregisterCallback(binding.OnGeometry);
             }
             _ctx.ClipPathBindings.Remove(element);
             _ctx.WrapperToInnerMap.Remove(wrapper);
             WrapperInfrastructure.RemoveWrapperRestoreInner(element, wrapper);
         }
 
-        // Keeps the mask tracking its target: forwards the inner's position and flex to the wrapper and (re)bakes
+        // Keeps the mask tracking its target: lays the wrapper out, forwards the inner's flex to it and (re)bakes
         // the vector shape at the inner's resolved box. The baked
         // VectorImage stores TIGHT bounds, so the background is explicitly positioned and sized by
         // the analytic path bounds, anchored at the inner's layout origin within the wrapper.
@@ -185,7 +189,7 @@ namespace Velvet
         private static void SyncClipPathGeometry(VisualElement element, ClipPathBinding binding,
             bool innerAtWrapperOrigin = false)
         {
-            WrapperInfrastructure.ForwardInnerPositionToWrapper(element, binding.Wrapper);
+            WrapperInfrastructure.ForwardLayoutContextToWrapper(element, binding.Wrapper);
             WrapperInfrastructure.ForwardInnerFlexToWrapper(element, binding.Wrapper);
 
             // No active clip (a variant-only clip at rest, e.g. an element carrying only hover:clip-path-[…]
@@ -209,8 +213,8 @@ namespace Velvet
                 return;
             }
 
-            // The wrapper centers the inner, so a forwarded flex-grow that enlarges the wrapper can
-            // leave the inner off-origin; the background must follow the inner's layout origin.
+            // An out-of-flow inner sits at its offsets inside the wrapper rather than at its origin, so the
+            // background follows the inner's layout origin.
             var originX = innerAtWrapperOrigin ? 0f : element.layout.x;
             var originY = innerAtWrapperOrigin ? 0f : element.layout.y;
             if (float.IsNaN(originX)) originX = 0f;
