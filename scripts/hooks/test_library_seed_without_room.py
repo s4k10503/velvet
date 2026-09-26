@@ -15,6 +15,7 @@ import contextlib
 import importlib.util
 import io
 import json
+import os
 import shutil
 import sys
 import tempfile
@@ -43,11 +44,13 @@ class SeedRoomTests(unittest.TestCase):
         (self.source / "big.bin").write_bytes(b"x" * COPIED)
         self.asked = []
 
-    def judge(self, free, command=None):
+    def judge(self, free, command=None, clones=None):
         """The guard's verdict with `free` bytes on the volume, as (exit code, stderr).
 
         Each directory the volume was read at lands in `self.asked`, since which one that is is a
-        separate question from the verdict and one no free-space figure can answer.
+        separate question from the verdict and one no free-space figure can answer. `clones`, where
+        given, is what `seed_library.clones` answers: whether a pair of paths can share blocks is a
+        property of the machine, and the suite runs on macOS and on Linux runners.
         """
         payload = {"tool_name": "Bash", "cwd": str(self.holder),
                    "tool_input": {"command": command or f"rsync -a {self.source}/ Library/"}}
@@ -57,9 +60,13 @@ class SeedRoomTests(unittest.TestCase):
             self.asked.append(str(path))
             return USAGE(total=1, used=1, free=free)
 
-        with mock.patch.object(guard.shutil, "disk_usage", usage), \
-                mock.patch.object(sys, "stdin", io.StringIO(json.dumps(payload))), \
-                contextlib.redirect_stderr(err):
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(mock.patch.object(guard.shutil, "disk_usage", usage))
+            stack.enter_context(mock.patch.object(sys, "stdin", io.StringIO(json.dumps(payload))))
+            stack.enter_context(contextlib.redirect_stderr(err))
+            if clones is not None:
+                stack.enter_context(
+                    mock.patch.object(guard, "clones", lambda source, destination: clones))
             return guard.main(), err.getvalue()
 
     def test_Given_RoomForTheCopyAndOneMore_When_ASeedIsPosed_Then_ItGoesThrough(self):
@@ -107,6 +114,67 @@ class SeedRoomTests(unittest.TestCase):
 
         # Act / Assert
         self.assertEqual((code, "unexpanded" in said), (2, True))
+
+
+    def test_Given_ACloneThatSharesBlocks_When_TheDiskIsNearlyFull_Then_ItGoesThrough(self):
+        # Arrange — the flag inside a cluster, the way `base_red_check.clone_tree` spells it.
+        command = f"cp -Rc {self.source} Library"
+
+        # Act / Assert
+        self.assertEqual(self.judge(1, command=command, clones=True), (0, ""))
+
+    def test_Given_ACloneSpellingThatWouldCopyBytes_When_TheDiskIsNearlyFull_Then_ItIsRefused(self):
+        # Arrange — `cp -c` copies bytes where it cannot clone, so the flag is a request and not an
+        # answer.
+        code, said = self.judge(1, command=f"cp -c -R {self.source} Library", clones=False)
+
+        # Act / Assert
+        self.assertEqual((code, "no room for it" in said), (2, True))
+
+    def test_Given_AByteCopyBetweenPathsThatCouldClone_When_TheDiskIsNearlyFull_Then_ItIsRefused(self):
+        # Arrange — the paths sharing a filesystem that clones says nothing about a copier that
+        # was not asked to.
+        code, said = self.judge(1, command=f"rsync -a {self.source}/ Library/", clones=True)
+
+        # Act / Assert
+        self.assertEqual((code, "no room for it" in said), (2, True))
+
+    # GREEN_ON_BASE(characterization): the seed script is not a copier, so this guard lets it through.
+    # Its last operand is a Library all the same, which a guard matching operands alone would refuse.
+    def test_Given_TheSeedScript_When_TheDiskIsNearlyFull_Then_ItIsNotThisGuardsToRefuse(self):
+        # Act / Assert
+        self.assertEqual(
+            self.judge(1, command=f"python3 scripts/unity/seed_library.py {self.source} Library"),
+            (0, ""))
+
+    def test_Given_ASeedIntoALibraryElsewhere_When_TheRoomIsRead_Then_ItIsReadWhereTheCopyLands(self):
+        # Arrange — an absolute destination names its own filesystem whatever directory the command
+        # runs in.
+        elsewhere = self.holder / "elsewhere"
+        elsewhere.mkdir()
+
+        # Act
+        self.judge(COPIED * 100, command=f"rsync -a {self.source}/ {elsewhere}/Library/")
+
+        # Assert
+        self.assertEqual(self.asked, [str(elsewhere)])
+
+    def test_Given_ARelativeSourceAfterAMove_When_TheDiskIsNearlyFull_Then_ItIsSizedWhereTheMoveLands(self):
+        # Arrange — the relative source is the Library beside the move's target. This process is
+        # moved to a directory holding none, so a reading against where the guard itself runs sizes
+        # nothing and lets the seed through.
+        bare = Path(tempfile.mkdtemp(prefix="seed-room-bare-"))
+        self.addCleanup(shutil.rmtree, bare, ignore_errors=True)
+        self.addCleanup(os.chdir, os.getcwd())
+        os.chdir(bare)
+        target = self.holder / "elsewhere"
+        target.mkdir()
+
+        # Act
+        code, said = self.judge(1, command=f"cd {self.holder} && rsync -a Library/ {target}/Library/")
+
+        # Assert
+        self.assertEqual((code, "no room for it" in said), (2, True))
 
 
 if __name__ == "__main__":
