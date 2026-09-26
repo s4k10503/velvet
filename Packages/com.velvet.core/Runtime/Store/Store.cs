@@ -93,7 +93,7 @@ namespace Velvet
 
             var current = _state.Value;
             var next = updater(current);
-            if (!force && ObjectIs.AreEqual(current, next))
+            if (!force && ObjectIs.AreEqual(next, current))
             {
                 return false;
             }
