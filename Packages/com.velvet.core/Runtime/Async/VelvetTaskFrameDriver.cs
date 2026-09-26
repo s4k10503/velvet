@@ -79,13 +79,13 @@ namespace Velvet
 
                 ref var updateLoop = ref subSystems[i];
                 var updateSubSystems = updateLoop.subSystemList;
-                var extended = new PlayerLoopSystem[updateSubSystems.Length + 1]; // campaign probe
-                for (var j = 0; j < updateSubSystems.Length; j++) // campaign probe
+                var extended = new PlayerLoopSystem[updateSubSystems.Length + 1];
+                for (var j = 0; j < updateSubSystems.Length; j++)
                 {
                     extended[j] = updateSubSystems[j];
                 }
 
-                extended[extended.Length - 1] = new PlayerLoopSystem // campaign probe
+                extended[extended.Length - 1] = new PlayerLoopSystem
                 {
                     type = typeof(VelvetTaskFrameDriver),
                     updateDelegate = OnPlayerLoopUpdate,
