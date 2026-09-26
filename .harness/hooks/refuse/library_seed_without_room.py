@@ -64,9 +64,10 @@ UNREADABLE_PROBE = {"command": "rsync -a /nowhere/Library/ Library/"}
 
 
 def seeds(tokens):
-    """(source, destination, cloning) where this segment copies something into a Library, else None.
+    """(sources, destination, cloning) where this segment copies something into a Library, else None.
 
-    `cloning` is whether it is spelled `cp -c`.
+    `cloning` is whether it is spelled `cp -c`, read only ahead of the first operand and of `--`: macOS
+    `cp` stops reading options there, so a `-c` after either is a path rather than the flag.
     """
     index = 0
     while index < len(tokens) and (
@@ -74,8 +75,15 @@ def seeds(tokens):
         index += 1
     if index >= len(tokens) or os.path.basename(tokens[index]) not in COPIERS:
         return None
-    flags = [token for token in tokens[index + 1:] if token.startswith("-")]
-    operands = [token for token in tokens[index + 1:] if not token.startswith("-")]
+    flags, operands, ended = [], [], False
+    for token in tokens[index + 1:]:
+        if not ended and token == "--":
+            ended = True
+        elif not ended and token.startswith("-"):
+            if not operands:
+                flags.append(token)
+        else:
+            operands.append(token)
     if len(operands) < 2:
         return None
     destination = operands[-1]
@@ -83,7 +91,7 @@ def seeds(tokens):
         return None
     cloning = os.path.basename(tokens[index]) == "cp" and any(
         not flag.startswith("--") and "c" in flag[1:] for flag in flags)
-    return operands[-2], destination, cloning
+    return operands[:-1], destination, cloning
 
 
 def directory_size(path):
@@ -126,20 +134,21 @@ def main():
             found = seeds(tokens_of(segment))
             if found is None:
                 continue
-            source, destination, cloning = found
-            if unexpanded(source) or unexpanded(destination):
+            sources, destination, cloning = found
+            if any(unexpanded(source) for source in sources) or unexpanded(destination):
                 sys.stderr.write(
                     "Refusing this Library seed: an operand is still unexpanded, so how much this "
                     "would\ncopy cannot be read here.\n\n"
                     "Spell the paths out.\n")
                 return 2
-            source = os.path.join(cwd, os.path.expanduser(source))
+            sources = [os.path.join(cwd, os.path.expanduser(source)) for source in sources]
             landing = os.path.join(cwd, os.path.expanduser(destination))
-            if cloning and clones(source, landing):
+            if cloning and all(clones(source, landing) for source in sources):
                 continue
-            wanted = directory_size(source)
-            if wanted is None:
+            sizes = [directory_size(source) for source in sources]
+            if None in sizes:
                 return 0
+            wanted = sum(sizes)
             try:
                 free = shutil.disk_usage(str(existing_ancestor(landing))).free
             except OSError:

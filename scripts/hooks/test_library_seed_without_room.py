@@ -49,7 +49,7 @@ class SeedRoomTests(unittest.TestCase):
 
         Each directory the volume was read at lands in `self.asked`, since which one that is is a
         separate question from the verdict and one no free-space figure can answer. `clones`, where
-        given, is what `seed_library.clones` answers: whether a pair of paths can share blocks is a
+        given, is what `seed_library.clones` answers, or a function of the pair answering it: whether a pair of paths can share blocks is a
         property of the machine, and the suite runs on macOS and on Linux runners.
         """
         payload = {"tool_name": "Bash", "cwd": str(self.holder),
@@ -65,8 +65,8 @@ class SeedRoomTests(unittest.TestCase):
             stack.enter_context(mock.patch.object(sys, "stdin", io.StringIO(json.dumps(payload))))
             stack.enter_context(contextlib.redirect_stderr(err))
             if clones is not None:
-                stack.enter_context(
-                    mock.patch.object(guard, "clones", lambda source, destination: clones))
+                answer = clones if callable(clones) else (lambda source, destination: clones)
+                stack.enter_context(mock.patch.object(guard, "clones", answer))
             return guard.main(), err.getvalue()
 
     def test_Given_RoomForTheCopyAndOneMore_When_ASeedIsPosed_Then_ItGoesThrough(self):
@@ -176,6 +176,45 @@ class SeedRoomTests(unittest.TestCase):
         # Assert
         self.assertEqual((code, "no room for it" in said), (2, True))
 
+
+    def test_Given_ACloneFlagAfterTheFirstPath_When_TheDiskIsNearlyFull_Then_ItIsRefused(self):
+        # Arrange — macOS `cp` reads that `-c` as a second source path and byte-copies the first.
+        code, said = self.judge(1, command=f"cp -R {self.source} -c Library", clones=True)
+
+        # Act / Assert
+        self.assertEqual((code, "no room for it" in said), (2, True))
+
+    def test_Given_ACloneFlagAfterTheEndOfOptions_When_TheDiskIsNearlyFull_Then_ItIsRefused(self):
+        # Arrange
+        code, said = self.judge(1, command=f"cp -R -- -c {self.source} Library", clones=True)
+
+        # Act / Assert
+        self.assertEqual((code, "no room for it" in said), (2, True))
+
+    def test_Given_ACloneWithOneSourceThatCannotClone_When_TheDiskIsNearlyFull_Then_ItIsRefused(self):
+        # Arrange — the source that cannot clone is the first, and the one that can is the last.
+        other = self.holder / "other"
+        other.mkdir()
+        (other / "big.bin").write_bytes(b"x" * COPIED)
+        answer = lambda source, destination: source == str(self.source)  # noqa: E731
+
+        # Act
+        code, said = self.judge(1, command=f"cp -c -R {other} {self.source} Library", clones=answer)
+
+        # Assert
+        self.assertEqual((code, "no room for it" in said), (2, True))
+
+    def test_Given_TwoSourcesThatFitOnlyOneAtATime_When_Posed_Then_ItIsRefused(self):
+        # Arrange — room for either copy with a copy's worth over, and not for both.
+        other = self.holder / "other"
+        other.mkdir()
+        (other / "big.bin").write_bytes(b"x" * COPIED)
+
+        # Act
+        code, said = self.judge(COPIED * 3, command=f"rsync -a {other}/ {self.source}/ Library/")
+
+        # Assert
+        self.assertEqual((code, "no room for it" in said), (2, True))
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
