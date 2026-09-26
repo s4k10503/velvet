@@ -108,8 +108,8 @@ namespace Velvet.Tests
             using var mounted = V.Mount(_root, V.Component(OneComponentHostRender, key: "host"));
             var box = _root.Q(name: "box");
 
-            // Act — the context is marked disposed before the registry is, so no unmount reconcile runs to
-            // unregister the fibers one by one.
+            // Act — the context is marked disposed before the registry is, so each unmount's reconcile returns
+            // before it can unregister the fibers below it one by one.
             mounted.Root.Reconciler.Dispose();
 
             // Assert
