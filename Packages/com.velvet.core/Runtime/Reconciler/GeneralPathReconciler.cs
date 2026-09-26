@@ -66,6 +66,10 @@ namespace Velvet
             // speculative subtree (Suspense primary) can be rolled back on suspend.
             public List<ChildKey> CommittedKeys = null!;
             public int NewIndex;
+            // The component fibers whose expansion this walk completed, each with the NewElements index its
+            // rows begin at and how many it emitted. FinalizeGeneralCommit writes them onto the fiber where it
+            // places the rows.
+            public List<(ComponentFiber Fiber, int FirstRow, int Rows)> Placements = null!;
         }
 
         // Runs effect cleanups for fibers present on the old side but absent on the new side
@@ -140,8 +144,8 @@ namespace Velvet
                 OldOwners = pairing.OldOwners,
                 CommittedKeys = new List<ChildKey>(),
                 NewIndex = 0,
+                Placements = pool.RentPlacementList(),
             };
-            var placementMark = _ctx.ComponentRegistry.MarkPrePlacements();
             try
             {
                 // Build the old-key → (domIndex, node) map. Duplicate keys register the earlier index
@@ -190,9 +194,7 @@ namespace Velvet
             }
             finally
             {
-                // Nothing after this walk may read the record a re-placement left as saying where the
-                // fiber's rows are; ComponentFiber.PrePlacementSlotStart owns what it does say.
-                _ctx.ComponentRegistry.ReleasePrePlacementsTo(placementMark);
+                pool.ReturnPlacementList(commit.Placements);
                 pool.Return(commit.OldKeyMap);
                 pool.ReturnKeySet(commit.UsedKeys);
                 pool.ReturnReplacedKeySet(commit.ReplacedKeys);
@@ -390,6 +392,43 @@ namespace Velvet
             return false;
         }
 
+        private void CommitComponentOrder(List<(ComponentFiber Fiber, int FirstRow, int Rows)> placements)
+        {
+            var pool = _ctx.BufferPool;
+            var parents = pool.RentFiberSet();
+            var selected = pool.RentFiberSet();
+            var ordered = pool.RentFiberList();
+            var siblings = pool.RentFiberList();
+            try
+            {
+                foreach (var (fiber, _, _) in placements)
+                    if (!fiber.IsOffscreen && fiber.Parent != null) parents.Add(fiber.Parent);
+                foreach (var parent in parents)
+                {
+                    selected.Clear();
+                    ordered.Clear();
+                    siblings.Clear();
+                    foreach (var (fiber, _, _) in placements)
+                        if (!fiber.IsOffscreen && ReferenceEquals(fiber.Parent, parent) && selected.Add(fiber))
+                            ordered.Add(fiber);
+                    if (ordered.Count < 2) continue;
+                    for (var sibling = parent.Child; sibling != null; sibling = sibling.Sibling)
+                        siblings.Add(sibling);
+                    var next = 0;
+                    for (var i = 0; i < siblings.Count; i++)
+                        if (selected.Contains(siblings[i])) siblings[i] = ordered[next++];
+                    parent.CommitChildOrder(siblings);
+                }
+            }
+            finally
+            {
+                pool.ReturnFiberList(siblings);
+                pool.ReturnFiberList(ordered);
+                pool.ReturnFiberSet(selected);
+                pool.ReturnFiberSet(parents);
+            }
+        }
+
         // Removes old leaves not reused by the walk, then re-places the committed elements into
         // [slotStart, slotStart + NewElements.Count) with the minimum number of DOM moves via
         // a patience-sort LIS (anchors stay put). Mirrors the removal + LIS reorder tail of
@@ -424,6 +463,13 @@ namespace Velvet
                 LogicalNewLen = newElements.Count,
             };
             _placement.ComputeAnchorsAndReorder(parent, newElements, in range);
+
+            CommitComponentOrder(commit.Placements);
+            foreach (var (fiber, firstRow, rows) in commit.Placements)
+            {
+                fiber.MountSlotStart = slotStart + firstRow;
+                fiber.MountSlotCount = rows;
+            }
         }
 
         #endregion
@@ -836,7 +882,7 @@ namespace Velvet
                 walk.NewFibers.Add(fiber);
                 var preCount = emittedCount;
                 ExpandFiberPreviousTree(walk, fiber, component, position, nodeIndex);
-                fiber.MountSlotCount = (commit != null ? commit.NewElements.Count : result!.Count) - preCount;
+                if (commit != null) commit.Placements.Add((fiber, preCount, commit.NewElements.Count - preCount));
             }
             else
             {

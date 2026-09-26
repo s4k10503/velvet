@@ -597,13 +597,8 @@ namespace Velvet
             }
         }
 
-        // Shifts the captured SlotStart of whichever time-sliced state is currently parked by
-        // delta. Called when a preceding sibling fiber re-renders with a child-count
-        // delta while this fiber's reconcile is suspended mid-pass: the sibling's mutation physically
-        // shifts this fiber's already-committed rows within the shared parent, so the parked
-        // SlotStart (a captured absolute offset) must move by the same delta or the resume would
-        // write the remaining rows at stale absolute indices and corrupt both slots. No-op when nothing
-        // is parked.
+        // Shifts the captured SlotStart of whichever time-sliced state is currently parked by delta;
+        // Reconciler.RebasePendingSlotStart owns when and why. No-op when nothing is parked.
         internal void RebasePendingSlotStart(int delta)
         {
             if (delta == 0) return;

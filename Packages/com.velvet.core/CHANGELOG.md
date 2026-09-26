@@ -295,10 +295,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a sibling ahead of it. That holds where the pass raising the exception was itself moving the boundary — a
   reorder that puts a sibling in front of it, a sibling that grew or shrank ahead of it — because
   showing a fallback stops that pass from placing anything, so the container is still holding the rows
-  where they were and the swap is written there. It does not hold where the boundary's rows moved with
-  no pass placing them: a fiber that grows inside a co-located sibling shifts this boundary's rows along
-  the container, and a catch after that still writes the fallback over the sibling's rows and leaves the
-  boundary's own painted.
+  where they were and the swap is written there.
+
+- A component that shares its container with other components rewrites its own rows when it re-renders
+  on its own, instead of a neighbour's, after one of these moved them: a component growing inside the one
+  ahead of it, or ahead of the component holding it; a neighbouring `V.Portal` on the same target growing,
+  whether through its own children, a component inside it or a parked time-sliced render its patch
+  drained, or unmounting; an error boundary's fallback holding more or fewer rows than the boundary had;
+  a pass that moved the component and then stopped on an error a boundary caught; and a parked
+  time-sliced render drained inside the re-render of the component holding it, or inside a pass that then
+  reached a boundary which caught. Where the rows began was recorded when a pass decided where they would
+  go and moved afterwards only for a sibling's own row count changing, so after any of those moves the
+  re-render renamed a neighbour's rows, added its own a second time or left a stale copy behind, and a
+  fallback could replace a neighbour's row while the boundary's own stayed. A `V.Portal` whose child
+  component grew also left a row behind on the target when it unmounted, and a second `V.Portal` on that
+  target, patched after the first one's component grew, rewrote a row of the first. Two components rendering
+  nothing that a keyed reorder swapped now render their rows in the swapped order when they grow.
 
 - A component's own re-render now reads the Providers of the container it is written into, where the
   declaring body writes the component into each container as its own occurrence. Two sibling containers

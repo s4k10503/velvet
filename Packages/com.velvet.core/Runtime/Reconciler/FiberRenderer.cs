@@ -310,7 +310,7 @@ namespace Velvet
                 var unmountPushed = PushFiber(fiber);
                 try
                 {
-                    fiber.Reconciler!.Reconcile(fiber.MountPoint, fiber.PreviousTree, Array.Empty<VNode>());
+                    FiberCommitWork.ReconcileOwnRows(fiber, fiber.PreviousTree, Array.Empty<VNode>(), frameBudgetMs: 0);
                 }
                 finally
                 {
