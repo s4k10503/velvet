@@ -2037,8 +2037,7 @@ namespace Velvet
             _ctx.ComponentRegistry.DisposeFibersUnder(new HashSet<VisualElement> { anchor });
         }
 
-        // Expands one keyed AnimatePresence child (a Motion, or a transparent Provider / Fragment / Memo /
-        // Suspense resolving to one) into the parent's slot range via ExpandInlineRecursive,
+        // Expands one keyed AnimatePresence child into the parent's slot range via ExpandInlineRecursive,
         // under a render-stable per-child scope. Returns the child's anchor element — the first element it
         // emitted into GeneralCommitState.NewElements — for enter / exit animation, or null on
         // the structural (old-side) walk or when the child emitted nothing.
@@ -2165,14 +2164,14 @@ namespace Velvet
             exitClass = string.Empty;
             transition = null;
             if (motion?.Exit == null || motion.Animate == null || motion.Variants == null
-                || !motion.Variants.TryGetValue(motion.Exit, out var exit) || string.IsNullOrEmpty(exit.ClassName))
+                || !motion.Variants.TryGetValue(motion.Exit, out var exit))
             {
                 return false;
             }
 
             motion.Variants.TryGetValue(motion.Animate, out var resting);
             restingClass = resting.ClassName ?? string.Empty;
-            exitClass = exit.ClassName!;
+            exitClass = exit.ClassName ?? string.Empty;
             transition = exit.Transition ?? motion.Transition;
             return true;
         }
@@ -2180,10 +2179,10 @@ namespace Velvet
         // Builds the exit transition for an `exit` variant: the element animates from its resting
         // variants[Animate] (ExitFromClass) to variants[Exit] (ExitToClass), on the timing
         // ResolveExitTransition resolves, before unmount. Returns null (caller falls back to the classic
-        // transition) unless the Motion sets its own Exit + Animate + Variants with a non-empty exit class and
-        // a transition resolves for it. The caller
-        // supplies the element the swap targets — the Motion's own, so a wrapped Motion's exit variant
-        // animates the same element its resting variant classes live on.
+        // transition) unless the Motion sets its own Exit + Animate + Variants, the exit label names a pose,
+        // and a transition resolves for it. The caller supplies the element the swap targets — the Motion's
+        // own, so a wrapped Motion's exit variant animates the same element its resting variant classes
+        // live on.
         internal static StyleTransitionConfig? TryResolveVariantExit(MotionNode? motion)
         {
             if (!TryResolveExitVariant(motion, out var restingClass, out var exitClass, out var transition)

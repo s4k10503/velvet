@@ -13,11 +13,10 @@ namespace Velvet.Tests
     /// <see cref="StyleTransitionConfig"/> drives the swap INTO that pose at each of the four call sites
     /// that play one — a standalone mount enter, a presence mount enter, a runtime <c>animate</c> label
     /// change, and an AnimatePresence exit — with the Motion's own <c>transition:</c> as the default a pose
-    /// replaces. Every one of the four reads the destination pose rather than the one left behind. What a
-    /// variant swap needs a class on is the pose the element does not rest at — <c>initial</c>'s at an
-    /// enter, <c>exit</c>'s at a removal — and only at the removal are those the same pose, so a classless
-    /// exit pose is the one that loses its declared timing to the classic exit while a classless initial
-    /// pose loses the enter itself; a case pins each. The presence enter and the exit share one
+    /// replaces. Every one of the four reads the destination pose rather than the one left behind, whether
+    /// or not that pose applies a class. A classless initial pose, the one an enter starts from, loses the
+    /// enter itself; a classless exit pose is still a variant exit. A case pins each. The presence enter and
+    /// the exit share one
     /// declaration, 0.5s in against 0.05s out over a Motion whose own transition declares 0.2s, which is
     /// the asymmetry a single per-node config cannot express.
     /// Three gates decide how a removal is treated, and each reads the same chain, so a Motion whose own
@@ -85,13 +84,24 @@ namespace Velvet.Tests
         };
 
         // The classless-but-timed shape of s_classlessTimedPose above, reached as an `exit` target instead
-        // of an `animate` one, where the rule inverts: applying no class makes it no variant exit at all,
-        // so this 0.5s is the number a reading must NOT find.
-        private static readonly Dictionary<string, MotionVariant> s_classlessTimedExit = new()
+        // of an `animate` one, under each spelling of "applies nothing". The two presence builders reading
+        // the fields below take the map and the node transition from them, and each case using one sets both.
+        private static Dictionary<string, MotionVariant> ClasslessTimedExit(string exitClass) => new()
         {
             ["visible"] = "opacity-100",
-            ["gone"] = new MotionVariant(null, new StyleTransitionConfig { DurationSec = 0.5f }),
+            ["gone"] = new MotionVariant(exitClass, new StyleTransitionConfig { DurationSec = 0.5f }),
         };
+
+        // A label coordinator: neither pose applies a class of its own, and each only orchestrates or times
+        // the inheriting child below it.
+        private static readonly Dictionary<string, MotionVariant> s_classlessCoordinator = new()
+        {
+            ["visible"] = new MotionVariant(null, new StyleTransitionConfig { StaggerChildrenSec = 0.1f }),
+            ["hidden"] = new MotionVariant(null, new StyleTransitionConfig { DurationSec = 0.3f }),
+        };
+
+        private static Dictionary<string, MotionVariant> s_classlessExitVariants;
+        private static StyleTransitionConfig s_classlessExitNode;
 
         // The classless pose reached as the enter's SOURCE, where the same rule costs the whole play
         // rather than one config: the destination is classed and timed, so a reading that finds any
@@ -223,8 +233,43 @@ namespace Velvet.Tests
             foreach (var key in keys)
             {
                 children.Add(V.Motion(name: "item-" + key, key: key.ToString(),
-                    variants: s_classlessTimedExit, animate: "visible", exit: "gone",
-                    transition: s_nodeDefault));
+                    variants: s_classlessExitVariants, animate: "visible", exit: "gone",
+                    transition: s_classlessExitNode));
+            }
+            return V.Div(name: "host", children: new VNode[]
+            {
+                V.AnimatePresence(key: "presence", children: children.ToArray()),
+            });
+        }
+
+        [Component]
+        private static VNode MissingExitPosePresence()
+        {
+            var keys = Hooks.UseStore(s_keyStore, s => s.Keys);
+            var children = new List<VNode>();
+            foreach (var key in keys)
+            {
+                children.Add(V.Motion(name: "item-" + key, key: key.ToString(),
+                    variants: s_classlessExitVariants, animate: "visible", exit: "absent",
+                    transition: s_classlessExitNode));
+            }
+            return V.Div(name: "host", children: new VNode[]
+            {
+                V.AnimatePresence(key: "presence", children: children.ToArray()),
+            });
+        }
+
+        [Component]
+        private static VNode ClasslessCoordinatorPresence()
+        {
+            var keys = Hooks.UseStore(s_keyStore, s => s.Keys);
+            var children = new List<VNode>();
+            foreach (var key in keys)
+            {
+                children.Add(V.Motion(name: "coordinator-" + key, key: key.ToString(),
+                    variants: s_classlessCoordinator, animate: "visible", exit: "hidden",
+                    transition: s_nodeDefault,
+                    children: new VNode[] { V.Motion(name: "child-" + key, variants: s_plainFade) }));
             }
             return V.Div(name: "host", children: new VNode[]
             {
@@ -390,11 +435,14 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AnExitPoseApplyingNoClassButCarryingATransition_When_TheKeyIsRemoved_Then_TheExitRidesTheNodesDuration()
+        public void Given_AnExitPoseApplyingNoClassButCarryingATransition_When_TheKeyIsRemoved_Then_TheExitRidesThatPosesDuration(
+            [Values(null, "")] string exitClass)
         {
             // Arrange — variants[gone] applies no class and declares 0.5s against the node's 0.2s. The
             // Motion declares no `initial` label, so no enter play holds the duration slot and the reading
             // below is the removal's own write.
+            s_classlessExitVariants = ClasslessTimedExit(exitClass);
+            s_classlessExitNode = s_nodeDefault;
             using var keys = new KeySetStore("a");
             s_keyStore = keys;
             using var mounted = V.Mount(Root, V.Component(ClasslessExitPresence, key: "root"));
@@ -405,9 +453,54 @@ namespace Velvet.Tests
             keys.Set(string.Empty);
             scheduler.DrainImmediateForTest();
 
-            // Assert — the node's 200ms, not the pose's 500ms: an exit pose applying no class is no variant
-            // exit.
-            Assert.That(InlineDurationMs(Root.Q<VisualElement>("item-a")), Is.EqualTo(200f).Within(1e-3f));
+            // Assert — the pose's 500ms, not the node's 200ms, the same answer the classed exit pose gives.
+            Assert.That(InlineDurationMs(Root.Q<VisualElement>("item-a")), Is.EqualTo(500f).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_AnExitPoseApplyingNoClass_When_TheExitSwapFires_Then_TheRestingPosesClassesComeOff()
+        {
+            // Arrange — the node's own transition names no exit classes, so a classic exit would leave the
+            // resting variants[visible] class on the element for the whole removal.
+            s_classlessExitVariants = ClasslessTimedExit(null);
+            s_classlessExitNode = s_nodeDefault;
+            using var keys = new KeySetStore("a");
+            s_keyStore = keys;
+            using var mounted = V.Mount(Root, V.Component(ClasslessExitPresence, key: "root"));
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+            Tick();
+
+            // Act — remove the key, then run the frame the exit swap is scheduled on.
+            keys.Set(string.Empty);
+            scheduler.DrainImmediateForTest();
+            Tick();
+
+            // Assert — still mounted, and without variants[visible]'s class.
+            Assert.That(PoseOf(Root.Q<VisualElement>("item-a")), Is.EqualTo("hidden"));
+        }
+
+        // GREEN_ON_BASE(characterization): an exit label naming no pose keeps the classic exit this change
+        // leaves alone, which is what separates it from a present pose applying no class.
+        [Test]
+        public void Given_AnExitLabelNamingNoPose_When_TheExitSwapFires_Then_TheRestingPosesClassesStay()
+        {
+            // Arrange — the same node and map as the case above, with an exit label the map has no entry for.
+            s_classlessExitVariants = ClasslessTimedExit(null);
+            s_classlessExitNode = s_nodeDefault;
+            using var keys = new KeySetStore("a");
+            s_keyStore = keys;
+            using var mounted = V.Mount(Root, V.Component(MissingExitPosePresence, key: "root"));
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+            Tick();
+
+            // Act
+            keys.Set(string.Empty);
+            scheduler.DrainImmediateForTest();
+            Tick();
+
+            // Assert — still mounted and still at variants[visible]: the classic exit swaps only the node
+            // transition's own exit classes, and this one names none.
+            Assert.That(PoseOf(Root.Q<VisualElement>("item-a")), Is.EqualTo("visible"));
         }
 
         [Test]
@@ -499,6 +592,52 @@ namespace Velvet.Tests
             // Assert — still mounted as a ghost: a gate reading only the node's config sees DurationSec 0
             // and reaps the leaf in this very reconcile, so the exit pose's timing never plays.
             Assert.That(Root.Q<VisualElement>("host").childCount, Is.EqualTo(1));
+        }
+
+        // GREEN_ON_BASE(characterization): the exit label reaches no inheriting child, before this change or after it.
+        [Test]
+        public void Given_ACoordinatorWhoseExitPoseAppliesNoClass_When_TheKeyIsRemoved_Then_ItsInheritingChildKeepsItsPose()
+        {
+            // Arrange — the child declares no `animate` of its own and rests at the coordinator's label.
+            using var keys = new KeySetStore("a");
+            s_keyStore = keys;
+            using var mounted = V.Mount(Root, V.Component(ClasslessCoordinatorPresence, key: "root"));
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+            Tick();
+
+            // Act — remove the key, then run the frame an exit swap is scheduled on.
+            keys.Set(string.Empty);
+            scheduler.DrainImmediateForTest();
+            Tick();
+
+            // Assert — the coordinator is held as a ghost and its child still shows variants[visible].
+            Assert.That(
+                (Root.Q<VisualElement>("host").childCount, PoseOf(Root.Q<VisualElement>("child-a"))),
+                Is.EqualTo((1, "visible")));
+        }
+
+        [Test]
+        public void Given_AMotionTransitionOfNone_When_ItsClasslessExitPoseDeclaresADuration_Then_TheGhostPlaysThatDuration()
+        {
+            // Arrange — the node opts out of animation and variants[gone], which applies no class, is the only
+            // timing. The removal gates and the exit play each decide from this pose, and they have to agree:
+            // a gate that disregarded it reaps the child here, and a play that disregarded it completes on
+            // None inside the reconcile with nothing written.
+            s_classlessExitVariants = ClasslessTimedExit(null);
+            s_classlessExitNode = StyleTransitionConfig.None;
+            using var keys = new KeySetStore("a");
+            s_keyStore = keys;
+            using var mounted = V.Mount(Root, V.Component(ClasslessExitPresence, key: "root"));
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+            Tick();
+
+            // Act
+            keys.Set(string.Empty);
+            scheduler.DrainImmediateForTest();
+
+            // Assert — a held ghost playing the pose's 500ms; a reaped child reads as NaN.
+            var ghost = Root.Q<VisualElement>("item-a");
+            Assert.That(ghost == null ? float.NaN : InlineDurationMs(ghost), Is.EqualTo(500f).Within(1e-3f));
         }
 
         [Test]

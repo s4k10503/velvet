@@ -113,6 +113,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A Motion declaring `exit:` that an `AnimatePresence` child wraps where the presence does not look —
+  behind a component, `V.Memoized` or `V.Suspense`, or inside another element — now warns, when the
+  presence's own render creates it, that it is not the child's anchor and its exit is inert; the exit
+  used to be dropped without a word. The motion guide states which Motion a keyed child's enter and
+  exit play on, and that a Motion outside that rule keeps its own mount enter, which the presence's
+  `initial: false` does not suppress.
+
 - One `V.Fragment` returned for several `V.List` items gives each item a row that keeps its element when
   the items are reordered or appended to. Each item's copy of the Fragment shares its children, and a row's
   key was read back from that shared child, so the rows resolved to one item's key: a row already on screen
@@ -959,6 +966,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   had no way to ask for. The child-orchestration knobs are read off that config too, so a coordinator's
   pose can carry `StaggerChildrenSec` and a `When = BeforeChildren` wait is measured from that pose's
   own span. The motion guide states which pose each play reads.
+
+- An `exit:` label naming a pose that applies no class plays a variant exit: the removal takes the
+  resting pose's classes off, on the timing that pose resolves — its own `MotionVariant.Transition`,
+  else the Motion's `transition:`, the same choice a mount enter and a label change into a pose make.
+  It played the classic exit instead — on the Motion's own `transition:` and with that transition's own
+  exit classes, the `Fade` preset's where the call site left `transition:` out — so a variants map whose
+  exit entry is `""` or `null` now removes the child differently. Where the resting pose applies no
+  class either, as on a label coordinator whose poses only orchestrate its children, the exit changes
+  nothing on screen: the exit label does not reach inheriting children, so the coordinator is held for
+  that timing and then removed, where the classic exit used to play the transition's exit classes on it.
+  An `exit:` label the map has no pose for still plays the classic exit.
 
 - `V.Outlet()` emits no element of its own: the matched route's own output takes the Outlet's position
   in the parent's child list, and an Outlet whose location matches no route at its depth takes no
