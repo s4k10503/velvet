@@ -6,9 +6,9 @@ namespace Velvet
 {
     // Shared plumbing for the structural wrapper layers — the className-driven clip-path-* wrapper and the
     // user wrapElement opt-in. Both the patcher (wrapper<->inner resolution exposed to the reconciler) and the
-    // wrapper element appliers (the wrap/unwrap surgery) depend on these, so the pieces below are the
-    // parts whose two copies must never drift: the passthrough style block, the slot-preserving unwrap
-    // surgery (which ChildReconciler's keyed-move re-fetch depends on), and the flex-forwarding contract.
+    // wrapper element appliers (the wrap/unwrap surgery) depend on these, which is why they live here rather
+    // than on either; the slot-preserving unwrap surgery is what ChildReconciler's keyed-move re-fetch
+    // depends on.
     internal sealed class WrapperInfrastructure
     {
         private readonly ReconcilerContext _ctx;
@@ -43,7 +43,7 @@ namespace Velvet
         internal bool IsAlreadyWrapped(VisualElement element)
             => !ReferenceEquals(ResolveOuter(element), element);
 
-        // A layout-passthrough wrapper, laid out by ForwardLayoutContextToWrapper.
+        // A layout-passthrough wrapper, laid out by FiberClipPathApplier.SyncWrapperLayout.
         internal static VisualElement CreatePassthroughWrapper(string ussClass)
         {
             var wrapper = new VisualElement { pickingMode = PickingMode.Ignore };
@@ -84,49 +84,6 @@ namespace Velvet
             {
                 wrapper.style.flexShrink = flexShrink;
             }
-        }
-
-        // CSS clip-path is paint-only, so the wrapper has to leave the inner where the parent would have put it.
-        // In flow the parent lays out the wrapper in the inner's place: the wrapper takes the parent's
-        // flex-direction, so the inner's flex-grow acts along the same axis inside it, and the inner's
-        // align-self, so the parent aligns the wrapper as it would have aligned the inner. Out of flow the inner
-        // resolves its edge offsets against the wrapper, so the wrapper leaves the flow, spans the real parent
-        // (inset 0) and takes the parent's justify-content and align-items, which place an inner with no offset
-        // on an axis. Run on every geometry sync rather than once at the wrap, because a patch can change the
-        // inner's position after it. ClipPathWrapperFlowParityPanelTests compares the result against an
-        // unclipped twin.
-        // KNOWN LIMITATION: in flow the wrapper takes its size from the inner along the parent's main axis, and
-        // along the cross axis unless the parent stretches it, so a percentage width, height or flex-basis on
-        // such an axis resolves against the wrapper rather than the parent, and auto margins along the main axis
-        // do not centre the inner. The justify-content and align-items an out-of-flow inner's wrapper took are
-        // read again only at the next geometry sync, so a parent that changes nothing but its alignment leaves
-        // them behind.
-        internal static void ForwardLayoutContextToWrapper(VisualElement element, VisualElement wrapper)
-        {
-            var ws = wrapper.style;
-            var parent = wrapper.parent;
-            var parentStyle = parent != null && parent.panel != null ? parent.resolvedStyle : null;
-            ws.flexDirection = parentStyle != null ? parentStyle.flexDirection : StyleKeyword.Null;
-            if (StyleOutOfFlowChild.IsOutOfFlow(element))
-            {
-                ws.position = Position.Absolute;
-                ws.left = 0f;
-                ws.top = 0f;
-                ws.right = 0f;
-                ws.bottom = 0f;
-                ws.alignSelf = StyleKeyword.Null;
-                ws.justifyContent = parentStyle != null ? parentStyle.justifyContent : StyleKeyword.Null;
-                ws.alignItems = parentStyle != null ? parentStyle.alignItems : StyleKeyword.Null;
-                return;
-            }
-            ws.position = Position.Relative;
-            ws.left = StyleKeyword.Null;
-            ws.top = StyleKeyword.Null;
-            ws.right = StyleKeyword.Null;
-            ws.bottom = StyleKeyword.Null;
-            ws.justifyContent = StyleKeyword.Null;
-            ws.alignItems = StyleKeyword.Null;
-            ws.alignSelf = element.panel != null ? element.resolvedStyle.alignSelf : StyleKeyword.Null;
         }
 
         // True when the class list carries an inline filter — a static filter-* utility or the animate-hue

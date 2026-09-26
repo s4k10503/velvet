@@ -58,7 +58,8 @@ namespace Velvet.Tests
 
         private static StateUpdater<int> s_setStep;
         private static System.Func<int, string> s_hostClassFor;
-        private static string s_cardClass;
+        private static System.Func<int, string> s_cardClassFor;
+        private static System.Func<int, string> s_clipFor;
 
         [SetUp]
         public override void SetUp()
@@ -66,11 +67,12 @@ namespace Velvet.Tests
             base.SetUp();
             s_setStep = default;
             s_hostClassFor = _ => "";
-            s_cardClass = FixedCard;
+            s_cardClassFor = _ => FixedCard;
+            s_clipFor = _ => Triangle;
         }
 
-        // Both hosts take their class from the current step, so advancing it patches the parent of the clipped
-        // card and of its unclipped twin alike.
+        // Both hosts and both cards take their classes from the current step, so advancing it patches the clipped
+        // twin and the unclipped one alike.
         [Component]
         private static VNode RenderTwins()
         {
@@ -78,10 +80,37 @@ namespace Velvet.Tests
             s_setStep = setStep;
             return V.Div(children: new VNode[]
             {
-                Host("0", s_hostClassFor(step), s_cardClass),
-                Host("1", s_hostClassFor(step), s_cardClass + " " + Triangle),
+                Host("0", s_hostClassFor(step), s_cardClassFor(step)),
+                Host("1", s_hostClassFor(step), s_cardClassFor(step) + " " + s_clipFor(step)),
             });
         }
+
+        private void MountSteppedTwins()
+        {
+            _mounted = V.Mount(_window.rootVisualElement, V.Component(RenderTwins));
+            ForcePanelUpdate(_window.rootVisualElement.panel);
+        }
+
+        private void AdvanceStep()
+        {
+            s_setStep.Invoke(1);
+            _mounted.GetSchedulerForTest().DrainImmediateForTest();
+            SettlePanel();
+        }
+
+        // A layout pass, then one panel scheduler tick, then another layout pass: the panel's own frame runs its
+        // scheduler before its style pass, so a change the scheduler applies lands in the pass after it.
+        private void SettlePanel()
+        {
+            var panel = _window.rootVisualElement.panel;
+            ForcePanelUpdate(panel);
+            EditorPanelTestHelpers.DriveSchedulerOnce(panel);
+            ForcePanelUpdate(panel);
+        }
+
+        private ((bool, Rect, Rect) Reference, (bool, Rect, Rect) Clipped) ReadTwins() => (
+            (true, RelativeToHost("host0", "card0"), RelativeToHost("host0", "after0")),
+            (IsClipWrapped(Named("card1")), RelativeToHost("host1", "card1"), RelativeToHost("host1", "after1")));
 
         [Test]
         public void Given_AFixedCardInAColumn_When_Clipped_Then_ItSitsWhereTheUnclippedCardDoes()
@@ -210,24 +239,95 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AClippedCardInARow_When_TheParentBecomesAColumnByPatch_Then_ItSitsWhereTheUnclippedCardDoes()
+        public void Given_AClippedCardInARow_When_AVariantTurnsTheParentIntoAColumn_Then_ItSitsWhereTheUnclippedCardDoes()
         {
             // Arrange: a card with no width is stretched across a column and not across a row, so it is sized by
-            // the direction the parent has after the patch.
-            s_hostClassFor = step => step == 0 ? "flex-row" : "";
-            s_cardClass = "h-[40px]";
-            _mounted = V.Mount(_window.rootVisualElement, V.Component(RenderTwins));
-            ForcePanelUpdate(_window.rootVisualElement.panel);
+            // the direction the parent has after the toggle. The toggle lands on the parent, so the clipped card
+            // is neither patched nor handed a variant payload of its own.
+            s_hostClassFor = _ => "flex-row hover:flex-col";
+            s_cardClassFor = _ => "h-[40px]";
+            MountSteppedTwins();
+
+            // Act
+            foreach (var name in new[] { "host0", "host1" })
+            {
+                using var over = PointerOverEvent.GetPooled();
+                Named(name).SimulateEvent(over);
+            }
+            SettlePanel();
+            var (reference, clipped) = ReadTwins();
+
+            // Assert
+            Assert.That(clipped, Is.EqualTo(reference));
+        }
+
+        [Test]
+        public void Given_ACardInAColumn_When_SelfEndReplacesSelfStartByPatch_Then_ItSitsWhereTheUnclippedCardDoes()
+        {
+            // Arrange
+            s_cardClassFor = step => (step == 0 ? "self-start " : "self-end ") + FixedCard;
+            MountSteppedTwins();
+
+            // Act
+            AdvanceStep();
+            var (reference, clipped) = ReadTwins();
+
+            // Assert
+            Assert.That(clipped, Is.EqualTo(reference));
+        }
+
+        [Test]
+        public void Given_ASelfStartCard_When_TheClipAndSelfEndAreAddedByOnePatch_Then_ItSitsWhereTheUnclippedCardDoes()
+        {
+            // Arrange
+            s_cardClassFor = step => (step == 0 ? "self-start " : "self-end ") + FixedCard;
+            s_clipFor = step => step == 0 ? "" : Triangle;
+            MountSteppedTwins();
 
             // Act
             s_setStep.Invoke(1);
             _mounted.GetSchedulerForTest().DrainImmediateForTest();
             ForcePanelUpdate(_window.rootVisualElement.panel);
+            var (reference, clipped) = ReadTwins();
 
             // Assert
-            Assert.That(
-                (IsClipWrapped(Named("card1")), RelativeToHost("host1", "card1"), RelativeToHost("host1", "after1")),
-                Is.EqualTo((true, RelativeToHost("host0", "card0"), RelativeToHost("host0", "after0"))));
+            Assert.That(clipped, Is.EqualTo(reference));
+        }
+
+        [Test]
+        public void Given_ACardInARow_When_GrowIsAddedByPatch_Then_ItSitsWhereTheUnclippedCardDoes()
+        {
+            // Arrange
+            s_hostClassFor = _ => "flex-row";
+            s_cardClassFor = step => (step == 0 ? "" : "grow ") + "h-[40px]";
+            MountSteppedTwins();
+
+            // Act
+            AdvanceStep();
+            var (reference, clipped) = ReadTwins();
+
+            // Assert
+            Assert.That(clipped, Is.EqualTo(reference));
+        }
+
+        [Test]
+        public void Given_ASelfStartCardWithAHoverSelfEnd_When_BothTwinsAreHovered_Then_ItSitsWhereTheUnclippedCardDoes()
+        {
+            // Arrange
+            s_cardClassFor = _ => "self-start hover:self-end " + FixedCard;
+            MountSteppedTwins();
+
+            // Act
+            foreach (var name in new[] { "card0", "card1" })
+            {
+                using var over = PointerOverEvent.GetPooled();
+                Named(name).SimulateEvent(over);
+            }
+            SettlePanel();
+            var (reference, clipped) = ReadTwins();
+
+            // Assert
+            Assert.That(clipped, Is.EqualTo(reference));
         }
 
         [Test]

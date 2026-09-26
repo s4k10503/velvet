@@ -336,7 +336,7 @@ namespace Velvet
     // ReconcilerContext.ClipPathBindings by the INNER (real) element. Holds the structural
     // wrapper (the overflow-hidden stencil mask host, also registered in WrapperToInnerMap), the
     // currently-applied spec (diffed by Source on patch), the geometry callback registered
-    // on the inner and the wrapper (so it can be unregistered on unwrap), and the live baked VectorImage —
+    // on the inner and the wrapper (so the inner's can be unregistered on unwrap), and the live baked VectorImage —
     // a ScriptableObject that must be destroyed on re-bake and teardown.
     internal sealed class ClipPathBinding
     {
@@ -344,6 +344,10 @@ namespace Velvet
         public ClipPathSpec? Spec;
         public EventCallback<GeometryChangedEvent> OnGeometry = null!;
         public VectorImage? Image;
+
+        // Which position the wrapper was last given for its inner (see FiberClipPathApplier.SyncWrapperLayout);
+        // null until the first sync.
+        public bool? WrapperOutOfFlow;
 
         // Analytic path bounds of the live bake (element-local px). The geometry sync re-anchors the
         // background by these when only the inner's origin moved (no re-bake), and rescales them for

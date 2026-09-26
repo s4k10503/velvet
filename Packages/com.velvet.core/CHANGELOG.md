@@ -115,19 +115,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - An element carrying a `clip-path-*` utility keeps the position and size it has without the clip in
   a column or a row, with padding, a gap, a reversed direction, stretching, `self-*` or `flex-grow`,
-  apart from the cases listed at the end of this entry. The wrapper that hosts the clip was a relative
-  row that centred the element on both axes, and the element resolved its size and position against
-  it rather than against its parent: in a column a fixed-size card sat centred across the parent
-  instead of at its start, a card with no width took none where the column would have stretched it,
-  a card in a row sat centred vertically, and `self-end` had no effect. In a column, an absolutely
-  positioned element offset from all four edges came out with no height, and an `absolute inset-0`
-  child with it. The wrapper now takes the parent's
-  flex-direction and the element's `align-self`, and around an absolute element it leaves the flow,
-  spans the parent and takes the parent's `justify-content` and `align-items`. Still different from
-  CSS: a percentage width, height or flex-basis resolves against the wrapper along the parent's main
-  axis, and along the cross axis unless the parent stretches the element; auto margins along the main
-  axis do not centre the element; and an absolute element with no offset on an axis stays where it was
-  when the parent changes only its alignment, until the element's own box next changes.
+  including when a render or a variant changes its `self-*` or `flex-grow`, apart from the cases listed
+  at the end of this entry. The wrapper that hosts the clip was a relative row that centred the element
+  on both axes, and the element resolved its size and position against it rather than against its
+  parent: in a column a fixed-size card sat centred across the parent instead of at its start, a card
+  with no width took none where the column would have stretched it, a card in a row sat centred
+  vertically, and `self-end` had no effect. In a column, an absolutely positioned element offset from
+  all four edges came out with no height, and an `absolute inset-0` child with it. The wrapper now
+  takes the parent's flex-direction and the element's `align-self`, and around an absolute element it
+  leaves the flow, spans the parent and takes the parent's `justify-content` and `align-items`. A
+  render or a variant that changes the element's `self-*` or `flex-grow` is followed on the panel
+  scheduler's next tick rather than in the same layout pass. Still different from CSS: a percentage
+  width, height or flex-basis resolves against the wrapper along the parent's main axis, and along the
+  cross axis unless the parent stretches the element; auto margins along the main axis, and along the
+  cross axis unless the parent stretches the element, do not centre it; the column width `grid-cols-*`
+  gives a cell and the row height `V.VirtualList` gives a row land on the wrapper, so the element keeps
+  its own; an absolute element loses whatever of it lies outside its parent's box; and an absolute
+  element with no offset on an axis stays where it was when only the parent's alignment changes, until
+  the element is next patched or its box next changes.
 
 - Memoized components rebuild their compiled VNode cache when their props comparison detects a
   change, including a record struct float member changing from positive zero to negative zero.
