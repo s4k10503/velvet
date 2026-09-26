@@ -36,8 +36,8 @@ namespace Velvet
             return false;
         }
 
-        // siblingIndex counts the flat list the diff matches; nodeIndex counts the array the leaf is written in,
-        // which is what a scope composes an unkeyed leaf with.
+        // siblingIndex counts the flat list the diff matches from where the emitting fiber's output begins;
+        // nodeIndex counts the array the leaf is written in, which is what a scope composes an unkeyed leaf with.
         internal static ChildKey ScopedKey(VNode? node, string? scope, int nodeIndex, int siblingIndex)
         {
             var key = scope == null ? node?.Key : FiberKeying.LeafScope(scope, node?.Key, nodeIndex);

@@ -1,7 +1,6 @@
 // annotations only: incremental nullable hygiene. See the leading comment in Velvet core Hooks.cs for details.
 #nullable enable annotations
 using System;
-using System.Linq;
 using NUnit.Framework;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
@@ -18,11 +17,9 @@ namespace Velvet.Tests
     /// <c>V.AnimatePresence</c> whose committed children the arriving one never declared.</item>
     /// <item>The same holds where the arriving side is written inline rather than as a component, which
     /// leaves the container's new children a flat list of host leaves.</item>
-    /// <item>A reorder inside a <c>V.List</c> of components is such a slot too: a component at a scope-less
-    /// position opens no key scope, so the leaves it emits reconcile by sibling index and a moved row lands
-    /// on a leaf a different component emitted. Wrapping the list in a keyed <c>V.ListFragment</c>
-    /// establishes that scope, and the row's element then moves with the item; both readings are here,
-    /// because the second is the edit the CHANGELOG offers for the first.</item>
+    /// <item>A reorder inside a <c>V.List</c> of components moves each row's element with the row, whether
+    /// or not a keyed <c>V.ListFragment</c> encloses the list, rather than landing the row on an element a
+    /// different component emitted.</item>
     /// </list>
     /// The other direction — a component re-rendering itself keeps the element it emitted — is why the
     /// reading here is a term about the component instance rather than about the slot.
@@ -118,12 +115,11 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AKeyedListOfComponentsInAContainer_When_TheItemsAreReordered_Then_EachMovedRowIsRebuiltAroundItsOwnInstance()
+        public void Given_AKeyedListOfComponentsInAContainer_When_TheItemsAreReordered_Then_EachRowsElementMovesWithItsInstance()
         {
-            // Arrange — V.List stamps the item key on each ComponentNode, but the list is written straight
-            // into the container, so nothing above the components establishes a key scope and the leaves
-            // they emit reconcile by sibling index. The first row's state is marked so the reading can
-            // separate an element rebuilt around the surviving instance from the whole row remounting.
+            // Arrange — V.List stamps the item key on each ComponentNode, and the list is written straight
+            // into the container, so nothing above the components establishes a key scope. The first row's
+            // state is marked so the reading can separate a kept row from the whole row remounting.
             s_items = new ItemsStore();
             using var mounted = V.Mount(_root, V.Component(ListHostRender, key: "host"));
             var host = _root.Q<VisualElement>("host");
@@ -134,20 +130,19 @@ namespace Velvet.Tests
             s_items.Reorder();
             mounted.GetSchedulerForTest().DrainImmediateForTest();
 
-            // Assert — one comparison over what the reorder costs and what it does not. The names ride
-            // along because a pass that rebuilt both rows without reordering them satisfies the count on
-            // its own.
+            // Assert — the names say which order the pass left, which the identities alone do not print.
             Assert.That(
                 (host.ElementAt(0).name + "," + host.ElementAt(1).name,
                     _root.Q<Button>("mark-a").text,
-                    new[] { host.ElementAt(0), host.ElementAt(1) }.Count(before.Contains)),
-                Is.EqualTo(("row-b,row-a", "a!", 0)),
-                "A moved row is rebuilt at its new slot rather than carried to it, around its own instance");
+                    ReferenceEquals(host.ElementAt(0), before[1]),
+                    ReferenceEquals(host.ElementAt(1), before[0])),
+                Is.EqualTo(("row-b,row-a", "a!", true, true)),
+                "Each row carries its element to its new slot, around its own instance");
         }
 
         // GREEN_ON_BASE(characterization): a keyed Fragment already scoped its rows' effective keys.
-        // Their elements already moved with the items; the case is here because it is what a caller
-        // writes instead of the arrangement above, and nothing pinned that it still works.
+        // Their elements already moved with the items; the case is here because a keyed scope is a second
+        // way the rows' keys are formed, beside the unscoped list above.
         [Test]
         public void Given_AKeyedListFragmentOfComponents_When_TheItemsAreReordered_Then_EachRowsElementMovesWithIt()
         {
