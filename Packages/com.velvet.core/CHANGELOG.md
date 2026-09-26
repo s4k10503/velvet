@@ -113,6 +113,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- One `V.Fragment` returned for several `V.List` items gives each item a row that keeps its element when
+  the items are reordered or appended to. Each item's copy of the Fragment shares its children, and a row's
+  key was read back from that shared child, so the rows resolved to one item's key: a row already on screen
+  was built again, and a row left on screen had its ref cleanup run.
+
+- A keyed element that leaves a keyed `V.Fragment` mounts a fresh element where an update that is
+  time-sliced reaches the move after resuming; it patched the element it had inside the Fragment. That is
+  the remount a synchronous update already gave, and the one React gives.
+
+- A node held across renders — the same `VNode` instance on both — is matched by the position it is
+  written at rather than by being the same node, wherever the previous render's child array held a
+  `V.Fragment`, a `V.Provider`, a component or another wrapper, or a `null`. It mounts a fresh element
+  when it leaves a keyed `V.Fragment`, keyed or not, and when as an unkeyed child it lands at a different
+  index, where an insertion or a removal before it could let it keep its element; both are remounts React
+  gives too. In a child array whose previous render held none of those, an unkeyed held node that lands at
+  a different index can still keep its element.
+
+- Two sibling components that each render an element under the same `key:` keep their elements when their
+  parent re-renders. The two keys were compared as siblings of one list, so a re-render of the parent
+  rebuilt both elements and logged a duplicate-key warning. A key is now compared only among the
+  elements one component renders, as React scopes it.
+
+- An absolutely positioned element carrying a `clip-path-*` utility keeps the box its edge offsets
+  declare, and an `absolute inset-0` child fills it, as without the clip. The wrapper that hosts the
+  clip stayed in its parent's flow as a relative flex item, and the element's offsets resolved against
+  it rather than against the parent: in a column parent the wrapper took the parent's width and no
+  height, so an element offset from all four edges came out with no height and its `inset-0` child
+  with it. The wrapper around an absolute element now leaves the flow, spans the parent and takes the
+  parent's flex-direction, `justify-content` and `align-items`, so an absolute clipped element with no
+  offsets is placed where the parent's alignment puts it rather than centred on the wrapper. The
+  wrapper follows the element into and out of the flow when a render or a variant adds or drops
+  `absolute`, including when that leaves the element's box where it was. Still different from CSS:
+  whatever of the element lies outside its parent's box is cut, and a change to the parent's direction
+  or alignment alone is followed only once the element's own box or its clip next changes, or a later
+  render or variant adds or drops its `absolute`. An in-flow clipped element is laid out as before,
+  centred in its wrapper.
+
 - A `V.Suspense` or `V.AnimatePresence` that a component returns with no element above it keeps what it
   committed when that component re-renders on its own. That held only where nothing above the component
   opened a key scope; a keyed `V.Fragment` does, as do the children of a `V.Suspense`, a child of a
@@ -242,6 +279,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   children hold a null and so are all built before any is placed — the child's ref was set up once and
   not cleaned up even when the list was disposed, and outside any list it was set up once; in each it is
   now never set up.
+
+- An element that an abandoned render built and had not placed is released. Where the keyed diff
+  matches rows by key rather than by their place at either end of the list, it builds every new row
+  before placing any, and it released none of them when a later row's creation threw, when an error
+  boundary caught a failure inside one of those rows, or when a new render discarded a time-sliced one
+  parked partway. The walk that expands components, fragments and `null`s in place released what it had
+  built on a throw, but not when a boundary's catch stopped the render. And where a list appends rows —
+  unkeyed, or keyed in a time-sliced pass — or rebuilds a range it found shorter than its last render,
+  the row whose creation raised the abort was dropped unplaced without being released. Each left a
+  `refCallback:` set up once on an element no tree holds, and where a row's creation threw with no
+  boundary above it, a component mounted inside an earlier new row ran its layout effect on the next
+  render. Where an element's creation threw, a `V.Portal` among its children still mounted its children
+  into the target, and a `z-*` absolute child still had its element placed into a layer container after
+  that element had gone back to the pool — measured on a `V.Button`, the pool's next button came out
+  with a parent.
+
+- An error boundary's catch no longer disposes a component that the render it stopped had not reached
+  yet. Such a component was taken as removed: its effect cleanups ran and it was disposed while its
+  elements stayed on screen, and the next render mounted it afresh. Measured on a boundary followed by a
+  counter at 1: the catch ran the counter's effect cleanup, and the next render showed `count:0` beside
+  the `count:1` the disposed instance left. The counter now keeps its state and its effect.
 
 - An error boundary above a `V.VirtualList` that catches a row's render during a range update no longer
   leaves that update's rows mounted. The boundary's fallback takes the list out of the tree from inside

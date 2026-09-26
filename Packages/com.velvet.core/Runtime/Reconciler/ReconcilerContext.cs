@@ -666,6 +666,11 @@ namespace Velvet
         // property), so the clip wrapper's mask must be re-derived. Null until the patcher wires it.
         public System.Action<VisualElement> ClipPathReResolve { get; set; } = null!;
 
+        // Hook to bring a clipped element's wrapper to the element's current position mode after a variant
+        // toggled any payload on it, set by FiberNodePatcher and invoked by StyleVariantPayload.Apply. Null
+        // until the patcher wires it.
+        public System.Action<VisualElement> ClipPathWrapperModeSync { get; set; } = null!;
+
         // Per-element ring-* / outline-* bookkeeping, keyed by the element itself. An entry means a
         // native-border overlay painting the outset (or inset) band is hosted as a reconciler-invisible
         // sibling of the element (RingOverlay). No GPU resource to dispose (unlike clip), but cleanup must
@@ -856,6 +861,11 @@ namespace Velvet
         public Queue<(VisualElement Placeholder, VNode Node, VisualElement? Target,
             List<KeyValuePair<object, object>> ContextSnapshot, ComponentFiber? LogicalParent)> PendingPortalMounts { get; } = new();
 
+        // The Portal / WorldSpace placeholders queued in PendingPortalMounts and not torn down since. A
+        // placeholder's parent cannot answer that: one built inside an element whose creation then failed is
+        // still parented by that element, which no caller holds.
+        internal HashSet<VisualElement> PendingHostPlaceholders { get; } = new();
+
         // Per-stacking-context-parent z-layer containers (FiberZLayerCoordinator), lazily created on first
         // z-marked absolute child. NOT a pure side-table: the record's Front/Back reference live VisualElement
         // containers that are ordinary (if empty) children of the key until FiberZLayerCoordinator.DrainTeardowns
@@ -1009,16 +1019,6 @@ namespace Velvet
         // an expansion nested inside either reads the array of the fiber it belongs to rather than the outer
         // one. ComponentFiber.SourceTree owns what reads it.
         internal VNode?[]? CurrentFiberTree { get; set; }
-
-        // Effective key override published by the expansion pass for VNodes whose identity is gated
-        // by an enclosing keyed FragmentNode. The keyed reconciler reads this map (via
-        // ChildReconciler.EffectiveKey) instead of VNode.Key when looking up
-        // identity. The override composes Fragment scope chain with the child's own key (or its
-        // positional index when unkeyed) so children of the same keyed Fragment pair as a unit
-        // across reorders, while sibling Fragments with the same inner child keys do not collide.
-        // Keyed by VNode reference — each reconcile pass produces fresh VNode instances, so entries
-        // do not collide across passes. Cleared at the end of every top-level Reconcile.
-        public Dictionary<VNode, string> EffectiveKeys { get; } = new();
 
         // Old VNode trees of inline children re-rendered via SubsumeFiberIntoThisPass during the
         // current reconcile pass, queued for pooled-object return at the top-level boundary rather than
@@ -1698,10 +1698,9 @@ namespace Velvet
 
         // Reconcile depth shared across all Reconciler instances that observe this context.
         // Each fiber owns its own Reconciler (so per-fiber pause/resume state is
-        // independent), but the ReconcilerContext-keyed EffectiveKeys registry must
-        // only be cleared when the OUTERMOST Reconcile pass across the entire fiber tree completes.
-        // Using an instance-local depth would treat each fiber-owned Reconciler.Reconcile call as a
-        // fresh top-level, clearing entries for sibling subtrees the surrounding pass has not yet consumed.
+        // independent), but the top-level reset in Reconciler.Reconcile's finally must run only when the
+        // OUTERMOST Reconcile pass across the entire fiber tree completes. Using an instance-local depth would
+        // treat each fiber-owned Reconciler.Reconcile call as a fresh top-level and run that reset mid-pass.
         internal int SharedReconcileDepth { get; set; }
         public IReconcilerBridge ReconcilerBridge { get; private set; } = null!;
         public bool IsDisposed { get; private set; }

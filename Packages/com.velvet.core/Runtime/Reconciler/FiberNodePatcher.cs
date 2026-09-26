@@ -22,6 +22,7 @@ namespace Velvet
             // Let the variant manipulators (via StyleVariantPayload) re-resolve a clip-path mask when a
             // hover:/focus:/dark: clip payload toggles — the class toggle alone does nothing in UITK.
             _ctx.ClipPathReResolve = _appliers.ReResolveClipPathLive;
+            _ctx.ClipPathWrapperModeSync = _appliers.SyncClipPathWrapperMode;
             // Same seam for every other class-driven pass a variant can change — the layout manipulators and
             // the paint layers (skew / gradient / animate / shadow / border-style). A variant that toggles
             // one of their gate tokens changes what the element should carry, and that toggle never reaches
