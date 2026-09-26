@@ -173,7 +173,9 @@ whole, which is what a statement carrying one mutant wants. Only a
 whole-suite run over the diff reads any: `--files`, `--filter` and `--assemblies` each ask a narrower
 question, and under one nearly everything survives. `--platform` is not one of those — it runs a whole
 suite, just a different one — so it reads declarations, and the platform is part of the verdict
-records' key so that a kill a PlayMode run took is never kept for an EditMode one.
+records' key so that a kill a PlayMode run took is never kept for an EditMode one. `--survivors-of`
+takes a run on one platform as the first of two passes: the run on the other platform measures only
+that run's survivors and decides over both, which is the decision CI takes.
 
 The run also fails or stops rather than pass over a mutant nobody asked about, and
 [Generators~/README.md ▸ The Unity assemblies](Packages/com.velvet.core/Generators~/README.md#the-unity-assemblies)
@@ -188,16 +190,24 @@ something a mutation can ask about. Where a licence is configured, a diff of mor
 shards of 25 can measure inside the shard job's timeout is refused at the plan and is split into
 smaller pull requests; without one no shard would run, and the plan passes as the Unity jobs skip.
 Otherwise,
-where a licence is configured, `Test ▸ mutation-shard` measures them in up to ten jobs, each running
-every Nth mutant against the whole EditMode suite in the editor image `Test ▸ unity-tests` pulls and
-recording its verdicts, and `Test ▸ mutation-verdict` — the check named `Mutation campaign` — reads
-every shard's records and decides as a local run over the same diff decides: an unanswered survivor, a
-stale declaration or a mutant nothing measured fails it. Unlike a local run it takes every mutant
-rather than stopping at `--max`. A shard whose baseline is red fails on its own. Its job summary names
-each survivor and each unmeasured mutant by line, and each shard's editor logs and results files are
-uploaded as `Mutation shard N`. All three feed `Required checks (Unity)`, and every push to the pull
-request runs them again, so a review round that changes production code is measured by the push that
-carries it. Running the campaign locally is optional: it answers the same question before a push.
+where a licence is configured, the mutants are measured in two passes, because a mutant is killed
+when either suite fails on it, and one only a PlayMode fixture notices survives the EditMode suite.
+`Test ▸ mutation-shard` measures every mutant in up to ten jobs, each running every Nth of them
+against the whole EditMode suite in the editor image `Test ▸ unity-tests` pulls and recording its
+verdicts. Once every one of those jobs has passed, `Test ▸ mutation-playmode-plan` counts the mutants
+they left surviving, and `Test ▸ mutation-playmode-shard` measures only those against the whole
+PlayMode suite, in up to ten jobs of its own; a pass over more survivors than ten of its shards can
+measure inside their timeout is refused there, and the tests the survivors ask for are what brings it
+under. `Test ▸ mutation-verdict` — the check named `Mutation campaign` — reads both passes' records
+and decides as a local run over the same diff decides: an unanswered survivor, a stale declaration or
+a mutant nothing measured fails it, and a survivor of the EditMode pass that no PlayMode shard
+recorded is one nothing measured. Unlike a local run it takes every mutant rather than stopping at
+`--max`. A shard whose baseline is red fails on its own. Its job summary names each survivor and each
+unmeasured mutant by line, with the verdict each pass gave it, and each shard's editor logs and results
+files are uploaded as `Mutation EditMode shard N` or `Mutation PlayMode shard N`. All five feed
+`Required checks (Unity)`, and every push to the pull request runs them again, so a review round that
+changes production code is measured by the push that carries it. Running the campaign locally is
+optional: it answers the same question before a push.
 
 **A round is answered by a layer on top, not by an amend.** A finding cites the commit it was taken
 on, so replacing that commit leaves the round and its answer inseparable, and the branch cannot land
@@ -839,6 +849,8 @@ on every platform.
 | `Test ▸ base-red` (EditMode / PlayMode) | every PR | **required** (skipped if absent) | no |
 | `Test ▸ mutation-plan` | every PR | not required | no |
 | `Test ▸ mutation-shard` | every PR | **required** (skipped if absent) | no |
+| `Test ▸ mutation-playmode-plan` | every PR | **required** (skipped if absent) | no |
+| `Test ▸ mutation-playmode-shard` | every PR | **required** (skipped if absent) | no |
 | `Test ▸ mutation-verdict` | every PR | **required** (skipped if absent) | no |
 | `Test ▸ Required checks (Unity)` | push (filtered) / every PR / merge group | not required | **yes** |
 | `UPM ▸ split` | push to `main` / manual (`workflow_dispatch`, which also tags and publishes the release) | not required | no |
