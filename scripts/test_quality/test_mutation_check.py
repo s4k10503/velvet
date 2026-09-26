@@ -3629,6 +3629,195 @@ class ShardedCampaignTests(unittest.TestCase):
         self.assertEqual(code, 0)
 
 
+class TwoPlatformCampaign(StubbedCampaign):
+    """Four mutants on four lines, where the EditMode suite kills the first and third and the PlayMode
+    suite kills all four, so the second and fourth are killed only where the PlayMode pass runs."""
+
+    BODY = textwrap.dedent("""\
+        namespace Velvet
+        {
+            internal static class Probe
+            {
+                internal static bool Ready(int a, int b) => a <= b;
+                internal static bool Other(int a, int b) => a >= b;
+                internal static bool Third(int a, int b) => a < b;
+                internal static bool Fourth(int a, int b) => a > b;
+            }
+        }
+        """)
+
+    KILLED_BY = {"EditMode": {"mutant-001.xml", "mutant-003.xml"},
+                 "PlayMode": {"mutant-001.xml", "mutant-002.xml", "mutant-003.xml", "mutant-004.xml"}}
+
+    def __init__(self, body=None):
+        super().__init__(body)
+        self.measured = []
+
+    def run_suite(self, _unity, _project, platform, _scope, results, log, _timeout, _holder=None):
+        name = Path(results).name
+        self.measured.append((platform, name))
+        Path(log).write_text("")
+        Path(results).write_text(FAILING_RESULTS if name in self.KILLED_BY[platform] else GREEN_RESULTS)
+        return 0.0, False, 0
+
+    def edit_pass(self):
+        return self.run_over_diff("--shard", "0/1", "--output", str(self.project / "edit"))
+
+    def play_pass(self, *arguments):
+        return self.run_over_diff("--platform", "PlayMode", "--survivors-of", str(self.project / "edit"),
+                                  *arguments)
+
+    def collect(self):
+        return self.play_pass("--collect", str(self.project / "play"))
+
+
+class TwoPassCampaignTests(unittest.TestCase):
+    """A mutant is killed where either platform's suite fails on it: an EditMode pass over every
+    mutant, then a PlayMode pass over its survivors, decided together."""
+
+    def test_Given_MutantsOnlyThePlayModeSuiteKills_When_BothPassesAreCollected_Then_TheCampaignPasses(self):
+        # Arrange
+        campaign = TwoPlatformCampaign()
+        campaign.edit_pass()
+        campaign.play_pass("--shard", "0/1", "--output", str(campaign.project / "play"))
+
+        # Act
+        code = campaign.collect()
+
+        # Assert
+        self.assertEqual((code, re.findall(r"^killed: \d+$", campaign.printed, re.MULTILINE)),
+                         (0, ["killed: 4"]))
+
+    def test_Given_EditModeRecords_When_ThePlayModePassRuns_Then_OnlyTheirSurvivorsReachTheEditor(self):
+        # Arrange
+        campaign = TwoPlatformCampaign()
+        campaign.edit_pass()
+        campaign.measured.clear()
+
+        # Act
+        campaign.play_pass("--shard", "0/1", "--output", str(campaign.project / "play"))
+
+        # Assert
+        self.assertEqual(campaign.measured, [("PlayMode", "baseline.xml"), ("PlayMode", "mutant-002.xml"),
+                                             ("PlayMode", "mutant-004.xml")])
+
+    def test_Given_SurvivorsOnIndicesOneShardWouldTakeByIndex_When_ThePlayModePassIsSplit_Then_EachShardTakesOne(self):
+        # Arrange — survivors 2 and 4 share an index parity, so dealt by index both go to shard 1 of 2.
+        # Held against the unsplit pass rather than against named mutants, so which mutants the pass
+        # chooses is left to the case above.
+        campaign = TwoPlatformCampaign()
+        campaign.edit_pass()
+
+        def mutants_measured(*arguments):
+            campaign.measured.clear()
+            campaign.play_pass(*arguments)
+            return [name for _, name in campaign.measured if name != "baseline.xml"]
+
+        whole = mutants_measured("--shard", "0/1", "--output", str(campaign.project / "play"))
+
+        # Act
+        halves = [mutants_measured("--shard", spec, "--output", str(campaign.project / directory))
+                  for spec, directory in (("0/2", "play0"), ("1/2", "play1"))]
+
+        # Assert
+        self.assertEqual((sorted(halves[0] + halves[1]) == sorted(whole),
+                          len(halves[0]) == len(halves[1]) > 0), (True, True))
+
+    def test_Given_EditModeSurvivorsNoPlayModeShardRecorded_When_Collected_Then_TheyAreUnmeasuredAndTheRunFails(self):
+        # Arrange — no declaration above either survivor, so nothing but the missing PlayMode record
+        # can fail the run.
+        campaign = TwoPlatformCampaign()
+        campaign.edit_pass()
+
+        # Act
+        code = campaign.collect()
+
+        # Assert
+        self.assertEqual((code, re.findall(r"^killed: .*$", campaign.printed, re.MULTILINE)),
+                         (1, ["killed: 2, {}: 2".format(mutation_check.UNRECORDED)]))
+
+    def test_Given_EditModeSurvivors_When_ThePlayModePassIsPlanned_Then_ItCountsWhatThePassMeasures(self):
+        # Arrange — held against the pass rather than against a number, so which mutants the pass
+        # chooses is left to the case that names them.
+        campaign = TwoPlatformCampaign()
+        campaign.edit_pass()
+        campaign.measured.clear()
+        campaign.play_pass("--shard", "0/1", "--output", str(campaign.project / "play"))
+        measured = sum(1 for _, name in campaign.measured if name != "baseline.xml")
+
+        # Act
+        code = campaign.play_pass("--plan")
+
+        # Assert
+        self.assertEqual((code, re.findall(r"^mutants=.*$", campaign.printed, re.MULTILINE)),
+                         (0, ["mutants={}".format(measured)]))
+
+    def test_Given_MoreSurvivorsThanThePlayModeShardsCarry_When_Planned_Then_ItRefuses(self):
+        # Arrange — two survivors against a PlayMode ceiling of one, under an EditMode one that holds them.
+        campaign = TwoPlatformCampaign()
+        campaign.edit_pass()
+
+        # Act
+        with mock.patch.object(mutation_check, "MAX_SHARDS", 1), \
+                mock.patch.dict(mutation_check.SHARD_CEILING, {"EditMode": 2, "PlayMode": 1}):
+            code = campaign.play_pass("--plan")
+
+        # Assert
+        self.assertEqual((code, "shards=" in campaign.printed), (mutation_check.CEILING_REFUSAL, False))
+
+    def test_Given_SurvivorsWithinThePlayModeCeiling_When_Planned_Then_TheMutantsEditModeKilledDoNotCount(self):
+        # Arrange — four mutants, two of them survivors, against a PlayMode ceiling of two.
+        campaign = TwoPlatformCampaign()
+        campaign.edit_pass()
+
+        # Act
+        with mock.patch.object(mutation_check, "MAX_SHARDS", 1), \
+                mock.patch.dict(mutation_check.SHARD_CEILING, {"EditMode": 4, "PlayMode": 2}):
+            code = campaign.play_pass("--plan")
+
+        # Assert
+        self.assertEqual((code, re.findall(r"^shards=.*$", campaign.printed, re.MULTILINE)),
+                         (0, ["shards=[0]"]))
+
+    def test_Given_ThePlayModeShardSize_When_ThePlayModePassIsPlanned_Then_ItSizesTheShards(self):
+        # Arrange — two survivors, one to a PlayMode shard where an EditMode shard would take both.
+        campaign = TwoPlatformCampaign()
+        campaign.edit_pass()
+
+        # Act
+        with mock.patch.dict(mutation_check.SHARD_SIZE, {"EditMode": 3, "PlayMode": 1}):
+            campaign.play_pass("--plan")
+
+        # Assert
+        self.assertEqual(re.findall(r"^shards=.*$", campaign.printed, re.MULTILINE), ["shards=[0, 1]"])
+
+    def test_Given_SurvivorsOfTheDirectoryTheRunCollects_When_Run_Then_ItIsRefused(self):
+        # Arrange
+        campaign = TwoPlatformCampaign()
+        campaign.edit_pass()
+
+        # Act
+        refused = io.StringIO()
+        with contextlib.redirect_stderr(refused):
+            code = campaign.play_pass("--collect", str(campaign.project / "edit"))
+
+        # Assert
+        self.assertEqual((code, "keep their records apart" in refused.getvalue()), (2, True))
+
+    def test_Given_SurvivorsOfTheDirectoryTheRunWrites_When_Run_Then_ItIsRefused(self):
+        # Arrange — one record file per index, so the second pass would write over the first's.
+        campaign = TwoPlatformCampaign()
+        campaign.edit_pass()
+
+        # Act
+        refused = io.StringIO()
+        with contextlib.redirect_stderr(refused):
+            code = campaign.play_pass("--output", str(campaign.project / "edit"))
+
+        # Assert
+        self.assertEqual((code, "keep their records apart" in refused.getvalue()), (2, True))
+
+
 class EditorArgumentTests(unittest.TestCase):
     def test_Given_AnEditorArgument_When_TheCampaignRuns_Then_ItReachesTheLaunchAndNotTheVerdictsKey(self):
         # Arrange
@@ -3705,7 +3894,7 @@ class CampaignPlanTests(unittest.TestCase):
 
         # Act
         with mock.patch.object(mutation_check, "MAX_SHARDS", 1), \
-                mock.patch.object(mutation_check, "MAX_MUTANTS_PER_SHARD", 1):
+                mock.patch.dict(mutation_check.SHARD_CEILING, {"EditMode": 1}):
             code = campaign.run_over_diff("--plan")
 
         # Assert
@@ -3715,7 +3904,7 @@ class CampaignPlanTests(unittest.TestCase):
 
     def test_Given_MutantCounts_When_Sharded_Then_EachShardHoldsAtMostItsShareUpToTheCap(self):
         # Arrange
-        per, cap = mutation_check.MUTANTS_PER_SHARD, mutation_check.MAX_SHARDS
+        per, cap = mutation_check.SHARD_SIZE["EditMode"], mutation_check.MAX_SHARDS
         counts = [0, 1, per, per + 1, per * cap * 4]
 
         # Act
@@ -3732,27 +3921,50 @@ class CampaignPlanTests(unittest.TestCase):
 
 
 class ShardCeilingTests(unittest.TestCase):
-    """The plan's ceiling against the shard job's own timeout, which lives in the workflow."""
+    """Each platform's plan ceiling against its shard job's own timeout, which lives in the workflow."""
 
-    # The slowest mutant measured on CI, and the longest measured of each setup phase added together:
-    # image pull, activation and baseline, 146 + 52 + 225 s, with the checkout and cache restore's 20 s.
-    SLOWEST_MUTANT = 190
-    LONGEST_SETUP = 443
+    # Per platform: the shard job, the slowest mutant measured on CI, and the longest measured of each
+    # setup phase added together. EditMode's is image pull, activation and baseline, 146 + 52 + 225 s,
+    # with the checkout and cache restore's 20 s. PlayMode's setup is everything before activation,
+    # activation and baseline, 130 + 37 + 374 s. Its mutant is the slowest measured, 364 s, plus the
+    # 100 s its five bounded cases spend where a mutant stops the frame driver, 5 x 20 s measured locally.
+    COSTS = {"EditMode": ("mutation-shard", 190, 443),
+             "PlayMode": ("mutation-playmode-shard", 464, 541)}
 
-    def test_Given_AFullShard_When_ItsWorstMeasuredCostIsTaken_Then_ItFitsTheJobTimeout(self):
-        # Arrange
+    def fits(self, platform):
+        job, slowest, setup = self.COSTS[platform]
         workflow = (REPO_ROOT / ".github/workflows/test.yml").read_text()
-        job = workflow.partition("\n  mutation-shard:")[2]
-        found = re.search(r"^    timeout-minutes: (\d+)$", job, re.MULTILINE)
+        found = re.search(r"^    timeout-minutes: (\d+)$", workflow.partition("\n  {}:".format(job))[2],
+                          re.MULTILINE)
+        per = mutation_check.SHARD_CEILING.get(platform)
+        return per is not None and found is not None and setup + per * slowest <= int(found.group(1)) * 60
 
-        per = getattr(mutation_check, "MAX_MUTANTS_PER_SHARD", None)
-
+    def test_Given_AFullEditModeShard_When_ItsWorstMeasuredCostIsTaken_Then_ItFitsTheJobTimeout(self):
         # Act
-        fits = (per is not None and found is not None
-                and self.LONGEST_SETUP + per * self.SLOWEST_MUTANT <= int(found.group(1)) * 60)
+        fits = self.fits("EditMode")
 
         # Assert
         self.assertTrue(fits)
+
+    def test_Given_AFullPlayModeShard_When_ItsWorstMeasuredCostIsTaken_Then_ItFitsTheJobTimeout(self):
+        # Act
+        fits = self.fits("PlayMode")
+
+        # Assert
+        self.assertTrue(fits)
+
+    def test_Given_TheVerdictJob_When_ItsCampaignIsRead_Then_ItDecidesOverBothPasses(self):
+        # Arrange — without the three, the verdict is the EditMode pass's alone, and every mutant only a
+        # PlayMode fixture kills reads as a survivor.
+        workflow = (REPO_ROOT / ".github/workflows/test.yml").read_text()
+        job = workflow.partition("\n  mutation-verdict:")[2].partition("\n\n  # ---")[0]
+        step = job.partition("mutation_check.py")[2].partition("| tee")[0]
+
+        # Act
+        flags = re.findall(r"--(platform PlayMode|survivors-of|collect)\b", step)
+
+        # Assert
+        self.assertEqual(sorted(flags), ["collect", "platform PlayMode", "survivors-of"])
 
     def test_Given_ThePlanStep_When_ItsCeilingStatusIsRead_Then_ItIsTheOneThePlanExits(self):
         # Arrange — the step lets the ceiling through without a licence by this number, and a copy

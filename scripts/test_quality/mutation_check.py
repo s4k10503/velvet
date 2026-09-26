@@ -74,17 +74,18 @@ NOT_BUILT = "not rebuilt"
 UNRECORDED = "not measured (no shard recorded it)"
 
 SURVIVING = (SURVIVED, INCONCLUSIVE)
+OTHER_PLATFORM = {"EditMode": "PlayMode", "PlayMode": "EditMode"}
 UNMEASURED = (NOT_BUILT, TIMED_OUT, HUNG, UNCOMPILABLE, UNRECORDED)
 
-# How `--plan` splits a campaign across CI jobs. Each shard pays an image pull, a licence activation
-# and a baseline before its first mutant; CONTRIBUTING.md ▸ Checking that the tests can fail has the
-# measured cost of each.
-MUTANTS_PER_SHARD = 3
+# How `--plan` splits a pass across CI jobs, per platform. Each shard pays an image pull, a licence
+# activation and a baseline before its first mutant; CONTRIBUTING.md ▸ Checking that the tests can fail
+# has the measured cost of each.
+SHARD_SIZE = {"EditMode": 3, "PlayMode": 2}
 MAX_SHARDS = 10
-# The most a shard is given before `--plan` refuses the diff: this many of the slowest measured
-# mutant, after the longest measured of each setup phase, fit the shard job's timeout in test.yml.
-# `ShardCeilingTests` holds the two together.
-MAX_MUTANTS_PER_SHARD = 25
+# The most a shard is given before `--plan` refuses: this many of the slowest mutant, after the longest
+# of each setup phase, fit that platform's shard job's timeout in test.yml. `ShardCeilingTests` holds
+# each pair together.
+SHARD_CEILING = {"EditMode": 25, "PlayMode": 10}
 # What `--plan` exits with over that ceiling, apart from 1, so the workflow can let it through where
 # no licence means no shard would run.
 CEILING_REFUSAL = 4
@@ -1814,13 +1815,20 @@ def parse_shard(text):
     return int(match.group(1)), int(match.group(2))
 
 
-def in_shard(index, shard):
-    """Whether the 1-based mutant `index` is this shard's to run."""
-    return shard is None or (index - 1) % shard[1] == shard[0]
+def in_shard(position, shard):
+    """Whether the 1-based `position` is this shard's to run."""
+    return shard is None or (position - 1) % shard[1] == shard[0]
 
 
-def shard_count(mutants):
-    return min(MAX_SHARDS, -(-mutants // MUTANTS_PER_SHARD))
+def shard_count(mutants, platform="EditMode"):
+    return min(MAX_SHARDS, -(-mutants // SHARD_SIZE[platform]))
+
+
+def sharded(chosen, shard):
+    """The indices in `chosen` that `shard` measures, dealt by position in `chosen` rather than by
+    index: a second pass chooses the first pass's survivors, and dealt by index, two survivors at
+    indices 2 and 4 both go to the second of two shards."""
+    return [index for position, index in enumerate(chosen, start=1) if in_shard(position, shard)]
 
 
 def reach(mutants, unreached, project):
@@ -1908,9 +1916,9 @@ def answered(mutants, deferred, declared):
     return unanswered, stale
 
 
-def measure(args, project, holder, output, targets, mutants, scope, campaign, coverage):
-    """Waits for the machine, takes the baseline and gives each mutant `args.shard` selects its
-    verdict, recording each one under `output` as it is reached."""
+def measure(args, project, holder, output, targets, mutants, scope, campaign, coverage, selected):
+    """Waits for the machine, takes the baseline and gives each mutant whose index is in `selected`
+    its verdict, recording each one under `output` as it is reached."""
     if not wait_for_quiet(args.busy_timeout):
         raise SystemExit("another Unity test run is still in flight after {}s".format(args.busy_timeout))
 
@@ -1953,7 +1961,7 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
     resumed = measured = 0
     try:
         for index, mutant in enumerate(mutants, start=1):
-            if not in_shard(index, args.shard):
+            if index not in selected:
                 continue
             print("[{}/{}] {}".format(index, len(mutants), mutant.describe(project)), flush=True)
             kept = read_verdict(output, index, campaign, mutant, project, scope)
@@ -2034,7 +2042,7 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
             write_verdict(output, index, campaign, mutant, project, killers, scope)
             measured += 1
             average = (time.time() - started) / measured
-            left = sum(1 for later in range(index + 1, len(mutants) + 1) if in_shard(later, args.shard))
+            left = sum(1 for later in selected if later > index)
             print("      {} ({}) in {:.0f}s; {:.0f}s left at {:.0f}s each".format(
                 mutant.verdict, mutant.detail or "-", wall, average * left, average))
     finally:
@@ -2048,11 +2056,27 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
               flush=True)
 
 
-def report_shard(mutants, shard):
+def plan_survivors(args, coverage, mutants, chosen, first):
+    """The second pass's plan: the shards its platform needs for the first pass's survivors."""
+    print(coverage)
+    per = SHARD_CEILING[args.platform]
+    if len(chosen) > MAX_SHARDS * per:
+        print("{} mutants survived the {} suite, more than {} shards of {} can measure on {} inside "
+              "the shard job's timeout.\nWrite the tests they ask for, or split the pull request."
+              .format(len(chosen), first, MAX_SHARDS, per, args.platform))
+        return CEILING_REFUSAL
+    print("{} of {} mutant(s) survived the {} suite and are measured on {}".format(
+        len(chosen), len(mutants), first, args.platform))
+    print("mutants={}".format(len(chosen)))
+    print("shards={}".format(json.dumps(list(range(shard_count(len(chosen), args.platform))))))
+    return 0
+
+
+def report_shard(mutants, selected, shard):
     """What one shard measured, and no decision over it. Which survivors a declaration answers for and
     which declarations are stale are both readings over every mutant of the diff, and a shard holds a
     slice of them: `--collect` takes the decision once the slices are together."""
-    ran = [mutant for index, mutant in enumerate(mutants, start=1) if in_shard(index, shard)]
+    ran = [mutants[index - 1] for index in selected]
     tally = {}
     for mutant in ran:
         tally[mutant.verdict] = tally.get(mutant.verdict, 0) + 1
@@ -2108,9 +2132,22 @@ def main():
     parser.add_argument("--collect", nargs="+", metavar="DIR",
                         help="decide the campaign from the verdicts --shard runs recorded in these "
                              "directories, without an editor")
+    parser.add_argument("--survivors-of", nargs="+", metavar="DIR",
+                        help="take each mutant's verdict from the run on the other platform that "
+                             "recorded it in these directories, and measure, plan or collect on "
+                             "--platform only the mutants that run left surviving")
     args = parser.parse_args()
     if args.shard is not None and args.collect is not None:
         parser.error("--shard measures and --collect decides; a run does one of them")
+    if args.survivors_of is not None:
+        # One file name per mutant index in either pass, so a pass writing where the other's records
+        # are overwrites the verdicts it was chosen by.
+        read = {Path(name).resolve() for name in args.survivors_of}
+        written = [Path(args.output or Path(args.project) / "Logs" / "mutation_check").resolve()]
+        written += [Path(name).resolve() for name in args.collect or ()]
+        if read & set(written):
+            parser.error("--survivors-of names a directory this run writes or collects from; the "
+                         "two passes keep their records apart")
 
     project = Path(args.project).resolve()
     holder = Holder(project / SENTINEL)
@@ -2262,12 +2299,12 @@ def main():
             unreached[path] = left
     coverage = reach(mutants, unreached, project)
 
-    if args.plan:
-        if len(mutants) > MAX_SHARDS * MAX_MUTANTS_PER_SHARD:
+    if args.plan and args.survivors_of is None:
+        if len(mutants) > MAX_SHARDS * SHARD_CEILING[args.platform]:
             print(coverage)
             print("{} mutants is more than {} shards of {} can measure inside the shard job's "
                   "timeout.\nSplit the pull request.".format(len(mutants), MAX_SHARDS,
-                                                             MAX_MUTANTS_PER_SHARD))
+                                                             SHARD_CEILING[args.platform]))
             return CEILING_REFUSAL
         print(coverage if (mutants or unreached) else "no mutable change; no campaign is owed")
         if unreached and not mutants:
@@ -2277,7 +2314,7 @@ def main():
                   "and the\ncampaign passes. Say in the pull request why the change is not something "
                   "a mutation\ncan ask about.")
         print("mutants={}".format(len(mutants)))
-        print("shards={}".format(json.dumps(list(range(shard_count(len(mutants)))))))
+        print("shards={}".format(json.dumps(list(range(shard_count(len(mutants), args.platform))))))
         return 0
 
     if not mutants:
@@ -2307,16 +2344,46 @@ def main():
 
     # What each verdict record is keyed on, which is how `--collect` knows a shard's record is about
     # this tree.
-    campaign = scope_digest(merge_base_of(project, args.base), targets, project, args.platform)
+    base = merge_base_of(project, args.base)
+    campaign = scope_digest(base, targets, project, args.platform)
+    chosen = list(range(1, len(mutants) + 1))
+    first = None
+    if args.survivors_of is not None:
+        # Read under the other platform's key, so a record this platform wrote is never taken as the
+        # first pass's. A mutant without one is unrecorded, which fails the decision, and is not asked
+        # about again here.
+        first = OTHER_PLATFORM[args.platform]
+        earlier = scope_digest(base, targets, project, first)
+        for index, mutant in enumerate(mutants, start=1):
+            mutant.verdict, mutant.detail = collected(args.survivors_of, index, earlier, mutant,
+                                                      project, scope)
+        chosen = [index for index, mutant in enumerate(mutants, start=1)
+                  if mutant.verdict in SURVIVING]
+        if args.plan:
+            return plan_survivors(args, coverage, mutants, chosen, first)
+        firsts = {index: mutant.verdict for index, mutant in enumerate(mutants, start=1)}
     if args.collect is not None:
         print(coverage)
-        for index, mutant in enumerate(mutants, start=1):
+        for index in chosen:
+            mutant = mutants[index - 1]
             mutant.verdict, mutant.detail = collected(args.collect, index, campaign, mutant, project,
                                                       scope)
     else:
-        measure(args, project, holder, output, targets, mutants, scope, campaign, coverage)
+        selected = sharded(chosen, args.shard)
+        if selected:
+            measure(args, project, holder, output, targets, mutants, scope, campaign, coverage,
+                    set(selected))
+        else:
+            print(coverage)
         if args.shard is not None:
-            return report_shard(mutants, args.shard)
+            return report_shard(mutants, selected, args.shard)
+    if first is not None:
+        for index, mutant in enumerate(mutants, start=1):
+            if index in chosen:
+                mutant.detail = "{} {}; {}: {}".format(first, firsts[index], args.platform,
+                                                      mutant.detail or "-")
+            else:
+                mutant.detail = "{}: {}".format(first, mutant.detail or "-")
 
     declared = declarations_for(targets, changed) if whole else {}
     unanswered, stale = answered(mutants, deferred, declared)

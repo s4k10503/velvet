@@ -1,4 +1,6 @@
 using System;
+using System.Collections;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Threading;
 
@@ -15,9 +17,10 @@ namespace Velvet.TestUtilities
     /// which is unmeasured rather than survived and fails the campaign.
     /// <para>
     /// The bound is generous rather than tuned. What separates a wedge from a slow rendezvous here is not
-    /// a hand-picked margin — every one of these completes in the same frame the code under test reaches
-    /// it, or never — so any bound above scheduling noise reports the same thing, and a large one cannot
-    /// redden a healthy run on a loaded machine.
+    /// a hand-picked margin — an awaited completion arrives in the frame the code under test reaches it,
+    /// and a coroutine this bounds whole finishes a few frames later, or neither ever does — so any bound
+    /// above scheduling noise reports the same thing, and a large one cannot redden a healthy run on a
+    /// loaded machine.
     /// </para>
     /// </remarks>
     public static class BoundedAwait
@@ -53,6 +56,24 @@ namespace Velvet.TestUtilities
             catch (OperationCanceledException) when (expiry.IsCancellationRequested)
             {
                 throw new TimeoutException(Wedged(caller, line, seconds));
+            }
+        }
+
+        // The coroutine form, for a UnityTest driven by VelvetTask.ToCoroutine: its enumerator answers
+        // MoveNext with true for as long as the task is pending, so a wedge otherwise ends only at the
+        // runner's per-test timeout.
+        public static IEnumerator Bounded(this IEnumerator coroutine, [CallerMemberName] string caller = "",
+                                          [CallerLineNumber] int line = 0, int seconds = DefaultSeconds)
+        {
+            var clock = Stopwatch.StartNew();
+            while (coroutine.MoveNext())
+            {
+                if (clock.Elapsed.TotalSeconds > seconds)
+                {
+                    throw new TimeoutException(Wedged(caller, line, seconds));
+                }
+
+                yield return coroutine.Current;
             }
         }
 
