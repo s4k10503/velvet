@@ -1,8 +1,6 @@
 #nullable enable
 using System;
-using System.Collections.Generic;
 using System.Runtime.CompilerServices;
-using UnityEngine;
 using UnityEngine.UIElements;
 
 namespace Velvet
@@ -90,19 +88,19 @@ namespace Velvet
             Reset(StyleLonghand.BorderRightWidth, s => s.borderRightWidth = 0f),
             Reset(StyleLonghand.BorderBottomWidth, s => s.borderBottomWidth = 0f),
             Reset(StyleLonghand.BorderLeftWidth, s => s.borderLeftWidth = 0f),
-            Reset(StyleLonghand.BorderTopColor, s => s.borderTopColor = Color.clear),
-            Reset(StyleLonghand.BorderRightColor, s => s.borderRightColor = Color.clear),
-            Reset(StyleLonghand.BorderBottomColor, s => s.borderBottomColor = Color.clear),
-            Reset(StyleLonghand.BorderLeftColor, s => s.borderLeftColor = Color.clear),
+            Reset(StyleLonghand.BorderTopColor, s => s.borderTopColor = UnityEngine.Color.clear),
+            Reset(StyleLonghand.BorderRightColor, s => s.borderRightColor = UnityEngine.Color.clear),
+            Reset(StyleLonghand.BorderBottomColor, s => s.borderBottomColor = UnityEngine.Color.clear),
+            Reset(StyleLonghand.BorderLeftColor, s => s.borderLeftColor = UnityEngine.Color.clear),
             // A radius would round the mask as well as the wrapper's own paint.
             Reset(StyleLonghand.BorderTopLeftRadius, s => s.borderTopLeftRadius = 0f),
             Reset(StyleLonghand.BorderTopRightRadius, s => s.borderTopRightRadius = 0f),
             Reset(StyleLonghand.BorderBottomLeftRadius, s => s.borderBottomLeftRadius = 0f),
             Reset(StyleLonghand.BorderBottomRightRadius, s => s.borderBottomRightRadius = 0f),
-            Reset(StyleLonghand.BackgroundColor, s => s.backgroundColor = Color.clear),
+            Reset(StyleLonghand.BackgroundColor, s => s.backgroundColor = UnityEngine.Color.clear),
             // FiberClipPathApplier writes the mask over this whenever a clip is active.
             Reset(StyleLonghand.BackgroundImage, s => s.backgroundImage = StyleKeyword.None),
-            Reset(StyleLonghand.UnityBackgroundImageTintColor, s => s.unityBackgroundImageTintColor = Color.white),
+            Reset(StyleLonghand.UnityBackgroundImageTintColor, s => s.unityBackgroundImageTintColor = UnityEngine.Color.white),
             // Slices would nine-slice the mask image.
             Reset(StyleLonghand.UnitySliceTop, s => s.unitySliceTop = 0),
             Reset(StyleLonghand.UnitySliceRight, s => s.unitySliceRight = 0),
@@ -114,7 +112,7 @@ namespace Velvet
             Reset(StyleLonghand.Translate, s => s.translate = StyleKeyword.None),
             Reset(StyleLonghand.Rotate, s => s.rotate = StyleKeyword.None),
             Reset(StyleLonghand.Scale, s => s.scale = StyleKeyword.None),
-            Reset(StyleLonghand.Filter, s => s.filter = new List<FilterFunction>()),
+            Reset(StyleLonghand.Filter, s => s.filter = new System.Collections.Generic.List<FilterFunction>()),
 
             new(StyleLonghand.BackgroundPositionX, Role.Owned),
             new(StyleLonghand.BackgroundPositionY, Role.Owned),
@@ -238,7 +236,7 @@ namespace Velvet
             }
             var wrapper = binding.Wrapper;
             var mirrored = binding.MirroredClasses;
-            var live = new HashSet<string>(element.GetClasses());
+            var live = new System.Collections.Generic.HashSet<string>(element.GetClasses());
             if (mirrored != null)
             {
                 foreach (var cls in mirrored)
