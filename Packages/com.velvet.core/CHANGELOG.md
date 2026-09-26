@@ -124,8 +124,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   wrapper follows the element into and out of the flow when a render or a variant adds or drops
   `absolute`, including when that leaves the element's box where it was. Still different from CSS:
   whatever of the element lies outside its parent's box is cut, and a change to the parent's direction
-  or alignment alone is followed only once the element's own box or its clip next changes, or the
-  element is next patched or has a variant toggled. An in-flow clipped element is laid out as before,
+  or alignment alone is followed only once the element's own box or its clip next changes, or a later
+  render or variant adds or drops its `absolute`. An in-flow clipped element is laid out as before,
   centred in its wrapper.
 
 - Memoized components rebuild their compiled VNode cache when their props comparison detects a

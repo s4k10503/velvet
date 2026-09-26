@@ -349,6 +349,10 @@ namespace Velvet
         // null until the first sync.
         public bool? WrapperOutOfFlow;
 
+        // The inner's declared out-of-flow mode as the wrap, the last patch or the last variant toggle read it
+        // (see FiberClipPathApplier.SyncWrapperMode).
+        public bool DeclaredOutOfFlow;
+
         // Analytic path bounds of the live bake (element-local px). The geometry sync re-anchors the
         // background by these when only the inner's origin moved (no re-bake), and rescales them for
         // stretch-invariant shapes on a size change.

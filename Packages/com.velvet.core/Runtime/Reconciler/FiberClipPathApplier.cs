@@ -142,7 +142,8 @@ namespace Velvet
             // OLD-parent coordinates until the next layout pass, so the anchor must not read it here (a
             // (100,50) card would otherwise show its mask offset by (100,50) for one frame); that pass's
             // GeometryChangedEvent re-anchors it at the inner's real place in the wrapper.
-            SyncClipPathGeometry(element, binding, innerAtWrapperOrigin: true, IsDeclaredOutOfFlow(element));
+            binding.DeclaredOutOfFlow = IsDeclaredOutOfFlow(element);
+            SyncClipPathGeometry(element, binding, innerAtWrapperOrigin: true, binding.DeclaredOutOfFlow);
             return wrapper;
         }
 
@@ -325,9 +326,19 @@ namespace Velvet
         }
 
         // A patch or a variant that adds or drops `absolute` without moving the inner raises no geometry event,
-        // so the wrapper's mode follows it here.
+        // so the wrapper's mode follows it here — only when the declared mode itself changed. A position the
+        // declaration cannot see (a user stylesheet class) never changes it, and is left to the geometry sync's
+        // resolved reading rather than overwritten on every patch.
         private static void SyncWrapperMode(VisualElement element, ClipPathBinding binding)
-            => SyncWrapperLayout(element, binding, IsDeclaredOutOfFlow(element));
+        {
+            var declared = IsDeclaredOutOfFlow(element);
+            if (binding.DeclaredOutOfFlow == declared)
+            {
+                return;
+            }
+            binding.DeclaredOutOfFlow = declared;
+            SyncWrapperLayout(element, binding, declared);
+        }
 
         // Whether the inner is out of flow by what was just written to it — its inline position (V.Anchored
         // sets one), else the live `absolute` class — for the wrap, a patch and a variant toggle. On a panel

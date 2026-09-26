@@ -225,6 +225,28 @@ namespace Velvet.Tests
                 Is.EqualTo((true, new Rect(0f, 0f, 400f, 300f))));
         }
 
+        [Test]
+        public void Given_AnElementMadeAbsoluteByAUserStylesheet_When_RerenderedWithoutMovingIt_Then_ItsWrapperStillSpansTheHost()
+        {
+            // Arrange: a stylesheet of the application's own sets the position, which no Velvet utility declares;
+            // under items-start the card sits at the host's origin whichever mode its wrapper is in.
+            var sheet = UnityEditor.AssetDatabase.LoadAssetAtPath<StyleSheet>(
+                "Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ClipPathWrapperUserPosition.uss");
+            _window.rootVisualElement.styleSheets.Add(sheet);
+            s_hostClass = "items-start";
+            Mount(s => "clip-test-overlay left-0 top-0 w-[50px] h-[40px] "
+                + (s == 0 ? "bg-[#ff0000] " : "bg-[#0000ff] ") + Triangle);
+            var card = Named("card");
+            var mounted = RelativeToHost(card.parent);
+
+            // Act
+            Step(1);
+
+            // Assert
+            Assert.That((sheet != null, mounted, RelativeToHost(card.parent)),
+                Is.EqualTo((true, new Rect(0f, 0f, 400f, 300f), new Rect(0f, 0f, 400f, 300f))));
+        }
+
         // V.Anchored makes its element absolute with an inline position and no `absolute` class.
         [Component]
         private static VNode RenderAnchoredHost()
