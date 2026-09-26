@@ -397,6 +397,8 @@ namespace Velvet
         // cost is the placements plus the child chains of those parents.
         private void CommitComponentOrder(List<(ComponentFiber Fiber, int FirstRow, int Rows)> placements)
         {
+            // MUTANT_SURVIVES(equivalent): with fewer than two placements no parent gets two, so the loops below
+            // reorder nothing.
             if (placements.Count < 2) return;
             var pool = _ctx.BufferPool;
             var byParent = pool.RentFiberBuckets();
@@ -416,6 +418,8 @@ namespace Velvet
                 }
                 foreach (var (parent, ordered) in byParent)
                 {
+                    // MUTANT_SURVIVES(equivalent): a single fiber replaces its own position, so CommitChildOrder
+                    // would write back the chain it was handed.
                     if (ordered.Count < 2) continue;
                     siblings.Clear();
                     for (var sibling = parent.Child; sibling != null; sibling = sibling.Sibling)

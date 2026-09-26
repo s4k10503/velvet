@@ -24,6 +24,10 @@ namespace Velvet
             var first = fiber.Parent?.Child ?? fiber.Sibling;
             for (var sibling = first; sibling != null; sibling = sibling.Sibling)
             {
+                // MUTANT_SURVIVES(unreachable, boundary): passing over a placed empty sibling too only lifts the
+                // limit further past this fiber's old rows, and the reconcile reads the limit against those rows
+                // alone unless the container holds fewer of them than the old tree, the desync
+                // ReconcilerInlineSlotDesyncTests pins as never produced by a component.
                 if (!ReferenceEquals(sibling, fiber)
                     && sibling.IsInlineMounted
                     && sibling.MountSlotCount >= 0

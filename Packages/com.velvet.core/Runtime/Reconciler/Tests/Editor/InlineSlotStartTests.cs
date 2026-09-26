@@ -87,6 +87,11 @@ namespace Velvet.Tests
             s_setWrittenAheadShown = null;
             s_setWrittenAheadRows = null;
             s_setWrittenBehindRows = null;
+            s_setSamePortalFirstRows = null;
+            s_setSamePortalSecondRows = null;
+            s_setOwnContentRows = null;
+            s_setOverContentShown = null;
+            s_setOverContentRows = null;
             s_setEmptyAheadChildRows = null;
             s_setOwnRowsFromEmpty = null;
             s_setRetargeted = null;
@@ -1848,6 +1853,137 @@ namespace Velvet.Tests
             Assert.That(
                 Names(_root.Q(name: "box")).Split(','),
                 Has.Member("g-fallback").And.No.Member("ga").And.No.Member("gb"));
+        }
+
+        #endregion
+
+        #region Ties the component-start rule decides within one Portal and against a target's own content
+
+        private static Action<int> s_setSamePortalFirstRows;
+        private static Action<int> s_setSamePortalSecondRows;
+
+        [Component]
+        private static VNode SamePortalFirstRender()
+        {
+            var (rows, setRows) = Hooks.UseState(0);
+            s_setSamePortalFirstRows = setRows;
+            return Rows("p", rows);
+        }
+
+        [Component]
+        private static VNode SamePortalSecondRender()
+        {
+            var (rows, setRows) = Hooks.UseState(0);
+            s_setSamePortalSecondRows = setRows;
+            return Rows("q", rows);
+        }
+
+        [Component]
+        private static VNode TwoEmptiesInOnePortalRender()
+            => V.Portal(s_portalTarget, children: new VNode[]
+            {
+                V.Component(SamePortalFirstRender, key: "first"),
+                V.Component(SamePortalSecondRender, key: "second"),
+            });
+
+        // GREEN_ON_BASE(characterization): the base's shift moves a following sibling starting at the grower's row.
+        // What it pins is that two components of one Portal still take the sibling order at a tie.
+        [Test]
+        public void Given_TwoEmptyComponentsInOnePortal_When_TheFirstGrowsAndThenTheSecond_Then_TheSecondsRowsLandBehind()
+        {
+            // Arrange
+            s_portalTarget = new VisualElement();
+            using var mounted = V.Mount(_root, V.Component(TwoEmptiesInOnePortalRender, key: "host"));
+            s_setSamePortalFirstRows.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Act
+            s_setSamePortalSecondRows.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Names(s_portalTarget), Is.EqualTo("p0,q0"));
+        }
+
+        private static Action<int> s_setOwnContentRows;
+        private static Action<int> s_setOverContentShown;
+        private static Action<int> s_setOverContentRows;
+
+        [Component]
+        private static VNode OwnContentRender()
+        {
+            var (rows, setRows) = Hooks.UseState(0);
+            s_setOwnContentRows = setRows;
+            return Rows("e", rows);
+        }
+
+        [Component]
+        private static VNode OverContentChildRender()
+        {
+            var (rows, setRows) = Hooks.UseState(0);
+            s_setOverContentRows = setRows;
+            return Rows("k", rows);
+        }
+
+        [Component]
+        private static VNode OverContentPortalRender()
+            => V.Portal(s_portalTarget, children: new VNode[] { V.Component(OverContentChildRender, key: "child") });
+
+        // The target is an element the host renders, holding an empty component of its own; the Portal is shown
+        // once the target exists, so its empty range and that component share the target's first row.
+        [Component]
+        private static VNode PortalOntoOwnContentHostRender()
+        {
+            var (shown, setShown) = Hooks.UseState(0);
+            s_setOverContentShown = setShown;
+            return V.Fragment(children: new VNode[]
+            {
+                V.Div(name: "target", key: "target", children: new VNode[] { V.Component(OwnContentRender, key: "own") }),
+                shown == 1 ? V.Component(OverContentPortalRender, key: "portal") : null,
+            });
+        }
+
+        private MountedTree MountPortalOntoOwnContent()
+        {
+            var mounted = V.Mount(_root, V.Component(PortalOntoOwnContentHostRender, key: "host"));
+            s_portalTarget = _root.Q(name: "target");
+            s_setOverContentShown.Invoke(1);
+            mounted.FlushStateForTest();
+            return mounted;
+        }
+
+        [Test]
+        public void Given_AnEmptyPortalOverATargetsEmptyContent_When_TheContentGrowsAndThenThePortalsComponent_Then_TheContentLeads()
+        {
+            // Arrange
+            using var mounted = MountPortalOntoOwnContent();
+            s_setOwnContentRows.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Act
+            s_setOverContentRows.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Names(s_portalTarget), Is.EqualTo("e0,k0"));
+        }
+
+        // GREEN_ON_BASE(characterization): the base's shift never walks back to the target's own content.
+        // What it pins is that content with no Portal stays ahead when a Portal's component grows at its row.
+        [Test]
+        public void Given_AnEmptyPortalOverATargetsEmptyContent_When_ThePortalsComponentGrowsAndThenTheContent_Then_TheContentLeads()
+        {
+            // Arrange
+            using var mounted = MountPortalOntoOwnContent();
+            s_setOverContentRows.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Act
+            s_setOwnContentRows.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(Names(s_portalTarget), Is.EqualTo("e0,k0"));
         }
 
         #endregion

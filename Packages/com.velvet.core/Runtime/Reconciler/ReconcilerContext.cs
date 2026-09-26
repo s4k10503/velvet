@@ -89,6 +89,7 @@ namespace Velvet
             int start, bool holdsRows, VisualElement? startsPortal, VisualElement changedPlaceholder, PortalSlotInfo changed)
         {
             var end = changed.SlotStart + changed.SlotLength;
+            // MUTANT_SURVIVES(equivalent): start differs from end on this line, so > and >= agree.
             if (start != end) return start > end;
             if (changed.SlotLength > 0 || holdsRows) return true;
             return startsPortal != null && PrecedesInTree(changedPlaceholder, startsPortal);
@@ -122,7 +123,8 @@ namespace Velvet
             }
         }
 
-        // Document order: an ancestor precedes its descendants, and elements in separate trees are unordered.
+        // Document order between two distinct Portal placeholders, which hold no children, so neither is an
+        // ancestor of the other; elements in separate trees are unordered.
         internal static bool PrecedesInTree(VisualElement first, VisualElement second)
         {
             var a = first;
@@ -131,13 +133,14 @@ namespace Velvet
             var depthB = Depth(b);
             for (; depthA > depthB; depthA--) a = a.hierarchy.parent;
             for (; depthB > depthA; depthB--) b = b.hierarchy.parent;
-            if (ReferenceEquals(a, b)) return !ReferenceEquals(first, second) && ReferenceEquals(a, first);
             while (!ReferenceEquals(a.hierarchy.parent, b.hierarchy.parent))
             {
                 a = a.hierarchy.parent;
                 b = b.hierarchy.parent;
             }
             var parent = a.hierarchy.parent;
+            // MUTANT_SURVIVES(unreachable): every caller passes two placeholders that differ, and neither holds
+            // the other, so a and b are distinct children of parent here and their indices differ.
             return parent != null && parent.hierarchy.IndexOf(a) < parent.hierarchy.IndexOf(b);
         }
 

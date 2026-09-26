@@ -1,4 +1,7 @@
 using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
@@ -13,6 +16,8 @@ namespace Velvet.Tests
     /// none.</item>
     /// <item>The list a walk records its placements in goes back to <see cref="ReconcilerBufferPool"/>
     /// when the walk ends, so a reconcile does not leave one behind for the collector on every pass.</item>
+    /// <item>A walk that puts components under two parents in order leaves each parent's child chain holding
+    /// its own children, and returns every list, set and bucket table it rented for that.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -28,6 +33,8 @@ namespace Velvet.Tests
             _root = new VisualElement();
             s_kept = null;
             s_setShown = null;
+            s_setTick = null;
+            s_secondHolder = null;
         }
 
         [Component]
@@ -145,6 +152,108 @@ namespace Velvet.Tests
             {
                 reconciler.Dispose();
             }
+        }
+
+        private static Action<int> s_setTick;
+        private static ComponentFiber s_secondHolder;
+
+        [Component]
+        private static VNode LeafARender() => V.Label(name: "a", key: "a");
+
+        [Component]
+        private static VNode LeafBRender() => V.Label(name: "b", key: "b");
+
+        [Component]
+        private static VNode FirstHolderRender()
+            => V.Fragment(children: new VNode[] { V.Component(LeafARender, key: "a"), V.Component(LeafBRender, key: "b") });
+
+        [Component]
+        private static VNode SecondHolderRender()
+        {
+            s_secondHolder = FiberAmbientStack.Current;
+            return V.Fragment(children: new VNode[] { V.Component(LeafARender, key: "a"), V.Component(LeafBRender, key: "b") });
+        }
+
+        // One walk places two components under each holder and the two holders under the host.
+        [Component]
+        private static VNode TwoHoldersHostRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setTick = setTick;
+            return V.Div(name: "box-" + tick, children: new VNode[]
+            {
+                V.Component(FirstHolderRender, key: "first"),
+                V.Component(SecondHolderRender, key: "second"),
+            });
+        }
+
+        private static string ChildRenderNames(ComponentFiber parent)
+        {
+            var names = new List<string>();
+            for (var child = parent.Child; child != null && names.Count < 8; child = child.Sibling)
+            {
+                names.Add(Hooks.ComponentName(child));
+            }
+            return string.Join(",", names);
+        }
+
+        private static IEnumerable PoolOf(ReconcilerBufferPool pool, string field)
+        {
+            var clearable = typeof(ReconcilerBufferPool)
+                .GetField(field, BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(pool);
+            return (IEnumerable)clearable.GetType()
+                .GetField("_pool", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(clearable);
+        }
+
+        private static int Count(IEnumerable items)
+        {
+            var count = 0;
+            foreach (var _ in items) count++;
+            return count;
+        }
+
+        // Fills each pool to its cap, so a render that rents from one and returns less leaves it short.
+        private static void FillPools(ReconcilerBufferPool pool)
+        {
+            for (var i = 0; i < 16; i++)
+            {
+                pool.ReturnFiberList(new List<ComponentFiber>());
+                pool.ReturnFiberSet(new HashSet<ComponentFiber>());
+                pool.ReturnFiberBuckets(new Dictionary<ComponentFiber, List<ComponentFiber>>());
+            }
+        }
+
+        [Test]
+        public void Given_AWalkPlacingTwoComponentsUnderEachOfTwoHolders_When_ItCommits_Then_TheSecondHoldersChainHoldsItsOwnChildren()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(TwoHoldersHostRender, key: "host"));
+
+            // Act
+            s_setTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(ChildRenderNames(s_secondHolder), Is.EqualTo("InlineSlotBookkeepingTests.LeafARender,InlineSlotBookkeepingTests.LeafBRender"));
+        }
+
+        [TestCase("_fiberListPool")]
+        [TestCase("_fiberSetPool")]
+        [TestCase("_fiberBucketsPool")]
+        public void Given_FullPools_When_AWalkPutsComponentsUnderTwoHoldersInOrder_Then_ThePoolIsStillFull(string field)
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(TwoHoldersHostRender, key: "host"));
+            var pool = mounted.Root.Reconciler.Context.BufferPool;
+            FillPools(pool);
+            var full = Count(PoolOf(pool, field));
+
+            // Act
+            s_setTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert — full is folded in: a pool that never filled could not come back short.
+            Assert.That((full, Count(PoolOf(pool, field))), Is.EqualTo((8, 8)));
         }
     }
 }
