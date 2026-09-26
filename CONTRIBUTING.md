@@ -550,8 +550,9 @@ need the identifier to say what it says.
 `scripts/` holds the harnesses, grouped by what they are for — `test_quality/` (what a test run
 proves, and what the sources carry), `release/` (cutting a release and publishing it), `hooks/` (the
 suites for the guards under `.claude/hooks/`, and the checks holding those guards to their
-contracts), `generators/` (the committed generator DLLs), `pr/` (settling a pull request) and
-`unity/` (sample sync). Two rules keep the tree readable:
+contracts), `generators/` (the committed generator DLLs), `pr/` (settling a pull request), `ci/`
+(which commit a workflow job reads its change against) and `unity/` (sample sync). Two rules keep
+the tree readable:
 
 - **Python, named in `snake_case`.** Every harness is importable, so a test can exercise it directly rather
   than only through a shell invocation — which is what `release/test_release_notes.py` does. Python needs no
@@ -855,6 +856,10 @@ merge-group entry once a queue is turned on. The `merge_group:` keys are there f
 `WorkflowTriggerCoverageTests` fails if either of the two gated triggers goes missing from either
 workflow, or gains a child key whose colon follows its name under one of them. Skipping work per queue entry is a job-level condition, not a
 trigger filter: a required check that does not start has nothing able to clear it.
+
+A job that reads a change against a base takes that base from `scripts/ci/change_base.py`, whose
+docstring says which commit it names for each event; `scripts/ci/test_change_base.py` fails when a step
+passes `--base` anything else.
 
 `main` does not require heads to be up to date before merging. That setting serialises the queue — each
 merge invalidates every other branch's run, and the Unity matrix is 21–25 minutes — without testing the
