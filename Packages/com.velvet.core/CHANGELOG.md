@@ -113,6 +113,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A `V.Suspense` or `V.AnimatePresence` that a component returns with no element above it keeps what it
+  committed when that component re-renders on its own. That held only where nothing above the component
+  opened a key scope; a keyed `V.Fragment` does, as do the children of a `V.Suspense`, a child of a
+  `V.AnimatePresence`, and the result of a `V.Memoized` or `[MemoizeMethod]` wrapper around the component
+  in its parent. Under any of those the component's own re-render did not find the boundary's record: a
+  suspended boundary added a second fallback element beside the one on screen, an AnimatePresence added a
+  second copy of its children, and a component inside the fallback that re-rendered alone read the
+  context's default instead of a Provider the fallback placed above it.
+
+- Two `V.Suspense` boundaries in one component's output no longer share one record where the second sits
+  under an unkeyed `V.Fragment` or `V.Provider` at the same index as the first. A resolved one there cleared
+  the suspended one's record, and the next render replaced the fallback element on screen with a new one.
+  Two `V.AnimatePresence` with the second under an unkeyed `V.Fragment` that way shared one committed set,
+  so each rendered the other's children beside its own once those children had exit animations.
+
 - Keyed wrappers keep what they enclose apart. Under one keyed scope, a Fragment and a Provider carrying the
   same key, or a Fragment keyed `"1"` beside an unkeyed Fragment at index 1, no longer share an identity, so
   neither takes the other's elements on a re-render. A keyed component written under different wrappers in one
