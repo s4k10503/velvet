@@ -60,10 +60,12 @@ namespace Velvet
         // Attaches the fiber to mountPoint and runs the initial render + layout effects.
         // fiber: Fiber to mount. Must not already be mounted.
         // mountPoint: VisualElement that hosts the rendered tree. Must not be null.
-        // sharedContext: see SetupMount.
-        public static void Mount(ComponentFiber fiber, VisualElement? mountPoint, ReconcilerContext? sharedContext = null)
+        // sharedContext, onCaughtError: see SetupMount.
+        public static void Mount(
+            ComponentFiber fiber, VisualElement? mountPoint, ReconcilerContext? sharedContext = null,
+            Action<Exception, ErrorInfo>? onCaughtError = null)
         {
-            SetupMount(fiber, mountPoint, sharedContext);
+            SetupMount(fiber, mountPoint, sharedContext, onCaughtError);
             RenderAndReconcile(fiber);
             FiberEffects.CommitSubtreeEffects(fiber, mountDoubleInvoke: true);
             // The setState-in-commit guarantee is entry-point-agnostic: a callback ref or layout
@@ -203,7 +205,11 @@ namespace Velvet
         // Reconciler+ReconcilerContext there silently detaches the fiber from the caller's registries /
         // FiberStack / IsAborted flag. Left null only by V.Mount's direct root-fiber path,
         // which has no context to join and must bootstrap its own (this fiber becomes the owner).
-        private static void SetupMount(ComponentFiber fiber, VisualElement? mountPoint, ReconcilerContext? sharedContext = null)
+        // onCaughtError is written only onto a context this call bootstraps, before the render that follows
+        // it, since that first render can already throw into a boundary.
+        private static void SetupMount(
+            ComponentFiber fiber, VisualElement? mountPoint, ReconcilerContext? sharedContext = null,
+            Action<Exception, ErrorInfo>? onCaughtError = null)
         {
             if (fiber.IsMounted)
             {
@@ -230,6 +236,7 @@ namespace Velvet
             if (parentCtx == null)
             {
                 fiber.Reconciler.Context.BatchScheduler.SetAnchor(mountPoint);
+                if (onCaughtError != null) fiber.Reconciler.Context.OnCaughtError = onCaughtError;
             }
 
             // On the Unmount → Mount path that reuses the same fiber, clear IsDisposed so that setter closures

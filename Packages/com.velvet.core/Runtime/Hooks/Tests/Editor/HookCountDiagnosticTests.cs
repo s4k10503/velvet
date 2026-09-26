@@ -116,7 +116,7 @@ namespace Velvet.Tests
         public void Given_AHelperCallingUseStateOnlyWhileOpen_When_TheButtonOpensIt_Then_TheErrorNamesTheComponentAndTheRule()
         {
             // Arrange
-            using var mounted = V.Mount(_root, InBoundary(V.Component(PanelRender, key: "panel")));
+            using var mounted = V.Mount(_root, InBoundary(V.Component(PanelRender, key: "panel")), CaughtErrors.Unlogged);
 
             // Act
             _root.Q<Button>("open").SimulateClick();
@@ -131,7 +131,7 @@ namespace Velvet.Tests
         public void Given_AHelperCallingUseStateOnlyWhileOpen_When_TheButtonOpensIt_Then_TheErrorIsThrownFromTheHelper()
         {
             // Arrange
-            using var mounted = V.Mount(_root, InBoundary(V.Component(PanelRender, key: "panel")));
+            using var mounted = V.Mount(_root, InBoundary(V.Component(PanelRender, key: "panel")), CaughtErrors.Unlogged);
 
             // Act
             _root.Q<Button>("open").SimulateClick();
@@ -167,7 +167,7 @@ namespace Velvet.Tests
             var node = factory == "V.Memo"
                 ? V.Memo(PropsPanelRender, props, (previous, next) => previous == next)
                 : V.Component(PropsPanelRender, props);
-            using var mounted = V.Mount(_root, InBoundary(node));
+            using var mounted = V.Mount(_root, InBoundary(node), CaughtErrors.Unlogged);
 
             // Act
             _root.Q<Button>("open").SimulateClick();
@@ -215,7 +215,7 @@ namespace Velvet.Tests
         {
             // Arrange
             s_sheetHook = s_sheetHooks[hook];
-            using var mounted = V.Mount(_root, InBoundary(V.Component(HostRender, key: "host")));
+            using var mounted = V.Mount(_root, InBoundary(V.Component(HostRender, key: "host")), CaughtErrors.Unlogged);
 
             // Act
             s_setOpen.Invoke(true);
@@ -236,7 +236,7 @@ namespace Velvet.Tests
             // Arrange
             s_sheetHook = s_sheetHooks[hook];
             s_initiallyOpen = true;
-            using var mounted = V.Mount(_root, InBoundary(V.Component(HostRender, key: "host")));
+            using var mounted = V.Mount(_root, InBoundary(V.Component(HostRender, key: "host")), CaughtErrors.Unlogged);
 
             // Act
             s_setOpen.Invoke(false);
@@ -255,7 +255,7 @@ namespace Velvet.Tests
         {
             // Arrange
             s_sheetHook = s_countingSheetHooks[hook];
-            using var mounted = V.Mount(_root, InBoundary(V.Component(HostRender, key: "host")));
+            using var mounted = V.Mount(_root, InBoundary(V.Component(HostRender, key: "host")), CaughtErrors.Unlogged);
 
             // Act
             s_setOpen.Invoke(true);

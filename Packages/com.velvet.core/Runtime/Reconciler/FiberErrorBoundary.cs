@@ -1,5 +1,6 @@
 #nullable enable
 using System;
+using UnityEngine;
 
 namespace Velvet
 {
@@ -15,13 +16,24 @@ namespace Velvet
         internal static void OnRenderError(ComponentFiber fiber, Exception exception)
             => ComponentBoundarySearch.PropagateException(fiber, exception);
 
+        // MountOptions.OnCaughtError's default. The report carries the caught exception as its inner exception
+        // so that the entry reads as the caught exception itself, with the report's message in its stack
+        // trace; CaughtErrorLogTests pins both.
+        internal static void LogCaughtError(Exception exception, ErrorInfo info)
+            => Debug.LogException(new CaughtErrorReport(
+                $"Caught by the {info.ErrorBoundary} error boundary, which rendered its fallback in place of its" +
+                $" children. Component stack:\n{info.ComponentStack}",
+                exception));
+
         // Fallback path for a function-style Error Boundary: invokes the factory registered via
         // Hooks.UseFallback within the Render of a [Component(IsErrorBoundary = true)] component.
         // Returns null when no factory is registered, so the caller keeps propagating to a higher boundary.
-        private static VNode? RenderFallback(ComponentFiber fiber, ComponentFiber? throwingFiber, Exception exception)
+        private static VNode? RenderFallback(
+            ComponentFiber fiber, ComponentFiber? throwingFiber, Exception exception, out ErrorInfo? info)
         {
+            info = null;
             if (fiber?.FallbackFactory == null) return null;
-            var info = new ErrorInfo(BuildComponentStack(throwingFiber));
+            info = new ErrorInfo(BuildComponentStack(throwingFiber)) { ErrorBoundary = Hooks.ComponentName(fiber) };
             return fiber.FallbackFactory.Invoke(exception, info);
         }
 
@@ -40,13 +52,15 @@ namespace Velvet
             return sb.ToString();
         }
 
-        private static bool TryShowFallback(ComponentFiber fiber, ComponentFiber? throwingFiber, Exception originalException)
+        private static bool TryShowFallback(
+            ComponentFiber fiber, ComponentFiber? throwingFiber, Exception originalException, out ErrorInfo? info)
         {
+            info = null;
             if (fiber.Reconciler == null) return false;
             VNode? fallback;
             try
             {
-                fallback = RenderFallback(fiber, throwingFiber, originalException);
+                fallback = RenderFallback(fiber, throwingFiber, originalException, out info);
             }
             catch (FiberSuspendSignal)
             {
@@ -138,9 +152,10 @@ namespace Velvet
             fiber.IsShowingFallback = true;
             fiber.FallbackContentFailed = false;
             bool result;
+            ErrorInfo? info;
             try
             {
-                result = TryShowFallback(fiber, throwingFiber, exception);
+                result = TryShowFallback(fiber, throwingFiber, exception, out info);
             }
             finally
             {
@@ -150,9 +165,31 @@ namespace Velvet
             if (result)
             {
                 fiber.Reconciler.SetAborted();
+                ReportCaughtError(fiber.Reconciler.Context, exception, info!);
                 return true;
             }
             return false;
+        }
+
+        // A throw out of the handler would escape the catch block of whichever render, effect or callback
+        // containment called PropagateException.
+        private static void ReportCaughtError(ReconcilerContext ctx, Exception exception, ErrorInfo info)
+        {
+            try
+            {
+                ctx.OnCaughtError(exception, info);
+            }
+            catch (Exception handlerException)
+            {
+                Debug.LogException(handlerException);
+            }
+        }
+    }
+
+    internal sealed class CaughtErrorReport : Exception
+    {
+        internal CaughtErrorReport(string message, Exception caught) : base(message, caught)
+        {
         }
     }
 }

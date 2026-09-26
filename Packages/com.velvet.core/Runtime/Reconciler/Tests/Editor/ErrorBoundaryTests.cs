@@ -112,7 +112,7 @@ namespace Velvet.Tests
         public void Given_ChildWithNoBoundary_When_ChildRenderThrows_Then_ParentBoundaryShowsFallback()
         {
             // Arrange
-            using var mounted = V.Mount(_root, V.Component(BoundaryWrappingTrackingRender, key: "wrapper"));
+            using var mounted = V.Mount(_root, V.Component(BoundaryWrappingTrackingRender, key: "wrapper"), CaughtErrors.Unlogged);
             Assume.That(s_boundaryFallbackShown, Is.False, "Precondition: children succeed on the initial mount");
             s_trackingShouldThrow = true;
 
@@ -129,7 +129,7 @@ namespace Velvet.Tests
         public void Given_ChildWithNoBoundary_When_ChildRenderThrows_Then_BoundaryReceivesThrownException()
         {
             // Arrange
-            using var mounted = V.Mount(_root, V.Component(BoundaryWrappingTrackingRender, key: "wrapper"));
+            using var mounted = V.Mount(_root, V.Component(BoundaryWrappingTrackingRender, key: "wrapper"), CaughtErrors.Unlogged);
             s_trackingShouldThrow = true;
 
             // Act
@@ -145,7 +145,7 @@ namespace Velvet.Tests
         public void Given_ThreeComponentChain_When_GrandchildRenderThrows_Then_GrandparentBoundaryShowsFallback()
         {
             // Arrange — boundary -> non-boundary Middle -> throwing Tracking
-            using var mounted = V.Mount(_root, V.Component(GrandparentBoundaryRender, key: "grandparent"));
+            using var mounted = V.Mount(_root, V.Component(GrandparentBoundaryRender, key: "grandparent"), CaughtErrors.Unlogged);
             Assume.That(s_boundaryFallbackShown, Is.False, "Precondition: the chain mounts cleanly");
             s_trackingShouldThrow = true;
 
@@ -166,7 +166,7 @@ namespace Velvet.Tests
         public void Given_MultiChildBoundary_When_FirstChildThrows_Then_FallbackShown()
         {
             // Arrange
-            using var mounted = V.Mount(_root, V.Component(MultiChildBoundaryRender, key: "multi"));
+            using var mounted = V.Mount(_root, V.Component(MultiChildBoundaryRender, key: "multi"), CaughtErrors.Unlogged);
             s_multiFirstChildShouldThrow = true;
             s_multiChildCount = 3;
 
@@ -183,7 +183,7 @@ namespace Velvet.Tests
         public void Given_MultiChildBoundaryAfterFallback_When_AllChildrenSucceed_Then_AllChildrenMount()
         {
             // Arrange — drive the boundary into its fallback first
-            using var mounted = V.Mount(_root, V.Component(MultiChildBoundaryRender, key: "multi"));
+            using var mounted = V.Mount(_root, V.Component(MultiChildBoundaryRender, key: "multi"), CaughtErrors.Unlogged);
             s_multiFirstChildShouldThrow = true;
             s_multiChildCount = 2;
             s_multiSetTick.Invoke(1);
@@ -206,7 +206,7 @@ namespace Velvet.Tests
         public void Given_MultiChildBoundaryAfterFallback_When_AllChildrenSucceed_Then_FallbackDoesNotRestart()
         {
             // Arrange — drive the boundary into its fallback first
-            using var mounted = V.Mount(_root, V.Component(MultiChildBoundaryRender, key: "multi"));
+            using var mounted = V.Mount(_root, V.Component(MultiChildBoundaryRender, key: "multi"), CaughtErrors.Unlogged);
             s_multiFirstChildShouldThrow = true;
             s_multiChildCount = 2;
             s_multiSetTick.Invoke(1);
@@ -373,7 +373,7 @@ namespace Velvet.Tests
             // An exception thrown by an effect setup propagates to the nearest Error Boundary,
             // the same as a render-phase throw — not merely logged. Without that routing the boundary never fires.
             // Act
-            using var mounted = V.Mount(_root, V.Component(EffectBoundaryWrappingChildRender, key: "effect-boundary"));
+            using var mounted = V.Mount(_root, V.Component(EffectBoundaryWrappingChildRender, key: "effect-boundary"), CaughtErrors.Unlogged);
 
             // Assert
             Assert.That(s_effectBoundaryFallbackShown, Is.True,
@@ -384,7 +384,7 @@ namespace Velvet.Tests
         public void Given_ChildLayoutEffectThrows_When_Mounted_Then_BoundaryReceivesThrownException()
         {
             // Act
-            using var mounted = V.Mount(_root, V.Component(EffectBoundaryWrappingChildRender, key: "effect-boundary-msg"));
+            using var mounted = V.Mount(_root, V.Component(EffectBoundaryWrappingChildRender, key: "effect-boundary-msg"), CaughtErrors.Unlogged);
 
             // Assert
             Assert.That(s_effectBoundaryCaughtMessage, Is.EqualTo("Test effect error"),
@@ -417,7 +417,7 @@ namespace Velvet.Tests
             // cleanup must run only once (it is detached before invocation), not a second time from the nested
             // unmount's own cleanup pass over the same slot.
             // Arrange
-            using var mounted = V.Mount(_root, V.Component(EffectCleanupBoundaryRender, key: "cleanup-boundary"));
+            using var mounted = V.Mount(_root, V.Component(EffectCleanupBoundaryRender, key: "cleanup-boundary"), CaughtErrors.Unlogged);
             Assume.That(s_effectCleanupRunCount, Is.EqualTo(0), "Precondition: setup ran, no cleanup yet");
 
             // Act — a deps change runs the prior cleanup, which throws.
@@ -432,7 +432,7 @@ namespace Velvet.Tests
         public void Given_ChildEffectCleanupThrows_When_DepsChange_Then_EnclosingBoundaryShowsFallback()
         {
             // Arrange
-            using var mounted = V.Mount(_root, V.Component(EffectCleanupBoundaryRender, key: "cleanup-boundary-fb"));
+            using var mounted = V.Mount(_root, V.Component(EffectCleanupBoundaryRender, key: "cleanup-boundary-fb"), CaughtErrors.Unlogged);
 
             // Act
             s_effectCleanupChildSetTick.Invoke(1);
@@ -542,7 +542,7 @@ namespace Velvet.Tests
             // throwing fiber is disposed, since that means its whole context was already replaced).
             // Arrange
             using var mounted = V.Mount(_root,
-                V.Component(OuterBoundaryWrappingBrokenInnerBoundaryRender, key: "outer-wrapping-broken-inner"));
+                V.Component(OuterBoundaryWrappingBrokenInnerBoundaryRender, key: "outer-wrapping-broken-inner"), CaughtErrors.Unlogged);
             s_trackingShouldThrow = true;
 
             // Act
@@ -596,7 +596,7 @@ namespace Velvet.Tests
         public void Given_ABoundaryWithSiblingsOnBothSides_When_ItCatches_Then_OnlyItsOwnSlotsAreRewritten()
         {
             // Arrange
-            using var mounted = V.Mount(_root, V.Component(PlacementHostRender, key: "host"));
+            using var mounted = V.Mount(_root, V.Component(PlacementHostRender, key: "host"), CaughtErrors.Unlogged);
             s_placementShouldThrow = true;
 
             // Act
@@ -666,7 +666,7 @@ namespace Velvet.Tests
         public void Given_APassReorderingTheBoundaryBehindItsSibling_When_ItCatches_Then_TheRowsItStillHoldsAreTheOnesRewritten()
         {
             // Arrange
-            using var mounted = V.Mount(_root, V.Component(ReorderHostRender, key: "host"));
+            using var mounted = V.Mount(_root, V.Component(ReorderHostRender, key: "host"), CaughtErrors.Unlogged);
             s_movedShouldThrow = true;
 
             // Act
@@ -683,7 +683,7 @@ namespace Velvet.Tests
         public void Given_APassDroppingRowsAheadOfTheBoundary_When_ItCatches_Then_TheRowsItStillHoldsAreTheOnesRewritten()
         {
             // Arrange
-            using var mounted = V.Mount(_root, V.Component(ShrinkHostRender, key: "host"));
+            using var mounted = V.Mount(_root, V.Component(ShrinkHostRender, key: "host"), CaughtErrors.Unlogged);
             s_movedShouldThrow = true;
 
             // Act
@@ -700,7 +700,7 @@ namespace Velvet.Tests
         public void Given_APassAddingRowsAheadOfTheBoundary_When_ItCatches_Then_TheRowsItStillHoldsAreTheOnesRewritten()
         {
             // Arrange
-            using var mounted = V.Mount(_root, V.Component(GrowHostRender, key: "host"));
+            using var mounted = V.Mount(_root, V.Component(GrowHostRender, key: "host"), CaughtErrors.Unlogged);
             s_movedShouldThrow = true;
 
             // Act
@@ -717,7 +717,7 @@ namespace Velvet.Tests
         public void Given_APassAlreadyReorderedTheBoundaryBehindItsSibling_When_ALaterRenderThrows_Then_TheRowsItStillHoldsAreTheOnesRewritten()
         {
             // Arrange
-            using var mounted = V.Mount(_root, V.Component(ReorderHostRender, key: "host"));
+            using var mounted = V.Mount(_root, V.Component(ReorderHostRender, key: "host"), CaughtErrors.Unlogged);
             s_movedSetOrder.Invoke(1);
             mounted.FlushStateForTest();
 
@@ -818,7 +818,7 @@ namespace Velvet.Tests
         public void Given_ASiblingBehindACatchingBoundary_When_TheCatchAbortsTheParentsRender_Then_TheSiblingKeepsItsStateAndEffect()
         {
             // Arrange
-            using var mounted = V.Mount(_root, V.Component(UnreachedHostRender, key: "host"));
+            using var mounted = V.Mount(_root, V.Component(UnreachedHostRender, key: "host"), CaughtErrors.Unlogged);
             mounted.FlushEffectsForTest();
             s_unreachedSetCount.Invoke(1);
             mounted.FlushStateForTest();
@@ -844,7 +844,7 @@ namespace Velvet.Tests
         public void Given_ABoundaryCatchingAChildsRender_When_ThePassEnds_Then_NoFiberIsLeftOnTheStack()
         {
             // Arrange
-            using var mounted = V.Mount(_root, V.Component(UnreachedHostRender, key: "host"));
+            using var mounted = V.Mount(_root, V.Component(UnreachedHostRender, key: "host"), CaughtErrors.Unlogged);
             s_unreachedShouldThrow = true;
 
             // Act
@@ -890,7 +890,7 @@ namespace Velvet.Tests
         public void Given_AChildThatDropsItsOwnChildAheadOfACatch_When_TheChildRendersItAgain_Then_ItMountsAfresh()
         {
             // Arrange
-            using var mounted = V.Mount(_root, V.Component(DroppingHostRender, key: "host"));
+            using var mounted = V.Mount(_root, V.Component(DroppingHostRender, key: "host"), CaughtErrors.Unlogged);
             mounted.FlushEffectsForTest();
             s_droppedSetValue.Invoke(5);
             mounted.FlushStateForTest();
@@ -923,7 +923,7 @@ namespace Velvet.Tests
         {
             // Arrange — the same sibling as the case above it, two components further in: the child holding the
             // boundary and the sibling, and the one above it, both render in the stopped pass.
-            using var mounted = V.Mount(_root, V.Component(NestingHostRender, key: "host"));
+            using var mounted = V.Mount(_root, V.Component(NestingHostRender, key: "host"), CaughtErrors.Unlogged);
             mounted.FlushEffectsForTest();
             s_unreachedSetCount.Invoke(1);
             mounted.FlushStateForTest();
@@ -952,7 +952,7 @@ namespace Velvet.Tests
         {
             // Arrange — the boundary and the dropped component sit in an element the child renders, so the
             // walk that stops is that element's, and the child that owns it re-rendered in the enclosing one.
-            using var mounted = V.Mount(_root, V.Component(WrappingHostRender, key: "host"));
+            using var mounted = V.Mount(_root, V.Component(WrappingHostRender, key: "host"), CaughtErrors.Unlogged);
             mounted.FlushEffectsForTest();
             s_unreachedShouldThrow = true;
 
@@ -1001,7 +1001,7 @@ namespace Velvet.Tests
         {
             // Arrange — the parent is the render the abort discards, and the child it drops comes ahead of the
             // boundary, so the stopped walk never met a node for it.
-            using var mounted = V.Mount(_root, V.Component(DiscardedDropHostRender, key: "host"));
+            using var mounted = V.Mount(_root, V.Component(DiscardedDropHostRender, key: "host"), CaughtErrors.Unlogged);
             mounted.FlushEffectsForTest();
             s_unreachedSetCount.Invoke(1);
             mounted.FlushStateForTest();
@@ -1034,7 +1034,7 @@ namespace Velvet.Tests
             // meets it without rendering anything under it.
             s_pendingResource = new VelvetTaskCompletionSource<string>();
             s_shownFallbackCleanups = 0;
-            using var mounted = V.Mount(_root, V.Component(SuspenseAfterCatchHostRender, key: "host"));
+            using var mounted = V.Mount(_root, V.Component(SuspenseAfterCatchHostRender, key: "host"), CaughtErrors.Unlogged);
             mounted.FlushEffectsForTest();
             s_shownFallbackSetValue.Invoke(5);
             mounted.FlushStateForTest();
@@ -1156,7 +1156,7 @@ namespace Velvet.Tests
         public void Given_AnOrphanWhoseCleanupThrowsIntoABoundary_When_TheRenderDropsIt_Then_ItIsDisposed()
         {
             // Arrange
-            using var mounted = V.Mount(_root, V.Component(CleanupThrowHostRender, key: "host"));
+            using var mounted = V.Mount(_root, V.Component(CleanupThrowHostRender, key: "host"), CaughtErrors.Unlogged);
             mounted.FlushEffectsForTest();
             s_throwingSetValue.Invoke(5);
             mounted.FlushStateForTest();
@@ -1269,7 +1269,7 @@ namespace Velvet.Tests
         public void Given_BoundaryWrappingThrowingChild_When_ChildRenderThrows_Then_FallbackFactoryRuns()
         {
             // Act
-            using var mounted = V.Mount(_root, V.Component(BoundaryWrappingThrowerRender, key: "boundary"));
+            using var mounted = V.Mount(_root, V.Component(BoundaryWrappingThrowerRender, key: "boundary"), CaughtErrors.Unlogged);
 
             // Assert
             Assert.That(s_fallbackShown, Is.True,
@@ -1280,7 +1280,7 @@ namespace Velvet.Tests
         public void Given_BoundaryWrappingThrowingChild_When_ChildRenderThrows_Then_FactoryReceivesCaughtException()
         {
             // Act
-            using var mounted = V.Mount(_root, V.Component(BoundaryWrappingThrowerRender, key: "boundary"));
+            using var mounted = V.Mount(_root, V.Component(BoundaryWrappingThrowerRender, key: "boundary"), CaughtErrors.Unlogged);
             Assume.That(s_fallbackShown, Is.True, "Precondition: the boundary caught the child exception");
 
             // Assert
@@ -1422,7 +1422,7 @@ namespace Velvet.Tests
         public void Given_BoundaryInClosedGenericClass_When_ChildThrows_Then_FallbackFires()
         {
             // Arrange
-            using var mounted = V.Mount(_root, V.Component(GenericBoundary<int>.Render, key: "boundary"));
+            using var mounted = V.Mount(_root, V.Component(GenericBoundary<int>.Render, key: "boundary"), CaughtErrors.Unlogged);
             Assume.That(s_fallbackShown, Is.False, "Precondition: the initial mount renders the child without fallback");
             Assume.That(s_setTick, Is.Not.Null, "Precondition: the child wired its setter on the initial mount");
             s_throwOnNextRender = true;
@@ -1441,7 +1441,7 @@ namespace Velvet.Tests
         {
             // Arrange — the live type name of a type nested in a closed generic is null, so the registry must
             // walk the declaring chain to rebuild the open-form key.
-            using var mounted = V.Mount(_root, V.Component(GenericOuter<int>.NestedBoundary.Render, key: "boundary"));
+            using var mounted = V.Mount(_root, V.Component(GenericOuter<int>.NestedBoundary.Render, key: "boundary"), CaughtErrors.Unlogged);
             Assume.That(s_fallbackShown, Is.False, "Precondition: the initial mount renders the child without fallback");
             Assume.That(s_setTick, Is.Not.Null, "Precondition: the child wired its setter on the initial mount");
             s_throwOnNextRender = true;

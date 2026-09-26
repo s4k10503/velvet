@@ -64,7 +64,7 @@ namespace Velvet.Tests
             // "caught" fallback Label) is inserted at slot 0 despite the abort; the abort then stops
             // the scan before the second sibling is reached, so its ORIGINAL text survives instead of
             // being patched to "b-updated".
-            using var mounted = V.Mount(Root, V.Component(IndexedListHost, key: "host"));
+            using var mounted = V.Mount(Root, V.Component(IndexedListHost, key: "host"), CaughtErrors.Unlogged);
             var container = Root.ElementAt(0);
 
             // Act
@@ -102,7 +102,7 @@ namespace Velvet.Tests
             // Arrange — keyed siblings with both keys present on both sides select the fully
             // synchronous keyed Pass-1 linear scan (the default V.Mount re-render path runs
             // frameBudgetMs: 0). Same type-flip-triggers-abort shape as the indexed case above.
-            using var mounted = V.Mount(Root, V.Component(KeyedSyncListHost, key: "host"));
+            using var mounted = V.Mount(Root, V.Component(KeyedSyncListHost, key: "host"), CaughtErrors.Unlogged);
             var container = Root.ElementAt(0);
 
             // Act
@@ -242,7 +242,7 @@ namespace Velvet.Tests
             // "counter" (an ordinary, unrelated fiber whose own later re-render this test observes).
             var portalTarget = new VisualElement();
             FiberPortalRegistry.Register("continue-reconcile-abort-leak-target", portalTarget);
-            using var mounted = V.Mount(_root, V.Component(Host, key: "host"));
+            using var mounted = V.Mount(_root, V.Component(Host, key: "host"), CaughtErrors.Unlogged);
             Assume.That(s_listFiber.HasPendingReconcileWorkForTest(), Is.False,
                 "Precondition: the initial mount is synchronous (zero budget)");
 
@@ -547,7 +547,7 @@ namespace Velvet.Tests
         {
             // Arrange — the host's own element name carries its state, so the committed baseline and the tree
             // the aborted pass built disagree by name.
-            using var mounted = V.Mount(_root, V.Component(AbortingWalkHost, key: "host"));
+            using var mounted = V.Mount(_root, V.Component(AbortingWalkHost, key: "host"), CaughtErrors.Unlogged);
 
             // Act
             s_setFlipped.Invoke(true);

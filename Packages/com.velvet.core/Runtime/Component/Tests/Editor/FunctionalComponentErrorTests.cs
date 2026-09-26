@@ -140,7 +140,7 @@ namespace Velvet.Tests
             LogAssert.Expect(LogType.Exception, new Regex("InvalidOperationException.*Inner fallback boom"));
 
             // Act
-            using var mounted = V.Mount(_root, V.Component(OuterFallbackEbRender, key: "outer-eb"));
+            using var mounted = V.Mount(_root, V.Component(OuterFallbackEbRender, key: "outer-eb"), CaughtErrors.Unlogged);
 
             // Assert
             Assert.That(s_bubbleUpOuterFallbackCount, Is.EqualTo(1),
@@ -157,7 +157,7 @@ namespace Velvet.Tests
             LogAssert.Expect(LogType.Exception, new Regex("InvalidOperationException.*Inner fallback boom"));
 
             // Act
-            using var mounted = V.Mount(_root, V.Component(OuterFallbackEbRender, key: "outer-eb"));
+            using var mounted = V.Mount(_root, V.Component(OuterFallbackEbRender, key: "outer-eb"), CaughtErrors.Unlogged);
 
             // Assert
             Assert.That(
