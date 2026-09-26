@@ -131,8 +131,9 @@ namespace Velvet.Tests
             s_setInserted.Invoke(true);
             Flush();
 
-            // Assert — the setup count separates a kept instance from a remount, and the rows read where the
-            // child renders them separate a kept row from one a discarded Portal left on its target.
+            // Assert — the setup count separates a kept instance from a remount. A remount under a Portal still
+            // reads "f0", the row the discarded Portal left on its target, so the rows alone would not; they are
+            // here for a kept instance whose row was lost or doubled.
             var container = output == Output.Element ? _root.Q<VisualElement>("holder") : s_portalTarget;
             Assert.That(
                 (s_rowSetups, string.Join(",", container.Children().Select(c => c.name))),
