@@ -3,6 +3,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Reflection;
 using System.Threading;
 using UnityEngine.UIElements;
 
@@ -88,6 +89,7 @@ namespace Velvet
             var fiber = Resolve(hookName);
             fiber.StateSlots ??= new List<HookStateSlot>();
             var index = fiber.Indices.StateHookIndex++;
+            HookCountSentinel.ThrowIfPastCommittedCount(fiber);
 
             if (index >= fiber.StateSlots.Count)
             {
@@ -154,6 +156,7 @@ namespace Velvet
             var fiber = Resolve("UseStore");
             fiber.StoreSlots ??= new List<HookStoreSlot>();
             var index = fiber.Indices.StoreHookIndex++;
+            HookCountSentinel.ThrowIfPastCommittedCount(fiber);
             var cmp = comparer ?? ObjectIsEqualityComparer<TSel>.Instance;
 
             // Cross-tier tearing guard: read the snapshot pinned for this store within the current batch
@@ -1493,6 +1496,7 @@ namespace Velvet
             var fiber = Resolve("UseReducer");
             fiber.StateSlots ??= new List<HookStateSlot>();
             var index = fiber.Indices.StateHookIndex++;
+            HookCountSentinel.ThrowIfPastCommittedCount(fiber);
 
             if (index >= fiber.StateSlots.Count)
             {
@@ -1507,6 +1511,7 @@ namespace Velvet
             var fiber = Resolve("UseReducer");
             fiber.StateSlots ??= new List<HookStateSlot>();
             var index = fiber.Indices.StateHookIndex++;
+            HookCountSentinel.ThrowIfPastCommittedCount(fiber);
 
             if (index >= fiber.StateSlots.Count)
             {
@@ -1591,6 +1596,7 @@ namespace Velvet
             var fiber = Resolve(hookName);
             var slots = fiber.AsyncSlots;
             var index = fiber.NextAsyncSlotIndex();
+            HookCountSentinel.ThrowIfPastCommittedCount(fiber);
             // Cache on the Fiber to avoid allocating a closure on every render.
             var onCompleted = fiber.AsyncResourceCompletedCallback ??= () =>
             {
@@ -2193,10 +2199,18 @@ namespace Velvet
             return disposable == null ? null : disposable.Dispose;
         }
 
+        // The node's identity before the body: a props overload's body is a closure over the [Component]
+        // method, and the identity is that method.
         internal static string ComponentName(ComponentFiber? fiber)
+            => ComponentNameOrNull(fiber!.SourceNode?.Identity as MethodInfo ?? fiber.Body?.Method)
+               ?? "[Component]";
+
+        internal static string? ComponentNameOrNull(ComponentNode node)
+            => ComponentNameOrNull(node.Identity as MethodInfo ?? node.Body?.Method);
+
+        private static string? ComponentNameOrNull(MethodInfo? method)
         {
-            var method = fiber!.Body?.Method;
-            if (method == null) return "[Component]";
+            if (method == null) return null;
             var displayName = ComponentMethodRegistry.TryGetDisplayName(method);
             if (displayName != null) return displayName;
             var type = method.DeclaringType?.Name;

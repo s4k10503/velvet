@@ -128,23 +128,9 @@ namespace Velvet
             FiberHookCommit.CommitBlockerSlots(fiber.BlockerSlots);
         }
 
-        // Hook count sentinel: fail-fast at runtime against silent corruption from hook calls inside conditional branches.
-        internal static void ValidateRuntimeHookCounts(ComponentFiber fiber)
-        {
-            var stateCount = fiber.Indices.StateHookIndex;
-            var storeCount = fiber.Indices.StoreHookIndex;
-            ValidateHookCountRuntime("UseState / UseReducer", fiber.PrevStateHookCountRuntime, stateCount);
-            ValidateHookCountRuntime("UseStore", fiber.PrevStoreHookCountRuntime, storeCount);
-            var asyncCount = fiber.AsyncSlotCursor;
-            ValidateHookCountRuntime("Use", fiber.PrevAsyncHookCountRuntime, asyncCount);
-            fiber.PrevStateHookCountRuntime = stateCount;
-            fiber.PrevStoreHookCountRuntime = storeCount;
-            fiber.PrevAsyncHookCountRuntime = asyncCount;
-        }
-
 #if UNITY_EDITOR
         // Editor-only hook-count sentinel for the deps-comparing / effect / id / value hooks, run alongside
-        // ValidateRuntimeHookCounts. Advances each hook's committed call-count baseline after validating.
+        // HookCountSentinel.ValidateAndCommit. Advances each hook's committed call-count baseline after validating.
         internal static void ValidateEditorHookCounts(ComponentFiber fiber)
         {
             var hookCount = fiber.Indices.HookIndex;
@@ -157,16 +143,16 @@ namespace Velvet
             var deferredCount = fiber.Indices.DeferredValueHookIndex;
             var optimisticCount = fiber.Indices.OptimisticHookIndex;
             var mutationCount = fiber.Indices.MutationHookIndex;
-            ValidateHookCallCount("UseCallback", fiber.PrevHookCount, hookCount);
-            ValidateHookCallCount("UseBlocker", fiber.PrevBlockerHookCount, blockerCount);
-            ValidateHookCallCount("UseLayoutEffect", fiber.PrevLayoutEffectHookCount, layoutEffectCount);
-            ValidateHookCallCount("UseInsertionEffect", fiber.PrevInsertionEffectHookCount, insertionEffectCount);
-            ValidateHookCallCount("UseEffect", fiber.PrevEffectHookCount, effectCount);
-            ValidateHookCallCount("UseImperativeHandle", fiber.PrevImperativeHandleHookCount, imperativeHandleCount);
-            ValidateHookCallCount("UseId", fiber.PrevIdHookCount, idCount);
-            ValidateHookCallCount("UseDeferredValue", fiber.PrevDeferredValueHookCount, deferredCount);
-            ValidateHookCallCount("UseOptimistic", fiber.PrevOptimisticHookCount, optimisticCount);
-            ValidateHookCallCount("UseMutation", fiber.PrevMutationHookCount, mutationCount);
+            ValidateHookCallCount(fiber, "UseCallback", fiber.PrevHookCount, hookCount);
+            ValidateHookCallCount(fiber, "UseBlocker", fiber.PrevBlockerHookCount, blockerCount);
+            ValidateHookCallCount(fiber, "UseLayoutEffect", fiber.PrevLayoutEffectHookCount, layoutEffectCount);
+            ValidateHookCallCount(fiber, "UseInsertionEffect", fiber.PrevInsertionEffectHookCount, insertionEffectCount);
+            ValidateHookCallCount(fiber, "UseEffect", fiber.PrevEffectHookCount, effectCount);
+            ValidateHookCallCount(fiber, "UseImperativeHandle", fiber.PrevImperativeHandleHookCount, imperativeHandleCount);
+            ValidateHookCallCount(fiber, "UseId", fiber.PrevIdHookCount, idCount);
+            ValidateHookCallCount(fiber, "UseDeferredValue", fiber.PrevDeferredValueHookCount, deferredCount);
+            ValidateHookCallCount(fiber, "UseOptimistic", fiber.PrevOptimisticHookCount, optimisticCount);
+            ValidateHookCallCount(fiber, "UseMutation", fiber.PrevMutationHookCount, mutationCount);
             fiber.PrevHookCount = hookCount;
             fiber.PrevBlockerHookCount = blockerCount;
             fiber.PrevLayoutEffectHookCount = layoutEffectCount;
@@ -181,30 +167,13 @@ namespace Velvet
 #endif
 
 #if UNITY_EDITOR
-        private static void ValidateHookCallCount(string hookName, int prevCount, int currentCount)
+        private static void ValidateHookCallCount(ComponentFiber fiber, string hookName, int prevCount, int currentCount)
         {
             if (prevCount != -1 && currentCount != prevCount)
             {
-                FiberLogger.LogError("Hooks", FormatHookCountMismatch(hookName, prevCount, currentCount));
+                FiberLogger.LogError("Hooks", HookCountSentinel.FormatMismatch(fiber, hookName, prevCount, currentCount));
             }
         }
 #endif
-
-        // Throws at runtime when a positional hook family's slot count (UseState / UseReducer, UseStore, or the
-        // async Use family) differs from the previous render. Slot index mismatch leads directly to silent
-        // value corruption (overwriting a different slot with the same type), so fail-fast.
-        private static void ValidateHookCountRuntime(string hookName, int prevCount, int currentCount)
-        {
-            if (prevCount != -1 && currentCount != prevCount)
-            {
-                throw new InvalidOperationException(FormatHookCountMismatch(hookName, prevCount, currentCount));
-            }
-        }
-
-        // Shared wording for both hook-count sentinels (the editor-only diagnostic log and the always-on
-        // throw) so the two surfaces cannot drift onto different phrasing for the same violation.
-        private static string FormatHookCountMismatch(string hookName, int prevCount, int currentCount)
-            => $"FiberRenderer: {hookName} call count differs between previous render ({prevCount})" +
-               $" and current ({currentCount}). Hooks must not be called inside conditional branches (violation of the Rules of Hooks).";
     }
 }

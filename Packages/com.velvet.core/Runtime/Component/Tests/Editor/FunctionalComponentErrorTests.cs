@@ -215,6 +215,21 @@ namespace Velvet.Tests
                 "The fallback factory receives the original exception thrown by the child");
         }
 
+        [Test]
+        public void Given_FallbackReceivesErrorInfo_When_APropsChildThrows_Then_ComponentStackNamesTheChildMethod()
+        {
+            // Arrange
+            ResetErrorInfoCapture();
+            LogAssert.Expect(LogType.Exception, new Regex("InvalidOperationException.*Child error"));
+
+            // Act
+            using var mounted = V.Mount(_root, V.Component(PropsErrorInfoCaptureEbRender, key: "props-info-eb"));
+
+            // Assert
+            Assert.That(s_errorInfoLastInfo?.ComponentStack,
+                Does.StartWith("    at FunctionalComponentErrorTests.PropsThrowingChildRender\n"));
+        }
+
         #region ErrorInfo capture EB
 
         private static Exception s_errorInfoLastException;
@@ -238,6 +253,21 @@ namespace Velvet.Tests
             });
             return V.Component(AlwaysThrowingChildRender, key: "throwing-child-info");
         }
+
+        [Component(IsErrorBoundary = true)]
+        private static VNode PropsErrorInfoCaptureEbRender()
+        {
+            Hooks.UseFallback((ex, info) =>
+            {
+                s_errorInfoLastInfo = info;
+                return null;
+            });
+            return V.Component(PropsThrowingChildRender, "Child error", key: "props-throwing-child-info");
+        }
+
+        [Component]
+        private static VNode PropsThrowingChildRender(string reason)
+            => throw new InvalidOperationException(reason);
 
         #endregion
 
