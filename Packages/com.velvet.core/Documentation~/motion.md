@@ -261,12 +261,9 @@ the plan are built in one synchronous call, off-panel, before any style resoluti
   channels intersect the resolved set — a `transition-colors` element running a fade/slide keeps
   its hover fade, while the same play on a `transition-transform` or `transition-all` element
   suspends. One blind spot: the check runs once at play start, so a variant turning on
-  `transition-all` mid-play is not picked up until the next play.
-  A play that starts while a variant tween on the same element is running does not write over the
-  tween's inline `transition-property`, which would land the tween at its target; it takes the
-  properties it drives out of that list, so the tween goes on transitioning everything else and the
-  play's frames land as written. Where the classes transition what the play drives, the suspension
-  still goes up once the tween ends.
+  `transition-all` mid-play is not picked up until the next play. A play starting while a variant
+  tween holds the inline `transition-property` takes what it drives out of that list rather than
+  writing over it.
   When it does suspend, the suspension is **element-wide**: UI Toolkit's `transition-property` is a
   positive list with no "everything except these" spelling, so the element's *other* transitions
   land instantly too, across the play's `DelaySec` and stagger slot as well as its motion — the
@@ -311,12 +308,10 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
   registration.
 - Independent of `Variants`/`Animate`: the tween runs from the ACTUAL rect delta captured off
   `element.layout`, not a class-defined from/to pair, so it fires whether or not the same patch
-  also changed variants. A variant tween running beside it keeps tweening, as a variant animation
-  does beside a Framer layout animation: the spring takes what it drives out of the tween's
-  transition list (see *A play suspends the element's own USS transitions* above). Its spring
-  knobs come off the Motion's own `transition:` rather than an active pose's — a rect delta is not
-  a swap into a pose — and fall back to `StyleTransitionConfig`'s own spring defaults (Stiffness
-  100 / Damping 10 / Mass 1) when the Motion declares no `Transition`.
+  also changed variants. Its spring knobs come off the Motion's own `transition:` rather than an
+  active pose's — a rect delta is not a swap into a pose — and fall back to
+  `StyleTransitionConfig`'s own spring defaults (Stiffness 100 / Damping 10 / Mass 1) when the
+  Motion declares no `Transition`.
 - **Uniform scale only.** A non-uniform rect change (width and height scale by different factors)
   averages the two axis scale factors rather than distorting the element on two independent axes
   — UI Toolkit's `scale` style is a single uniform factor, not independent X/Y.
@@ -366,9 +361,7 @@ reaches the class list is invisible to it — the bracket duration `duration-[40
 inline value, and so does a `V.Motion` variant swap's own transition, which belongs to the swap. A
 swap driving the same slot as the mode falls under the first bullet. While such a swap is running the
 slot is the swap's: the suspension is neither taken nor handed back for the swap's length, and the
-swap's own completion puts back whichever of the two the element still needs. The property the mode
-drives is taken out of the swap's transition list instead, on every re-render that finds the swap
-running, so the mode's frames land while the swap tweens the rest.
+swap's own completion puts back whichever of the two the element still needs.
 
 ## Timelines (`Hooks.UseAnimationSequence`)
 
