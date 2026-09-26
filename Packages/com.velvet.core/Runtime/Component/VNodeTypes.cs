@@ -188,12 +188,11 @@ namespace Velvet
         public string? Initial { get; init; }
 
         /// <summary>
-        /// Exit variant label. When this Motion is the anchor of a keyed AnimatePresence child (the motion
-        /// guide's <i>Exits</i> section says which Motion that is) and sets <see cref="Exit"/> +
-        /// <see cref="Animate"/> + <see cref="Variants"/>, removal animates from the resting
-        /// <c>variants[Animate]</c> to <c>variants[Exit]</c> before the element unmounts, on the timing
-        /// <see cref="MotionVariant.Transition"/> resolves, whether or not <c>variants[Exit]</c> applies a
-        /// class (see <see cref="MotionVariant.ClassName"/>). A label <see cref="Variants"/> has no pose for
+        /// Exit variant label. When the keyed AnimatePresence child this Motion sits in, however deep, is
+        /// removed, the Motion animates from its resting pose to <c>variants[Exit]</c> before the child
+        /// unmounts, on the timing <see cref="MotionVariant.Transition"/> resolves, whether or not
+        /// <c>variants[Exit]</c> applies a class (see <see cref="MotionVariant.ClassName"/>), and hands the
+        /// label down to the Motions inheriting its labels. A label <see cref="Variants"/> has no pose for
         /// plays the classic exit instead.
         /// Unlike <see cref="Initial"/>, this genuinely needs AnimatePresence — something must
         /// defer the unmount for the removal to animate against — so it is inert (and logs a warning) outside one.

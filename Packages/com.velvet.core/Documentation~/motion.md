@@ -57,8 +57,8 @@ on any `motion.*` element). The element mounts showing `variants[initial]`, then
 
 ## Exits (`AnimatePresence`)
 
-`V.AnimatePresence` keeps a removed keyed child mounted as a *ghost* until its `exit` variant
-finishes, then removes it and fires `onExitComplete` (once, cancelled exits excluded):
+`V.AnimatePresence` keeps a removed keyed child mounted as a *ghost* until its exits finish,
+then removes it and fires `onExitComplete` (once, cancelled exits excluded):
 
 ```csharp
 V.Div(name: "row", className: "flex flex-row gap-x-2", children: new VNode[]
@@ -79,11 +79,16 @@ V.Div(name: "row", className: "flex flex-row gap-x-2", children: new VNode[]
   for out of the class strings; *Driven channels* below is the single list of what that covers and
   what it deliberately leaves out. A `skew-*` exit never animates under any driver, because skew
   is a silhouette paint rather than a transform.
-- **Which Motion a keyed child's enter and exit play on** — its *anchor* — is the child itself when
-  it is a Motion, else the first Motion found through the `V.Provider`s, `V.Fragment`s and z-managed
-  elements it wraps. A Motion behind a component, `V.Memoized` or `V.Suspense`, or inside any other
-  element, is not an anchor: it plays its own mount enter, which `initial: false` does not suppress,
-  and no exit, warning at mount when it declares one; a child with no anchor is removed at once. A
+- **Every Motion in a removed child exits**, however deep — behind a component, `V.Memoized` or
+  `V.Suspense`, or inside another element or Motion — when it declares an `exit` or inherits one from
+  the Motion above it the way an `animate` label is inherited, and the child stays mounted until the
+  last of those exits completes. A coordinator's exit pose staggers its inheriting children as a label
+  change does (see *Orchestration* below). The children of an inner `V.AnimatePresence` are that
+  presence's, as in Framer without `propagate`. `initial: false` suppresses the mount enter of every
+  Motion the presence's first render mounts.
+- The presence's own enter, and the classic exit a Motion with no `exit` label plays from its
+  `transition:`, belong to the child's *anchor*: the child itself when it is a Motion, else the first
+  Motion found through the `V.Provider`s, `V.Fragment`s and z-managed elements it wraps. A
   `V.Fragment` cannot be the keyed child itself; it is refused with an error.
 - A classless `exit` pose is still a variant exit: the removal takes the resting pose's classes
   off, on the timing that pose resolves; see *Transition semantics* below. An `exit` label naming no

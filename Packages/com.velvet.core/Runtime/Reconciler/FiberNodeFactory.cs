@@ -260,6 +260,7 @@ namespace Velvet
             var appliedClasses = MotionVariantResolver.ResolveApplied(motionNode, motionAmbient,
                 out var variantClasses, out _);
             var element = _ctx.FiberElementFactory.CreateMotion(motionNode, appliedClasses);
+            _ctx.MotionNodes[element] = motionNode;
             // The presence expansion dispatches this anchor Motion's variant enter/exit against the
             // Motion's OWN element (the resting variant classes live here, not on a wrapper) — record
             // it for the expansion that is emitting this keyed child right now.
@@ -348,11 +349,9 @@ namespace Velvet
             // resting baseline and never replays this entrance.
             // Gated on IDENTITY, not PresenceExpansionDepth: the presence expansion drives an enter for
             // only its ONE resolved anchor Motion (PresenceAnchorMotion, set by GeneralPathReconciler
-            // around the exact EmitPresenceChild call whose enter/exit it dispatches explicitly) — every
-            // OTHER Motion created while that expansion is on the stack (nested deeper, sitting under a
-            // non-anchor wrapper — e.g. a plain Div — or simply a sibling keyed child) is not presence-
-            // managed at all and must keep this mount enter, or wrapping unrelated content in
-            // AnimatePresence would silently disable it.
+            // around the exact EmitPresenceChild call whose enter/exit it dispatches explicitly), so every
+            // OTHER Motion created while that expansion is on the stack plays this one, unless
+            // PresenceSuppressesInitial says the presence's initial: false covers it.
             if (!ReferenceEquals(motionNode, _ctx.PresenceAnchorMotion) && motionNode.Initial != null)
             {
                 if (GeneralPathReconciler.TryResolveVariantInitial(
@@ -363,9 +362,17 @@ namespace Velvet
                     // Contained on the same terms the presence expansion's own enters are, and attributed
                     // to the component whose render reached this create — the owner SyncRefCallback reads
                     // for the same element, captured here because the callback can fire frames later.
-                    _ctx.StyleAnimationScheduler.PlayVariantEnter(element, standaloneFromClasses, standaloneToClasses,
-                        standaloneTransition,
-                        GeneralPathReconciler.ContainedEnterComplete(motionNode, _ctx.FiberStack.Current));
+                    var enterComplete = GeneralPathReconciler.ContainedEnterComplete(motionNode, _ctx.FiberStack.Current);
+                    if (_ctx.PresenceSuppressesInitial)
+                    {
+                        // The same completion a suppressed anchor enter reports.
+                        enterComplete?.Invoke();
+                    }
+                    else
+                    {
+                        _ctx.StyleAnimationScheduler.PlayVariantEnter(element, standaloneFromClasses,
+                            standaloneToClasses, standaloneTransition, enterComplete);
+                    }
                 }
                 else
                 {
@@ -465,15 +472,6 @@ namespace Velvet
                 FiberLogger.LogWarning("Motion",
                     "exit on a Motion outside AnimatePresence is inert: exit tweens are driven by the "
                     + "AnimatePresence expansion. Wrap the Motion in V.AnimatePresence (or drop exit).");
-            }
-            else if (motionNode.Exit != null && !ReferenceEquals(motionNode, _ctx.PresenceAnchorMotion))
-            {
-                FiberLogger.LogWarning("Motion",
-                    "exit on this Motion is inert: AnimatePresence plays the exit of a keyed child's anchor "
-                    + "only — the child itself when it is a Motion, else the first Motion found through the "
-                    + "V.Provider, V.Fragment or z-managed element it wraps. A Motion behind a component, "
-                    + "V.Memoized or V.Suspense, or inside any other element, is no anchor, and its exit "
-                    + "does not play. Make the Motion the keyed child (or drop exit).");
             }
         }
 

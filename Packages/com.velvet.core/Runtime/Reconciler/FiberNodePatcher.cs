@@ -461,6 +461,7 @@ namespace Velvet
 
         private void PatchMotion(VisualElement element, MotionNode oldNode, MotionNode newNode)
         {
+            _ctx.MotionNodes[element] = newNode;
             // Mirror the create path's anchor-element recording: a presence keyed child that REUSES its
             // element (a ghost's old-side reproduction, a cancelled exit's re-entry) reaches its Motion
             // through this patch, and the expansion still needs the Motion's own element to dispatch
@@ -643,16 +644,16 @@ namespace Velvet
         // - Otherwise (a pure pass-through inheritor with no orchestration of its own) the ambient frame is
         //   passed through UNCHANGED, so a non-orchestrating intermediate layer does not interrupt an outer
         //   ancestor's stagger sequence reaching its own grandchildren.
-        private static MotionOrchestrationFrame? ResolveChildOrchestration(
+        internal static MotionOrchestrationFrame? ResolveChildOrchestration(
             MotionNode newNode, StyleTransitionConfig? swapTransition, bool childLabelChanged,
-            MotionOrchestrationFrame? ambientOrchestration, float extraDelaySec)
+            MotionOrchestrationFrame? ambientOrchestration, float extraDelaySec, bool warn = true)
         {
             var hasOwnOrchestration = swapTransition != null
                 && (swapTransition.StaggerChildrenSec > 0f || swapTransition.DelayChildrenSec > 0f
                     || swapTransition.When != TransitionWhen.Together);
             if (childLabelChanged && hasOwnOrchestration)
             {
-                if (swapTransition.When == TransitionWhen.AfterChildren)
+                if (warn && swapTransition.When == TransitionWhen.AfterChildren)
                 {
                     FiberLogger.LogWarning("Motion",
                         "transition.When = AfterChildren is not yet orchestrated for label propagation; "
