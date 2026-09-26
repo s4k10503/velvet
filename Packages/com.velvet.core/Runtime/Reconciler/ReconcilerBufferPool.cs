@@ -117,6 +117,11 @@ namespace Velvet
         public List<ComponentFiber?> RentFiberOwnerList() => _fiberOwnerListPool.Rent();
         public void ReturnFiberOwnerList(List<ComponentFiber?> list) => _fiberOwnerListPool.Return(list);
 
+        private readonly ClearablePool<List<ChildKey>> _leafKeyListPool = new(l => l.Clear());
+
+        public List<ChildKey> RentLeafKeyList() => _leafKeyListPool.Rent();
+        public void ReturnLeafKeyList(List<ChildKey> list) => _leafKeyListPool.Return(list);
+
         #endregion
 
         #region ChildReconciler — for duplicate-key orphans (HashSet<int>)
