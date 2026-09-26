@@ -151,6 +151,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the moving strings of one render stay under about 4096: measured, 3000 strings beside 1000 moving ones
   settle and 3000 beside 1100 never do, while the same 3000 already cached stay cached beside 1100.
 
+- A render that calls `Hooks.UseState` / `Hooks.UseReducer`, `Hooks.UseStore` or `Hooks.Use` a
+  different number of times from the previous render now fails with a message that opens on the
+  component's name and continues in React's words — `Rendered more hooks than during the previous
+  render (UseState / UseReducer: 1 before, 2 now)`, or `Rendered fewer hooks than expected` — where it
+  named no component. The call past the previous render's count throws from itself instead of after the
+  body returns, so when that call is made inside a plain helper method, the helper is on the
+  exception's stack. The error the editor alone logs for the same mistake with `Hooks.UseEffect`,
+  `Hooks.UseCallback` and eight more hooks takes the same wording.
+
+- A component mounted through `V.Component(body, props)` or `V.Memo` is named by its method, or by its
+  `DisplayName`, in `ErrorInfo.ComponentStack`, in the hook-type error, in the StrictMode double-render
+  diagnostics, in the error for a `Hooks.UseStore` whose store changed, in the `Hooks.UseBlocker`
+  warning for a missing router and in the DevTools window's label for a mounted root. Each named the
+  compiler-generated closure the overload wraps the method in. The error for a hook called outside a
+  render and that DevTools label now give the declaring type before the method name, as the other
+  messages do, and honour `DisplayName`.
+
 - Memoized components rebuild their compiled VNode cache when their props comparison detects a
   change, including a record struct float member changing from positive zero to negative zero.
 
