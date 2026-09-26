@@ -172,18 +172,28 @@ namespace Velvet
             }
             for (var i = 0; i < CornerCount; i++)
             {
-                state.Sheet[i] = evt.customStyle.TryGetValue(s_declaredProperties[i], out var text)
-                    && StyleArbitraryValueResolver.TryParseValue(text.AsSpan(), out var value, out var unit)
-                        ? new Length(value, unit)
-                        : null;
+                state.Sheet[i] = DeclaredBySheet(evt.customStyle, i);
             }
             RefreshDeclared(element, state);
+        }
+
+        private static Length? DeclaredBySheet(ICustomStyle customStyle, int corner)
+        {
+            if (!customStyle.TryGetValue(s_declaredProperties[corner], out var text))
+            {
+                return null;
+            }
+            return StyleArbitraryValueResolver.TryParseValue(text.AsSpan(), out var value, out var unit) ? new Length(value, unit) : null;
         }
 
         private static void OnGeometryChanged(GeometryChangedEvent evt)
         {
             var element = (VisualElement)evt.currentTarget;
-            if (evt.oldRect.size != evt.newRect.size && s_states.TryGetValue(element, out var state))
+            if (!s_states.TryGetValue(element, out var state))
+            {
+                return;
+            }
+            if (evt.oldRect.size != evt.newRect.size)
             {
                 Refresh(element, state, suspendTransitions: true);
             }
@@ -269,9 +279,11 @@ namespace Velvet
         {
             if (Declared(state, corner) is { } declared)
             {
-                return declared.unit == LengthUnit.Percent
-                    ? new Vector2(Mathf.Max(0f, width * declared.value / 100f), Mathf.Max(0f, height * declared.value / 100f))
-                    : new Vector2(Mathf.Max(0f, declared.value), Mathf.Max(0f, declared.value));
+                if (declared.unit == LengthUnit.Percent)
+                {
+                    return new Vector2(Mathf.Max(0f, width * declared.value / 100f), Mathf.Max(0f, height * declared.value / 100f));
+                }
+                return new Vector2(Mathf.Max(0f, declared.value), Mathf.Max(0f, declared.value));
             }
             var resolved = ResolvedCorner(element.resolvedStyle, corner);
             return float.IsNaN(resolved) ? Vector2.zero : new Vector2(Mathf.Max(0f, resolved), Mathf.Max(0f, resolved));
