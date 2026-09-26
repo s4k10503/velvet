@@ -1058,16 +1058,6 @@ namespace Velvet
         // one. ComponentFiber.SourceTree owns what reads it.
         internal VNode?[]? CurrentFiberTree { get; set; }
 
-        // Effective key override published by the expansion pass for VNodes whose identity is gated
-        // by an enclosing keyed FragmentNode. The keyed reconciler reads this map (via
-        // ChildReconciler.EffectiveKey) instead of VNode.Key when looking up
-        // identity. The override composes Fragment scope chain with the child's own key (or its
-        // positional index when unkeyed) so children of the same keyed Fragment pair as a unit
-        // across reorders, while sibling Fragments with the same inner child keys do not collide.
-        // Keyed by VNode reference — each reconcile pass produces fresh VNode instances, so entries
-        // do not collide across passes. Cleared at the end of every top-level Reconcile.
-        public Dictionary<VNode, string> EffectiveKeys { get; } = new();
-
         // Old VNode trees of inline children re-rendered via SubsumeFiberIntoThisPass during the
         // current reconcile pass, queued for pooled-object return at the top-level boundary rather than
         // immediately. A parent re-render reaches an existing inline child, captures that child's old tree
@@ -1746,10 +1736,9 @@ namespace Velvet
 
         // Reconcile depth shared across all Reconciler instances that observe this context.
         // Each fiber owns its own Reconciler (so per-fiber pause/resume state is
-        // independent), but the ReconcilerContext-keyed EffectiveKeys registry must
-        // only be cleared when the OUTERMOST Reconcile pass across the entire fiber tree completes.
-        // Using an instance-local depth would treat each fiber-owned Reconciler.Reconcile call as a
-        // fresh top-level, clearing entries for sibling subtrees the surrounding pass has not yet consumed.
+        // independent), but the top-level reset in Reconciler.Reconcile's finally must run only when the
+        // OUTERMOST Reconcile pass across the entire fiber tree completes. Using an instance-local depth would
+        // treat each fiber-owned Reconciler.Reconcile call as a fresh top-level and run that reset mid-pass.
         internal int SharedReconcileDepth { get; set; }
         public IReconcilerBridge ReconcilerBridge { get; private set; } = null!;
         public bool IsDisposed { get; private set; }
