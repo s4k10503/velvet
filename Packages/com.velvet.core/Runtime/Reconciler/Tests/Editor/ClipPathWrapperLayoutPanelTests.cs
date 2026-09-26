@@ -167,7 +167,7 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base already anchors a patch-time wrap's mask at the wrapper origin.
-        // Anchoring it at the old layout position, as `innerAtWrapperOrigin: false` does, reddens this.
+        // Anchoring it at the element's old layout position reddens this.
         [Test]
         public void Given_ACardAwayFromItsParentsOrigin_When_ClipAddedByPatch_Then_TheWrapTimeMaskIgnoresItsOldPosition()
         {

@@ -139,11 +139,8 @@ namespace Velvet
             ClipPathLayoutBox.Adopt(element, binding);
 
             // Off-panel / pre-layout the size is unknown (NaN) and the sync no-ops; on a patch-time
-            // wrap of an already-laid-out element it bakes immediately. element.layout still holds stale
-            // OLD-parent coordinates until the next layout pass, so the anchor must not read it here (a
-            // (100,50) card would otherwise show its mask offset by (100,50) for one frame); that pass's
-            // GeometryChangedEvent re-anchors it at the inner's real place in the wrapper.
-            SyncClipPathGeometry(element, binding, innerAtWrapperOrigin: true);
+            // wrap of an already-laid-out element it bakes immediately.
+            SyncClipPathGeometry(element, binding);
             return wrapper;
         }
 
@@ -180,12 +177,8 @@ namespace Velvet
 
         // Keeps the mask tracking its target: (re)bakes the vector shape at the inner's resolved box. The baked
         // VectorImage stores TIGHT bounds, so the background is explicitly positioned and sized by
-        // the analytic path bounds, anchored at the inner's layout origin within the wrapper.
-        // innerAtWrapperOrigin: true on the wrap-time call, when element.layout still holds
-        // OLD-parent coordinates, so the anchor takes the wrapper's origin until the next layout pass
-        // (whose GeometryChangedEvent re-anchors with real coordinates).
-        private static void SyncClipPathGeometry(VisualElement element, ClipPathBinding binding,
-            bool innerAtWrapperOrigin = false)
+        // the analytic path bounds, anchored at the wrapper's origin, where the inner sits (ClipPathLayoutBox).
+        private static void SyncClipPathGeometry(VisualElement element, ClipPathBinding binding)
         {
             // No active clip (a variant-only clip at rest, e.g. an element carrying only hover:clip-path-[…]
             // while not hovered): the persistent wrapper shows the subtree unclipped. Drop the mask but KEEP
@@ -208,20 +201,10 @@ namespace Velvet
                 return;
             }
 
-            var originX = innerAtWrapperOrigin ? 0f : element.layout.x;
-            var originY = innerAtWrapperOrigin ? 0f : element.layout.y;
-            if (float.IsNaN(originX)) originX = 0f;
-            if (float.IsNaN(originY)) originY = 0f;
-
             var sizeUnchanged = Mathf.Abs(width - binding.BakedWidth) < 0.5f
                 && Mathf.Abs(height - binding.BakedHeight) < 0.5f;
             if (sizeUnchanged)
             {
-                // Same box, possibly moved within the wrapper: re-anchor the existing bake only.
-                if (binding.Image != null)
-                {
-                    ApplyClipPathBackgroundRect(binding, originX, originY);
-                }
                 return;
             }
 
@@ -234,7 +217,7 @@ namespace Velvet
                 binding.Bounds = stretched;
                 binding.BakedWidth = width;
                 binding.BakedHeight = height;
-                ApplyClipPathBackgroundRect(binding, originX, originY);
+                ApplyClipPathBackgroundRect(binding);
                 return;
             }
 
@@ -265,16 +248,16 @@ namespace Velvet
             var ws = binding.Wrapper.style;
             ws.backgroundImage = Background.FromVectorImage(image);
             ws.backgroundRepeat = new BackgroundRepeat(Repeat.NoRepeat, Repeat.NoRepeat);
-            ApplyClipPathBackgroundRect(binding, originX, originY);
+            ApplyClipPathBackgroundRect(binding);
         }
 
         // Writes the background anchor (and, for the stretch path, the rescaled size) from the
         // binding's current analytic bounds.
-        private static void ApplyClipPathBackgroundRect(ClipPathBinding binding, float originX, float originY)
+        private static void ApplyClipPathBackgroundRect(ClipPathBinding binding)
         {
             var ws = binding.Wrapper.style;
-            ws.backgroundPositionX = new BackgroundPosition(BackgroundPositionKeyword.Left, originX + binding.Bounds.x);
-            ws.backgroundPositionY = new BackgroundPosition(BackgroundPositionKeyword.Top, originY + binding.Bounds.y);
+            ws.backgroundPositionX = new BackgroundPosition(BackgroundPositionKeyword.Left, binding.Bounds.x);
+            ws.backgroundPositionY = new BackgroundPosition(BackgroundPositionKeyword.Top, binding.Bounds.y);
             ws.backgroundSize = new BackgroundSize(binding.Bounds.width, binding.Bounds.height);
         }
     }

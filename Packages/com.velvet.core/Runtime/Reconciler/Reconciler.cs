@@ -550,10 +550,9 @@ namespace Velvet
             // Clip wrappers hold a baked VectorImage (a ScriptableObject): still-mounted clipped
             // elements never pass through FiberElementCleaner at root disposal, so release here —
             // symmetric with the ShadowBindings Material teardown above.
-            foreach (var pair in _ctx.ClipPathBindings)
+            foreach (var binding in _ctx.ClipPathBindings.Values)
             {
-                pair.Value.DisposeImage();
-                ClipPathLayoutBox.Forget(pair.Key, pair.Value);
+                binding.DisposeImage();
             }
             _ctx.ClipPathBindings.Clear();
             // Ring overlays are plain native-border elements (no GPU resource), so just drop the entries; the

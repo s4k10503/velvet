@@ -118,10 +118,10 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AClippedCard_When_ItsWidthIsPatchedToAPercentage_Then_ItSitsWhereItsUnclippedTwinSits()
+        public void Given_AClippedCard_When_ItsWidthIsPatchedToAPercentageAndItsSelfEndDropped_Then_ItSitsWhereItsUnclippedTwinSits()
         {
             // Arrange
-            Mount("flex-row", s => (s == 0 ? "w-[100px]" : "w-[50%]") + " h-[50px]");
+            Mount("flex-row", s => (s == 0 ? "w-[100px] self-end" : "w-[50%]") + " h-[50px]");
 
             // Act
             Step(1);
@@ -147,10 +147,10 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base restores an unwrapped element's layout, since it never moved it.
-        // Dropping the hand-back in ClipPathLayoutBox.Release leaves the card neutral with its width on a dead
-        // wrapper, which reddens this.
+        // Dropping the hand-back in ClipPathLayoutBox.Release, or the parent check in ClipPathLayoutBox.Of that
+        // keeps the later width off the dead wrapper, reddens this.
         [Test]
-        public void Given_AClippedCard_When_TheClipIsRemovedByPatch_Then_ItSitsWhereItsUnclippedTwinSits()
+        public void Given_AClippedCard_When_TheClipIsRemovedAndTheWidthThenPatched_Then_ItSitsWhereItsUnclippedTwinSits()
         {
             // Arrange: the clip is on step 0 only.
             s_hostClass = "items-start";
@@ -159,6 +159,7 @@ namespace Velvet.Tests
 
             // Act
             Step(1);
+            Step(2);
 
             // Assert
             Assert.That((Named("clip-card").parent == Named("clip-host"), RelativeToHost("clip", "card"),
@@ -184,12 +185,69 @@ namespace Velvet.Tests
         {
             var (step, setStep) = Hooks.UseState(0);
             s_setStep = setStep;
-            const string card = "w-[50%] h-[50px] ml-[20px] self-end";
+            var card = (step < 2 ? "w-[50%]" : "w-[25%]") + " h-[50px] ml-[20px] self-end";
             return V.Div(className: "flex-col", children: new VNode[]
             {
                 Host("clip", card + (step == 0 ? " " + Triangle : "")),
                 Host("plain", card),
             });
+        }
+
+        [Component]
+        private static VNode RenderWhileHover()
+        {
+            return V.Div(className: "flex-col", children: new VNode[]
+            {
+                HoverHost("clip", Triangle),
+                HoverHost("plain", ""),
+            });
+        }
+
+        private static VNode HoverHost(string prefix, string clip)
+            => V.Div(name: prefix + "-host", className: "relative shrink-0 w-[400px] h-[300px] items-start",
+                children: new VNode[]
+                {
+                    V.Div(name: prefix + "-card", className: "w-[100px] h-[50px] " + clip, whileHoverClass: "self-end"),
+                    V.Div(name: prefix + "-next", className: "w-[10px] h-[10px]"),
+                });
+
+        private void Hover<TEvent>() where TEvent : EventBase<TEvent>, new()
+        {
+            foreach (var name in new[] { "clip-card", "plain-card" })
+            {
+                using var evt = EventBase<TEvent>.GetPooled();
+                Named(name).SimulateEvent(evt);
+            }
+            ForcePanelUpdate(_window.rootVisualElement.panel);
+        }
+
+        [Test]
+        public void Given_AClippedCardWithAWhileHoverSelfEnd_When_Hovered_Then_ItSitsWhereItsHoveredTwinSits()
+        {
+            // Arrange
+            _mounted = V.Mount(_window.rootVisualElement, V.Component(RenderWhileHover));
+            ForcePanelUpdate(_window.rootVisualElement.panel);
+
+            // Act
+            Hover<PointerOverEvent>();
+
+            // Assert
+            Assert.That(Clipped(), Is.EqualTo(Twin()));
+        }
+
+        [Test]
+        public void Given_AHoveredClippedCardWithAWhileHoverSelfEnd_When_ThePointerLeaves_Then_ItSitsWhereItsTwinSits()
+        {
+            // Arrange
+            _mounted = V.Mount(_window.rootVisualElement, V.Component(RenderWhileHover));
+            ForcePanelUpdate(_window.rootVisualElement.panel);
+            Hover<PointerOverEvent>();
+
+            // Act
+            Hover<PointerOutEvent>();
+
+            // Assert
+            Assert.That(Clipped(), Is.EqualTo(Twin()));
         }
 
         [Test]

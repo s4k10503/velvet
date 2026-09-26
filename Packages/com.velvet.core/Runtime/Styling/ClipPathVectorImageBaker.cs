@@ -349,9 +349,8 @@ namespace Velvet
         // The classes ClipPathLayoutBox.SyncClasses last copied from the inner onto the wrapper.
         public System.Collections.Generic.HashSet<string>? MirroredClasses;
 
-        // Analytic path bounds of the live bake (element-local px). The geometry sync re-anchors the
-        // background by these when only the inner's origin moved (no re-bake), and rescales them for
-        // stretch-invariant shapes on a size change.
+        // Analytic path bounds of the live bake (element-local px). The geometry sync positions the
+        // background by these, and rescales them for stretch-invariant shapes on a size change.
         public Rect Bounds;
 
         // Size of the last bake; the geometry sync skips re-baking when the box is unchanged

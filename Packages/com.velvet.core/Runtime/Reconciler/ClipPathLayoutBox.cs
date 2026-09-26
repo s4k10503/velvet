@@ -161,44 +161,39 @@ namespace Velvet
         private static readonly ConditionalWeakTable<VisualElement, ClipPathBinding> s_byInner = new();
         private static readonly ConditionalWeakTable<VisualElement, ClipPathBinding> s_byWrapper = new();
 
-        private static readonly HashSet<string> s_liveClasses = new();
-
         private static Entry Outer(StyleLonghand longhand, Action<IStyle, IStyle> move, Action<IStyle> neutral)
             => new(longhand, Role.Outer, move, neutral);
 
         private static Entry Reset(StyleLonghand longhand, Action<IStyle> inert)
             => new(longhand, Role.Reset, write: inert);
 
-        // The element the parent lays out in the element's place. The parent check keeps an element that has
-        // been moved out of its wrapper by any path other than an unwrap from writing onto that wrapper.
+        // The element the parent lays out in the element's place. Registrations are never dropped, so the parent
+        // check is what stops an unwrapped or pooled element writing onto the wrapper it left.
         internal static VisualElement Of(VisualElement element)
-            => element != null && s_byInner.TryGetValue(element, out var binding) && element.parent == binding.Wrapper
-                ? binding.Wrapper
-                : element;
+        {
+            var binding = Registered(s_byInner, element);
+            return binding != null && element.parent == binding.Wrapper ? binding.Wrapper : element;
+        }
 
         // The inverse of Of: the clipped element a clip wrapper stands in for, else outer itself.
         internal static VisualElement InnerOf(VisualElement outer)
-            => outer != null && s_byWrapper.TryGetValue(outer, out var binding) && binding.Inner.parent == outer
-                ? binding.Inner
-                : outer;
+        {
+            var binding = Registered(s_byWrapper, outer);
+            return binding != null ? binding.Inner : outer;
+        }
 
         // Where an inline write of property to element belongs.
         internal static IStyle StyleFor(VisualElement element, ArbitraryProperty property)
         {
-            var index = (int)property;
-            return index >= 0 && index < s_outerProperty.Length && s_outerProperty[index]
-                ? Of(element).style
-                : element.style;
+            return s_outerProperty[(int)property] ? Of(element).style : element.style;
         }
 
         // Runs once the element is the wrapper's child: moves the element's outer-layout inline values onto the
         // wrapper, holds the element neutral, holds the wrapper's paint inert and mirrors the classes.
         internal static void Adopt(VisualElement element, ClipPathBinding binding)
         {
-            s_byInner.Remove(element);
-            s_byInner.Add(element, binding);
-            s_byWrapper.Remove(binding.Wrapper);
-            s_byWrapper.Add(binding.Wrapper, binding);
+            s_byInner.AddOrUpdate(element, binding);
+            s_byWrapper.AddOrUpdate(binding.Wrapper, binding);
 
             var inner = element.style;
             var outer = binding.Wrapper.style;
@@ -230,49 +225,48 @@ namespace Velvet
                     entry.Move!(outer, inner);
                 }
             }
-            Forget(element, binding);
-        }
-
-        // Drops the element's registration without handing anything back, for an element leaving the tree.
-        internal static void Forget(VisualElement element, ClipPathBinding binding)
-        {
-            s_byInner.Remove(element);
-            s_byWrapper.Remove(binding.Wrapper);
-            binding.MirroredClasses?.Clear();
         }
 
         // Brings the wrapper's class list level with the element's live one. Only the classes this mirror added
         // are ever removed, so a class something else put on the wrapper stays.
         internal static void SyncClasses(VisualElement element)
         {
-            if (element == null || !s_byInner.TryGetValue(element, out var binding) || element.parent != binding.Wrapper)
+            var binding = Registered(s_byInner, element);
+            if (binding == null || element.parent != binding.Wrapper)
             {
                 return;
             }
             var wrapper = binding.Wrapper;
-            var mirrored = binding.MirroredClasses ??= new HashSet<string>();
-            s_liveClasses.Clear();
-            foreach (var cls in element.GetClasses())
+            var mirrored = binding.MirroredClasses;
+            var live = new HashSet<string>(element.GetClasses());
+            if (mirrored != null)
             {
-                s_liveClasses.Add(cls);
-            }
-            foreach (var cls in mirrored)
-            {
-                if (!s_liveClasses.Contains(cls))
+                foreach (var cls in mirrored)
                 {
-                    wrapper.RemoveFromClassList(cls);
+                    if (!live.Contains(cls))
+                    {
+                        wrapper.RemoveFromClassList(cls);
+                    }
                 }
             }
-            foreach (var cls in s_liveClasses)
+            foreach (var cls in live)
             {
-                if (!mirrored.Contains(cls))
+                if (mirrored == null || !mirrored.Contains(cls))
                 {
                     wrapper.AddToClassList(cls);
                 }
             }
-            mirrored.Clear();
-            mirrored.UnionWith(s_liveClasses);
-            s_liveClasses.Clear();
+            binding.MirroredClasses = live;
+        }
+
+        private static ClipPathBinding? Registered(ConditionalWeakTable<VisualElement, ClipPathBinding> table,
+            VisualElement? key)
+        {
+            if (key == null)
+            {
+                return null;
+            }
+            return table.TryGetValue(key, out var binding) ? binding : null;
         }
 
         private static StyleLonghandSet BuildOuterSet()
@@ -295,11 +289,7 @@ namespace Velvet
             foreach (var property in properties)
             {
                 var set = StyleArbitraryLonghands.Of(property);
-                var index = (int)property;
-                if (index >= 0 && index < outer.Length)
-                {
-                    outer[index] = !set.IsEmpty && set.Union(s_outer) == s_outer;
-                }
+                outer[(int)property] = set.Union(s_outer) == s_outer;
             }
             return outer;
         }
