@@ -9,6 +9,7 @@ Run: python3 scripts/test_quality/test_ci_mutation_shard.py
 
 import base64
 import importlib.util
+import re
 import subprocess
 import tempfile
 import unittest
@@ -26,6 +27,8 @@ def load_module():
 
 
 ci_mutation_shard = load_module()
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 SERIAL = "F4-ABCD-EFGH-IJKL-MNOP-QRST"
 
@@ -130,6 +133,32 @@ class LicenceTests(unittest.TestCase):
                         if any(str(part).endswith("mutation_check.py") for part in command))
         self.assertEqual(campaign[3:], ["--base", "abc", "--shard", "0/2", "--unity",
                                         ci_mutation_shard.UNITY, *ci_mutation_shard.EDITOR_ARGS])
+
+
+
+class EditorVersionTests(unittest.TestCase):
+    """The editor a shard runs against the one the project and the unity-tests jobs name.
+
+    The shard's image is `docker run` in test.yml rather than game-ci's action, so nothing of the
+    action's own version reading reaches it.
+    """
+
+    def test_Given_TheWorkflows_When_TheirEditorVersionsAreRead_Then_EachIsTheProjects(self):
+        # Arrange
+        project = re.search(r"^m_EditorVersion: (\S+)$",
+                            (REPO_ROOT / "ProjectSettings/ProjectVersion.txt").read_text(), re.MULTILINE)
+        sources = sorted((REPO_ROOT / ".github").rglob("*.yml"))
+        texts = [path.read_text() for path in sources]
+
+        # Act
+        named = {version for text in texts
+                 for version in re.findall(r"unityVersion: (\S+)|unityci/editor:ubuntu-([0-9][^-\s]*)-", text)
+                 for version in version if version}
+        derived = any('ubuntu-$version-linux-il2cpp-3' in text
+                      and "m_EditorVersion" in text for text in texts)
+
+        # Assert — the campaign reads its version from the project, so it names none to compare.
+        self.assertEqual((named, derived), ({project.group(1)} if project else None, True))
 
 
 if __name__ == "__main__":

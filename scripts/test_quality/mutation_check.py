@@ -81,6 +81,10 @@ UNMEASURED = (NOT_BUILT, TIMED_OUT, HUNG, UNCOMPILABLE, UNRECORDED)
 # measured cost of each.
 MUTANTS_PER_SHARD = 3
 MAX_SHARDS = 10
+# The most a shard is given before `--plan` refuses the diff: this many of the slowest measured
+# mutant, after the longest measured of each setup phase, fit the shard job's timeout in test.yml.
+# `ShardCeilingTests` holds the two together.
+MAX_MUTANTS_PER_SHARD = 25
 
 CATEGORIES = ("equivalent", "unreachable")
 
@@ -105,12 +109,11 @@ LINES_LISTED = 25
 # name is unavailable, which is the only reading that does not let a mutation through.
 UNREADABLE = object()
 
-# What `--carried` and `--receipt` exit with when they refuse, so a caller can tell a refusal from a
-# script that could not take the reading at all. Both stop the tool; only one is about a campaign.
+# What `--carried` exits with when it refuses, so a caller can tell a refusal from a script that
+# could not take the reading at all. Both stop the tool; only one is about a campaign.
 CARRIED_REFUSAL = 3
-RECEIPT_REFUSAL = 3
 
-# Include generation semantics in verdict and receipt identity.
+# Include generation semantics in verdict identity.
 MUTATION_MODEL_VERSION = 7
 
 
@@ -1338,7 +1341,7 @@ def assembly_of(path):
 def origin_copy(project, base):
     """As origin's copy of a branch moves on, its merge base with a branch cut from it stays at the
     fork point. The local branch can sit behind the fork point until somebody brings it current, and
-    keyed on it, a receipt stopped covering an unchanged tree once they did, while one written
+    keyed on it, a kept verdict stopped matching an unchanged tree once they did, while one written
     against `origin/main` was not found until then. `LaggingLocalBaseTests` poses both.
 
     Only a name that is a branch here as well is read at origin's, because origin carries a `HEAD`.
@@ -1407,7 +1410,7 @@ def mutable(path, project):
         return False
     # Unity's asset database does not import a `~`-suffixed directory, so a source under one compiles
     # into nothing here: mutating a line there leaves every assembly byte-identical, the run scores
-    # NOT_BUILT, and no receipt can be written -- so a branch that edits one can never earn a passing
+    # NOT_BUILT, and the campaign fails -- so a branch that edits one can never earn a passing
     # campaign, and what it is told names a build state rather than a scope rule. The starter sample
     # is the live case: `Samples~/StarterApp` is the copy nothing compiles, and `sync_starter_sample.py`
     # keeps `Assets/VelvetStarterSample` beside it as the copy that does. `Generators~` was named here
@@ -1504,27 +1507,6 @@ def unity_busy():
     result = subprocess.run(["ps", "-Ao", "command="], capture_output=True, encoding="utf-8",
                             errors="replace")
     return sum(1 for line in result.stdout.splitlines() if re.match(UNITY_RUNNING, line))
-
-
-# A campaign, seen from outside. `wait_for_quiet` counts editors, and a campaign holds none between
-# its mutants -- it applies the mutation, restores the previous one and writes its record -- so two
-# can sample zero in the same gap and launch together. A case reddened by that load reads KILLED in
-# both receipts, with nothing in either to tell it from a mutant a test really killed.
-CAMPAIGN_RUNNING = re.compile(
-    r"^[^ ]*[Pp]ython[^ ]* .*[ /]mutation_check\.py\b")
-
-
-def campaigns_running():
-    """How many mutation campaigns are on this machine, including this one.
-
-    Sampled rather than waited on. Whether a lock is worth its deadlock is a question about how often
-    two are live at once, and that is not answerable from what this repository keeps: two receipts
-    survive locally, ninety minutes apart. So each receipt records what it saw, and the question gets
-    an answer built from runs rather than from a guess about them.
-    """
-    result = subprocess.run(["ps", "-Ao", "command="], capture_output=True, encoding="utf-8",
-                            errors="replace")
-    return sum(1 for line in result.stdout.splitlines() if CAMPAIGN_RUNNING.match(line))
 
 
 def wait_for_quiet(seconds):
@@ -1690,9 +1672,9 @@ def refusal(code, message):
 def digestible(text):
     """The file with its comments removed, and the lines they emptied with them.
 
-    What a receipt is keyed on has to move when what a campaign measured moves, and no further. A
-    comment carries no mutant -- `mask_spans` reads it as something other than code, and the
-    generator skips it -- so an edit to one voids a receipt over a change no operator could have
+    What a verdict record is keyed on has to move when what a campaign measured moves, and no
+    further. A comment carries no mutant -- `mask_spans` reads it as something other than code, and
+    the generator skips it -- so an edit to one voids a record over a change no operator could have
     seen, and a review round here is largely prose.
 
     A string literal is masked for generation and kept here, because editing one changes behaviour a
@@ -1729,51 +1711,27 @@ def scope_digest(base, targets, project, platform):
 
     Not the head tree: the campaign diffs the merge base against the **working tree**, so an
     uncommitted edit to a mutated file changes what it measured and moves no tree sha at all --
-    measured, and it is a receipt that would validate a run taken before the edit. Nor the head tree
+    measured, and it is a record that would validate a run taken before the edit. Nor the head tree
     for a second reason: 16 of 44 commits over five recent branches changed no mutable production
-    file, and each would have voided a receipt over a change no operator can see.
+    file, and each would have voided every record over a change no operator can see.
 
     What it does not cover is a test-side change. Removing a test can make a killed mutant survive,
-    and this stays valid across it; including tests would void the receipt on the ordinary act of
+    and this stays valid across it; including tests would void the records on the ordinary act of
     adding one after the run, which is most of a branch's commits.
 
-    Nor a comment: `digestible` takes them out before the hash, so a receipt survives the prose
+    Nor a comment: `digestible` takes them out before the hash, so a record survives the prose
     correction a review round leaves behind. Anything narrower than the whole bytes has to be
     checked for what it stops voiding on, and this stops on exactly the spans the generator already
     refuses to mutate.
     """
     parts = ["mutation-model:{}".format(MUTATION_MODEL_VERSION), base, platform]
     for path in sorted(targets, key=str):
-        # Repository-relative, so a receipt does not depend on where the checkout sits: a resolved
+        # Repository-relative, so a record does not depend on where the checkout sits: a resolved
         # path and an unresolved one reach the same file and digest differently.
         parts.append("{}:{}".format(
             relative_to(path, project).as_posix(),
             hashlib.sha256(digestible(path.read_text(encoding="utf-8")).encode()).hexdigest()))
     return hashlib.sha256("\n".join(parts).encode()).hexdigest()
-
-
-def receipt_path(output, digest):
-    return output / "receipts" / "{}.json".format(digest)
-
-
-PASSING_RECEIPTS = ("pass", "unreachable")
-
-
-def write_receipt(output, digest, base, verdict, detail):
-    path = receipt_path(output, digest)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    alone = campaigns_running() <= 1
-    path.write_text(json.dumps({
-        "digest": digest, "base": base, "verdict": verdict, "detail": detail,
-        "at": time.strftime("%Y-%m-%dT%H:%M:%S"),
-        # Whether this verdict was reached with the machine to itself. A neighbouring campaign is a
-        # second explanation for every failure in this one, and the editor count cannot see one
-        # between its mutants.
-        "alone": alone,
-    }, indent=2))
-    if not alone:
-        print("    a second campaign was running when this verdict was written", flush=True)
-    return path
 
 
 def verdict_path(output, index):
@@ -1787,7 +1745,7 @@ def write_verdict(output, index, digest, mutant, project, killers=(), scope=()):
         "column": mutant.column,
         "verdict": mutant.verdict, "detail": mutant.detail,
         # Every case that failed under this mutation, not the three the detail names. Which cases kill
-        # which mutant is a reading a receipt does not carry, and it is on disk here anyway -- the
+        # which mutant is a reading the decision does not carry, and it is on disk here anyway -- the
         # detail truncates it for a reader rather than because that is all there was.
         "killers": sorted(killers),
     }, indent=2))
@@ -1800,7 +1758,7 @@ def read_verdict(output, index, digest, mutant, project, scope=()):
     Keyed on the digest, which covers the working tree rather than a commit, so an edit to a mutated
     file since moves it and the record is refused rather than reused. On the suite `scope` narrows
     the run to, because a kill another suite took can hide a fixture that does not notice, and one
-    taken under `--filter` or `--assemblies` is not the whole-suite reading a receipt stands on. And on
+    taken under `--filter` or `--assemblies` is not the whole-suite reading a decision stands on. And on
     the mutant with its column, because an index is only this mutant's while the list is the same list
     -- `--files` takes a file whole where the diff takes its changed lines -- and two mutants on one
     line can describe alike.
@@ -1809,7 +1767,7 @@ def read_verdict(output, index, digest, mutant, project, scope=()):
     on the tests, which the test written for it changes; a timed-out or hung mutant on `--timeout`,
     which the timed-out verdict asks to be raised, and on anything else that kept the editor running;
     uncompilable and not rebuilt on the editor as well as on the mutation. A kill turns on the tests
-    too, and is kept across a test removed since for the reason `scope_digest` gives for the receipt;
+    too, and is kept across a test removed since for the reason `scope_digest` gives for its key;
     one taken while another editor was up is kept as well, and its detail says so.
     """
     held = recorded(output, index, digest, mutant, project, scope)
@@ -1860,16 +1818,6 @@ def in_shard(index, shard):
 
 def shard_count(mutants):
     return min(MAX_SHARDS, -(-mutants // MUTANTS_PER_SHARD))
-
-
-def read_receipt(output, digest):
-    path = receipt_path(output, digest)
-    if not path.exists():
-        return None
-    try:
-        return json.loads(path.read_text())
-    except (OSError, ValueError):
-        return None
 
 
 def reach(mutants, unreached, project):
@@ -2148,9 +2096,6 @@ def main():
                         help="write every mutant this package generates as {path, line, text} and "
                              "stop, for a reader that parses them with something other than this "
                              "script's own model of C#")
-    parser.add_argument("--receipt", action="store_true",
-                        help="ask whether a finished campaign covers this tree's mutable change, and "
-                             "stop. Refuses when one is owed and none was run")
     parser.add_argument("--plan", action="store_true",
                         help="print how many mutants the diff generates and the shards a split run "
                              "would use, as mutants=N and shards=[...] lines, and stop")
@@ -2302,41 +2247,6 @@ def main():
             + ["  {} lines {}-{} read as a {}".format(path, first, last, kind)
                for path, defects in blinded for first, last, kind in defects]))
 
-    if args.receipt:
-        # What is owed is decided the way the campaign decides it, by generating the mutants -- which
-        # needs no editor. A production file changed only in its documentation comments has a target
-        # and nothing to ask of it, and keying on the target alone left such a branch owing a receipt
-        # no campaign could ever write.
-        owed, nothing_reached = {}, {}
-        for path, lines in sorted(targets.items()):
-            text = path.read_text()
-            found = mutations_for(path, text, lines)
-            covered = {mutant.line for mutant in found}
-            left = [number for number in code_line_numbers(text, lines) if number not in covered]
-            if found:
-                owed[path] = found
-            if left:
-                nothing_reached[path] = left
-        if not targets or not (owed or nothing_reached):
-            print("no mutable change; no campaign is owed")
-            return 0
-        since = merge_base_of(project, args.base)
-        digest = scope_digest(since, targets, project, args.platform)
-        held = read_receipt(output, digest)
-        if held is None:
-            return refusal(RECEIPT_REFUSAL,
-                           "no campaign has measured this tree's mutable change:\n"
-                           + "\n".join("  {}".format(relative_to(path, project))
-                                       for path in sorted(targets, key=str))
-                           + "\nRun it, and this passes on the reading it leaves:\n"
-                             "  python3 scripts/test_quality/mutation_check.py --base {}".format(
-                                 args.base))
-        if held.get("verdict") not in PASSING_RECEIPTS:
-            return refusal(RECEIPT_REFUSAL, "the campaign over this tree ended {}: {}".format(
-                held.get("verdict"), held.get("detail")))
-        print("campaign {} over {}: {}".format(held.get("verdict"), digest[:12], held.get("detail")))
-        return 0
-
     mutants = []
     unreached = {}
     for path, lines in sorted(targets.items()):
@@ -2350,9 +2260,19 @@ def main():
     coverage = reach(mutants, unreached, project)
 
     if args.plan:
-        # A change whose lines no operator reaches plans no shard and passes, which is the reading
-        # `PASSING_RECEIPTS` gives it; the lines are named above the count so the pass says so.
+        if len(mutants) > MAX_SHARDS * MAX_MUTANTS_PER_SHARD:
+            print(coverage)
+            print("{} mutants is more than {} shards of {} can measure inside the shard job's "
+                  "timeout.\nSplit the pull request.".format(len(mutants), MAX_SHARDS,
+                                                             MAX_MUTANTS_PER_SHARD))
+            return 1
         print(coverage if (mutants or unreached) else "no mutable change; no campaign is owed")
+        if unreached and not mutants:
+            # Passed rather than refused, where a local run refuses: a change with nothing to ask
+            # cannot earn a pass any other way, so the lines are named and the pull request says why.
+            print("No operator reaches any of the changed code lines above, so nothing is measured "
+                  "and the\ncampaign passes. Say in the pull request why the change is not something "
+                  "a mutation\ncan ask about.")
         print("mutants={}".format(len(mutants)))
         print("shards={}".format(json.dumps(list(range(shard_count(len(mutants)))))))
         return 0
@@ -2365,14 +2285,6 @@ def main():
         if unreached:
             print(coverage)
             left = sum(len(lines) for lines in unreached.values())
-            # Recorded, because the branch cannot earn a passing run and this is the reading it got.
-            # A campaign nothing can ask anything of is a finished campaign, not an absent one.
-            if whole and not args.list:
-                write_receipt(output,
-                              scope_digest(merge_base_of(project, args.base), targets, project,
-                                           args.platform),
-                              args.base, "unreachable",
-                              "no operator reaches any of {} changed code line(s)".format(left))
             raise SystemExit(
                 "no operator reaches any of the {} changed code line(s) above, so a verdict here "
                 "would\nbe about nothing. Read them, and widen the operators or say in the pull "
@@ -2390,8 +2302,8 @@ def main():
     truncated = len(mutants) - args.max
     mutants = mutants[:args.max]
 
-    # What the receipt and each verdict record are keyed on, which is how `--collect` knows a shard's
-    # record is about this tree.
+    # What each verdict record is keyed on, which is how `--collect` knows a shard's record is about
+    # this tree.
     campaign = scope_digest(merge_base_of(project, args.base), targets, project, args.platform)
     if args.collect is not None:
         print(coverage)
@@ -2421,7 +2333,7 @@ def main():
 
     # Counts of what this run did, and deliberately no ratio: a mutation score over a diff is a
     # different denominator every branch, and a percentage is the part that gets quoted after the
-    # run it came from is forgotten. The survivors above are the output; this is the receipt.
+    # run it came from is forgotten. The survivors above are the output; this is the count.
     tally = {}
     for mutant in mutants:
         tally[mutant.verdict] = tally.get(mutant.verdict, 0) + 1
@@ -2450,14 +2362,6 @@ def main():
               "went\nunmeasured with the run still reporting.".format(truncated, args.max))
 
     failed = unanswered or stale or unmeasured or truncated > 0
-    # Only a whole-suite run over the diff leaves a reading anything else can stand on. A narrowed
-    # one asked a different question, and its answer must not be able to sign a branch off.
-    if whole:
-        detail = "{} mutant(s), {} survivor(s) unanswered, {} line(s) unreached".format(
-            len(mutants), len(unanswered), sum(len(lines) for lines in unreached.values()))
-        written = write_receipt(output, scope_digest(merge_base_of(project, args.base), targets, project, args.platform),
-                                args.base, "fail" if failed else "pass", detail)
-        print("\nreceipt: {}".format(written))
     return 1 if failed else 0
 
 

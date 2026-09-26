@@ -375,8 +375,10 @@ jobs:
             --verdict plan.json --results base-results
 
   # ---------------------------------------------------------------------------
-  # The mutation campaign over the pull request's change, deciding what the local campaign decides.
-  # CONTRIBUTING.md owns what it asks and what fails it.
+  # The mutation campaign over the pull request's change. It decides as a local run over the same diff
+  # does, except that it measures every mutant where a local run stops at --max, and passes a change
+  # no operator reaches where a local run refuses one; CONTRIBUTING.md owns what it asks and what
+  # fails it.
   #
   # Three jobs, because the campaign is one editor launch per mutant. The plan needs no licence and
   # counts the mutants; each shard measures every Nth of them and records their verdicts; the verdict
@@ -402,11 +404,16 @@ jobs:
       # HEAD^1 rather than the event's base.sha. The checkout is the merge commit, whose first parent is
       # the base branch it was merged onto; measured on this job, the event's base.sha sat a merged pull
       # request behind that parent, and the plan then counted that pull request's lines as this one's.
+      # The summary is written before the status is read, so a refused plan names why in it.
       - id: plan
         run: |
-          python3 scripts/test_quality/mutation_check.py --base HEAD^1 --plan | tee plan.txt
-          grep -E '^(mutants|shards)=' plan.txt >> "$GITHUB_OUTPUT"
+          set +e
+          python3 scripts/test_quality/mutation_check.py --base HEAD^1 --plan > plan.txt
+          status=$?
+          cat plan.txt
           { echo '### Mutation campaign plan'; echo '```'; cat plan.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          [ "$status" -eq 0 ] || exit "$status"
+          grep -E '^(mutants|shards)=' plan.txt >> "$GITHUB_OUTPUT"
 
   mutation-shard:
     name: Mutation campaign (shard ${{ matrix.shard }})
@@ -442,14 +449,16 @@ jobs:
           MUTANTS: ${{ needs.mutation-plan.outputs.mutants }}
           SHARDS: ${{ needs.mutation-plan.outputs.shards }}
         # safe.directory names the workspace alone: DocumentationDriftTests arranges checkouts elsewhere
-        # that git has to refuse, and a wider value lifts that refusal inside the suite.
+        # that git has to refuse, and a wider value lifts that refusal inside the suite. The editor's
+        # version is read from the project, and EditorVersionTests holds unity-tests' to the same.
         run: |
+          version=$(sed -n 's/^m_EditorVersion: //p' ProjectSettings/ProjectVersion.txt)
           docker run --rm --init --workdir /github/workspace \
             --volume "$GITHUB_WORKSPACE:/github/workspace" \
             --env UNITY_LICENSE --env UNITY_EMAIL --env UNITY_PASSWORD \
             --env GIT_CONFIG_COUNT=1 --env GIT_CONFIG_KEY_0=safe.directory --env GIT_CONFIG_VALUE_0=/github/workspace \
             --env PYTHONDONTWRITEBYTECODE=1 \
-            unityci/editor:ubuntu-6000.3.23f1-linux-il2cpp-3 \
+            "unityci/editor:ubuntu-$version-linux-il2cpp-3" \
             python3 -u scripts/test_quality/ci_mutation_shard.py -- \
               --base HEAD^1 --max "$MUTANTS" \
               --shard "${{ matrix.shard }}/$(echo "$SHARDS" | jq length)" \

@@ -172,8 +172,8 @@ surviving whatever its siblings do. The unnamed form is unchanged and still read
 whole, which is what a statement carrying one mutant wants. Only a
 whole-suite run over the diff reads any: `--files`, `--filter` and `--assemblies` each ask a narrower
 question, and under one nearly everything survives. `--platform` is not one of those — it runs a whole
-suite, just a different one — so it reads declarations and writes a receipt, and the platform is part
-of the receipt's key so that an EditMode question is never answered by a PlayMode run.
+suite, just a different one — so it reads declarations, and the platform is part of the verdict
+records' key so that a kill a PlayMode run took is never kept for an EditMode one.
 
 The run also fails or stops rather than pass over a mutant nobody asked about, and
 [Generators~/README.md ▸ The Unity assemblies](Packages/com.velvet.core/Generators~/README.md#the-unity-assemblies)
@@ -182,7 +182,10 @@ says when it does which.
 **A pull request's CI runs the campaign, and that run is the one the pull request answers to.**
 `Test ▸ mutation-plan` generates the mutants of the pull request's diff against its base, taking the
 readings `--list` takes, and stops there when there are none — because no mutable package source
-changed, or because no operator reaches the lines that did, which its job summary names. Otherwise,
+changed, or because no operator reaches the lines that did. The second passes, where a local run
+refuses it: its job summary names the lines, and the pull request body says why the change is not
+something a mutation can ask about. A diff of more mutants than ten shards of 25 can measure inside
+the shard job's timeout is refused at the plan, and is split into smaller pull requests. Otherwise,
 where a licence is configured, `Test ▸ mutation-shard` measures them in up to ten jobs, each running
 every Nth mutant against the whole EditMode suite in the editor image `Test ▸ unity-tests` pulls and
 recording its verdicts, and `Test ▸ mutation-verdict` — the check named `Mutation campaign` — reads
@@ -420,6 +423,15 @@ one silent file at a time, which it says as it goes rather than making it the ca
 file the log blames that the branch did not carry is the base failing to build itself, and neither
 flow spends a further round on it. A last round that still writes nothing measured nothing, fails,
 and prints the local command.
+
+**What CI leaves to the author is the case the base cannot build.** A case reported `could not
+compile there` or `could not load there` is accepted on the surface it names, and its assertion never
+ran without the change — so a test calling a new API passes this check whether or not its assertion
+would have failed on the old behaviour. For exactly those cases, show the failure yourself: run the
+case locally against a cut that breaks the fix while keeping the surface the case names, and quote the
+failure text where the change is reported. Every other case this check measures in CI, as
+`Test ▸ unity-tests` measures it green, and a local run of those is optional.
+
 `scripts/test_quality/test_base_red_check.py` holds the reader against every test file in this
 repository and runs in `Test ▸ test-quality`.
 
