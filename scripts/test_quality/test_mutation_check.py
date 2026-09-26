@@ -3925,10 +3925,11 @@ class ShardCeilingTests(unittest.TestCase):
 
     # Per platform: the shard job, the slowest mutant measured on CI, and the longest measured of each
     # setup phase added together. EditMode's is image pull, activation and baseline, 146 + 52 + 225 s,
-    # with the checkout and cache restore's 20 s. PlayMode's is an estimate from the PlayMode suite's
-    # 347 s in unity-tests, not yet a shard's measurement.
+    # with the checkout and cache restore's 20 s. PlayMode's setup is everything before activation,
+    # activation and baseline, 130 + 37 + 374 s. Its mutant is the slowest measured, 364 s, plus the
+    # 100 s its five bounded cases spend where a mutant stops the frame driver, 5 x 20 s measured locally.
     COSTS = {"EditMode": ("mutation-shard", 190, 443),
-             "PlayMode": ("mutation-playmode-shard", 400, 670)}
+             "PlayMode": ("mutation-playmode-shard", 464, 541)}
 
     def fits(self, platform):
         job, slowest, setup = self.COSTS[platform]
