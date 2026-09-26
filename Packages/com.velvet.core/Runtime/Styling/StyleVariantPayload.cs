@@ -103,11 +103,6 @@ namespace Velvet
                 }
             }
 
-            // Any payload can move a clipped element (self-end, grow) without changing a box, which the clip
-            // wrapper has to follow (see FiberClipPathApplier.ScheduleLayoutReSync, which ignores an element
-            // that is not clipped).
-            ctx?.ClipPathLayoutReSync?.Invoke(target);
-
             if (gateChanged || reSyncOnly)
             {
                 // A gate class just appeared on (or left) the live class list without passing through the

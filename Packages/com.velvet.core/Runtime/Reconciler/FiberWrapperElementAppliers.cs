@@ -108,9 +108,6 @@ namespace Velvet
         internal void ReResolveClipPathLive(VisualElement element)
             => _clipPath.ReResolveClipPathLive(element);
 
-        internal void ScheduleClipPathLayoutReSync(VisualElement element)
-            => _clipPath.ScheduleLayoutReSync(element);
-
         internal void ApplyGestureManipulator(VisualElement element, string? whileHoverClass, string? whileTapClass, string? whileFocusClass)
             => _gesture.ApplyGestureManipulator(element, whileHoverClass, whileTapClass, whileFocusClass);
 

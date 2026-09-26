@@ -25,6 +25,7 @@ namespace Velvet.Tests
 
         private static StateUpdater<int> s_setStep;
         private static Func<int, string> s_classFor;
+        private static string s_hostClass;
 
         protected override void LoadStyleSheets() => VelvetStyleUtilities.AttachTo(_window.rootVisualElement);
 
@@ -34,6 +35,7 @@ namespace Velvet.Tests
             base.SetUp();
             s_setStep = default;
             s_classFor = _ => InFlowBox;
+            s_hostClass = "";
         }
 
         // The card's className is chosen by the current step, so a case seeds s_classFor and advances the step to
@@ -43,7 +45,7 @@ namespace Velvet.Tests
         {
             var (step, setStep) = Hooks.UseState(0);
             s_setStep = setStep;
-            return V.Div(name: "host", className: "relative w-[400px] h-[300px]", children: new VNode[]
+            return V.Div(name: "host", className: "relative w-[400px] h-[300px] " + s_hostClass, children: new VNode[]
             {
                 V.Div(name: "card", className: s_classFor(step), children: new VNode[]
                 {
@@ -123,6 +125,36 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AnAbsoluteClippedElementWithNoOffsetsInAnEndAlignedHost_When_LaidOut_Then_ItSitsAtTheHostsEnd()
+        {
+            // Arrange: the host aligns its children to the end on both axes, which places an absolute element with
+            // no offsets at its bottom-right corner.
+            s_hostClass = "justify-end items-end";
+            Mount(_ => "absolute w-[50px] h-[40px] " + Triangle);
+
+            // Act
+            var card = RelativeToHost(Named("card"));
+
+            // Assert
+            Assert.That((IsClipWrapped(Named("card")), card), Is.EqualTo((true, new Rect(350f, 260f, 50f, 40f))));
+        }
+
+        [Test]
+        public void Given_AnAbsoluteClippedElementWithNoOffsetsInARowJustifiedToTheEnd_When_LaidOut_Then_ItSitsAtTheRowsEnd()
+        {
+            // Arrange: in a row, justify-end is horizontal, so an absolute element with no offsets goes to the right
+            // edge and stays at the top.
+            s_hostClass = "flex-row justify-end";
+            Mount(_ => "absolute w-[50px] h-[40px] " + Triangle);
+
+            // Act
+            var card = RelativeToHost(Named("card"));
+
+            // Assert
+            Assert.That((IsClipWrapped(Named("card")), card), Is.EqualTo((true, new Rect(350f, 0f, 50f, 40f))));
+        }
+
+        [Test]
         public void Given_AnAbsoluteElement_When_ClipAddedByPatch_Then_TheMaskIsAnchoredAtTheElementsBox()
         {
             // Arrange
@@ -138,6 +170,22 @@ namespace Velvet.Tests
             Assert.That(
                 (ws.backgroundPositionX.value.offset.value, ws.backgroundPositionY.value.offset.value),
                 Is.EqualTo((card.layout.x + binding.Bounds.x, card.layout.y + binding.Bounds.y)));
+        }
+
+        // GREEN_ON_BASE(characterization): a parent's child variant still reaches its clipped child's slot.
+        // A wrapper given the inner's align-self inline, over the class the variant puts on it, reddens this.
+        [Test]
+        public void Given_AParentChildVariantSelfEnd_When_ItsChildIsClipped_Then_TheChildSitsAtTheEnd()
+        {
+            // Arrange: the host is a 400px-wide column, so self-end puts a 100px card at x=300.
+            s_hostClass = "[&>*]:self-end";
+            Mount(_ => InFlowBox + " " + Triangle);
+
+            // Act
+            var card = RelativeToHost(Named("card"));
+
+            // Assert
+            Assert.That((IsClipWrapped(Named("card")), card), Is.EqualTo((true, new Rect(300f, 0f, 100f, 50f))));
         }
 
         // GREEN_ON_BASE(characterization): an in-flow clipped element keeps its slot in the flow.

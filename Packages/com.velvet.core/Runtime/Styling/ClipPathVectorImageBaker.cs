@@ -336,7 +336,7 @@ namespace Velvet
     // ReconcilerContext.ClipPathBindings by the INNER (real) element. Holds the structural
     // wrapper (the overflow-hidden stencil mask host, also registered in WrapperToInnerMap), the
     // currently-applied spec (diffed by Source on patch), the geometry callback registered
-    // on the inner and the wrapper (so the inner's can be unregistered on unwrap), and the live baked VectorImage —
+    // on the inner (so it can be unregistered on unwrap), and the live baked VectorImage —
     // a ScriptableObject that must be destroyed on re-bake and teardown.
     internal sealed class ClipPathBinding
     {

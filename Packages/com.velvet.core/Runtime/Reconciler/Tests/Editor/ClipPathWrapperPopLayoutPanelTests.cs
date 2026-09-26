@@ -27,8 +27,6 @@ namespace Velvet.Tests
                 .GetMethod(method, BindingFlags.NonPublic | BindingFlags.Static)
                 .Invoke(null, args);
 
-        // The host's border puts the pin's left/top a border's width from where the wrapper sat, so the pinned
-        // wrapper moves and raises a geometry event of its own.
         private VisualElement MountCardInBorderedHost(string cardClass)
         {
             _mounted = V.Mount(_window.rootVisualElement, V.Div(name: "host",
@@ -41,13 +39,16 @@ namespace Velvet.Tests
         // GREEN_ON_BASE(characterization): the base writes the wrapper's position once, so a pin there stays.
         // A geometry sync that rewrites the position on every pass is what reddens this.
         [Test]
-        public void Given_AnInFlowClippedElement_When_ItsWrapperIsPinnedAndLaidOut_Then_TheWrapperStaysOutOfFlow()
+        public void Given_APinnedInFlowClippedElement_When_ItsBoxChanges_Then_ItsWrapperStaysOutOfFlow()
         {
             // Arrange
-            var wrapper = MountCardInBorderedHost("w-[60px] h-[24px]").parent;
-
-            // Act
+            var card = MountCardInBorderedHost("w-[60px] h-[24px]");
+            var wrapper = card.parent;
             Invoke("PinExitingChildOutOfFlow", wrapper);
+            ForcePanelUpdate(_window.rootVisualElement.panel);
+
+            // Act: the inner's own box changes while the pin holds, which runs the clip layer's geometry sync.
+            card.style.height = 30f;
             ForcePanelUpdate(_window.rootVisualElement.panel);
 
             // Assert
@@ -60,14 +61,16 @@ namespace Velvet.Tests
         [Test]
         public void Given_APinnedAbsoluteClippedElement_When_ThePinIsCleared_Then_ItKeepsTheBoxItsOffsetsDeclare()
         {
-            // Arrange
-            var card = MountCardInBorderedHost("absolute left-[10px] top-[10px] right-[10px] bottom-[10px]");
+            // Arrange: the restore is handed the re-added node's class array, which is the inner's, as the
+            // presence cancel hands it.
+            const string cardClass = "absolute left-[10px] top-[10px] right-[10px] bottom-[10px]";
+            var card = MountCardInBorderedHost(cardClass);
             var wrapper = card.parent;
             Invoke("PinExitingChildOutOfFlow", wrapper);
             ForcePanelUpdate(_window.rootVisualElement.panel);
 
             // Act
-            Invoke("RestorePopLayoutChildToFlow", wrapper, null);
+            Invoke("RestorePopLayoutChildToFlow", wrapper, (cardClass + " " + Triangle).Split(' '));
             ForcePanelUpdate(_window.rootVisualElement.panel);
 
             // Assert: the host is 200x200 including a 2px border, so the offsets leave a 176x176 box at (12, 12).

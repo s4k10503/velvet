@@ -76,7 +76,6 @@ namespace Velvet
                     binding.BakedHeight = -1f;
                     SyncClipPathGeometry(element, binding);
                 }
-                ScheduleLayoutReSync(element, binding);
                 return true;
             }
             if (wantWrap)
@@ -133,10 +132,6 @@ namespace Velvet
             var binding = new ClipPathBinding(wrapper) { Spec = spec };
             binding.OnGeometry = _ => SyncClipPathGeometry(element, binding);
             element.RegisterCallback(binding.OnGeometry);
-            // The wrapper's box follows the parent, and a parent change that leaves the inner's own box where it
-            // was (a row becoming a column around an element with no width) raises no event on the inner. Never
-            // unregistered: the wrapper leaves with its binding and is not reused.
-            wrapper.RegisterCallback(binding.OnGeometry);
 
             _ctx.ClipPathBindings[element] = binding;
             _ctx.WrapperToInnerMap[wrapper] = element;
@@ -214,8 +209,9 @@ namespace Velvet
                 return;
             }
 
-            // The inner need not sit at the wrapper's origin — its margins, or an out-of-flow inner's edge
-            // offsets, place it inside — so the background follows the inner's layout origin.
+            // The inner need not sit at the wrapper's origin — its margins, a forwarded flex-grow that enlarges
+            // the centring wrapper, or an out-of-flow inner's edge offsets place it elsewhere — so the background
+            // follows the inner's layout origin.
             var originX = innerAtWrapperOrigin ? 0f : element.layout.x;
             var originY = innerAtWrapperOrigin ? 0f : element.layout.y;
             if (float.IsNaN(originX)) originX = 0f;
@@ -276,30 +272,25 @@ namespace Velvet
             ApplyClipPathBackgroundRect(binding, originX, originY);
         }
 
-        // CSS clip-path is paint-only, so the wrapper has to leave the inner where the parent would have put it.
-        // In flow the parent lays out the wrapper in the inner's place: the wrapper takes the parent's
-        // flex-direction, so the inner's flex-grow acts along the same axis inside it, and the inner's
-        // align-self, so the parent aligns the wrapper as it would have aligned the inner. Out of flow the inner
-        // resolves its edge offsets against the wrapper, so the wrapper leaves the flow, spans the real parent
-        // (inset 0) and takes the parent's justify-content and align-items, which place an inner with no offset
-        // on an axis. ClipPathWrapperFlowParityPanelTests compares the result against an unclipped twin.
+        // An out-of-flow inner resolves its edge offsets against the wrapper, so the wrapper then leaves the
+        // flow, spans the real parent (inset 0) and takes the parent's flex-direction, justify-content and
+        // align-items, which place an inner with no offset on an axis. An in-flow inner keeps the relative
+        // wrapper that centres it on both axes.
         // Position and offsets are written only when the inner changes mode or something has cleared the
         // position: a PopLayout exit pins the wrapper (GeneralPathReconciler.PinExitingChildOutOfFlow), a sync
         // must leave that pin alone, and cancelling the exit clears it.
-        // KNOWN LIMITATION: in flow the wrapper takes its size from the inner along the parent's main axis, and
-        // along the cross axis unless the parent stretches it. On such an axis a percentage width, height or
-        // flex-basis resolves against the wrapper rather than the parent, and auto margins centre nothing. A
-        // size a parent's manipulator writes on the slot — a grid-cols-* column width, a V.VirtualList row
-        // height — lands on the wrapper while the inner keeps its own. An out-of-flow inner's wrapper spans the
-        // parent with overflow hidden, so whatever of the inner lies outside the parent's box is cut, where CSS
-        // clips only to the shape; and it reads the parent's justify-content and align-items again only at a
-        // sync, which a change to the parent's alignment alone does not start.
+        // KNOWN LIMITATION (CSS clip-path is paint-only; this wrapper is not): an in-flow inner resolves its
+        // size and alignment against the wrapper rather than the parent, flexGrow/flexShrink being the only
+        // values forwarded — a fixed-size inner is centred across its parent instead of placed by the parent's
+        // alignment, its own align-self and the parent's cross-axis stretch are lost, and a percentage size
+        // resolves against the wrapper. An out-of-flow inner's wrapper spans the parent with overflow hidden,
+        // so whatever of the inner lies outside the parent's box is cut, where CSS clips only to the shape; and
+        // the parent's flex-direction, justify-content and align-items are read again only at a sync, which a
+        // change to the parent's alignment alone does not start.
         private static void SyncWrapperLayout(VisualElement element, ClipPathBinding binding)
         {
             var ws = binding.Wrapper.style;
-            var parentStyle = binding.Wrapper.parent?.resolvedStyle;
             var outOfFlow = StyleOutOfFlowChild.IsOutOfFlow(element);
-            ws.flexDirection = parentStyle != null ? parentStyle.flexDirection : StyleKeyword.Null;
             if (binding.WrapperOutOfFlow != outOfFlow || ws.position.keyword == StyleKeyword.Null)
             {
                 binding.WrapperOutOfFlow = outOfFlow;
@@ -312,32 +303,16 @@ namespace Velvet
             }
             if (outOfFlow)
             {
-                ws.alignSelf = StyleKeyword.Null;
+                var parentStyle = binding.Wrapper.parent?.resolvedStyle;
+                ws.flexDirection = parentStyle != null ? parentStyle.flexDirection : StyleKeyword.Null;
                 ws.justifyContent = parentStyle != null ? parentStyle.justifyContent : StyleKeyword.Null;
                 ws.alignItems = parentStyle != null ? parentStyle.alignItems : StyleKeyword.Null;
                 return;
             }
-            ws.justifyContent = StyleKeyword.Null;
-            ws.alignItems = StyleKeyword.Null;
-            ws.alignSelf = element.resolvedStyle.alignSelf;
+            ws.flexDirection = FlexDirection.Row;
+            ws.justifyContent = Justify.Center;
+            ws.alignItems = Align.Center;
         }
-
-        // A patch or a variant toggle can move the inner (self-end, grow) without changing the box of either
-        // element, so no geometry event follows, and resolvedStyle still holds the previous values while the
-        // patch or toggle runs. The re-sync is therefore left to the panel scheduler's next tick, and any layout
-        // pass before that tick keeps the old values. A patch that wraps the element needs none of this: the
-        // fresh wrapper's first layout raises a geometry event, which the same-patch case in
-        // ClipPathWrapperFlowParityPanelTests relies on.
-        internal void ScheduleLayoutReSync(VisualElement element)
-        {
-            if (_ctx.ClipPathBindings.TryGetValue(element, out var binding))
-            {
-                ScheduleLayoutReSync(element, binding);
-            }
-        }
-
-        private static void ScheduleLayoutReSync(VisualElement element, ClipPathBinding binding)
-            => binding.Wrapper.schedule.Execute(() => SyncClipPathGeometry(element, binding));
 
         // Writes the background anchor (and, for the stretch path, the rescaled size) from the
         // binding's current analytic bounds.
