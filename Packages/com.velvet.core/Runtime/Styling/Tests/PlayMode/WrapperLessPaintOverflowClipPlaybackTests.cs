@@ -133,7 +133,8 @@ namespace Velvet.Tests
 
         // Shared by the cases that mount a single 80-square box, so one set of sample rects serves them:
         // LeftOfBox is a column entirely to the LEFT of it, where only a paint that leaves the box can land.
-        // The divide, overline and transform cases build their own geometry and do not use these.
+        // The divide, overline and transform cases build their own geometry and do not use these, and the
+        // clipping-child case reads rects derived from its measured box instead.
         private const string BoxBase = "w-[80px] h-[80px] mt-[70px] ml-[70px]";
         private static readonly RectInt LeftOfBox = new(30, 70, 38, 80);
         private static readonly RectInt TopBorderBand = new(70, 70, 80, 12);
@@ -327,6 +328,49 @@ namespace Velvet.Tests
             Assert.That((openOverhang > 0, clippedControl == 0, clippedOverhang == 0, clippedFace > 0),
                 Is.EqualTo((true, true, true, true)),
                 $"openOverhang={openOverhang} clippedOverhang={clippedOverhang} clippedFace={clippedFace}");
+        }
+
+        // GREEN_ON_BASE(characterization): the nesting styling-variants.md gives for skew-* plus a clip.
+        // Move `overflow-hidden` from the inner child onto the caster and the overhang term reddens.
+        [UnityTest]
+        public IEnumerator Given_ASkewedElementWithAFullSizeClippingChild_When_ItRenders_Then_TheFaceKeepsItsOverhangAndTheContentIsClipped()
+        {
+            // Arrange — the clip one level in from the skew. The GREEN child of the clipping element straddles
+            // its right edge: the half inside proves the content painted, the half outside proves the clip took.
+            NewPanel("SkewClipChild");
+            _mounted = V.Mount(_host.Root, V.Div(name: "caster",
+                className: BoxBase + " bg-[#ff0000] skew-x-[30deg]",
+                children: new[] { V.Div(name: "clip", className: "absolute inset-0 overflow-hidden") }));
+            var caster = _host.Root.Q<VisualElement>("caster");
+            var clip = _host.Root.Q<VisualElement>("clip");
+            clip.Add(new VisualElement
+            {
+                pickingMode = PickingMode.Ignore,
+                style =
+                {
+                    position = Position.Absolute, left = 60, top = 15, width = 40, height = 30,
+                    backgroundColor = new Color(0f, 1f, 0f, 1f),
+                },
+            });
+
+            // Act
+            yield return WaitRealtimeDraining(0.9, _host.TargetTexture);
+            var box = caster.worldBound;
+            var inner = clip.worldBound;
+            var innerCoversBox = Vector2.Distance(inner.min, box.min) < 0.5f
+                && Vector2.Distance(inner.max, box.max) < 0.5f;
+            var left = Mathf.RoundToInt(box.xMin);
+            var right = Mathf.RoundToInt(box.xMax);
+            var top = Mathf.RoundToInt(box.yMin);
+            var overhang = Count(new RectInt(left - 30, top, 28, Mathf.RoundToInt(box.height / 2f)), IsRed);
+            var contentInside = Count(new RectInt(right - 20, top + 15, 20, 30), IsGreen);
+            var contentOutside = Count(new RectInt(right, top + 15, 20, 30), IsGreen);
+
+            // Assert — the inner child covers the caster, the face still reaches past the box's left edge, and
+            // the content shows inside the box and not in the strip past its right edge.
+            Assert.That((innerCoversBox, overhang > 0, contentInside > 0, contentOutside),
+                Is.EqualTo((true, true, true, 0)),
+                $"box={box} inner={inner} overhang={overhang} inside={contentInside} outside={contentOutside}");
         }
 
         [UnityTest]

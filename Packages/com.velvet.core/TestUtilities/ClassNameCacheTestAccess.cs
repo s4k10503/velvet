@@ -1,5 +1,4 @@
 using System;
-using System.Collections;
 using System.Reflection;
 
 namespace Velvet.TestUtilities
@@ -16,11 +15,10 @@ namespace Velvet.TestUtilities
         /// Empties the cache, so a string parsed before the call parses to a fresh array after it.
         /// </summary>
         /// <exception cref="MissingFieldException">
-        /// The cache field was renamed or removed. Throwing is the point: callers drain to keep their own
-        /// entries below the cache's size bound, or to push content-identical trees off the reference-identity
-        /// fast path, and a clear that quietly reached nothing would leave both asserting on the wrong state.
+        /// The cache field was renamed or removed. Throwing is the point: callers drain to start from an empty
+        /// cache, or to push content-identical trees off the reference-identity fast path, and a clear that quietly reached nothing would leave both asserting on the wrong state.
         /// </exception>
-        // Bypasses: nothing — it resets a static cache, which no production path does.
+        // Bypasses: nothing — it calls the same Clear that V's editor-only SubsystemRegistration reset calls.
         public static void ClearForTest()
         {
             var field = typeof(V).GetField(CacheFieldName, BindingFlags.Static | BindingFlags.NonPublic);
@@ -28,8 +26,7 @@ namespace Velvet.TestUtilities
             {
                 throw new MissingFieldException(typeof(V).FullName, CacheFieldName);
             }
-            // The non-generic view avoids pinning the cache's value type, which is not what this reaches for.
-            ((IDictionary)field.GetValue(null)!).Clear();
+            ((ClassNameParseCache)field.GetValue(null)!).Clear();
         }
     }
 }

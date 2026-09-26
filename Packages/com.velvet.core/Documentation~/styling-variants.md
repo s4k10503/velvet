@@ -316,6 +316,14 @@ the shear would carry it. Four things follow that a CSS `skewX()` does not do.
 `rotate-*` and `scale-*` are real USS transforms and do honour it. Velvet therefore exposes the painted
 approximation described here rather than a true shear transform.
 
+**Where `rounded-full` deviates from CSS.** CSS scales radii that overlap until they fit, so
+`rounded-full` is a pill. Where UI Toolkit paints the face, `rounded-full` on a 330 × 34 box paints
+the same silhouette as a `50%` radius on every corner, and four fifths of the way along its top edge
+has already fallen away where `rounded-[17px]`'s is still flat. Where Velvet paints it — the fill and border under `skew-*` or on the caster
+of a `shadow-*` / `drop-shadow-*`, and a `border-dashed` / `border-dotted` stroke — each corner is
+clamped to half the box's shorter side, which gives the pill, and a shadow's silhouette takes the same
+clamp. For a pill UI Toolkit paints, name the radius: `rounded-[17px]` on a 34 px-tall box.
+
 **Where the other wrapper-less paints deviate from CSS under a hidden overflow.** UI Toolkit applies an
 element's own overflow clip to the element's own painted content, and cuts it at the **padding** box.
 CSS clips neither a box-shadow nor a border that way, so a painted utility silently loses whatever falls
@@ -326,7 +334,7 @@ without `overflow-hidden` appearing anywhere in its className.
 | Utility | On an element whose overflow resolves to hidden (`overflow-hidden`, `truncate`, or an inline / USS `overflow: hidden`) |
 |---|---|
 | `shadow-*` / `drop-shadow-*` | the whole shadow is gone. The paint is not removed — it is cut at the padding box like every other — but the only part of it you see is the halo outside the box, the interior being hidden under the element's own fill by design |
-| `skew-*` (and a gradient on a skewed element) | the shear overhang past the box edge is cut; the rest of the face renders |
+| `skew-*` (and a gradient on a skewed element) | the shear overhang past the box edge is cut; the rest of the face renders. Children are clipped to the upright box, not to the sheared face CSS clips them to |
 | `border-dashed` / `border-dotted` | the whole outline is gone — it is drawn in the border band, which the padding-box clip excludes. A solid border of the same width is a native property and is unaffected, so the same markup renders a border or none depending only on the style |
 | `divide-dashed` / `divide-dotted` | the rule on a clipped child is gone; the gutter that child reserves for it stays, so the row keeps its gap and loses its line |
 | `overline` | unaffected — the rule sits inside the content box |
@@ -355,6 +363,20 @@ Put the clip on a child instead of on the painted element:
 V.Div(className: "shadow-lg rounded-2xl", children: new VNode[]
 {
     V.Div(className: "overflow-hidden rounded-2xl", children: new VNode[]
+    {
+        V.Label(text: "Clipped content"),
+    }),
+});
+```
+
+For `skew-*`, make the inner element `absolute inset-0`. The face keeps its overhang, and the content is
+clipped to the upright box. A clip on a parent the skewed element fills is no substitute: the overhang
+lies outside that parent's box, so its clip cuts it too, as it does in CSS.
+
+```csharp
+V.Div(className: "absolute inset-0 skew-x-[-24deg] bg-lime-400", children: new VNode[]
+{
+    V.Div(className: "absolute inset-0 overflow-hidden", children: new VNode[]
     {
         V.Label(text: "Clipped content"),
     }),

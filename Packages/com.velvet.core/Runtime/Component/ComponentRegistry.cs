@@ -44,6 +44,9 @@ namespace Velvet
         // because position keys are only ever compared by content, never by reference. Cleared in
         // Dispose like the indexes.
         internal Dictionary<(long slotPath, int nodeIndex), object> InlinePositionKeyBoxes { get; } = new();
+        // Explicit inline positions use SlotPath for the same outer-walk / isolated-render agreement, with
+        // the user key replacing nodeIndex. Entry lifetime follows the fibers registered at that position.
+        internal Dictionary<(long slotPath, string key), (object box, int registrations)> InlineExplicitPositionKeyBoxes { get; } = new();
 
         // Wrapper-mounted fibers (Velvet divergence: V.List items own a dedicated
         // wrapper VE) anchor on that VisualElement. identity disambiguates an identity swap on the same
@@ -317,6 +320,7 @@ namespace Velvet
                 var key = (parentFiber, site.PortalScope, site.MountPoint, site.PositionKey, identity);
                 _inlineInstances[key] = fiber;
                 _inlineFiberToKey[fiber] = key;
+                RetainExplicitPositionKey(site.PositionKey);
                 // Written from the same source on both halves of GetOrCreate — see the carry half in
                 // ReconcileExistingFiber for why one write cannot serve.
                 fiber.OwningPortalPlaceholder = _ctx.CurrentPortalPlaceholder;
@@ -342,6 +346,35 @@ namespace Velvet
             }
         }
 
+        private void RetainExplicitPositionKey(object? positionKey)
+        {
+            if (positionKey is not ValueTuple<long, string> cacheKey)
+            {
+                return;
+            }
+            if (InlineExplicitPositionKeyBoxes.TryGetValue(cacheKey, out var entry))
+            {
+                InlineExplicitPositionKeyBoxes[cacheKey] = (entry.box, entry.registrations + 1);
+                return;
+            }
+            InlineExplicitPositionKeyBoxes[cacheKey] = (positionKey, 1);
+        }
+
+        private void ReleaseExplicitPositionKey(object? positionKey)
+        {
+            if (positionKey is not ValueTuple<long, string> cacheKey
+                || !InlineExplicitPositionKeyBoxes.TryGetValue(cacheKey, out var entry))
+            {
+                return;
+            }
+            if (entry.registrations <= 1)
+            {
+                InlineExplicitPositionKeyBoxes.Remove(cacheKey);
+                return;
+            }
+            InlineExplicitPositionKeyBoxes[cacheKey] = (entry.box, entry.registrations - 1);
+        }
+
         private void UnregisterFiber(ComponentFiber fiber)
         {
             // A wrapper-less Suspense makes the fiber rendering it the boundary. When that fiber
@@ -358,6 +391,7 @@ namespace Velvet
             {
                 _inlineFiberToKey.Remove(fiber);
                 _inlineInstances.Remove(key);
+                ReleaseExplicitPositionKey(key.positionKey);
                 if (key.parentFiber != null && _parentToInlineFibers.TryGetValue(key.parentFiber, out var siblings))
                 {
                     siblings.Remove(fiber);
@@ -588,7 +622,12 @@ namespace Velvet
         public void Dispose()
         {
             var total = _inlineInstances.Count + _wrapperIndex.Count;
-            if (total == 0) return;
+            if (total == 0)
+            {
+                InlinePositionKeyBoxes.Clear();
+                InlineExplicitPositionKeyBoxes.Clear();
+                return;
+            }
             // Snapshot the fiber set before any Dispose runs. FiberRenderer.Dispose may reach back
             // into the registry via descendant cleanup, which mutates these indexes; iterating a live
             // dictionary here would throw InvalidOperationException on the next MoveNext. Re-entrant
@@ -612,6 +651,7 @@ namespace Velvet
             _wrapperIndex.Clear();
             _wrapperFiberInfo.Clear();
             InlinePositionKeyBoxes.Clear();
+            InlineExplicitPositionKeyBoxes.Clear();
         }
     }
 }

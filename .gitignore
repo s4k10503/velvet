@@ -13,15 +13,16 @@
 # Test-result XML from a hand-run sweep. The harnesses under scripts/ default to Logs/, already ignored
 # above; this covers the directory a hand-run names instead, after nine such files reached a commit.
 /merged/
-# Generated at the root rather than written there. The first five are what a whole `gh run download`
-# leaves, which makes a directory per artifact — test.yml names four of them for the platform and
-# docs.yml uploads the fifth. `CodeCoverage/` is the separate thing a local run with coverage on
-# writes, and `TestResults-*.xml` is what a `-runTests` invocation that named no results file leaves
-# in the directory it ran from.
+# Generated at the root rather than written there. The first six are what a whole `gh run download`
+# leaves, which makes a directory per artifact — test.yml names four of them for the platform and one
+# per mutation shard, and docs.yml uploads the sixth. `CodeCoverage/` is the separate thing a local run
+# with coverage on writes, and `TestResults-*.xml` is what a `-runTests` invocation that named no
+# results file leaves in the directory it ran from.
 /Test results (EditMode)/
 /Test results (PlayMode)/
 /Code coverage (EditMode)/
 /Code coverage (PlayMode)/
+/Mutation shard */
 /script-assemblies/
 /CodeCoverage/
 /TestResults-*.xml
