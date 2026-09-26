@@ -1556,6 +1556,11 @@ namespace Velvet
             }, restoreFromOnCancel: variantExit != null,
                 additionalDelaySec: presence.StaggerDelaySec(exitIndex, tally.AnimatedExitCount),
                 onSwap: onExitSwap);
+            // After PlayExit, whichever exit plays: see LandInlineHold.
+            if (ghostMotionElement != null)
+            {
+                _patcher.LandInlineHold(ghostMotionElement);
+            }
         }
 
         // Live branch of the per-plan-entry walk: the key is present in the new children (a genuine re-entry
@@ -1619,7 +1624,7 @@ namespace Velvet
                 }
                 if (wasExiting)
                 {
-                    CancelInterruptedPresenceExit(anchor, motionElement, presence, node);
+                    CancelInterruptedPresenceExit(anchor, motionElement, motion, presence, node);
                 }
                 else if (wasExitComplete)
                 {
@@ -1661,6 +1666,7 @@ namespace Velvet
         private void CancelInterruptedPresenceExit(
             VisualElement anchor,
             VisualElement? motionElement,
+            MotionNode? motion,
             AnimatePresenceNode presence,
             VNode node)
         {
@@ -1673,7 +1679,7 @@ namespace Velvet
             }
             if (motionElement != null)
             {
-                _patcher.RestoreInlineAfterExit(motionElement);
+                _patcher.RestoreInlineAfterExit(motionElement, motion?.ClassNames);
             }
             if (presence.Mode == AnimatePresenceMode.PopLayout)
             {
@@ -1721,7 +1727,7 @@ namespace Velvet
                 StyleAnimationClassUtils.RemoveClasses(motionElement, completedExit.ExitToClasses);
                 StyleAnimationClassUtils.AddClasses(motionElement, completedExit.ExitFromClasses);
             }
-            _patcher.RestoreInlineAfterExit(motionElement);
+            _patcher.RestoreInlineAfterExit(motionElement, motion?.ClassNames);
         }
 
         private void PlayPresenceEnter(

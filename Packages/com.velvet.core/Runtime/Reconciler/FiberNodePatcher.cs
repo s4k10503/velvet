@@ -736,46 +736,59 @@ namespace Velvet
             return hold.Release;
         }
 
-        // A variant exit's counterpart: the exit pose's inline-resolved tokens are written at the exit's swap,
-        // after the play has put the exit's transition on the element, and RestoreInlineAfterExit writes the
-        // resting ones back. An enter hold still registered is landed first, as the exit's CancelEnter restores
-        // the enter's resting classes. Returns the play's onSwap, or null when the exit moves no such token.
+        // Writes the resting inline-resolved tokens an enter hold keeps off the element. Called once the exit
+        // that cancelled the enter has put its transition on the element, so they tween on it, as the resting
+        // USS classes the enter's cancel restored do.
+        internal void LandInlineHold(VisualElement element)
+        {
+            if (_ctx.MotionHeldInline.Remove(element, out var hold))
+            {
+                SyncClassDrivenStyling(element, hold.Applied, hold.Target);
+            }
+        }
+
+        // A variant exit's counterpart of ResolveInlineHold: the exit pose's inline-resolved tokens are written
+        // at the exit's swap, after the play has put the exit's transition on the element, and
+        // RestoreInlineAfterExit writes the resting ones back. Returns the play's onSwap, or null when the exit
+        // moves no such token.
         internal Action? PlanInlineExit(VisualElement element, string[]? baseClasses, string[] exitVariantClasses,
             StyleTransitionConfig transition)
         {
-            if (_ctx.MotionHeldInline.Remove(element, out var enterHold))
-            {
-                SyncClassDrivenStyling(element, enterHold.Applied, enterHold.Target);
-            }
-            var resting = RestingClassSet(element, baseClasses);
             var exitTokens = CollectInlineResolved(exitVariantClasses);
             if (!StyleAnimationScheduler.RunsOnSwap(transition)
-                || SameTokens(exitTokens, CollectInlineResolved(resting.VariantClasses)))
+                || SameTokens(exitTokens, CollectInlineResolved(RestingClassSet(element, baseClasses).VariantClasses)))
             {
                 return null;
             }
-            var exit = new MotionInlineExit(resting.Merged,
-                ComposeWithHeldTokens(baseClasses ?? Array.Empty<string>(), resting.VariantClasses, exitTokens));
+            var exit = new MotionInlineExit(exitTokens);
             _ctx.MotionInlineExits[element] = exit;
             return () =>
             {
                 if (_ctx.MotionInlineExits.TryGetValue(element, out var current) && ReferenceEquals(current, exit))
                 {
-                    SyncClassDrivenStyling(element, exit.Resting, exit.Exit);
+                    var resting = RestingClassSet(element, baseClasses);
+                    SyncClassDrivenStyling(element, resting.Merged, WithExitTokens(baseClasses, resting, exit));
                     exit.Swapped = true;
                 }
             };
         }
 
-        // Writes the resting inline-resolved tokens back over an exit's, for an exit cancelled by its key coming
-        // back and for one that completed before the render that would drop it.
-        internal void RestoreInlineAfterExit(VisualElement element)
+        // Writes the element's resting inline-resolved tokens back over an exit's, for an exit cancelled by its key
+        // coming back and for one that completed before the render that would drop it. Both callers run after the
+        // re-added node has been reconciled onto the element, so the resting set is the one that reconcile
+        // recorded, and baseClasses are the re-added node's.
+        internal void RestoreInlineAfterExit(VisualElement element, string[]? baseClasses)
         {
             if (_ctx.MotionInlineExits.Remove(element, out var exit) && exit.Swapped)
             {
-                SyncClassDrivenStyling(element, exit.Exit, exit.Resting);
+                var resting = RestingClassSet(element, baseClasses);
+                SyncClassDrivenStyling(element, WithExitTokens(baseClasses, resting, exit), resting.Merged);
             }
         }
+
+        private static string[] WithExitTokens(string[]? baseClasses, MotionAppliedClassSet resting,
+            MotionInlineExit exit)
+            => ComposeWithHeldTokens(baseClasses ?? Array.Empty<string>(), resting.VariantClasses, exit.ExitTokens);
 
         private static string[] CollectInlineResolved(string[] classes)
         {

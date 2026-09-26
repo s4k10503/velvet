@@ -120,18 +120,15 @@ namespace Velvet
     }
 
     // A variant exit whose pose's inline-resolved tokens its swap writes (see FiberNodePatcher.PlanInlineExit).
-    // Resting is the class set the element rests at, Exit the one carrying the exit pose's tokens in place of
-    // Resting's, and Swapped whether the swap has written Exit.
+    // Swapped is whether the swap has written them.
     internal sealed class MotionInlineExit
     {
-        public readonly string[] Resting;
-        public readonly string[] Exit;
+        public readonly string[] ExitTokens;
         public bool Swapped;
 
-        public MotionInlineExit(string[] resting, string[] exit)
+        public MotionInlineExit(string[] exitTokens)
         {
-            Resting = resting;
-            Exit = exit;
+            ExitTokens = exitTokens;
         }
     }
 }

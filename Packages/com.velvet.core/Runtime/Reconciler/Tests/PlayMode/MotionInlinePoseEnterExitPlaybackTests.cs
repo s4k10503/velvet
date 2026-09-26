@@ -13,8 +13,8 @@ namespace Velvet.Tests
     /// Pins that a Motion's mount enter, presence enter and presence exit move a pose written as inline style —
     /// translate, which has no USS form — on a real runtime panel: the enter shows <c>initial</c> and tweens to
     /// <c>animate</c>, the exit tweens to <c>exit</c> before removal, and an exit interrupted by the key coming
-    /// back, or completed just before it does, leaves the element resting at <c>animate</c>, and a child removed
-    /// before its enter swaps exits from <c>animate</c>, where the enter's cancel leaves its USS classes.
+    /// back, or completed just before it does, leaves the element resting at the re-added node's values, and a
+    /// child removed before its enter swaps leaves <c>initial</c> on the exit's transition, as its USS classes do.
     /// </summary>
     internal sealed class MotionInlinePoseEnterExitPlaybackTests
     {
@@ -24,19 +24,25 @@ namespace Velvet.Tests
             ["away"] = "translate-x-[300px]",
             ["cover"] = "translate-x-[0px]",
             ["gone"] = "translate-x-[-300px]",
+            ["cover2"] = "translate-x-[100px]",
         };
 
-        private readonly record struct ShownState(bool Shown);
+        private const string Box = "absolute w-[50px] h-[50px]";
+
+        private readonly record struct ShownState(bool Shown, string ClassName, string Animate);
 
         private sealed class ShownStore : Store<ShownState>
         {
-            public ShownStore(bool shown) : base(new ShownState(shown)) { }
-            public void Set(bool shown) => SetState(_ => new ShownState(shown));
-            protected override void ResetCore() => SetState(_ => new ShownState(false));
+            public ShownStore(bool shown) : base(new ShownState(shown, Box, "cover")) { }
+            public void Set(bool shown) => SetState(s => s with { Shown = shown });
+            public void Set(bool shown, string className, string animate)
+                => SetState(_ => new ShownState(shown, className, animate));
+            protected override void ResetCore() => SetState(_ => new ShownState(false, Box, "cover"));
         }
 
         private static ShownStore s_store;
         private static bool s_declaresInitial;
+        private static bool s_declaresExit;
         private static float s_delayChildrenSec;
         private static System.Action s_onExitComplete;
 
@@ -52,6 +58,7 @@ namespace Velvet.Tests
             _frameRateScope = new TargetFrameRateScope(120);
             s_store = null;
             s_declaresInitial = true;
+            s_declaresExit = true;
             s_delayChildrenSec = 0f;
             s_onExitComplete = null;
             yield break;
@@ -86,17 +93,17 @@ namespace Velvet.Tests
         [Component]
         private static VNode PresenceHost()
         {
-            var shown = Hooks.UseStore(s_store, s => s.Shown);
+            var state = Hooks.UseStore(s_store, s => s);
             return V.Div(name: "wrap", children: new VNode[]
             {
                 V.AnimatePresence(key: "presence", delayChildrenSec: s_delayChildrenSec,
                     onExitComplete: () => s_onExitComplete?.Invoke(),
                     children: new VNode[]
                     {
-                        shown
-                            ? V.Motion(key: "m", name: "m", className: "absolute w-[50px] h-[50px]",
-                                variants: s_poses, initial: s_declaresInitial ? "away" : null, animate: "cover",
-                                exit: "gone",
+                        state.Shown
+                            ? V.Motion(key: "m", name: "m", className: state.ClassName,
+                                variants: s_poses, initial: s_declaresInitial ? "away" : null, animate: state.Animate,
+                                exit: s_declaresExit ? "gone" : null,
                                 transition: Linear(0.3f))
                             : null,
                     }),
@@ -126,6 +133,17 @@ namespace Velvet.Tests
                     samples.Add(element.resolvedStyle.translate.x);
                 }
                 yield return null;
+            }
+        }
+
+        // Waits until the element has visibly moved toward the exit pose, or for a second when it never does.
+        private static IEnumerator WaitUntilExitMoved(VisualElement element, List<float> samples)
+        {
+            var deadline = Time.realtimeSinceStartupAsDouble + 1.0;
+            while (Time.realtimeSinceStartupAsDouble < deadline && !samples.Exists(x => x < -15f))
+            {
+                yield return null;
+                samples.Add(element.resolvedStyle.translate.x);
             }
         }
 
@@ -187,7 +205,7 @@ namespace Velvet.Tests
         }
 
         [UnityTest]
-        public IEnumerator Given_APresenceChildAddedWithTranslatePoses_When_ItIsRemovedBeforeItsEnterSwaps_Then_ItExitsFromAnimateWithoutShowingInitial()
+        public IEnumerator Given_APresenceChildAddedWithTranslatePoses_When_ItIsRemovedBeforeItsEnterSwaps_Then_ItTweensFromInitialOnTheExitsTransition()
         {
             // Arrange — delayChildrenSec holds the enter's swap back, and the exit's with it, by 0.3s.
             s_delayChildrenSec = 0.3f;
@@ -199,15 +217,47 @@ namespace Velvet.Tests
             _mounted.FlushStateForTest();
             var motion = root.Q<VisualElement>("m");
             yield return PlayModeRealtimeTestHelpers.WaitRealtime(0.1);
+            var beforeExitSwap = new List<float>();
             var samples = new List<float>();
 
-            // Act — the enter is cancelled before its swap.
+            // Act — the enter is cancelled before its swap; the first 0.2s fall before the exit's swap.
             _store.Set(false);
             _mounted.FlushStateForTest();
+            yield return Sample(motion, 0.2, beforeExitSwap);
             yield return Sample(motion, 1.0, samples);
 
-            // Assert
-            Assert.That((AnyBetween(samples, -300f, 0f), samples.Exists(x => x > 15f)), Is.EqualTo((true, false)),
+            // Assert — it leaves initial on the exit's transition, as the enter's USS classes do, rather than
+            // jumping to animate, and the exit then moves it.
+            Assert.That((AnyBetween(beforeExitSwap, 0f, 300f), AnyBetween(samples, -300f, 0f)),
+                Is.EqualTo((true, true)), string.Join(", ", beforeExitSwap) + " | " + string.Join(", ", samples));
+        }
+
+        // GREEN_ON_BASE(characterization): the base's enter never writes initial's translate, so the element
+        // sits at animate throughout. Measured red at the commit that landed the enter's pose only for an exit
+        // with a pose of its own: the ghost stayed at 300.
+        [UnityTest]
+        public IEnumerator Given_APresenceChildWithoutAnExitPose_When_ItIsRemovedBeforeItsEnterSwaps_Then_ItReachesAnimateBeforeRemoval()
+        {
+            // Arrange — as above, with the Motion's own transition driving a classic exit.
+            s_delayChildrenSec = 0.3f;
+            s_declaresExit = false;
+            var root = CreateRuntimePanel(shown: false);
+            yield return null;
+            _mounted = V.Mount(root, V.Component(PresenceHost, key: "root"));
+            yield return null;
+            _store.Set(true);
+            _mounted.FlushStateForTest();
+            var motion = root.Q<VisualElement>("m");
+            yield return PlayModeRealtimeTestHelpers.WaitRealtime(0.1);
+            var samples = new List<float>();
+
+            // Act
+            _store.Set(false);
+            _mounted.FlushStateForTest();
+            yield return Sample(motion, 1.2, samples);
+
+            // Assert — the last sample taken while the ghost was still attached.
+            Assert.That(samples.Count > 0 ? samples[samples.Count - 1] : float.NaN, Is.EqualTo(0f),
                 string.Join(", ", samples));
         }
 
@@ -222,7 +272,7 @@ namespace Velvet.Tests
             yield return PlayModeRealtimeTestHelpers.WaitRealtime(0.6);
             var exitSamples = new List<float>();
             _store.Set(false);
-            yield return Sample(motion, 0.15, exitSamples);
+            yield return WaitUntilExitMoved(motion, exitSamples);
 
             // Act
             _store.Set(true);
@@ -255,6 +305,53 @@ namespace Velvet.Tests
             // Assert
             Assert.That((AnyBetween(exitSamples, -300f, 0f), root.Q<VisualElement>("m")?.resolvedStyle.translate.x),
                 Is.EqualTo((true, (float?)0f)), string.Join(", ", exitSamples));
+        }
+
+        // GREEN_ON_BASE(characterization): the base's exit never writes translate, so the re-add's own patch
+        // is the last write and leaves the re-added node's values. Measured red at the commit that restored the
+        // resting values recorded when the exit started: (50, 0).
+        [UnityTest]
+        public IEnumerator Given_APresenceChildExitingBetweenTranslatePoses_When_ItIsAddedBackMidExitWithANewClassNameAndLabel_Then_ItRestsAtTheNewValues()
+        {
+            // Arrange
+            var root = CreateRuntimePanel(shown: true);
+            yield return null;
+            _mounted = V.Mount(root, V.Component(PresenceHost, key: "root"));
+            var motion = root.Q<VisualElement>("m");
+            yield return PlayModeRealtimeTestHelpers.WaitRealtime(0.6);
+            _store.Set(false);
+            yield return WaitUntilExitMoved(motion, new List<float>());
+
+            // Act
+            _store.Set(true, "absolute w-[80px] h-[50px]", "cover2");
+            yield return PlayModeRealtimeTestHelpers.WaitRealtime(0.8);
+
+            // Assert
+            Assert.That((motion.resolvedStyle.width, motion.resolvedStyle.translate.x), Is.EqualTo((80f, 100f)));
+        }
+
+        // GREEN_ON_BASE(characterization): as the mid-exit case above; the re-add here lands after the exit
+        // completed. The label stays, because a new one plays a runtime swap whose own write would cover the
+        // restore. Measured red at the commit that restored the resting values recorded when the exit started:
+        // (50, 0).
+        [UnityTest]
+        public IEnumerator Given_APresenceChildExitingBetweenTranslatePoses_When_ItIsAddedBackAsTheExitCompletesWithANewClassName_Then_ItRestsAtTheNewWidth()
+        {
+            // Arrange — no initial, so the re-entry plays no enter of its own.
+            s_declaresInitial = false;
+            var root = CreateRuntimePanel(shown: true);
+            yield return null;
+            _mounted = V.Mount(root, V.Component(PresenceHost, key: "root"));
+            var motion = root.Q<VisualElement>("m");
+            yield return PlayModeRealtimeTestHelpers.WaitRealtime(0.6);
+            s_onExitComplete = () => _store.Set(true, "absolute w-[80px] h-[50px]", "cover");
+
+            // Act
+            _store.Set(false);
+            yield return PlayModeRealtimeTestHelpers.WaitRealtime(1.1);
+
+            // Assert
+            Assert.That((motion.resolvedStyle.width, motion.resolvedStyle.translate.x), Is.EqualTo((80f, 0f)));
         }
     }
 }

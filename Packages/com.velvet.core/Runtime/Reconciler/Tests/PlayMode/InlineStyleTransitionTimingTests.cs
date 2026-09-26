@@ -57,7 +57,7 @@ namespace Velvet.Tests
         private static bool IsBetween(float x) => x > 15f && x < 285f;
 
         // GREEN_ON_BASE(characterization): UI Toolkit's own write-order behaviour, which the hold relies on.
-        // No Velvet code runs in it, so the base and the branch run the same engine. Measured: writing the
+        // No production code runs in it, so the base and the branch run the same engine. Measured: writing the
         // transition first on the first two elements as well makes all three tween, which reddens it.
         [UnityTest]
         public IEnumerator Given_ThreeElements_When_AnInlineTranslateIsWrittenBeforeOrAfterAnInlineTransitionInOneFrame_Then_OnlyTheOneWrittenAfterTweens()
