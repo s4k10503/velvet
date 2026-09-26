@@ -320,9 +320,6 @@ namespace Velvet.Tests
                 Is.EqualTo((true, (float?)0f)), string.Join(", ", exitSamples));
         }
 
-        // GREEN_ON_BASE(characterization): the base's exit never writes translate, so the re-add's own patch
-        // is the last write and leaves the re-added node's values. Measured red at the commit that restored the
-        // resting values recorded when the exit started: (50, 0).
         [UnityTest]
         public IEnumerator Given_APresenceChildExitingBetweenTranslatePoses_When_ItIsAddedBackMidExitWithANewClassNameAndLabel_Then_ItRestsAtTheNewValues()
         {
@@ -428,9 +425,6 @@ namespace Velvet.Tests
                 string.Join(", ", ySamples));
         }
 
-        // GREEN_ON_BASE(characterization): the base's cancel puts back the resting classes the exit started
-        // from, which include the one moved into className. Measured red at the commit that restored the
-        // re-added resting variant alone: opacity 1.
         [UnityTest]
         public IEnumerator Given_APresenceChildExitingFromAUssPose_When_ItIsAddedBackMidExitWithThatClassMovedIntoClassName_Then_TheClassHolds()
         {
