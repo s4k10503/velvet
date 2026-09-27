@@ -460,9 +460,11 @@ namespace Velvet
 
                 var rendered = FiberBeginWork.RunRenderPhaseLoop(fiber);
 
-                FiberBeginWork.CommitSettledHookDeps(fiber);
-
+                // Before the settle promotes any staged deps: a render refused for fewer hooks must leave
+                // every slot's committed deps where the last committed render left them.
                 HookCountSentinel.ValidateAndCommit(fiber);
+
+                FiberBeginWork.CommitSettledHookDeps(fiber);
 
                 var newTree = FiberTreeReturn.NormalizeToArray(rendered);
                 oldTree = fiber.PreviousTree ?? Array.Empty<VNode>();

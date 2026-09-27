@@ -1,7 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using System.Text.RegularExpressions;
 using NUnit.Framework;
+using UnityEngine;
+using UnityEngine.TestTools;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
 
@@ -297,6 +300,52 @@ namespace Velvet.Tests
             // Assert — the refusal is folded in, since a helper that never ran would start nothing either
             Assert.That($"{s_caught?.Message.Contains("Rendered more hooks") == true} | slots started: {s_slotStarts}",
                 Is.EqualTo("True | slots started: 0"));
+        }
+
+        #endregion
+
+        #region A render refused for fewer hooks commits none of its hook deps
+
+        private static readonly List<int> s_effectRuns = new();
+        private static StateUpdater<int> s_setCount;
+        private static StateUpdater<bool> s_setDetail;
+
+        [Component(Compiler = false)]
+        private static VNode RefusedRender()
+        {
+            var (count, setCount) = Hooks.UseState(0);
+            var (detail, setDetail) = Hooks.UseState(true);
+            s_setCount = setCount;
+            s_setDetail = setDetail;
+            Hooks.UseEffect((Func<Action>)(() =>
+            {
+                s_effectRuns.Add(count);
+                return null;
+            }), new object[] { count });
+            if (detail) Hooks.UseMemo(() => 1);
+            return V.Label(text: count.ToString());
+        }
+
+        [Test]
+        public void Given_ARenderRefusedForFewerHooksWithNoBoundary_When_TheCountsMatchAgain_Then_TheEffectRunsForTheNewDeps()
+        {
+            // Arrange — no boundary, so the fiber keeps rendering after the refusal is logged
+            s_effectRuns.Clear();
+            using var mounted = V.Mount(_root, V.Component(RefusedRender, key: "refused"));
+            mounted.FlushEffectsForTest();
+            LogAssert.Expect(LogType.Exception, new Regex("Rendered fewer hooks than expected"));
+            s_setCount.Invoke(1);
+            s_setDetail.Invoke(false);
+            mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
+
+            // Act
+            s_setDetail.Invoke(true);
+            mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That(string.Join(",", s_effectRuns), Is.EqualTo("0,1"));
         }
 
         #endregion

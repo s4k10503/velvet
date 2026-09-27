@@ -827,7 +827,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the previous render now throws the hook-count `InvalidOperationException` `Hooks.UseState` throws, in
   every build, and reaches an enclosing error boundary. It logged an error in the editor alone and
   committed the render, or, for `Hooks.UseMemo`, `Hooks.UseRef`, `Hooks.UseMutableRef` and
-  `Hooks.UseTransition`, was not checked.
+  `Hooks.UseTransition`, was not checked. A hook built from them, such as `Hooks.UseFrame` or
+  `Hooks.UseNavigate`, throws the same way, and the message names the inner hook — `UseCallback` for
+  `Hooks.UseNavigate`.
 
 - `LoaderMode.Await`, which is the default, awaits the loader. The route already on screen stays there,
   `Hooks.UseNavigation().State` reports `NavigationLifecycle.Loading`, and the location commits with the
