@@ -180,13 +180,15 @@ namespace Velvet
 
         // The wrapper carries the element's transition classes for its layout; left on for the mask writes
         // they would start the new mask from the old one rather than show it
-        // (ClipPathLayoutParityPanelTests pins it). The saved list is copied because the getter returns the
-        // slot's own list, which the suspending write refills in place.
+        // (ClipPathLayoutParityPanelTests pins it). A spring exit on a presence anchor that is a clip wrapper
+        // suspends the wrapper's transitions inline too, so what was there is restored rather than cleared; the
+        // saved list is copied because the getter returns the slot's own list, which the suspending write
+        // refills in place.
         private static void SyncClipPathGeometry(VisualElement element, ClipPathBinding binding)
         {
             var ws = binding.Wrapper.style;
             var saved = ws.transitionProperty;
-            if (saved.keyword == StyleKeyword.Undefined && saved.value != null)
+            if (saved.keyword == StyleKeyword.Undefined)
             {
                 saved = new List<StylePropertyName>(saved.value);
             }

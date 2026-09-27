@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -348,6 +349,28 @@ namespace Velvet.Tests
             var baked = wrapper.style.backgroundImage.value.vectorImage;
             Assert.That((baked != null, wrapper.resolvedStyle.backgroundImage.vectorImage == baked),
                 Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_AWrapperWithAnInlineTransitionProperty_When_ItsMaskResyncs_Then_ThePropertyIsAsItWas()
+        {
+            // Arrange: something else, such as a spring exit on a presence anchor, holds the wrapper's
+            // transition-property inline.
+            Mount("", _ => "w-[80px] h-[80px] transition-all");
+            var wrapper = Named("clip-card").parent;
+            wrapper.style.transitionProperty = new System.Collections.Generic.List<StylePropertyName>
+            {
+                new StylePropertyName("opacity"),
+            };
+
+            // Act: a new size resyncs the mask.
+            wrapper.style.width = 120f;
+            ForcePanelUpdate(_window.rootVisualElement.panel);
+
+            // Assert
+            Assert.That((Named("clip-card").resolvedStyle.width,
+                    string.Join(",", wrapper.style.transitionProperty.value.Select(p => p.ToString()))),
+                Is.EqualTo((120f, "opacity")));
         }
 
         [Test]
