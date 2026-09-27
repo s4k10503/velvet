@@ -128,6 +128,39 @@ namespace Velvet.Tests
                 transition: new StyleTransitionConfig { DurationSec = 0.35f });
         }
 
+        private static readonly Dictionary<string, MotionVariant> s_taggedLit = new()
+        {
+            ["off"] = "opacity-0",
+            ["lit"] = "opacity-100 tagged",
+            ["dim"] = new MotionVariant("opacity-50", StyleTransitionConfig.None),
+        };
+
+        // The Motion's own className repeats a class of its lit pose.
+        [Component]
+        private static VNode TaggedBox()
+        {
+            var label = Hooks.UseStore(s_labelStore, s => s.Label);
+            return V.Motion(key: "m", name: "m", className: "tagged", variants: s_taggedLit, animate: label,
+                transition: new StyleTransitionConfig { DurationSec = 0.35f });
+        }
+
+        private static int s_enterCompletions;
+
+        // A presence child that follows its parent's label and fades in on the classic preset.
+        [Component]
+        private static VNode FadingFollower()
+        {
+            var label = Hooks.UseStore(s_labelStore, s => s.Label);
+            return V.Motion(name: "parent", animate: label, children: new VNode[]
+            {
+                V.AnimatePresence(key: "presence", children: new VNode[]
+                {
+                    V.Motion(key: "a", name: "item", variants: s_fadeWithInstantHalf, transition: StyleTransition.Fade,
+                        onEnterComplete: () => s_enterCompletions++),
+                }),
+            });
+        }
+
         private static string OpacityClasses(VisualElement element)
             => string.Join(" ", element.GetClasses().Where(c => c.StartsWith("opacity-")).OrderBy(c => c));
 
@@ -407,6 +440,52 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(InlineDurationIsSet(Root.Q<VisualElement>("m")), Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): the base's pending swap put its to classes back, the shared one with them.
+        // So the class a Motion's own className shares with the interrupted pose survives the zero-duration swap.
+        [Test]
+        public void Given_ATweenSwapIntoAPoseSharingTheMotionsOwnClass_When_AZeroDurationSwapFollowsBeforeItSwaps_Then_TheOwnClassStays()
+        {
+            // Arrange
+            using var labels = new LabelStore();
+            labels.Set("off");
+            s_labelStore = labels;
+            using var mounted = V.Mount(Root, V.Component(TaggedBox, key: "root"));
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+            Tick();
+            labels.Set("lit");
+            scheduler.DrainImmediateForTest();
+
+            // Act
+            labels.Set("dim");
+            scheduler.DrainImmediateForTest();
+            AdvancePast(0.35f);
+
+            // Assert
+            Assert.That(Root.Q<VisualElement>("m").ClassListContains("tagged"), Is.True);
+        }
+
+        // GREEN_ON_BASE(characterization): the base's zero-duration swap left every pending enter alone.
+        // So a presence child's classic fade-in still completes when its inherited label changes before it swaps.
+        [Test]
+        public void Given_APresenceChildsClassicEnterNotSwappedYet_When_ItsInheritedLabelChangesToAZeroDurationPose_Then_TheEnterCompletes()
+        {
+            // Arrange
+            s_enterCompletions = 0;
+            using var labels = new LabelStore();
+            labels.Set("visible");
+            s_labelStore = labels;
+            using var mounted = V.Mount(Root, V.Component(FadingFollower, key: "root"));
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+
+            // Act
+            labels.Set("half");
+            scheduler.DrainImmediateForTest();
+            AdvancePast(1f);
+
+            // Assert
+            Assert.That(s_enterCompletions, Is.EqualTo(1));
         }
     }
 }

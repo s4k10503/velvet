@@ -601,7 +601,8 @@ namespace Velvet
             if (playedTransition != null)
             {
                 _ctx.StyleAnimationScheduler.PlayVariantEnter(element, oldVariantClasses, newVariantClasses,
-                    playedTransition, onComplete: null, additionalDelaySec: extraDelaySec, onSwap: onSwap);
+                    playedTransition, onComplete: null, additionalDelaySec: extraDelaySec, onSwap: onSwap,
+                    appliedClasses: appliedNew);
             }
 
             // MotionNode has no Styles diff, so the shared passes follow PatchCommon (which reconciles

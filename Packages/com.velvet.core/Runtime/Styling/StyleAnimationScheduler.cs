@@ -39,6 +39,9 @@ namespace Velvet
             // The persistent resting set a cancel must restore — a variant exit's from-classes, a variant
             // enter's to-classes; null for preset plays, whose classes are all transient.
             internal string[]? RestingClasses { get; init; }
+            // A variant enter's whole resting class set once it lands — its element's own classes and the pose's
+            // — where the caller knows it; null elsewhere, which leaves the to classes standing in for it.
+            internal string[]? AppliedClasses { get; init; }
             internal Action? OnComplete { get; init; }
             internal Action? OnSwap { get; init; }
             internal float DelaySec { get; init; }
@@ -111,14 +114,15 @@ namespace Velvet
         // the same eight-argument unpack of the same object.
         // onSwap: run at the swap, once the classes have moved. Only a play for which RunsOnSwap holds runs it,
         // and one cancelled before its swap never does.
+        // appliedClasses: the element's whole resting class set once this play lands (see VariantPlay).
         public void PlayVariantEnter(VisualElement? element, string[]? fromClasses, string[]? toClasses,
             StyleTransitionConfig config, Action? onComplete = null, float additionalDelaySec = 0f,
-            Action? onSwap = null)
+            Action? onSwap = null, string[]? appliedClasses = null)
         {
             PlayVariantEnter(element, fromClasses, toClasses, config.DurationSec, config.Easing, config.DelaySec,
                 onComplete, additionalDelaySec, config.PropertyOverrides,
                 config.Type, config.Stiffness, config.Damping, config.Mass,
-                config.BezierX1, config.BezierY1, config.BezierX2, config.BezierY2, onSwap);
+                config.BezierX1, config.BezierY1, config.BezierX2, config.BezierY2, onSwap, appliedClasses);
         }
 
         // Shares IsPlayableDuration with ValidateDuration, so the two cannot disagree about which durations play.
@@ -148,7 +152,7 @@ namespace Velvet
             IReadOnlyList<StylePropertyTransition>? propertyOverrides = null,
             TransitionType type = TransitionType.Tween, float stiffness = 100f, float damping = 10f, float mass = 1f,
             float bezierX1 = 0.4f, float bezierY1 = 0f, float bezierX2 = 0.2f, float bezierY2 = 1f,
-            Action? onSwap = null)
+            Action? onSwap = null, string[]? appliedClasses = null)
         {
             if (element == null)
             {
@@ -163,6 +167,7 @@ namespace Velvet
                 FromClasses = fromClasses ?? System.Array.Empty<string>(),
                 ToClasses = resolvedTo,
                 RestingClasses = resolvedTo,
+                AppliedClasses = appliedClasses,
                 OnComplete = onComplete,
                 OnSwap = onSwap,
                 DelaySec = delaySec,
@@ -195,7 +200,7 @@ namespace Velvet
 
             if (!IsPlayableDuration(durationSec))
             {
-                CancelSwapAhead(element, variantMode ? toClasses : null);
+                CancelSwapAhead(element, toClasses, play.AppliedClasses ?? toClasses);
             }
 
             // DurationSec=0 / invalid: complete immediately. For variantMode this happens BEFORE any strip, so
@@ -234,7 +239,7 @@ namespace Velvet
                 DelayList = delayList,
                 AnimatingElement = element,
                 OnSwap = play.OnSwap,
-                SwapAhead = true,
+                SwapAhead = variantMode,
             };
             // Seed the ring band at the from-value (0 = invisible) NOW (synchronously, before the next-frame
             // swap) so there is no first-frame flash; the tick (started at the swap) then ramps it to follow
@@ -973,16 +978,25 @@ namespace Velvet
         // Cancels the enter animation on the given element and removes the applied CSS classes and inline styles.
         public void CancelEnter(VisualElement element) => CancelPending(_pendingEnters, element);
 
-        // What a play that does not tween cancels: an earlier tween enter whose swap has not run, which would
-        // otherwise put that enter's target classes back beside this play's. A swap that has run, and a
-        // reversal a cancelled exit parked, are left running, so a property this play does not name keeps
-        // moving on them. restingTo: a variant play's to classes, which the cancel puts back in place of the
-        // cancelled play's.
-        private void CancelSwapAhead(VisualElement element, string[]? restingTo)
+        // What a play that does not tween cancels: an earlier tween variant enter whose swap has not run, which
+        // would otherwise put that enter's target classes back beside this play's. A swap that has run, a
+        // reversal a cancelled exit parked, and a classic enter, whose classes are transient overlays, are left
+        // running, so a property this play does not name keeps moving on them. The cancel puts back this play's
+        // to classes, and those of the cancelled enter's, which it stripped as it started, that appliedClasses
+        // still holds: a Motion's own class is among them where the interrupted pose repeats it.
+        private void CancelSwapAhead(VisualElement element, string[] toClasses, string[] appliedClasses)
         {
             if (_pendingEnters.TryGetValue(element, out var pending) && pending.SwapAhead)
             {
-                CancelPending(_pendingEnters, element, restingOverride: restingTo);
+                var resting = new List<string>(toClasses);
+                foreach (var cls in pending.ToClasses!)
+                {
+                    if (Array.IndexOf(appliedClasses, cls) >= 0)
+                    {
+                        resting.Add(cls);
+                    }
+                }
+                CancelPending(_pendingEnters, element, restingOverride: resting.ToArray());
             }
         }
 
@@ -1504,7 +1518,7 @@ namespace Velvet
             public BezierTweenState? Bezier;
             // A variant play's onSwap until the swap runs it; null once it has run, and for a play given none.
             public Action? OnSwap;
-            // True from a tween enter's registration until its swap runs; false for every other entry.
+            // True from a tween variant enter's registration until its swap runs; false for every other entry.
             public bool SwapAhead;
             // The classes a CancelExit caller kept (see CancelExit), for a reversal that is cancelled in turn.
             public string[]? KeptClasses;
