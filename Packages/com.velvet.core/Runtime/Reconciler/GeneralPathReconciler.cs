@@ -68,6 +68,11 @@ namespace Velvet
             // speculative subtree (Suspense primary) can be rolled back on suspend.
             public List<ChildKey> CommittedKeys = null!;
             public int NewIndex;
+            // The component fibers whose expansion this walk completed, each with the NewElements index its
+            // rows begin at and how many it emitted. FinalizeGeneralCommit writes them onto the fiber where it
+            // places the rows. RollbackCommitTo leaves the entries of a suspended primary's fibers in place, so
+            // those fibers are written the rows they had before the rollback.
+            public List<(ComponentFiber Fiber, int FirstRow, int Rows)> Placements = null!;
             // The fibers of the component nodes this walk met after an abort and did not render.
             public HashSet<ComponentFiber>? SkippedByAbort;
         }
@@ -146,8 +151,8 @@ namespace Velvet
                 OldOwners = pairing.OldOwners,
                 CommittedKeys = new List<ChildKey>(),
                 NewIndex = 0,
+                Placements = pool.RentPlacementList(),
             };
-            var placementMark = _ctx.ComponentRegistry.MarkPrePlacements();
             var owner = _ctx.FiberStack.Current;
             try
             {
@@ -210,9 +215,7 @@ namespace Velvet
             }
             finally
             {
-                // Nothing after this walk may read the record a re-placement left as saying where the
-                // fiber's rows are; ComponentFiber.PrePlacementSlotStart owns what it does say.
-                _ctx.ComponentRegistry.ReleasePrePlacementsTo(placementMark);
+                pool.ReturnPlacementList(commit.Placements);
                 pool.Return(commit.OldKeyMap);
                 pool.ReturnKeySet(commit.UsedKeys);
                 pool.ReturnReplacedKeySet(commit.ReplacedKeys);
@@ -454,6 +457,53 @@ namespace Velvet
             return false;
         }
 
+        // One pass buckets the placements by parent, then each parent with two or more is walked once, so the
+        // cost is the placements plus the child chains of those parents.
+        private void CommitComponentOrder(List<(ComponentFiber Fiber, int FirstRow, int Rows)> placements)
+        {
+            // MUTANT_SURVIVES(equivalent): with fewer than two placements no parent gets two, so the loops below
+            // reorder nothing.
+            if (placements.Count < 2) return;
+            var pool = _ctx.BufferPool;
+            var byParent = pool.RentFiberBuckets();
+            var placed = pool.RentFiberSet();
+            var siblings = pool.RentFiberList();
+            try
+            {
+                foreach (var (fiber, _, _) in placements)
+                {
+                    if (fiber.IsOffscreen || fiber.Parent == null || !placed.Add(fiber)) continue;
+                    if (!byParent.TryGetValue(fiber.Parent, out var ordered))
+                    {
+                        ordered = pool.RentFiberList();
+                        byParent[fiber.Parent] = ordered;
+                    }
+                    ordered.Add(fiber);
+                }
+                foreach (var (parent, ordered) in byParent)
+                {
+                    // MUTANT_SURVIVES(equivalent): a single fiber replaces its own position, so CommitChildOrder
+                    // would write back the chain it was handed.
+                    if (ordered.Count < 2) continue;
+                    siblings.Clear();
+                    for (var sibling = parent.Child; sibling != null; sibling = sibling.Sibling)
+                        siblings.Add(sibling);
+                    // A child of parent is in placed exactly when it is in ordered, since each fiber has one parent.
+                    var next = 0;
+                    for (var i = 0; i < siblings.Count; i++)
+                        if (placed.Contains(siblings[i])) siblings[i] = ordered[next++];
+                    parent.CommitChildOrder(siblings);
+                }
+            }
+            finally
+            {
+                foreach (var ordered in byParent.Values) pool.ReturnFiberList(ordered);
+                pool.ReturnFiberBuckets(byParent);
+                pool.ReturnFiberList(siblings);
+                pool.ReturnFiberSet(placed);
+            }
+        }
+
         // Removes old leaves not reused by the walk, then re-places the committed elements into
         // [slotStart, slotStart + NewElements.Count) with the minimum number of DOM moves via
         // a patience-sort LIS (anchors stay put). Mirrors the removal + LIS reorder tail of
@@ -488,6 +538,13 @@ namespace Velvet
                 LogicalNewLen = newElements.Count,
             };
             _placement.ComputeAnchorsAndReorder(parent, newElements, in range);
+
+            CommitComponentOrder(commit.Placements);
+            foreach (var (fiber, firstRow, rows) in commit.Placements)
+            {
+                fiber.MountSlotStart = slotStart + firstRow;
+                fiber.MountSlotCount = rows;
+            }
         }
 
         #endregion
@@ -911,7 +968,7 @@ namespace Velvet
                 walk.NewFibers.Add(fiber);
                 var preCount = emittedCount;
                 ExpandFiberPreviousTree(walk, fiber, component, position, nodeIndex);
-                fiber.MountSlotCount = (commit != null ? commit.NewElements.Count : result!.Count) - preCount;
+                if (commit != null) commit.Placements.Add((fiber, preCount, commit.NewElements.Count - preCount));
             }
             else
             {
