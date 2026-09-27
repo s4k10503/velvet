@@ -111,5 +111,119 @@ if __name__ == "__main__":
         self.assertEqual((direct, self.verdict(dies)), (0, 1))
 
 
+THREE_CLASSES = """import unittest
+
+
+class A(unittest.TestCase):
+    def test_a(self):
+        self.assertTrue(True)
+
+
+class B(unittest.TestCase):
+    def test_b(self):
+        self.assertTrue({verdict})
+
+
+class C(unittest.TestCase):
+    def test_c(self):
+        self.assertTrue(True)
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)
+"""
+
+# The first process to import this defines one class more than the others: what a module whose test
+# set depends on the process looks like to the runner.
+UNEVEN = """import os, unittest
+from pathlib import Path
+
+marker = Path(__file__).with_suffix(".marker")
+try:
+    os.close(os.open(str(marker), os.O_CREAT | os.O_EXCL))
+    first = True
+except FileExistsError:
+    first = False
+
+
+class A(unittest.TestCase):
+    def test_a(self):
+        self.assertTrue(True)
+
+
+if first:
+    class B(unittest.TestCase):
+        def test_b(self):
+            self.assertTrue(True)
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)
+"""
+
+
+class ParallelVerdictTests(VerdictTests):
+    def verdict(self, path):
+        return subprocess.run([sys.executable, str(RUNNER), "--jobs", "2", str(path)],
+                              capture_output=True, text=True, timeout=120).returncode
+
+    def test_Given_ClassesSpreadOverTheProcesses_When_OneFails_Then_TheRunnerFailsWhereOnlyThen(self):
+        # Arrange — the passing twin rides along, since a runner failing every parallel run fails
+        # this one too.
+        passing = self.module("test_passing.py", THREE_CLASSES.format(verdict="True"))
+        failing = self.module("test_failing.py", THREE_CLASSES.format(verdict="False"))
+
+        # Act / Assert
+        self.assertEqual((self.verdict(passing), self.verdict(failing)), (0, 1))
+
+    def test_Given_AModuleWithNoTests_When_SpreadOverTheProcesses_Then_TheRunIsRefused(self):
+        # Arrange — the module with a class rides along, since a runner refusing every parallel run
+        # refuses the empty one too.
+        empty = self.module("test_empty.py", "import unittest\n\nif __name__ == '__main__':\n"
+                                              "    unittest.main(verbosity=2)\n")
+        populated = self.module("test_populated.py", PASSING)
+
+        # Act / Assert
+        self.assertEqual((self.verdict(populated), self.verdict(empty)), (0, 1))
+
+    def test_Given_ProcessesThatLoadedDifferentTests_When_Counted_Then_TheRunIsRefused(self):
+        # Arrange — the even module rides along, since a runner refusing every parallel run satisfies
+        # the uneven one too.
+        even = self.module("test_even.py", UNEVEN.replace("if first:", "if True:"))
+        uneven = self.module("test_uneven.py", UNEVEN)
+
+        # Act / Assert
+        self.assertEqual((self.verdict(even), self.verdict(uneven)), (0, 1))
+
+
+class Fixtureless(unittest.TestCase):
+    """Two cases named so the loader does not take them for this module's own."""
+
+    def probe_one(self):
+        pass
+
+    def probe_two(self):
+        pass
+
+
+class WithClassFixture(Fixtureless):
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+
+
+class UnitTests(unittest.TestCase):
+    def test_Given_AClassWithAClassFixture_When_Split_Then_ItsTestsShareAProcess(self):
+        # Arrange
+        tests = [Fixtureless("probe_one"), Fixtureless("probe_two"),
+                 WithClassFixture("probe_one"), WithClassFixture("probe_two")]
+
+        # Act
+        sizes = [len(unit) for unit in run_suite.units(tests)]
+
+        # Assert
+        self.assertEqual(sizes, [1, 1, 2])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
