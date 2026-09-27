@@ -19,6 +19,7 @@ CONFIGURATION = "Release"
 STYLE_TABLE_PROJECT = "src/Velvet.StyleTable/Velvet.StyleTable.csproj"
 STYLE_SHEET_DIR = "../Runtime/Styles"
 STYLE_TABLE_OUTPUT = "../Runtime/Styling/StyleUtilityProperties.g.cs"
+RADIUS_SHEET_OUTPUT = "../Runtime/Styles/_radius_declared.uss"
 
 DEPLOYMENTS = (
     (
@@ -63,7 +64,7 @@ def main():
         [
             "dotnet", "run", "--project", STYLE_TABLE_PROJECT, "-c", CONFIGURATION,
             "--verbosity", "quiet", "--",
-            "--styles", STYLE_SHEET_DIR, "--output", STYLE_TABLE_OUTPUT,
+            "--styles", STYLE_SHEET_DIR, "--output", STYLE_TABLE_OUTPUT, "--radius-output", RADIUS_SHEET_OUTPUT,
         ],
         "the utility property table could not be derived",
     )

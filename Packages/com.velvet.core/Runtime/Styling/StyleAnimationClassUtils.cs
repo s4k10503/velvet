@@ -11,6 +11,7 @@ namespace Velvet
         {
             foreach (var cls in classes)
             {
+                CornerRadiusFit.TrackClass(element, cls);
                 element.AddToClassList(cls);
             }
             ClipPathLayoutBox.SyncClasses(element);

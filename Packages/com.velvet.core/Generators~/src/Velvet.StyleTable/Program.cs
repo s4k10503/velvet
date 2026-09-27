@@ -4,7 +4,8 @@ using System.IO;
 namespace Velvet.StyleTable
 {
     /// <summary>
-    /// Derives the utility class → property table from the bundled stylesheets and writes it as C# source.
+    /// Derives the utility class → property table from the bundled stylesheets and writes it as C# source, and
+    /// derives the corner-radius declaration sheet beside them.
     /// </summary>
     /// <remarks>
     /// This runs once per contributor, not once per consumer compile. The table is a function of package
@@ -17,6 +18,7 @@ namespace Velvet.StyleTable
     {
         private const string StylesOption = "--styles";
         private const string OutputOption = "--output";
+        private const string RadiusOutputOption = "--radius-output";
 
         private const int Ok = 0;
         private const int DerivationFailed = 1;
@@ -24,7 +26,7 @@ namespace Velvet.StyleTable
 
         private static int Main(string[] args)
         {
-            if (!TryParseArguments(args, out var stylesDirectory, out var outputPath, out var usage))
+            if (!TryParseArguments(args, out var stylesDirectory, out var outputPath, out var radiusOutputPath, out var usage))
             {
                 Console.Error.WriteLine(usage);
                 return UsageError;
@@ -38,15 +40,16 @@ namespace Velvet.StyleTable
 
             var sheets = UssCascadeOrder.SheetsIn(stylesDirectory);
             var result = StyleUtilityTableBuilder.Build(sheets);
-            if (result.Problems.Length > 0)
+            var radii = CornerRadiusDeclarationSheet.Build(sheets);
+            var problems = result.Problems.AddRange(radii.Problems);
+            if (problems.Length > 0)
             {
-                foreach (var problem in result.Problems)
+                foreach (var problem in problems)
                 {
                     Console.Error.WriteLine(problem.ToString());
                 }
                 Console.Error.WriteLine(
-                    $"error: the utility property table was not written; {result.Problems.Length} problem(s) " +
-                    "above must be resolved first.");
+                    $"error: neither output was written; {problems.Length} problem(s) above must be resolved first.");
                 return DerivationFailed;
             }
 
@@ -55,6 +58,10 @@ namespace Velvet.StyleTable
             Console.WriteLine(
                 $"[Velvet.StyleTable] {result.Table.Entries.Length} utility classes from {sheets.Count} " +
                 $"stylesheet(s) -> {outputPath}{(changed ? "" : " (unchanged)")}");
+            var radiiChanged = WriteIfChanged(radiusOutputPath, radii.EmittedSheet);
+            Console.WriteLine(
+                $"[Velvet.StyleTable] corner radius declarations -> {radiusOutputPath}" +
+                $"{(radiiChanged ? "" : " (unchanged)")}");
             return Ok;
         }
 
@@ -78,11 +85,14 @@ namespace Velvet.StyleTable
         }
 
         private static bool TryParseArguments(
-            string[] args, out string stylesDirectory, out string outputPath, out string usage)
+            string[] args, out string stylesDirectory, out string outputPath, out string radiusOutputPath,
+            out string usage)
         {
             stylesDirectory = string.Empty;
             outputPath = string.Empty;
-            usage = $"usage: Velvet.StyleTable {StylesOption} <directory> {OutputOption} <file.g.cs>";
+            radiusOutputPath = string.Empty;
+            usage = $"usage: Velvet.StyleTable {StylesOption} <directory> {OutputOption} <file.g.cs> " +
+                $"{RadiusOutputOption} <file.uss>";
 
             for (var i = 0; i + 1 < args.Length; i += 2)
             {
@@ -94,11 +104,14 @@ namespace Velvet.StyleTable
                     case OutputOption:
                         outputPath = args[i + 1];
                         break;
+                    case RadiusOutputOption:
+                        radiusOutputPath = args[i + 1];
+                        break;
                     default:
                         return false;
                 }
             }
-            return stylesDirectory.Length > 0 && outputPath.Length > 0;
+            return stylesDirectory.Length > 0 && outputPath.Length > 0 && radiusOutputPath.Length > 0;
         }
     }
 }

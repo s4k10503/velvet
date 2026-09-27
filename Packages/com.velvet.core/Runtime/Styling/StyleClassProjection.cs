@@ -35,6 +35,7 @@ namespace Velvet
         // nothing.
         public static void Add(VisualElement element, string cls, int priority)
         {
+            CornerRadiusFit.TrackClass(element, cls);
             var model = StyleArbitraryValueResolver.TryGetProjection(element);
             if (model == null)
             {

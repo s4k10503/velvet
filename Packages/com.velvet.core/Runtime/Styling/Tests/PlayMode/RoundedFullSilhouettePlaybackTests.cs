@@ -14,11 +14,8 @@ namespace Velvet.Tests
     /// the corner radius a shadow is baked with.
     /// </summary>
     /// <remarks>
-    /// <c>--radius-full</c> is larger than the boxes these cases mount, so each layer that reads it decides for
-    /// itself what a radius the box cannot carry becomes. <c>Documentation~/styling-variants.md</c> states the
-    /// deviation the first two cases pin. <see cref="VelvetStyleUtilities"/> is attached because
-    /// <c>rounded-full</c>, <c>rounded-lg</c> and <c>rounded-3xl</c> are plain USS rules: without the sheet
-    /// the box stays square-cornered, which reddens every case here.
+    /// <see cref="VelvetStyleUtilities"/> is attached because <c>rounded-full</c>, <c>rounded-lg</c> and
+    /// <c>rounded-3xl</c> are plain USS rules.
     /// </remarks>
     [Timeout(600000)]
     internal sealed class RoundedFullSilhouettePlaybackTests
@@ -119,11 +116,8 @@ namespace Velvet.Tests
 
         private VisualElement Box => _host.Root.Q<VisualElement>("box");
 
-        // GREEN_ON_BASE(characterization): UI Toolkit paints this face and this change leaves it alone.
-        // The case holds the deviation styling-variants.md states, so a change that makes rounded-full
-        // a pill here reddens it and the guide has to move with it.
         [UnityTest]
-        public IEnumerator Given_AWideRoundedFullBox_When_UIToolkitPaintsTheFace_Then_ItsBluePixelMaskMatchesAHalfPercentRadius()
+        public IEnumerator Given_AWideRoundedFullBox_When_UIToolkitPaintsTheFace_Then_ItsBluePixelMaskMatchesAHalfHeightRadius()
         {
             // Arrange — square corners, the control: it is the only term that says the box rendered at all
             // and that the rounding removed anything. Comparing whole thresholded frames distinguishes masks
@@ -131,29 +125,49 @@ namespace Velvet.Tests
             yield return MountBox("Square", $"{WideGeometry} bg-[#0000ff]");
             var square = CaptureBlueMask();
 
-            yield return MountBox("HalfPercent", $"{WideGeometry} bg-[#0000ff]", box =>
-            {
-                box.style.borderTopLeftRadius = new StyleLength(Length.Percent(50));
-                box.style.borderTopRightRadius = new StyleLength(Length.Percent(50));
-                box.style.borderBottomRightRadius = new StyleLength(Length.Percent(50));
-                box.style.borderBottomLeftRadius = new StyleLength(Length.Percent(50));
-            });
-            var halfPercent = CaptureBlueMask();
+            yield return MountBox("HalfHeight", $"{WideGeometry} bg-[#0000ff] rounded-[17px]");
+            var halfHeight = CaptureBlueMask();
 
             // Act
             yield return MountBox("Full", $"{WideGeometry} bg-[#0000ff] rounded-full");
             var full = CaptureBlueMask();
 
-            // Assert
-            Assert.That((MasksEqual(full, halfPercent), CountSet(square) > CountSet(full)),
-                Is.EqualTo((true, true)));
+            // Assert — a fitted radius is the declared one scaled by a float factor, so it can land a rounding
+            // error away from 17; the ellipse an unfitted rounded-full paints differs by hundreds of pixels.
+            var differing = 0;
+            for (var i = 0; i < full.Length; i++)
+            {
+                differing += full[i] != halfHeight[i] ? 1 : 0;
+            }
+            Assert.That((differing <= 8, CountSet(square) > CountSet(full)), Is.EqualTo((true, true)));
         }
 
-        // GREEN_ON_BASE(characterization): UI Toolkit paints both faces and this change leaves them alone.
-        // The case holds the advice styling-variants.md gives, a named radius for a pill that
-        // UI Toolkit paints, so a change to either face reddens it and the guide moves with it.
         [UnityTest]
-        public IEnumerator Given_AWideBox_When_UIToolkitPaintsAHalfHeightRadiusAndRoundedFull_Then_OnlyTheNamedRadiusKeepsAFlatTopEdge()
+        public IEnumerator Given_ATabRoundedOnTheRightBeyondItsHeight_When_UIToolkitPaintsTheFace_Then_ItsBluePixelMaskMatchesAHalfHeightRadius()
+        {
+            // Arrange — the reported tab: a 75px-tall box whose right corners are rounded past its height.
+            const string tab = "w-[200px] h-[75px] mt-[20px] ml-[15px] bg-[#0000ff]";
+            yield return MountBox("TabSquare", tab);
+            var square = CaptureBlueMask();
+
+            yield return MountBox("TabHalfHeight", $"{tab} rounded-r-[37.5px]");
+            var halfHeight = CaptureBlueMask();
+
+            // Act
+            yield return MountBox("TabOversized", $"{tab} rounded-r-[400px]");
+            var oversized = CaptureBlueMask();
+
+            // Assert — the budget is the one the rounded-full mask case gives a fitted radius.
+            var differing = 0;
+            for (var i = 0; i < oversized.Length; i++)
+            {
+                differing += oversized[i] != halfHeight[i] ? 1 : 0;
+            }
+            Assert.That((differing <= 8, CountSet(square) > CountSet(oversized)), Is.EqualTo((true, true)));
+        }
+
+        [UnityTest]
+        public IEnumerator Given_AWideBox_When_UIToolkitPaintsAHalfHeightRadiusAndRoundedFull_Then_BothKeepAFlatTopEdge()
         {
             // Arrange — square corners, the control: the strip lies on the box's top edge and the instrument
             // reads paint there.
@@ -168,7 +182,7 @@ namespace Velvet.Tests
             var full = CountTopEdgeStrip(Box.worldBound);
 
             // Assert
-            Assert.That((square > 0, named == square, full), Is.EqualTo((true, true, 0)));
+            Assert.That((square > 0, named == square, full == square), Is.EqualTo((true, true, true)));
         }
 
         // Blue pixels in a strip on the top edge, four fifths of the way along and two rows deep: inside a
@@ -192,45 +206,65 @@ namespace Velvet.Tests
             return n;
         }
 
+        // GREEN_ON_BASE(characterization): the base already bounds an oversized radius in the shadow bake.
+        // Unbounding it, `Mathf.Min(binding.CornerRadius, bound)` -> `binding.CornerRadius`, reddens it.
         [UnityTest]
-        public IEnumerator Given_ARoundedFullBoxWearingAShadow_When_Painted_Then_ItsHaloReachesTheScreen()
+        public IEnumerator Given_ABoxWithAnOversizedInlineRadiusWearingAShadow_When_Painted_Then_ItsHaloReachesTheScreen()
         {
-            // Arrange — a shadow-free mount says how much red sits beside the box with no shadow at all, and
-            // the same shadow behind a radius the box can carry says the shadow layer paints on this panel.
-            yield return MountBox("NoShadow", $"{CasterGeometry} rounded-full");
+            // Arrange — the radius is written straight onto the element, which CornerRadiusFit neither declares
+            // nor fits, so the shadow layer is handed a radius larger than the box. A shadow-free mount says how
+            // much red sits beside the box with no shadow at all, and the same shadow behind a radius the box can
+            // carry says the shadow layer paints on this panel.
+            static void Oversize(VisualElement box)
+            {
+                box.style.borderTopLeftRadius = 9999f;
+                box.style.borderTopRightRadius = 9999f;
+                box.style.borderBottomRightRadius = 9999f;
+                box.style.borderBottomLeftRadius = 9999f;
+            }
+            yield return MountBox("NoShadow", CasterGeometry, Oversize);
             var bare = HaloMean(Box.worldBound, RedOf);
 
             yield return MountBox("ShadowLg", $"{CasterGeometry} rounded-lg shadow-[0px_0px_24px_#ff0000]");
             var lg = HaloMean(Box.worldBound, RedOf);
 
             // Act
-            yield return MountBox("ShadowFull", $"{CasterGeometry} rounded-full shadow-[0px_0px_24px_#ff0000]");
+            yield return MountBox("ShadowOversized", $"{CasterGeometry} shadow-[0px_0px_24px_#ff0000]", Oversize);
             var radiusExceededTheBox = Box.resolvedStyle.borderTopLeftRadius > Box.layout.height;
-            var full = HaloMean(Box.worldBound, RedOf);
+            var oversized = HaloMean(Box.worldBound, RedOf);
 
             // Assert
-            Assert.That((radiusExceededTheBox, full > bare, lg > bare), Is.EqualTo((true, true, true)));
+            Assert.That((radiusExceededTheBox, oversized > bare, lg > bare), Is.EqualTo((true, true, true)));
         }
 
+        // GREEN_ON_BASE(characterization): the base already bounds an oversized radius in the shadow bake.
+        // Unbounding it, `Mathf.Min(binding.CornerRadius, bound)` -> `binding.CornerRadius`, reddens it.
         [UnityTest]
-        public IEnumerator Given_ARoundedFullBoxWearingADropShadow_When_Painted_Then_ItsHaloReachesTheScreen()
+        public IEnumerator Given_ABoxWithAnOversizedInlineRadiusWearingADropShadow_When_Painted_Then_ItsHaloReachesTheScreen()
         {
-            // Arrange — the drop-shadow presets paint the dark shadow colour, which the red channel cannot
-            // tell from the cleared frame, so where the shadow-[…] case reads red this one reads coverage: the
-            // frame is cleared transparent and only paint raises its alpha outside the box.
-            yield return MountBox("NoDropShadow", $"{CasterGeometry} rounded-full");
+            // Arrange — the radius as in the shadow-[…] case. The drop-shadow presets paint the dark shadow
+            // colour, which the red channel cannot tell from the cleared frame, so where that case reads red this
+            // one reads coverage: the frame is cleared transparent and only paint raises its alpha outside the box.
+            static void Oversize(VisualElement box)
+            {
+                box.style.borderTopLeftRadius = 9999f;
+                box.style.borderTopRightRadius = 9999f;
+                box.style.borderBottomRightRadius = 9999f;
+                box.style.borderBottomLeftRadius = 9999f;
+            }
+            yield return MountBox("NoDropShadow", CasterGeometry, Oversize);
             var bare = HaloMean(Box.worldBound, AlphaOf);
 
             yield return MountBox("DropShadowLg", $"{CasterGeometry} rounded-lg drop-shadow-2xl");
             var lg = HaloMean(Box.worldBound, AlphaOf);
 
             // Act
-            yield return MountBox("DropShadowFull", $"{CasterGeometry} rounded-full drop-shadow-2xl");
+            yield return MountBox("DropShadowOversized", $"{CasterGeometry} drop-shadow-2xl", Oversize);
             var radiusExceededTheBox = Box.resolvedStyle.borderTopLeftRadius > Box.layout.height;
-            var full = HaloMean(Box.worldBound, AlphaOf);
+            var oversized = HaloMean(Box.worldBound, AlphaOf);
 
             // Assert
-            Assert.That((radiusExceededTheBox, full > bare, lg > bare), Is.EqualTo((true, true, true)));
+            Assert.That((radiusExceededTheBox, oversized > bare, lg > bare), Is.EqualTo((true, true, true)));
         }
 
         private static float RedOf(Color32 p) => p.r;
