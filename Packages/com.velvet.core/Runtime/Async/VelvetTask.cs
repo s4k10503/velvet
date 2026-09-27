@@ -87,7 +87,18 @@ namespace Velvet
             return new VelvetTask<T>(source);
         }
 
-        public static VelvetTask Yield() => new(YieldVelvetTaskSourcePool.Rent());
+        public static VelvetTask Yield()
+        {
+            if (!VelvetMainThread.IsCurrent)
+            {
+                throw new InvalidOperationException(
+                    "VelvetTask.Yield() was called off the main thread. Await VelvetTask.SwitchToMainThread() before it.");
+            }
+
+            return new(YieldVelvetTaskSourcePool.Rent());
+        }
+
+        public static SwitchToMainThreadAwaitable SwitchToMainThread() => default;
 
         public static VelvetTask Never(CancellationToken cancellationToken = default)
         {
@@ -150,6 +161,23 @@ namespace Velvet
         }
 
         public static IEnumerator ToCoroutine(Func<VelvetTask> taskFactory) => taskFactory().ToCoroutine();
+
+        public readonly struct SwitchToMainThreadAwaitable
+        {
+            public Awaiter GetAwaiter() => default;
+
+            public readonly struct Awaiter : INotifyCompletion
+            {
+                public bool IsCompleted => VelvetMainThread.IsCurrent;
+
+                public void GetResult()
+                {
+                }
+
+                public void OnCompleted(Action continuation) =>
+                    VelvetMainThread.Post(VelvetTaskAwaiterActions.InvokeContinuation, continuation);
+            }
+        }
 
         public readonly struct Awaiter : INotifyCompletion
         {

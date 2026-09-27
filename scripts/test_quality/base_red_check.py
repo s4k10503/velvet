@@ -362,9 +362,24 @@ def masked_lines(text, mask):
     comment crossing to the next line -- leaves a space in its place, which no strip removes and
     which moves every offset after it.
     """
-    return ["".join(text[start + offset] if mask[start + offset] else " "
-                    for offset in range(len(raw)))
+    spaced = blanked(text, mask)
+    return [spaced[start:start + len(raw)]
             for raw, (start, _) in zip(text.splitlines(), line_spans(text))]
+
+
+BLANK_RUN = re.compile(b"\x00+")
+BRACE = re.compile(r"[{}]")
+
+
+def blanked(text, mask):
+    """`text` with every offset the mask reads as blank turned to a space, so it keeps its length."""
+    pieces = []
+    last = 0
+    for run in BLANK_RUN.finditer(bytes(mask)):
+        pieces += [text[last:run.start()], " " * (run.end() - run.start())]
+        last = run.end()
+    pieces.append(text[last:])
+    return "".join(pieces)
 
 
 def code_lines(text):
@@ -378,19 +393,17 @@ def brace_profile(text):
     The peak is what separates a type whose body opens on the line below from one that opens and
     closes on its own line: both leave the depth exactly where they found it.
     """
-    mask = code_mask(text)
+    spaced = blanked(text, code_mask(text))
     profile = []
     depth = 0
     for start, end in line_spans(text):
         entering = depth
         peak = depth
-        for offset in range(start, end):
-            if not mask[offset]:
-                continue
-            if text[offset] == "{":
+        for brace in BRACE.finditer(spaced, start, end):
+            if brace.group() == "{":
                 depth += 1
                 peak = max(peak, depth)
-            elif text[offset] == "}":
+            else:
                 depth -= 1
         profile.append((entering, peak, depth))
     return profile
@@ -673,8 +686,7 @@ def outside_comments(relative, text):
     """
     mask = [True] * len(text)
     for start, end in comment_spans_of(relative, text):
-        for offset in range(start, end):
-            mask[offset] = False
+        mask[start:end] = [False] * max(0, min(end, len(text)) - start)
     return masked_lines(text, mask)
 
 

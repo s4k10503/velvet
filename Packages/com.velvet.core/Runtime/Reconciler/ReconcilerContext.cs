@@ -660,6 +660,28 @@ namespace Velvet
         // on element cleanup / reconciler dispose through that mechanism.
         public Dictionary<VisualElement, string> MotionChildLabel { get; } = new();
 
+        // The MotionNode each Motion element was last created or patched from. A keyed AnimatePresence child's
+        // removal reads it to find the Motions its committed subtree holds, including those behind a component
+        // or a memo, whose nodes the child's own VNode does not contain. A pure side-table (bare Remove on
+        // teardown), enrolled in _pureElementSideTables.
+        public Dictionary<VisualElement, MotionNode> MotionNodes { get; } = new();
+
+        // The AnimatePresence child each top-level element a keyed child emits belongs to, and the emission
+        // that recorded it. An element that is the top of an inner presence's child as well stays that inner
+        // child's: PresenceChildRootOwner.Emission is what lets the outer child's emission, which runs around
+        // the inner one, tell a claim made inside it from one left by an earlier emission. A pure side-table,
+        // enrolled in _pureElementSideTables, so a root that leaves the tree leaves its presence child with it.
+        public Dictionary<VisualElement, PresenceChildRootOwner> PresenceChildRoots { get; } = new();
+
+        // Numbers each committing presence-child emission, for PresenceChildRootOwner.Emission.
+        internal long PresenceChildEmissionCount;
+
+        // The wait each descendant Motion of an exiting presence child belongs to, by that Motion's element, so
+        // a descendant torn down before its exit completes stops holding the child, and one torn down at all is
+        // left alone by a later re-entry. FiberElementCleaner reaches it; it is not a pure side-table, because
+        // its teardown tells the wait.
+        public Dictionary<VisualElement, PresenceExitWait> PresenceDescendantExitWaits { get; } = new();
+
         // The last VisualElement a V.Motion(layoutId:) id settled at, and the resolved layout rect
         // (parent-relative, from element.layout) it settled at — used by MotionLayoutIdDriver to
         // detect a rect change (including across a DIFFERENT physical element entirely, e.g. after a
@@ -1442,6 +1464,17 @@ namespace Velvet
             // (exit-complete drop / instant removal) so a pooled element is never resurrected as a target.
             public readonly Dictionary<string, VisualElement> MotionElements = new();
 
+            // The top-level elements each key's last committing emission placed, a z-managed placeholder
+            // replaced by the element it stands for and any an inner presence's child claimed left out. A
+            // removal walks down from these to find the descendant Motions whose exits it waits for;
+            // ReconcilerContext.PresenceChildRoots says which of them the key still owns. Entries retire with
+            // their key.
+            public readonly Dictionary<string, List<VisualElement>> ChildRoots = new();
+
+            // Per exiting key, the exits it waits for, so a re-entry can close the wait and cancel or undo its
+            // descendants' exits. Entries retire with their key.
+            public readonly Dictionary<string, PresenceExitWait> ExitWaits = new();
+
             // The Portal placeholder whose children reconcile last expanded this presence, if any. Kept
             // rather than rewritten from a null the way ComponentFiber.OwningPortalPlaceholder is: the
             // fiber an isolated re-render leaves unstamped is still reached through the parent index, and
@@ -1460,22 +1493,17 @@ namespace Velvet
         // host element is reused), and disambiguates inner from outer.
         internal Dictionary<(ComponentFiber? boundary, VisualElement? parent, long presenceKey), PresenceBoundaryState> PresenceStates { get; } = new();
 
-        // Non-zero while an AnimatePresence expansion is on the stack. Motion nodes created inside
-        // it are presence-managed (initial/exit tweens are scheduled by the expansion); a Motion
-        // created at depth 0 mounts standalone, where those props are inert and warn.
-        internal int PresenceExpansionDepth;
-
         // The MotionNode a presence expansion is CURRENTLY dispatching enter/exit for — the one
         // FindFirstMotionDescendant resolved for whichever keyed child GeneralPathReconciler is expanding right
         // now (set/restored around each EmitPresenceChild call, not just cleared, so a nested AnimatePresence
         // inside that child's own subtree does not lose the OUTER anchor once its own expansion returns). Null
         // outside any presence expansion, and also null for a keyed child whose FindFirstMotionDescendant walk
         // found no Motion (e.g. a plain Div wrapper). FiberNodeFactory's standalone-enter gate compares a
-        // freshly created MotionNode against this BY REFERENCE — not PresenceExpansionDepth — so only the ONE
+        // freshly created MotionNode against this BY REFERENCE, so only the ONE
         // node the presence itself already plays an enter for (via PlayVariantEnter/PlayEnter) skips its
         // redundant standalone enter; every OTHER Motion created while the expansion is on the stack (nested
-        // deeper, sitting under a non-anchor wrapper, or a sibling keyed child) is not presence-managed at all
-        // and must keep its own mount enter.
+        // deeper, sitting under a non-anchor wrapper, or a sibling keyed child) plays its own mount enter unless
+        // PresenceSuppressesInitial holds it back.
         internal MotionNode? PresenceAnchorMotion;
 
         // The live element CreateElement / PatchMotion resolved for PresenceAnchorMotion during the
@@ -1486,6 +1514,77 @@ namespace Velvet
         // different elements, and classes applied to the wrapper would double-apply against the
         // Motion's resting set and be clobbered by the wrapper's own class patching.
         internal VisualElement? PresenceAnchorMotionElement;
+
+        // Whether the keyed child being emitted is on its presence's first render under initial: false, so a
+        // Motion it creates skips its mount enter. Set and restored around each presence-child emission, so an
+        // inner presence answers for its own children.
+        internal bool PresenceSuppressesInitial;
+
+        // Roots is the owning key's list in PresenceBoundaryState.ChildRoots, which stands for that key.
+        internal readonly record struct PresenceChildRootOwner(List<VisualElement> Roots, long Emission);
+
+        // One descendant Motion's exit: the element, the config PlayExit was handed, and whether that config's
+        // from classes are the resting pose a cancel returns to.
+        internal readonly record struct PresenceDescendantExit(
+            VisualElement Element, StyleTransitionConfig Config, bool RestoresResting, float DelaySec);
+
+        // Counts one exiting presence child's exits down and settles when the last has completed or left the
+        // tree. A re-entry cancels the exits still playing and drops the wait from
+        // PresenceBoundaryState.ExitWaits, which a teardown's deferred settle is read against.
+        internal sealed class PresenceExitWait
+        {
+            internal enum DescendantStatus { Playing, Completed, Gone }
+
+            private readonly DescendantStatus[] _statuses;
+            private int _pending;
+            private readonly System.Action _onSettled;
+            private readonly System.Action<VisualElement> _onSettledByTeardown;
+
+            internal PresenceExitWait(bool anchorPlays, List<PresenceDescendantExit> descendants,
+                System.Action onSettled, System.Action<VisualElement> onSettledByTeardown)
+            {
+                Descendants = descendants;
+                _statuses = new DescendantStatus[descendants.Count];
+                _pending = descendants.Count + (anchorPlays ? 1 : 0);
+                _onSettled = onSettled;
+                _onSettledByTeardown = onSettledByTeardown;
+            }
+
+            internal List<PresenceDescendantExit> Descendants { get; }
+
+            internal DescendantStatus StatusOf(int index) => _statuses[index];
+
+            internal void CompleteAnchor()
+            {
+                if (Settles()) _onSettled();
+            }
+
+            internal void CompleteDescendant(VisualElement element)
+            {
+                _statuses[IndexOf(element)] = DescendantStatus.Completed;
+                if (Settles()) _onSettled();
+            }
+
+            // A descendant leaving the tree is marked whatever its exit had reached, so nothing touches its
+            // element again: a pooled element can already be serving another mount. Only one still playing
+            // was being waited for.
+            internal void TearDown(VisualElement element)
+            {
+                var index = IndexOf(element);
+                if (_statuses[index] != DescendantStatus.Playing)
+                {
+                    _statuses[index] = DescendantStatus.Gone;
+                    return;
+                }
+                _statuses[index] = DescendantStatus.Gone;
+                if (Settles()) _onSettledByTeardown(element);
+            }
+
+            private int IndexOf(VisualElement element)
+                => Descendants.FindIndex(exit => ReferenceEquals(exit.Element, element));
+
+            private bool Settles() => --_pending == 0;
+        }
 
         // The three subjects a prune retires a DOM-less AnimatePresence entry for. A presence whose node
         // stops being rendered outlives all three, which is what RetireBoundaryStatesNotReRendered
@@ -1782,6 +1881,8 @@ namespace Velvet
                 SupportsVariants,
                 MotionAppliedClasses,
                 MotionChildLabel,
+                MotionNodes,
+                PresenceChildRoots,
                 ElementToLayoutId,
                 TextEffects,
                 TextRawText,

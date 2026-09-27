@@ -14,7 +14,8 @@ namespace Velvet.Tests
     /// <list type="bullet">
     /// <item>Mounting with an effect clones it into a hidden host (renderer disabled — only the
     /// simulation is consumed) and never mutates the SOURCE system; the host is destroyed on unmount,
-    /// conditional removal, same-key type swaps and tree disposal, and recreated on an effect swap.</item>
+    /// conditional removal, same-key type swaps and tree disposal, recreated on an effect swap, and kept
+    /// through a pixelsPerUnit change on the same effect.</item>
     /// <item>A null effect mounts an inert element with no host; a world-space source warns (positions
     /// are read in local space).</item>
     /// <item>An invalid pixelsPerUnit fails fast at the factory.</item>
@@ -292,6 +293,35 @@ namespace Velvet.Tests
 
             // Assert — still exactly one host, and the old clone is gone.
             Assert.That((CountSystems(), oldHost == null), Is.EqualTo((_baselineSystems + 1, true)));
+        }
+
+        [Component]
+        private static VNode RescalingHost()
+        {
+            var (rescaled, setRescaled) = Hooks.UseState(false);
+            s_setFlag = setRescaled;
+            return V.Particles(s_effect, className: "w-[128px] h-[128px]", pixelsPerUnit: rescaled ? 50f : 100f);
+        }
+
+        // GREEN_ON_BASE(characterization): the base keeps the host for an unchanged source, and the
+        // source id changing type must not change that. Deleting `binding.SourceId = source.GetEntityId();`
+        // makes every settings change rebuild the host; measured over both Particles fixtures, this case
+        // alone then fails.
+        [Test]
+        public void Given_TheSameEffect_When_ASettingsChangeRepatches_Then_TheHostIsKept()
+        {
+            // Arrange — a pixelsPerUnit change reaches the driver with the source unchanged, so whether the
+            // host is rebuilt rests on the id recorded for that source alone.
+            s_effect = CreateEffectSource("fx");
+            MountAndLayout(V.Component(RescalingHost, key: "root"));
+            var host = FindHost(s_effect);
+
+            // Act
+            s_setFlag.Invoke(true);
+            FlushAndLayout();
+
+            // Assert — a rebuild destroys the first clone, and a mount that made none finds none.
+            Assert.That((host != null, FindHost(s_effect) == host), Is.EqualTo((true, true)));
         }
 
         [Component]

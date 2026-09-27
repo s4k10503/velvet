@@ -205,6 +205,12 @@ namespace Velvet
             // living) must not run even though it can still be attached at this point — DOM detachment is the
             // caller's own job, performed after this cleanup.
             _ctx.StyleAnimationScheduler.CancelExitForTeardown(element);
+            // A descendant Motion leaving before its presence exit completes stops holding the exiting child;
+            // the cancel above keeps that exit from completing as well.
+            if (_ctx.PresenceDescendantExitWaits.Remove(element, out var exitWait))
+            {
+                exitWait.TearDown(element);
+            }
             // Must run BEFORE ClearElementSideTables below: it reads ElementToLayoutId (one of the
             // pure side-tables that call clears) to find this element's layoutId, if any, and cancels
             // its in-flight tick / drops its LayoutIdRegistry entry so a departing element's tween
