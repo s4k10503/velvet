@@ -32,7 +32,7 @@ namespace Velvet
             public readonly StyleLonghand Longhand;
             public readonly Role Role;
             // Outer and Shared: copies the inline value from one style to the other.
-            public readonly Action<IStyle, IStyle>? Move;
+            public readonly Action<IStyle, IStyle>? Transfer;
             // Outer: the value held on the element. Reset: the value held on the wrapper.
             public readonly Action<IStyle>? Write;
 
@@ -40,7 +40,7 @@ namespace Velvet
             {
                 Longhand = longhand;
                 Role = role;
-                Move = move;
+                Transfer = move;
                 Write = write;
             }
         }
@@ -199,12 +199,12 @@ namespace Velvet
             {
                 if (entry.Role == Role.Outer)
                 {
-                    entry.Move!(inner, outer);
+                    entry.Transfer!(inner, outer);
                     entry.Write!(inner);
                 }
                 else if (entry.Role == Role.Shared)
                 {
-                    entry.Move!(inner, outer);
+                    entry.Transfer!(inner, outer);
                 }
                 else if (entry.Role == Role.Reset)
                 {
@@ -224,7 +224,7 @@ namespace Velvet
             {
                 if (entry.Role == Role.Outer)
                 {
-                    entry.Move!(outer, inner);
+                    entry.Transfer!(outer, inner);
                 }
             }
         }
