@@ -1045,9 +1045,8 @@ namespace Velvet.Tests
             // Assert — every one of A's 60 items landed at its correct (post-shift) physical slot in
             // order. RED without the ParkedBaselineFibers rebase branch: A's resume writes one slot short
             // of where the container's insertion actually left each row, scrambling the tail it still had
-            // to create. A's own MountSlotStart is never touched by B's commit (A is declared BEFORE B, so
-            // PropagateInlineSlotShift's forward-only sibling walk never reaches it) — this pins the
-            // parked PendingIndexedState rebase specifically, independent of ComponentFiber.MountSlotStart
+            // to create. A's own MountSlotStart is never touched by B's commit — this pins the parked
+            // PendingIndexedState rebase specifically, independent of ComponentFiber.MountSlotStart
             // propagation.
             var expected = new List<string>();
             for (var i = 0; i < 60; i++) { expected.Add("cpa" + i); }
