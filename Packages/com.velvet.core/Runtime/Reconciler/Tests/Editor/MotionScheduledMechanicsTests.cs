@@ -203,7 +203,7 @@ namespace Velvet.Tests
             // Act
             AdvancePast(3f);
 
-            // Assert — every tween has settled and the inline slot is back with the classes.
+            // Assert — every tween has settled and both inline slots are back with the classes.
             Assert.That((element.style.translate.keyword, element.style.transitionProperty.keyword),
                 Is.EqualTo((StyleKeyword.Null, StyleKeyword.Null)));
         }
