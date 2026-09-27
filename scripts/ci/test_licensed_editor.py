@@ -116,6 +116,17 @@ class LicenceTests(unittest.TestCase):
         self.assertEqual((code, "work" in recorder.kinds()), (1, False))
 
 
+    def test_Given_WorkKilledByASignal_When_ItEnds_Then_TheShellsStatusForThatSignalIsReturned(self):
+        # Arrange — how `subprocess.call` reports a SIGKILL.
+        recorder = Recorder(work=-9)
+
+        # Act
+        code = run_editor(recorder)
+
+        # Assert — 128 + 9, where handing -9 to `sys.exit` would have exited 247.
+        self.assertEqual((code, recorder.kinds()), (137, ["activate", "work", "return"]))
+
+
 class EditorCommandTests(unittest.TestCase):
     def test_Given_ArgumentsAfterTheSeparator_When_Run_Then_TheImagesEditorTakesThemInBatchmode(self):
         # Arrange
