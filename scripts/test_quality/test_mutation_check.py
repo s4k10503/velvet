@@ -3094,7 +3094,7 @@ class DeclarationOwnershipTests(unittest.TestCase):
 class VerdictNamingTests(unittest.TestCase):
     """Each classification branch, read by the verdict the run names rather than by its exit status.
 
-    Four of the six exit 1, so a case asserting the status alone passes with the branch it is named
+    Five of the six exit 1, so a case asserting the status alone passes with the branch it is named
     for deleted -- all four were green under exactly that perturbation. The tally is read rather than
     the per-mutant progress line, because only the tally spells a verdict followed by a colon.
     """
@@ -3111,10 +3111,35 @@ class VerdictNamingTests(unittest.TestCase):
                  if verdict + ":" in campaign.printed]
         return code, named
 
-    # GREEN_ON_BASE(refactor): the verdict is the base's; the case reads it without the receipt it read it through.
-    def test_Given_ABaselineWithRoomToSpare_When_AMutantTimesOut_Then_ItNamesTheHung(self):
+    def test_Given_ABaselineWithRoomToSpare_When_AMutantTimesOut_Then_ItIsKilledAndTheRunPasses(self):
+        # Arrange — over the diff with no declaration anywhere, so a pass here is one no
+        # MUTANT_SURVIVES line was needed for.
         # Act / Assert
-        self.assertEqual(self.tally_of(times_out=True), (1, [mutation_check.HUNG]))
+        self.assertEqual(self.tally_of(times_out=True), (0, [mutation_check.HUNG]))
+
+    def test_Given_AMutantThatHungTheSuite_When_TheRunIsDecided_Then_ItIsListedWithWhatItTook(self):
+        # Arrange — the progress line prints the detail as well, so the listing is read under its own
+        # heading rather than anywhere in the output.
+        campaign = StubbedCampaign()
+        campaign.times_out = True
+
+        # Act
+        campaign.run_over_diff("--max", "40")
+
+        # Assert
+        listed = campaign.printed.partition("--- mutants killed by hanging the suite ---\n")[2]
+        self.assertIn("the suite ran past --timeout 900s", listed.splitlines()[0] if listed else "")
+
+    def test_Given_AResultWrittenBeforeTheTimeout_When_TheBaselineHadRoomToSpare_Then_ItIsNotMeasured(self):
+        # Arrange — the editor wrote a green result and then outran the bound, which a baseline with
+        # the whole bound to spare does not make the mutation's doing.
+        campaign = ResultThenTimeoutCampaign()
+
+        # Act
+        code = campaign.run_over_diff("--max", "40")
+
+        # Assert
+        self.assertEqual((code, mutation_check.TIMED_OUT + ":" in campaign.printed), (1, True))
 
     def test_Given_ABaselineAlreadyNearTheBound_When_AMutantReachesIt_Then_ItIsNotMeasured(self):
         # Arrange — a bound the suite was always going to outrun says nothing about the mutation, and
@@ -3141,6 +3166,15 @@ class VerdictNamingTests(unittest.TestCase):
         # Arrange — the counterpart, so the four above are not passing for a tally naming everything.
         # Act / Assert
         self.assertEqual(self.tally_of(), (1, [mutation_check.SURVIVED]))
+
+
+class ResultThenTimeoutCampaign(StubbedCampaign):
+    """A mutant editor that writes a green result and is then killed at `--timeout`."""
+
+    def run_suite(self, _unity, _project, _platform, _scope, results, log, _timeout, _holder=None):
+        Path(results).write_text(GREEN_RESULTS)
+        Path(log).write_text("")
+        return 0.0, Path(results).name != "baseline.xml", 0
 
 
 class StaleDeclarationTests(unittest.TestCase):
@@ -3271,9 +3305,9 @@ class MaskRefusalTests(unittest.TestCase):
 class KeptVerdictTests(unittest.TestCase):
     """What a killed campaign leaves behind for the next run of the same one.
 
-    Each verdict is recorded as it is reached, and a later run answers from its kills — refusing one
-    where the tree it measured has moved, since a verdict about other bytes is not a verdict — and
-    measures the others again.
+    Each verdict is recorded as it is reached, and a later run answers from the kills a failing case
+    named — refusing one where the tree it measured has moved, since a verdict about other bytes is
+    not a verdict — and measures the others again.
 
     The record the cases below refuse on their digest, their mutant or its column is a kill, because a
     kind the run measures again is refused whatever its key, and a case refusing one would pass with
