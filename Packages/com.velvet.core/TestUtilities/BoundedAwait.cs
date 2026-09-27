@@ -13,8 +13,7 @@ namespace Velvet.TestUtilities
     /// <remarks>
     /// An unbounded <c>await source.Task</c> is a case that cannot report the defect it exists to find: a
     /// change that stops reaching the completion leaves the await pending, the case never returns, and the
-    /// run hangs where it should have gone red. A mutation campaign then reads the wedge as a timeout,
-    /// which is unmeasured rather than survived and fails the campaign.
+    /// run hangs where it should have gone red.
     /// <para>
     /// The bound is generous rather than tuned. What separates a wedge from a slow rendezvous here is not
     /// a hand-picked margin — an awaited completion arrives in the frame the code under test reaches it,

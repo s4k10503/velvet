@@ -117,8 +117,9 @@ namespace Velvet.Tests
         /// never raises it and the await never returns. Three router fixtures await this signal or
         /// <see cref="MakeDeferredBlocker"/>'s, over sixteen cases between them, and carry a
         /// <c>[Timeout]</c>: left to the runner's own bound those sixteen waits cost more than a mutation
-        /// campaign's default cap gives one mutant, which reports the consultation gate as not measured
-        /// rather than as killed. <see cref="UnityRunnerDefaultTimeoutTests"/> pins that bound.
+        /// campaign's default cap gives one mutant, and the campaign then reads the consultation gate from
+        /// the wall clock rather than from the cases that caught it.
+        /// <see cref="UnityRunnerDefaultTimeoutTests"/> pins that bound.
         /// </remarks>
         public static (Func<NavigationAttempt, CancellationToken, VelvetTask<bool>> Check, VelvetTaskCompletionSource Entered) MakeOneShotBlocker()
         {
