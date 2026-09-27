@@ -104,9 +104,9 @@ namespace Velvet.Tests
             return created;
         }
 
-        private void MountAndLayout(VNode node)
+        private void MountAndLayout(VNode node, MountOptions options = null)
         {
-            _mounted = V.Mount(_host.Root, node);
+            _mounted = V.Mount(_host.Root, node, options ?? new MountOptions());
             EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
         }
 
@@ -348,7 +348,7 @@ namespace Velvet.Tests
             s_attachedIntoALayerContainer = false;
             MountAndLayout(V.ErrorBoundary(
                 fallback: _ => V.Div(name: "fallback"),
-                children: new VNode[] { V.Component(StackedArrivalHost, key: "host") }));
+                children: new VNode[] { V.Component(StackedArrivalHost, key: "host") }), CaughtErrors.Unlogged);
 
             // Act
             s_showStacked.Invoke(true);
@@ -719,7 +719,7 @@ namespace Velvet.Tests
             // Arrange — the abort that ends the failed pass must not also discard the deferred mount
             // the boundary's own fallback just enqueued: that enqueue belongs to a LIVE placeholder.
             // Act
-            MountAndLayout(V.Component(BoundaryWithPortalFallback, key: "root"));
+            MountAndLayout(V.Component(BoundaryWithPortalFallback, key: "root"), CaughtErrors.Unlogged);
 
             // Assert — the fallback's toast reached the Topmost layer host.
             VisualElement toast = null;
@@ -748,7 +748,7 @@ namespace Velvet.Tests
             // rollback detaches that placeholder, so the drain must skip the dead enqueue instead of
             // mounting content for a subtree that no longer exists.
             // Act
-            MountAndLayout(V.Component(PortalThenThrowerBoundary, key: "root"));
+            MountAndLayout(V.Component(PortalThenThrowerBoundary, key: "root"), CaughtErrors.Unlogged);
 
             // Assert — no layer host carries the failed subtree's content.
             VisualElement victim = null;

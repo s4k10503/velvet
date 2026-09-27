@@ -7,12 +7,12 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// What the panel paints when a Motion's variant swap and a running animate-* motion both want the inline
-    /// transition-property. Each case asserts the PAINTED value, which is where either failure shows up as
-    /// itself: a driver's frame the engine is still transitioning towards instead of landing, and a swap that
-    /// arrives at its target outright instead of tweening there. The bundled stylesheet is attached so the
-    /// transition utilities resolve, and the panel runs on a fake clock so every painted mid-animation value is
-    /// load-independent. GWT, one assert each.
+    /// What the panel paints when a Motion's variant swap and a per-frame driver — a running animate-* motion,
+    /// or a layoutId spring — both want the inline transition-property. Each case asserts the PAINTED value,
+    /// which is where either failure shows up as itself: a driver's frame the engine is still transitioning
+    /// towards instead of landing, and a swap that arrives at its target outright instead of tweening there.
+    /// The bundled stylesheet is attached so the transition utilities resolve, and the panel runs on a fake
+    /// clock so every painted mid-animation value is load-independent. GWT, one assert each.
     /// </summary>
     [TestFixture]
     internal sealed class AnimateSuspensionUnderVariantSwapTests : PanelTestBase
@@ -54,6 +54,53 @@ namespace Velvet.Tests
             _window.rootVisualElement,
             new VNode[] { Card(fromClassName, "hidden") },
             new VNode[] { Card(toClassName, "visible") });
+
+        // A layoutId card placed after a spacer: widening the spacer moves the card without touching the card's
+        // own styles, which a swap's transition-property would otherwise tween into the move before the
+        // layoutId driver ever saw it.
+        private static VNode LayoutIdRow(int spacerWidth, string className, string label, StyleTransitionConfig transition)
+            => V.Div(className: "flex-row", children: new VNode[]
+            {
+                V.Div(className: $"w-[{spacerWidth}px] h-[40px]"),
+                V.Motion(className: className, name: "card", variants: s_variants, animate: label, layoutId: "card",
+                    transition: transition ?? new StyleTransitionConfig { DurationSec = SwapDurationSec }),
+            });
+
+        private VisualElement MountLayoutIdRow(string className, StyleTransitionConfig transition = null)
+        {
+            _mounted = V.Mount(_window.rootVisualElement, LayoutIdRow(0, className, "hidden", transition));
+            var element = _window.rootVisualElement.Q<VisualElement>("card");
+            ForcePanelUpdate(element.panel);
+            return element;
+        }
+
+        private void PatchLayoutIdRow(string className, (int Spacer, string Label) from, (int Spacer, string Label) to,
+            StyleTransitionConfig transition = null) => _mounted!.Root.Reconciler.Reconcile(
+            _window.rootVisualElement,
+            new VNode[] { LayoutIdRow(from.Spacer, className, from.Label, transition) },
+            new VNode[] { LayoutIdRow(to.Spacer, className, to.Label, transition) });
+
+        // A swap short enough to end while the spring it runs beside is still moving fast.
+        private static readonly StyleTransitionConfig s_shortSwap = new() { DurationSec = 0.1f };
+
+        private bool LayoutIdSpringRuns(VisualElement element)
+            => _mounted!.Root.Reconciler.Context.LayoutIdTicks.ContainsKey(element);
+
+        // Frame by frame rather than in one step, so the spring integrates the way a live panel would drive it.
+        private void RunFrames(int count)
+        {
+            for (var i = 0; i < count; i++)
+            {
+                RunScheduledWork(0.02);
+                PaintAfter(0.0);
+            }
+        }
+
+        // How far the painted translate trails the one the spring wrote, or NaN while no spring runs, so a case
+        // whose spring never started cannot pass.
+        private float SpringTrail(VisualElement element) => LayoutIdSpringRuns(element)
+            ? element.resolvedStyle.translate.x - element.style.translate.value.x.value
+            : float.NaN;
 
         private StyleAnimateBinding BindingOf(VisualElement element)
         {
@@ -144,6 +191,134 @@ namespace Velvet.Tests
 
             // Assert — as above: short of the target while tweening, exactly on it if the swap was cancelled.
             Assert.That(_window.rootVisualElement.Q<VisualElement>("card").resolvedStyle.opacity, Is.LessThan(0.9f));
+        }
+
+        [Test]
+        public void Given_ASpinSuspendingTheElement_When_APatchSwapsAVariantUnderIt_Then_TheNextSpinFrameIsPaintedAsWritten()
+        {
+            // Arrange — the spin already holds the suspension when the swap writes its own transition-property
+            // over it, which names rotate like everything else.
+            var element = MountCard("w-[40px] h-[40px] bg-red-500 transition-transform animate-spin");
+            var binding = BindingOf(element);
+            FlipVariant("w-[40px] h-[40px] bg-red-500 transition-transform animate-spin",
+                "w-[40px] h-[40px] bg-red-500 transition-transform animate-spin");
+            ForcePanelUpdate(_window.rootVisualElement.panel);
+            RunScheduledWork(0.02);
+            StyleAnimateDriver.ApplyFrame(element, binding, 0f);
+            PaintAfter(0.05);
+
+            // Act — a quarter-turn frame while the swap is still tweening.
+            StyleAnimateDriver.ApplyFrame(element, binding, 0.25f);
+            PaintAfter(0.05);
+
+            // Assert — the frame's own angle; under the swap's list the paint is still on its way from 0.
+            Assert.That(element.resolvedStyle.rotate.angle.ToDegrees(), Is.EqualTo(90f).Within(0.5f));
+        }
+
+        [Test]
+        public void Given_ALayoutIdSpringStartingUnderAPendingSwap_When_TheSwapFires_Then_TheSwapStillTweens()
+        {
+            // Arrange — one patch both moves the card and swaps its variant; the spring starts on the layout
+            // pass, before the swap's deferred class change fires.
+            var element = MountLayoutIdRow("w-[40px] h-[40px] bg-red-500");
+            PatchLayoutIdRow("w-[40px] h-[40px] bg-red-500", (0, "hidden"), (200, "visible"));
+
+            // Act
+            PlayOutTheSwap();
+
+            // Assert — the spring ran, and the swap is still short of opacity-100 one paint in.
+            Assert.That((LayoutIdSpringRuns(element), element.resolvedStyle.opacity < 0.9f), Is.EqualTo((true, true)));
+        }
+
+        // GREEN_ON_BASE(characterization): the base lands the spring's frame by writing none over the swap, and
+        // the swap's list has to be narrowed rather than left for that to survive.
+        [Test]
+        public void Given_ALayoutIdSpringStartingUnderAPendingSwap_When_ThePanelPaints_Then_TheSpringsFrameIsPaintedAsWritten()
+        {
+            // Arrange
+            var element = MountLayoutIdRow("w-[40px] h-[40px] bg-red-500");
+            PatchLayoutIdRow("w-[40px] h-[40px] bg-red-500", (0, "hidden"), (200, "visible"));
+
+            // Act
+            PlayOutTheSwap();
+
+            // Assert — painted where the spring put it; under the swap's list it would still be near 0.
+            Assert.That(SpringTrail(element), Is.EqualTo(0f).Within(0.5f));
+        }
+
+        [Test]
+        public void Given_ASwapMidTween_When_ALayoutIdSpringStartsUnderIt_Then_TheSwapKeepsTweening()
+        {
+            // Arrange — the swap is already painting its way to opacity-100 when a second patch moves the card.
+            var element = MountLayoutIdRow("w-[40px] h-[40px] bg-red-500");
+            PatchLayoutIdRow("w-[40px] h-[40px] bg-red-500", (0, "hidden"), (0, "visible"));
+            PlayOutTheSwap();
+            PatchLayoutIdRow("w-[40px] h-[40px] bg-red-500", (0, "visible"), (200, "visible"));
+
+            // Act — the layout pass that starts the spring, and one paint.
+            PaintAfter(0.02);
+
+            // Assert — the spring ran, and the running tween was narrowed rather than landed.
+            Assert.That((LayoutIdSpringRuns(element), element.resolvedStyle.opacity < 0.9f), Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_ASwapWithPerPropertyTransitions_When_ALayoutIdSpringStartsUnderIt_Then_BothLandAsTheirOwn()
+        {
+            // Arrange — translate is listed first on a near-instant duration, so an opacity left paired with
+            // translate's timing after translate is taken out would land at once.
+            var transition = new StyleTransitionConfig
+            {
+                DurationSec = SwapDurationSec,
+                PropertyOverrides = new[]
+                {
+                    new StylePropertyTransition("translate", durationSec: 0.01f),
+                    new StylePropertyTransition("opacity", durationSec: SwapDurationSec),
+                },
+            };
+            var element = MountLayoutIdRow("w-[40px] h-[40px] bg-red-500", transition);
+            PatchLayoutIdRow("w-[40px] h-[40px] bg-red-500", (0, "hidden"), (200, "visible"), transition);
+
+            // Act
+            PlayOutTheSwap();
+
+            // Assert — the spring's frame is painted as written, and the swap is still short of opacity-100.
+            Assert.That((System.Math.Abs(SpringTrail(element)) < 0.5f, element.resolvedStyle.opacity < 0.9f),
+                Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_ALayoutIdSpringOnATransitionColorsElement_When_ItStartsUnderAPendingSwap_Then_TheSpringsFrameIsPaintedAsWritten()
+        {
+            // Arrange — transition-colors names nothing the spring drives, so the spring takes no suspension
+            // here; the swap's own list is what would transition its writes.
+            var element = MountLayoutIdRow("w-[40px] h-[40px] bg-red-500 transition-colors");
+            PatchLayoutIdRow("w-[40px] h-[40px] bg-red-500 transition-colors", (0, "hidden"), (200, "visible"));
+
+            // Act
+            PlayOutTheSwap();
+
+            // Assert
+            Assert.That(SpringTrail(element), Is.EqualTo(0f).Within(0.5f));
+        }
+
+        // GREEN_ON_BASE(characterization): the base keeps a spring on a transition-transform element suspended
+        // past the swap beside it, which the owner decision under a held list must go on doing.
+        [Test]
+        public void Given_ALayoutIdSpringOnATransitionTransformElement_When_TheSwapBesideItEnds_Then_TheSpringsFrameIsStillPaintedAsWritten()
+        {
+            // Arrange — transition-transform names translate, so after the swap the spring still needs the
+            // suspension.
+            var element = MountLayoutIdRow("w-[40px] h-[40px] bg-red-500 transition-transform", s_shortSwap);
+            PatchLayoutIdRow("w-[40px] h-[40px] bg-red-500 transition-transform", (0, "hidden"), (400, "visible"),
+                s_shortSwap);
+            ForcePanelUpdate(_window.rootVisualElement.panel);
+
+            // Act — past the swap's completion, with the spring still moving fast.
+            RunFrames(10);
+
+            // Assert
+            Assert.That(SpringTrail(element), Is.EqualTo(0f).Within(0.5f));
         }
     }
 }

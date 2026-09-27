@@ -69,7 +69,7 @@ namespace Velvet.Tests
             using var mounted = V.Mount(_root,
                 V.ErrorBoundary(
                     fallback: BuildFallback,
-                    children: new VNode[] { V.Component(ThrowingChildRender, key: "throw") }));
+                    children: new VNode[] { V.Component(ThrowingChildRender, key: "throw") }), CaughtErrors.Unlogged);
 
             // Assert
             Assert.That((_root.Q<Label>(name: "fallback-label") != null, _root.Q<Label>(name: "ok-label") != null),
@@ -87,7 +87,7 @@ namespace Velvet.Tests
             using var mounted = V.Mount(_root,
                 V.ErrorBoundary(
                     fallback: BuildFallback,
-                    children: new VNode[] { V.Component(ThrowingChildRender, key: "throw") }));
+                    children: new VNode[] { V.Component(ThrowingChildRender, key: "throw") }), CaughtErrors.Unlogged);
             Assume.That(s_fallbackInvoked, Is.True, "Precondition: the fallback factory ran");
 
             // Assert
@@ -108,7 +108,7 @@ namespace Velvet.Tests
                     {
                         V.Component(ThrowingChildRender, key: "throw"),
                         V.Component(NormalChildRender, key: "normal"),
-                    }));
+                    }), CaughtErrors.Unlogged);
 
             // Assert
             Assert.That(_root.Q<Label>(name: "fallback-label"), Is.Not.Null,

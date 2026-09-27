@@ -1548,7 +1548,8 @@ def run_suite(unity, project, platform, scope, results, log, timeout, holder=Non
     for a mutant that is no longer on disk.
     """
     command = [
-        unity, "-runTests", "-batchmode", "-projectPath", str(project),
+        # -debugCodeOptimization: AGENTS.md's headless recipe says why a local run passes it.
+        unity, "-runTests", "-batchmode", "-debugCodeOptimization", "-projectPath", str(project),
         "-testPlatform", platform, "-testResults", str(results), "-logFile", str(log),
     ]
     command += scope

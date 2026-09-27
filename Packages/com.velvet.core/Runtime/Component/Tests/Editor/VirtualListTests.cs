@@ -1398,7 +1398,7 @@ namespace Velvet.Tests
             // catches: its fallback takes the list out of the tree while the range update is still running.
             ResetRowRecords();
             var root = new VisualElement();
-            using var mounted = V.Mount(root, V.Component(BoundaryOverListRender, key: "host"));
+            using var mounted = V.Mount(root, V.Component(BoundaryOverListRender, key: "host"), CaughtErrors.Unlogged);
             var controller = mounted.Root.Reconciler.Context.VirtualListControllers[root.Q<ScrollView>()];
             s_refusingRowId = "item-2";
 
@@ -1419,7 +1419,7 @@ namespace Velvet.Tests
             // Arrange — the case above.
             ResetRowRecords();
             var root = new VisualElement();
-            using var mounted = V.Mount(root, V.Component(BoundaryOverListRender, key: "host"));
+            using var mounted = V.Mount(root, V.Component(BoundaryOverListRender, key: "host"), CaughtErrors.Unlogged);
             var controller = mounted.Root.Reconciler.Context.VirtualListControllers[root.Q<ScrollView>()];
             s_refusingRowId = "item-2";
 

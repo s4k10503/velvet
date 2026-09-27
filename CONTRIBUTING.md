@@ -78,7 +78,7 @@ be inspected rather than only measured:
 
 ```bash
 mkdir -p Logs && R=$(mktemp -d "$PWD/Logs/capture.XXXXXX") && echo "$R"
-VELVET_STORY_CAPTURE_DIR="$R" /Applications/Unity/Hub/Editor/6000.3.23f1/Unity.app/Contents/MacOS/Unity -runTests -batchmode -projectPath "$PWD" -testPlatform PlayMode -testFilter "Velvet.Tests.StoryCaptureTests" -testResults "$R/capture.xml" -logFile "$R/capture.log"
+VELVET_STORY_CAPTURE_DIR="$R" /Applications/Unity/Hub/Editor/6000.3.23f1/Unity.app/Contents/MacOS/Unity -runTests -batchmode -debugCodeOptimization -projectPath "$PWD" -testPlatform PlayMode -testFilter "Velvet.Tests.StoryCaptureTests" -testResults "$R/capture.xml" -logFile "$R/capture.log"
 ```
 
 The images land under the directory named by `VELVET_STORY_CAPTURE_DIR` — the run's own, above —
@@ -876,12 +876,16 @@ merge-group entry once a queue is turned on. The `merge_group:` keys are there f
 workflow, or gains a child key whose colon follows its name under one of them. Skipping work per queue entry is a job-level condition, not a
 trigger filter: a required check that does not start has nothing able to clear it.
 
+Every job of both required workflows carries a `timeout-minutes`, so one that hangs gives its runner
+back rather than holding it while other pull requests' jobs queue. `test.yml` says how each is sized,
+and `scripts/ci/test_job_timeouts.py` fails for a job that has none.
+
 A job that reads a change against a base takes that base from `scripts/ci/change_base.py`, whose
 docstring says which commit it names for each event; `scripts/ci/test_change_base.py` fails when a step
 passes `--base` anything else.
 
 `main` does not require heads to be up to date before merging. That setting serialises the queue — each
-merge invalidates every other branch's run, and the Unity matrix is 21–25 minutes — without testing the
+merge invalidates every other branch's run — without testing the
 combination it exists to protect any better than a merge does. What does test that combination is a merge
 queue, which is a separate change. `settle.py merge` and the `gh pr merge` guards do not require it
 either: a pull request whose own checks passed on its head merges while behind, once GitHub reports no
@@ -1016,7 +1020,7 @@ branch whose window is open, and `Test ▸ publication` fails for one whose chec
 `scripts/release/published_check.py` decides it and states the repair in its own message.
 
 **A pull request that went green *before* the release landed keeps that result.** This repository sets
-`strict_required_status_checks_policy: false` so a 21-minute Unity matrix is not re-run for every base
+`strict_required_status_checks_policy: false` so the Unity matrix is not re-run for every base
 move, so the merge button on github.com stays enabled for it. What refuses there is
 `merge_onto_unpublished_release.py` and `settle.py`'s publication precondition, neither of which
 github.com consults; turning the strict policy on is what would close it server-side, at the cost

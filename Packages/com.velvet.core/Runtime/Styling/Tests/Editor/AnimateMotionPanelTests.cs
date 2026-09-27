@@ -78,6 +78,22 @@ namespace Velvet.Tests
                 ? "<unset>"
                 : string.Join(",", element.style.transitionProperty.value.Select(p => p.ToString() ?? string.Empty));
 
+        // What a swap's `all` becomes once a driver takes the named longhands out, joined the way
+        // InlineTransitionProperty joins it. Filter is never in it (MotionNativeTransitionGuard says why).
+        private static string EveryLonghandBut(string ussName)
+        {
+            var names = new List<string>();
+            for (var i = 0; i < StyleUtilityProperties.LonghandCount; i++)
+            {
+                var name = StyleUtilityProperties.UssName((StyleLonghand)i);
+                if (name != ussName && name != "filter")
+                {
+                    names.Add(name);
+                }
+            }
+            return string.Join(",", names);
+        }
+
         [Test]
         public void Given_GradientPanAtMidLoop_When_FrameApplied_Then_BackgroundPannedByBoxWidth()
         {
@@ -319,18 +335,18 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_APulseOverNoDeclaredTransition_When_AVariantSwapRunsUnderIt_Then_TheSwapKeepsItsTransition()
+        public void Given_APulseOverNoDeclaredTransition_When_AVariantSwapRunsUnderIt_Then_TheSwapKeepsItsTransitionExceptOverOpacity()
         {
-            // Arrange / Act — nothing this element declares covers opacity, so the pulse never takes the slot
-            // and the swap's own write is the only one on it.
+            // Arrange / Act — nothing this element declares covers opacity, so the pulse never takes the
+            // suspension; the swap's own list stays on the element, with the opacity the pulse writes left out.
             var (beforeSwap, afterSwap) = SwapVariantUnderAPulse("w-[40px] h-[40px] bg-red-500 animate-pulse");
 
             // Assert
-            Assert.That((beforeSwap, afterSwap), Is.EqualTo(("<unset>", "all")));
+            Assert.That((beforeSwap, afterSwap), Is.EqualTo(("<unset>", EveryLonghandBut("opacity"))));
         }
 
         [Test]
-        public void Given_APulseSuspendingItsOwnTransition_When_AVariantSwapRunsUnderIt_Then_TheSwapKeepsItsTransition()
+        public void Given_APulseSuspendingItsOwnTransition_When_AVariantSwapRunsUnderIt_Then_TheSwapKeepsItsTransitionExceptOverOpacity()
         {
             // Arrange / Act — transition-opacity covers the slot the pulse writes, so this element IS suspended
             // going in. Re-taking a suspension the binding already holds is what would take the swap's write
@@ -339,7 +355,7 @@ namespace Velvet.Tests
                 SwapVariantUnderAPulse("w-[40px] h-[40px] bg-red-500 transition-opacity animate-pulse");
 
             // Assert
-            Assert.That((beforeSwap, afterSwap), Is.EqualTo(("", "all")));
+            Assert.That((beforeSwap, afterSwap), Is.EqualTo(("", EveryLonghandBut("opacity"))));
         }
 
         [Test]
