@@ -175,7 +175,7 @@ namespace Velvet.Tests
             // reads, and an unexpected console exception fails the case on its own.
 
             // Act
-            using var mounted = V.Mount(Root, V.Component(RefFailureHost, key: "host"));
+            using var mounted = V.Mount(Root, V.Component(RefFailureHost, key: "host"), CaughtErrors.Unlogged);
 
             // Assert
             Assert.That((s_fallbackShown, Root!.Q<Label>("fallback") != null), Is.EqualTo((true, true)));
@@ -186,7 +186,7 @@ namespace Velvet.Tests
         {
             // Arrange — the probe Label is outside the boundary, so nothing about it was replaced by the
             // fallback and its next render is an ordinary pass on the same shared context.
-            using var mounted = V.Mount(Root, V.Component(RefFailureHost, key: "host"));
+            using var mounted = V.Mount(Root, V.Component(RefFailureHost, key: "host"), CaughtErrors.Unlogged);
 
             // Act
             s_setProbe.Invoke("after");
@@ -203,7 +203,7 @@ namespace Velvet.Tests
             // Arrange — the mount's setup succeeds, so the throwing attempt runs in the pass the boundary's
             // own state write opens: that pass belongs to the boundary fiber, so the drain ending it is the
             // boundary's own rather than an ancestor's.
-            using var mounted = V.Mount(Root, V.Component(SelfDrivenFailingBoundary, key: "boundary"));
+            using var mounted = V.Mount(Root, V.Component(SelfDrivenFailingBoundary, key: "boundary"), CaughtErrors.Unlogged);
 
             // Act
             s_setAttempt.Invoke(1);
@@ -223,7 +223,7 @@ namespace Velvet.Tests
         {
             // Arrange — the boundary is driven by a prop from the host above it, so the pass whose drain
             // fails belongs to the host while the fallback belongs to the boundary.
-            using var mounted = V.Mount(Root, V.Component(DescendantBoundaryHost, key: "host"));
+            using var mounted = V.Mount(Root, V.Component(DescendantBoundaryHost, key: "host"), CaughtErrors.Unlogged);
 
             // Act
             s_setAttempt.Invoke(1);
@@ -242,7 +242,7 @@ namespace Velvet.Tests
         {
             // Arrange / Act — one pass, so both setups are queued together and the first boundary catches
             // while the second's element is still ahead in the same loop.
-            using var mounted = V.Mount(Root, V.Component(TwoBoundaryHost, key: "host"));
+            using var mounted = V.Mount(Root, V.Component(TwoBoundaryHost, key: "host"), CaughtErrors.Unlogged);
 
             // Assert — the first is read beside the second, because a pass where neither caught reads the
             // same absent second fallback as one where the first's abort stopped it.
@@ -257,7 +257,7 @@ namespace Velvet.Tests
             // Arrange / Act — the committing setup is queued behind the throwing one. A discrete event
             // dispatched from the pass boundary is not held back, which is what lets its handler's write
             // render before this call returns.
-            using var mounted = V.Mount(Root, V.Component(AbortThenCommitHost, key: "host"));
+            using var mounted = V.Mount(Root, V.Component(AbortThenCommitHost, key: "host"), CaughtErrors.Unlogged);
 
             // Assert — the fallback is read beside the probe, because a pass where the first setup never
             // threw reads the same committed probe as one where it threw and the abort was consumed.
@@ -383,7 +383,7 @@ namespace Velvet.Tests
         public void Given_ABoundaryWithSiblingsOnBothSides_When_ARefSetupThrowsBeneathIt_Then_OnlyItsOwnSlotsAreRewritten()
         {
             // Arrange / Act
-            using var mounted = V.Mount(Root, V.Component(PlacedRefFailureHost, key: "host"));
+            using var mounted = V.Mount(Root, V.Component(PlacedRefFailureHost, key: "host"), CaughtErrors.Unlogged);
 
             // Assert — the container's rows by name and in order, for the reason ErrorBoundaryTests'
             // own placement case gives.
@@ -541,7 +541,7 @@ namespace Velvet.Tests
         public void Given_AnOrphanedSetupsCleanupThatThrows_When_ABoundaryIsRegisteredAboveIt_Then_ItCatchesInsteadOfSwallowing()
         {
             // Arrange / Act
-            using var mounted = V.Mount(Root, V.Component(OrphanedCleanupHost, key: "host"));
+            using var mounted = V.Mount(Root, V.Component(OrphanedCleanupHost, key: "host"), CaughtErrors.Unlogged);
 
             // Assert — the cleanup's own count gates the fallback, because a tree that never reached the
             // orphan arm reads the same absent fallback as one that reached it and swallowed the throw.
@@ -553,7 +553,7 @@ namespace Velvet.Tests
         public void Given_AnOrphanedCleanupThrewIntoABoundary_When_ALaterSetupCommitsAStateWrite_Then_ItStillReachesTheDom()
         {
             // Arrange / Act
-            using var mounted = V.Mount(Root, V.Component(OrphanedCleanupThenCommitHost, key: "host"));
+            using var mounted = V.Mount(Root, V.Component(OrphanedCleanupThenCommitHost, key: "host"), CaughtErrors.Unlogged);
 
             // Assert — the fallback is read beside the probe, because a pass where the cleanup never threw
             // reads the same committed probe as one where it threw and the abort was consumed.

@@ -264,11 +264,10 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_TheMergeTable_When_TheStaleMergeGuardReadsEach_Then_ItNamesTheRequestBeingMerged()
+        public void Given_TheMergeTable_When_TheBaseGuardReadsEach_Then_ItNamesTheRequestBeingMerged()
         {
             // Arrange
-            var hook = Path.GetFullPath(".claude/hooks/refuse/stale_merge.py");
-            Assume.That(File.Exists(hook), Is.True, "Precondition: the guard exists");
+            var hook = Path.GetFullPath(".claude/hooks/refuse/merge_unchecked_against_base.py");
             var table = Merges();
 
             // Act

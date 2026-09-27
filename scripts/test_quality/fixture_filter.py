@@ -12,7 +12,7 @@ name begins or ends with it, and each separator is `[.+]` because the reader wri
 after a dot where the skill notes the runner writes `+`.
 
     F=$(python3 scripts/test_quality/fixture_filter.py Packages/.../Tests/Editor/FooTests.cs) &&
-      "$UNITY" -runTests -batchmode -projectPath "$PWD" -testPlatform EditMode -testFilter "$F" ...
+      "$UNITY" -runTests -batchmode -debugCodeOptimization -projectPath "$PWD" -testPlatform EditMode -testFilter "$F" ...
 
 Exits 1 with nothing on stdout where the files declare no fixture for the run, so the `&&` starts
 none. Exits 2 where it cannot answer: a file is missing or outside the project, git cannot list the

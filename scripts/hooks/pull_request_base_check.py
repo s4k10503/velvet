@@ -11,18 +11,21 @@ So the subject here is the directory rather than those two guards. A guard added
 for `main` instead of for the pull request's own base fails this without anybody remembering to
 write a case for it.
 
-Three worlds over two repositories, each with a real `origin` — the first two differ only in which
-branch the head was cut from, so one repository carries both:
+Four worlds over two repositories, each with a real `origin` — the first three differ only in which
+branch the head was cut from and in what the push runs answer, so one repository carries them:
 
-- `maintenance-current` — the pull request targets `2.x`, its head contains `origin/2.x`, and `2.x`
-  has published everything its CHANGELOG closed. `main` is meanwhile ahead and holds a closed
-  version nobody published. **Every guard must allow**: each thing that would block this merge is
-  true of `main` alone, and `main` is not what the pull request names.
-- `maintenance-stale` — same, except the head does not contain `origin/2.x`.
+- `maintenance-current` — the pull request targets `2.x`, its head contains `origin/2.x`, `2.x`
+  has published everything its CHANGELOG closed, and its push runs last passed. `main` is meanwhile
+  ahead, holds a closed version nobody published, and its push runs last failed at its tip. **Every
+  guard must allow**: each thing that would block this merge is true of `main` alone, and `main` is
+  not what the pull request names.
+- `maintenance-behind` — same, except the head does not contain `origin/2.x`. **Every guard must
+  allow** here too: a head whose own checks passed merges while behind a green base.
+- `maintenance-red` — the behind world, except the push runs of `2.x` last failed at its tip.
 - `maintenance-unpublished` — same as the first, except `2.x` is what holds the unpublished version.
 
 The last two carry the floor. A directory of guards that never refuse anything would satisfy the
-first world by doing nothing at all, so each of the other two has to leave at least one refusal
+first two worlds by doing nothing at all, so each of the other two has to leave at least one refusal
 behind — which is also what says the guards read the named base rather than ignoring bases entirely.
 
 The first world is posed a third time as a compound command naming two pull requests, the second of
@@ -75,6 +78,8 @@ STUB_GH = '''#!/usr/bin/env python3
 import json, os, sys
 
 BY_NUMBER = json.loads(os.environ["VELVET_BASE_CHECK_PULLS"])
+# Per branch, the conclusion and commit every required workflow's last push run answers with.
+RUNS = json.loads(os.environ["VELVET_BASE_CHECK_RUNS"])
 
 
 def unmodelled():
@@ -96,6 +101,14 @@ def main():
     argv = sys.argv[1:]
     if not argv:
         return unmodelled()
+    if argv[0] == "api" and "/actions/workflows/" in argv[1] and "--jq" not in argv:
+        query = dict(pair.split("=", 1) for pair in argv[1].split("?", 1)[1].split("&"))
+        if query.get("event") != "push" or query.get("branch") not in RUNS:
+            return unmodelled()
+        conclusion, sha = RUNS[query["branch"]]
+        sys.stdout.write(json.dumps({"total_count": 1, "workflow_runs": [
+            {"run_number": 1, "status": "completed", "conclusion": conclusion, "head_sha": sha}]}))
+        return 0
     if argv[0] == "api" and "/pulls/" in argv[1]:
         path = selected(argv)
         number = argv[1].rsplit("/", 1)[1]
@@ -207,14 +220,25 @@ def build_world(root, unpublished_on_maintenance):
 
 def at(project, head, base):
     """The pull request payload the stub gh answers with, carrying the head's real SHA."""
-    sha = subprocess.run(["git", "-C", str(project), "rev-parse", "origin/" + head],
-                         capture_output=True, text=True, check=True, timeout=60).stdout.strip()
+    sha = tip(project, head)
     return {"number": 1, "draft": False, "mergeable_state": "clean",
             "head": {"ref": head, "sha": sha, "repo": {"full_name": "s4k10503/velvet"}},
             "base": {"ref": base, "repo": {"full_name": "s4k10503/velvet"}}}
 
 
-def refusals(project, pulls, home, unmodelled, refuse_directory, command=COMMAND):
+def tip(project, branch):
+    return subprocess.run(["git", "-C", str(project), "rev-parse", "origin/" + branch],
+                          capture_output=True, text=True, check=True, timeout=60).stdout.strip()
+
+
+def push_runs(project, red=("main",)):
+    """What each base's push runs answer: a failure at the tip of each branch in `red`, a pass at
+    the tip of the rest."""
+    return {branch: ("failure" if branch in red else "success", tip(project, branch))
+            for branch in ("main", "2.x")}
+
+
+def refusals(project, pulls, home, unmodelled, refuse_directory, command=COMMAND, runs=None):
     """Which guards refuse this pull request, with the first line of each refusal."""
     workspace = Path(tempfile.mkdtemp(prefix="velvet-base-check-"))
     refused = []
@@ -228,6 +252,7 @@ def refusals(project, pulls, home, unmodelled, refuse_directory, command=COMMAND
         # The session's own project would otherwise decide what a guard reads instead of `cwd`.
         environment.pop("CLAUDE_PROJECT_DIR", None)
         environment["VELVET_BASE_CHECK_PULLS"] = json.dumps(pulls)
+        environment["VELVET_BASE_CHECK_RUNS"] = json.dumps(runs or push_runs(project))
         environment[UNMODELLED] = str(unmodelled)
         event = json.dumps({"tool_name": "Bash", "cwd": str(project),
                             "tool_input": {"command": command}})
@@ -260,23 +285,28 @@ def faults(refuse_directory=None, floor=GUARD_FLOOR):
     unmodelled = root / "unmodelled"
     unmodelled.write_text("", encoding="utf-8")
     try:
-        def refused(project, head, base):
+        def refused(project, head, base, runs=None):
             return refusals(project, {"1": at(project, head, base)}, home, unmodelled,
-                            refuse_directory)
+                            refuse_directory, runs=runs)
 
         current = build_world(root / "current", unpublished_on_maintenance=False)
         for name, message in refused(current, "topic", "2.x"):
             found.append(f"{name}: refuses a pull request based on 2.x that nothing about 2.x "
                          f"blocks — {message}")
 
-        if not refused(current, "behind", "2.x"):
-            found.append("no guard refuses a head that does not contain the base it names, so the "
-                         "world above is satisfied by guards that refuse nothing")
+        for name, message in refused(current, "behind", "2.x"):
+            found.append(f"{name}: refuses a head behind a base whose push runs last passed, which "
+                         f"merges once its own checks have — {message}")
+
+        if not refused(current, "behind", "2.x", runs=push_runs(current, red=("main", "2.x"))):
+            found.append("no guard refuses a merge onto a base whose push runs last failed at a "
+                         "commit the head lacks, so the worlds above are satisfied by guards that "
+                         "refuse nothing")
 
         outstanding = build_world(root / "outstanding", unpublished_on_maintenance=True)
         if not refused(outstanding, "topic", "2.x"):
             found.append("no guard refuses a merge onto a base holding a version the CHANGELOG "
-                         "closed and nobody published, so the world above is satisfied by guards "
+                         "closed and nobody published, so the worlds above are satisfied by guards "
                          "that refuse nothing")
 
         # A compound command lands every merge it carries, so a guard that refuses one of them on

@@ -5,30 +5,27 @@ Both halves existed as instructions rather than as code: `stop/unsettled_pr.py` 
 the reader to reimplement, and the merge was typed by hand. An instruction is re-derived each time,
 and that hook's own text owns what a re-derived watcher gets wrong.
 
-**Five of the preconditions below have a refuse hook behind them**, so a `gh pr merge` typed by hand
+**Seven of the preconditions below have a refuse hook behind them**, so a `gh pr merge` typed by hand
 is held to those as well; `refuse/merge_unproven_head.py` records which hook holds which. Those hooks
 match on `gh pr merge` and do not see the `gh api -X PUT .../merge` this script sends, so teaching
 them that shape is its own change. What this adds is reporting them together: one run names
 everything wrong rather than costing a round of CI per reason.
 
-**Two have no hook: a draft head, and a head on another repository.** Neither is left out by
-oversight. The fork one is not a fact about the pull request at all — it says this checkout has no
-ref for that branch, so the containment reading cannot be taken here — and a hook would have to
-answer the same question from the same place. The rule that a precondition worth having belongs in a
-hook still stands for the five; these two are stated rather than made true by hooks written to make
-a sentence true.
+**One has no hook: a draft head**, or one whose merge state is `dirty`.
 
-Seven preconditions:
+Eight preconditions:
 
 - **Checks are bound to the head SHA they were read at.** The checks API answers about whatever it
   last recorded, which after a force-push is the previous commit's run. So the head is read, then the
   checks, then the head again, and a change between the two readings voids the answer. The merge
   request carries that SHA as well, so a push landing after the last reading is refused by GitHub
   rather than by whoever reads the history next.
-- **The branch must contain the current base.** `mergeStateStatus` reports CLEAN for a branch whose
-  tests never saw a commit that is now on main: GitHub reports BEHIND only where the base requires
-  up-to-date heads, which this repository deliberately does not. So the merge-base is compared
-  directly. Which branch that is comes off the pull request, and `--base` overrides it.
+- **The base's required workflows must not have last failed on push.** The branch need not contain
+  the base; CONTRIBUTING.md's continuous-integration section owns why, and `red_base.py` owns which
+  run is read and what exempts a head. Which base comes off the pull request, and `--base` overrides
+  it.
+- **The branch must contain the base's newest release commit.** CONTRIBUTING.md's
+  continuous-integration section owns why; `published_check.release_commit` finds the commit.
 - **No worktree may hold the branch.** The branch is deleted locally after the merge, and a worktree
   holding it makes that delete fail once the merge has already happened — so the branch outlives the
   pull request and has to be swept by hand later, when nothing in the checkout can still tell a
@@ -38,8 +35,8 @@ Seven preconditions:
   decision, and CONTRIBUTING.md's release section owns what goes wrong without it.
 - **A draft is not merged**, and neither is one whose merge state is `dirty`.
 - **A head on another repository is not merged from here.** Its branch is a ref this checkout has
-  not got, so the containment reading above cannot be taken at all — and a reading nobody took is
-  not a precondition anybody met.
+  not got, so neither containment above is asked of it, and the branch deleted after a merge is
+  addressed on origin by that name.
 
 `watch` records a pull request as ready by asking `blocking_reasons` — the same question `merge`
 decides from, not a second one beside it. Asked twice, the two disagreed: a draft with conflicts was
@@ -87,6 +84,8 @@ def load_published_check():
 
 
 published_check = load_published_check()
+
+red_base = load_by_path(Path(__file__).resolve().with_name("red_base.py"), "red_base")
 
 # The three files this writes and two hooks read; watcher_state.py owns their format.
 watcher_state = load_by_path(Path(__file__).resolve().with_name("watcher_state.py"),
@@ -207,7 +206,7 @@ def pull_request(project, number):
     """The pull request's own fields, in one request.
 
     `fork` is what stops `branch` being handed to git: a cross-repository head names a branch on the
-    fork, `origin/<it>` is not a ref here, and `contains_base` exits 128 on the lookup. A head whose
+    fork, and `origin/<it>` is either not a ref here or a different branch of the same name. A head whose
     repository is gone reads as a fork too, which is the same answer — this checkout cannot see it.
 
     Both names come off this payload rather than one of them off `remote.origin.url`. GitHub answers
@@ -299,21 +298,36 @@ def contains_base(project, branch, base):
     """Whether the branch already holds every commit on the base.
 
     Asked of the remote refs rather than of local ones, because a local base can be behind what the
-    merge will actually happen against and would report a stale answer as a clean one. Both refs have
-    to have been fetched first: `project_state` does it for the readings `blocking_reasons` takes,
-    and `update` fetches for itself.
+    merge will actually happen against and would report a stale answer as a clean one. `update`
+    fetches both first.
     """
     merge_base = gh_git(project, "merge-base", f"origin/{base}", f"origin/{branch}").strip()
     base_head = gh_git(project, "rev-parse", f"origin/{base}").strip()
     return merge_base == base_head
 
 
-def reasons_from(before, after, results, branch, base, holds_base, held_by_worktree,
-                 unpublished_release, draft, merge_state, fork):
+def contains_commit(project, branch, sha):
+    """Whether the branch on origin holds `sha`, a commit of its base that `project_state` fetched.
+
+    An exit other than git's yes (0) and no (1) is raised rather than read as either.
+    """
+    answer = run(["git", "-C", str(project), "merge-base", "--is-ancestor", sha, f"origin/{branch}"],
+                 GIT_TIMEOUT)
+    if answer.returncode not in (0, 1):
+        raise RuntimeError(f"whether origin/{branch} holds {sha[:7] or 'an unnamed commit'} could "
+                           f"not be read: {answer.stderr.strip()}")
+    return answer.returncode == 0
+
+
+def reasons_from(before, after, results, branch, base, held_by_worktree,
+                 unpublished_release, draft, merge_state, fork, failing_runs, behind_release):
     """Every reason not to merge, decided from plain data so the decision is testable without a network.
 
     `unpublished_release` takes no default on purpose: a caller that stops supplying it would otherwise
-    read as a clean base, and the only production caller is held by no test.
+    read as a clean base, and the only production caller is held by no test. `failing_runs` takes
+    none either: a caller that stopped supplying it would read as a green base. It holds the base's
+    failing push runs this head is not exempt from. `behind_release` is (sha, version) of the base's
+    newest release commit where the head lacks it, and None otherwise.
 
     A moved head returns with the reasons that are not about a commit and nothing else: with the
     readings straddling a force-push, nothing else read here is known to be about the same commit, so
@@ -327,14 +341,8 @@ def reasons_from(before, after, results, branch, base, holds_base, held_by_workt
     if before != after:
         return reasons + [f"head moved from {before[:7]} to {after[:7]} while its checks were being read"]
 
-    # Not merely a better message for what the containment reading already blocks. The two readings
-    # are of different base tips: `project_state` fetches once per base in a cycle and this is a
-    # fresh read per pull request, so a branch can contain the tip that fetch saw while GitHub
-    # reports a conflict against a newer one. There the containment reason is absent and this is the only thing
-    # blocking, which is why it is read rather than left to the message.
-    #
-    # `unknown` is still left out: it is the absence of a reading rather than a reading, and a state
-    # that comes and goes would drop and re-add the entry, resetting the age
+    # `unknown` is left out: it is the absence of a reading rather than a reading, and a state that
+    # comes and goes would drop and re-add the entry, resetting the age
     # `refuse/edit_while_a_ready_pr_sits.py` measures a pull request by.
     if merge_state == "dirty":
         reasons.append(f"it conflicts with {base}: resolve the conflict in the branch, which "
@@ -352,13 +360,18 @@ def reasons_from(before, after, results, branch, base, holds_base, held_by_workt
     if failed:
         reasons.append("failing at {}: {}".format(after[:7], ", ".join(sorted(failed))))
 
+    for failing in failing_runs:
+        reasons.append(f"origin/{base}'s last {failing.workflow} push run failed at "
+                       f"{failing.sha[:7]}: fix or revert it on {base} first. A head is exempt only "
+                       f"where it contains that commit and its own Unity tests ran and passed")
+
+    if behind_release:
+        reasons.append(f"does not contain {behind_release[0][:7]}, which dated {behind_release[1]} on "
+                       f"{base}: take {base} in with `settle.py update`, so its checks run again "
+                       f"over the section that commit closed")
+
     if fork:
-        # Ahead of the containment reason rather than beside it: `holds_base` was never computed for
-        # a fork, so reporting it would be reporting a default as a reading.
-        reasons.append(f"its head is on another repository: this settles branches on origin, so "
-                       f"nothing here read whether it contains origin/{base}")
-    elif not holds_base:
-        reasons.append(f"does not contain origin/{base}: merge it in and let the checks run again")
+        reasons.append("its head is on another repository: this settles branches on origin")
 
     if held_by_worktree:
         reasons.append(f"a worktree holds {branch}: remove it first, or the local branch outlives "
@@ -372,17 +385,34 @@ def reasons_from(before, after, results, branch, base, holds_base, held_by_workt
 Blocking = collections.namedtuple("Blocking", "reasons head branch results base")
 
 # The readings that answer for something wider than one pull request: the publication state of a
-# base, and the branches this checkout's worktrees hold, which is the repository's. Taken once per
-# base and handed down, so a watcher poll over N pull requests costs one fetch and one
-# `git ls-remote --tags` per base rather than N of each.
-ProjectState = collections.namedtuple("ProjectState", "held unpublished_release")
+# base, its newest release commit, its required workflows' last push verdicts, and the branches this
+# checkout's worktrees hold, which is the repository's. Taken once per base and handed down, so a watcher poll over N pull
+# requests costs one fetch, one `git ls-remote --tags` and one runs listing per workflow per base
+# rather than N of each.
+ProjectState = collections.namedtuple("ProjectState", "held unpublished_release red release")
 
 
 def project_state(project, base):
-    """The per-repository readings, with the fetch that both of the git ones below depend on."""
+    """The per-repository readings, with the fetch that the git ones depend on."""
     gh_git(project, "fetch", "origin", "--quiet")
+    slug = repository(project)
+    red = [failing for failing in (
+               red_base.failing_run(workflow,
+                                    rest_json(f"repos/{slug}/{red_base.runs_path(workflow, base)}"))
+               for workflow in red_base.REQUIRED_WORKFLOWS)
+           if failing]
     return ProjectState(worktree_branches(project),
-                        published_check.unpublished_reason(project, f"origin/{base}", fetch=False))
+                        published_check.unpublished_reason(project, f"origin/{base}", fetch=False),
+                        red, release_commit(project, base))
+
+
+def release_commit(project, base):
+    """`published_check.release_commit` for origin/<base>, raising a failure as the RuntimeError
+    `watch` catches per pull request rather than as one that stops the watcher."""
+    try:
+        return published_check.release_commit(project, f"origin/{base}", timeout=GIT_TIMEOUT)
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as failure:
+        raise RuntimeError(f"the newest release commit on origin/{base} could not be read: {failure}")
 
 
 def blocking_reasons(project, number, base=None, states=None):
@@ -408,14 +438,21 @@ def blocking_reasons(project, number, base=None, states=None):
             project, f"origin/{target}", fetch=False, result=before.sha)
     results = checks(project, before.sha)
     after = head_sha(project, number)
+    ran = red_base.unity_ran([(entry["name"], "success" if entry["bucket"] == "pass"
+                               else entry["bucket"]) for entry in results])
+    uncovered = [failing for failing in state.red
+                 if before.fork or not ran
+                 or not contains_commit(project, before.branch, failing.sha)]
+    behind_release = (state.release if state.release and not before.fork
+                      and not contains_commit(project, before.branch, state.release[0]) else None)
     return Blocking(reasons_from(before.sha, after, results, before.branch, target,
-                                 holds_base=(not before.fork
-                                             and contains_base(project, before.branch, target)),
                                  held_by_worktree=before.branch in state.held,
                                  unpublished_release=unpublished,
                                  draft=before.draft,
                                  merge_state=before.merge_state,
-                                 fork=before.fork),
+                                 fork=before.fork,
+                                 failing_runs=uncovered,
+                                 behind_release=behind_release),
                     after, before.branch, results, target)
 
 
