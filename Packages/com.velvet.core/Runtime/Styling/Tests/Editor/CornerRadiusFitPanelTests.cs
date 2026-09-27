@@ -299,14 +299,16 @@ namespace Velvet.Tests
             box.style.borderTopLeftRadius = StyleKeyword.Initial;
             SwitchClass("w-[200px] h-[34px] rounded-3xl");
             var shortRadius = box.resolvedStyle.borderTopLeftRadius;
+            var neighbourFitted = IsNear(box.resolvedStyle.borderTopRightRadius, 17f);
 
             // Act
             SwitchClass("w-[200px] h-[60px] rounded-3xl");
 
             // Assert — the radius while short is carried beside the slot: putting the keyword back afterwards
-            // would still have painted the fitted 17 meanwhile.
-            Assert.That((shortRadius, box.style.borderTopLeftRadius.keyword),
-                Is.EqualTo((0f, StyleKeyword.Initial)));
+            // would still have painted the fitted 17 meanwhile. The neighbour, fitted by 34/48 while short, says
+            // the fit ran at all.
+            Assert.That((shortRadius, neighbourFitted, box.style.borderTopLeftRadius.keyword),
+                Is.EqualTo((0f, true, StyleKeyword.Initial)));
         }
 
         [Test]

@@ -70,6 +70,9 @@ namespace Velvet.Tests
             Assert.That(radius, Is.EqualTo(16f).Within(1e-4f));
         }
 
+        // GREEN_ON_BASE(characterization): the base already paints a uniform oversized radius this way on every
+        // corner. Adding the inset to the top-right corner instead, `(outerTr * factor) - inset` ->
+        // `(outerTr * factor) + inset`, reddens it.
         [Test]
         public void Given_AnInsetOutlineWithAnOversizedRadius_When_Built_Then_EveryCornerTakesTheInsetOffItsFittedRadius()
         {
