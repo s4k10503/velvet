@@ -292,6 +292,24 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AnInlineKeywordWrittenOverAClassRadius_When_TheBoxShrinksAndGrowsBack_Then_ThatCornerKeepsTheKeyword()
+        {
+            // Arrange — Initial resolves the corner to 0 and outranks rounded-3xl there.
+            var box = MountSwitchable("w-[200px] h-[60px] rounded-3xl");
+            box.style.borderTopLeftRadius = StyleKeyword.Initial;
+            SwitchClass("w-[200px] h-[34px] rounded-3xl");
+            var shortRadius = box.resolvedStyle.borderTopLeftRadius;
+
+            // Act
+            SwitchClass("w-[200px] h-[60px] rounded-3xl");
+
+            // Assert — the radius while short is carried beside the slot: putting the keyword back afterwards
+            // would still have painted the fitted 17 meanwhile.
+            Assert.That((shortRadius, box.style.borderTopLeftRadius.keyword),
+                Is.EqualTo((0f, StyleKeyword.Initial)));
+        }
+
+        [Test]
         public void Given_AnInlineCornerVelvetDidNotWrite_When_ItsNeighbourOverlapsIt_Then_OnlyTheNeighbourIsScaled()
         {
             // Arrange — 80 + 60 across a 100px top edge scales both by 100/140, but only the arbitrary corner is

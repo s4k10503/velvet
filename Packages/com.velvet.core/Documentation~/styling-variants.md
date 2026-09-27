@@ -325,8 +325,8 @@ and so:
 - A radius your own stylesheet sets is not fitted. On an element that also carries a `rounded-*` class, the
   fit reads the class's radius even on a corner your rule outranks it on, and where that radius does not
   fit, the fitted class radius replaces yours.
-- A radius your own code writes to `style` is not fitted either, and it keeps its corner: the other corners
-  are fitted around it, as CSS fits them around an inline radius.
+- A radius your own code writes to `style` keeps its value, unless it equals the value the fit last wrote
+  there; CSS would scale it with the others. The other corners are still fitted, counting it at that value.
 - A change of size refits at once rather than running a transition, and a change of class under
   `transition-all` animates between the fitted radii rather than the declared ones.
 

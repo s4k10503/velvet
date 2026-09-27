@@ -205,8 +205,8 @@ namespace Velvet
         private static void RefreshDeclared(VisualElement element, State state)
             => Refresh(element, state, suspendTransitions: false);
 
-        // A value anyone else wrote into the slot outranks the class the way inline style does, so that corner
-        // counts as undeclared: it is neither fitted nor given back.
+        // A value or keyword anyone else wrote into the slot outranks the class the way inline style does, so
+        // that corner counts as undeclared: it is neither fitted nor given back.
         private static Length? Declared(State state, int corner)
             => state.Foreign[corner] ? null : state.Inline[corner] ?? state.Sheet[corner];
 
@@ -215,7 +215,8 @@ namespace Velvet
             for (var i = 0; i < CornerCount; i++)
             {
                 var slot = InlineCorner(element.style, i);
-                var foreign = slot.keyword == StyleKeyword.Undefined && slot.value != state.Written[i];
+                var foreign = slot.keyword != StyleKeyword.Null
+                    && (slot.keyword != StyleKeyword.Undefined || slot.value != state.Written[i]);
                 state.Foreign[i] = foreign;
                 if (foreign)
                 {
