@@ -34,10 +34,10 @@ namespace Velvet
     // — the risk gap / divide were built to avoid. A mid-exit ghost keeps whatever [&>*]: payload it carried
     // while still in flow, frozen through its exit.
     //
-    // Precedence. The reconciler runs this pass BEFORE gap / divide / grid, so on a SHARED style property
-    // (e.g. [&>*]:ml-[2px] alongside gap-x-4, both writing margin-left) gap / divide / grid win — consistent
-    // with their documented precedence over ANY per-child margin / border / width source; [&>*]: is now just
-    // another such source rather than a new special case.
+    // Precedence. On a SHARED style property (e.g. [&>*]:ml-[2px] alongside gap-x-4, both writing
+    // margin-left) gap / divide / grid win wherever they write, whichever runs first, and the payload's value
+    // returns once they give the slot up — see StyleArbitraryValueResolver.Hold / HandBack. [&>*]: is just
+    // another per-child margin / border / width source there rather than a special case.
     internal sealed class StyleChildVariantManipulator : Manipulator
     {
         private readonly ReconcilerContext _ctx;

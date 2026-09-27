@@ -158,6 +158,17 @@ against and the inline spacing stays on the element. Nothing on screen shows it 
 discarded with its subtree, or scrubbed on its way into the element pool — so it matters only for an
 element your own code kept a reference to and re-parented after the removal.
 
+**What a container stops spacing goes back to the child's own layers, not to nothing.** Gap, grid and
+divide write their value straight onto the child, while an arbitrary value — the child's own `ml-[2px]`
+or a container's `[&>*]:ml-[2px]` — reaches the same slot through a layer. While a container spaces a
+child its value holds, even when such a layer changes afterwards; where it stops — the gap is dropped,
+the child leaves, an edge is abandoned, or the child is the first of a gap or divide row and takes no gap
+or divider — the slot is given back and the child shows what its layers say there. A grid holds its
+first column's and first row's zero margins rather than giving them back. So `flex flex-row gap-x-4 [&>*]:ml-[2px]` gives its
+first child `2px` and the rest the gap, and every child `2px` once `gap-x-4` goes; and a child moving
+between a `[&>*]:` row and a `gap-*`, `grid-cols-*` or `divide-*` row keeps what the row it is in gave
+it, whichever of the two re-applies last.
+
 **Which element the verdict is read from: the container the children are actually in.** Both
 manipulators are attached to the element the class string is written on, but they resolve, iterate and
 read from the element that element's children are *reconciled into*. For a plain element those are the
@@ -299,20 +310,11 @@ The common non-wrap row/column layout is **exact**; the remaining gaps are calle
   **different** edge than the gap are preserved, so `mt-2` on a child under a non-wrap `gap-x-4` row
   is untouched. (Under the wrap half-margin path every side belongs to the gap, so any explicit child
   margin is overwritten on all four sides.)
-- **First child's spacing-edge margin is erased.** The non-wrap path forces the **first** child's
-  spacing-edge margin to `Null` on every pass — `margin-left` / `margin-top` normally, or `margin-right` /
-  `margin-bottom` on a reversed container (the SAME edge `gap` writes on every other child). The first
-  child must carry no gap on that edge to match CSS `gap`. So an explicit margin on the first child's
-  gap edge (e.g. `ml-2` on the first child of a `gap-x-4` row) is **erased**: the manipulator cannot
-  distinguish an intentional first-child margin from a stale gap value it wrote on a previous pass. The
-  first child's *other* edges, and all edges of non-first children's *cross* axis, are untouched.
-  Workaround: use container padding for a leading inset, or an inner wrapper.
-- **Wrap path overwrites (and loses) the container's own margin.** The wrap half-margin path writes the
+- **Wrap path overwrites the container's own margin.** The wrap half-margin path writes the
   container's own four margins to `-gap/2`, so an explicit container margin (e.g. `m-4` on the same
-  element that carries `flex-wrap gap-4`) is **overwritten** while gap is active — and `Clear` resets the
-  container margin to `Null`, so the user's container margin is **lost** (not restored) for as long as a
-  wrapping gap is applied. Non-wrap containers never touch the container's own margin. Workaround: put
-  the margin on an **outer wrapper** around the wrapping gap container.
+  element that carries `flex-wrap gap-4`) is **overwritten** while a wrapping gap is active, and comes
+  back when it stops. Non-wrap containers never touch the container's own margin. Workaround: put the
+  margin on an **outer wrapper** around the wrapping gap container.
 - **Wrap outer bleed.** The wrap path's container negative margin (`-gap/2` on all four sides) bleeds
   `gap/2` **outward**, overlapping the container's own siblings or its parent's padding by `gap/2`. The
   half-margin trick has no way to cancel only the *inner* outer-edge halves; only native UITK `gap`
