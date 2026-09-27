@@ -44,7 +44,7 @@ UNREADABLE_PROBE = {"command": "gh pr merge 1 --squash --delete-branch"}
 
 GIT_TIMEOUT = 30
 
-Target = collections.namedtuple("Target", "head base sha fork")
+Target = collections.namedtuple("Target", "head base commit fork")
 
 UNREADABLE_REFUSAL = (
     "Refusing `gh pr merge`: what its base holds against the head could not be read.\n\n"
@@ -84,7 +84,7 @@ def target_of(cwd, pr):
             return None
         target = Target(payload.get("headRefName"), payload.get("baseRefName"),
                         payload.get("headRefOid"), payload.get("isCrossRepository") is not False)
-    return target if target.head and target.base and target.sha else None
+    return target if target.head and target.base and target.commit else None
 
 
 def failing_runs(cwd, base):
@@ -166,21 +166,21 @@ def refuse_one(cwd, pr):
                         f"again:\n  python3 scripts/pr/settle.py update <pr>\n")
 
     uncovered, ran = [], None
-    for run in failing:
-        held = holds(cwd, target.head, run.sha)
+    for workflow, commit in failing:
+        held = holds(cwd, target.head, commit)
         if held is None:
             return UNREADABLE_REFUSAL.format(
-                f"whether origin/{target.head} holds {run.sha[:7] or 'the failing commit'} could "
+                f"whether origin/{target.head} holds {commit[:7] or 'the failing commit'} could "
                 f"not be read")
         if held and ran is None:
-            ran = suites_ran(cwd, target.sha)
+            ran = suites_ran(cwd, target.commit)
             if ran is None:
                 return UNREADABLE_REFUSAL.format(
-                    f"the check runs of {target.sha[:7]} could not all be read")
+                    f"the check runs of {target.commit[:7]} could not all be read")
         if not held or not ran:
-            uncovered.append(run)
+            uncovered.append((workflow, commit))
     if uncovered:
-        lines = "".join(f"  {run.workflow} failed at {run.sha[:7]}\n" for run in uncovered)
+        lines = "".join(f"  {workflow} failed at {commit[:7]}\n" for workflow, commit in uncovered)
         said.append(
             f"{label} would merge onto {target.base}, whose last push verdict is a failure:\n\n"
             f"{lines}\nFix or revert it on {target.base} first. A head is exempt only where it "
