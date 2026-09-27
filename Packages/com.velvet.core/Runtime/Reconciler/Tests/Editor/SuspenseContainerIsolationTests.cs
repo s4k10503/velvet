@@ -699,7 +699,7 @@ namespace Velvet.Tests
         {
             // Arrange
             s_resource.TrySetResult("initial");
-            _mounted = V.Mount(_root, V.Component(EarlyAbortHost));
+            _mounted = V.Mount(_root, V.Component(EarlyAbortHost), CaughtErrors.Unlogged);
             s_setCount.Invoke(1);
             _mounted.FlushStateForTest();
             var committed = string.Join("|", _root.Query<Label>().ToList().Select(label => label.text));
@@ -728,7 +728,7 @@ namespace Velvet.Tests
         {
             // Arrange
             s_resource.TrySetResult("initial");
-            _mounted = V.Mount(_root, V.Component(EarlyAbortHost));
+            _mounted = V.Mount(_root, V.Component(EarlyAbortHost), CaughtErrors.Unlogged);
             _mounted.FlushEffectsForTest();
             s_resource = new VelvetTaskCompletionSource<string>();
             s_setAbortTick.Invoke(1);

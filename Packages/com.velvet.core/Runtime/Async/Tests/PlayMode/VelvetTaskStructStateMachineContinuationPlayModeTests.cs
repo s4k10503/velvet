@@ -1,6 +1,7 @@
 using System.Collections;
 using NUnit.Framework;
 using UnityEngine.TestTools;
+using Velvet.TestUtilities;
 
 namespace Velvet.Tests
 {
@@ -15,6 +16,9 @@ namespace Velvet.Tests
             return token;
         }
 
+        // GREEN_ON_BASE(characterization): the base already resumes every await in this case.
+        // What the bound changes is a wedge: with `PlayerLoop.SetPlayerLoop(playerLoop);` removed from
+        // the frame driver, measured, this case fails in 20 s rather than at the runner's own timeout.
         [UnityTest]
         public IEnumerator Given_AsyncMethodWithTwoYields_When_AwaitedAfterYields_Then_PreservesLocalsAcrossSuspensions()
             => VelvetTask.ToCoroutine(async () =>
@@ -30,6 +34,6 @@ namespace Velvet.Tests
 
                 // Assert
                 Assert.That(result, Is.EqualTo(22));
-            });
+            }).Bounded();
     }
 }

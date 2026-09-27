@@ -3,6 +3,7 @@ using System.Collections;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
+using Velvet.TestUtilities;
 
 namespace Velvet.Tests
 {
@@ -51,6 +52,9 @@ namespace Velvet.Tests
                     .And.Message.EqualTo("The VelvetTask has already been consumed."));
             });
 
+        // GREEN_ON_BASE(characterization): the base already resumes every await in this case.
+        // What the bound changes is a wedge: with `PlayerLoop.SetPlayerLoop(playerLoop);` removed from
+        // the frame driver, measured, this case fails in 20 s rather than at the runner's own timeout.
         [UnityTest]
         public IEnumerator Given_AsyncMethodCompletingAsynchronously_When_SecondAwaitAttempted_Then_ThrowsInvalidOperationException()
             => VelvetTask.ToCoroutine(async () =>
@@ -82,8 +86,10 @@ namespace Velvet.Tests
                 // Assert
                 Assert.That(caught, Is.TypeOf<InvalidOperationException>()
                     .And.Message.EqualTo("The VelvetTask has already been consumed."));
-            });
+            }).Bounded();
 
+        // GREEN_ON_BASE(characterization): the base already resumes every await in this case.
+        // Bounded for the reason the declaration above the first bounded case in this file gives.
         [UnityTest]
         public IEnumerator Given_AsyncVoidMethodCompletingAsynchronously_When_SecondAwaitAttempted_Then_ThrowsInvalidOperationException()
             => VelvetTask.ToCoroutine(async () =>
@@ -114,8 +120,10 @@ namespace Velvet.Tests
                 // Assert
                 Assert.That(caught, Is.TypeOf<InvalidOperationException>()
                     .And.Message.EqualTo("The VelvetTask has already been consumed."));
-            });
+            }).Bounded();
 
+        // GREEN_ON_BASE(characterization): the base already resumes every await in this case.
+        // Bounded for the reason the declaration above the first bounded case in this file gives.
         [UnityTest]
         public IEnumerator Given_RejectedRunnerBackedConsume_When_SubsequentAsyncMethodsComplete_Then_EachUsesDistinctSource()
             => VelvetTask.ToCoroutine(async () =>
@@ -160,6 +168,6 @@ namespace Velvet.Tests
 
                 // Assert
                 Assert.That((secondResult, thirdResult, sharesSource), Is.EqualTo((2, 3, false)));
-            });
+            }).Bounded();
     }
 }

@@ -3,6 +3,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using NUnit.Framework;
 using UnityEngine.TestTools;
+using Velvet.TestUtilities;
 
 namespace Velvet.Tests
 {
@@ -14,6 +15,9 @@ namespace Velvet.Tests
 
         int _resumedThreadId;
 
+        // GREEN_ON_BASE(characterization): the base already resumes every await in this case.
+        // What the bound changes is a wedge: with `PlayerLoop.SetPlayerLoop(playerLoop);` removed from
+        // the frame driver, measured, this case fails in 20 s rather than at the runner's own timeout.
         [UnityTest]
         public IEnumerator Given_AsyncVelvetTaskOnMainThread_When_AwaitedAfterYield_Then_ResumesOnMainThread()
             => VelvetTask.ToCoroutine(async () =>
@@ -27,7 +31,7 @@ namespace Velvet.Tests
 
                 // Assert
                 Assert.That(resumedOnMainThread, Is.True);
-            });
+            }).Bounded();
 
         [UnityTest]
         public IEnumerator Given_AnAsyncVelvetTaskAwaitedOnTheMainThread_When_ItFinishesOffTheMainThread_Then_TheAwaitResumesOnTheMainThread()

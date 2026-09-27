@@ -42,7 +42,7 @@
     "tools": [
       "Bash"
     ],
-    "script": "refuse/stale_merge.py",
+    "script": "refuse/merge_unchecked_against_base.py",
     "timeout": 25.0
   },
   {

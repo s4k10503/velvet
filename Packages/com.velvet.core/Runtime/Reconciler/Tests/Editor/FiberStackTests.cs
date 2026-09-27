@@ -241,6 +241,7 @@ namespace Velvet.Tests
             // Arrange — Reconciler.Reconcile is called directly (not via V.Mount), so nothing is
             // pushed onto FiberStack before the nested ComponentNode is expanded during Reconcile.
             var newTree = new VNode[] { V.Component(BoundaryWrappingThrowerRender) };
+            Reconciler.Context.OnCaughtError = CaughtErrors.Ignore;
 
             // Act
             Reconciler.Reconcile(Root, Array.Empty<VNode>(), newTree);

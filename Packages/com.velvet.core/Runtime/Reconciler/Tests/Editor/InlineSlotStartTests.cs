@@ -713,7 +713,7 @@ namespace Velvet.Tests
         {
             // Arrange — the pass puts the mover behind "ahead", and a catch later in the same pass stops it
             // from placing anything.
-            using var mounted = V.Mount(_root, V.Component(AbortedMoveHostRender, key: "host"));
+            using var mounted = V.Mount(_root, V.Component(AbortedMoveHostRender, key: "host"), CaughtErrors.Unlogged);
             s_bombThrows = true;
             s_setMoveOrder.Invoke(1);
             mounted.FlushStateForTest();
@@ -764,7 +764,7 @@ namespace Velvet.Tests
             // Arrange — created as g then the boundary, reordered to the boundary first, and g parks growing on
             // the Transition lane. The pass below puts g first again, so the walk reaches g, drains it, and
             // only then reaches the boundary.
-            using var mounted = V.Mount(_root, V.Component(ParkHostRender, key: "host"));
+            using var mounted = V.Mount(_root, V.Component(ParkHostRender, key: "host"), CaughtErrors.Unlogged);
             s_setParkOrder.Invoke(1);
             mounted.FlushStateForTest();
             s_parkedRows = 20;
@@ -837,7 +837,7 @@ namespace Velvet.Tests
         public void Given_AFallbackHoldingFewerRowsThanItsBoundary_When_TheComponentBehindRerenders_Then_ItRewritesItsOwnRows()
         {
             // Arrange — the mount's ref setup throws, and the boundary swaps its three rows for one.
-            using var mounted = V.Mount(_root, V.Component(ShrinkingFallbackHostRender, key: "host"));
+            using var mounted = V.Mount(_root, V.Component(ShrinkingFallbackHostRender, key: "host"), CaughtErrors.Unlogged);
 
             // Act
             s_setTailTick.Invoke(1);
@@ -851,7 +851,7 @@ namespace Velvet.Tests
         public void Given_AFallbackHoldingMoreRowsThanItsBoundary_When_TheComponentBehindRerenders_Then_ItRewritesItsOwnRows()
         {
             // Arrange — the mount's ref setup throws, and the boundary swaps its one row for three.
-            using var mounted = V.Mount(_root, V.Component(GrowingFallbackHostRender, key: "host"));
+            using var mounted = V.Mount(_root, V.Component(GrowingFallbackHostRender, key: "host"), CaughtErrors.Unlogged);
 
             // Act
             s_setTailTick.Invoke(1);
@@ -893,7 +893,7 @@ namespace Velvet.Tests
         public void Given_ABoundaryCaughtInsideItsOwnRerender_When_TheComponentBehindRerenders_Then_ItRewritesItsOwnRows()
         {
             // Arrange
-            using var mounted = V.Mount(_root, V.Component(SelfCatchHostRender, key: "host"));
+            using var mounted = V.Mount(_root, V.Component(SelfCatchHostRender, key: "host"), CaughtErrors.Unlogged);
             s_bombThrows = true;
             s_setSelfGuardTick.Invoke(1);
             mounted.FlushStateForTest();
@@ -1842,7 +1842,7 @@ namespace Velvet.Tests
         public void Given_AWalkThatCreatedAComponentAheadOfABoundary_When_TheBoundaryCatches_Then_ItsFallbackReplacesBothItsRows()
         {
             // Arrange — the walk emits c, creates x, and then reaches the boundary, whose own child throws.
-            using var mounted = V.Mount(_root, V.Component(MidWalkHostRender, key: "host"));
+            using var mounted = V.Mount(_root, V.Component(MidWalkHostRender, key: "host"), CaughtErrors.Unlogged);
             s_midWalkThrows = true;
 
             // Act
