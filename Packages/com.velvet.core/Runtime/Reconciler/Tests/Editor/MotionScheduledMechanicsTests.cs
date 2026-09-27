@@ -162,8 +162,8 @@ namespace Velvet.Tests
             Assert.That(element.style.translate.value.x.value, Is.GreaterThan(50f));
         }
 
-        // GREEN_ON_BASE(characterization): the base already stops a departing element's tween at teardown,
-        // which the tick's new bookkeeping must go on doing.
+        // GREEN_ON_BASE(characterization): the base already stops a departing element's tween at teardown.
+        // The tick's new bookkeeping must go on doing so.
         [Test]
         public void Given_ALayoutIdMotionMidTween_When_ItIsTornDown_Then_ItsTweenStopsWritingToIt()
         {
