@@ -128,6 +128,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A `V.Motion` whose `layoutId` spring starts while one of its variant swaps is tweening no longer lands
+  the swap at its target or has the swap's transition drag the spring's frames. The spring takes what
+  it drives out of the swap's transition list instead of replacing the list, so both run, as in Framer
+  Motion. `animate-spin` and `animate-pulse` get the same treatment under a swap a re-render starts.
+
 - A component keeps the elements it rendered when a reorder or an inserted sibling moves it. Unless a
   key scope stood between the component and its container — a keyed `V.Fragment`, or a `V.Memoized`, a
   `V.Suspense` or a `V.AnimatePresence`, each of which opens one — a keyed component's unkeyed elements
