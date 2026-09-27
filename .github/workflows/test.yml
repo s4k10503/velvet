@@ -51,6 +51,11 @@ permissions:
 env:
   PYTHONDONTWRITEBYTECODE: "1"
 
+# Every job carries a timeout-minutes, so one that hangs gives its runner back to the queue rather
+# than holding it; scripts/ci/test_job_timeouts.py fails for a job of a required workflow that has
+# none. Each is twice the 95th percentile of that job's successful runs, rounded up to a multiple of
+# five minutes and at least ten, but for the shard jobs', which ShardCeilingTests holds against the
+# plan's ceiling, and base-red's, which is sized for the four editor rounds it may take.
 jobs:
   # ---------------------------------------------------------------------------
   # Detect whether a Unity license secret is configured. Secrets cannot be
@@ -59,6 +64,7 @@ jobs:
   license-check:
     name: Check Unity license secret
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       has_license: ${{ steps.check.outputs.has_license }}
     steps:
@@ -88,6 +94,7 @@ jobs:
     needs: license-check
     if: needs.license-check.outputs.has_license == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
@@ -172,6 +179,7 @@ jobs:
   release-notes:
     name: Release notes
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -206,6 +214,7 @@ jobs:
   publication:
     name: Release publication
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -253,6 +262,7 @@ jobs:
   base-red-python:
     name: Base-red check (Python)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -293,6 +303,7 @@ jobs:
     needs: [license-check, unity-tests]
     if: needs.license-check.outputs.has_license == 'true' && github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -413,6 +424,7 @@ jobs:
     needs: license-check
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       mutants: ${{ steps.plan.outputs.mutants }}
       shards: ${{ steps.plan.outputs.shards }}
@@ -513,6 +525,7 @@ jobs:
       github.event_name == 'pull_request' && needs.license-check.outputs.has_license == 'true'
       && needs.mutation-plan.outputs.shards != '[]' && needs.mutation-shard.result == 'success'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       shards: ${{ steps.plan.outputs.shards }}
     steps:
@@ -614,6 +627,7 @@ jobs:
       !cancelled() && github.event_name == 'pull_request' && needs.license-check.outputs.has_license == 'true'
       && needs.mutation-plan.result == 'success' && needs.mutation-plan.outputs.shards != '[]'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -664,6 +678,7 @@ jobs:
   test-quality:
     name: Test quality
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       # fetch-depth 0 for stranded_name_check.py, which reads a change against its merge base, and
       # for the two of its cases held against commits in this repository's own history.
@@ -692,6 +707,8 @@ jobs:
       - run: python3 scripts/test_quality/run_suite.py scripts/test_quality/test_stranded_name_check.py
 
       - run: python3 scripts/test_quality/run_suite.py scripts/ci/test_change_base.py
+
+      - run: python3 scripts/test_quality/run_suite.py scripts/ci/test_job_timeouts.py
 
       - id: base
         run: python3 scripts/ci/change_base.py >> "$GITHUB_OUTPUT"
@@ -729,6 +746,7 @@ jobs:
     needs: license-check
     if: needs.license-check.outputs.has_license == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -758,6 +776,7 @@ jobs:
     if: always()
     needs: [license-check, unity-tests, player-compile, release-notes, publication, test-quality, base-red-python, base-red, mutation-plan, mutation-shard, mutation-playmode-plan, mutation-playmode-shard, mutation-verdict]
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - env:
           RESULTS: ${{ needs.license-check.result }} ${{ needs.unity-tests.result }} ${{ needs.player-compile.result }} ${{ needs.release-notes.result }} ${{ needs.publication.result }} ${{ needs.test-quality.result }} ${{ needs.base-red-python.result }} ${{ needs.base-red.result }} ${{ needs.mutation-plan.result }} ${{ needs.mutation-shard.result }} ${{ needs.mutation-playmode-plan.result }} ${{ needs.mutation-playmode-shard.result }} ${{ needs.mutation-verdict.result }}

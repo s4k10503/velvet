@@ -3895,6 +3895,39 @@ class EditorArgumentTests(unittest.TestCase):
         self.assertEqual((launched[:1], keyed), ([["-debugCodeOptimization"]], []))
 
 
+def launches_without_the_ci_build(root=REPO_ROOT):
+    """Each editor test launch the repository writes -- a line naming both -runTests and -projectPath,
+    in a script's command list or a documented command line -- that does not pass
+    -debugCodeOptimization, beside the files holding any launch at all."""
+    tracked = subprocess.run(["git", "ls-files", "-z", "--", "*.py", "*.md"], cwd=root, check=True,
+                             capture_output=True, text=True).stdout.split("\0")
+    launching, missing = set(), []
+    for relative in filter(None, tracked):
+        if relative.endswith(".py") and Path(relative).name.startswith("test_"):
+            continue
+        for number, line in enumerate((root / relative).read_text(encoding="utf-8").splitlines(), 1):
+            if "-runTests" in line and "-projectPath" in line:
+                launching.add(relative)
+                if "-debugCodeOptimization" not in line:
+                    missing.append("{}:{}".format(relative, number))
+    return launching, missing
+
+
+class CiBuildTests(unittest.TestCase):
+
+    def test_Given_EveryEditorTestLaunchWritten_When_Read_Then_EachAsksForTheBuildCiMeasures(self):
+        # Arrange — the three harnesses AGENTS.md names are the floor: a launch reshaped so this stops
+        # reading it would otherwise leave nothing missing.
+        harnesses = {"scripts/test_quality/" + name
+                     for name in ("mutation_check.py", "neuter_check.py", "base_red_check.py")}
+
+        # Act
+        launching, missing = launches_without_the_ci_build(REPO_ROOT)
+
+        # Assert
+        self.assertEqual((harnesses <= launching, missing), (True, []))
+
+
 class CampaignPlanTests(unittest.TestCase):
     def test_Given_ADiffWithMutants_When_Planned_Then_ItNamesTheirCountAndTheShards(self):
         # Arrange

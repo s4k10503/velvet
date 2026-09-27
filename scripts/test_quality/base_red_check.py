@@ -1020,7 +1020,8 @@ def run_unity(unity, tree, platform, fixtures, results, log, timeout):
     neighbour actually appears, and silence is the one answer that cannot be re-examined later.
     """
     command = [
-        unity, "-runTests", "-batchmode", "-projectPath", str(tree),
+        # -debugCodeOptimization: AGENTS.md's headless recipe says why a local run passes it.
+        unity, "-runTests", "-batchmode", "-debugCodeOptimization", "-projectPath", str(tree),
         "-testPlatform", platform, "-testResults", str(results), "-logFile", str(log),
         "-testFilter", filter_for(fixtures),
     ]
