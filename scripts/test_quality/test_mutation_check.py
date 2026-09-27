@@ -3760,6 +3760,23 @@ class TwoPlatformCampaign(StubbedCampaign):
         return self.play_pass("--collect", str(self.project / "play"))
 
 
+class HangingTwoPlatformCampaign(TwoPlatformCampaign):
+    """The same four mutants, where the suite hangs instead of reporting on each mutant `hung_on` names
+    for its platform."""
+
+    def __init__(self, hung_on, body=None):
+        super().__init__(body)
+        self.hung_on = hung_on
+
+    def run_suite(self, unity, project, platform, scope, results, log, timeout, holder=None):
+        name = Path(results).name
+        if name not in self.hung_on.get(platform, ()):
+            return super().run_suite(unity, project, platform, scope, results, log, timeout, holder)
+        self.measured.append((platform, name))
+        Path(log).write_text("")
+        return 0.0, True, 0
+
+
 class TwoPassCampaignTests(unittest.TestCase):
     """A mutant is killed where either platform's suite fails on it: an EditMode pass over every
     mutant, then a PlayMode pass over its survivors, decided together."""
@@ -3776,6 +3793,35 @@ class TwoPassCampaignTests(unittest.TestCase):
         # Assert
         self.assertEqual((code, re.findall(r"^killed: \d+$", campaign.printed, re.MULTILINE)),
                          (0, ["killed: 4"]))
+
+    def test_Given_EditModeSurvivorsThePlayModeSuiteHangsOn_When_Collected_Then_TheyAreKilledAndTheRunPasses(self):
+        # Arrange — the PlayMode pass classifies a hang by the rule the EditMode pass does, against its
+        # own baseline.
+        campaign = HangingTwoPlatformCampaign({"PlayMode": {"mutant-002.xml", "mutant-004.xml"}})
+        campaign.edit_pass()
+        campaign.play_pass("--shard", "0/1", "--output", str(campaign.project / "play"))
+
+        # Act
+        code = campaign.collect()
+
+        # Assert
+        self.assertEqual((code, re.findall(r"^killed: .*$", campaign.printed, re.MULTILINE)),
+                         (0, ["killed: 2, {}: 2".format(mutation_check.HUNG)]))
+
+    # GREEN_ON_BASE(characterization): the base does not ask the PlayMode suite about a hung mutant
+    # either. What this pins is that a hang-kill stands the way an EditMode kill does.
+    def test_Given_AMutantTheEditModeSuiteHungOn_When_ThePlayModePassRuns_Then_ItIsNotAskedAgain(self):
+        # Arrange — the second mutant is an EditMode survivor in `TwoPlatformCampaign`; here the
+        # EditMode suite hangs on it instead.
+        campaign = HangingTwoPlatformCampaign({"EditMode": {"mutant-002.xml"}})
+        campaign.edit_pass()
+        campaign.measured.clear()
+
+        # Act
+        campaign.play_pass("--shard", "0/1", "--output", str(campaign.project / "play"))
+
+        # Assert
+        self.assertEqual(campaign.measured, [("PlayMode", "baseline.xml"), ("PlayMode", "mutant-004.xml")])
 
     def test_Given_EditModeRecords_When_ThePlayModePassRuns_Then_OnlyTheirSurvivorsReachTheEditor(self):
         # Arrange
