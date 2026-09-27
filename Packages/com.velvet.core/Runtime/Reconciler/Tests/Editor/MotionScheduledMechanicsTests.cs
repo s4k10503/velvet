@@ -435,7 +435,6 @@ namespace Velvet.Tests
         }
 
         // GREEN_ON_BASE(characterization): the base tweens a nested layoutId Motion by its own move inside its parent.
-        // Comparing the two boxes in panel space instead is what reddens this.
         [Test]
         public void Given_ALayoutIdMotionInsideAnother_When_BothMove_Then_TheInnerTweensOnlyItsOwnMoveInsideTheOuter()
         {
@@ -699,6 +698,53 @@ namespace Velvet.Tests
             Assert.That((ReferenceEquals(original, replacement),
                     UnityEngine.Mathf.Abs(replacement.style.scale.value.value.x - 0.5f) < 0.1f),
                 Is.EqualTo((false, true)));
+        }
+
+        // Step 1 moves the outer layoutId Motion 200px right; step 2 moves only the inner one, 20px right
+        // inside it.
+        [Component]
+        private static VNode OuterThenInnerMoveRender()
+        {
+            var (step, setStep) = Hooks.UseState(0);
+            s_setStep = setStep;
+            return V.Div(children: new VNode[]
+            {
+                V.Motion(
+                    name: "outer",
+                    layoutId: "outer-box",
+                    transition: s_layoutSpring,
+                    className: $"left-[{(step >= 1 ? 200 : 0)}px] top-[0px] w-[300px] h-[300px]",
+                    children: new VNode[]
+                    {
+                        V.Motion(name: "inner", layoutId: "inner-box", transition: s_layoutSpring,
+                            className: $"left-[{(step >= 2 ? 40 : 20)}px] top-[20px] w-[50px] h-[50px]"),
+                    }),
+            });
+        }
+
+        // GREEN_ON_BASE(characterization): the base compares a nested layoutId Motion's rects inside its parent.
+        // Comparing them in panel space instead takes in the outer Motion's tween between patch and settle.
+        [Test]
+        public void Given_AnOuterLayoutIdMotionStillTweening_When_OnlyTheInnerMovesInsideIt_Then_TheInnerTweensOnlyItsOwnMove()
+        {
+            // Arrange — the outer one's tween is a few frames in.
+            using var mounted = V.Mount(Root, V.Component(OuterThenInnerMoveRender, key: "root"));
+            Tick();
+            s_setStep.Invoke(1);
+            mounted.FlushStateForTest();
+            for (var i = 0; i < 5; i++) Tick();
+            var outer = Root.Q<VisualElement>("outer");
+            var inner = Root.Q<VisualElement>("inner");
+
+            // Act
+            s_setStep.Invoke(2);
+            mounted.FlushStateForTest();
+            Tick();
+
+            // Assert — the outer one is still mid-tween, and the inner one tweens only the 20px it moved.
+            Assert.That((outer.style.translate.value.x.value < -50f,
+                    UnityEngine.Mathf.Abs(inner.style.translate.value.x.value + 20f) < 5f),
+                Is.EqualTo((true, true)));
         }
 
         private static StateUpdater<int> s_setStop;

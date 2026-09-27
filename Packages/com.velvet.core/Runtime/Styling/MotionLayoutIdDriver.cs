@@ -16,9 +16,9 @@ namespace Velvet
     // A box is a layout rect together with the parent it is relative to and the rect it covers in panel
     // space. Two boxes under one parent compare their layout rects; under different parents, their panel
     // rects, taken into the new parent less the inverse translate every ancestor still waiting on its own
-    // layoutId settle is about to apply. Panel space throughout was rejected: a nested layoutId Motion that
-    // moves inside a moving one then no longer tweens by its own move inside it
-    // (Given_ALayoutIdMotionInsideAnother_When_BothMove_Then_TheInnerTweensOnlyItsOwnMoveInsideTheOuter).
+    // layoutId settle is about to apply. Panel space throughout was rejected: an inner layoutId Motion that
+    // moves inside an outer one still tweening then no longer tweens by its own move inside it
+    // (Given_AnOuterLayoutIdMotionStillTweening_When_OnlyTheInnerMovesInsideIt_Then_TheInnerTweensOnlyItsOwnMove).
     // The ancestors' translate is subtracted rather than read off their transform: an inner Motion settles
     // before the outer one has applied it
     // (Given_ALayoutIdMotionInsideATypeFlippedOne_When_BothMove_Then_TheInnerTweensOnlyItsOwnMoveInsideTheOuter).
