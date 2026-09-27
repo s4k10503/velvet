@@ -83,6 +83,7 @@ import tracked_writes
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts" / "release"))
 import breaking_in_flight_check as drain
 import published_check
+import release_notes
 
 HOOK_TOOLS = {"Bash", "Edit", "Write"}
 
@@ -133,6 +134,16 @@ def published_copies(path, versions):
         if found is not None:
             copies[version] = (found[0], tagged[found[0]], found[1])
     return copies, tracked
+
+
+def where_it_goes(path):
+    """Where an entry goes in the tree `path` sits in: a fragment, or that tree's own
+    `## [Unreleased]` where it is a maintenance line cut before fragments existed."""
+    top, _ = drain.run(["git", "rev-parse", "--show-toplevel"], cwd=Path(path).parent)
+    if top is not None and not (Path(top.strip()) / release_notes.FRAGMENT_COMPILER).exists():
+        return (f"under `## [Unreleased]`: this tree has no {release_notes.FRAGMENT_COMPILER}, so its "
+                "release reads no fragment")
+    return "in a fragment, which CONTRIBUTING.md's release section describes"
 
 
 def common_git_dir(start):
@@ -250,8 +261,7 @@ def main():
               "A note is rebuilt from the first heading matching its version down to the next "
               "heading, so only one of the two sections is ever published and their order is what "
               "decides which.\n\n"
-              "One heading per version. Put the entry under `## [Unreleased]` or "
-              "`## [Unreleased — breaking]`.", file=sys.stderr)
+              f"One heading per version. Put the entry {where_it_goes(path)}.", file=sys.stderr)
         return 2
 
     before, after = released(text), released(proposed)
@@ -264,9 +274,8 @@ def main():
               "released section.\n\n"
               "A date on the heading is what says the entries under it shipped, and this check "
               "reads for it: whatever sits under an undated heading is not compared at all.\n\n"
-              "Leave the heading and its date where they are, and put the change under "
-              "`## [Unreleased]`, or `## [Unreleased — breaking]` where it has to wait for a "
-              "major.\n\n"
+              "Leave the heading and its date where they are, and put the change "
+              f"{where_it_goes(path)}.\n\n"
               "Undoing a rename that closed a version too early arrives here as well, and nothing "
               "in the file tells that date from a published one. Revert it with git, which this "
               "check never reads.", file=sys.stderr)
@@ -290,8 +299,7 @@ def main():
               "this lets through — an addition to a note already published belongs in the release "
               "that follows it:\n\n"
               f"  git show {sha}:{tracked}   # {tag} on the remote\n\n"
-              "Put what this change has to say under `## [Unreleased]`, or "
-              "`## [Unreleased — breaking]` where it has to wait for a major.\n\n"
+              f"Put what this change has to say {where_it_goes(path)}.\n\n"
               "Undoing a put-back made in the editor arrives here as that deletion, because this "
               "reads the file rather than a base commit. Revert it with git, which this check "
               "never reads.", file=sys.stderr)
@@ -308,8 +316,7 @@ def main():
         "That section is the published release note. An entry there claims a version that shipped",
         "without it, and is missing from the version that will ship with it.",
         "",
-        "Put it under `## [Unreleased]`, or `## [Unreleased — breaking]` where it has to wait for a",
-        "major — opening the one it belongs in above the newest release if there is none.",
+        f"Put it {where_it_goes(path)}.",
         "A reword of what that section already says reads the same way here and is refused with it;",
         "it changes a published note, so ask for it rather than making it.",
         "",

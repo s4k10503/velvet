@@ -66,7 +66,7 @@ REFUSAL_BASELINE = "scripts/test_quality/logic_refusal_baseline.txt"
 
 KILLED = "killed"
 TIMED_OUT = "not measured (timed out)"
-HUNG = "not measured (the suite did not finish)"
+HUNG = "killed (the suite hung past --timeout)"
 
 HANG_MARGIN = 3
 SURVIVED = "survived"
@@ -80,7 +80,7 @@ UNRECORDED = "not measured (no shard recorded it)"
 
 SURVIVING = (SURVIVED, INCONCLUSIVE)
 OTHER_PLATFORM = {"EditMode": "PlayMode", "PlayMode": "EditMode"}
-UNMEASURED = (NOT_BUILT, TIMED_OUT, HUNG, UNCOMPILABLE, UNRECORDED)
+UNMEASURED = (NOT_BUILT, TIMED_OUT, UNCOMPILABLE, UNRECORDED)
 
 # How `--plan` splits a pass across CI jobs, per platform. Each shard pays an image pull, a licence
 # activation and a baseline before its first mutant; CONTRIBUTING.md ▸ Checking that the tests can fail
@@ -1928,12 +1928,12 @@ def read_verdict(output, index, digest, mutant, project, scope=()):
     -- `--files` takes a file whole where the diff takes its changed lines -- and two mutants on one
     line can describe alike.
 
-    A kill alone: each other verdict turns on something outside that key -- a survivor of either kind
-    on the tests, which the test written for it changes; a timed-out or hung mutant on `--timeout`,
-    which the timed-out verdict asks to be raised, and on anything else that kept the editor running;
-    uncompilable and not rebuilt on the editor as well as on the mutation. A kill turns on the tests
-    too, and is kept across a test removed since for the reason `scope_digest` gives for its key;
-    one taken while another editor was up is kept as well, and its detail says so.
+    A kill that named its failing tests alone: each other verdict turns on something outside that key
+    -- a survivor of either kind on the tests, which the test written for it changes; a timed-out or
+    hung mutant on `--timeout` and the baseline's wall clock, and on anything else that kept the
+    editor running; uncompilable and not rebuilt on the editor as well as on the mutation. A kill
+    turns on the tests too, and is kept across a test removed since for the reason `scope_digest`
+    gives for its key; one taken while another editor was up is kept as well, and its detail says so.
     """
     held = recorded(output, index, digest, mutant, project, scope)
     if held is None or held.get("verdict") != KILLED:
@@ -2200,10 +2200,16 @@ def measure(args, project, holder, output, targets, mutants, scope, campaign, co
                 mutant.detail = "{} failed in {}: {}".format(
                     len(behavioural), ", ".join(narrowed_to),
                     ", ".join(name.split(".")[-1] for name in behavioural[:3]))
-            elif timed_out and baseline_wall * HANG_MARGIN <= args.timeout:
+            # Only where no result could be read: a readable one is the suite's own reading, and a
+            # kill taken from the wall clock would override it. That one is left to TIMED_OUT.
+            elif timed_out and counts is None and baseline_wall * HANG_MARGIN <= args.timeout:
                 mutant.verdict = HUNG
-                mutant.detail = ("the suite ran past --timeout {}s where the baseline finished in "
-                                 "{:.0f}s".format(args.timeout, baseline_wall))
+                mutant.detail = ("the suite ran past --timeout {}s and left no readable result, where "
+                                 "the baseline finished in {:.0f}s".format(args.timeout, baseline_wall))
+            elif timed_out and counts is not None:
+                mutant.verdict = TIMED_OUT
+                mutant.detail = ("the editor was killed at --timeout {}s after writing a result; read "
+                                 "the log for what kept it running".format(args.timeout))
             elif timed_out:
                 # The baseline was already close to the bound, so a mutant reaching it says nothing
                 # about the mutation. One of the two readings is a mutant nobody asked about, so the
@@ -2615,6 +2621,13 @@ def main():
     if inapplicable:
         print("\n--- rewrites the compiler rejected as no program at all ---")
         for mutant in inapplicable:
+            print("{}  {}".format(mutant.describe(project), mutant.detail))
+
+    # Named, because no failing case stands behind these kills.
+    hung = [m for m in mutants if m.verdict == HUNG]
+    if hung:
+        print("\n--- mutants killed by hanging the suite ---")
+        for mutant in hung:
             print("{}  {}".format(mutant.describe(project), mutant.detail))
 
     # Counts of what this run did, and deliberately no ratio: a mutation score over a diff is a

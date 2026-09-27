@@ -1698,6 +1698,140 @@ class PublishedSections(ReleaseHistory):
                          ("", UNNAMED, True))
 
 
+FRAGMENT = "Packages/com.velvet.core/Changelog~/breaking/api.md"
+FRAGMENT_TEXT = "### Changed\n\n- An API a caller has to edit around.\n"
+
+
+class FragmentsInTheSection(ReleaseHistory):
+    """A breaking entry written as a fragment, which the file's own section never shows."""
+
+    def fragment(self, root, present, message="a fragment"):
+        """One more commit on the checked-out branch, adding the fragment or deleting it and touching
+        nothing else. Returns it."""
+        path = root / FRAGMENT
+        if present:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(FRAGMENT_TEXT)
+        else:
+            path.unlink()
+        git(root, "add", "-A")
+        git(root, "commit", "--quiet", "-m", message)
+        return revision(root)
+
+    def test_Given_ABreakingFragmentInFlight_When_AMajorCloses_Then_TheUnnamedPullRequestIsRefused(self):
+        # Arrange
+        root, commits = self.history(OPEN)
+        git(root, "checkout", "--quiet", "-b", "in-flight")
+        branch = self.fragment(root, present=True)
+        git(root, "checkout", "--quiet", "main")
+        self.commit(root, CLOSED, "release")
+
+        # Act
+        done = run(root, commits[0], listing(377, branch), body="Closes nothing in particular.")
+
+        # Assert
+        self.assertEqual((done.returncode, "#377" in done.stderr), (UNNAMED, True))
+
+    def test_Given_ABreakingFragmentDeleted_When_TheResultCarriesItNowhere_Then_ItIsRefused(self):
+        # Arrange
+        root, commits = self.history(OPEN)
+        base = self.fragment(root, present=True)
+        self.fragment(root, present=False)
+
+        # Act
+        done = run(root, base, "[]")
+
+        # Assert
+        self.assertEqual((done.returncode, "carries them nowhere" in done.stderr), (UNNAMED, True))
+
+    def in_flight(self, relative, text):
+        """A major closing on main while an open branch adds one malformed-or-not file under the
+        fragment directory; returns what the check says with a body naming nothing."""
+        root, commits = self.history(OPEN)
+        git(root, "checkout", "--quiet", "-b", "in-flight")
+        path = root / FRAGMENT.replace("breaking/api.md", relative)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text)
+        git(root, "add", "-A")
+        git(root, "commit", "--quiet", "-m", "in flight")
+        branch = revision(root)
+        git(root, "checkout", "--quiet", "main")
+        self.commit(root, CLOSED, "release")
+        return run(root, commits[0], listing(377, branch), body="Closes nothing in particular.")
+
+    def test_Given_AMalformedBreakingFragmentInFlight_When_AMajorCloses_Then_ThePullRequestIsNamedWithTheFile(self):
+        # Arrange -- what it adds cannot be read, and the release still has to say whether it
+        # carries that branch.
+        done = self.in_flight("breaking/bad.md", "- An entry under no kind.\n")
+
+        # Act / Assert
+        self.assertEqual((done.returncode, "#377" in done.stderr, "breaking/bad.md" in done.stderr),
+                         (UNNAMED, True, True))
+
+    def test_Given_ABreakingFragmentInAMisspeltDirectoryInFlight_When_AMajorCloses_Then_ThePullRequestIsNamedWithTheFile(self):
+        # Arrange -- a file no section takes, which the release has to decide about all the same.
+        done = self.in_flight("Breaking/api.md", FRAGMENT_TEXT)
+
+        # Act / Assert
+        self.assertEqual((done.returncode, "#377" in done.stderr, "Breaking/api.md" in done.stderr),
+                         (UNNAMED, True, True))
+
+    # GREEN_ON_BASE(characterization): the base reads no fragment at all, so one on a branch is nothing to it.
+    # What this pins is that reading fragments did not make somebody's malformed unreleased one a
+    # reason every release goes unread.
+    def test_Given_AMalformedUnreleasedFragmentInFlight_When_AMajorCloses_Then_ItIsNotThisReadingsToRefuse(self):
+        # Arrange
+        done = self.in_flight("unreleased/bad.md", "- An entry under no kind.\n")
+
+        # Act / Assert
+        self.assertEqual(done.returncode, 0)
+
+    # GREEN_ON_BASE(characterization): a base reading no fragment sees nothing leave the section.
+    # This is the control for the deletion above, which is red there for that same reason.
+    def test_Given_ABreakingFragmentMovedToTheOpenSection_When_Read_Then_ItPasses(self):
+        # Arrange -- a reclassification, written as a move from one directory to the other.
+        root, commits = self.history(OPEN)
+        base = self.fragment(root, present=True)
+        moved = root / FRAGMENT.replace("/breaking/", "/unreleased/")
+        moved.parent.mkdir(parents=True, exist_ok=True)
+        (root / FRAGMENT).rename(moved)
+        git(root, "add", "-A")
+        git(root, "commit", "--quiet", "-m", "reclassify")
+
+        # Act
+        done = run(root, base, "[]")
+
+        # Assert
+        self.assertEqual((done.returncode, done.stderr), (0, ""))
+
+    def test_Given_AMajorClosingOverABreakingFragment_When_TheBodyIsSilent_Then_ItIsRefused(self):
+        # Arrange
+        root, commits = self.history(OPEN)
+        base = self.fragment(root, present=True)
+        self.commit(root, CLOSED, "release")
+
+        # Act
+        done = run(root, base, "[]", body="A major.")
+
+        # Assert
+        self.assertEqual((done.returncode, "closes a major and leaves" in done.stderr),
+                         (UNNAMED, True))
+
+    def test_Given_AFragmentWrittenAndDeletedSinceTheRelease_When_AMinorClosesOverIt_Then_ItIsRefused(self):
+        # Arrange -- neither fragment commit touches the CHANGELOG, so a history walked by that file
+        # alone reads the release and the base, and neither holds the entry.
+        root, commits = self.history(OPEN, tags={0: RELEASE})
+        self.fragment(root, present=True)
+        base = self.fragment(root, present=False)
+        self.commit(root, MINOR_OVER_NOTHING, "release")
+
+        # Act
+        done = run(root, base, "[]", body="A minor.")
+
+        # Assert
+        self.assertEqual((done.returncode, "carries in no major" in done.stderr), (UNNAMED, True))
+
+
 class DispatchMirror(unittest.TestCase):
     """What this module restates from upm.yml: the `-main` tag it leaves on the release commit."""
 
