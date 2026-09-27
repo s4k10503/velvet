@@ -465,6 +465,7 @@ namespace Velvet.Tests
                 "Cancelling an in-flight variant enter restores the resting variant");
         }
 
+        // GREEN_ON_BASE(characterization): an anchor's completed variant exit was already undone on re-entry.
         [Test]
         public void Given_ACompletedVariantExit_When_TheKeyIsReAddedBeforeTheDropRender_Then_TheRestingVariantIsRestored()
         {
@@ -537,6 +538,7 @@ namespace Velvet.Tests
                 Is.EqualTo((true, false)));
         }
 
+        // GREEN_ON_BASE(characterization): the re-entry already took an anchor's exit pose off first.
         [Test]
         public void Given_ACompletedVariantExitWithInitial_When_TheKeyIsReAddedBeforeTheDropRender_Then_TheExitPoseIsFullyReplaced()
         {
