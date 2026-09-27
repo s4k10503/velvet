@@ -11,8 +11,9 @@ namespace Velvet
     // Public entry points: CreateRoot (V.Mount path), CreateChild (ComponentRegistry path),
     // Mount, Unmount, Dispose.
     // RenderAndReconcile orchestrates the per-render work-state machine but delegates the two phases:
-    // the render phase (body invocation, render-phase loop, hook-count validation) lives in
-    // FiberBeginWork, and the commit phase (host-tree application + inline-slot geometry) in FiberCommitWork.
+    // the render phase (body invocation, render-phase loop) lives in FiberBeginWork, with the hook-count
+    // check in HookCountSentinel, and the commit phase (host-tree application + inline-slot geometry) in
+    // FiberCommitWork.
     // Re-render-request intake and lane scheduling (the work-loop driver) live in FiberWorkLoop;
     // context value changes route through RequestRenderForContext here, and async resolves through
     // NotifyAsyncResourceCompleted.
@@ -60,10 +61,12 @@ namespace Velvet
         // Attaches the fiber to mountPoint and runs the initial render + layout effects.
         // fiber: Fiber to mount. Must not already be mounted.
         // mountPoint: VisualElement that hosts the rendered tree. Must not be null.
-        // sharedContext: see SetupMount.
-        public static void Mount(ComponentFiber fiber, VisualElement? mountPoint, ReconcilerContext? sharedContext = null)
+        // sharedContext, onCaughtError: see SetupMount.
+        public static void Mount(
+            ComponentFiber fiber, VisualElement? mountPoint, ReconcilerContext? sharedContext = null,
+            Action<Exception, ErrorInfo>? onCaughtError = null)
         {
-            SetupMount(fiber, mountPoint, sharedContext);
+            SetupMount(fiber, mountPoint, sharedContext, onCaughtError);
             RenderAndReconcile(fiber);
             FiberEffects.CommitSubtreeEffects(fiber, mountDoubleInvoke: true);
             // The setState-in-commit guarantee is entry-point-agnostic: a callback ref or layout
@@ -203,7 +206,11 @@ namespace Velvet
         // Reconciler+ReconcilerContext there silently detaches the fiber from the caller's registries /
         // FiberStack / IsAborted flag. Left null only by V.Mount's direct root-fiber path,
         // which has no context to join and must bootstrap its own (this fiber becomes the owner).
-        private static void SetupMount(ComponentFiber fiber, VisualElement? mountPoint, ReconcilerContext? sharedContext = null)
+        // onCaughtError is written only onto a context this call bootstraps, before the render that follows
+        // it, since that first render can already throw into a boundary.
+        private static void SetupMount(
+            ComponentFiber fiber, VisualElement? mountPoint, ReconcilerContext? sharedContext = null,
+            Action<Exception, ErrorInfo>? onCaughtError = null)
         {
             if (fiber.IsMounted)
             {
@@ -230,6 +237,7 @@ namespace Velvet
             if (parentCtx == null)
             {
                 fiber.Reconciler.Context.BatchScheduler.SetAnchor(mountPoint);
+                if (onCaughtError != null) fiber.Reconciler.Context.OnCaughtError = onCaughtError;
             }
 
             // On the Unmount → Mount path that reuses the same fiber, clear IsDisposed so that setter closures
@@ -346,9 +354,6 @@ namespace Velvet
             // is cleared on unmount and re-established on the next mount.
             // The ComponentRegistry path idempotently re-invokes SetExternalRef, so this is safe.
             fiber.ExternalRef = null;
-#if UNITY_EDITOR
-            fiber.ResetEditorHookCountBaselines();
-#endif
             fiber.HasCommittedHookCounts = false;
 
             // Scrub the detached-mount marker so a fiber re-mounted (pooled) for a normal position does not
@@ -425,7 +430,6 @@ namespace Velvet
             fiber.IsRendering = true;
             FiberAmbientStack.Push(fiber);
 #if UNITY_EDITOR
-            var renderSucceeded = false;
             // Body output committed by this render, captured for the post-commit double-invoke diagnostic pass.
             // Set only on the success path where the reconciler retained the tree, so the diagnostic never
             // runs against an aborted / discarded output.
@@ -463,14 +467,12 @@ namespace Velvet
 
                 var rendered = FiberBeginWork.RunRenderPhaseLoop(fiber);
 
-                FiberBeginWork.CommitSettledHookDeps(fiber);
-
+                // Before the settle promotes any staged deps: a render refused for fewer hooks must leave
+                // every slot's committed deps where the last committed render left them.
                 HookCountSentinel.ValidateAndCommit(fiber);
 
-#if UNITY_EDITOR
-                FiberBeginWork.ValidateEditorHookCounts(fiber);
-                renderSucceeded = true;
-#endif
+                FiberBeginWork.CommitSettledHookDeps(fiber);
+
                 var newTree = FiberTreeReturn.NormalizeToArray(rendered);
                 oldTree = fiber.PreviousTree ?? Array.Empty<VNode>();
 
@@ -569,12 +571,6 @@ namespace Velvet
             }
             finally
             {
-#if UNITY_EDITOR
-                if (!renderSucceeded)
-                {
-                    fiber.ResetEditorHookCountBaselines();
-                }
-#endif
                 // Pop the spine Providers re-pushed for this isolated render, restoring the cursor.
                 // Runs after Render + Reconcile (descendants re-rendered during the expansion needed the
                 // spine as their base) and is a no-op for nested / root renders (default handle).

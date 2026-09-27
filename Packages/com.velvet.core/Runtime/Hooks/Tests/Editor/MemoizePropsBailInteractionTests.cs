@@ -133,7 +133,7 @@ namespace Velvet.Tests
         public void Given_BoundaryWithMemoize_When_ChildThrows_Then_FallbackFires()
         {
             // Arrange
-            using var mounted = V.Mount(_root, V.Component(CombinedBoundary.Render, key: "boundary"));
+            using var mounted = V.Mount(_root, V.Component(CombinedBoundary.Render, key: "boundary"), CaughtErrors.Unlogged);
             Assume.That(ComboState.FallbackShown, Is.False, "Precondition: the normal child rendered without firing fallback");
             Assume.That(ComboState.SetTick, Is.Not.Null, "Precondition: the child rendered and wired SetTick");
 
@@ -151,7 +151,7 @@ namespace Velvet.Tests
         public void Given_BoundaryWithMemoize_When_ChildThrows_Then_FallbackReceivesTheThrownException()
         {
             // Arrange
-            using var mounted = V.Mount(_root, V.Component(CombinedBoundary.Render, key: "boundary"));
+            using var mounted = V.Mount(_root, V.Component(CombinedBoundary.Render, key: "boundary"), CaughtErrors.Unlogged);
             Assume.That(ComboState.SetTick, Is.Not.Null, "Precondition: the child rendered and wired SetTick");
 
             // Act

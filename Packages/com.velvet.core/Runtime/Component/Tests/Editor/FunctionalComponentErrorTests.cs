@@ -140,7 +140,7 @@ namespace Velvet.Tests
             LogAssert.Expect(LogType.Exception, new Regex("InvalidOperationException.*Inner fallback boom"));
 
             // Act
-            using var mounted = V.Mount(_root, V.Component(OuterFallbackEbRender, key: "outer-eb"));
+            using var mounted = V.Mount(_root, V.Component(OuterFallbackEbRender, key: "outer-eb"), CaughtErrors.Unlogged);
 
             // Assert
             Assert.That(s_bubbleUpOuterFallbackCount, Is.EqualTo(1),
@@ -157,7 +157,7 @@ namespace Velvet.Tests
             LogAssert.Expect(LogType.Exception, new Regex("InvalidOperationException.*Inner fallback boom"));
 
             // Act
-            using var mounted = V.Mount(_root, V.Component(OuterFallbackEbRender, key: "outer-eb"));
+            using var mounted = V.Mount(_root, V.Component(OuterFallbackEbRender, key: "outer-eb"), CaughtErrors.Unlogged);
 
             // Assert
             Assert.That(
@@ -174,7 +174,7 @@ namespace Velvet.Tests
             LogAssert.Expect(LogType.Exception, new Regex("InvalidOperationException.*Child error"));
 
             // Act
-            using var mounted = V.Mount(_root, V.Component(ErrorInfoCaptureEbRender, key: "info-eb"));
+            using var mounted = V.Mount(_root, V.Component(ErrorInfoCaptureEbRender, key: "info-eb"), CaughtErrors.Unlogged);
             Assume.That(s_errorInfoLastInfo, Is.Not.Null, "Precondition: the fallback captured an ErrorInfo");
 
             // Assert
@@ -190,7 +190,7 @@ namespace Velvet.Tests
             LogAssert.Expect(LogType.Exception, new Regex("InvalidOperationException.*Child error"));
 
             // Act
-            using var mounted = V.Mount(_root, V.Component(ErrorInfoCaptureEbRender, key: "info-eb"));
+            using var mounted = V.Mount(_root, V.Component(ErrorInfoCaptureEbRender, key: "info-eb"), CaughtErrors.Unlogged);
             Assume.That(s_errorInfoLastInfo, Is.Not.Null, "Precondition: the fallback captured an ErrorInfo");
 
             // Assert
@@ -206,7 +206,7 @@ namespace Velvet.Tests
             LogAssert.Expect(LogType.Exception, new Regex("InvalidOperationException.*Child error"));
 
             // Act
-            using var mounted = V.Mount(_root, V.Component(ErrorInfoCaptureEbRender, key: "info-eb"));
+            using var mounted = V.Mount(_root, V.Component(ErrorInfoCaptureEbRender, key: "info-eb"), CaughtErrors.Unlogged);
 
             // Assert
             Assert.That(
@@ -223,7 +223,7 @@ namespace Velvet.Tests
             LogAssert.Expect(LogType.Exception, new Regex("InvalidOperationException.*Child error"));
 
             // Act
-            using var mounted = V.Mount(_root, V.Component(PropsErrorInfoCaptureEbRender, key: "props-info-eb"));
+            using var mounted = V.Mount(_root, V.Component(PropsErrorInfoCaptureEbRender, key: "props-info-eb"), CaughtErrors.Unlogged);
 
             // Assert
             Assert.That(s_errorInfoLastInfo?.ComponentStack,

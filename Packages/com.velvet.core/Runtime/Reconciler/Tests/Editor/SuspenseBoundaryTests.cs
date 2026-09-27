@@ -190,7 +190,7 @@ namespace Velvet.Tests
             s_errorBoundaryFallbackText = "error!";
 
             // Act
-            using var mounted = V.Mount(_root, V.Component(ErrorBoundaryWithSuspenseRender, key: "host"));
+            using var mounted = V.Mount(_root, V.Component(ErrorBoundaryWithSuspenseRender, key: "host"), CaughtErrors.Unlogged);
 
             // Assert
             Assert.That(_root.FindFirstLabel()?.text, Is.EqualTo("error!"),
@@ -205,7 +205,7 @@ namespace Velvet.Tests
             s_asyncChildFactory = _ => source.Task;
             s_errorBoundarySuspenseFallback = "loading...";
             s_errorBoundaryFallbackText = "error!";
-            using var mounted = V.Mount(_root, V.Component(ErrorBoundaryWithSuspenseRender, key: "host"));
+            using var mounted = V.Mount(_root, V.Component(ErrorBoundaryWithSuspenseRender, key: "host"), CaughtErrors.Unlogged);
             Assume.That(_root.FindFirstLabel()?.text, Is.EqualTo("loading..."), "Precondition: the suspense fallback is shown while pending");
 
             // Act

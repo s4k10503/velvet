@@ -386,6 +386,7 @@ namespace Velvet.Tests
         private VNode[] MountBoundedApp()
         {
             var tree = BoundedApp();
+            _reconciler.Context.OnCaughtError = CaughtErrors.Ignore;
             _reconciler.Reconcile(_root, Array.Empty<VNode>(), tree);
             return tree;
         }

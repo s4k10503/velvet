@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Unit tests for pull_request_base_check.py.
 
-Each synthetic guard below is one way a merge guard can relate to a base. One compares every head
-against `main` whatever the pull request says, which is the defect the check exists for; two read
-the base off the pull request, one for each thing a base is asked, and both again reading the first
-merge in a command and no other; one refuses nothing, which is how a directory satisfies the first
-world by doing nothing at all; one refuses by printing a deny decision rather than by its exit code;
+Each synthetic guard below is one way a merge guard can relate to a base. One reads `main`'s push
+runs whatever the pull request says, which is the defect the check exists for; two read the base
+off the pull request, one for each thing a base is asked, and both again reading the first merge in
+a command and no other; one refuses a head that does not contain its base, which a head whose own
+checks passed is not refused for; one refuses nothing, which is how a directory satisfies the first
+worlds by doing nothing at all; one refuses by printing a deny decision rather than by its exit code;
 and one reaches for a reading no world here arranges, whose verdict is therefore about an unreadable
 state rather than about a base.
 
@@ -64,6 +65,21 @@ def contains(cwd, base, head):
                            "origin/" + base, "origin/" + head], capture_output=True).returncode == 0
 
 
+def failed_past(cwd, base, head):
+    """Whether a required workflow's last push run on `base` failed at a commit `head` lacks."""
+    for workflow in ("test.yml", "generators.yml"):
+        listed = subprocess.run(["gh", "api", "repos/{owner}/{repo}/actions/workflows/" + workflow
+                                 + "/runs?branch=" + base + "&event=push&per_page=20"],
+                                cwd=cwd, capture_output=True, text=True)
+        newest = json.loads(listed.stdout)["workflow_runs"][0]
+        subprocess.run(["git", "-C", cwd, "fetch", "-q", "origin", head], capture_output=True)
+        held = subprocess.run(["git", "-C", cwd, "merge-base", "--is-ancestor", newest["head_sha"],
+                               "origin/" + head], capture_output=True).returncode == 0
+        if newest["conclusion"] == "failure" and not held:
+            return True
+    return False
+
+
 def refuse(reason):
     sys.stderr.write(reason + "\\n")
     sys.exit(2)
@@ -72,9 +88,16 @@ def refuse(reason):
 cwd, numbers = posed()
 '''
 
-COMPARES_AGAINST_MAIN = PREAMBLE + '''for number in numbers:
-    if not contains(cwd, "main", pull_request(cwd, number)["head"]["ref"]):
-        refuse("it does not contain origin/main")
+READS_MAINS_RUNS = PREAMBLE + '''for number in numbers:
+    if failed_past(cwd, "main", pull_request(cwd, number)["head"]["ref"]):
+        refuse("origin/main last failed on push")
+sys.exit(0)
+'''
+
+REFUSES_A_RED_BASE = PREAMBLE + '''for number in numbers:
+    target = pull_request(cwd, number)
+    if failed_past(cwd, target["base"]["ref"], target["head"]["ref"]):
+        refuse("the base it names last failed on push")
 sys.exit(0)
 '''
 
@@ -99,10 +122,10 @@ REFUSES_AN_UNPUBLISHED_BASE = PREAMBLE + '''for number in numbers:
 sys.exit(0)
 '''
 
-# The same two, reading the first merge in the command and no other — the shape both base-reading
-# guards had until a compound command was posed to them.
+# The red-base and publication guards, reading the first merge in the command and no other — the
+# shape the first two base-reading guards had until a compound command was posed to them.
 FIRST_MERGE_ONLY = "for number in numbers[:1]:"
-STALE_FIRST_ONLY = REFUSES_A_HEAD_BEHIND_ITS_BASE.replace("for number in numbers:", FIRST_MERGE_ONLY)
+RED_FIRST_ONLY = REFUSES_A_RED_BASE.replace("for number in numbers:", FIRST_MERGE_ONLY)
 UNPUBLISHED_FIRST_ONLY = REFUSES_AN_UNPUBLISHED_BASE.replace("for number in numbers:",
                                                              FIRST_MERGE_ONLY)
 
@@ -145,62 +168,72 @@ class GuardTests(unittest.TestCase):
         self.directories.append(made)
         return check.faults(made, floor=floor)
 
-    def test_Given_AGuardComparingEveryHeadAgainstMain_When_TheCheckRuns_Then_ItIsReported(self):
+    def test_Given_AGuardReadingMainsRunsWhateverTheBase_When_TheCheckRuns_Then_ItIsReported(self):
         # Arrange / Act
-        found = self.faults(hard_coded=COMPARES_AGAINST_MAIN,
-                            stale=REFUSES_A_HEAD_BEHIND_ITS_BASE,
+        found = self.faults(hard_coded=READS_MAINS_RUNS,
+                            red=REFUSES_A_RED_BASE,
                             unpublished=REFUSES_AN_UNPUBLISHED_BASE)
 
-        # Assert
-        self.assertEqual([fault.split(":")[0] for fault in found], ["hard_coded.py"])
+        # Assert — once per world where the head lacks main's tip and the named base is green.
+        self.assertEqual([fault.split(":")[0] for fault in found], ["hard_coded.py", "hard_coded.py"])
 
     def test_Given_GuardsThatReadTheBaseOffThePullRequest_When_TheCheckRuns_Then_NothingIsReported(self):
         # Arrange / Act
-        found = self.faults(stale=REFUSES_A_HEAD_BEHIND_ITS_BASE,
+        found = self.faults(red=REFUSES_A_RED_BASE,
                             unpublished=REFUSES_AN_UNPUBLISHED_BASE)
 
         # Assert
         self.assertEqual(found, [])
 
-    def test_Given_NothingRefusingAHeadBehindItsBase_When_TheCheckRuns_Then_TheFloorIsReported(self):
+    def test_Given_AGuardRefusingAHeadBehindAGreenBase_When_TheCheckRuns_Then_ItIsReported(self):
+        # Arrange / Act
+        found = self.faults(stale=REFUSES_A_HEAD_BEHIND_ITS_BASE,
+                            red=REFUSES_A_RED_BASE,
+                            unpublished=REFUSES_AN_UNPUBLISHED_BASE)
+
+        # Assert
+        self.assertEqual([fault.split(":")[0] for fault in found], ["stale.py"])
+
+    def test_Given_NothingRefusingARedBase_When_TheCheckRuns_Then_TheFloorIsReported(self):
         # Arrange / Act
         found = self.faults(unpublished=REFUSES_AN_UNPUBLISHED_BASE, quiet=REFUSES_NOTHING)
 
         # Assert
-        self.assertEqual(found, ["no guard refuses a head that does not contain the base it names, "
-                                 "so the world above is satisfied by guards that refuse nothing"])
+        self.assertEqual(found, ["no guard refuses a merge onto a base whose push runs last failed "
+                                 "at a commit the head lacks, so the worlds above are satisfied by "
+                                 "guards that refuse nothing"])
 
     def test_Given_NothingRefusingAnUnpublishedBase_When_TheCheckRuns_Then_TheFloorIsReported(self):
         # Arrange / Act
-        found = self.faults(stale=REFUSES_A_HEAD_BEHIND_ITS_BASE, quiet=REFUSES_NOTHING)
+        found = self.faults(red=REFUSES_A_RED_BASE, quiet=REFUSES_NOTHING)
 
         # Assert
         self.assertEqual(found, ["no guard refuses a merge onto a base holding a version the "
-                                 "CHANGELOG closed and nobody published, so the world above is "
+                                 "CHANGELOG closed and nobody published, so the worlds above are "
                                  "satisfied by guards that refuse nothing"])
 
     def test_Given_GuardsReadingOnlyTheFirstMergeInACommand_When_TheCheckRuns_Then_EachIsNamed(self):
         # Arrange / Act
-        found = self.faults(stale=STALE_FIRST_ONLY, unpublished=UNPUBLISHED_FIRST_ONLY)
+        found = self.faults(red=RED_FIRST_ONLY, unpublished=UNPUBLISHED_FIRST_ONLY)
 
         # Assert — the whole text, not the names in front of it: a cut that reports every guard from
         # the first world names these two as well, and a comparison over names alone passes on it.
         compound = ("refuses that merge on its own and allows a command carrying it second, so it "
                     "reads an operand rather than the command")
-        self.assertEqual(found, [f"stale.py: {compound}", f"unpublished.py: {compound}"])
+        self.assertEqual(found, [f"red.py: {compound}", f"unpublished.py: {compound}"])
 
     def test_Given_AGuardRefusingByDecisionRatherThanExitCode_When_TheCheckRuns_Then_ItIsReported(self):
         # Arrange / Act
-        found = self.faults(stale=REFUSES_A_HEAD_BEHIND_ITS_BASE,
+        found = self.faults(red=REFUSES_A_RED_BASE,
                             unpublished=REFUSES_AN_UNPUBLISHED_BASE,
                             denier=DENIES_BY_DECISION)
 
         # Assert
-        self.assertEqual([fault.split(":")[0] for fault in found], ["denier.py"])
+        self.assertEqual([fault.split(":")[0] for fault in found], ["denier.py", "denier.py"])
 
     def test_Given_AGuardReadingWhatNoWorldArranges_When_TheCheckRuns_Then_ItIsReported(self):
         # Arrange / Act
-        found = self.faults(stale=REFUSES_A_HEAD_BEHIND_ITS_BASE,
+        found = self.faults(red=REFUSES_A_RED_BASE,
                             unpublished=REFUSES_AN_UNPUBLISHED_BASE,
                             elsewhere=READS_WHAT_NO_WORLD_ARRANGES)
 
@@ -210,7 +243,7 @@ class GuardTests(unittest.TestCase):
 
     def test_Given_ADirectoryHoldingFewerGuardsThanTheFloor_When_TheCheckRuns_Then_ItIsReported(self):
         # Arrange / Act
-        found = self.faults(floor=3, stale=REFUSES_A_HEAD_BEHIND_ITS_BASE,
+        found = self.faults(floor=3, red=REFUSES_A_RED_BASE,
                             unpublished=REFUSES_AN_UNPUBLISHED_BASE)
 
         # Assert
