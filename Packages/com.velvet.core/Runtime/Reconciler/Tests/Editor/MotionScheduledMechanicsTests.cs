@@ -123,6 +123,72 @@ namespace Velvet.Tests
             Assert.That(element.style.translate.keyword, Is.EqualTo(StyleKeyword.Null));
         }
 
+        // Where the replacement sits after the move across parents; the mounted element sits at left 200.
+        private static int s_movedLeft;
+
+        // One layoutId Motion, moved from the second parent to the first. The first parent reconciles first,
+        // so the replacement is created while the element it replaces is still mounted, and the mounted one
+        // is never patched in between.
+        [Component]
+        private static VNode AcrossParentsBoxRender()
+        {
+            var (moved, setMoved) = Hooks.UseState(false);
+            s_setMoved = setMoved;
+            VNode Box(int left) => V.Motion(
+                name: "shared",
+                layoutId: "shared-box",
+                transition: new StyleTransitionConfig { Type = TransitionType.Spring, Stiffness = 100f, Damping = 10f, Mass = 1f },
+                className: $"left-[{left}px] top-[0px] w-[100px] h-[100px]");
+            return V.Div(children: new VNode[]
+            {
+                V.Div(key: "first", children: moved ? new[] { Box(s_movedLeft) } : Array.Empty<VNode>()),
+                V.Div(key: "second", children: moved ? Array.Empty<VNode>() : new[] { Box(200) }),
+            });
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionThatNeverMoved_When_ItMovesToAnotherParentAtTheSameBox_Then_TheReplacementCarriesNoInversePose()
+        {
+            // Arrange
+            s_movedLeft = 200;
+            using var mounted = V.Mount(Root, V.Component(AcrossParentsBoxRender, key: "root"));
+            Tick();
+            var original = Root.Q<VisualElement>("shared");
+
+            // Act
+            s_setMoved.Invoke(true);
+            mounted.FlushStateForTest();
+            Tick();
+
+            // Assert — a new element, standing where the old one stood, with neither an inline translate nor
+            // an inline scale.
+            var replacement = Root.Q<VisualElement>("shared");
+            Assert.That((ReferenceEquals(original, replacement), replacement.style.translate.keyword, replacement.style.scale.keyword),
+                Is.EqualTo((false, StyleKeyword.Null, StyleKeyword.Null)));
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotionThatNeverMoved_When_ItMovesToAnotherParentAtAnotherBox_Then_TheReplacementTweensFromTheOldBoxAtFullSize()
+        {
+            // Arrange
+            s_movedLeft = 400;
+            using var mounted = V.Mount(Root, V.Component(AcrossParentsBoxRender, key: "root"));
+            Tick();
+            var original = Root.Q<VisualElement>("shared");
+
+            // Act
+            s_setMoved.Invoke(true);
+            mounted.FlushStateForTest();
+            Tick();
+
+            // Assert — pinned near the old element's box, 200px left of its own, at its own size.
+            var replacement = Root.Q<VisualElement>("shared");
+            Assert.That((ReferenceEquals(original, replacement),
+                    UnityEngine.Mathf.Abs(replacement.style.translate.value.x.value + 200f) < 50f,
+                    replacement.style.scale.keyword),
+                Is.EqualTo((false, true, StyleKeyword.Null)));
+        }
+
         private static StateUpdater<int> s_setStop;
 
         // Three stops along x, transition-transform so the tween takes a transition suspension.

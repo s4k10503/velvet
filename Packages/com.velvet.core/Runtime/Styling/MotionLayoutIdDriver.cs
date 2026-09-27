@@ -29,19 +29,15 @@ namespace Velvet
         // is captured on this element's own first post-patch GeometryChangedEvent instead.
         internal static void OnPatched(VisualElement element, string layoutId, float stiffness, float damping, float mass, ReconcilerContext ctx)
         {
+            // The old rect is read off whichever element the id is registered to — this one, or the one it
+            // replaces, which teardown has not reached yet — rather than stored at registration: a freshly
+            // created element registers before its first layout, with no rect to store, and a stored zero
+            // rect reads as a real box at the parent's origin.
             var hadPrevious = ctx.LayoutIdRegistry.TryGetValue(layoutId, out var previous);
-            // A same-key type flip creates a NEW element for the SAME layoutId — its own .layout has
-            // never been resolved (fresh element), so the old rect has to come from the id's last known
-            // settle point instead of this element's own (nonexistent) history.
-            var oldRect = ReferenceEquals(previous.Element, element) ? element.layout : previous.Rect;
+            var oldRect = hadPrevious ? previous.layout : default;
 
             ctx.ElementToLayoutId[element] = layoutId;
-            // Placeholder until the post-patch GeometryChangedEvent below overwrites it with the real
-            // new rect — anything reading the registry in between (a second, concurrent layoutId patch
-            // elsewhere in the same pass) sees the STALE rect, which only risks that other patch's own
-            // delta momentarily missing a change this element hasn't settled into yet, never corrupting
-            // it.
-            ctx.LayoutIdRegistry[layoutId] = (element, oldRect);
+            ctx.LayoutIdRegistry[layoutId] = element;
 
             if (!hadPrevious || !IsFiniteRect(oldRect))
             {
@@ -57,8 +53,6 @@ namespace Velvet
                 element.UnregisterCallback<GeometryChangedEvent>(OnGeometrySettled);
                 var newRect = element.layout;
                 if (!IsFiniteRect(newRect)) return;
-
-                ctx.LayoutIdRegistry[layoutId] = (element, newRect);
 
                 var plan = ComputeDeltaPlan(oldRect, newRect);
                 if (plan.IsEmpty) return;
@@ -113,7 +107,7 @@ namespace Velvet
             }
             if (ctx.ElementToLayoutId.TryGetValue(element, out var layoutId)
                 && ctx.LayoutIdRegistry.TryGetValue(layoutId, out var current)
-                && ReferenceEquals(current.Element, element))
+                && ReferenceEquals(current, element))
             {
                 ctx.LayoutIdRegistry.Remove(layoutId);
             }

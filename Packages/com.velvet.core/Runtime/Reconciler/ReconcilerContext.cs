@@ -1,6 +1,5 @@
 #nullable enable
 using System.Collections.Generic;
-using UnityEngine;
 using UnityEngine.UIElements;
 
 namespace Velvet
@@ -690,18 +689,14 @@ namespace Velvet
         // its teardown tells the wait.
         public Dictionary<VisualElement, PresenceExitWait> PresenceDescendantExitWaits { get; } = new();
 
-        // The last VisualElement a V.Motion(layoutId:) id settled at, and the resolved layout rect
-        // (parent-relative, from element.layout) it settled at — used by MotionLayoutIdDriver to
-        // detect a rect change (including across a DIFFERENT physical element entirely, e.g. after a
-        // same-key type flip or a move to a different parent) and FLIP-tween from the old rect to the
-        // new one. Keyed by the id string, not an element, so it cannot ride the _pureElementSideTables
-        // auto-clear mechanism below (that clears entries keyed BY a departing element, not entries
-        // that happen to reference one as a value) — ElementToLayoutId is the reverse index that makes
-        // manual cleanup possible: when an element is torn down, look up its id here, and only then
-        // remove the LayoutIdRegistry entry IF it still points at this exact element (a same-key type
-        // flip may already have overwritten it with the replacement before the old element's own
-        // teardown runs).
-        public Dictionary<string, (VisualElement Element, Rect Rect)> LayoutIdRegistry { get; } = new();
+        // The element a V.Motion(layoutId:) id is registered to, whose layout MotionLayoutIdDriver
+        // reads as the rect a FLIP tween starts from. Keyed by the id string, not an element, so it
+        // cannot ride the _pureElementSideTables auto-clear mechanism below (that clears entries keyed BY
+        // a departing element, not entries that happen to reference one as a value) — ElementToLayoutId
+        // is the reverse index that makes manual cleanup possible: when an element is torn down, look up
+        // its id here, and only then remove the LayoutIdRegistry entry IF it still points at this exact
+        // element (a replacement created before the old element's teardown has already taken it over).
+        public Dictionary<string, VisualElement> LayoutIdRegistry { get; } = new();
         public Dictionary<VisualElement, string> ElementToLayoutId { get; } = new();
 
         // The recurring physics tick for an in-flight layoutId FLIP tween, keyed by the animating
