@@ -20,7 +20,6 @@ namespace Velvet.Tests
     {
         const int ConcurrentChains = 20000;
         const long SettleTimeoutMilliseconds = 30000;
-        const int DrainTimeoutMilliseconds = 5000;
 
         static readonly MethodInfo CaptureMethod =
             typeof(VelvetMainThread).GetMethod("Capture", BindingFlags.Static | BindingFlags.NonPublic)!;
@@ -321,14 +320,12 @@ namespace Velvet.Tests
             VelvetMainThread.Post(_ => firstRuns++, null);
             VelvetMainThread.RunHandoffs();
             VelvetMainThread.Post(_ => { }, null);
-            var drain = new Thread(VelvetMainThread.RunHandoffs) { IsBackground = true };
 
             // Act
-            drain.Start();
-            var finished = drain.Join(DrainTimeoutMilliseconds);
+            VelvetMainThread.RunHandoffs();
 
             // Assert
-            Assert.That((finished, firstRuns), Is.EqualTo((true, 1)));
+            Assert.That(firstRuns, Is.EqualTo(1));
         }
 
         [Test]

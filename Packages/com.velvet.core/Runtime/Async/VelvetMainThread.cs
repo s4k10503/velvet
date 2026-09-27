@@ -26,10 +26,8 @@ namespace Velvet
         static readonly SendOrPostCallback RunHandoffsCallback = static _ => RunHandoffs();
         static readonly object Gate = new();
         static List<Handoff> _pending = new();
-        static List<Handoff> _running = new();
         static int _threadId;
         static SynchronizationContext? _context;
-        static bool _draining;
 
         // Before Capture runs, a caller is taken for the main thread only when it holds Unity's context,
         // so that code running ahead of Capture on the main thread is not refused as off it.
@@ -58,50 +56,34 @@ namespace Velvet
             _context!.Post(RunHandoffsCallback, null);
         }
 
-        // Main thread only. A handoff can pump Unity's context and so reach this again: the nested call
-        // returns and the outer one loops until nothing is pending, so a list being walked is never
-        // handed back to Post. A continuation that throws must not end the walk either: the list would go
-        // back to Post uncleared, and what had already run would run again.
+        // Main thread only. Each batch leaves in a list of its own, so a handoff that pumps Unity's
+        // context and reaches this again drains only what was posted since, and no list being walked is
+        // one Post can reach. A continuation that throws must not end the walk, or the rest of its batch
+        // would never run.
         internal static void RunHandoffs()
         {
-            if (_draining)
+            List<Handoff> batch;
+            lock (Gate)
             {
-                return;
-            }
-
-            _draining = true;
-            try
-            {
-                while (true)
+                if (_pending.Count == 0)
                 {
-                    lock (Gate)
-                    {
-                        if (_pending.Count == 0)
-                        {
-                            return;
-                        }
-
-                        (_pending, _running) = (_running, _pending);
-                    }
-
-                    for (var i = 0; i < _running.Count; i++)
-                    {
-                        try
-                        {
-                            _running[i].Continuation(_running[i].State);
-                        }
-                        catch (Exception exception)
-                        {
-                            VelvetTaskScheduler.PublishUnobservedException(exception);
-                        }
-                    }
-
-                    _running.Clear();
+                    return;
                 }
+
+                batch = _pending;
+                _pending = new List<Handoff>();
             }
-            finally
+
+            for (var i = 0; i < batch.Count; i++)
             {
-                _draining = false;
+                try
+                {
+                    batch[i].Continuation(batch[i].State);
+                }
+                catch (Exception exception)
+                {
+                    VelvetTaskScheduler.PublishUnobservedException(exception);
+                }
             }
         }
 
