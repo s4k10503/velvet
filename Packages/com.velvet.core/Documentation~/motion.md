@@ -268,16 +268,15 @@ the plan are built in one synchronous call, off-panel, before any style resoluti
   either, the element transitions nothing and nothing suspends. A play suspends only where its own
   channels intersect the resolved set — a `transition-colors` element running a fade/slide keeps
   its hover fade, while the same play on a `transition-transform` or `transition-all` element
-  suspends. Two blind spots: the check runs once at play start, so a
-  variant turning on `transition-all` mid-play is not picked up until the next play, and a
-  whole-property transition written as an inline style by something other than a `duration-*`
-  utility is not seen.
-  When it does suspend, the suspension is **element-wide**: UI Toolkit's `transition-property` is a
-  positive list with no "everything except these" spelling, so the element's *other* transitions
+  suspends. One blind spot: the check runs once at play start, so a variant turning on
+  `transition-all` mid-play is not picked up until the next play. A play starting while a variant
+  tween holds the inline `transition-property` takes what it drives out of that list rather than
+  writing over it.
+  When it does suspend, the suspension is **element-wide**: the element's *other* transitions
   land instantly too, across the play's `DelaySec` and stagger slot as well as its motion — the
   element is already parked at its from-pose over that window. This is **narrower than Framer
   Motion**, which takes over only the values it animates and leaves the element's other CSS
-  transitions running; UI Toolkit gives no way to express that. Two overlapping plays each hold
+  transitions running. Two overlapping plays each hold
   their own claim, so the first to finish cannot un-suspend the second, and the suspension lifts as
   soon as the last one settles or is cancelled. Reach for `Tween` when you want the class's own
   transition to do the work instead.
@@ -360,8 +359,7 @@ Two combinations to avoid, both because something else writes the same slot ever
   no `transition-*` utility — a bare `duration-*` leaves UI Toolkit's initial `all` standing, which
   covers every slot.
 
-The suspension is element-wide (UI Toolkit's `transition-property` has no "everything except these"
-spelling), so while a suspended mode runs, the element's *other*
+The suspension is element-wide, so while a suspended mode runs, the element's *other*
 transitions land instantly too. It is taken only when the element's own utility CLASSES name the slot
 the mode writes — `animate-pulse transition-colors` keeps its colour fade — and handed back as soon
 as a re-render leaves nothing transitioning that slot. Reading the classes means anything that never

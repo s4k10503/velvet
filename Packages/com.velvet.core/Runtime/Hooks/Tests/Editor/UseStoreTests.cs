@@ -190,7 +190,7 @@ namespace Velvet.Tests
             // Arrange
             using var store = new TestIndexedStore(new IndexedState(0, new[] { 10, 20 }));
             s_throwingSelectorStore = store;
-            using var mounted = V.Mount(_root, V.Component(ThrowingSelectorBoundaryRender, key: "boundary"));
+            using var mounted = V.Mount(_root, V.Component(ThrowingSelectorBoundaryRender, key: "boundary"), CaughtErrors.Unlogged);
             Assume.That(s_throwingSelectorFallbackShown, Is.False, "Precondition: the boundary is healthy before the bad emit");
 
             // Act — move Index out of range so the selector throws on the subscription callback

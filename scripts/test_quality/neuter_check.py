@@ -425,7 +425,8 @@ def run_suite(unity, project, platform, fixture, results, log, timeout):
     the start cannot see it.
     """
     command = [
-        unity, "-runTests", "-batchmode", "-projectPath", str(project),
+        # -debugCodeOptimization: AGENTS.md's headless recipe says why a local run passes it.
+        unity, "-runTests", "-batchmode", "-debugCodeOptimization", "-projectPath", str(project),
         "-testPlatform", platform, "-testFilter", fixture,
         "-testResults", str(results), "-logFile", str(log),
     ]

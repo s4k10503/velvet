@@ -537,7 +537,7 @@ namespace Velvet.Tests
             // this entry; the container it names emptied its own slots before the abort was raised.
             using var store = new PresenceStore();
             s_store = store;
-            using var mounted = V.Mount(_root, V.Component(PresenceBesideAThrowingBoundary, key: "host"));
+            using var mounted = V.Mount(_root, V.Component(PresenceBesideAThrowingBoundary, key: "host"), CaughtErrors.Unlogged);
             var ctx = mounted.Root.Reconciler.Context;
             var recorded = ctx.PresenceStates.Count;
 
@@ -559,7 +559,7 @@ namespace Velvet.Tests
             // be asked of the strategy afterwards rather than taken from the call returning.
             using var store = new PresenceStore();
             s_store = store;
-            using var mounted = V.Mount(_root, V.Component(FastPathHostAbortingBeforeItsRemovalPhase, key: "host"));
+            using var mounted = V.Mount(_root, V.Component(FastPathHostAbortingBeforeItsRemovalPhase, key: "host"), CaughtErrors.Unlogged);
             var ctx = mounted.Root.Reconciler.Context;
             var host = _root.Q<VisualElement>("host");
 

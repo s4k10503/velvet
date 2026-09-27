@@ -214,7 +214,7 @@ namespace Velvet.Tests
             yield return null;
 
             // Act
-            _mounted = V.Mount(root, V.Component(FrameBoundary, key: "root"));
+            _mounted = V.Mount(root, V.Component(FrameBoundary, key: "root"), CaughtErrors.Unlogged);
             yield return WaitRealtime(0.5);
 
             // Assert — a frame-callback exception routes to the nearest error boundary the way effect
@@ -275,7 +275,7 @@ namespace Velvet.Tests
             // alternate explanation for its call count never moving afterward).
             var root = CreatePanelRoot();
             yield return null;
-            _mounted = V.Mount(root, V.Component(FrameBoundaryWithSibling, key: "root"));
+            _mounted = V.Mount(root, V.Component(FrameBoundaryWithSibling, key: "root"), CaughtErrors.Unlogged);
             yield return WaitRealtime(0.3);
             Assume.That(s_siblingCalls, Is.GreaterThan(0),
                 "Precondition: the sibling ticks normally before the throw is armed");

@@ -152,6 +152,15 @@ namespace Velvet.SourceGenerators.Tests
             return written;
         }
 
+        /// <summary>Each longhand as <c>Identifier=ussName</c>, the name read back through the emitted table.</summary>
+        public IReadOnlyList<string> UssNamesByIdentifier()
+        {
+            var ussName = _properties.GetMethod("UssName", BindingFlags.Public | BindingFlags.Static)!;
+            return Enum.GetValues(_longhand).Cast<object>()
+                .Select(value => value + "=" + (string)ussName.Invoke(null, new[] { value })!)
+                .ToList();
+        }
+
         public string GateOf(string className)
         {
             if (!TryGet(className, out var rule))

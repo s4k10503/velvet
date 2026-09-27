@@ -4,8 +4,6 @@
 A branch cut from another change's tip carried three commits from an unmerged pull request;
 after that pull request was squash-merged, rebasing the new branch replayed content already on
 main and conflicted, and the pull request had to be abandoned and reopened at a new number.
-Branching from a stale main produces a branch the merge guard refuses later, when the fix is a
-rebase rather than a different starting point.
 
 The command is split into segments and tokenised rather than matched as text. A regex over the
 masked command missed eleven spellings of a creation, quoting the branch name among them, and
@@ -24,7 +22,6 @@ from deferrals import DEFERRALS_OPERAND, deferred, disowned, unusable
 from repository import git_answer
 from shell_commands import (NAME_THE_TREE, UNPLACEABLE_MOVE, UNRESOLVED_CD, command_directory,
                             command_segments, git_invocation, tokens_of, without_redirections)
-from velvet_hooks import BRANCH_BASES
 
 
 HOOK_TOOLS = {"Bash"}
@@ -182,16 +179,6 @@ def what_git_said(asked, answer):
     return "\n".join("  " + line for line in [f"git {asked}"] + answer.stderr.splitlines())
 
 
-def record_branch_base(name, sha):
-    try:
-        with open(BRANCH_BASES, "a", encoding="utf-8") as bases:
-            bases.write(f"{name} {sha}\n")
-        return True
-    except OSError as err:
-        sys.stderr.write(f"Could not record branch base in {BRANCH_BASES}: {err}\n")
-        return False
-
-
 def from_origin_main(name):
     """The remedy both arms print, spelled so that the commands in it run where the refusal fires.
 
@@ -270,8 +257,8 @@ def refusal(cwd, name, start_point):
         )
         lines += [
             "",
-            "Branching from a stale main produces a branch the merge guard refuses later; the fix "
-            "then is a rebase rather than a different starting point.",
+            "A branch cut from it starts on a tree main has already left. Cut it from origin/main "
+            "instead:",
             "",
             *from_origin_main(name),
         ]
@@ -319,13 +306,12 @@ def main():
             # Parent tip at branch creation is gone after squash-merge; rebase --onto needs it now.
             head = git(target, "rev-parse", "HEAD")
             if head.code != 0:
-                sys.stderr.write(f"No base was recorded for `{name}`: git could not read HEAD.\n\n"
+                sys.stderr.write(f"No start point can be named for `{name}`: git could not read HEAD.\n\n"
                                  + what_git_said("rev-parse HEAD", head) + "\n")
                 continue
             head_sha = head.stdout.strip()
-            record_branch_base(name, head_sha)
             sys.stderr.write(
-                f"Recorded base {head_sha} for `{name}`. "
+                f"`{name}` starts at {head_sha}. "
                 f"After parent merges (assumes origin/main is current — fetch first if unsure):\n"
                 f"git fetch origin main\n"
                 f"git rebase --no-autostash --onto origin/main {head_sha}\n"

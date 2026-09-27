@@ -349,6 +349,24 @@ def read_at(project, rev, path):
     return git(project, "show", f"{rev}:{path}")
 
 
+def release_commit(project, rev, timeout=5):
+    """(the newest commit on `rev` that dated its CHANGELOG's newest closed version, that version),
+    or None where the CHANGELOG at `rev` closes none.
+
+    Found by the heading line itself, so a commit that dated the section is found whatever else it
+    moved. Raises on a git failure, the way `git` does.
+    """
+    dated = [(version, line)
+             for version, line in version_headings(read_at(project, rev, CHANGELOG_PATH))
+             if RELEASE_DATE.search(line)]
+    if not dated:
+        return None
+    version, line = dated[0]
+    found = git(project, "log", "-1", "--format=%H", "-S", line, rev, "--", CHANGELOG_PATH,
+                timeout=timeout).strip()
+    return (found, version) if found else None
+
+
 def unpublished_reason(project, rev="origin/main", remote="origin", fetch=False, result=None):
     """publication_reason for one revision of a repository, or None when it reads clean.
 
