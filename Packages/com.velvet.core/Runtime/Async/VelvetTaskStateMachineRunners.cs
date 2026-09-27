@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 
@@ -34,9 +33,7 @@ namespace Velvet
         IVelvetTaskStateMachineRunner
         where TStateMachine : IAsyncStateMachine
     {
-        const int MaxPoolSize = 64;
-
-        static readonly Stack<AsyncVelvetTaskMethod<TStateMachine>> Pool = new();
+        static readonly MainThreadPool<AsyncVelvetTaskMethod<TStateMachine>> Pool = new();
 
         TStateMachine _stateMachine = default!;
         VelvetTaskCompletionSourceCore<AsyncUnit> _core = new();
@@ -57,14 +54,13 @@ namespace Velvet
         // SetResult nor SetException on the resumed copy then reaches the task the caller holds.
         public static void Rent(ref TStateMachine stateMachine, [NotNull] ref IVelvetTaskStateMachineRunner? field)
         {
-            AsyncVelvetTaskMethod<TStateMachine> runner;
-            if (Pool.Count == 0)
+            var runner = Pool.Rent();
+            if (runner == null)
             {
                 runner = new AsyncVelvetTaskMethod<TStateMachine>();
             }
             else
             {
-                runner = Pool.Pop();
                 runner._core.Reset();
             }
 
@@ -111,10 +107,7 @@ namespace Velvet
             _returnedToPool = true;
             _core.Reset();
             _stateMachine = default!;
-            if (Pool.Count < MaxPoolSize)
-            {
-                Pool.Push(this);
-            }
+            Pool.Return(this);
         }
     }
 
@@ -123,9 +116,7 @@ namespace Velvet
         IVelvetTaskStateMachineRunner<T>
         where TStateMachine : IAsyncStateMachine
     {
-        const int MaxPoolSize = 64;
-
-        static readonly Stack<AsyncVelvetTaskMethod<TStateMachine, T>> Pool = new();
+        static readonly MainThreadPool<AsyncVelvetTaskMethod<TStateMachine, T>> Pool = new();
 
         TStateMachine _stateMachine = default!;
         VelvetTaskCompletionSourceCore<T> _core = new();
@@ -144,14 +135,13 @@ namespace Velvet
         // Same publish-before-copy ordering as the non-generic AsyncVelvetTaskMethod.
         public static void Rent(ref TStateMachine stateMachine, [NotNull] ref IVelvetTaskStateMachineRunner<T>? field)
         {
-            AsyncVelvetTaskMethod<TStateMachine, T> runner;
-            if (Pool.Count == 0)
+            var runner = Pool.Rent();
+            if (runner == null)
             {
                 runner = new AsyncVelvetTaskMethod<TStateMachine, T>();
             }
             else
             {
-                runner = Pool.Pop();
                 runner._core.Reset();
             }
 
@@ -200,10 +190,7 @@ namespace Velvet
             _returnedToPool = true;
             _core.Reset();
             _stateMachine = default!;
-            if (Pool.Count < MaxPoolSize)
-            {
-                Pool.Push(this);
-            }
+            Pool.Return(this);
         }
     }
 }
