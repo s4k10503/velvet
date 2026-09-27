@@ -1,4 +1,5 @@
 #nullable enable
+using System;
 using UnityEngine.UIElements;
 
 namespace Velvet
@@ -7,19 +8,16 @@ namespace Velvet
     // VNode tree to the host (UI-Toolkit) tree and reconciles the prior committed tree's lifecycle. For
     // wrapper-less (inline-mounted) fibers it also owns the inline-slot geometry: several fibers share one
     // MountPoint, so each commits only its own [MountSlotStart, MountSlotStart + MountSlotCount) sub-range
-    // and propagates its child-count delta to following siblings. Pure functions of the fiber + the trees
-    // the orchestrator (FiberRenderer.RenderAndReconcile) hands in after FiberBeginWork produced them.
+    // and moves the recorded starts behind it by its child-count delta. Pure functions of the fiber + the
+    // trees the orchestrator (FiberRenderer.RenderAndReconcile) hands in after FiberBeginWork produced them.
     internal static class FiberCommitWork
     {
-        // The slot index at which this inline fiber's range ENDS within its shared MountPoint — the
-        // nearest co-located tenant's MountSlotStart beyond this fiber's own, or int.MaxValue when
-        // this fiber is the last/only tenant. Used to bound the keyed desync-recovery rebuild so it
-        // cannot reach past this fiber's rows into a sibling's. The sibling chain is fiber-CREATION
-        // order and a keyed reorder does not resync it, so the first co-located entry can sit
-        // visually BEFORE this fiber; bounding by it would make slotLimit < slotStart — every slot
-        // in this fiber's own range would look missing, and an independent re-render of the
-        // displaced fiber would insert a permanent duplicate instead of patching in place. Walk the
-        // parent's whole co-located chain instead and take the minimum start strictly beyond ours.
+        // The slotLimit of this fiber's own reconcile: the nearest start beyond its own among the co-located
+        // fibers of its parent's chain, or int.MaxValue. The chain is the parent's alone, so a fiber that is
+        // its holder's last child gets int.MaxValue even where the holder's next sibling's rows follow.
+        // A fiber no walk has placed yet (MountSlotCount still -1) is passed over: its start is where a walk
+        // still in progress means to put it, and a boundary catching in that walk would be bounded short of
+        // its own rows.
         private static int NextInlineSiblingSlotStart(ComponentFiber fiber)
         {
             var limit = int.MaxValue;
@@ -28,6 +26,11 @@ namespace Velvet
             {
                 if (!ReferenceEquals(sibling, fiber)
                     && sibling.IsInlineMounted
+                    // MUTANT_SURVIVES(unreachable, boundary): passing over a placed empty sibling too only lifts
+                    // the limit further past this fiber's old rows, and the reconcile reads the limit against
+                    // those rows alone unless the container holds fewer of them than the old tree, the desync
+                    // ReconcilerInlineSlotDesyncTests pins as never produced by a component.
+                    && sibling.MountSlotCount >= 0
                     && sibling.MountPoint == fiber.MountPoint
                     && sibling.MountSlotStart > fiber.MountSlotStart
                     && sibling.MountSlotStart < limit)
@@ -44,65 +47,216 @@ namespace Velvet
         internal static int LogicalMountPointChildCount(VisualElement? mountPoint)
             => mountPoint != null ? LogicalChildSlots.Count(mountPoint) : 0;
 
-        // Propagates an inline-mount fiber's committed child-count change to the following siblings that
-        // share its MountPoint. Updates the fiber's own slot count, then shifts each of their
-        // ComponentFiber.MountSlotStart by the same delta and re-bases the captured slotStart of one whose
-        // own reconcile is parked. Called both from the initial RenderAndReconcile pass and from each
-        // ContinueReconcile resume slice, since the delta is committed incrementally across slices. No-op
-        // when actualDelta is zero.
+        // Commits an inline-mount fiber's child-count change: its own count and the counts of the fibers
+        // whose rows hold its rows, then the recorded starts the change moves — each fiber on the same
+        // MountPoint whose rows come after this fiber's, and, where this fiber's rows are a Portal's, that
+        // Portal's range and the ranges after it. Called from ReconcileOwnRows, from each ContinueReconcile
+        // resume slice and from the force-drain, since a delta can be committed incrementally across slices.
+        // No-op when actualDelta is zero.
+        //
+        // The fibers moved are read off the registry's index of the MountPoint rather than off the sibling
+        // chain: a fiber's rows come after this one's whether it is a sibling, a sibling's own inline child,
+        // a sibling of a fiber whose rows hold this one's, or a child a neighbouring Portal mounted onto the
+        // same target, and the chain reaches only the first.
         internal static void PropagateInlineSlotShift(ComponentFiber fiber, int actualDelta)
         {
             if (actualDelta == 0) return;
+            var mountPoint = fiber.MountPoint;
 
-            var baseline = fiber.MountSlotCount < 0 ? 0 : fiber.MountSlotCount;
-            fiber.MountSlotCount = baseline + actualDelta;
-            for (var sibling = fiber.Sibling; sibling != null; sibling = sibling.Sibling)
+            var heldNoRows = fiber.MountSlotCount <= 0;
+            for (var holder = fiber; IsTenantOf(holder, mountPoint); holder = holder!.Parent)
             {
-                // The chain is every following sibling, which for a Portal is siblings mounted on other
-                // targets too. A delta measured on one target says nothing about a coordinate into
-                // another, and shifting it moves that sibling's next write off the rows it owns.
-                // `NextInlineSiblingSlotStart` above reads the same chain under the same condition.
-                if (sibling.MountPoint != fiber.MountPoint)
-                {
-                    continue;
-                }
+                holder!.MountSlotCount = Math.Max(holder.MountSlotCount, 0) + actualDelta;
+            }
 
-                // The chain is creation order, and NextInlineSiblingSlotStart says a keyed reorder
-                // does not resync it -- so a following sibling can hold rows that sit BEFORE this
-                // growth, and shifting one moves its next write off the rows it owns. Growth at an
-                // index cannot move what starts before it.
-                if (sibling.MountSlotStart < fiber.MountSlotStart)
+            var tenancy = TenancyOf(fiber);
+            if (tenancy != null)
+            {
+                tenancy.ShiftedRows += actualDelta;
+                foreach (var tenant in tenancy.Fibers)
                 {
-                    continue;
-                }
-
-                sibling.MountSlotStart += actualDelta;
-                // A following sibling whose own time-sliced reconcile is parked captured its slotStart as an
-                // absolute offset into the shared parent. This shift moved its already-committed rows within
-                // that parent, so re-base the suspended state by the same delta; otherwise its resume writes
-                // the remaining rows at stale absolute indices. Wrapper-mounted siblings reconcile their own VE
-                // at slotStart 0 and are unaffected.
-                if (sibling.IsInlineMounted && sibling.Reconciler?.HasPendingWork == true)
-                {
-                    sibling.Reconciler.RebasePendingSlotStart(actualDelta);
+                    if (IsPlacedAfter(tenant, fiber, heldNoRows)) MoveTenant(tenant, actualDelta);
                 }
             }
+            ShiftPortalRangesAround(fiber, mountPoint, actualDelta);
+        }
+
+        // A Portal's range on target, changed before this, changed length by delta. The fibers whose rows lie
+        // behind it move with it (PortalSlotTracker.IsBehind decides, as it does for the other Portals' ranges);
+        // the range's own fibers were placed by the reconcile that changed it, or are leaving with it. Called
+        // beside PortalSlotTracker.ShiftRangesBehind.
+        internal static void ShiftTenantsAfterPortalRange(
+            ComponentRegistry registry, VisualElement target, VisualElement placeholder, PortalSlotInfo changed, int delta)
+        {
+            // MUTANT_SURVIVES(equivalent): a zero delta moves no start and adds nothing to the total, so the
+            // loop it skips changes nothing.
+            if (delta == 0) return;
+            var tenancy = registry.TenancyOf(target);
+            if (tenancy == null) return;
+            tenancy.ShiftedRows += delta;
+            foreach (var tenant in tenancy.Fibers)
+            {
+                var owning = OwningPortalOf(tenant, target);
+                if (ReferenceEquals(owning, placeholder)) continue;
+                if (!PortalSlotTracker.IsBehind(tenant.MountSlotStart, tenant.MountSlotCount > 0, owning, placeholder, changed))
+                {
+                    continue;
+                }
+                MoveTenant(tenant, delta);
+            }
+        }
+
+        private static void MoveTenant(ComponentFiber tenant, int delta)
+        {
+            tenant.MountSlotStart += delta;
+            // A tenant whose own time-sliced reconcile is parked captured its slotStart as an absolute offset
+            // into the shared parent. This shift moved its already-committed rows within that parent, so
+            // re-base the suspended state by the same delta; otherwise its resume writes the remaining rows at
+            // stale absolute indices.
+            if (tenant.Reconciler?.HasPendingWork == true)
+            {
+                tenant.Reconciler.RebasePendingSlotStart(delta);
+            }
+        }
+
+        private static InlineTenancy? TenancyOf(ComponentFiber fiber)
+            => fiber.MountPoint == null ? null : fiber.Reconciler?.Context.ComponentRegistry.TenancyOf(fiber.MountPoint);
+
+        // A MountPoint's child-count change across a span of work, less the rows a reconcile nested inside
+        // the span already moved the recorded starts for. The span's before/after count includes what a
+        // boundary's fallback swap inside the fiber's own walk, or a parked fiber drained inside it, changed,
+        // and each of those has propagated its own change: counted again here, the starts behind it would
+        // move twice.
+        internal readonly struct RowCountWindow
+        {
+            private readonly VisualElement? _mountPoint;
+            private readonly InlineTenancy? _tenancy;
+            private readonly int _rowsBefore;
+            private readonly int _shiftedBefore;
+
+            internal RowCountWindow(ComponentFiber fiber)
+            {
+                _mountPoint = fiber.MountPoint;
+                _tenancy = TenancyOf(fiber);
+                _rowsBefore = LogicalMountPointChildCount(_mountPoint);
+                _shiftedBefore = _tenancy?.ShiftedRows ?? 0;
+            }
+
+            internal int UnshiftedChange
+                => LogicalMountPointChildCount(_mountPoint) - _rowsBefore
+                   - ((_tenancy?.ShiftedRows ?? 0) - _shiftedBefore);
+        }
+
+        private static bool IsTenantOf(ComponentFiber? fiber, VisualElement? mountPoint)
+        {
+            // MUTANT_SURVIVES(equivalent, clause removed): a non-inline fiber on a tenant's MountPoint is a root or wrapper.
+            // Such a fiber never propagates, is in no tenancy, is never the holder HoldsRowsOf looks for, and
+            // carries no Portal placeholder, so walking through it changes nothing any of those read.
+            return fiber != null && fiber.IsInlineMounted && ReferenceEquals(fiber.MountPoint, mountPoint);
+        }
+
+        private static bool HoldsRowsOf(ComponentFiber outer, ComponentFiber inner)
+        {
+            for (var holder = inner.Parent; IsTenantOf(holder, inner.MountPoint!); holder = holder!.Parent)
+            {
+                if (ReferenceEquals(holder, outer)) return true;
+            }
+            return false;
+        }
+
+        // Ranges are nested or disjoint, so a start beyond fiber's own is after it unless fiber holds it. At
+        // fiber's own start the answer turns on emptiness. A fiber that held rows starts at its first row, and
+        // a tenant starting there either holds that row or holds none and sits before it. One that held none
+        // sits before any tenant's first row there; between two that hold none this takes the committed
+        // sibling order, or the order of their Portals where they belong to two.
+        private static bool IsPlacedAfter(ComponentFiber tenant, ComponentFiber fiber, bool fiberHeldNoRows)
+        {
+            if (ReferenceEquals(tenant, fiber)) return false;
+            if (tenant.MountSlotStart < fiber.MountSlotStart || HoldsRowsOf(fiber, tenant)) return false;
+            if (tenant.MountSlotStart > fiber.MountSlotStart) return true;
+            if (!fiberHeldNoRows || HoldsRowsOf(tenant, fiber)) return false;
+            if (tenant.MountSlotCount > 0) return true;
+            // Two components of different Portals take the order those Portals' ranges take, which
+            // PortalSlotTracker.IsBehind reads off the placeholders: the fiber chain need not agree with it once
+            // the two were placed by different walks.
+            var tenantPortal = OwningPortalOf(tenant, fiber.MountPoint);
+            var fiberPortal = OwningPortalOf(fiber, fiber.MountPoint);
+            if (tenantPortal != null && fiberPortal != null && !ReferenceEquals(tenantPortal, fiberPortal))
+            {
+                return PortalSlotTracker.PrecedesInTree(fiberPortal, tenantPortal);
+            }
+            return FollowsInSiblingChain(tenant, fiber);
+        }
+
+        private static bool FollowsInSiblingChain(ComponentFiber tenant, ComponentFiber fiber)
+        {
+            var later = tenant;
+            var earlier = fiber;
+            var laterDepth = Depth(later);
+            var earlierDepth = Depth(earlier);
+            for (; laterDepth > earlierDepth; laterDepth--) later = later.Parent!;
+            for (; earlierDepth > laterDepth; earlierDepth--) earlier = earlier.Parent!;
+            while (!ReferenceEquals(later.Parent, earlier.Parent))
+            {
+                later = later.Parent!;
+                earlier = earlier.Parent!;
+            }
+            for (var sibling = earlier.Sibling; sibling != null; sibling = sibling.Sibling)
+            {
+                if (ReferenceEquals(sibling, later)) return true;
+            }
+            return false;
+        }
+
+        private static int Depth(ComponentFiber fiber)
+        {
+            var depth = 0;
+            for (var ancestor = fiber.Parent; ancestor != null; ancestor = ancestor.Parent) depth++;
+            return depth;
+        }
+
+        // Read off the nearest fiber of the chain that carries a placeholder, since a fiber below a Portal's
+        // own child can have lost its own — ComponentFiber.OwningPortalPlaceholder owns when.
+        private static VisualElement? OwningPortalOf(ComponentFiber fiber, VisualElement? mountPoint)
+        {
+            for (var holder = fiber; IsTenantOf(holder, mountPoint); holder = holder!.Parent)
+            {
+                if (holder!.OwningPortalPlaceholder != null) return holder.OwningPortalPlaceholder;
+            }
+            return null;
+        }
+
+        // A Portal's recorded range on mountPoint is a start of its own, read by that Portal's patch and its
+        // teardown: the range holding fiber takes the change as length, and the ranges after it as start. A
+        // fiber below a Portal's child but inside an element of its own carries that Portal's placeholder
+        // too, and its rows are not the range's, which is what the target comparison separates.
+        private static void ShiftPortalRangesAround(ComponentFiber fiber, VisualElement? mountPoint, int delta)
+        {
+            var portalState = fiber.Reconciler?.Context.PortalState;
+            var owning = OwningPortalOf(fiber, mountPoint);
+            if (portalState == null
+                || owning == null
+                || !portalState.TryGetValue(owning, out var range)
+                || !ReferenceEquals(range.Target, mountPoint))
+            {
+                return;
+            }
+            portalState[owning] = range with { SlotLength = range.SlotLength + delta };
+            PortalSlotTracker.ShiftRangesBehind(portalState, mountPoint, owning, range, delta);
         }
 
         // Drains parked time-sliced work before the new reconcile measures childCount. Force-draining
         // commits the remaining child-count delta (e.g. the atomic keyed reorder inserting created
-        // elements). For an inline-mount fiber that delta must propagate to following siblings exactly as
-        // the scheduled resume (ContinueReconcile) and the initial pass do — the new reconcile measures
-        // childCount AFTER this drain, so it would otherwise absorb the drain's delta and leave following
-        // siblings' MountSlotStart stale.
+        // elements). For an inline-mount fiber that delta must propagate exactly as the scheduled resume
+        // (ContinueReconcile) and the initial pass do — the new reconcile measures childCount AFTER this
+        // drain, so it would otherwise absorb the drain's delta and leave the starts behind it stale.
         internal static void DrainPendingWork(ComponentFiber fiber)
         {
             if (fiber.IsInlineMounted)
             {
-                var beforeDrain = LogicalMountPointChildCount(fiber.MountPoint);
+                var drain = new RowCountWindow(fiber);
                 fiber.Reconciler!.ContinueReconcile(frameBudgetMs: 0);
-                var afterDrain = LogicalMountPointChildCount(fiber.MountPoint);
-                PropagateInlineSlotShift(fiber, afterDrain - beforeDrain);
+                PropagateInlineSlotShift(fiber, drain.UnshiftedChange);
             }
             else
             {
@@ -117,56 +271,43 @@ namespace Velvet
             FiberTreeReturn.ReturnRetiredTree(parkedTree, fiber);
         }
 
-        internal static int SlotStartOwnedBy(ComponentFiber fiber)
-            => fiber.IsInlineMounted ? fiber.MountSlotStart : 0;
+        // A fiber's own render, a boundary's fallback swap and an unmount all rewrite the fiber's rows through
+        // here, so the three are bounded and propagate alike. For inline-mounted fibers the slot footprint is
+        // the *expanded* DOM count — newTree may include a top-level Fragment / ContextProvider whose expansion
+        // produces a different number of leaves, or descendant ComponentNodes whose own subtrees contribute
+        // additional VEs — so the delta is measured as the MountPoint's child count before and after the
+        // Reconcile, through RowCountWindow. Wrapper-mounted fibers own their entire MountPoint and don't
+        // participate in the shift.
+        internal static void ReconcileOwnRows(
+            ComponentFiber fiber, VNode?[] oldTree, VNode?[] newTree, double frameBudgetMs)
+        {
+            var reconciler = fiber.Reconciler!;
+            if (!fiber.IsInlineMounted)
+            {
+                reconciler.Reconcile(fiber.MountPoint, oldTree, newTree, frameBudgetMs);
+                return;
+            }
+            var rows = new RowCountWindow(fiber);
+            var slotLimit = NextInlineSiblingSlotStart(fiber);
+            reconciler.Reconcile(fiber.MountPoint, oldTree, newTree, frameBudgetMs, fiber.MountSlotStart, slotLimit);
+            PropagateInlineSlotShift(fiber, rows.UnshiftedChange);
+        }
 
-        // Reconciles this render's output into the fiber's slot range and commits the sibling-shift delta.
-        // For wrapper-less (inline-mounted) fibers, reconcile only the sub-range
-        // [MountSlotStart, MountSlotStart + MountSlotCount) of MountPoint.children so
-        // sibling fibers' slots are preserved. MountSlotCount may grow or shrink as the
-        // body's top-level output count changes; the new count is committed here and
-        // the delta propagated to subsequent sibling fibers' MountSlotStart.
-        //
-        // When deferReconcile is true (initial inline mount), the commit is performed by the caller's
-        // parent expansion rather than this fiber's own Reconciler: the newTree is captured on
-        // PreviousTree by the caller and consumed by ExpandInlineRecursive, which inserts the output VEs
-        // into the parent at the fiber's slot range — so the FiberRenderer-side bookkeeping is skipped
-        // here to avoid using the unexpanded VNode count.
+        // When deferReconcile is true (initial inline mount), the commit is performed by the caller's parent
+        // expansion rather than this fiber's own Reconciler: the newTree is captured on PreviousTree by the
+        // caller and consumed by ExpandInlineRecursive, which inserts the output VEs into the parent at the
+        // fiber's slot range — so the FiberRenderer-side bookkeeping is skipped here to avoid using the
+        // unexpanded VNode count.
         internal static void ReconcileIntoSlotRange(
             ComponentFiber fiber, VNode?[] oldTree, VNode?[] newTree, double frameBudgetMs, bool deferReconcile)
         {
-            var slotStart = SlotStartOwnedBy(fiber);
             // The array this reconcile is expanding, for the children it stamps on the way through.
             var treeContext = fiber.Reconciler?.Context;
             var enclosingFiberTree = treeContext?.CurrentFiberTree;
             if (treeContext != null) treeContext.CurrentFiberTree = newTree;
             try
             {
-            if (!deferReconcile)
-            {
-                // For inline-mounted fibers, the slot footprint is the *expanded* DOM count —
-                // <c>newTree</c> may include a top-level Fragment / ContextProvider whose
-                // expansion produces a different number of leaves, or descendant ComponentNodes
-                // whose own subtrees contribute additional VEs. Measure parent.childCount
-                // before / after Reconcile to capture the actual mutation within this fiber's
-                // slot range, then shift subsequent siblings by that delta. Wrapper-mounted
-                // fibers own their entire MountPoint and don't participate in sibling shifts.
-                if (fiber.IsInlineMounted)
-                {
-                    var beforeChildCount = LogicalMountPointChildCount(fiber.MountPoint);
-                    // Bound the reconcile to this fiber's slot range so a desync rebuild cannot delete a
-                    // following sibling's committed rows — the next inline-mount sibling's MountSlotStart is
-                    // where this fiber's rows end.
-                    var slotLimit = NextInlineSiblingSlotStart(fiber);
-                    fiber.Reconciler!.Reconcile(fiber.MountPoint, oldTree, newTree, frameBudgetMs, slotStart, slotLimit);
-                    var afterChildCount = LogicalMountPointChildCount(fiber.MountPoint);
-                    PropagateInlineSlotShift(fiber, afterChildCount - beforeChildCount);
-                }
-                else
-                {
-                    fiber.Reconciler!.Reconcile(fiber.MountPoint, oldTree, newTree, frameBudgetMs, slotStart);
-                }
-            }
+                if (!deferReconcile) ReconcileOwnRows(fiber, oldTree, newTree, frameBudgetMs);
             }
             finally
             {

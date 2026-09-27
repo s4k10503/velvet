@@ -363,12 +363,13 @@ namespace Velvet
         /// Re-bases the captured slot offset of an in-flight time-sliced reconcile by <paramref name="delta"/>.
         /// </summary>
         /// <remarks>
-        /// Called when a preceding sibling fiber that shares this fiber's parent VE re-renders with a
-        /// child-count delta while this fiber's reconcile is suspended (<see cref="HasPendingWork"/> is
-        /// true). The sibling's insert / remove physically shifts this fiber's already-committed rows
-        /// within the shared parent, so the suspended <c>slotStart</c> — a captured absolute offset into
-        /// the parent's children — must move by the same delta. Without it the resume would write the
-        /// remaining rows at stale absolute indices, corrupting both the sibling's and this fiber's slots.
+        /// Called when the rows ahead of this fiber's on the parent VE they share change count while this
+        /// fiber's reconcile is suspended (<see cref="HasPendingWork"/> is true), from
+        /// <c>FiberCommitWork</c> as it moves this fiber's recorded start by the same delta. That insert /
+        /// remove physically shifts this fiber's already-committed rows within the shared parent, so the
+        /// suspended <c>slotStart</c> — a captured absolute offset into the parent's children — must move
+        /// by the same delta. Without it the resume would write the remaining rows at stale absolute
+        /// indices.
         /// No-op when no work is pending or <paramref name="delta"/> is zero.
         /// </remarks>
         internal void RebasePendingSlotStart(int delta)
