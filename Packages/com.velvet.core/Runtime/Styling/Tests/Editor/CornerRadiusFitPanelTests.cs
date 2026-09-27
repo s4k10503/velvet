@@ -312,6 +312,23 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AClassCornerFittedBesideAnArbitraryOne_When_TheClassIsRemoved_Then_TheArbitraryCornerTakesItsDeclaredRadius()
+        {
+            // Arrange — 9999 + 60 across a 100px top edge scales both by 100/10059.
+            var box = MountSwitchable("w-[100px] h-[200px] rounded-tl-full rounded-tr-[60px]");
+            var fitted = box.resolvedStyle.borderTopRightRadius;
+
+            // Act — the class leaves on a style pass of its own, after the arbitrary radius was last applied.
+            SwitchClass("w-[100px] h-[200px] rounded-tr-[60px]");
+
+            // Assert — refitting the arbitrary corner against the class corner's still-held radius leaves it at
+            // 100/159.4 of 60.
+            var after = Radii(box);
+            Assert.That(new[] { fitted, after[0], after[1] },
+                Is.EqualTo(new[] { 60f * 100f / 10059f, 0f, 60f }).Within(1e-3f));
+        }
+
+        [Test]
         public void Given_AnInlineCornerVelvetDidNotWrite_When_ItsNeighbourOverlapsIt_Then_OnlyTheNeighbourIsScaled()
         {
             // Arrange — 80 + 60 across a 100px top edge scales both by 100/140, but only the arbitrary corner is
